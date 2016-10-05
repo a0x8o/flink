@@ -20,6 +20,7 @@ package org.apache.flink.runtime.state;
 
 import org.apache.flink.api.common.state.ListState;
 import org.apache.flink.api.common.state.ListStateDescriptor;
+import org.apache.flink.api.common.state.OperatorStateStore;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.core.fs.FSDataInputStream;
 import org.apache.flink.core.fs.FSDataOutputStream;
@@ -30,6 +31,7 @@ import org.apache.flink.core.memory.DataOutputViewStreamWrapper;
 import org.apache.flink.util.Preconditions;
 
 import java.io.IOException;
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -46,6 +48,7 @@ public class DefaultOperatorStateBackend implements OperatorStateBackend {
 	private final Map<String, PartitionableListState<?>> registeredStates;
 	private final Collection<OperatorStateHandle> restoreSnapshots;
 	private final ClosableRegistry closeStreamOnCancelRegistry;
+	private final JavaSerializer<Serializable> javaSerializer;
 
 	/**
 	 * Restores a OperatorStateStore (lazily) using the provided snapshots.
@@ -53,7 +56,11 @@ public class DefaultOperatorStateBackend implements OperatorStateBackend {
 	 * @param restoreSnapshots snapshots that are available to restore partitionable states on request.
 	 */
 	public DefaultOperatorStateBackend(
+			ClassLoader userClassLoader,
 			Collection<OperatorStateHandle> restoreSnapshots) {
+
+		Preconditions.checkNotNull(userClassLoader);
+		this.javaSerializer = new JavaSerializer<>(userClassLoader);
 		this.restoreSnapshots = restoreSnapshots;
 		this.registeredStates = new HashMap<>();
 		this.closeStreamOnCancelRegistry = new ClosableRegistry();
@@ -62,15 +69,20 @@ public class DefaultOperatorStateBackend implements OperatorStateBackend {
 	/**
 	 * Creates an empty OperatorStateStore.
 	 */
-	public DefaultOperatorStateBackend() {
-		this(null);
+	public DefaultOperatorStateBackend(ClassLoader userClassLoader) {
+		this(userClassLoader, null);
+	}
+
+	@Override
+	public ListState<Serializable> getSerializableListState(String stateName) throws Exception {
+		return getOperatorState(new ListStateDescriptor<>(stateName, javaSerializer));
 	}
 
 	/**
 	 * @see OperatorStateStore
 	 */
 	@Override
-	public <S> ListState<S> getPartitionableState(
+	public <S> ListState<S> getOperatorState(
 			ListStateDescriptor<S> stateDescriptor) throws IOException {
 
 		Preconditions.checkNotNull(stateDescriptor);

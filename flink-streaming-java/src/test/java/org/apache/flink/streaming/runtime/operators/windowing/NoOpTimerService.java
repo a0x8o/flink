@@ -16,34 +16,37 @@
  * limitations under the License.
  */
 
-package org.apache.flink.api.common.typeutils.base;
+package org.apache.flink.streaming.runtime.operators.windowing;
 
-import java.sql.Date;
+import org.apache.flink.streaming.runtime.operators.Triggerable;
+import org.apache.flink.streaming.runtime.tasks.TimeServiceProvider;
 
-import org.apache.flink.api.common.typeutils.ComparatorTestBase;
-import org.apache.flink.api.common.typeutils.TypeComparator;
-import org.apache.flink.api.common.typeutils.TypeSerializer;
+import java.util.concurrent.ScheduledFuture;
 
-public class SqlDateComparatorTest extends ComparatorTestBase<Date> {
+class NoOpTimerService extends TimeServiceProvider {
 
-	@SuppressWarnings("unchecked")
+	private volatile boolean terminated;
+
 	@Override
-	protected TypeComparator<Date> createComparator(boolean ascending) {
-		return (TypeComparator) new DateComparator(ascending);
+	public long getCurrentProcessingTime() {
+		return System.currentTimeMillis();
 	}
 
 	@Override
-	protected TypeSerializer<Date> createSerializer() {
-		return new SqlDateSerializer();
+	public ScheduledFuture<?> registerTimer(long timestamp, Triggerable target) {
+		return null;
 	}
 
 	@Override
-	protected Date[] getSortedTestData() {
-		return new Date[] {
-			Date.valueOf("1970-01-01"),
-			Date.valueOf("1990-10-14"),
-			Date.valueOf("2013-08-12"),
-			Date.valueOf("2040-05-12")
-		};
+	public boolean isTerminated() {
+		return terminated;
+	}
+
+	@Override
+	public void quiesceAndAwaitPending() {}
+
+	@Override
+	public void shutdownService() {
+		terminated = true;
 	}
 }

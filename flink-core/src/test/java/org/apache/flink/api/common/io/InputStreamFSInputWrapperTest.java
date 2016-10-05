@@ -16,34 +16,23 @@
  * limitations under the License.
  */
 
-package org.apache.flink.core.fs;
+package org.apache.flink.api.common.io;
 
-import org.apache.flink.annotation.Public;
-
-import java.io.IOException;
 import java.io.InputStream;
 
-/**
- * Interface for a data input stream to a file on a {@link FileSystem}.
- */
-@Public
-public abstract class FSDataInputStream extends InputStream {
+import org.junit.Test;
 
-	/**
-	 * Seek to the given offset from the start of the file. The next read() will be from that location.
-	 * Can't seek past the end of the file.
-	 * 
-	 * @param desired
-	 *        the desired offset
-	 * @throws IOException
-	 *         thrown if an error occurred while seeking inside the input stream
-	 */
-	public abstract void seek(long desired) throws IOException;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
-	/**
-	 * Get the current position in the input stream.
-	 *
-	 * @return current position in the input stream
-	 */
-	public abstract long getPos() throws IOException;
+public class InputStreamFSInputWrapperTest {
+
+	@Test
+	public void testClose() throws Exception {
+		InputStream mockedInputStream = mock(InputStream.class);
+		InputStreamFSInputWrapper wrapper = new InputStreamFSInputWrapper(mockedInputStream);
+		wrapper.close();
+		verify(mockedInputStream).close();
+	}
+
 }

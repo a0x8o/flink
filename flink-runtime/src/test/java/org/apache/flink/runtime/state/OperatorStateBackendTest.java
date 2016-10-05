@@ -20,7 +20,7 @@ package org.apache.flink.runtime.state;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.state.ListState;
 import org.apache.flink.api.common.state.ListStateDescriptor;
-import org.apache.flink.api.java.typeutils.runtime.JavaSerializer;
+import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.state.memory.MemoryStateBackend;
 import org.junit.Test;
 
@@ -31,13 +31,21 @@ import java.util.Iterator;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 public class OperatorStateBackendTest {
 
 	AbstractStateBackend abstractStateBackend = new MemoryStateBackend(1024);
 
+	static Environment createMockEnvironment() {
+		Environment env = mock(Environment.class);
+		when(env.getUserClassLoader()).thenReturn(Thread.currentThread().getContextClassLoader());
+		return env;
+	}
+
 	private OperatorStateBackend createNewOperatorStateBackend() throws Exception {
-		return abstractStateBackend.createOperatorStateBackend(null, "test-operator");
+		return abstractStateBackend.createOperatorStateBackend(createMockEnvironment(), "test-operator");
 	}
 
 	@Test
@@ -52,7 +60,7 @@ public class OperatorStateBackendTest {
 		OperatorStateBackend operatorStateBackend = createNewOperatorStateBackend();
 		ListStateDescriptor<Serializable> stateDescriptor1 = new ListStateDescriptor<>("test1", new JavaSerializer<>());
 		ListStateDescriptor<Serializable> stateDescriptor2 = new ListStateDescriptor<>("test2", new JavaSerializer<>());
-		ListState<Serializable> listState1 = operatorStateBackend.getPartitionableState(stateDescriptor1);
+		ListState<Serializable> listState1 = operatorStateBackend.getOperatorState(stateDescriptor1);
 		assertNotNull(listState1);
 		assertEquals(1, operatorStateBackend.getRegisteredStateNames().size());
 		Iterator<Serializable> it = listState1.get().iterator();
@@ -65,7 +73,7 @@ public class OperatorStateBackendTest {
 		assertEquals(4711, it.next());
 		assertTrue(!it.hasNext());
 
-		ListState<Serializable> listState2 = operatorStateBackend.getPartitionableState(stateDescriptor2);
+		ListState<Serializable> listState2 = operatorStateBackend.getOperatorState(stateDescriptor2);
 		assertNotNull(listState2);
 		assertEquals(2, operatorStateBackend.getRegisteredStateNames().size());
 		assertTrue(!it.hasNext());
@@ -79,7 +87,7 @@ public class OperatorStateBackendTest {
 		assertEquals(23, it.next());
 		assertTrue(!it.hasNext());
 
-		ListState<Serializable> listState1b = operatorStateBackend.getPartitionableState(stateDescriptor1);
+		ListState<Serializable> listState1b = operatorStateBackend.getOperatorState(stateDescriptor1);
 		assertNotNull(listState1b);
 		listState1b.add(123);
 		it = listState1b.get().iterator();
@@ -106,8 +114,8 @@ public class OperatorStateBackendTest {
 		OperatorStateBackend operatorStateBackend = createNewOperatorStateBackend();
 		ListStateDescriptor<Serializable> stateDescriptor1 = new ListStateDescriptor<>("test1", new JavaSerializer<>());
 		ListStateDescriptor<Serializable> stateDescriptor2 = new ListStateDescriptor<>("test2", new JavaSerializer<>());
-		ListState<Serializable> listState1 = operatorStateBackend.getPartitionableState(stateDescriptor1);
-		ListState<Serializable> listState2 = operatorStateBackend.getPartitionableState(stateDescriptor2);
+		ListState<Serializable> listState1 = operatorStateBackend.getOperatorState(stateDescriptor1);
+		ListState<Serializable> listState2 = operatorStateBackend.getOperatorState(stateDescriptor2);
 
 		listState1.add(42);
 		listState1.add(4711);
@@ -123,13 +131,13 @@ public class OperatorStateBackendTest {
 
 			operatorStateBackend.dispose();
 
-			operatorStateBackend = abstractStateBackend.
-					restoreOperatorStateBackend(null, "testOperator", Collections.singletonList(stateHandle));
+			operatorStateBackend = abstractStateBackend.restoreOperatorStateBackend(
+					createMockEnvironment(), "testOperator", Collections.singletonList(stateHandle));
 
 			assertEquals(0, operatorStateBackend.getRegisteredStateNames().size());
 
-			listState1 = operatorStateBackend.getPartitionableState(stateDescriptor1);
-			listState2 = operatorStateBackend.getPartitionableState(stateDescriptor2);
+			listState1 = operatorStateBackend.getOperatorState(stateDescriptor1);
+			listState2 = operatorStateBackend.getOperatorState(stateDescriptor2);
 
 			assertEquals(2, operatorStateBackend.getRegisteredStateNames().size());
 

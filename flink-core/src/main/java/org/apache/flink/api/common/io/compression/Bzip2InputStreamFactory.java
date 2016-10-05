@@ -15,35 +15,36 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.flink.api.common.io.compression;
 
-package org.apache.flink.core.fs;
-
-import org.apache.flink.annotation.Public;
+import org.apache.flink.annotation.Internal;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Collection;
+import java.util.Collections;
 
-/**
- * Interface for a data input stream to a file on a {@link FileSystem}.
- */
-@Public
-public abstract class FSDataInputStream extends InputStream {
+import org.apache.commons.compress.compressors.bzip2.BZip2CompressorInputStream;
 
-	/**
-	 * Seek to the given offset from the start of the file. The next read() will be from that location.
-	 * Can't seek past the end of the file.
-	 * 
-	 * @param desired
-	 *        the desired offset
-	 * @throws IOException
-	 *         thrown if an error occurred while seeking inside the input stream
-	 */
-	public abstract void seek(long desired) throws IOException;
+@Internal
+public class Bzip2InputStreamFactory implements InflaterInputStreamFactory<BZip2CompressorInputStream> {
 
-	/**
-	 * Get the current position in the input stream.
-	 *
-	 * @return current position in the input stream
-	 */
-	public abstract long getPos() throws IOException;
+	private static Bzip2InputStreamFactory INSTANCE = null;
+
+	public static Bzip2InputStreamFactory getInstance() {
+		if (INSTANCE == null) {
+			INSTANCE = new Bzip2InputStreamFactory();
+		}
+		return INSTANCE;
+	}
+
+	@Override
+	public BZip2CompressorInputStream create(InputStream in) throws IOException {
+		return new BZip2CompressorInputStream(in);
+	}
+
+	@Override
+	public Collection<String> getCommonFileExtensions() {
+		return Collections.singleton("bz2");
+	}
 }
