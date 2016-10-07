@@ -160,7 +160,7 @@ public class FlinkKafkaConsumerBaseTest {
 
 		assertFalse(listState.get().iterator().hasNext());
 	}
-	
+
 	@Test
 	@SuppressWarnings("unchecked")
 	public void testSnapshotState() throws Exception {
@@ -173,25 +173,26 @@ public class FlinkKafkaConsumerBaseTest {
 		state2.put(new KafkaTopicPartition("def", 7), 987654329L);
 
 		final HashMap<KafkaTopicPartition, Long> state3 = new HashMap<>();
-		state2.put(new KafkaTopicPartition("abc", 13), 16780L);
-		state2.put(new KafkaTopicPartition("def", 7), 987654377L);
-		
+		state3.put(new KafkaTopicPartition("abc", 13), 16780L);
+		state3.put(new KafkaTopicPartition("def", 7), 987654377L);
+
 		final AbstractFetcher<String, ?> fetcher = mock(AbstractFetcher.class);
 		when(fetcher.snapshotCurrentState()).thenReturn(state1, state2, state3);
-			
+
 		final LinkedMap pendingCheckpoints = new LinkedMap();
-	
+
 		FlinkKafkaConsumerBase<String> consumer = getConsumer(fetcher, pendingCheckpoints, true);
 		assertEquals(0, pendingCheckpoints.size());
 
 		OperatorStateStore backend = mock(OperatorStateStore.class);
 
+		TestingListState<Serializable> init = new TestingListState<>();
 		TestingListState<Serializable> listState1 = new TestingListState<>();
 		TestingListState<Serializable> listState2 = new TestingListState<>();
 		TestingListState<Serializable> listState3 = new TestingListState<>();
 
 		when(backend.getSerializableListState(Matchers.any(String.class))).
-				thenReturn(listState1, listState1, listState2, listState3);
+				thenReturn(init, listState1, listState2, listState3);
 
 		consumer.initializeState(backend);
 
@@ -222,7 +223,7 @@ public class FlinkKafkaConsumerBaseTest {
 		assertEquals(state2, snapshot2);
 		assertEquals(2, pendingCheckpoints.size());
 		assertEquals(state2, pendingCheckpoints.get(140L));
-		
+
 		// ack checkpoint 1
 		consumer.notifyCheckpointComplete(138L);
 		assertEquals(1, pendingCheckpoints.size());
@@ -241,7 +242,7 @@ public class FlinkKafkaConsumerBaseTest {
 		assertEquals(state3, snapshot3);
 		assertEquals(2, pendingCheckpoints.size());
 		assertEquals(state3, pendingCheckpoints.get(141L));
-		
+
 		// ack checkpoint 3, subsumes number 2
 		consumer.notifyCheckpointComplete(141L);
 		assertEquals(0, pendingCheckpoints.size());
@@ -302,7 +303,7 @@ public class FlinkKafkaConsumerBaseTest {
 
 		@SuppressWarnings("unchecked")
 		public DummyFlinkKafkaConsumer() {
-			super(Arrays.asList("abc", "def"), (KeyedDeserializationSchema < T >) mock(KeyedDeserializationSchema.class));
+			super(Arrays.asList("dummy-topic"), (KeyedDeserializationSchema < T >) mock(KeyedDeserializationSchema.class));
 		}
 
 		@Override
