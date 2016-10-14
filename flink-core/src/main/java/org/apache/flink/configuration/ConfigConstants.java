@@ -759,6 +759,9 @@ public final class ConfigConstants {
 	public static final String HA_ZOOKEEPER_MAX_RETRY_ATTEMPTS = "high-availability.zookeeper.client.max-retry-attempts";
 
 	@PublicEvolving
+	public static final String HA_ZOOKEEPER_CLIENT_ACL = "high-availability.zookeeper.client.acl";
+
+	@PublicEvolving
 	public static final String ZOOKEEPER_SASL_DISABLE = "zookeeper.sasl.disable";
 
 	@PublicEvolving
@@ -847,6 +850,9 @@ public final class ConfigConstants {
 	/** The interval between reports. This is used as a suffix in an actual reporter config */
 	public static final String METRICS_REPORTER_INTERVAL_SUFFIX = "interval";
 
+	/**	The delimiter used to assemble the metric identifier. This is used as a suffix in an actual reporter config. */
+	public static final String METRICS_REPORTER_SCOPE_DELIMITER = "scope.delimiter";
+
 	/** The delimiter used to assemble the metric identifier. */
 	public static final String METRICS_SCOPE_DELIMITER = "metrics.scope.delimiter";
 
@@ -867,6 +873,29 @@ public final class ConfigConstants {
 
 	/** The scope format string that is applied to all metrics scoped to an operator. */
 	public static final String METRICS_SCOPE_NAMING_OPERATOR = "metrics.scope.operator";
+
+	/** The number of measured latencies to maintain at each operator */
+	public static final String METRICS_LATENCY_HISTORY_SIZE = "metrics.latency.history-size";
+
+
+	// ---------------------------- Checkpoints -------------------------------
+
+	/** The default directory for savepoints. */
+	@PublicEvolving
+	public static final String SAVEPOINT_DIRECTORY_KEY = "state.savepoints.dir";
+
+	/** The default directory used for persistent checkpoints. */
+	@PublicEvolving
+	public static final String CHECKPOINTS_DIRECTORY_KEY = "state.checkpoints.dir";
+
+	/**
+	 * This key was used in Flink versions <= 1.1.X with the savepoint backend
+	 * configuration. We now always use the FileSystem for savepoints. For this,
+	 * the only relevant config key is {@link #SAVEPOINT_DIRECTORY_KEY}.
+	 */
+	@Deprecated
+	public static final String SAVEPOINT_FS_DIRECTORY_KEY = "savepoints.state.backend.fs.dir";
+
 
 	// ------------------------------------------------------------------------
 	//                            Default Values
@@ -1242,6 +1271,10 @@ public final class ConfigConstants {
 	/** Defaults for ZK client security **/
 	public static final boolean DEFAULT_ZOOKEEPER_SASL_DISABLE = true;
 
+	/** ACL options supported "creator" or "open" */
+	public static final String DEFAULT_HA_ZOOKEEPER_CLIENT_ACL = "open";
+
+
 	// ------------------------- Queryable state ------------------------------
 
 	/** Port to bind KvState server to. */
@@ -1279,6 +1312,12 @@ public final class ConfigConstants {
 
 	/** Default retry delay on location lookup failures. */
 	public static final int DEFAULT_QUERYABLE_STATE_CLIENT_LOOKUP_RETRY_DELAY = 1000;
+
+	// ----------------------------- Metrics ----------------------------
+
+	/** The default number of measured latencies to maintain at each operator */
+	public static final int DEFAULT_METRICS_LATENCY_HISTORY_SIZE = 128;
+
 
 	// ----------------------------- Environment Variables ----------------------------
 
