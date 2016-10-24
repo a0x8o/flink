@@ -33,8 +33,8 @@ import org.apache.flink.runtime.akka.AkkaUtils;
 import org.apache.flink.runtime.checkpoint.SubtaskState;
 import org.apache.flink.runtime.checkpoint.TaskState;
 import org.apache.flink.runtime.checkpoint.savepoint.SavepointV1;
+import org.apache.flink.runtime.client.JobExecutionException;
 import org.apache.flink.runtime.deployment.TaskDeploymentDescriptor;
-import org.apache.flink.runtime.execution.SuppressRestartsException;
 import org.apache.flink.runtime.instance.ActorGateway;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.jobgraph.JobVertex;
@@ -160,6 +160,7 @@ public class SavepointITCase extends TestLogger {
 			config.setString(ConfigConstants.STATE_BACKEND, "filesystem");
 			config.setString(FsStateBackendFactory.CHECKPOINT_DIRECTORY_URI_CONF_KEY,
 					checkpointDir.toURI().toString());
+			config.setString(FsStateBackendFactory.MEMORY_THRESHOLD_CONF_KEY, "0");
 			config.setString(ConfigConstants.SAVEPOINT_DIRECTORY_KEY,
 					savepointDir.toURI().toString());
 
@@ -338,7 +339,8 @@ public class SavepointITCase extends TestLogger {
 
 					assertNotNull(subtaskState);
 					errMsg = "Initial operator state mismatch.";
-					assertEquals(errMsg, subtaskState.getChainedStateHandle(), tdd.getOperatorState());
+					assertEquals(errMsg, subtaskState.getLegacyOperatorState(),
+							tdd.getTaskStateHandles().getLegacyOperatorState());
 				}
 			}
 
@@ -364,7 +366,7 @@ public class SavepointITCase extends TestLogger {
 
 			for (TaskState stateForTaskGroup : savepoint.getTaskStates()) {
 				for (SubtaskState subtaskState : stateForTaskGroup.getStates()) {
-					ChainedStateHandle<StreamStateHandle> streamTaskState = subtaskState.getChainedStateHandle();
+					ChainedStateHandle<StreamStateHandle> streamTaskState = subtaskState.getLegacyOperatorState();
 
 					for (int i = 0; i < streamTaskState.getLength(); i++) {
 						if (streamTaskState.get(i) != null) {
@@ -459,8 +461,8 @@ public class SavepointITCase extends TestLogger {
 				flink.submitJobAndWait(jobGraph, false);
 			}
 			catch (Exception e) {
-				assertEquals(SuppressRestartsException.class, e.getCause().getClass());
-				assertEquals(IllegalArgumentException.class, e.getCause().getCause().getClass());
+				assertEquals(JobExecutionException.class, e.getClass());
+				assertEquals(IllegalArgumentException.class, e.getCause().getClass());
 			}
 		}
 		finally {
