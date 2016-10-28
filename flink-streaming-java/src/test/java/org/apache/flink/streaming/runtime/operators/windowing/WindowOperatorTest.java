@@ -63,6 +63,7 @@ import org.apache.flink.streaming.api.windowing.windows.Window;
 import org.apache.flink.streaming.runtime.operators.windowing.functions.InternalIterableWindowFunction;
 import org.apache.flink.streaming.runtime.operators.windowing.functions.InternalSingleValueWindowFunction;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
+import org.apache.flink.streaming.runtime.tasks.OperatorStateHandles;
 import org.apache.flink.streaming.util.KeyedOneInputStreamOperatorTestHarness;
 import org.apache.flink.streaming.util.OneInputStreamOperatorTestHarness;
 import org.apache.flink.streaming.util.TestHarnessUtil;
@@ -124,10 +125,10 @@ public class WindowOperatorTest extends TestLogger {
 		TestHarnessUtil.assertOutputEqualsSorted("Output was not correct.", expectedOutput, testHarness.getOutput(), new Tuple2ResultSortComparator());
 
 		// do a snapshot, close and restore again
-		StreamStateHandle snapshot = testHarness.snapshotLegacy(0L, 0L);
+		OperatorStateHandles snapshot = testHarness.snapshot(0L, 0L);
 		testHarness.close();
 		testHarness.setup();
-		testHarness.restore(snapshot);
+		testHarness.initializeState(snapshot);
 		testHarness.open();
 
 		testHarness.processWatermark(new Watermark(3999));
@@ -254,10 +255,10 @@ public class WindowOperatorTest extends TestLogger {
 		TestHarnessUtil.assertOutputEqualsSorted("Output was not correct.", expectedOutput, testHarness.getOutput(), new Tuple2ResultSortComparator());
 
 		// do a snapshot, close and restore again
-		StreamStateHandle snapshot = testHarness.snapshotLegacy(0L, 0L);
+		OperatorStateHandles snapshot = testHarness.snapshot(0L, 0L);
 		testHarness.close();
 		testHarness.setup();
-		testHarness.restore(snapshot);
+		testHarness.initializeState(snapshot);
 		testHarness.open();
 
 		testHarness.processWatermark(new Watermark(2999));
@@ -395,10 +396,10 @@ public class WindowOperatorTest extends TestLogger {
 		testHarness.processElement(new StreamRecord<>(new Tuple2<>("key1", 2), 1000));
 
 		// do a snapshot, close and restore again
-		StreamStateHandle snapshot = testHarness.snapshotLegacy(0L, 0L);
+		OperatorStateHandles snapshot = testHarness.snapshot(0L, 0L);
 		testHarness.close();
 		testHarness.setup();
-		testHarness.restore(snapshot);
+		testHarness.initializeState(snapshot);
 		testHarness.open();
 
 		testHarness.processElement(new StreamRecord<>(new Tuple2<>("key1", 3), 2500));
@@ -464,10 +465,10 @@ public class WindowOperatorTest extends TestLogger {
 		testHarness.processElement(new StreamRecord<>(new Tuple2<>("key2", 3), 2500));
 
 		// do a snapshot, close and restore again
-		StreamStateHandle snapshot = testHarness.snapshotLegacy(0L, 0L);
+		OperatorStateHandles snapshot = testHarness.snapshot(0L, 0L);
 		testHarness.close();
 		testHarness.setup();
-		testHarness.restore(snapshot);
+		testHarness.initializeState(snapshot);
 		testHarness.open();
 
 		testHarness.processElement(new StreamRecord<>(new Tuple2<>("key1", 1), 10));
@@ -542,10 +543,10 @@ public class WindowOperatorTest extends TestLogger {
 		testHarness.processElement(new StreamRecord<>(new Tuple2<>("key1", 2), 1000));
 
 		// do a snapshot, close and restore again
-		StreamStateHandle snapshot = testHarness.snapshotLegacy(0L, 0L);
+		OperatorStateHandles snapshot = testHarness.snapshot(0L, 0L);
 		testHarness.close();
 		testHarness.setup();
-		testHarness.restore(snapshot);
+		testHarness.initializeState(snapshot);
 		testHarness.open();
 
 		testHarness.processElement(new StreamRecord<>(new Tuple2<>("key1", 3), 2500));
@@ -620,10 +621,10 @@ public class WindowOperatorTest extends TestLogger {
 		expectedOutput.add(new Watermark(3000));
 
 		// do a snapshot, close and restore again
-		StreamStateHandle snapshot = testHarness.snapshotLegacy(0L, 0L);
+		OperatorStateHandles snapshot = testHarness.snapshot(0L, 0L);
 		testHarness.close();
 		testHarness.setup();
-		testHarness.restore(snapshot);
+		testHarness.initializeState(snapshot);
 		testHarness.open();
 
 		testHarness.processElement(new StreamRecord<>(new Tuple2<>("key1", 2), 4000));
@@ -711,10 +712,10 @@ public class WindowOperatorTest extends TestLogger {
 		testHarness.processElement(new StreamRecord<>(new Tuple2<>("key2", 33), 1000));
 
 		// do a snapshot, close and restore again
-		StreamStateHandle snapshot = testHarness.snapshotLegacy(0L, 0L);
+		OperatorStateHandles snapshot = testHarness.snapshot(0L, 0L);
 		testHarness.close();
 		testHarness.setup();
-		testHarness.restore(snapshot);
+		testHarness.initializeState(snapshot);
 		testHarness.open();
 
 		testHarness.processElement(new StreamRecord<>(new Tuple2<>("key2", 33), 2500));
@@ -866,7 +867,7 @@ public class WindowOperatorTest extends TestLogger {
 		testHarness.processElement(new StreamRecord<>(new Tuple2<>("key2", 1), 1999));
 
 		// do a snapshot, close and restore again
-		StreamStateHandle snapshot = testHarness.snapshotLegacy(0L, 0L);
+		OperatorStateHandles snapshot = testHarness.snapshot(0L, 0L);
 
 		testHarness.close();
 
@@ -889,7 +890,7 @@ public class WindowOperatorTest extends TestLogger {
 		testHarness = new KeyedOneInputStreamOperatorTestHarness<>(operator, new TupleKeySelector(), BasicTypeInfo.STRING_TYPE_INFO);
 
 		testHarness.setup();
-		testHarness.restore(snapshot);
+		testHarness.initializeState(snapshot);
 		testHarness.open();
 
 		testHarness.processElement(new StreamRecord<>(new Tuple2<>("key2", 1), 1000));
@@ -932,7 +933,7 @@ public class WindowOperatorTest extends TestLogger {
 				ProcessingTimeTrigger.create(), 0);
 
 		OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Tuple2<String, Integer>> testHarness =
-				new KeyedOneInputStreamOperatorTestHarness<>(operator, new ExecutionConfig(), new TupleKeySelector(), BasicTypeInfo.STRING_TYPE_INFO);
+				new KeyedOneInputStreamOperatorTestHarness<>(operator, new TupleKeySelector(), BasicTypeInfo.STRING_TYPE_INFO);
 
 		ConcurrentLinkedQueue<Object> expectedOutput = new ConcurrentLinkedQueue<>();
 
@@ -989,7 +990,7 @@ public class WindowOperatorTest extends TestLogger {
 				ProcessingTimeTrigger.create(), 0);
 
 		OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Tuple2<String, Integer>> testHarness =
-				new KeyedOneInputStreamOperatorTestHarness<>(operator, new ExecutionConfig(), new TupleKeySelector(), BasicTypeInfo.STRING_TYPE_INFO);
+				new KeyedOneInputStreamOperatorTestHarness<>(operator, new TupleKeySelector(), BasicTypeInfo.STRING_TYPE_INFO);
 
 		ConcurrentLinkedQueue<Object> expectedOutput = new ConcurrentLinkedQueue<>();
 
@@ -1059,7 +1060,7 @@ public class WindowOperatorTest extends TestLogger {
 				ProcessingTimeTrigger.create(), 0);
 
 		OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Tuple2<String, Integer>> testHarness =
-				new KeyedOneInputStreamOperatorTestHarness<>(operator, new ExecutionConfig(), new TupleKeySelector(), BasicTypeInfo.STRING_TYPE_INFO);
+				new KeyedOneInputStreamOperatorTestHarness<>(operator, new TupleKeySelector(), BasicTypeInfo.STRING_TYPE_INFO);
 
 		ConcurrentLinkedQueue<Object> expectedOutput = new ConcurrentLinkedQueue<>();
 
@@ -2471,7 +2472,6 @@ public class WindowOperatorTest extends TestLogger {
 		TumblingEventTimeWindows windowAssigner = TumblingEventTimeWindows.of(Time.milliseconds(WINDOW_SIZE),Time.milliseconds(OFFSET));
 
 		WindowingTestHarness<String, Tuple2<String, Integer>, TimeWindow> testHarness = new WindowingTestHarness<>(
-			new ExecutionConfig(),
 			windowAssigner,
 			BasicTypeInfo.STRING_TYPE_INFO,
 			inputType,
@@ -2520,7 +2520,6 @@ public class WindowOperatorTest extends TestLogger {
 		SlidingEventTimeWindows windowAssigner = SlidingEventTimeWindows.of(Time.milliseconds(WINDOW_SIZE),Time.milliseconds(SLIDE),Time.milliseconds(OFFSET));
 
 		WindowingTestHarness<String, Tuple2<String, Integer>, TimeWindow> testHarness = new WindowingTestHarness<>(
-			new ExecutionConfig(),
 			windowAssigner,
 			BasicTypeInfo.STRING_TYPE_INFO,
 			inputType,
@@ -2552,7 +2551,6 @@ public class WindowOperatorTest extends TestLogger {
 			Time.milliseconds(OFFSET));
 
 		WindowingTestHarness<String, Tuple2<String, Integer>, TimeWindow> testHarness = new WindowingTestHarness<>(
-			new ExecutionConfig(),
 			windowAssigner,
 			BasicTypeInfo.STRING_TYPE_INFO,
 			inputType,
@@ -2607,7 +2605,6 @@ public class WindowOperatorTest extends TestLogger {
 			Time.milliseconds(SLIDING),Time.milliseconds(OFFSET));
 
 		WindowingTestHarness<String, Tuple2<String, Integer>, TimeWindow> testHarness = new WindowingTestHarness<>(
-			new ExecutionConfig(),
 			windowAssigner,
 			BasicTypeInfo.STRING_TYPE_INFO,
 			inputType,
