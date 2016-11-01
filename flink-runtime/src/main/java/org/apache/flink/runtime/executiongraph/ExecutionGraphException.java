@@ -16,25 +16,24 @@
  * limitations under the License.
  */
 
-package org.apache.flink.runtime.messages
-
-import org.apache.flink.runtime.instance.InstanceID
+package org.apache.flink.runtime.executiongraph;
 
 /**
- * Generic messages between JobManager, TaskManager, JobClient.
+ * Base class for exceptions occurring in the {@link ExecutionGraph}.
  */
-object Messages {
+public class ExecutionGraphException extends Exception {
 
-  /**
-   * Signals that the receiver (JobManager/TaskManager) shall disconnect the sender.
-   *
-   * The TaskManager may send this on shutdown to let the JobManager realize the TaskManager
-   * loss more quickly.
-   *
-   * The JobManager may send this message to its TaskManagers to let them clean up their
-   * tasks that depend on the JobManager and go into a clean state.
-   *
-   * @param cause The reason for disconnecting, to be displayed in log and error messages.
-   */
-  case class Disconnect(instanceId: InstanceID, cause: Exception) extends RequiresLeaderSessionID
+	private static final long serialVersionUID = -8253451032797220657L;
+
+	public ExecutionGraphException(String message) {
+		super(message);
+	}
+
+	public ExecutionGraphException(String message, Throwable cause) {
+		super(message, cause);
+	}
+
+	public ExecutionGraphException(Throwable cause) {
+		super(cause);
+	}
 }
