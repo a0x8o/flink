@@ -21,7 +21,7 @@ package org.apache.flink.runtime.jobmanager
 import java.io.{File, IOException}
 import java.net._
 import java.util.UUID
-import java.util.concurrent.{ExecutorService, TimeUnit, TimeoutException}
+import java.util.concurrent.{ExecutorService, ForkJoinPool, TimeUnit, TimeoutException}
 
 import akka.actor.Status.{Failure, Success}
 import akka.actor._
@@ -62,7 +62,7 @@ import org.apache.flink.runtime.messages.JobManagerMessages._
 import org.apache.flink.runtime.messages.Messages.Disconnect
 import org.apache.flink.runtime.messages.RegistrationMessages._
 import org.apache.flink.runtime.messages.{Acknowledge, StackTrace}
-import org.apache.flink.runtime.messages.TaskManagerMessages.{Heartbeat, SendStackTrace}
+import org.apache.flink.runtime.messages.TaskManagerMessages.Heartbeat
 import org.apache.flink.runtime.messages.TaskMessages.UpdateTaskExecutionState
 import org.apache.flink.runtime.messages.accumulators._
 import org.apache.flink.runtime.messages.checkpoint.{AbstractCheckpointMessage, AcknowledgeCheckpoint, DeclineCheckpoint}
@@ -87,7 +87,6 @@ import scala.collection.JavaConverters._
 import scala.collection.mutable
 import scala.concurrent._
 import scala.concurrent.duration._
-import scala.concurrent.forkjoin.ForkJoinPool
 import scala.language.postfixOps
 
 /**
@@ -843,10 +842,6 @@ class JobManager(
       currentJobs.get(jobID) match {
         case Some((executionGraph, jobInfo)) => executionGraph.getJobName
 
-          log.info(
-            s"Status of job $jobID (${executionGraph.getJobName}) changed to $newJobStatus.",
-            error)
-
           if (newJobStatus.isGloballyTerminalState()) {
             jobInfo.end = timeStamp
 
@@ -1436,10 +1431,7 @@ class JobManager(
             if (checkpointCoordinator != null) {
               future {
                 try {
-                  if (!checkpointCoordinator.receiveDeclineMessage(declineMessage)) {
-                    log.info("Received message for non-existing checkpoint " +
-                      declineMessage.getCheckpointId)
-                  }
+                 checkpointCoordinator.receiveDeclineMessage(declineMessage)
                 }
                 catch {
                   case t: Throwable =>
