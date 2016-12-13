@@ -16,34 +16,21 @@
  * limitations under the License.
  */
 
-package org.apache.flink.runtime.taskmanager;
+package org.apache.flink.runtime.jobmanager;
 
-import org.apache.flink.api.common.JobID;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
-import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
+import org.apache.flink.runtime.messages.JobManagerMessages.RequestPartitionProducerState;
 
 /**
- * Actions which can be performed on a {@link Task}.
+ * Exception returned to a TaskManager on {@link RequestPartitionProducerState}
+ * if the producer of a partition has been disposed.
  */
-public interface TaskActions {
+public class PartitionProducerDisposedException extends Exception {
 
-	/**
-	 * Check the execution state of the execution producing a result partition.
-	 *
-	 * @param jobId ID of the job the partition belongs to.
-	 * @param intermediateDataSetId ID of the parent intermediate data set.
-	 * @param resultPartitionId ID of the result partition to check. This
-	 * identifies the producing execution and partition.
-	 */
-	void triggerPartitionProducerStateCheck(
-		JobID jobId,
-		IntermediateDataSetID intermediateDataSetId,
-		ResultPartitionID resultPartitionId);
+	public PartitionProducerDisposedException(ResultPartitionID resultPartitionID) {
+		super(String.format("Execution %s producing partition %s has already been disposed.",
+			resultPartitionID.getProducerId(),
+			resultPartitionID.getPartitionId()));
+	}
 
-	/**
-	 * Fail the owning task with the given throwable.
-	 *
-	 * @param cause of the failure
-	 */
-	void failExternally(Throwable cause);
 }
