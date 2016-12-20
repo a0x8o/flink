@@ -23,6 +23,7 @@ import org.apache.flink.core.fs.Path;
 import org.apache.flink.migration.runtime.checkpoint.KeyGroupState;
 import org.apache.flink.migration.runtime.checkpoint.SubtaskState;
 import org.apache.flink.migration.runtime.checkpoint.TaskState;
+import org.apache.flink.migration.runtime.state.AbstractStateBackend;
 import org.apache.flink.migration.runtime.state.KvStateSnapshot;
 import org.apache.flink.migration.runtime.state.StateHandle;
 import org.apache.flink.migration.runtime.state.filesystem.AbstractFileStateHandle;
@@ -45,6 +46,7 @@ import org.apache.flink.runtime.state.StreamStateHandle;
 import org.apache.flink.runtime.state.filesystem.FileStateHandle;
 import org.apache.flink.runtime.state.memory.ByteStreamStateHandle;
 import org.apache.flink.runtime.state.memory.MemCheckpointStreamFactory;
+import org.apache.flink.util.IOUtils;
 import org.apache.flink.util.InstantiationUtil;
 import org.apache.flink.util.Preconditions;
 
@@ -250,7 +252,11 @@ public class SavepointV0Serializer implements SavepointSerializer<SavepointV1> {
 				null);
 	}
 
-	private StreamStateHandle convertOperatorAndFunctionState(StreamTaskState streamTaskState) throws Exception {
+	/**
+	 * This is public so that we can use it when restoring a legacy snapshot
+	 * in {@code AbstractStreamOperatorTestHarness}.
+	 */
+	public static StreamStateHandle convertOperatorAndFunctionState(StreamTaskState streamTaskState) throws Exception {
 
 		List<StreamStateHandle> mergeStateHandles = new ArrayList<>(4);
 
@@ -265,16 +271,17 @@ public class SavepointV0Serializer implements SavepointSerializer<SavepointV1> {
 		}
 
 		if (null != operatorState) {
-			mergeStateHandles.add(SIGNAL_1);
 			mergeStateHandles.add(convertStateHandle(operatorState));
-		} else {
-			mergeStateHandles.add(SIGNAL_0);
 		}
 
 		return new MigrationStreamStateHandle(new MultiStreamStateHandle(mergeStateHandles));
 	}
 
-	private KeyGroupsStateHandle convertKeyedBackendState(
+	/**
+	 * This is public so that we can use it when restoring a legacy snapshot
+	 * in {@code AbstractStreamOperatorTestHarness}.
+	 */
+	public static KeyGroupsStateHandle convertKeyedBackendState(
 			HashMap<String, KvStateSnapshot<?, ?, ?, ?>> oldKeyedState,
 			int parallelInstanceIdx,
 			long checkpointID) throws Exception {
@@ -286,16 +293,21 @@ public class SavepointV0Serializer implements SavepointSerializer<SavepointV1> {
 			CheckpointStreamFactory.CheckpointStateOutputStream keyedStateOut =
 					checkpointStreamFactory.createCheckpointStateOutputStream(checkpointID, 0L);
 
-			final long offset = keyedStateOut.getPos();
+			try {
+				final long offset = keyedStateOut.getPos();
 
-			InstantiationUtil.serializeObject(keyedStateOut, oldKeyedState);
-			StreamStateHandle streamStateHandle = keyedStateOut.closeAndGetHandle();
+				InstantiationUtil.serializeObject(keyedStateOut, oldKeyedState);
+				StreamStateHandle streamStateHandle = keyedStateOut.closeAndGetHandle();
+				keyedStateOut = null; // makes IOUtils.closeQuietly(...) ignore this
 
-			if (null != streamStateHandle) {
-				KeyGroupRangeOffsets keyGroupRangeOffsets =
-						new KeyGroupRangeOffsets(parallelInstanceIdx, parallelInstanceIdx, new long[]{offset});
+				if (null != streamStateHandle) {
+					KeyGroupRangeOffsets keyGroupRangeOffsets =
+							new KeyGroupRangeOffsets(parallelInstanceIdx, parallelInstanceIdx, new long[]{offset});
 
-				return new MigrationKeyGroupStateHandle(keyGroupRangeOffsets, streamStateHandle);
+					return new MigrationKeyGroupStateHandle(keyGroupRangeOffsets, streamStateHandle);
+				}
+			} finally {
+				IOUtils.closeQuietly(keyedStateOut);
 			}
 		}
 		return null;
@@ -323,7 +335,11 @@ public class SavepointV0Serializer implements SavepointSerializer<SavepointV1> {
 		return 0;
 	}
 
-	private static StreamStateHandle convertStateHandle(StateHandle<?> oldStateHandle) throws Exception {
+	/**
+	 * This is public so that we can use it when restoring a legacy snapshot
+	 * in {@code AbstractStreamOperatorTestHarness}.
+	 */
+	public static StreamStateHandle convertStateHandle(StateHandle<?> oldStateHandle) throws Exception {
 		if (oldStateHandle instanceof AbstractFileStateHandle) {
 			Path path = ((AbstractFileStateHandle) oldStateHandle).getFilePath();
 			return new FileStateHandle(path, oldStateHandle.getStateSize());
@@ -334,6 +350,9 @@ public class SavepointV0Serializer implements SavepointSerializer<SavepointV1> {
 			byte[] data =
 					((org.apache.flink.migration.runtime.state.memory.ByteStreamStateHandle) oldStateHandle).getData();
 			return new ByteStreamStateHandle(String.valueOf(System.identityHashCode(data)), data);
+		} else if (oldStateHandle instanceof AbstractStateBackend.DataInputViewHandle) {
+			return convertStateHandle(
+					((AbstractStateBackend.DataInputViewHandle) oldStateHandle).getStreamStateHandle());
 		}
 		throw new IllegalArgumentException("Unknown state handle type: " + oldStateHandle);
 	}

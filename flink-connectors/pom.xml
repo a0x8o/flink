@@ -26,7 +26,7 @@ under the License.
 	<parent>
 		<groupId>org.apache.flink</groupId>
 		<artifactId>flink-parent</artifactId>
-		<version>1.2-SNAPSHOT</version>
+		<version>1.3-SNAPSHOT</version>
 		<relativePath>..</relativePath>
 	</parent>
 
@@ -41,7 +41,6 @@ under the License.
 		<module>flink-hadoop-compatibility</module>
 		<module>flink-hbase</module>
 		<module>flink-hcatalog</module>
-		<module>flink-connector-flume</module>
 		<module>flink-connector-kafka-base</module>
 		<module>flink-connector-kafka-0.8</module>
 		<module>flink-connector-kafka-0.9</module>
@@ -52,9 +51,25 @@ under the License.
 		<module>flink-connector-twitter</module>
 		<module>flink-connector-nifi</module>
 		<module>flink-connector-cassandra</module>
-		<module>flink-connector-redis</module>
 		<module>flink-connector-filesystem</module>
 	</modules>
+
+	<!-- override these root dependencies as 'provided', so they don't end up
+		in the jars-with-dependencies (uber jars) of connectors and
+		user programs that depend on the connectors -->
+
+	<dependencies>
+		<dependency>
+			<groupId>org.slf4j</groupId>
+			<artifactId>slf4j-api</artifactId>
+			<scope>provided</scope>
+		</dependency>
+		<dependency>
+			<groupId>com.google.code.findbugs</groupId>
+			<artifactId>jsr305</artifactId>
+			<scope>provided</scope>
+		</dependency>
+	</dependencies>
 
 	<!-- See main pom.xml for explanation of profiles -->
 	<profiles>
