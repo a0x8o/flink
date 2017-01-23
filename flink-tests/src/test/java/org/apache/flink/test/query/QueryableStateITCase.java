@@ -31,7 +31,6 @@ import org.apache.flink.api.common.functions.FoldFunction;
 import org.apache.flink.api.common.functions.ReduceFunction;
 import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.api.common.state.FoldingStateDescriptor;
-import org.apache.flink.api.common.state.ListStateDescriptor;
 import org.apache.flink.api.common.state.ReducingStateDescriptor;
 import org.apache.flink.api.common.state.ValueStateDescriptor;
 import org.apache.flink.api.common.typeutils.base.StringSerializer;
@@ -40,6 +39,7 @@ import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.configuration.ConfigConstants;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.QueryableStateOptions;
+import org.apache.flink.contrib.streaming.state.RocksDBStateBackend;
 import org.apache.flink.runtime.akka.AkkaUtils;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.ExecutionGraph;
@@ -51,10 +51,14 @@ import org.apache.flink.runtime.messages.JobManagerMessages.JobFound;
 import org.apache.flink.runtime.query.KvStateLocation;
 import org.apache.flink.runtime.query.KvStateMessage;
 import org.apache.flink.runtime.query.QueryableStateClient;
+import org.apache.flink.runtime.query.netty.UnknownKeyOrNamespace;
 import org.apache.flink.runtime.query.netty.message.KvStateRequestSerializer;
+import org.apache.flink.runtime.state.AbstractStateBackend;
 import org.apache.flink.runtime.state.CheckpointListener;
 import org.apache.flink.runtime.state.VoidNamespace;
 import org.apache.flink.runtime.state.VoidNamespaceSerializer;
+import org.apache.flink.runtime.state.filesystem.FsStateBackend;
+import org.apache.flink.runtime.state.memory.MemoryStateBackend;
 import org.apache.flink.runtime.testingUtils.TestingCluster;
 import org.apache.flink.runtime.testingUtils.TestingJobManagerMessages;
 import org.apache.flink.runtime.testingUtils.TestingTaskManagerMessages;
@@ -68,7 +72,9 @@ import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.TestLogger;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
 import scala.concurrent.Await;
 import scala.concurrent.Future;
 import scala.concurrent.duration.Deadline;
@@ -95,12 +101,16 @@ import static org.junit.Assert.fail;
 public class QueryableStateITCase extends TestLogger {
 
 	private final static FiniteDuration TEST_TIMEOUT = new FiniteDuration(100, TimeUnit.SECONDS);
+	private final static FiniteDuration QUERY_RETRY_DELAY = new FiniteDuration(100, TimeUnit.MILLISECONDS);
 
 	private final static ActorSystem TEST_ACTOR_SYSTEM = AkkaUtils.createDefaultActorSystem();
 
 	private final static int NUM_TMS = 2;
 	private final static int NUM_SLOTS_PER_TM = 4;
 	private final static int NUM_SLOTS = NUM_TMS * NUM_SLOTS_PER_TM;
+
+	@Rule
+	public TemporaryFolder temporaryFolder = new TemporaryFolder();
 
 	/**
 	 * Shared between all the test. Make sure to have at least NUM_SLOTS
@@ -201,8 +211,6 @@ public class QueryableStateITCase extends TestLogger {
 
 			final AtomicLongArray counts = new AtomicLongArray(numKeys);
 
-			final FiniteDuration retryDelay = new FiniteDuration(1, TimeUnit.SECONDS);
-
 			boolean allNonZero = false;
 			while (!allNonZero && deadline.hasTimeLeft()) {
 				allNonZero = true;
@@ -231,7 +239,8 @@ public class QueryableStateITCase extends TestLogger {
 							queryName,
 							key,
 							serializedKey,
-							retryDelay);
+							QUERY_RETRY_DELAY,
+							false);
 
 					serializedResult.onSuccess(new OnSuccess<byte[]>() {
 						@Override
@@ -348,14 +357,14 @@ public class QueryableStateITCase extends TestLogger {
 
 			boolean success = false;
 			while (!success && deadline.hasTimeLeft()) {
-				final FiniteDuration retryDelay = new FiniteDuration(1, TimeUnit.SECONDS);
 				Future<byte[]> serializedResultFuture = getKvStateWithRetries(
 						client,
 						jobId,
 						queryName,
 						key,
 						serializedKey,
-						retryDelay);
+						QUERY_RETRY_DELAY,
+						false);
 
 				byte[] serializedResult = Await.result(serializedResultFuture, deadline.timeLeft());
 
@@ -452,14 +461,14 @@ public class QueryableStateITCase extends TestLogger {
 			// Now start another task manager
 			cluster.addTaskManager();
 
-			final FiniteDuration retryDelay = new FiniteDuration(1, TimeUnit.SECONDS);
 			Future<byte[]> serializedResultFuture = getKvStateWithRetries(
 					client,
 					jobId,
 					queryName,
 					key,
 					serializedKey,
-					retryDelay);
+					QUERY_RETRY_DELAY,
+					false);
 
 			byte[] serializedResult = Await.result(serializedResultFuture, deadline.timeLeft());
 
@@ -622,40 +631,8 @@ public class QueryableStateITCase extends TestLogger {
 			// Now query
 			long expected = numElements;
 
-			FiniteDuration retryDelay = new FiniteDuration(1, TimeUnit.SECONDS);
-			for (int key = 0; key < NUM_SLOTS; key++) {
-				final byte[] serializedKey = KvStateRequestSerializer.serializeKeyAndNamespace(
-						key,
-						queryableState.getKeySerializer(),
-						VoidNamespace.INSTANCE,
-						VoidNamespaceSerializer.INSTANCE);
-
-				boolean success = false;
-				while (deadline.hasTimeLeft() && !success) {
-					Future<byte[]> future = getKvStateWithRetries(client,
-							jobId,
-							queryableState.getQueryableStateName(),
-							key,
-							serializedKey,
-							retryDelay);
-
-					byte[] serializedValue = Await.result(future, deadline.timeLeft());
-
-					Tuple2<Integer, Long> value = KvStateRequestSerializer.deserializeValue(
-							serializedValue,
-							queryableState.getValueSerializer());
-
-					assertEquals("Key mismatch", key, value.f0.intValue());
-					if (expected == value.f1) {
-						success = true;
-					} else {
-						// Retry
-						Thread.sleep(50);
-					}
-				}
-
-				assertTrue("Did not succeed query", success);
-			}
+			executeValueQuery(deadline, client, jobId, queryableState,
+				expected);
 		} finally {
 			// Free cluster resources
 			if (jobId != null) {
@@ -663,6 +640,250 @@ public class QueryableStateITCase extends TestLogger {
 						.getLeaderGateway(deadline.timeLeft())
 						.ask(new JobManagerMessages.CancelJob(jobId), deadline.timeLeft())
 						.mapTo(ClassTag$.MODULE$.<CancellationSuccess>apply(CancellationSuccess.class));
+
+				Await.ready(cancellation, deadline.timeLeft());
+			}
+
+			client.shutDown();
+		}
+	}
+
+	/**
+	 * Similar tests as {@link #testValueState()} but before submitting the
+	 * job, we already issue one request which fails.
+	 */
+	@Test
+	public void testQueryNonStartedJobState() throws Exception {
+		// Config
+		final Deadline deadline = TEST_TIMEOUT.fromNow();
+
+		final int numElements = 1024;
+
+		final QueryableStateClient client = new QueryableStateClient(cluster.configuration());
+
+		JobID jobId = null;
+		try {
+			StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+			env.setParallelism(NUM_SLOTS);
+			// Very important, because cluster is shared between tests and we
+			// don't explicitly check that all slots are available before
+			// submitting.
+			env.setRestartStrategy(RestartStrategies.fixedDelayRestart(Integer.MAX_VALUE, 1000));
+
+			DataStream<Tuple2<Integer, Long>> source = env
+				.addSource(new TestAscendingValueSource(numElements));
+
+			// Value state
+			ValueStateDescriptor<Tuple2<Integer, Long>> valueState = new ValueStateDescriptor<>(
+				"any",
+				source.getType(),
+				null);
+
+			QueryableStateStream<Integer, Tuple2<Integer, Long>> queryableState =
+				source.keyBy(new KeySelector<Tuple2<Integer, Long>, Integer>() {
+					@Override
+					public Integer getKey(Tuple2<Integer, Long> value) throws Exception {
+						return value.f0;
+					}
+				}).asQueryableState("hakuna", valueState);
+
+			// Submit the job graph
+			JobGraph jobGraph = env.getStreamGraph().getJobGraph();
+			jobId = jobGraph.getJobID();
+
+			// Now query
+			long expected = numElements;
+
+			// query once
+			client.getKvState(jobId, queryableState.getQueryableStateName(), 0,
+				KvStateRequestSerializer.serializeKeyAndNamespace(
+					0,
+					queryableState.getKeySerializer(),
+					VoidNamespace.INSTANCE,
+					VoidNamespaceSerializer.INSTANCE));
+
+			cluster.submitJobDetached(jobGraph);
+
+			executeValueQuery(deadline, client, jobId, queryableState,
+				expected);
+		} finally {
+			// Free cluster resources
+			if (jobId != null) {
+				Future<CancellationSuccess> cancellation = cluster
+					.getLeaderGateway(deadline.timeLeft())
+					.ask(new JobManagerMessages.CancelJob(jobId), deadline.timeLeft())
+					.mapTo(ClassTag$.MODULE$.<CancellationSuccess>apply(CancellationSuccess.class));
+
+				Await.ready(cancellation, deadline.timeLeft());
+			}
+
+			client.shutDown();
+		}
+	}
+
+	/**
+	 * Retry a query for state for keys between 0 and {@link #NUM_SLOTS} until
+	 * <tt>expected</tt> equals the value of the result tuple's second field.
+	 */
+	private void executeValueQuery(final Deadline deadline,
+		final QueryableStateClient client, final JobID jobId,
+		final QueryableStateStream<Integer, Tuple2<Integer, Long>> queryableState,
+		final long expected) throws Exception {
+
+		for (int key = 0; key < NUM_SLOTS; key++) {
+			final byte[] serializedKey = KvStateRequestSerializer.serializeKeyAndNamespace(
+				key,
+				queryableState.getKeySerializer(),
+				VoidNamespace.INSTANCE,
+				VoidNamespaceSerializer.INSTANCE);
+
+			boolean success = false;
+			while (deadline.hasTimeLeft() && !success) {
+				Future<byte[]> future = getKvStateWithRetries(client,
+					jobId,
+					queryableState.getQueryableStateName(),
+					key,
+					serializedKey,
+					QUERY_RETRY_DELAY,
+					false);
+
+				byte[] serializedValue = Await.result(future, deadline.timeLeft());
+
+				Tuple2<Integer, Long> value = KvStateRequestSerializer.deserializeValue(
+					serializedValue,
+					queryableState.getValueSerializer());
+
+				assertEquals("Key mismatch", key, value.f0.intValue());
+				if (expected == value.f1) {
+					success = true;
+				} else {
+					// Retry
+					Thread.sleep(50);
+				}
+			}
+
+			assertTrue("Did not succeed query", success);
+		}
+	}
+
+	/**
+	 * Tests simple value state queryable state instance with a default value
+	 * set using the {@link MemoryStateBackend}.
+	 */
+	@Test(expected = UnknownKeyOrNamespace.class)
+	public void testValueStateDefaultValueMemoryBackend() throws Exception {
+		testValueStateDefault(new MemoryStateBackend());
+	}
+
+	/**
+	 * Tests simple value state queryable state instance with a default value
+	 * set using the {@link RocksDBStateBackend}.
+	 */
+	@Test(expected = UnknownKeyOrNamespace.class)
+	public void testValueStateDefaultValueRocksDBBackend() throws Exception {
+		testValueStateDefault(new RocksDBStateBackend(
+			temporaryFolder.newFolder().toURI().toString()));
+	}
+
+	/**
+	 * Tests simple value state queryable state instance with a default value
+	 * set using the {@link FsStateBackend}.
+	 */
+	@Test(expected = UnknownKeyOrNamespace.class)
+	public void testValueStateDefaultValueFsBackend() throws Exception {
+		testValueStateDefault(new FsStateBackend(
+			temporaryFolder.newFolder().toURI().toString()));
+	}
+
+	/**
+	 * Tests simple value state queryable state instance with a default value
+	 * set. Each source emits (subtaskIndex, 0)..(subtaskIndex, numElements)
+	 * tuples, the key is mapped to 1 but key 0 is queried which should throw
+	 * a {@link UnknownKeyOrNamespace} exception.
+	 *
+	 * @param stateBackend state back-end to use for the job
+	 *
+	 * @throws UnknownKeyOrNamespace thrown due querying a non-existent key
+	 */
+	void testValueStateDefault(final AbstractStateBackend stateBackend) throws
+		Exception, UnknownKeyOrNamespace {
+
+		// Config
+		final Deadline deadline = TEST_TIMEOUT.fromNow();
+
+		final int numElements = 1024;
+
+		final QueryableStateClient client = new QueryableStateClient(cluster.configuration());
+
+		JobID jobId = null;
+		try {
+			StreamExecutionEnvironment env =
+				StreamExecutionEnvironment.getExecutionEnvironment();
+			env.setParallelism(NUM_SLOTS);
+			// Very important, because cluster is shared between tests and we
+			// don't explicitly check that all slots are available before
+			// submitting.
+			env.setRestartStrategy(RestartStrategies
+				.fixedDelayRestart(Integer.MAX_VALUE, 1000));
+
+			env.setStateBackend(stateBackend);
+
+			DataStream<Tuple2<Integer, Long>> source = env
+				.addSource(new TestAscendingValueSource(numElements));
+
+			// Value state
+			ValueStateDescriptor<Tuple2<Integer, Long>> valueState =
+				new ValueStateDescriptor<>(
+					"any",
+					source.getType(),
+					Tuple2.of(0, 1337l));
+
+			// only expose key "1"
+			QueryableStateStream<Integer, Tuple2<Integer, Long>>
+				queryableState =
+				source.keyBy(
+					new KeySelector<Tuple2<Integer, Long>, Integer>() {
+						@Override
+						public Integer getKey(
+							Tuple2<Integer, Long> value) throws
+							Exception {
+							return 1;
+						}
+					}).asQueryableState("hakuna", valueState);
+
+			// Submit the job graph
+			JobGraph jobGraph = env.getStreamGraph().getJobGraph();
+			jobId = jobGraph.getJobID();
+
+			cluster.submitJobDetached(jobGraph);
+
+			// Now query
+			int key = 0;
+			final byte[] serializedKey =
+				KvStateRequestSerializer.serializeKeyAndNamespace(
+					key,
+					queryableState.getKeySerializer(),
+					VoidNamespace.INSTANCE,
+					VoidNamespaceSerializer.INSTANCE);
+
+			Future<byte[]> future = getKvStateWithRetries(client,
+				jobId,
+				queryableState.getQueryableStateName(),
+				key,
+				serializedKey,
+				QUERY_RETRY_DELAY,
+				true);
+
+			Await.result(future, deadline.timeLeft());
+		} finally {
+			// Free cluster resources
+			if (jobId != null) {
+				Future<CancellationSuccess> cancellation = cluster
+					.getLeaderGateway(deadline.timeLeft())
+					.ask(new JobManagerMessages.CancelJob(jobId),
+						deadline.timeLeft())
+					.mapTo(ClassTag$.MODULE$.<CancellationSuccess>apply(
+						CancellationSuccess.class));
 
 				Await.ready(cancellation, deadline.timeLeft());
 			}
@@ -718,143 +939,8 @@ public class QueryableStateITCase extends TestLogger {
 			// Now query
 			long expected = numElements;
 
-			FiniteDuration retryDelay = new FiniteDuration(1, TimeUnit.SECONDS);
-			for (int key = 0; key < NUM_SLOTS; key++) {
-				final byte[] serializedKey = KvStateRequestSerializer.serializeKeyAndNamespace(
-						key,
-						queryableState.getKeySerializer(),
-						VoidNamespace.INSTANCE,
-						VoidNamespaceSerializer.INSTANCE);
-
-				boolean success = false;
-				while (deadline.hasTimeLeft() && !success) {
-					Future<byte[]> future = getKvStateWithRetries(client,
-							jobId,
-							queryableState.getQueryableStateName(),
-							key,
-							serializedKey,
-							retryDelay);
-
-					byte[] serializedValue = Await.result(future, deadline.timeLeft());
-
-					Tuple2<Integer, Long> value = KvStateRequestSerializer.deserializeValue(
-							serializedValue,
-							queryableState.getValueSerializer());
-
-					assertEquals("Key mismatch", key, value.f0.intValue());
-					if (expected == value.f1) {
-						success = true;
-					} else {
-						// Retry
-						Thread.sleep(50);
-					}
-				}
-
-				assertTrue("Did not succeed query", success);
-			}
-		} finally {
-			// Free cluster resources
-			if (jobId != null) {
-				Future<CancellationSuccess> cancellation = cluster
-						.getLeaderGateway(deadline.timeLeft())
-						.ask(new JobManagerMessages.CancelJob(jobId), deadline.timeLeft())
-						.mapTo(ClassTag$.MODULE$.<CancellationSuccess>apply(CancellationSuccess.class));
-
-				Await.ready(cancellation, deadline.timeLeft());
-			}
-
-			client.shutDown();
-		}
-	}
-
-	/**
-	 * Tests simple list state queryable state instance. Each source emits
-	 * (subtaskIndex, 0)..(subtaskIndex, numElements) tuples, which are then
-	 * queried. The tests succeeds after each subtask index is queried with
-	 * a list of size numElements and each emitted tuple is part of the list.
-	 */
-	@Test
-	public void testListState() throws Exception {
-		// Config
-		final Deadline deadline = TEST_TIMEOUT.fromNow();
-
-		final int numElements = 128;
-
-		final QueryableStateClient client = new QueryableStateClient(cluster.configuration());
-
-		JobID jobId = null;
-		try {
-			StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
-			env.setParallelism(NUM_SLOTS);
-			// Very important, because cluster is shared between tests and we
-			// don't explicitly check that all slots are available before
-			// submitting.
-			env.setRestartStrategy(RestartStrategies.fixedDelayRestart(Integer.MAX_VALUE, 1000));
-
-			DataStream<Tuple2<Integer, Long>> source = env
-					.addSource(new TestAscendingValueSource(numElements));
-
-			// List state
-			ListStateDescriptor<Tuple2<Integer, Long>> listState = new ListStateDescriptor<>(
-					"any",
-					source.getType());
-
-			QueryableStateStream<Integer, Tuple2<Integer, Long>> queryableState =
-					source.keyBy(new KeySelector<Tuple2<Integer, Long>, Integer>() {
-						@Override
-						public Integer getKey(Tuple2<Integer, Long> value) throws Exception {
-							return value.f0;
-						}
-					}).asQueryableState("timon", listState);
-
-			// Submit the job graph
-			JobGraph jobGraph = env.getStreamGraph().getJobGraph();
-			jobId = jobGraph.getJobID();
-
-			cluster.submitJobDetached(jobGraph);
-
-			// Now query
-			long expected = numElements + 1; // +1 for 0-value
-
-			FiniteDuration retryDelay = new FiniteDuration(1, TimeUnit.SECONDS);
-			for (int key = 0; key < NUM_SLOTS; key++) {
-				final byte[] serializedKey = KvStateRequestSerializer.serializeKeyAndNamespace(
-						key,
-						queryableState.getKeySerializer(),
-						VoidNamespace.INSTANCE,
-						VoidNamespaceSerializer.INSTANCE);
-
-				boolean success = false;
-				while (deadline.hasTimeLeft() && !success) {
-					Future<byte[]> future = getKvStateWithRetries(client,
-							jobId,
-							queryableState.getQueryableStateName(),
-							key,
-							serializedKey,
-							retryDelay);
-
-					byte[] serializedValue = Await.result(future, deadline.timeLeft());
-
-					List<Tuple2<Integer, Long>> list = KvStateRequestSerializer.deserializeList(
-							serializedValue,
-							queryableState.getValueSerializer());
-
-					if (list.size() == expected) {
-						for (int i = 0; i < expected; i++) {
-							Tuple2<Integer, Long> elem = list.get(i);
-							assertEquals("Key mismatch", key, elem.f0.intValue());
-							assertEquals("Value mismatch", i, elem.f1.longValue());
-						}
-
-						success = true;
-					} else {
-						// Retry
-						Thread.sleep(50);
-					}
-				}
-
-				assertTrue("Did not succeed query", success);
-			}
+			executeValueQuery(deadline, client, jobId, queryableState,
+				expected);
 		} finally {
 			// Free cluster resources
 			if (jobId != null) {
@@ -923,7 +1009,6 @@ public class QueryableStateITCase extends TestLogger {
 			// Now query
 			String expected = Integer.toString(numElements * (numElements + 1) / 2);
 
-			FiniteDuration retryDelay = new FiniteDuration(1, TimeUnit.SECONDS);
 			for (int key = 0; key < NUM_SLOTS; key++) {
 				final byte[] serializedKey = KvStateRequestSerializer.serializeKeyAndNamespace(
 						key,
@@ -938,7 +1023,8 @@ public class QueryableStateITCase extends TestLogger {
 							queryableState.getQueryableStateName(),
 							key,
 							serializedKey,
-							retryDelay);
+							QUERY_RETRY_DELAY,
+							false);
 
 					byte[] serializedValue = Await.result(future, deadline.timeLeft());
 
@@ -1024,40 +1110,8 @@ public class QueryableStateITCase extends TestLogger {
 			// Now query
 			long expected = numElements * (numElements + 1) / 2;
 
-			FiniteDuration retryDelay = new FiniteDuration(1, TimeUnit.SECONDS);
-			for (int key = 0; key < NUM_SLOTS; key++) {
-				final byte[] serializedKey = KvStateRequestSerializer.serializeKeyAndNamespace(
-						key,
-						queryableState.getKeySerializer(),
-						VoidNamespace.INSTANCE,
-						VoidNamespaceSerializer.INSTANCE);
-
-				boolean success = false;
-				while (deadline.hasTimeLeft() && !success) {
-					Future<byte[]> future = getKvStateWithRetries(client,
-							jobId,
-							queryableState.getQueryableStateName(),
-							key,
-							serializedKey,
-							retryDelay);
-
-					byte[] serializedValue = Await.result(future, deadline.timeLeft());
-
-					Tuple2<Integer, Long> value = KvStateRequestSerializer.deserializeValue(
-							serializedValue,
-							queryableState.getValueSerializer());
-
-					assertEquals("Key mismatch", key, value.f0.intValue());
-					if (expected == value.f1) {
-						success = true;
-					} else {
-						// Retry
-						Thread.sleep(50);
-					}
-				}
-
-				assertTrue("Did not succeed query", success);
-			}
+			executeValueQuery(deadline, client, jobId, queryableState,
+				expected);
 		} finally {
 			// Free cluster resources
 			if (jobId != null) {
@@ -1080,13 +1134,17 @@ public class QueryableStateITCase extends TestLogger {
 			final String queryName,
 			final int key,
 			final byte[] serializedKey,
-			final FiniteDuration retryDelay) {
+			final FiniteDuration retryDelay,
+			final boolean failForUknownKeyOrNamespace) {
 
 		return client.getKvState(jobId, queryName, key, serializedKey)
 				.recoverWith(new Recover<Future<byte[]>>() {
 					@Override
 					public Future<byte[]> recover(Throwable failure) throws Throwable {
 						if (failure instanceof AssertionError) {
+							return Futures.failed(failure);
+						} else if (failForUknownKeyOrNamespace &&
+								(failure instanceof UnknownKeyOrNamespace)) {
 							return Futures.failed(failure);
 						} else {
 							// At startup some failures are expected
@@ -1105,7 +1163,8 @@ public class QueryableStateITCase extends TestLogger {
 													queryName,
 													key,
 													serializedKey,
-													retryDelay);
+													retryDelay,
+													failForUknownKeyOrNamespace);
 										}
 									});
 						}

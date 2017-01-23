@@ -18,14 +18,11 @@
 package org.apache.flink.contrib.streaming.state;
 
 import org.apache.flink.api.common.JobID;
-import org.apache.flink.api.common.state.FoldingState;
+import org.apache.flink.api.common.state.AggregatingStateDescriptor;
 import org.apache.flink.api.common.state.FoldingStateDescriptor;
-import org.apache.flink.api.common.state.ListState;
 import org.apache.flink.api.common.state.ListStateDescriptor;
-import org.apache.flink.api.common.state.ReducingState;
 import org.apache.flink.api.common.state.ReducingStateDescriptor;
 import org.apache.flink.api.common.state.StateDescriptor;
-import org.apache.flink.api.common.state.ValueState;
 import org.apache.flink.api.common.state.ValueStateDescriptor;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.common.typeutils.base.array.BytePrimitiveArraySerializer;
@@ -52,6 +49,11 @@ import org.apache.flink.runtime.state.KeyGroupsStateHandle;
 import org.apache.flink.runtime.state.KeyedBackendSerializationProxy;
 import org.apache.flink.runtime.state.RegisteredBackendStateMetaInfo;
 import org.apache.flink.runtime.state.StreamStateHandle;
+import org.apache.flink.runtime.state.internal.InternalAggregatingState;
+import org.apache.flink.runtime.state.internal.InternalFoldingState;
+import org.apache.flink.runtime.state.internal.InternalListState;
+import org.apache.flink.runtime.state.internal.InternalReducingState;
+import org.apache.flink.runtime.state.internal.InternalValueState;
 import org.apache.flink.runtime.util.SerializableObject;
 import org.apache.flink.util.FileUtils;
 import org.apache.flink.util.InstantiationUtil;
@@ -284,8 +286,8 @@ public class RocksDBKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
 							}
 						}
 
-						LOG.info("Asynchronous RocksDB snapshot (" + streamFactory + ", asynchronous part) in thread " +
-								Thread.currentThread() + " took " + (System.currentTimeMillis() - startTime) + " ms.");
+						LOG.info("Asynchronous RocksDB snapshot ({}, asynchronous part) in thread {} took {} ms.",
+							streamFactory, Thread.currentThread(), (System.currentTimeMillis() - startTime));
 
 						return snapshotOperation.getSnapshotResultStateHandle();
 					}
@@ -346,7 +348,7 @@ public class RocksDBKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
 		 * @param checkpointId id of the checkpoint for which we take the snapshot
 		 * @param checkpointTimeStamp timestamp of the checkpoint for which we take the snapshot
 		 */
-		public void takeDBSnapShot(long checkpointId, long checkpointTimeStamp) throws IOException {
+		public void takeDBSnapShot(long checkpointId, long checkpointTimeStamp) {
 			Preconditions.checkArgument(snapshot == null, "Only one ongoing snapshot allowed!");
 			this.kvStateIterators = new ArrayList<>(stateBackend.kvStateInformation.size());
 			this.checkpointId = checkpointId;
@@ -427,8 +429,8 @@ public class RocksDBKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
 					if (null != snapshotResultStateHandle) {
 						snapshotResultStateHandle.discardState();
 					}
-				} catch (Exception ignored) {
-					LOG.warn("Exception occurred during snapshot state handle cleanup: " + ignored);
+				} catch (Exception e) {
+					LOG.warn("Exception occurred during snapshot state handle cleanup.", e);
 				}
 			}
 		}
@@ -452,7 +454,7 @@ public class RocksDBKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
 			return snapshotResultStateHandle;
 		}
 
-		private void writeKVStateMetaData() throws IOException, InterruptedException {
+		private void writeKVStateMetaData() throws IOException {
 
 			List<KeyedBackendSerializationProxy.StateMetaInfo<?, ?>> metaInfoList =
 					new ArrayList<>(stateBackend.kvStateInformation.size());
@@ -812,7 +814,8 @@ public class RocksDBKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
 	}
 
 	@Override
-	protected <N, T> ValueState<T> createValueState(TypeSerializer<N> namespaceSerializer,
+	protected <N, T> InternalValueState<N, T> createValueState(
+			TypeSerializer<N> namespaceSerializer,
 			ValueStateDescriptor<T> stateDesc) throws Exception {
 
 		ColumnFamilyHandle columnFamily = getColumnFamily(stateDesc, namespaceSerializer);
@@ -821,7 +824,8 @@ public class RocksDBKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
 	}
 
 	@Override
-	protected <N, T> ListState<T> createListState(TypeSerializer<N> namespaceSerializer,
+	protected <N, T> InternalListState<N, T> createListState(
+			TypeSerializer<N> namespaceSerializer,
 			ListStateDescriptor<T> stateDesc) throws Exception {
 
 		ColumnFamilyHandle columnFamily = getColumnFamily(stateDesc, namespaceSerializer);
@@ -830,7 +834,8 @@ public class RocksDBKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
 	}
 
 	@Override
-	protected <N, T> ReducingState<T> createReducingState(TypeSerializer<N> namespaceSerializer,
+	protected <N, T> InternalReducingState<N, T> createReducingState(
+			TypeSerializer<N> namespaceSerializer,
 			ReducingStateDescriptor<T> stateDesc) throws Exception {
 
 		ColumnFamilyHandle columnFamily = getColumnFamily(stateDesc, namespaceSerializer);
@@ -839,7 +844,17 @@ public class RocksDBKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
 	}
 
 	@Override
-	protected <N, T, ACC> FoldingState<T, ACC> createFoldingState(TypeSerializer<N> namespaceSerializer,
+	protected <N, T, ACC, R> InternalAggregatingState<N, T, R> createAggregatingState(
+			TypeSerializer<N> namespaceSerializer,
+			AggregatingStateDescriptor<T, ACC, R> stateDesc) throws Exception {
+
+		ColumnFamilyHandle columnFamily = getColumnFamily(stateDesc, namespaceSerializer);
+		return new RocksDBAggregatingState<>(columnFamily, namespaceSerializer, stateDesc, this);
+	}
+
+	@Override
+	protected <N, T, ACC> InternalFoldingState<N, T, ACC> createFoldingState(
+			TypeSerializer<N> namespaceSerializer,
 			FoldingStateDescriptor<T, ACC> stateDesc) throws Exception {
 
 		ColumnFamilyHandle columnFamily = getColumnFamily(stateDesc, namespaceSerializer);
