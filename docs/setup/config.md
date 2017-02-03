@@ -279,6 +279,8 @@ The following parameters configure Flink's JobManager and TaskManagers.
 
 - `akka.lookup.timeout`: Timeout used for the lookup of the JobManager. The timeout value has to contain a time-unit specifier (ms/s/min/h/d) (DEFAULT: **10 s**).
 
+- `akka.client.timeout`: Timeout used by Flink clients (e.g. `CliFrontend`, `ClusterClient`) when communicating with the Flink cluster. The timeout value has to contain a time-unit specifier (ms/s/min/h/d) (DEFAULT: **60 s**).
+
 - `akka.framesize`: Maximum size of messages which are sent between the JobManager and the TaskManagers. If Flink fails because messages exceed this limit, then you should increase it. The message size requires a size-unit specifier (DEFAULT: **10485760b**).
 
 - `akka.watch.heartbeat.interval`: Heartbeat interval for Akka's DeathWatch mechanism to detect dead TaskManagers. If TaskManagers are wrongly marked dead because of lost or delayed heartbeat messages, then you should increase this value. A thorough description of Akka's DeathWatch can be found [here](http://doc.akka.io/docs/akka/snapshot/scala/remoting.html#failure-detector) (DEFAULT: **10 s**).
@@ -431,6 +433,46 @@ use the `env.java.opts` setting, which is the `%jvmopts%` variable in the String
 
   For example when running Flink on YARN on an environment with a restrictive firewall, this option allows specifying a range of allowed ports.
 
+### Mesos
+
+
+- `mesos.initial-tasks`: The initial workers to bring up when the master starts (**DEFAULT**: The number of workers specified at cluster startup).
+
+- `mesos.maximum-failed-tasks`: The maximum number of failed workers before the cluster fails (**DEFAULT**: Number of initial workers).
+May be set to -1 to disable this feature.
+
+- `mesos.master`: The Mesos master URL. The value should be in one of the following forms:
+  * `host:port`
+  * `zk://host1:port1,host2:port2,.../path`
+  * `zk://username:password@host1:port1,host2:port2,.../path`
+  * `file:///path/to/file`
+
+
+- `mesos.failover-timeout`: The failover timeout in seconds for the Mesos scheduler, after which running tasks are automatically shut down (**DEFAULT:** 600).
+
+- `mesos.resourcemanager.artifactserver.port`:The config parameter defining the Mesos artifact server port to use. Setting the port to 0 will let the OS choose an available port.
+
+- `mesos.resourcemanager.framework.name`: Mesos framework name (**DEFAULT:** Flink)
+
+- `mesos.resourcemanager.framework.role`: Mesos framework role definition (**DEFAULT:** *)
+
+- `mesos.resourcemanager.framework.principal`: Mesos framework principal (**NO DEFAULT**)
+
+- `mesos.resourcemanager.framework.secret`: Mesos framework secret (**NO DEFAULT**)
+
+- `mesos.resourcemanager.framework.user`: Mesos framework user (**DEFAULT:**"")
+
+- `mesos.resourcemanager.artifactserver.ssl.enabled`: Enables SSL for the Flink artifact server (**DEFAULT**: true). Note that `security.ssl.enabled` also needs to be set to `true` encryption to enable encryption.
+
+- `mesos.resourcemanager.tasks.mem`: Memory to assign to the Mesos workers in MB (**DEFAULT**: 1024)
+
+- `mesos.resourcemanager.tasks.cpus`: CPUs to assign to the Mesos workers (**DEFAULT**: 0.0)
+
+- `mesos.resourcemanager.tasks.container.type`: Type of the containerization used: "mesos" or "docker" (DEFAULT: mesos);
+
+- `mesos.resourcemanager.tasks.container.image.name`: Image name to use for the container (**NO DEFAULT**)
+
+- `recovery.zookeeper.path.mesos-workers`: The ZooKeeper root path for persisting the Mesos worker information.
 
 ### High Availability (HA)
 
