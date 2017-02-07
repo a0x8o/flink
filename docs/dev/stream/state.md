@@ -113,8 +113,17 @@ be retrieved using `Iterable<T> get()`.
 added to the state. The interface is the same as for `ListState` but elements added using
 `add(T)` are reduced to an aggregate using a specified `ReduceFunction`.
 
+* `FoldingState<T, ACC>`: This keeps a single value that represents the aggregation of all values
+added to the state. Contrary to `ReducingState`, the aggregate type may be different from the type
+of elements that are added to the state. The interface is the same as for `ListState` but elements
+added using `add(T)` are folded into an aggregate using a specified `FoldFunction`.
+
 All types of state also have a method `clear()` that clears the state for the currently
 active key, i.e. the key of the input element.
+
+<span class="label label-danger">Attention</span> `FoldingState` will be deprecated in one of
+the next versions of Flink and will be completely removed in the future. A more general
+alternative will be provided.
 
 It is important to keep in mind that these state objects are only used for interfacing
 with state. The state is not necessarily stored inside but might reside on disk or somewhere else.
@@ -126,8 +135,8 @@ To get a state handle, you have to create a `StateDescriptor`. This holds the na
 (as we will see later, you can create several states, and they have to have unique names so
 that you can reference them), the type of the values that the state holds, and possibly
 a user-specified function, such as a `ReduceFunction`. Depending on what type of state you
-want to retrieve, you create either a `ValueStateDescriptor`, a `ListStateDescriptor` or
-a `ReducingStateDescriptor`.
+want to retrieve, you create either a `ValueStateDescriptor`, a `ListStateDescriptor`,
+a `ReducingStateDescriptor` or a `FoldingStateDescriptor`.
 
 State is accessed using the `RuntimeContext`, so it is only possible in *rich functions*.
 Please see [here]({{ site.baseurl }}/dev/api_concepts#rich-functions) for
@@ -137,6 +146,7 @@ is available in a `RichFunction` has these methods for accessing state:
 * `ValueState<T> getState(ValueStateDescriptor<T>)`
 * `ReducingState<T> getReducingState(ReducingStateDescriptor<T>)`
 * `ListState<T> getListState(ListStateDescriptor<T>)`
+* `FoldingState<T, ACC> getFoldingState(FoldingStateDescriptor<T, ACC>)`
 
 This is an example `FlatMapFunction` that shows how all of the parts fit together:
 
@@ -230,9 +240,11 @@ while `(test2, 2)` will go to task 1.
 
 The `ListCheckpointed` interface requires the implementation of two methods:
 
-    List<T> snapshotState(long checkpointId, long timestamp) throws Exception;
+{% highlight java %}
+List<T> snapshotState(long checkpointId, long timestamp) throws Exception;
 
-    void restoreState(List<T> state) throws Exception;
+void restoreState(List<T> state) throws Exception;
+{% endhighlight %}
 
 On `snapshotState()` the operator should return a list of objects to checkpoint and
 `restoreState` has to handle such a list upon recovery. If the state is not re-partitionable, you can always
@@ -242,9 +254,11 @@ return a `Collections.singletonList(MY_STATE)` in the `snapshotState()`.
 
 The `CheckpointedFunction` interface also requires the implementation of two methods:
 
-    void snapshotState(FunctionSnapshotContext context) throws Exception;
+{% highlight java %}
+void snapshotState(FunctionSnapshotContext context) throws Exception;
 
-    void initializeState(FunctionInitializationContext context) throws Exception;
+void initializeState(FunctionInitializationContext context) throws Exception;
+{% endhighlight %}
 
 Whenever a checkpoint has to be performed `snapshotState()` is called. The counterpart, `initializeState()`, is called every time the user-defined function is initialized, be that when the function is first initialized
 or be that when actually recovering from an earlier checkpoint. Given this, `initializeState()` is not
@@ -253,57 +267,61 @@ only the place where different types of state are initialized, but also where st
 This is an example of a function that uses `CheckpointedFunction`, a stateful `SinkFunction` that
 uses state to buffer elements before sending them to the outside world:
 
-    public class BufferingSink implements SinkFunction<Tuple2<String, Integer>>,
-            CheckpointedFunction, CheckpointedRestoring<ArrayList<Tuple2<String, Integer>>> {
+{% highlight java %}
+public class BufferingSink
+        implements SinkFunction<Tuple2<String, Integer>>,
+                   CheckpointedFunction,
+                   CheckpointedRestoring<ArrayList<Tuple2<String, Integer>>> {
 
-        private final int threshold;
+    private final int threshold;
 
-        private transient ListState<Tuple2<String, Integer>> checkpointedState;
+    private transient ListState<Tuple2<String, Integer>> checkpointedState;
 
-        private List<Tuple2<String, Integer>> bufferedElements;
+    private List<Tuple2<String, Integer>> bufferedElements;
 
-        public BufferingSink(int threshold) {
-            this.threshold = threshold;
-            this.bufferedElements = new ArrayList<>();
-        }
+    public BufferingSink(int threshold) {
+        this.threshold = threshold;
+        this.bufferedElements = new ArrayList<>();
+    }
 
-        @Override
-        public void invoke(Tuple2<String, Integer> value) throws Exception {
-            bufferedElements.add(value);
-            if (bufferedElements.size() == threshold) {
-                for (Tuple2<String, Integer> element: bufferedElements) {
-                    // send it to the sink
-                }
-                bufferedElements.clear();
+    @Override
+    public void invoke(Tuple2<String, Integer> value) throws Exception {
+        bufferedElements.add(value);
+        if (bufferedElements.size() == threshold) {
+            for (Tuple2<String, Integer> element: bufferedElements) {
+                // send it to the sink
             }
-        }
-
-        @Override
-        public void snapshotState(FunctionSnapshotContext context) throws Exception {
-            checkpointedState.clear();
-            for (Tuple2<String, Integer> element : bufferedElements) {
-                checkpointedState.add(element);
-            }
-        }
-
-        @Override
-        public void initializeState(FunctionInitializationContext context) throws Exception {
-            checkpointedState = context.getOperatorStateStore().
-                getSerializableListState("buffered-elements");
-
-            if (context.isRestored()) {
-                for (Tuple2<String, Integer> element : checkpointedState.get()) {
-                    bufferedElements.add(element);
-                }
-            }
-        }
-
-        @Override
-        public void restoreState(ArrayList<Tuple2<String, Integer>> state) throws Exception {
-            // this is from the CheckpointedRestoring interface.
-            this.bufferedElements.addAll(state);
+            bufferedElements.clear();
         }
     }
+
+    @Override
+    public void snapshotState(FunctionSnapshotContext context) throws Exception {
+        checkpointedState.clear();
+        for (Tuple2<String, Integer> element : bufferedElements) {
+            checkpointedState.add(element);
+        }
+    }
+
+    @Override
+    public void initializeState(FunctionInitializationContext context) throws Exception {
+        checkpointedState = context.getOperatorStateStore().
+            getSerializableListState("buffered-elements");
+
+        if (context.isRestored()) {
+            for (Tuple2<String, Integer> element : checkpointedState.get()) {
+                bufferedElements.add(element);
+            }
+        }
+    }
+
+    @Override
+    public void restoreState(ArrayList<Tuple2<String, Integer>> state) throws Exception {
+        // this is from the CheckpointedRestoring interface.
+        this.bufferedElements.addAll(state);
+    }
+}
+{% endhighlight %}
 
 
 The `initializeState` method takes as argument a `FunctionInitializationContext`. This is used to initialize
