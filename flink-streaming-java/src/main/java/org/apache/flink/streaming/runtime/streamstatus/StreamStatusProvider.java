@@ -15,35 +15,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.flink.streaming.runtime.streamstatus;
 
-package org.apache.flink.runtime.taskmanager;
-
-import org.apache.flink.configuration.Configuration;
+import org.apache.flink.annotation.Internal;
 
 /**
- * Interface to access {@link TaskManager} information.
+ * Interface for retrieving the current {@link StreamStatus}.
  */
-public interface TaskManagerRuntimeInfo {
+@Internal
+public interface StreamStatusProvider {
 
 	/**
-	 * Gets the configuration that the TaskManager was started with.
+	 * Returns the current stream status.
 	 *
-	 * @return The configuration that the TaskManager was started with.
+	 * @return current stream status.
 	 */
-	Configuration getConfiguration();
-
-	/**
-	 * Gets the list of temporary file directories.
-	 * 
-	 * @return The list of temporary file directories.
-	 */
-	String[] getTmpDirectories();
-
-	/**
-	 * Checks whether the TaskManager should exit the JVM when the task thread throws
-	 * an OutOfMemoryError.
-	 * 
-	 * @return True to terminate the JVM on an OutOfMemoryError, false otherwise.
-	 */
-	boolean shouldExitJvmOnOutOfMemoryError();
+	StreamStatus getStreamStatus();
 }
