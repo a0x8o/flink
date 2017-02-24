@@ -837,7 +837,7 @@ class JobManager(
           savepoint.dispose()
 
           // Remove the header file
-          SavepointStore.removeSavepoint(savepointPath)
+          SavepointStore.removeSavepointFile(savepointPath)
 
           senderRef ! DisposeSavepointSuccess
         } catch {
@@ -2399,10 +2399,6 @@ object JobManager {
         throw new Exception("Error while setting the default " +
           "filesystem scheme from configuration.", e)
       }
-    }
-
-    if (new File(configDir).isDirectory) {
-      configuration.setString(ConfigConstants.FLINK_BASE_DIR_PATH_KEY, configDir + "/..")
     }
 
     if (cliOptions.getWebUIPort() >= 0) {

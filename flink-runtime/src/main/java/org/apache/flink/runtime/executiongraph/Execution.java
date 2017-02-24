@@ -23,6 +23,7 @@ import org.apache.flink.api.common.accumulators.Accumulator;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.runtime.JobException;
 import org.apache.flink.runtime.accumulators.StringifiedAccumulatorResult;
+import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.concurrent.ApplyFunction;
 import org.apache.flink.runtime.concurrent.BiFunction;
@@ -249,27 +250,8 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 	 * @throws IllegalStateException Thrown, if the vertex is not in CREATED state, which is the only state that permits scheduling.
 	 */
 	public boolean scheduleForExecution(SlotProvider slotProvider, boolean queued) {
-		if (slotProvider == null) {
-			throw new IllegalArgumentException("Cannot send null Scheduler when scheduling execution.");
-		}
-
-		final SlotSharingGroup sharingGroup = vertex.getJobVertex().getSlotSharingGroup();
-		final CoLocationConstraint locationConstraint = vertex.getLocationConstraint();
-
-		// sanity check
-		if (locationConstraint != null && sharingGroup == null) {
-			throw new RuntimeException("Trying to schedule with co-location constraint but without slot sharing allowed.");
-		}
-
-		if (transitionState(CREATED, SCHEDULED)) {
-
-			ScheduledUnit toSchedule = locationConstraint == null ?
-				new ScheduledUnit(this, sharingGroup) :
-				new ScheduledUnit(this, sharingGroup, locationConstraint);
-
-			// IMPORTANT: To prevent leaks of cluster resources, we need to make sure that slots are returned
-			//     in all cases where the deployment failed. we use many try {} finally {} clauses to assure that
-			final Future<SimpleSlot> slotAllocationFuture = slotProvider.allocateSlot(toSchedule, queued);
+		try {
+			final Future<SimpleSlot> slotAllocationFuture = allocateSlotForExecution(slotProvider, queued);
 
 			// IMPORTANT: We have to use the synchronous handle operation (direct executor) here so
 			// that we directly deploy the tasks if the slot allocation future is completed. This is
@@ -296,28 +278,54 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 			});
 
 			// if tasks have to scheduled immediately check that the task has been deployed
-			// TODO: This might be problematic if the future is not completed right away
-			if (!queued) {
-				if (!deploymentFuture.isDone()) {
-					markFailed(new IllegalArgumentException("The slot allocation future has not been completed yet."));
-				}
+			if (!queued && !deploymentFuture.isDone()) {
+				markFailed(new IllegalArgumentException("The slot allocation future has not been completed yet."));
 			}
-			
+
 			return true;
 		}
-		else {
-			// call race, already deployed, or already done
+		catch (IllegalExecutionStateException e) {
 			return false;
 		}
 	}
 
-	public void deployToSlot(final SimpleSlot slot) throws JobException {
-		// sanity checks
-		if (slot == null) {
-			throw new NullPointerException();
+	public Future<SimpleSlot> allocateSlotForExecution(SlotProvider slotProvider, boolean queued) 
+			throws IllegalExecutionStateException {
+
+		checkNotNull(slotProvider);
+
+		final SlotSharingGroup sharingGroup = vertex.getJobVertex().getSlotSharingGroup();
+		final CoLocationConstraint locationConstraint = vertex.getLocationConstraint();
+
+		// sanity check
+		if (locationConstraint != null && sharingGroup == null) {
+			throw new IllegalStateException(
+					"Trying to schedule with co-location constraint but without slot sharing allowed.");
 		}
+
+		// this method only works if the execution is in the state 'CREATED'
+		if (transitionState(CREATED, SCHEDULED)) {
+
+			ScheduledUnit toSchedule = locationConstraint == null ?
+					new ScheduledUnit(this, sharingGroup) :
+					new ScheduledUnit(this, sharingGroup, locationConstraint);
+
+			return slotProvider.allocateSlot(toSchedule, queued);
+		}
+		else {
+			// call race, already deployed, or already done
+			throw new IllegalExecutionStateException(this, CREATED, state);
+		}
+	}
+
+	public void deployToSlot(final SimpleSlot slot) throws JobException {
+		checkNotNull(slot);
+
+		// Check if the TaskManager died in the meantime
+		// This only speeds up the response to TaskManagers failing concurrently to deployments.
+		// The more general check is the timeout of the deployment call
 		if (!slot.isAlive()) {
-			throw new JobException("Target slot for deployment is not alive.");
+			throw new JobException("Target slot (TaskManager) for deployment is no longer alive.");
 		}
 
 		// make sure exactly one deployment call happens from the correct state
@@ -668,14 +676,15 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 	 *
 	 * @param checkpointId of th checkpoint to trigger
 	 * @param timestamp of the checkpoint to trigger
+	 * @param checkpointOptions of the checkpoint to trigger
 	 */
-	public void triggerCheckpoint(long checkpointId, long timestamp) {
+	public void triggerCheckpoint(long checkpointId, long timestamp, CheckpointOptions checkpointOptions) {
 		final SimpleSlot slot = assignedResource;
 
 		if (slot != null) {
 			final TaskManagerGateway taskManagerGateway = slot.getTaskManagerGateway();
 
-			taskManagerGateway.triggerCheckpoint(attemptId, getVertex().getJobId(), checkpointId, timestamp);
+			taskManagerGateway.triggerCheckpoint(attemptId, getVertex().getJobId(), checkpointId, timestamp, checkpointOptions);
 		} else {
 			LOG.debug("The execution has no slot assigned. This indicates that the execution is " +
 				"no longer running.");

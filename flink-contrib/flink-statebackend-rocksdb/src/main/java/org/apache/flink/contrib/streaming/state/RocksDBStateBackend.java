@@ -19,7 +19,6 @@ package org.apache.flink.contrib.streaming.state;
 
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.JobID;
-import org.apache.flink.api.common.state.StateBackend;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.runtime.execution.Environment;
@@ -50,7 +49,7 @@ import java.util.UUID;
 import static java.util.Objects.requireNonNull;
 
 /**
- * A {@link StateBackend} that stores its state in {@code RocksDB}. This state backend can
+ * A State Backend that stores its state in {@code RocksDB}. This state backend can
  * store very large state that exceeds memory and spills to disk.
  *
  * <p>All key/value state (including windows) is stored in the key/value index of RocksDB.
@@ -217,6 +216,15 @@ public class RocksDBStateBackend extends AbstractStateBackend {
 	public CheckpointStreamFactory createStreamFactory(JobID jobId,
 			String operatorIdentifier) throws IOException {
 		return checkpointStreamBackend.createStreamFactory(jobId, operatorIdentifier);
+	}
+
+	@Override
+	public CheckpointStreamFactory createSavepointStreamFactory(
+			JobID jobId,
+			String operatorIdentifier,
+			String targetLocation) throws IOException {
+
+		return checkpointStreamBackend.createSavepointStreamFactory(jobId, operatorIdentifier, targetLocation);
 	}
 
 	@Override

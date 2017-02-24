@@ -25,12 +25,13 @@ import org.apache.flink.api.common.TaskInfo;
 import org.apache.flink.api.common.cache.DistributedCache;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.TaskManagerOptions;
-import org.apache.flink.core.fs.FileSystem;
+import org.apache.flink.core.fs.FileSystemSafetyNet;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.runtime.accumulators.AccumulatorRegistry;
 import org.apache.flink.runtime.blob.BlobKey;
 import org.apache.flink.runtime.broadcast.BroadcastVariableManager;
 import org.apache.flink.runtime.checkpoint.CheckpointMetaData;
+import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.checkpoint.decline.CheckpointDeclineTaskNotCheckpointingException;
 import org.apache.flink.runtime.checkpoint.decline.CheckpointDeclineTaskNotReadyException;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
@@ -552,7 +553,7 @@ public class Task implements Runnable, TaskActions {
 			// ----------------------------
 
 			// activate safety net for task thread
-			FileSystem.createAndSetFileSystemCloseableRegistryForThread();
+			FileSystemSafetyNet.initializeSafetyNetForThread();
 
 			// first of all, get a user-code classloader
 			// this may involve downloading the job's JAR files and/or classes
@@ -789,8 +790,9 @@ public class Task implements Runnable, TaskActions {
 
 				// remove all files in the distributed cache
 				removeCachedFiles(distributedCacheEntries, fileCache);
+
 				// close and de-activate safety net for task thread
-				FileSystem.closeAndDisposeFileSystemCloseableRegistryForThread();
+				FileSystemSafetyNet.closeSafetyNetAndGuardedResourcesForThread();
 
 				notifyFinalState();
 			}
@@ -1116,8 +1118,13 @@ public class Task implements Runnable, TaskActions {
 	 * 
 	 * @param checkpointID The ID identifying the checkpoint.
 	 * @param checkpointTimestamp The timestamp associated with the checkpoint.
+	 * @param checkpointOptions Options for performing this checkpoint.
 	 */
-	public void triggerCheckpointBarrier(final long checkpointID, long checkpointTimestamp) {
+	public void triggerCheckpointBarrier(
+			final long checkpointID,
+			long checkpointTimestamp,
+			final CheckpointOptions checkpointOptions) {
+
 		final AbstractInvokable invokable = this.invokable;
 		final CheckpointMetaData checkpointMetaData = new CheckpointMetaData(checkpointID, checkpointTimestamp);
 
@@ -1131,9 +1138,9 @@ public class Task implements Runnable, TaskActions {
 					@Override
 					public void run() {
 						// activate safety net for checkpointing thread
-						FileSystem.createAndSetFileSystemCloseableRegistryForThread();
+						FileSystemSafetyNet.initializeSafetyNetForThread();
 						try {
-							boolean success = statefulTask.triggerCheckpoint(checkpointMetaData);
+							boolean success = statefulTask.triggerCheckpoint(checkpointMetaData, checkpointOptions);
 							if (!success) {
 								checkpointResponder.declineCheckpoint(
 										getJobID(), getExecutionId(), checkpointID,
@@ -1152,7 +1159,7 @@ public class Task implements Runnable, TaskActions {
 							}
 						} finally {
 							// close and de-activate safety net for checkpointing thread
-							FileSystem.closeAndDisposeFileSystemCloseableRegistryForThread();
+							FileSystemSafetyNet.closeSafetyNetAndGuardedResourcesForThread();
 						}
 					}
 				};
