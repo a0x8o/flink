@@ -32,6 +32,7 @@ import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.java.Utils;
 import org.apache.flink.api.java.functions.KeySelector;
+import org.apache.flink.api.java.functions.NullByteKeySelector;
 import org.apache.flink.api.java.typeutils.TypeExtractor;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.aggregation.AggregationFunction;
@@ -302,6 +303,7 @@ public class AllWindowedStream<T, W extends Window> {
 	 * @param <R> The type of the elements in the resulting stream, equal to the
 	 *            AggregateFunction's result type   
 	 */
+	@PublicEvolving
 	public <ACC, R> SingleOutputStreamOperator<R> aggregate(AggregateFunction<T, ACC, R> function) {
 		checkNotNull(function, "function");
 
@@ -330,6 +332,7 @@ public class AllWindowedStream<T, W extends Window> {
 	 * @param <R> The type of the elements in the resulting stream, equal to the
 	 *            AggregateFunction's result type  
 	 */
+	@PublicEvolving
 	public <ACC, R> SingleOutputStreamOperator<R> aggregate(
 			AggregateFunction<T, ACC, R> function,
 			TypeInformation<ACC> accumulatorType,
@@ -365,6 +368,7 @@ public class AllWindowedStream<T, W extends Window> {
 	 * @param <R> The type of the elements in the resulting stream, equal to the
 	 *            WindowFunction's result type
 	 */
+	@PublicEvolving
 	public <ACC, V, R> SingleOutputStreamOperator<R> aggregate(
 			AggregateFunction<T, ACC, V> aggFunction,
 			AllWindowFunction<V, R, W> windowFunction) {
@@ -404,6 +408,7 @@ public class AllWindowedStream<T, W extends Window> {
 	 * @param <R> The type of the elements in the resulting stream, equal to the
 	 *            WindowFunction's result type
 	 */
+	@PublicEvolving
 	public <ACC, V, R> SingleOutputStreamOperator<R> aggregate(
 			AggregateFunction<T, ACC, V> aggregateFunction,
 			AllWindowFunction<V, R, W> windowFunction,
@@ -1123,18 +1128,5 @@ public class AllWindowedStream<T, W extends Window> {
 
 	public TypeInformation<T> getInputType() {
 		return input.getType();
-	}
-
-	/**
-	 * Used as dummy KeySelector to allow using WindowOperator for Non-Keyed Windows.
-	 * @param <T>
-	 */
-	private static class NullByteKeySelector<T> implements KeySelector<T, Byte> {
-		private static final long serialVersionUID = 1L;
-
-		@Override
-		public Byte getKey(T value) throws Exception {
-			return 0;
-		}
 	}
 }
