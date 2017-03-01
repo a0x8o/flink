@@ -32,6 +32,7 @@ import org.apache.flink.api.common.functions.RichFilterFunction;
 import org.apache.flink.api.common.functions.RichFlatMapFunction;
 import org.apache.flink.api.common.functions.RichMapFunction;
 import org.apache.flink.api.common.io.OutputFormat;
+import org.apache.flink.api.common.operators.ResourceSpec;
 import org.apache.flink.api.common.typeinfo.BasicArrayTypeInfo;
 import org.apache.flink.api.common.typeinfo.PrimitiveArrayTypeInfo;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
@@ -140,6 +141,26 @@ public class DataStream<T> {
 	 */
 	public int getParallelism() {
 		return transformation.getParallelism();
+	}
+
+	/**
+	 * Gets the minimum resources for this operator.
+	 *
+	 * @return The minimum resources set for this operator.
+	 */
+	@PublicEvolving
+	public ResourceSpec getMinResources() {
+		return transformation.getMinResources();
+	}
+
+	/**
+	 * Gets the preferred resources for this operator.
+	 *
+	 * @return The preferred resources set for this operator.
+	 */
+	@PublicEvolving
+	public ResourceSpec getPreferredResources() {
+		return transformation.getPreferredResources();
 	}
 
 	/**

@@ -22,6 +22,7 @@ import org.apache.flink.annotation.{Internal, Public, PublicEvolving}
 import org.apache.flink.api.common.ExecutionConfig
 import org.apache.flink.api.common.functions.{FilterFunction, FlatMapFunction, MapFunction, Partitioner}
 import org.apache.flink.api.common.io.OutputFormat
+import org.apache.flink.api.common.operators.ResourceSpec
 import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.api.java.functions.KeySelector
 import org.apache.flink.api.java.tuple.{Tuple => JavaTuple}
@@ -143,6 +144,44 @@ class DataStream[T](stream: JavaStream[T]) {
 
     this
   }
+
+  /**
+   * Returns the minimum resources of this operation.
+   */
+  @PublicEvolving
+  def minResources: ResourceSpec = stream.getMinResources()
+
+  /**
+   * Returns the preferred resources of this operation.
+   */
+  @PublicEvolving
+  def preferredResources: ResourceSpec = stream.getPreferredResources()
+
+// ---------------------------------------------------------------------------
+//  Fine-grained resource profiles are an incomplete work-in-progress feature
+//  The setters are hence commented out at this point.
+// ---------------------------------------------------------------------------
+//  /**
+//   * Sets the minimum and preferred resources of this operation.
+//   */
+//  @PublicEvolving
+//  def resources(minResources: ResourceSpec, preferredResources: ResourceSpec) : DataStream[T] =
+//    stream match {
+//      case stream : SingleOutputStreamOperator[T] => asScalaStream(
+//        stream.setResources(minResources, preferredResources))
+//      case _ =>
+//        throw new UnsupportedOperationException("Operator does not support " +
+//          "configuring custom resources specs.")
+//      this
+//  }
+//
+//  /**
+//   * Sets the resource of this operation.
+//   */
+//  @PublicEvolving
+//  def resources(resources: ResourceSpec) : Unit = {
+//    this.resources(resources, resources)
+//  }
 
   /**
    * Gets the name of the current data stream. This name is
