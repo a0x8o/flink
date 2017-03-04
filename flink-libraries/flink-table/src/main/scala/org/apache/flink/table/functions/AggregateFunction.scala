@@ -19,12 +19,14 @@ package org.apache.flink.table.functions
 
 import java.util.{List => JList}
 
+import org.apache.flink.api.common.typeinfo.TypeInformation
+
 /**
   * Base class for User-Defined Aggregates.
   *
   * @tparam T the type of the aggregation result
   */
-trait AggregateFunction[T] extends UserDefinedFunction {
+abstract class AggregateFunction[T] extends UserDefinedFunction {
   /**
     * Create and init the Accumulator for this [[AggregateFunction]].
     *
@@ -56,11 +58,23 @@ trait AggregateFunction[T] extends UserDefinedFunction {
   /**
     * Merge a list of accumulator instances into one accumulator instance.
     *
-    * @param accumulators the [[java.util.List]] of accumulators
-    *                     that will be merged
+    * IMPORTANT: You may only return a new accumulator instance or the the first accumulator of the
+    * input list. If you return another instance, the result of the aggregation function might be
+    * incorrect.
+    *
+    * @param accumulators the [[java.util.List]] of accumulators that will be merged
     * @return the resulting accumulator
     */
   def merge(accumulators: JList[Accumulator]): Accumulator
+
+  /**
+    * Returns the [[TypeInformation]] of the accumulator.
+    * This function is optional and can be implemented if the accumulator type cannot automatically
+    * inferred from the instance returned by [[createAccumulator()]].
+    *
+    * @return The type information for the accumulator.
+    */
+  def getAccumulatorType(): TypeInformation[_] = null
 }
 
 /**
