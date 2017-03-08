@@ -16,33 +16,11 @@
  * limitations under the License.
  */
 
-package org.apache.flink.configuration;
+package org.apache.flink.table.runtime.aggregate
 
-import org.apache.flink.annotation.PublicEvolving;
+import org.apache.flink.api.common.functions.ReduceFunction
+import org.apache.flink.types.Row
 
-@PublicEvolving
-public class CoreOptions {
-
-	/**
-	 * 
-	 */
-	public static final ConfigOption<String> FLINK_JVM_OPTIONS = ConfigOptions
-		.key("env.java.opts")
-		.defaultValue("");
-
-	public static final ConfigOption<String> FLINK_JM_JVM_OPTIONS = ConfigOptions
-		.key("env.java.opts.jobmanager")
-		.defaultValue("");
-
-	public static final ConfigOption<String> FLINK_TM_JVM_OPTIONS = ConfigOptions
-		.key("env.java.opts.taskmanager")
-		.defaultValue("");
-
-	public static final ConfigOption<Integer> DEFAULT_PARALLELISM_KEY = ConfigOptions
-		.key("parallelism.default")
-		.defaultValue(-1);
-	
-	public static final ConfigOption<String> STATE_BACKEND = ConfigOptions
-		.key("state.backend")
-		.noDefaultValue();
+class DistinctReduce extends ReduceFunction[Row] {
+  override def reduce(value1: Row, value2: Row): Row = value1
 }

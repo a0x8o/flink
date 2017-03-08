@@ -26,7 +26,7 @@ import org.apache.calcite.sql.`type`.SqlTypeName._
 import org.apache.calcite.sql.`type`.SqlTypeName
 import org.apache.calcite.sql.fun._
 import org.apache.flink.api.common.functions.{GroupCombineFunction, InvalidTypesException, MapFunction, MapPartitionFunction, RichGroupReduceFunction, AggregateFunction => ApiAggregateFunction}
-import org.apache.flink.api.common.typeinfo.{BasicTypeInfo, TypeHint, TypeInformation}
+import org.apache.flink.api.common.typeinfo.{BasicTypeInfo, TypeInformation}
 import org.apache.flink.api.java.tuple.Tuple
 import org.apache.flink.api.java.typeutils.RowTypeInfo
 import org.apache.flink.table.calcite.{FlinkRelBuilder, FlinkTypeFactory}
@@ -36,6 +36,7 @@ import org.apache.flink.table.plan.logical._
 import org.apache.flink.table.typeutils.TypeCheckUtils._
 import org.apache.flink.streaming.api.functions.windowing.{AllWindowFunction, WindowFunction}
 import org.apache.flink.streaming.api.windowing.windows.{Window => DataStreamWindow}
+import org.apache.flink.streaming.api.functions.ProcessFunction
 import org.apache.flink.table.api.{TableException, Types}
 import org.apache.flink.table.functions.aggfunctions._
 import org.apache.flink.table.functions.{AggregateFunction => TableAggregateFunction}
@@ -78,7 +79,7 @@ object AggregateUtil {
     val (aggFieldIndexes, aggregates) = transformToAggregateFunctions(
       namedAggregates.map(_.getKey),
       inputType,
-      groupings.length)
+      needRetraction = false)
 
     val mapReturnType: RowTypeInfo =
       createDataSetAggregateBufferDataType(groupings, aggregates, inputType)
@@ -90,6 +91,33 @@ object AggregateUtil {
       mapReturnType)
 
     mapFunction
+  }
+
+  /**
+    * Create an [[ProcessFunction]] to evaluate final aggregate value.
+    *
+    * @param namedAggregates List of calls to aggregate functions and their output field names
+    * @param inputType Input row type
+    * @return [[UnboundedProcessingOverProcessFunction]]
+    */
+  private[flink] def CreateUnboundedProcessingOverProcessFunction(
+    namedAggregates: Seq[CalcitePair[AggregateCall, String]],
+    inputType: RelDataType): UnboundedProcessingOverProcessFunction = {
+
+    val (aggFields, aggregates) =
+      transformToAggregateFunctions(
+        namedAggregates.map(_.getKey),
+        inputType,
+        needRetraction = false)
+
+    val aggregationStateType: RowTypeInfo =
+      createDataSetAggregateBufferDataType(Array(), aggregates, inputType)
+
+    new UnboundedProcessingOverProcessFunction(
+      aggregates,
+      aggFields,
+      inputType.getFieldCount,
+      aggregationStateType)
   }
 
   /**
@@ -125,7 +153,7 @@ object AggregateUtil {
     val (aggFieldIndexes, aggregates) = transformToAggregateFunctions(
       namedAggregates.map(_.getKey),
       inputType,
-      groupings.length)
+      needRetraction = false)
 
     val mapReturnType: RowTypeInfo =
       createDataSetAggregateBufferDataType(
@@ -178,7 +206,7 @@ object AggregateUtil {
     val aggregates = transformToAggregateFunctions(
       namedAggregates.map(_.getKey),
       inputType,
-      groupings.length)._2
+      needRetraction = false)._2
 
     // the mapping relation between field index of intermediate aggregate Row and output Row.
     val groupingOffsetMapping = getGroupKeysMapping(inputType, outputType, groupings)
@@ -275,7 +303,7 @@ object AggregateUtil {
     val aggregates = transformToAggregateFunctions(
       namedAggregates.map(_.getKey),
       inputType,
-      0)._2
+      needRetraction = false)._2
 
     window match {
       case EventTimeSessionGroupWindow(_, _, gap) =>
@@ -324,7 +352,7 @@ object AggregateUtil {
     val aggregates = transformToAggregateFunctions(
       namedAggregates.map(_.getKey),
       inputType,
-      groupings.length)._2
+      needRetraction = false)._2
 
     window match {
       case EventTimeSessionGroupWindow(_, _, gap) =>
@@ -362,10 +390,10 @@ object AggregateUtil {
       inGroupingSet: Boolean)
     : RichGroupReduceFunction[Row, Row] = {
 
-    val (aggFieldIndex, aggregates) = transformToAggregateFunctions(
+    val aggregates = transformToAggregateFunctions(
       namedAggregates.map(_.getKey),
       inputType,
-      groupings.length)
+      needRetraction = false)._2
 
     val (groupingOffsetMapping, aggOffsetMapping) =
       getGroupingOffsetAndAggOffsetMapping(
@@ -458,7 +486,10 @@ object AggregateUtil {
     : (ApiAggregateFunction[Row, Row, Row], RowTypeInfo, RowTypeInfo) = {
 
     val (aggFields, aggregates) =
-      transformToAggregateFunctions(namedAggregates.map(_.getKey), inputType, groupKeysIndex.length)
+      transformToAggregateFunctions(
+        namedAggregates.map(_.getKey),
+        inputType,
+        needRetraction = false)
 
     val aggregateMapping = getAggregateMapping(namedAggregates, outputType)
 
@@ -487,7 +518,7 @@ object AggregateUtil {
     val aggregateList = transformToAggregateFunctions(
       aggregateCalls,
       inputType,
-      groupKeysCount)._2
+      needRetraction = false)._2
 
     doAllSupportPartialMerge(aggregateList)
   }
@@ -588,7 +619,7 @@ object AggregateUtil {
 
     val propPos = properties.foldRight((None: Option[Int], None: Option[Int], 0)) {
       (p, x) => p match {
-        case NamedWindowProperty(name, prop) =>
+        case NamedWindowProperty(_, prop) =>
           prop match {
             case WindowStart(_) if x._1.isDefined =>
               throw new TableException("Duplicate WindowStart property encountered. This is a bug.")
@@ -607,16 +638,12 @@ object AggregateUtil {
   private def transformToAggregateFunctions(
       aggregateCalls: Seq[AggregateCall],
       inputType: RelDataType,
-      groupKeysCount: Int): (Array[Int], Array[TableAggregateFunction[_ <: Any]]) = {
+      needRetraction: Boolean)
+  : (Array[Int], Array[TableAggregateFunction[_ <: Any]]) = {
 
     // store the aggregate fields of each aggregate function, by the same order of aggregates.
     val aggFieldIndexes = new Array[Int](aggregateCalls.size)
     val aggregates = new Array[TableAggregateFunction[_ <: Any]](aggregateCalls.size)
-
-    // set the start offset of aggregate buffer value to group keys' length,
-    // as all the group keys would be moved to the start fields of intermediate
-    // aggregate data.
-    var aggOffset = groupKeysCount
 
     // create aggregate function instances by function type and aggregate field data type.
     aggregateCalls.zipWithIndex.foreach { case (aggregateCall, index) =>
@@ -636,23 +663,44 @@ object AggregateUtil {
       val sqlTypeName = inputType.getFieldList.get(aggFieldIndexes(index)).getType.getSqlTypeName
       aggregateCall.getAggregation match {
         case _: SqlSumAggFunction | _: SqlSumEmptyIsZeroAggFunction => {
-          aggregates(index) = sqlTypeName match {
-            case TINYINT =>
-              new ByteSumAggFunction
-            case SMALLINT =>
-              new ShortSumAggFunction
-            case INTEGER =>
-              new IntSumAggFunction
-            case BIGINT =>
-              new LongSumAggFunction
-            case FLOAT =>
-              new FloatSumAggFunction
-            case DOUBLE =>
-              new DoubleSumAggFunction
-            case DECIMAL =>
-              new DecimalSumAggFunction
-            case sqlType: SqlTypeName =>
-              throw new TableException("Sum aggregate does no support type:" + sqlType)
+          if (needRetraction) {
+            aggregates(index) = sqlTypeName match {
+              case TINYINT =>
+                new ByteSumWithRetractAggFunction
+              case SMALLINT =>
+                new ShortSumWithRetractAggFunction
+              case INTEGER =>
+                new IntSumWithRetractAggFunction
+              case BIGINT =>
+                new LongSumWithRetractAggFunction
+              case FLOAT =>
+                new FloatSumWithRetractAggFunction
+              case DOUBLE =>
+                new DoubleSumWithRetractAggFunction
+              case DECIMAL =>
+                new DecimalSumWithRetractAggFunction
+              case sqlType: SqlTypeName =>
+                throw new TableException("Sum aggregate does no support type:" + sqlType)
+            }
+          } else {
+            aggregates(index) = sqlTypeName match {
+              case TINYINT =>
+                new ByteSumAggFunction
+              case SMALLINT =>
+                new ShortSumAggFunction
+              case INTEGER =>
+                new IntSumAggFunction
+              case BIGINT =>
+                new LongSumAggFunction
+              case FLOAT =>
+                new FloatSumAggFunction
+              case DOUBLE =>
+                new DoubleSumAggFunction
+              case DECIMAL =>
+                new DecimalSumAggFunction
+              case sqlType: SqlTypeName =>
+                throw new TableException("Sum aggregate does no support type:" + sqlType)
+            }
           }
         }
         case _: SqlAvgAggFunction => {
@@ -677,46 +725,94 @@ object AggregateUtil {
         }
         case sqlMinMaxFunction: SqlMinMaxAggFunction => {
           aggregates(index) = if (sqlMinMaxFunction.getKind == SqlKind.MIN) {
-            sqlTypeName match {
-              case TINYINT =>
-                new ByteMinAggFunction
-              case SMALLINT =>
-                new ShortMinAggFunction
-              case INTEGER =>
-                new IntMinAggFunction
-              case BIGINT =>
-                new LongMinAggFunction
-              case FLOAT =>
-                new FloatMinAggFunction
-              case DOUBLE =>
-                new DoubleMinAggFunction
-              case DECIMAL =>
-                new DecimalMinAggFunction
-              case BOOLEAN =>
-                new BooleanMinAggFunction
-              case sqlType: SqlTypeName =>
-                throw new TableException("Min aggregate does no support type:" + sqlType)
+            if (needRetraction) {
+              sqlTypeName match {
+                case TINYINT =>
+                  new ByteMinWithRetractAggFunction
+                case SMALLINT =>
+                  new ShortMinWithRetractAggFunction
+                case INTEGER =>
+                  new IntMinWithRetractAggFunction
+                case BIGINT =>
+                  new LongMinWithRetractAggFunction
+                case FLOAT =>
+                  new FloatMinWithRetractAggFunction
+                case DOUBLE =>
+                  new DoubleMinWithRetractAggFunction
+                case DECIMAL =>
+                  new DecimalMinWithRetractAggFunction
+                case BOOLEAN =>
+                  new BooleanMinWithRetractAggFunction
+                case sqlType: SqlTypeName =>
+                  throw new TableException("Min with retract aggregate does no support type:" +
+                                             sqlType)
+              }
+            } else {
+              sqlTypeName match {
+                case TINYINT =>
+                  new ByteMinAggFunction
+                case SMALLINT =>
+                  new ShortMinAggFunction
+                case INTEGER =>
+                  new IntMinAggFunction
+                case BIGINT =>
+                  new LongMinAggFunction
+                case FLOAT =>
+                  new FloatMinAggFunction
+                case DOUBLE =>
+                  new DoubleMinAggFunction
+                case DECIMAL =>
+                  new DecimalMinAggFunction
+                case BOOLEAN =>
+                  new BooleanMinAggFunction
+                case sqlType: SqlTypeName =>
+                  throw new TableException("Min aggregate does no support type:" + sqlType)
+              }
             }
           } else {
-            sqlTypeName match {
-              case TINYINT =>
-                new ByteMaxAggFunction
-              case SMALLINT =>
-                new ShortMaxAggFunction
-              case INTEGER =>
-                new IntMaxAggFunction
-              case BIGINT =>
-                new LongMaxAggFunction
-              case FLOAT =>
-                new FloatMaxAggFunction
-              case DOUBLE =>
-                new DoubleMaxAggFunction
-              case DECIMAL =>
-                new DecimalMaxAggFunction
-              case BOOLEAN =>
-                new BooleanMaxAggFunction
-              case sqlType: SqlTypeName =>
-                throw new TableException("Max aggregate does no support type:" + sqlType)
+            if (needRetraction) {
+              sqlTypeName match {
+                case TINYINT =>
+                  new ByteMaxWithRetractAggFunction
+                case SMALLINT =>
+                  new ShortMaxWithRetractAggFunction
+                case INTEGER =>
+                  new IntMaxWithRetractAggFunction
+                case BIGINT =>
+                  new LongMaxWithRetractAggFunction
+                case FLOAT =>
+                  new FloatMaxWithRetractAggFunction
+                case DOUBLE =>
+                  new DoubleMaxWithRetractAggFunction
+                case DECIMAL =>
+                  new DecimalMaxWithRetractAggFunction
+                case BOOLEAN =>
+                  new BooleanMaxWithRetractAggFunction
+                case sqlType: SqlTypeName =>
+                  throw new TableException("Max with retract aggregate does no support type:" +
+                                             sqlType)
+              }
+            } else {
+              sqlTypeName match {
+                case TINYINT =>
+                  new ByteMaxAggFunction
+                case SMALLINT =>
+                  new ShortMaxAggFunction
+                case INTEGER =>
+                  new IntMaxAggFunction
+                case BIGINT =>
+                  new LongMaxAggFunction
+                case FLOAT =>
+                  new FloatMaxAggFunction
+                case DOUBLE =>
+                  new DoubleMaxAggFunction
+                case DECIMAL =>
+                  new DecimalMaxAggFunction
+                case BOOLEAN =>
+                  new BooleanMaxAggFunction
+                case sqlType: SqlTypeName =>
+                  throw new TableException("Max aggregate does no support type:" + sqlType)
+              }
             }
           }
         }

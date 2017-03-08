@@ -15,34 +15,26 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.flink.table.api.scala.stream.utils
 
-package org.apache.flink.configuration;
+import org.apache.flink.streaming.util.StreamingMultipleProgramsTestBase
+import org.apache.flink.contrib.streaming.state.RocksDBStateBackend
 
-import org.apache.flink.annotation.PublicEvolving;
+import org.junit.rules.TemporaryFolder
+import org.junit.Rule
 
-@PublicEvolving
-public class CoreOptions {
+class StreamingWithStateTestBase extends StreamingMultipleProgramsTestBase {
 
-	/**
-	 * 
-	 */
-	public static final ConfigOption<String> FLINK_JVM_OPTIONS = ConfigOptions
-		.key("env.java.opts")
-		.defaultValue("");
+  val _tempFolder = new TemporaryFolder
 
-	public static final ConfigOption<String> FLINK_JM_JVM_OPTIONS = ConfigOptions
-		.key("env.java.opts.jobmanager")
-		.defaultValue("");
+  @Rule
+  def tempFolder: TemporaryFolder = _tempFolder
 
-	public static final ConfigOption<String> FLINK_TM_JVM_OPTIONS = ConfigOptions
-		.key("env.java.opts.taskmanager")
-		.defaultValue("");
-
-	public static final ConfigOption<Integer> DEFAULT_PARALLELISM_KEY = ConfigOptions
-		.key("parallelism.default")
-		.defaultValue(-1);
-	
-	public static final ConfigOption<String> STATE_BACKEND = ConfigOptions
-		.key("state.backend")
-		.noDefaultValue();
+  def getStateBackend: RocksDBStateBackend = {
+    val dbPath = tempFolder.newFolder().getAbsolutePath
+    val checkpointPath = tempFolder.newFolder().toURI.toString
+    val backend = new RocksDBStateBackend(checkpointPath)
+    backend.setDbStoragePath(dbPath)
+    backend
+  }
 }
