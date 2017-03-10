@@ -16,19 +16,19 @@
  * limitations under the License.
  */
 
-package org.apache.flink.runtime.taskmanager
+package org.apache.flink.graph.drivers.output;
 
-import org.apache.flink.core.memory.MemoryType
-import org.apache.flink.runtime.io.disk.iomanager.IOManager.IOMode
-import org.apache.flink.runtime.io.network.netty.NettyConfig
+/**
+ * Write algorithm output to file using CSV format.
+ */
+public interface CSV {
 
-case class NetworkEnvironmentConfiguration(
-    numNetworkBuffers: Int,
-    networkBufferSize: Int,
-    memoryType: MemoryType,
-    ioMode: IOMode,
-    partitionRequestInitialBackoff : Int,
-    partitionRequestMaxBackoff : Int,
-    networkBuffersPerChannel: Int,
-    extraNetworkBuffersPerGate: Int,
-    nettyConfig: NettyConfig = null)
+	/**
+	 * Write execution results to file using CSV format.
+	 *
+	 * @param filename output filename
+	 * @param lineDelimiter CSV delimiter between lines
+	 * @param fieldDelimiter CSV delimiter between fields
+	 */
+	void writeCSV(String filename, String lineDelimiter, String fieldDelimiter);
+}

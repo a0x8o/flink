@@ -16,31 +16,36 @@
  * limitations under the License.
  */
 
-package org.apache.flink.runtime.io.network.buffer;
+package org.apache.flink.graph.drivers.parameter;
 
-import java.io.IOException;
+import org.apache.flink.api.java.utils.ParameterTool;
+import org.apache.flink.client.program.ProgramParametrizationException;
 
 /**
- * A factory for buffer pools.
+ * A configurable command-line choice, such as an input or algorithm.
  */
-public interface BufferPoolFactory {
+public interface Parameterized {
 
 	/**
-	 * Tries to create a buffer pool, which is guaranteed to provide at least the number of required
-	 * buffers.
+	 * A unique, human-readable identifier. Presented to the user as the
+	 * name of a selectable choice.
 	 *
-	 * <p> The buffer pool is of dynamic size with at least <tt>numRequiredBuffers</tt> buffers.
-	 *
-	 * @param numRequiredBuffers
-	 * 		minimum number of network buffers in this pool
-	 * @param maxUsedBuffers
-	 * 		maximum number of network buffers this pool offers
+	 * @return parameter name
 	 */
-	BufferPool createBufferPool(int numRequiredBuffers, int maxUsedBuffers) throws IOException;
+	String getName();
 
 	/**
-	 * Destroy callback for updating factory book keeping.
+	 * Human-readable format for the command-line usage string.
+	 *
+	 * @return command-line documentation string
 	 */
-	void destroyBufferPool(BufferPool bufferPool) throws IOException;
+	String getParameterization();
 
+	/**
+	 * Read parameter values from the command-line arguments.
+	 *
+	 * @param parameterTool parameter parser
+	 * @throws ProgramParametrizationException when configuration is invalid
+	 */
+	void configure(ParameterTool parameterTool) throws ProgramParametrizationException;
 }

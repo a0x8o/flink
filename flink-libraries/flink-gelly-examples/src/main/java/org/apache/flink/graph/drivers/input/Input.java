@@ -16,31 +16,36 @@
  * limitations under the License.
  */
 
-package org.apache.flink.runtime.io.network.buffer;
+package org.apache.flink.graph.drivers.input;
 
-import java.io.IOException;
+import org.apache.flink.api.java.ExecutionEnvironment;
+import org.apache.flink.graph.Graph;
+import org.apache.flink.graph.drivers.parameter.Parameterized;
+import org.apache.flink.graph.generator.GraphGenerator;
 
 /**
- * A factory for buffer pools.
+ * Input source for a {@link Graph}, for example a file reader or
+ * {@link GraphGenerator}.
+ *
+ * @param <K> graph ID type
+ * @param <VV> vertex value type
+ * @param <EV> edge value type
  */
-public interface BufferPoolFactory {
+public interface Input<K, VV, EV>
+extends Parameterized {
 
 	/**
-	 * Tries to create a buffer pool, which is guaranteed to provide at least the number of required
-	 * buffers.
+	 * A human-readable identifier summarizing the input and configuration.
 	 *
-	 * <p> The buffer pool is of dynamic size with at least <tt>numRequiredBuffers</tt> buffers.
-	 *
-	 * @param numRequiredBuffers
-	 * 		minimum number of network buffers in this pool
-	 * @param maxUsedBuffers
-	 * 		maximum number of network buffers this pool offers
+	 * @return the unique identifier
 	 */
-	BufferPool createBufferPool(int numRequiredBuffers, int maxUsedBuffers) throws IOException;
+	String getIdentity();
 
 	/**
-	 * Destroy callback for updating factory book keeping.
+	 * Create the input {@link Graph}.
+	 *
+	 * @param env the ExecutionEnvironment
+	 * @return the input Graph
 	 */
-	void destroyBufferPool(BufferPool bufferPool) throws IOException;
-
+	Graph<K, VV, EV> create(ExecutionEnvironment env) throws Exception;
 }

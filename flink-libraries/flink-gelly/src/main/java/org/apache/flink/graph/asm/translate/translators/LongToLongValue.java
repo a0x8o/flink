@@ -16,19 +16,25 @@
  * limitations under the License.
  */
 
-package org.apache.flink.runtime.taskmanager
+package org.apache.flink.graph.asm.translate.translators;
 
-import org.apache.flink.core.memory.MemoryType
-import org.apache.flink.runtime.io.disk.iomanager.IOManager.IOMode
-import org.apache.flink.runtime.io.network.netty.NettyConfig
+import org.apache.flink.graph.asm.translate.TranslateFunction;
+import org.apache.flink.types.LongValue;
 
-case class NetworkEnvironmentConfiguration(
-    numNetworkBuffers: Int,
-    networkBufferSize: Int,
-    memoryType: MemoryType,
-    ioMode: IOMode,
-    partitionRequestInitialBackoff : Int,
-    partitionRequestMaxBackoff : Int,
-    networkBuffersPerChannel: Int,
-    extraNetworkBuffersPerGate: Int,
-    nettyConfig: NettyConfig = null)
+/**
+ * Translate {@link Long} to {@link LongValue}.
+ */
+public class LongToLongValue
+implements TranslateFunction<Long, LongValue> {
+
+	@Override
+	public LongValue translate(Long value, LongValue reuse)
+			throws Exception {
+		if (reuse == null) {
+			reuse = new LongValue();
+		}
+
+		reuse.setValue(value);
+		return reuse;
+	}
+}
