@@ -163,6 +163,16 @@ For convenience, Flink provides the following schemas:
     into an ObjectNode object, from which fields can be accessed using objectNode.get("field").as(Int/String/...)().
     The KeyValue objectNode contains a "key" and "value" field which contain all fields, as well as
     an optional "metadata" field that exposes the offset/partition/topic for this message.
+    
+When encountering a corrupted message that cannot be deserialized for any reason, there
+are two options - either throwing an exception from the `deserialize(...)` method
+which will cause the job to fail and be restarted, or returning `null` to allow
+the Flink Kafka consumer to silently skip the corrupted message. Note that
+due to the consumer's fault tolerance (see below sections for more details),
+failing the job on the corrupted message will let the consumer attempt
+to deserialize the message again. Therefore, if deserialization still fails, the
+consumer will fall into a non-stop restart and fail loop on that corrupted
+message.
 
 ### Kafka Consumers Start Position Configuration
 

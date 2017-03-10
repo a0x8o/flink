@@ -29,14 +29,14 @@ import org.apache.flink.table.api.TableException
   */
 abstract class AggregateFunction[T] extends UserDefinedFunction {
   /**
-    * Create and init the Accumulator for this [[AggregateFunction]].
+    * Creates and init the Accumulator for this [[AggregateFunction]].
     *
     * @return the accumulator with the initial value
     */
   def createAccumulator(): Accumulator
 
   /**
-    * Retract the input values from the accumulator instance. The current design assumes the
+    * Retracts the input values from the accumulator instance. The current design assumes the
     * inputs are the values that have been previously accumulated.
     *
     * @param accumulator the accumulator which contains the current
@@ -61,7 +61,7 @@ abstract class AggregateFunction[T] extends UserDefinedFunction {
   def getValue(accumulator: Accumulator): T
 
   /**
-    * Process the input values and update the provided accumulator instance.
+    * Processes the input values and update the provided accumulator instance.
     *
     * @param accumulator the accumulator which contains the current
     *                    aggregated results
@@ -70,9 +70,9 @@ abstract class AggregateFunction[T] extends UserDefinedFunction {
   def accumulate(accumulator: Accumulator, input: Any): Unit
 
   /**
-    * Merge a list of accumulator instances into one accumulator instance.
+    * Merges a list of accumulator instances into one accumulator instance.
     *
-    * IMPORTANT: You may only return a new accumulator instance or the the first accumulator of the
+    * IMPORTANT: You may only return a new accumulator instance or the first accumulator of the
     * input list. If you return another instance, the result of the aggregation function might be
     * incorrect.
     *
@@ -82,13 +82,20 @@ abstract class AggregateFunction[T] extends UserDefinedFunction {
   def merge(accumulators: JList[Accumulator]): Accumulator
 
   /**
+    * Resets the Accumulator for this [[AggregateFunction]].
+    *
+    * @param accumulator the accumulator which needs to be reset
+    */
+  def resetAccumulator(accumulator: Accumulator): Unit
+
+  /**
     * Returns the [[TypeInformation]] of the accumulator.
     * This function is optional and can be implemented if the accumulator type cannot automatically
     * inferred from the instance returned by [[createAccumulator()]].
     *
     * @return The type information for the accumulator.
     */
-  def getAccumulatorType(): TypeInformation[_] = null
+  def getAccumulatorType: TypeInformation[_] = null
 }
 
 /**
