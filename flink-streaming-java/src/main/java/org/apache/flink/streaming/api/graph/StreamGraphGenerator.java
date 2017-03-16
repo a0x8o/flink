@@ -163,7 +163,7 @@ public class StreamGraphGenerator {
 
 		Collection<Integer> transformedIds;
 		if (transform instanceof OneInputTransformation<?, ?>) {
-			transformedIds = transformOnInputTransform((OneInputTransformation<?, ?>) transform);
+			transformedIds = transformOneInputTransform((OneInputTransformation<?, ?>) transform);
 		} else if (transform instanceof TwoInputTransformation<?, ?, ?>) {
 			transformedIds = transformTwoInputTransform((TwoInputTransformation<?, ?, ?>) transform);
 		} else if (transform instanceof SourceTransformation<?>) {
@@ -203,7 +203,7 @@ public class StreamGraphGenerator {
 		}
 
 		if (transform.getMinResources() != null && transform.getPreferredResources() != null) {
-			streamGraph.setResource(transform.getId(), transform.getMinResources(), transform.getPreferredResources());
+			streamGraph.setResources(transform.getId(), transform.getMinResources(), transform.getPreferredResources());
 		}
 
 		return transformedIds;
@@ -335,7 +335,9 @@ public class StreamGraphGenerator {
 			getNewIterationNodeId(),
 			iterate.getWaitTime(),
 			iterate.getParallelism(),
-			iterate.getMaxParallelism());
+			iterate.getMaxParallelism(),
+			iterate.getMinResources(),
+			iterate.getPreferredResources()	);
 
 		StreamNode itSource = itSourceAndSink.f0;
 		StreamNode itSink = itSourceAndSink.f1;
@@ -400,7 +402,9 @@ public class StreamGraphGenerator {
 				getNewIterationNodeId(),
 				coIterate.getWaitTime(),
 				coIterate.getParallelism(),
-				coIterate.getMaxParallelism());
+				coIterate.getMaxParallelism(),
+				coIterate.getMinResources(),
+				coIterate.getPreferredResources());
 
 		StreamNode itSource = itSourceAndSink.f0;
 		StreamNode itSink = itSourceAndSink.f1;
@@ -496,10 +500,10 @@ public class StreamGraphGenerator {
 	 * Transforms a {@code OneInputTransformation}.
 	 *
 	 * <p>
-	 * This recusively transforms the inputs, creates a new {@code StreamNode} in the graph and
+	 * This recursively transforms the inputs, creates a new {@code StreamNode} in the graph and
 	 * wired the inputs to this new node.
 	 */
-	private <IN, OUT> Collection<Integer> transformOnInputTransform(OneInputTransformation<IN, OUT> transform) {
+	private <IN, OUT> Collection<Integer> transformOneInputTransform(OneInputTransformation<IN, OUT> transform) {
 
 		Collection<Integer> inputIds = transform(transform.getInput());
 
