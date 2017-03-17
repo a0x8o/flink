@@ -21,34 +21,35 @@ package org.apache.flink.table.plan.rules.datastream
 import org.apache.calcite.plan.RelOptRule._
 import org.apache.calcite.plan.{RelOptRule, RelOptRuleCall}
 import org.apache.flink.table.plan.nodes.datastream.{DataStreamCalc, StreamTableSourceScan}
-import org.apache.flink.table.plan.rules.common.PushProjectIntoTableSourceScanRuleBase
-import org.apache.flink.table.sources.{ProjectableTableSource, StreamTableSource}
+import org.apache.flink.table.plan.rules.common.PushFilterIntoTableSourceScanRuleBase
+import org.apache.flink.table.plan.schema.TableSourceTable
+import org.apache.flink.table.sources.FilterableTableSource
 
-/**
-  * The rule is responsible for push project into a [[StreamTableSourceScan]]
-  */
-class PushProjectIntoStreamTableSourceScanRule extends RelOptRule(
+class PushFilterIntoStreamTableSourceScanRule extends RelOptRule(
   operand(classOf[DataStreamCalc],
-    operand(classOf[StreamTableSourceScan], none())),
-  "PushProjectIntoStreamTableSourceScanRule")
-  with PushProjectIntoTableSourceScanRuleBase {
+    operand(classOf[StreamTableSourceScan], none)),
+  "PushFilterIntoStreamTableSourceScanRule")
+  with PushFilterIntoTableSourceScanRuleBase {
 
-  /** Rule must only match if [[StreamTableSource]] targets a [[ProjectableTableSource]] */
   override def matches(call: RelOptRuleCall): Boolean = {
+    val calc: DataStreamCalc = call.rel(0).asInstanceOf[DataStreamCalc]
     val scan: StreamTableSourceScan = call.rel(1).asInstanceOf[StreamTableSourceScan]
     scan.tableSource match {
-      case _: ProjectableTableSource[_] => true
+      case source: FilterableTableSource[_] =>
+        calc.getProgram.getCondition != null && !source.isFilterPushedDown
       case _ => false
     }
   }
 
   override def onMatch(call: RelOptRuleCall): Unit = {
-    val calc = call.rel(0).asInstanceOf[DataStreamCalc]
-    val scan = call.rel(1).asInstanceOf[StreamTableSourceScan]
-    pushProjectIntoScan(call, calc, scan)
+    val calc: DataStreamCalc = call.rel(0).asInstanceOf[DataStreamCalc]
+    val scan: StreamTableSourceScan = call.rel(1).asInstanceOf[StreamTableSourceScan]
+    val tableSourceTable = scan.getTable.unwrap(classOf[TableSourceTable[_]])
+    val filterableSource = scan.tableSource.asInstanceOf[FilterableTableSource[_]]
+    pushFilterIntoScan(call, calc, scan, tableSourceTable, filterableSource, description)
   }
 }
 
-object PushProjectIntoStreamTableSourceScanRule {
-  val INSTANCE: RelOptRule = new PushProjectIntoStreamTableSourceScanRule
+object PushFilterIntoStreamTableSourceScanRule {
+  val INSTANCE: RelOptRule = new PushFilterIntoStreamTableSourceScanRule
 }

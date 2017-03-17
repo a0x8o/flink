@@ -18,36 +18,38 @@
 
 package org.apache.flink.table.plan.rules.dataSet
 
-import org.apache.calcite.plan.RelOptRule.{none, operand}
+import org.apache.calcite.plan.RelOptRule._
 import org.apache.calcite.plan.{RelOptRule, RelOptRuleCall}
 import org.apache.flink.table.plan.nodes.dataset.{BatchTableSourceScan, DataSetCalc}
-import org.apache.flink.table.plan.rules.common.PushProjectIntoTableSourceScanRuleBase
-import org.apache.flink.table.sources.ProjectableTableSource
+import org.apache.flink.table.plan.rules.common.PushFilterIntoTableSourceScanRuleBase
+import org.apache.flink.table.plan.schema.TableSourceTable
+import org.apache.flink.table.sources.FilterableTableSource
 
-/**
-  * This rule tries to push projections into a BatchTableSourceScan.
-  */
-class PushProjectIntoBatchTableSourceScanRule extends RelOptRule(
+class PushFilterIntoBatchTableSourceScanRule extends RelOptRule(
   operand(classOf[DataSetCalc],
     operand(classOf[BatchTableSourceScan], none)),
-  "PushProjectIntoBatchTableSourceScanRule")
-  with PushProjectIntoTableSourceScanRuleBase {
+  "PushFilterIntoBatchTableSourceScanRule")
+  with PushFilterIntoTableSourceScanRuleBase {
 
   override def matches(call: RelOptRuleCall): Boolean = {
+    val calc: DataSetCalc = call.rel(0).asInstanceOf[DataSetCalc]
     val scan: BatchTableSourceScan = call.rel(1).asInstanceOf[BatchTableSourceScan]
     scan.tableSource match {
-      case _: ProjectableTableSource[_] => true
+      case source: FilterableTableSource[_] =>
+        calc.getProgram.getCondition != null && !source.isFilterPushedDown
       case _ => false
     }
   }
 
-  override def onMatch(call: RelOptRuleCall) {
+  override def onMatch(call: RelOptRuleCall): Unit = {
     val calc: DataSetCalc = call.rel(0).asInstanceOf[DataSetCalc]
     val scan: BatchTableSourceScan = call.rel(1).asInstanceOf[BatchTableSourceScan]
-    pushProjectIntoScan(call, calc, scan)
+    val tableSourceTable = scan.getTable.unwrap(classOf[TableSourceTable[_]])
+    val filterableSource = scan.tableSource.asInstanceOf[FilterableTableSource[_]]
+    pushFilterIntoScan(call, calc, scan, tableSourceTable, filterableSource, description)
   }
 }
 
-object PushProjectIntoBatchTableSourceScanRule {
-  val INSTANCE: RelOptRule = new PushProjectIntoBatchTableSourceScanRule
+object PushFilterIntoBatchTableSourceScanRule {
+  val INSTANCE: RelOptRule = new PushFilterIntoBatchTableSourceScanRule
 }
