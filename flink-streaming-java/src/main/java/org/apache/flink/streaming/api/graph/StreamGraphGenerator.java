@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -18,9 +18,9 @@
 package org.apache.flink.streaming.api.graph;
 
 import org.apache.flink.annotation.Internal;
+import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.java.tuple.Tuple2;
-import org.apache.flink.runtime.state.KeyGroupRangeAssignment;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.source.InputFormatSourceFunction;
 import org.apache.flink.streaming.api.transformations.CoFeedbackTransformation;
@@ -28,6 +28,7 @@ import org.apache.flink.streaming.api.transformations.FeedbackTransformation;
 import org.apache.flink.streaming.api.transformations.OneInputTransformation;
 import org.apache.flink.streaming.api.transformations.PartitionTransformation;
 import org.apache.flink.streaming.api.transformations.SelectTransformation;
+import org.apache.flink.streaming.api.transformations.SideOutputTransformation;
 import org.apache.flink.streaming.api.transformations.SinkTransformation;
 import org.apache.flink.streaming.api.transformations.SourceTransformation;
 import org.apache.flink.streaming.api.transformations.SplitTransformation;
@@ -78,8 +79,8 @@ public class StreamGraphGenerator {
 
 	private static final Logger LOG = LoggerFactory.getLogger(StreamGraphGenerator.class);
 
-	public static final int DEFAULT_LOWER_BOUND_MAX_PARALLELISM = KeyGroupRangeAssignment.DEFAULT_LOWER_BOUND_MAX_PARALLELISM;
-	public static final int UPPER_BOUND_MAX_PARALLELISM = KeyGroupRangeAssignment.UPPER_BOUND_MAX_PARALLELISM;
+	public static final int DEFAULT_LOWER_BOUND_MAX_PARALLELISM = ExecutionConfig.DEFAULT_LOWER_BOUND_MAX_PARALLELISM;
+	public static final int UPPER_BOUND_MAX_PARALLELISM = ExecutionConfig.UPPER_BOUND_MAX_PARALLELISM;
 
 	// The StreamGraph that is being built, this is initialized at the beginning.
 	private final StreamGraph streamGraph;
@@ -97,12 +98,11 @@ public class StreamGraphGenerator {
 	// we have loops, i.e. feedback edges.
 	private Map<StreamTransformation<?>, Collection<Integer>> alreadyTransformed;
 
-
 	/**
 	 * Private constructor. The generator should only be invoked using {@link #generate}.
 	 */
-	private StreamGraphGenerator(StreamExecutionEnvironment env) {
-		this.streamGraph = new StreamGraph(env);
+	private StreamGraphGenerator(StreamExecutionEnvironment env, int defaultParallelism) {
+		this.streamGraph = new StreamGraph(env, defaultParallelism);
 		this.streamGraph.setChaining(env.isChainingEnabled());
 		this.streamGraph.setStateBackend(env.getStateBackend());
 		this.env = env;
@@ -119,8 +119,11 @@ public class StreamGraphGenerator {
 	 *
 	 * @return The generated {@code StreamGraph}
 	 */
-	public static StreamGraph generate(StreamExecutionEnvironment env, List<StreamTransformation<?>> transformations) {
-		return new StreamGraphGenerator(env).generateInternal(transformations);
+	public static StreamGraph generate(
+			StreamExecutionEnvironment env,
+			List<StreamTransformation<?>> transformations,
+			int defaultParallelism) {
+		return new StreamGraphGenerator(env, defaultParallelism).generateInternal(transformations);
 	}
 
 	/**
@@ -182,6 +185,8 @@ public class StreamGraphGenerator {
 			transformedIds = transformCoFeedback((CoFeedbackTransformation<?>) transform);
 		} else if (transform instanceof PartitionTransformation<?>) {
 			transformedIds = transformPartition((PartitionTransformation<?>) transform);
+		} else if (transform instanceof SideOutputTransformation<?>) {
+			transformedIds = transformSideOutput((SideOutputTransformation<?>) transform);
 		} else {
 			throw new IllegalStateException("Unknown transformation: " + transform);
 		}
@@ -294,6 +299,35 @@ public class StreamGraphGenerator {
 		for (int inputId : resultIds) {
 			int virtualId = StreamTransformation.getNewNodeId();
 			streamGraph.addVirtualSelectNode(inputId, virtualId, select.getSelectedNames());
+			virtualResultIds.add(virtualId);
+		}
+		return virtualResultIds;
+	}
+
+	/**
+	 * Transforms a {@code SideOutputTransformation}.
+	 *
+	 * <p>
+	 * For this we create a virtual node in the {@code StreamGraph} that holds the side-output
+	 * {@link org.apache.flink.util.OutputTag}.
+	 *
+	 * @see org.apache.flink.streaming.api.graph.StreamGraphGenerator
+	 */
+	private <T> Collection<Integer> transformSideOutput(SideOutputTransformation<T> sideOutput) {
+		StreamTransformation<?> input = sideOutput.getInput();
+		Collection<Integer> resultIds = transform(input);
+
+
+		// the recursive transform might have already transformed this
+		if (alreadyTransformed.containsKey(sideOutput)) {
+			return alreadyTransformed.get(sideOutput);
+		}
+
+		List<Integer> virtualResultIds = new ArrayList<>();
+
+		for (int inputId : resultIds) {
+			int virtualId = StreamTransformation.getNewNodeId();
+			streamGraph.addVirtualSideOutputNode(inputId, virtualId, sideOutput.getOutputTag());
 			virtualResultIds.add(virtualId);
 		}
 		return virtualResultIds;

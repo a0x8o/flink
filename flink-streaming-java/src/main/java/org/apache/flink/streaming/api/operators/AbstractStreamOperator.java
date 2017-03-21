@@ -66,6 +66,7 @@ import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.runtime.tasks.OperatorStateHandles;
 import org.apache.flink.streaming.runtime.tasks.ProcessingTimeService;
 import org.apache.flink.streaming.runtime.tasks.StreamTask;
+import org.apache.flink.util.OutputTag;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -215,8 +216,6 @@ public abstract class AbstractStreamOperator<OUT>
 
 		if (restoring) {
 
-			restoreStreamCheckpointed(stateHandles);
-
 			//pass directly
 			operatorStateHandlesBackend = stateHandles.getManagedOperatorState();
 			operatorStateHandlesRaw = stateHandles.getRawOperatorState();
@@ -240,6 +239,14 @@ public abstract class AbstractStreamOperator<OUT>
 				getContainingTask().getCancelables()); // access to register streams for canceling
 
 		initializeState(initializationContext);
+
+		if (restoring) {
+
+			// finally restore the legacy state in case we are
+			// migrating from a previous Flink version.
+
+			restoreStreamCheckpointed(stateHandles);
+		}
 	}
 
 	@Deprecated
@@ -853,6 +860,12 @@ public abstract class AbstractStreamOperator<OUT>
 		public void collect(StreamRecord<OUT> record) {
 			numRecordsOut.inc();
 			output.collect(record);
+		}
+
+		@Override
+		public <X> void collect(OutputTag<?> outputTag, StreamRecord<X> record) {
+			numRecordsOut.inc();
+			output.collect(outputTag, record);
 		}
 
 		@Override

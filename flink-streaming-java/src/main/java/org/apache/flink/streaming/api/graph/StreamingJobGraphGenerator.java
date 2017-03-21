@@ -19,6 +19,7 @@ package org.apache.flink.streaming.api.graph;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.flink.annotation.Internal;
+import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.operators.ResourceSpec;
 import org.apache.flink.api.common.operators.util.UserCodeObjectWrapper;
 import org.apache.flink.api.common.restartstrategy.RestartStrategies;
@@ -92,10 +93,13 @@ public class StreamingJobGraphGenerator {
 	private final StreamGraphHasher defaultStreamGraphHasher;
 	private final List<StreamGraphHasher> legacyStreamGraphHashers;
 
-	public StreamingJobGraphGenerator(StreamGraph streamGraph) {
+	private final int defaultParallelism;
+
+	public StreamingJobGraphGenerator(StreamGraph streamGraph, int defaultParallelism) {
 		this.streamGraph = streamGraph;
 		this.defaultStreamGraphHasher = new StreamGraphHasherV2();
 		this.legacyStreamGraphHashers = Arrays.asList(new StreamGraphHasherV1(), new StreamGraphUserHashHasher());
+		this.defaultParallelism = defaultParallelism;
 	}
 
 	private void init() {
@@ -338,11 +342,11 @@ public class StreamingJobGraphGenerator {
 
 		int parallelism = streamNode.getParallelism();
 
-		if (parallelism > 0) {
-			jobVertex.setParallelism(parallelism);
-		} else {
-			parallelism = jobVertex.getParallelism();
+		if (parallelism == ExecutionConfig.PARALLELISM_DEFAULT) {
+			parallelism = defaultParallelism;
 		}
+
+		jobVertex.setParallelism(parallelism);
 
 		jobVertex.setMaxParallelism(streamNode.getMaxParallelism());
 
@@ -369,6 +373,25 @@ public class StreamingJobGraphGenerator {
 		config.setTypeSerializerIn1(vertex.getTypeSerializerIn1());
 		config.setTypeSerializerIn2(vertex.getTypeSerializerIn2());
 		config.setTypeSerializerOut(vertex.getTypeSerializerOut());
+
+		// iterate edges, find sideOutput edges create and save serializers for each outputTag type
+		for (StreamEdge edge : chainableOutputs) {
+			if (edge.getOutputTag() != null) {
+				config.setTypeSerializerSideOut(
+					edge.getOutputTag(),
+					edge.getOutputTag().getTypeInfo().createSerializer(streamGraph.getExecutionConfig())
+				);
+			}
+		}
+		for (StreamEdge edge : nonChainableOutputs) {
+			if (edge.getOutputTag() != null) {
+				config.setTypeSerializerSideOut(
+						edge.getOutputTag(),
+						edge.getOutputTag().getTypeInfo().createSerializer(streamGraph.getExecutionConfig())
+				);
+			}
+		}
+
 
 		config.setStreamOperator(vertex.getOperator());
 		config.setOutputSelectors(vertex.getOutputSelectors());

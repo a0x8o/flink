@@ -28,6 +28,7 @@ import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
 import org.apache.flink.runtime.concurrent.Future;
 import org.apache.flink.runtime.concurrent.impl.FlinkCompletableFuture;
 import org.apache.flink.runtime.filecache.FileCache;
+import org.apache.flink.runtime.heartbeat.HeartbeatServices;
 import org.apache.flink.runtime.highavailability.TestingHighAvailabilityServices;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.network.NetworkEnvironment;
@@ -66,6 +67,7 @@ import static org.junit.Assert.assertTrue;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.argThat;
 import static org.mockito.Matchers.eq;
+import static org.mockito.Mockito.RETURNS_MOCKS;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -95,14 +97,14 @@ public class TaskExecutorITCase {
 		TestingSerialRpcService rpcService = new TestingSerialRpcService();
 		ResourceManagerConfiguration resourceManagerConfiguration = new ResourceManagerConfiguration(
 			Time.milliseconds(500L),
-			Time.milliseconds(500L),
-			Time.minutes(5L));
+			Time.milliseconds(500L));
 		SlotManagerFactory slotManagerFactory = new DefaultSlotManager.Factory();
 		JobLeaderIdService jobLeaderIdService = new JobLeaderIdService(
 			testingHAServices,
 			rpcService.getScheduledExecutor(),
-			resourceManagerConfiguration.getJobTimeout());
+			Time.minutes(5L));
 		MetricRegistry metricRegistry = mock(MetricRegistry.class);
+		HeartbeatServices heartbeatServices = mock(HeartbeatServices.class, RETURNS_MOCKS);
 
 		final TaskManagerConfiguration taskManagerConfiguration = TaskManagerConfiguration.fromConfiguration(configuration);
 		final TaskManagerLocation taskManagerLocation = new TaskManagerLocation(taskManagerResourceId, InetAddress.getLocalHost(), 1234);
@@ -133,6 +135,7 @@ public class TaskExecutorITCase {
 			ioManager,
 			networkEnvironment,
 			testingHAServices,
+			heartbeatServices,
 			metricRegistry,
 			taskManagerMetricGroup,
 			broadcastVariableManager,
