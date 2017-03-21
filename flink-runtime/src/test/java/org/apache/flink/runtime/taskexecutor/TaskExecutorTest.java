@@ -67,7 +67,6 @@ import org.apache.flink.runtime.resourcemanager.ResourceManagerGateway;
 import org.apache.flink.runtime.resourcemanager.messages.taskexecutor.TMSlotRequestRegistered;
 import org.apache.flink.runtime.resourcemanager.messages.taskexecutor.TMSlotRequestRejected;
 import org.apache.flink.runtime.resourcemanager.messages.taskexecutor.TMSlotRequestReply;
-import org.apache.flink.runtime.rpc.FatalErrorHandler;
 import org.apache.flink.runtime.rpc.TestingSerialRpcService;
 import org.apache.flink.runtime.taskexecutor.slot.SlotOffer;
 import org.apache.flink.runtime.taskexecutor.slot.TaskSlotTable;
@@ -199,7 +198,7 @@ public class TaskExecutorTest extends TestLogger {
 					eq(taskManager.getAddress()), eq(taskManagerLocation), eq(jmLeaderId), any(Time.class));
 
 			// the timeout should trigger disconnecting from the JobManager
-			verify(jobMasterGateway, timeout(heartbeatTimeout * 5)).disconnectTaskManager(eq(taskManagerLocation.getResourceID()), any(TimeoutException.class));
+			verify(jobMasterGateway, timeout(heartbeatTimeout * 50L)).disconnectTaskManager(eq(taskManagerLocation.getResourceID()), any(TimeoutException.class));
 
 			// check if a concurrent error occurred
 			testingFatalErrorHandler.rethrowError();
@@ -216,13 +215,11 @@ public class TaskExecutorTest extends TestLogger {
 
 		final TestingSerialRpcService rpc = new TestingSerialRpcService();
 		try {
-			final FatalErrorHandler errorHandler = mock(FatalErrorHandler.class);
-
 			// register a mock resource manager gateway
 			ResourceManagerGateway rmGateway = mock(ResourceManagerGateway.class);
 			when(rmGateway.registerTaskExecutor(
 					any(UUID.class), anyString(), any(ResourceID.class), any(SlotReport.class), any(Time.class)))
-				.thenReturn(FlinkCompletableFuture.<RegistrationResponse>completed(new RegistrationResponse.Success()));
+				.thenReturn(FlinkCompletableFuture.<RegistrationResponse>completed(new TaskExecutorRegistrationSuccess(new InstanceID(), 10L)));
 
 			TaskManagerConfiguration taskManagerServicesConfiguration = mock(TaskManagerConfiguration.class);
 			when(taskManagerServicesConfiguration.getNumberSlots()).thenReturn(1);
@@ -289,10 +286,12 @@ public class TaskExecutorTest extends TestLogger {
 
 			when(rmGateway1.registerTaskExecutor(
 					any(UUID.class), anyString(), any(ResourceID.class), any(SlotReport.class), any(Time.class)))
-					.thenReturn(FlinkCompletableFuture.<RegistrationResponse>completed(new RegistrationResponse.Success()));
+					.thenReturn(FlinkCompletableFuture.<RegistrationResponse>completed(
+						new TaskExecutorRegistrationSuccess(new InstanceID(), 10L)));
 			when(rmGateway2.registerTaskExecutor(
 					any(UUID.class), anyString(), any(ResourceID.class), any(SlotReport.class), any(Time.class)))
-					.thenReturn(FlinkCompletableFuture.<RegistrationResponse>completed(new RegistrationResponse.Success()));
+					.thenReturn(FlinkCompletableFuture.<RegistrationResponse>completed(
+						new TaskExecutorRegistrationSuccess(new InstanceID(), 10L)));
 
 			rpc.registerGateway(address1, rmGateway1);
 			rpc.registerGateway(address2, rmGateway2);
@@ -547,6 +546,11 @@ public class TaskExecutorTest extends TestLogger {
 				any(Time.class)
 		)).thenReturn(FlinkCompletableFuture.<RegistrationResponse>completed(new JMTMRegistrationSuccess(jmResourceId, blobPort)));
 		when(jobMasterGateway.getHostname()).thenReturn(jobManagerAddress);
+		when(jobMasterGateway.offerSlots(
+			any(ResourceID.class),
+			any(Iterable.class),
+			any(UUID.class),
+			any(Time.class))).thenReturn(mock(Future.class, RETURNS_MOCKS));
 
 		rpc.registerGateway(resourceManagerAddress, resourceManagerGateway);
 		rpc.registerGateway(jobManagerAddress, jobMasterGateway);
