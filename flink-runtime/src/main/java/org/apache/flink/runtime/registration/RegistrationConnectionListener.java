@@ -16,13 +16,25 @@
  * limitations under the License.
  */
 
-package org.apache.flink.cep.nfa;
+package org.apache.flink.runtime.registration;
 
 /**
- * Set of actions when doing a state transition from a {@link State} to another.
+ * Classes which want to be notified about the registration result by the {@link RegisteredRpcConnection}
+ * have to implement this interface.
  */
-public enum StateTransitionAction {
-	TAKE, // take the current event and assign it to the current state
-	IGNORE, // ignore the current event
-	PROCEED // do the state transition and keep the current event for further processing (epsilon transition)
+public interface RegistrationConnectionListener<Success extends RegistrationResponse.Success> {
+
+	/**
+	 * This method is called by the {@link RegisteredRpcConnection} when the registration is success.
+	 *
+	 * @param success The concrete response information for successful registration.
+	 */
+	void onRegistrationSuccess(Success success);
+
+	/**
+	 * This method is called by the {@link RegisteredRpcConnection} when the registration fails.
+	 *
+	 * @param failure The exception which causes the registration failure.
+	 */
+	void onRegistrationFailure(Throwable failure);
 }
