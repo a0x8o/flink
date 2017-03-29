@@ -17,8 +17,9 @@
  */
 package org.apache.flink.cep.scala.pattern
 
-import org.apache.flink.api.common.functions.FilterFunction
 import org.apache.flink.cep
+import org.apache.flink.cep.pattern.conditions.IterativeCondition
+import org.apache.flink.cep.pattern.conditions.IterativeCondition.Context
 import org.apache.flink.cep.pattern.{Quantifier, Pattern => JPattern}
 import org.apache.flink.streaming.api.windowing.time.Time
 
@@ -67,8 +68,8 @@ class Pattern[T , F <: T](jPattern: JPattern[T, F]) {
     *
     * @return Filter condition for an event to be matched
     */
-  def getFilterFunction(): Option[FilterFunction[F]] = {
-    Option(jPattern.getFilterFunction())
+  def getCondition(): Option[IterativeCondition[F]] = {
+    Option(jPattern.getCondition())
   }
 
   /**
@@ -127,7 +128,7 @@ class Pattern[T , F <: T](jPattern: JPattern[T, F]) {
     * @param filter Filter condition
     * @return The same pattern operator where the new filter condition is set
     */
-  def where(filter: FilterFunction[F]): Pattern[T, F] = {
+  def where(filter: IterativeCondition[F]): Pattern[T, F] = {
     jPattern.where(filter)
     this
   }
@@ -138,9 +139,39 @@ class Pattern[T , F <: T](jPattern: JPattern[T, F]) {
     * @param filter Or filter function
     * @return The same pattern operator where the new filter condition is set
     */
-  def or(filter: FilterFunction[F]): Pattern[T, F] = {
+  def or(filter: IterativeCondition[F]): Pattern[T, F] = {
     jPattern.or(filter)
     this
+  }
+
+  /**
+    * Specifies a filter condition which is ORed with an existing filter function.
+    *
+    * @param filterFun Or filter function
+    * @return The same pattern operator where the new filter condition is set
+    */
+  def or(filterFun: (F, Context[F]) => Boolean): Pattern[T, F] = {
+    val filter = new IterativeCondition[F] {
+      val cleanFilter = cep.scala.cleanClosure(filterFun)
+
+      override def filter(value: F, ctx: Context[F]): Boolean = cleanFilter(value, ctx)
+    }
+    or(filter)
+  }
+
+  /**
+    * Specifies a filter condition which has to be fulfilled by an event in order to be matched.
+    *
+    * @param filterFun Filter condition
+    * @return The same pattern operator where the new filter condition is set
+    */
+  def where(filterFun: (F, Context[F]) => Boolean): Pattern[T, F] = {
+    val filter = new IterativeCondition[F] {
+      val cleanFilter = cep.scala.cleanClosure(filterFun)
+
+      override def filter(value: F, ctx: Context[F]): Boolean = cleanFilter(value, ctx)
+    }
+    where(filter)
   }
 
   /**
@@ -150,10 +181,10 @@ class Pattern[T , F <: T](jPattern: JPattern[T, F]) {
     * @return The same pattern operator where the new filter condition is set
     */
   def where(filterFun: F => Boolean): Pattern[T, F] = {
-    val filter = new FilterFunction[F] {
+    val filter = new IterativeCondition[F] {
       val cleanFilter = cep.scala.cleanClosure(filterFun)
 
-      override def filter(value: F): Boolean = cleanFilter(value)
+      override def filter(value: F, ctx: Context[F]): Boolean = cleanFilter(value)
     }
     where(filter)
   }
