@@ -43,8 +43,8 @@ import org.apache.flink.api.common.typeutils.base.IntSerializer;
 import org.apache.flink.api.common.typeutils.base.LongSerializer;
 import org.apache.flink.api.common.typeutils.base.StringSerializer;
 import org.apache.flink.api.java.typeutils.GenericTypeInfo;
-import org.apache.flink.api.java.typeutils.runtime.kryo.KryoSerializer;
 import org.apache.flink.api.java.typeutils.runtime.kryo.JavaSerializer;
+import org.apache.flink.api.java.typeutils.runtime.kryo.KryoSerializer;
 import org.apache.flink.core.memory.DataOutputViewStreamWrapper;
 import org.apache.flink.core.testutils.CheckedThread;
 import org.apache.flink.core.testutils.OneShotLatch;
@@ -69,6 +69,7 @@ import org.apache.flink.util.TestLogger;
 import org.junit.Assert;
 import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.ExpectedException;
 
 import java.io.IOException;
 import java.io.Serializable;
@@ -98,7 +99,6 @@ import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
-import org.junit.rules.ExpectedException;
 
 
 /**
@@ -133,7 +133,8 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 			int numberOfKeyGroups,
 			KeyGroupRange keyGroupRange,
 			Environment env) throws Exception {
-		return getStateBackend().createKeyedStateBackend(
+
+		AbstractKeyedStateBackend<K> backend = getStateBackend().createKeyedStateBackend(
 				env,
 				new JobID(),
 				"test_op",
@@ -141,6 +142,10 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 				numberOfKeyGroups,
 				keyGroupRange,
 				env.getTaskKvStateRegistry());
+
+		backend.restore(null);
+
+		return backend;
 	}
 
 	protected <K> AbstractKeyedStateBackend<K> restoreKeyedBackend(TypeSerializer<K> keySerializer, KeyedStateHandle state) throws Exception {
@@ -2197,9 +2202,11 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 
 		Assert.assertNotNull(stateHandle);
 
-		backend = createKeyedBackend(IntSerializer.INSTANCE);
+		backend = null;
+
 		try {
-			backend.restore(Collections.singleton(stateHandle));
+			backend = restoreKeyedBackend(IntSerializer.INSTANCE, stateHandle);
+
 			InternalValueState<VoidNamespace, Integer> valueState = backend.createValueState(
 					VoidNamespaceSerializer.INSTANCE,
 					new ValueStateDescriptor<>("test", IntSerializer.INSTANCE));
@@ -2228,7 +2235,7 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 		BlockerCheckpointStreamFactory streamFactory = new BlockerCheckpointStreamFactory(1024 * 1024);
 		streamFactory.setWaiterLatch(waiter);
 		streamFactory.setBlockerLatch(blocker);
-		streamFactory.setAfterNumberInvocations(100);
+		streamFactory.setAfterNumberInvocations(10);
 
 		AbstractKeyedStateBackend<Integer> backend = null;
 		try {
@@ -2297,7 +2304,7 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 	 * Returns the value by getting the serialized value and deserializing it
 	 * if it is not null.
 	 */
-	private static <V, K, N> V getSerializedValue(
+	protected static <V, K, N> V getSerializedValue(
 			InternalKvState<N> kvState,
 			K key,
 			TypeSerializer<K> keySerializer,

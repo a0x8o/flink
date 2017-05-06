@@ -47,13 +47,34 @@ class SqlITCase extends StreamingWithStateTestBase {
     (8L, 8, "Hello World"),
     (20L, 20, "Hello World"))
 
+  /** test unbounded groupby (without window) **/
+  @Test
+  def testUnboundedGroupby(): Unit = {
+
+    val env = StreamExecutionEnvironment.getExecutionEnvironment
+    val tEnv = TableEnvironment.getTableEnvironment(env)
+    StreamITCase.clear
+
+    val sqlQuery = "SELECT b, COUNT(a) FROM MyTable GROUP BY b"
+
+    val t = StreamTestData.get3TupleDataStream(env).toTable(tEnv).as('a, 'b, 'c)
+    tEnv.registerTable("MyTable", t)
+
+    val result = tEnv.sql(sqlQuery).toRetractStream[Row]
+    result.addSink(new StreamITCase.RetractingSink).setParallelism(1)
+    env.execute()
+
+    val expected = List("1,1", "2,2", "3,3", "4,4", "5,5", "6,6")
+    assertEquals(expected.sorted, StreamITCase.retractedResults.sorted)
+  }
+
   /** test selection **/
   @Test
   def testSelectExpressionFromTable(): Unit = {
 
     val env = StreamExecutionEnvironment.getExecutionEnvironment
     val tEnv = TableEnvironment.getTableEnvironment(env)
-    StreamITCase.testResults = mutable.MutableList()
+    StreamITCase.clear
 
     val sqlQuery = "SELECT a * 2, b - 1 FROM MyTable"
 
@@ -64,7 +85,7 @@ class SqlITCase extends StreamingWithStateTestBase {
     result.addSink(new StreamITCase.StringSink)
     env.execute()
 
-    val expected = mutable.MutableList("2,0", "4,1", "6,1")
+    val expected = List("2,0", "4,1", "6,1")
     assertEquals(expected.sorted, StreamITCase.testResults.sorted)
   }
 
@@ -74,7 +95,7 @@ class SqlITCase extends StreamingWithStateTestBase {
 
     val env = StreamExecutionEnvironment.getExecutionEnvironment
     val tEnv = TableEnvironment.getTableEnvironment(env)
-    StreamITCase.testResults = mutable.MutableList()
+    StreamITCase.clear
 
     val sqlQuery = "SELECT * FROM MyTable WHERE a = 3"
 
@@ -85,7 +106,7 @@ class SqlITCase extends StreamingWithStateTestBase {
     result.addSink(new StreamITCase.StringSink)
     env.execute()
 
-    val expected = mutable.MutableList("3,2,Hello world")
+    val expected = List("3,2,Hello world")
     assertEquals(expected.sorted, StreamITCase.testResults.sorted)
   }
 
@@ -95,7 +116,7 @@ class SqlITCase extends StreamingWithStateTestBase {
 
     val env = StreamExecutionEnvironment.getExecutionEnvironment
     val tEnv = TableEnvironment.getTableEnvironment(env)
-    StreamITCase.testResults = mutable.MutableList()
+    StreamITCase.clear
 
     val sqlQuery = "SELECT * FROM MyTable WHERE _1 = 3"
 
@@ -106,7 +127,7 @@ class SqlITCase extends StreamingWithStateTestBase {
     result.addSink(new StreamITCase.StringSink)
     env.execute()
 
-    val expected = mutable.MutableList("3,2,Hello world")
+    val expected = List("3,2,Hello world")
     assertEquals(expected.sorted, StreamITCase.testResults.sorted)
   }
 
@@ -115,7 +136,7 @@ class SqlITCase extends StreamingWithStateTestBase {
   def testUnion(): Unit = {
     val env = StreamExecutionEnvironment.getExecutionEnvironment
     val tEnv = TableEnvironment.getTableEnvironment(env)
-    StreamITCase.testResults = mutable.MutableList()
+    StreamITCase.clear
 
     val sqlQuery = "SELECT * FROM T1 " +
       "UNION ALL " +
@@ -130,7 +151,7 @@ class SqlITCase extends StreamingWithStateTestBase {
     result.addSink(new StreamITCase.StringSink)
     env.execute()
 
-    val expected = mutable.MutableList(
+    val expected = List(
       "1,1,Hi", "1,1,Hi",
       "2,2,Hello", "2,2,Hello",
       "3,2,Hello world", "3,2,Hello world")
@@ -142,7 +163,7 @@ class SqlITCase extends StreamingWithStateTestBase {
   def testUnionWithFilter(): Unit = {
     val env = StreamExecutionEnvironment.getExecutionEnvironment
     val tEnv = TableEnvironment.getTableEnvironment(env)
-    StreamITCase.testResults = mutable.MutableList()
+    StreamITCase.clear
 
     val sqlQuery = "SELECT * FROM T1 WHERE a = 3 " +
       "UNION ALL " +
@@ -157,7 +178,7 @@ class SqlITCase extends StreamingWithStateTestBase {
     result.addSink(new StreamITCase.StringSink)
     env.execute()
 
-    val expected = mutable.MutableList(
+    val expected = List(
       "2,2,Hello",
       "3,2,Hello world")
     assertEquals(expected.sorted, StreamITCase.testResults.sorted)
@@ -168,7 +189,7 @@ class SqlITCase extends StreamingWithStateTestBase {
   def testUnionTableWithDataSet(): Unit = {
     val env = StreamExecutionEnvironment.getExecutionEnvironment
     val tEnv = TableEnvironment.getTableEnvironment(env)
-    StreamITCase.testResults = mutable.MutableList()
+    StreamITCase.clear
 
     val sqlQuery = "SELECT c FROM T1 WHERE a = 3 " +
       "UNION ALL " +
@@ -183,7 +204,7 @@ class SqlITCase extends StreamingWithStateTestBase {
     result.addSink(new StreamITCase.StringSink)
     env.execute()
 
-    val expected = mutable.MutableList("Hello", "Hello world")
+    val expected = List("Hello", "Hello world")
     assertEquals(expected.sorted, StreamITCase.testResults.sorted)
   }
 
@@ -192,26 +213,26 @@ class SqlITCase extends StreamingWithStateTestBase {
     val env = StreamExecutionEnvironment.getExecutionEnvironment
     env.setStateBackend(getStateBackend)
     val tEnv = TableEnvironment.getTableEnvironment(env)
-    StreamITCase.testResults = mutable.MutableList()
+    StreamITCase.clear
 
     // for sum aggregation ensure that every time the order of each element is consistent
     env.setParallelism(1)
 
-    val t1 = env.fromCollection(data).toTable(tEnv).as('a, 'b, 'c)
+    val t1 = env.fromCollection(data).toTable(tEnv, 'a, 'b, 'c, 'proctime.proctime)
 
     tEnv.registerTable("T1", t1)
 
     val sqlQuery = "SELECT " +
       "c, " +
-      "count(a) OVER (PARTITION BY c ORDER BY ProcTime()  RANGE UNBOUNDED preceding) as cnt1, " +
-      "sum(a) OVER (PARTITION BY c ORDER BY ProcTime() RANGE UNBOUNDED preceding) as cnt2 " +
+      "count(a) OVER (PARTITION BY c ORDER BY proctime  RANGE UNBOUNDED preceding) as cnt1, " +
+      "sum(a) OVER (PARTITION BY c ORDER BY proctime RANGE UNBOUNDED preceding) as cnt2 " +
       "from T1"
 
     val result = tEnv.sql(sqlQuery).toDataStream[Row]
     result.addSink(new StreamITCase.StringSink)
     env.execute()
 
-    val expected = mutable.MutableList(
+    val expected = List(
       "Hello World,1,7", "Hello World,2,15", "Hello World,3,35",
       "Hello,1,1", "Hello,2,3", "Hello,3,6", "Hello,4,10", "Hello,5,15", "Hello,6,21")
     assertEquals(expected.sorted, StreamITCase.testResults.sorted)
@@ -222,15 +243,15 @@ class SqlITCase extends StreamingWithStateTestBase {
     val env = StreamExecutionEnvironment.getExecutionEnvironment
     env.setStateBackend(getStateBackend)
     val tEnv = TableEnvironment.getTableEnvironment(env)
-    StreamITCase.testResults = mutable.MutableList()
+    StreamITCase.clear
 
-    val t1 = env.fromCollection(data).toTable(tEnv).as('a, 'b, 'c)
+    val t1 = env.fromCollection(data).toTable(tEnv, 'a, 'b, 'c, 'proctime.proctime)
 
     tEnv.registerTable("T1", t1)
 
     val sqlQuery = "SELECT " +
       "c, " +
-      "count(a) OVER (PARTITION BY c ORDER BY ProcTime() ROWS BETWEEN UNBOUNDED preceding AND " +
+      "count(a) OVER (PARTITION BY c ORDER BY proctime ROWS BETWEEN UNBOUNDED preceding AND " +
       "CURRENT ROW)" +
       "from T1"
 
@@ -238,7 +259,7 @@ class SqlITCase extends StreamingWithStateTestBase {
     result.addSink(new StreamITCase.StringSink)
     env.execute()
 
-    val expected = mutable.MutableList(
+    val expected = List(
       "Hello World,1", "Hello World,2", "Hello World,3",
       "Hello,1", "Hello,2", "Hello,3", "Hello,4", "Hello,5", "Hello,6")
     assertEquals(expected.sorted, StreamITCase.testResults.sorted)
@@ -249,26 +270,26 @@ class SqlITCase extends StreamingWithStateTestBase {
     val env = StreamExecutionEnvironment.getExecutionEnvironment
     env.setStateBackend(getStateBackend)
     val tEnv = TableEnvironment.getTableEnvironment(env)
-    StreamITCase.testResults = mutable.MutableList()
+    StreamITCase.clear
 
     // for sum aggregation ensure that every time the order of each element is consistent
     env.setParallelism(1)
 
-    val t1 = env.fromCollection(data).toTable(tEnv).as('a, 'b, 'c)
+    val t1 = env.fromCollection(data).toTable(tEnv, 'a, 'b, 'c, 'proctime.proctime)
 
     tEnv.registerTable("T1", t1)
 
     val sqlQuery = "SELECT " +
       "c, " +
-      "count(a) OVER (ORDER BY ProcTime()  RANGE UNBOUNDED preceding) as cnt1, " +
-      "sum(a) OVER (ORDER BY ProcTime() RANGE UNBOUNDED preceding) as cnt2 " +
+      "count(a) OVER (ORDER BY proctime  RANGE UNBOUNDED preceding) as cnt1, " +
+      "sum(a) OVER (ORDER BY proctime RANGE UNBOUNDED preceding) as cnt2 " +
       "from T1"
 
     val result = tEnv.sql(sqlQuery).toDataStream[Row]
     result.addSink(new StreamITCase.StringSink)
     env.execute()
 
-    val expected = mutable.MutableList(
+    val expected = List(
       "Hello World,7,28", "Hello World,8,36", "Hello World,9,56",
       "Hello,1,1", "Hello,2,3", "Hello,3,6", "Hello,4,10", "Hello,5,15", "Hello,6,21")
     assertEquals(expected.sorted, StreamITCase.testResults.sorted)
@@ -279,21 +300,21 @@ class SqlITCase extends StreamingWithStateTestBase {
     val env = StreamExecutionEnvironment.getExecutionEnvironment
     env.setStateBackend(getStateBackend)
     val tEnv = TableEnvironment.getTableEnvironment(env)
-    StreamITCase.testResults = mutable.MutableList()
+    StreamITCase.clear
 
-    val t1 = env.fromCollection(data).toTable(tEnv).as('a, 'b, 'c)
+    val t1 = env.fromCollection(data).toTable(tEnv, 'a, 'b, 'c, 'proctime.proctime)
 
     tEnv.registerTable("T1", t1)
 
     val sqlQuery = "SELECT " +
-      "count(a) OVER (ORDER BY ProcTime() ROWS BETWEEN UNBOUNDED preceding AND CURRENT ROW)" +
+      "count(a) OVER (ORDER BY proctime ROWS BETWEEN UNBOUNDED preceding AND CURRENT ROW)" +
       "from T1"
 
     val result = tEnv.sql(sqlQuery).toDataStream[Row]
     result.addSink(new StreamITCase.StringSink)
     env.execute()
 
-    val expected = mutable.MutableList("1", "2", "3", "4", "5", "6", "7", "8", "9")
+    val expected = List("1", "2", "3", "4", "5", "6", "7", "8", "9")
     assertEquals(expected.sorted, StreamITCase.testResults.sorted)
   }
 
@@ -328,21 +349,21 @@ class SqlITCase extends StreamingWithStateTestBase {
 
     val t1 = env
       .addSource[(Long, Int, String)](new EventTimeSourceFunction[(Long, Int, String)](data))
-      .toTable(tEnv).as('a, 'b, 'c)
+      .toTable(tEnv, 'a, 'b, 'c, 'rowtime.rowtime)
 
     tEnv.registerTable("T1", t1)
 
     val sqlQuery = "SELECT " +
       "c, a, " +
-      "count(a) OVER (PARTITION BY c ORDER BY RowTime() ROWS BETWEEN 2 preceding AND CURRENT ROW)" +
-      ", sum(a) OVER (PARTITION BY c ORDER BY RowTime() ROWS BETWEEN 2 preceding AND CURRENT ROW)" +
+      "count(a) OVER (PARTITION BY c ORDER BY rowtime ROWS BETWEEN 2 preceding AND CURRENT ROW)" +
+      ", sum(a) OVER (PARTITION BY c ORDER BY rowtime ROWS BETWEEN 2 preceding AND CURRENT ROW)" +
       " from T1"
 
     val result = tEnv.sql(sqlQuery).toDataStream[Row]
     result.addSink(new StreamITCase.StringSink)
     env.execute()
 
-    val expected = mutable.MutableList(
+    val expected = List(
       "Hello,1,1,1", "Hello,1,2,2", "Hello,1,3,3",
       "Hello,2,3,4", "Hello,2,3,5", "Hello,2,3,6",
       "Hello,3,3,7", "Hello,4,3,9", "Hello,5,3,12",
@@ -385,21 +406,21 @@ class SqlITCase extends StreamingWithStateTestBase {
 
     val t1 = env
       .addSource[(Long, Int, String)](new EventTimeSourceFunction[(Long, Int, String)](data))
-      .toTable(tEnv).as('a, 'b, 'c)
+      .toTable(tEnv, 'a, 'b, 'c, 'rowtime.rowtime)
 
     tEnv.registerTable("T1", t1)
 
     val sqlQuery = "SELECT " +
       "c, a, " +
-      "count(a) OVER (ORDER BY RowTime() ROWS BETWEEN 2 preceding AND CURRENT ROW)," +
-      "sum(a) OVER (ORDER BY RowTime() ROWS BETWEEN 2 preceding AND CURRENT ROW)" +
+      "count(a) OVER (ORDER BY rowtime ROWS BETWEEN 2 preceding AND CURRENT ROW)," +
+      "sum(a) OVER (ORDER BY rowtime ROWS BETWEEN 2 preceding AND CURRENT ROW)" +
       "from T1"
 
     val result = tEnv.sql(sqlQuery).toDataStream[Row]
     result.addSink(new StreamITCase.StringSink)
     env.execute()
 
-    val expected = mutable.MutableList(
+    val expected = List(
       "Hello,1,1,1", "Hello,1,2,2", "Hello,1,3,3",
       "Hello,2,3,4", "Hello,2,3,5", "Hello,2,3,6",
       "Hello,3,3,7",
@@ -453,15 +474,15 @@ class SqlITCase extends StreamingWithStateTestBase {
 
     val t1 = env
       .addSource[(Long, Int, String)](new EventTimeSourceFunction[(Long, Int, String)](data))
-      .toTable(tEnv).as('a, 'b, 'c)
+      .toTable(tEnv, 'a, 'b, 'c, 'rowtime.rowtime)
 
     tEnv.registerTable("T1", t1)
 
     val sqlQuery = "SELECT " +
       "c, b, " +
-      "count(a) OVER (PARTITION BY c ORDER BY RowTime() RANGE BETWEEN INTERVAL '1' SECOND " +
+      "count(a) OVER (PARTITION BY c ORDER BY rowtime RANGE BETWEEN INTERVAL '1' SECOND " +
       "preceding AND CURRENT ROW)" +
-      ", sum(a) OVER (PARTITION BY c ORDER BY RowTime() RANGE BETWEEN INTERVAL '1' SECOND " +
+      ", sum(a) OVER (PARTITION BY c ORDER BY rowtime RANGE BETWEEN INTERVAL '1' SECOND " +
       " preceding AND CURRENT ROW)" +
       " from T1"
 
@@ -469,7 +490,7 @@ class SqlITCase extends StreamingWithStateTestBase {
     result.addSink(new StreamITCase.StringSink)
     env.execute()
 
-    val expected = mutable.MutableList(
+    val expected = List(
       "Hello,1,1,1", "Hello,15,2,2", "Hello,16,3,3",
       "Hello,2,6,9", "Hello,3,6,9", "Hello,2,6,9",
       "Hello,3,4,9",
@@ -525,15 +546,15 @@ class SqlITCase extends StreamingWithStateTestBase {
 
     val t1 = env
       .addSource[(Long, Int, String)](new EventTimeSourceFunction[(Long, Int, String)](data))
-      .toTable(tEnv).as('a, 'b, 'c)
+      .toTable(tEnv, 'a, 'b, 'c, 'rowtime.rowtime)
 
     tEnv.registerTable("T1", t1)
 
     val sqlQuery = "SELECT " +
       "c, b, " +
-      "count(a) OVER (ORDER BY RowTime() RANGE BETWEEN INTERVAL '1' SECOND " +
+      "count(a) OVER (ORDER BY rowtime RANGE BETWEEN INTERVAL '1' SECOND " +
       "preceding AND CURRENT ROW)" +
-      ", sum(a) OVER (ORDER BY RowTime() RANGE BETWEEN INTERVAL '1' SECOND " +
+      ", sum(a) OVER (ORDER BY rowtime RANGE BETWEEN INTERVAL '1' SECOND " +
       " preceding AND CURRENT ROW)" +
       " from T1"
 
@@ -541,7 +562,7 @@ class SqlITCase extends StreamingWithStateTestBase {
     result.addSink(new StreamITCase.StringSink)
     env.execute()
 
-    val expected = mutable.MutableList(
+    val expected = List(
       "Hello,1,1,1", "Hello,15,2,2", "Hello,16,3,3",
       "Hello,2,6,9", "Hello,3,6,9", "Hello,2,6,9",
       "Hello,3,4,9",
@@ -563,16 +584,16 @@ class SqlITCase extends StreamingWithStateTestBase {
     val env = StreamExecutionEnvironment.getExecutionEnvironment
     env.setStateBackend(getStateBackend)
     val tEnv = TableEnvironment.getTableEnvironment(env)
-    StreamITCase.testResults = mutable.MutableList()
+    StreamITCase.clear
 
-    val t1 = env.fromCollection(data).toTable(tEnv).as('a, 'b, 'c)
+    val t1 = env.fromCollection(data).toTable(tEnv, 'a, 'b, 'c, 'proctime.proctime)
 
     tEnv.registerTable("T1", t1)
 
     val sqlQuery = "SELECT " +
       "c, " +
-      "count(a) OVER (PARTITION BY c ORDER BY ProcTime() RANGE UNBOUNDED preceding) as cnt1, " +
-      "sum(a) OVER (PARTITION BY b ORDER BY ProcTime() RANGE UNBOUNDED preceding) as cnt2 " +
+      "count(a) OVER (PARTITION BY c ORDER BY proctime RANGE UNBOUNDED preceding) as cnt1, " +
+      "sum(a) OVER (PARTITION BY b ORDER BY proctime RANGE UNBOUNDED preceding) as cnt2 " +
       "from T1"
 
     val result = tEnv.sql(sqlQuery).toDataStream[Row]
@@ -587,20 +608,20 @@ class SqlITCase extends StreamingWithStateTestBase {
     val tEnv = TableEnvironment.getTableEnvironment(env)
     env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime)
     env.setStateBackend(getStateBackend)
-    StreamITCase.testResults = mutable.MutableList()
+    StreamITCase.clear
     env.setParallelism(1)
 
     val sqlQuery = "SELECT a, b, c, " +
       "SUM(b) over (" +
-      "partition by a order by rowtime() rows between unbounded preceding and current row), " +
+      "partition by a order by rowtime rows between unbounded preceding and current row), " +
       "count(b) over (" +
-      "partition by a order by rowtime() rows between unbounded preceding and current row), " +
+      "partition by a order by rowtime rows between unbounded preceding and current row), " +
       "avg(b) over (" +
-      "partition by a order by rowtime() rows between unbounded preceding and current row), " +
+      "partition by a order by rowtime rows between unbounded preceding and current row), " +
       "max(b) over (" +
-      "partition by a order by rowtime() rows between unbounded preceding and current row), " +
+      "partition by a order by rowtime rows between unbounded preceding and current row), " +
       "min(b) over (" +
-      "partition by a order by rowtime() rows between unbounded preceding and current row) " +
+      "partition by a order by rowtime rows between unbounded preceding and current row) " +
       "from T1"
 
     val data = Seq(
@@ -632,7 +653,7 @@ class SqlITCase extends StreamingWithStateTestBase {
     )
 
     val t1 = env.addSource(new EventTimeSourceFunction[(Int, Long, String)](data))
-      .toTable(tEnv).as('a, 'b, 'c)
+      .toTable(tEnv, 'a, 'b, 'c, 'rowtime.rowtime)
 
     tEnv.registerTable("T1", t1)
 
@@ -640,7 +661,7 @@ class SqlITCase extends StreamingWithStateTestBase {
     result.addSink(new StreamITCase.StringSink)
     env.execute()
 
-    val expected = mutable.MutableList(
+    val expected = List(
       "1,2,Hello,2,1,2,2,2",
       "1,3,Hello world,5,2,2,3,2",
       "1,1,Hi,6,3,2,3,1",
@@ -666,19 +687,19 @@ class SqlITCase extends StreamingWithStateTestBase {
     val tEnv = TableEnvironment.getTableEnvironment(env)
     env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime)
     env.setStateBackend(getStateBackend)
-    StreamITCase.testResults = mutable.MutableList()
+    StreamITCase.clear
 
     val sqlQuery = "SELECT a, b, c, " +
       "SUM(b) over (" +
-      "partition by a order by rowtime() rows between unbounded preceding and current row), " +
+      "partition by a order by rowtime rows between unbounded preceding and current row), " +
       "count(b) over (" +
-      "partition by a order by rowtime() rows between unbounded preceding and current row), " +
+      "partition by a order by rowtime rows between unbounded preceding and current row), " +
       "avg(b) over (" +
-      "partition by a order by rowtime() rows between unbounded preceding and current row), " +
+      "partition by a order by rowtime rows between unbounded preceding and current row), " +
       "max(b) over (" +
-      "partition by a order by rowtime() rows between unbounded preceding and current row), " +
+      "partition by a order by rowtime rows between unbounded preceding and current row), " +
       "min(b) over (" +
-      "partition by a order by rowtime() rows between unbounded preceding and current row) " +
+      "partition by a order by rowtime rows between unbounded preceding and current row) " +
       "from T1"
 
     val data = Seq(
@@ -702,7 +723,7 @@ class SqlITCase extends StreamingWithStateTestBase {
     )
 
     val t1 = env.addSource(new EventTimeSourceFunction[(Int, Long, String)](data))
-      .toTable(tEnv).as('a, 'b, 'c)
+      .toTable(tEnv, 'a, 'b, 'c, 'rowtime.rowtime)
 
     tEnv.registerTable("T1", t1)
 
@@ -710,7 +731,7 @@ class SqlITCase extends StreamingWithStateTestBase {
     result.addSink(new StreamITCase.StringSink)
     env.execute()
 
-    val expected = mutable.MutableList(
+    val expected = List(
       "1,2,Hello,2,1,2,2,2",
       "1,3,Hello world,5,2,2,3,2",
       "1,1,Hi,6,3,2,3,1",
@@ -736,15 +757,15 @@ class SqlITCase extends StreamingWithStateTestBase {
     val tEnv = TableEnvironment.getTableEnvironment(env)
     env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime)
     env.setStateBackend(getStateBackend)
-    StreamITCase.testResults = mutable.MutableList()
+    StreamITCase.clear
     env.setParallelism(1)
 
     val sqlQuery = "SELECT a, b, c, " +
-      "SUM(b) over (order by rowtime() rows between unbounded preceding and current row), " +
-      "count(b) over (order by rowtime() rows between unbounded preceding and current row), " +
-      "avg(b) over (order by rowtime() rows between unbounded preceding and current row), " +
-      "max(b) over (order by rowtime() rows between unbounded preceding and current row), " +
-      "min(b) over (order by rowtime() rows between unbounded preceding and current row) " +
+      "SUM(b) over (order by rowtime rows between unbounded preceding and current row), " +
+      "count(b) over (order by rowtime rows between unbounded preceding and current row), " +
+      "avg(b) over (order by rowtime rows between unbounded preceding and current row), " +
+      "max(b) over (order by rowtime rows between unbounded preceding and current row), " +
+      "min(b) over (order by rowtime rows between unbounded preceding and current row) " +
       "from T1"
 
     val data = Seq(
@@ -764,7 +785,7 @@ class SqlITCase extends StreamingWithStateTestBase {
     )
 
     val t1 = env.addSource(new EventTimeSourceFunction[(Int, Long, String)](data))
-      .toTable(tEnv).as('a, 'b, 'c)
+      .toTable(tEnv, 'a, 'b, 'c, 'rowtime.rowtime)
 
     tEnv.registerTable("T1", t1)
 
@@ -772,7 +793,7 @@ class SqlITCase extends StreamingWithStateTestBase {
     result.addSink(new StreamITCase.StringSink)
     env.execute()
 
-    val expected = mutable.MutableList(
+    val expected = List(
       "2,2,Hello,2,1,2,2,2",
       "3,5,Hello,7,2,3,5,2",
       "1,3,Hello,10,3,3,5,2",
@@ -791,15 +812,15 @@ class SqlITCase extends StreamingWithStateTestBase {
     val tEnv = TableEnvironment.getTableEnvironment(env)
     env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime)
     env.setStateBackend(getStateBackend)
-    StreamITCase.testResults = mutable.MutableList()
+    StreamITCase.clear
     env.setParallelism(1)
 
     val sqlQuery = "SELECT a, b, c, " +
-      "SUM(b) over (order by rowtime() rows between unbounded preceding and current row), " +
-      "count(b) over (order by rowtime() rows between unbounded preceding and current row), " +
-      "avg(b) over (order by rowtime() rows between unbounded preceding and current row), " +
-      "max(b) over (order by rowtime() rows between unbounded preceding and current row), " +
-      "min(b) over (order by rowtime() rows between unbounded preceding and current row) " +
+      "SUM(b) over (order by rowtime rows between unbounded preceding and current row), " +
+      "count(b) over (order by rowtime rows between unbounded preceding and current row), " +
+      "avg(b) over (order by rowtime rows between unbounded preceding and current row), " +
+      "max(b) over (order by rowtime rows between unbounded preceding and current row), " +
+      "min(b) over (order by rowtime rows between unbounded preceding and current row) " +
       "from T1"
 
     val data = Seq(
@@ -820,7 +841,7 @@ class SqlITCase extends StreamingWithStateTestBase {
     )
 
     val t1 = env.addSource(new EventTimeSourceFunction[(Int, Long, String)](data))
-      .toTable(tEnv).as('a, 'b, 'c)
+      .toTable(tEnv, 'a, 'b, 'c, 'rowtime.rowtime)
 
     tEnv.registerTable("T1", t1)
 
@@ -828,7 +849,7 @@ class SqlITCase extends StreamingWithStateTestBase {
     result.addSink(new StreamITCase.StringSink)
     env.execute()
 
-    val expected = mutable.MutableList(
+    val expected = List(
       "2,2,Hello,2,1,2,2,2",
       "3,5,Hello,7,2,3,5,2",
       "1,3,Hello,10,3,3,5,2",
@@ -848,15 +869,15 @@ class SqlITCase extends StreamingWithStateTestBase {
     val tEnv = TableEnvironment.getTableEnvironment(env)
     env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime)
     env.setStateBackend(getStateBackend)
-    StreamITCase.testResults = mutable.MutableList()
+    StreamITCase.clear
     env.setParallelism(1)
 
     val sqlQuery = "SELECT a, b, c, " +
-      "SUM(b) over (order by rowtime() range between unbounded preceding and current row), " +
-      "count(b) over (order by rowtime() range between unbounded preceding and current row), " +
-      "avg(b) over (order by rowtime() range between unbounded preceding and current row), " +
-      "max(b) over (order by rowtime() range between unbounded preceding and current row), " +
-      "min(b) over (order by rowtime() range between unbounded preceding and current row) " +
+      "SUM(b) over (order by rowtime range between unbounded preceding and current row), " +
+      "count(b) over (order by rowtime range between unbounded preceding and current row), " +
+      "avg(b) over (order by rowtime range between unbounded preceding and current row), " +
+      "max(b) over (order by rowtime range between unbounded preceding and current row), " +
+      "min(b) over (order by rowtime range between unbounded preceding and current row) " +
       "from T1"
 
     val data = Seq(
@@ -878,7 +899,7 @@ class SqlITCase extends StreamingWithStateTestBase {
     )
 
     val t1 = env.addSource(new EventTimeSourceFunction[(Int, Long, String)](data))
-      .toTable(tEnv).as('a, 'b, 'c)
+      .toTable(tEnv, 'a, 'b, 'c, 'rowtime.rowtime)
 
     tEnv.registerTable("T1", t1)
 
@@ -886,7 +907,7 @@ class SqlITCase extends StreamingWithStateTestBase {
     result.addSink(new StreamITCase.StringSink)
     env.execute()
 
-    val expected = mutable.MutableList(
+    val expected = List(
       "2,1,Hello,1,1,1,1,1",
       "1,1,Hello,7,4,1,3,1",
       "1,2,Hello,7,4,1,3,1",
@@ -911,20 +932,20 @@ class SqlITCase extends StreamingWithStateTestBase {
     val tEnv = TableEnvironment.getTableEnvironment(env)
     env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime)
     env.setStateBackend(getStateBackend)
-    StreamITCase.testResults = mutable.MutableList()
+    StreamITCase.clear
     env.setParallelism(1)
 
     val sqlQuery = "SELECT a, b, c, " +
       "SUM(b) over (" +
-      "partition by a order by rowtime() range between unbounded preceding and current row), " +
+      "partition by a order by rowtime range between unbounded preceding and current row), " +
       "count(b) over (" +
-      "partition by a order by rowtime() range between unbounded preceding and current row), " +
+      "partition by a order by rowtime range between unbounded preceding and current row), " +
       "avg(b) over (" +
-      "partition by a order by rowtime() range between unbounded preceding and current row), " +
+      "partition by a order by rowtime range between unbounded preceding and current row), " +
       "max(b) over (" +
-      "partition by a order by rowtime() range between unbounded preceding and current row), " +
+      "partition by a order by rowtime range between unbounded preceding and current row), " +
       "min(b) over (" +
-      "partition by a order by rowtime() range between unbounded preceding and current row) " +
+      "partition by a order by rowtime range between unbounded preceding and current row) " +
       "from T1"
 
     val data = Seq(
@@ -946,7 +967,7 @@ class SqlITCase extends StreamingWithStateTestBase {
     )
 
     val t1 = env.addSource(new EventTimeSourceFunction[(Int, Long, String)](data))
-      .toTable(tEnv).as('a, 'b, 'c)
+      .toTable(tEnv, 'a, 'b, 'c, 'rowtime.rowtime)
 
     tEnv.registerTable("T1", t1)
 
@@ -954,7 +975,7 @@ class SqlITCase extends StreamingWithStateTestBase {
     result.addSink(new StreamITCase.StringSink)
     env.execute()
 
-    val expected = mutable.MutableList(
+    val expected = List(
       "1,1,Hello,6,3,2,3,1",
       "1,2,Hello,6,3,2,3,1",
       "1,3,Hello world,6,3,2,3,1",
@@ -979,23 +1000,24 @@ class SqlITCase extends StreamingWithStateTestBase {
     env.setStateBackend(getStateBackend)
     val tEnv = TableEnvironment.getTableEnvironment(env)
     env.setParallelism(1)
-    StreamITCase.testResults = mutable.MutableList()
+    StreamITCase.clear
 
-    val t = StreamTestData.get5TupleDataStream(env).toTable(tEnv).as('a, 'b, 'c, 'd, 'e)
+    val t = StreamTestData.get5TupleDataStream(env)
+      .toTable(tEnv, 'a, 'b, 'c, 'd, 'e, 'proctime.proctime)
     tEnv.registerTable("MyTable", t)
 
     val sqlQuery = "SELECT a,  " +
       " SUM(c) OVER (" +
-      " PARTITION BY a ORDER BY procTime() ROWS BETWEEN 2 PRECEDING AND CURRENT ROW) AS sumC , " +
+      " PARTITION BY a ORDER BY proctime ROWS BETWEEN 2 PRECEDING AND CURRENT ROW) AS sumC , " +
       " MIN(c) OVER (" +
-      " PARTITION BY a ORDER BY procTime() ROWS BETWEEN 2 PRECEDING AND CURRENT ROW) AS minC " +
+      " PARTITION BY a ORDER BY proctime ROWS BETWEEN 2 PRECEDING AND CURRENT ROW) AS minC " +
       " FROM MyTable"
 
     val result = tEnv.sql(sqlQuery).toDataStream[Row]
     result.addSink(new StreamITCase.StringSink)
     env.execute()
 
-    val expected = mutable.MutableList(
+    val expected = List(
       "1,0,0",
       "2,1,1",
       "2,3,1",
@@ -1021,23 +1043,24 @@ class SqlITCase extends StreamingWithStateTestBase {
     env.setStateBackend(getStateBackend)
     val tEnv = TableEnvironment.getTableEnvironment(env)
     env.setParallelism(1)
-    StreamITCase.testResults = mutable.MutableList()
+    StreamITCase.clear
 
-    val t = StreamTestData.get5TupleDataStream(env).toTable(tEnv).as('a, 'b, 'c, 'd, 'e)
+    val t = StreamTestData.get5TupleDataStream(env)
+      .toTable(tEnv, 'a, 'b, 'c, 'd, 'e, 'proctime.proctime)
     tEnv.registerTable("MyTable", t)
 
     val sqlQuery = "SELECT a,  " +
       " SUM(c) OVER (" +
-      " PARTITION BY a ORDER BY procTime() ROWS BETWEEN 4 PRECEDING AND CURRENT ROW) AS sumC , " +
+      " PARTITION BY a ORDER BY proctime ROWS BETWEEN 4 PRECEDING AND CURRENT ROW) AS sumC , " +
       " MIN(c) OVER (" +
-      " PARTITION BY a ORDER BY procTime() ROWS BETWEEN 4 PRECEDING AND CURRENT ROW) AS minC " +
+      " PARTITION BY a ORDER BY proctime ROWS BETWEEN 4 PRECEDING AND CURRENT ROW) AS minC " +
       " FROM MyTable"
 
     val result = tEnv.sql(sqlQuery).toDataStream[Row]
     result.addSink(new StreamITCase.StringSink)
     env.execute()
 
-    val expected = mutable.MutableList(
+    val expected = List(
       "1,0,0",
       "2,1,1",
       "2,3,1",
@@ -1064,23 +1087,24 @@ class SqlITCase extends StreamingWithStateTestBase {
     env.setStateBackend(getStateBackend)
     val tEnv = TableEnvironment.getTableEnvironment(env)
     env.setParallelism(1)
-    StreamITCase.testResults = mutable.MutableList()
+    StreamITCase.clear
 
-    val t = StreamTestData.get5TupleDataStream(env).toTable(tEnv).as('a, 'b, 'c, 'd, 'e)
+    val t = StreamTestData.get5TupleDataStream(env)
+      .toTable(tEnv, 'a, 'b, 'c, 'd, 'e, 'proctime.proctime)
     tEnv.registerTable("MyTable", t)
 
     val sqlQuery = "SELECT a,  " +
       " SUM(c) OVER (" +
-      " ORDER BY procTime() ROWS BETWEEN 2 PRECEDING AND CURRENT ROW) AS sumC , " +
+      " ORDER BY proctime ROWS BETWEEN 2 PRECEDING AND CURRENT ROW) AS sumC , " +
       " MIN(c) OVER (" +
-      " ORDER BY procTime() ROWS BETWEEN 2 PRECEDING AND CURRENT ROW) AS minC " +
+      " ORDER BY proctime ROWS BETWEEN 2 PRECEDING AND CURRENT ROW) AS minC " +
       " FROM MyTable"
 
     val result = tEnv.sql(sqlQuery).toDataStream[Row]
     result.addSink(new StreamITCase.StringSink)
     env.execute()
 
-    val expected = mutable.MutableList(
+    val expected = List(
       "1,0,0",
       "2,1,0",
       "2,3,0",
@@ -1106,22 +1130,23 @@ class SqlITCase extends StreamingWithStateTestBase {
     env.setStateBackend(getStateBackend)
     val tEnv = TableEnvironment.getTableEnvironment(env)
     env.setParallelism(1)
-    StreamITCase.testResults = mutable.MutableList()
+    StreamITCase.clear
 
-    val t = StreamTestData.get5TupleDataStream(env).toTable(tEnv).as('a, 'b, 'c, 'd, 'e)
+    val t = StreamTestData.get5TupleDataStream(env)
+      .toTable(tEnv, 'a, 'b, 'c, 'd, 'e, 'proctime.proctime)
     tEnv.registerTable("MyTable", t)
 
     val sqlQuery = "SELECT a,  " +
       " SUM(c) OVER (" +
-      " ORDER BY procTime() ROWS BETWEEN 10 PRECEDING AND CURRENT ROW) AS sumC , " +
+      " ORDER BY proctime ROWS BETWEEN 10 PRECEDING AND CURRENT ROW) AS sumC , " +
       " MIN(c) OVER (" +
-      " ORDER BY procTime() ROWS BETWEEN 10 PRECEDING AND CURRENT ROW) AS minC " +
+      " ORDER BY proctime ROWS BETWEEN 10 PRECEDING AND CURRENT ROW) AS minC " +
       " FROM MyTable"
     val result = tEnv.sql(sqlQuery).toDataStream[Row]
     result.addSink(new StreamITCase.StringSink)
     env.execute()
 
-    val expected = mutable.MutableList(
+    val expected = List(
       "1,0,0",
       "2,1,0",
       "2,3,0",
