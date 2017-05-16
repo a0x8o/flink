@@ -114,6 +114,7 @@ under the License.
 			to revisit the impact at that time.
 		-->
 		<minikdc.version>2.7.2</minikdc.version>
+		<generated.docs.dir>./docs/_includes/generated</generated.docs.dir>
 	</properties>
 
 	<dependencies>
@@ -438,6 +439,12 @@ under the License.
 
 				[1] https://github.com/netty/netty/issues/3704 -->
 				<version>4.0.27.Final</version>
+			</dependency>
+
+			<dependency>
+				<groupId>tv.cntt</groupId>
+				<artifactId>netty-router</artifactId>
+				<version>1.10</version>
 			</dependency>
 
 			<dependency>
@@ -912,6 +919,9 @@ under the License.
 						<exclude>**/resources/**/bootstrap*</exclude>
 						<exclude>flink-clients/src/main/resources/web-docs/js/*d3.js</exclude>
 
+						<!-- the licenses that are re-bundled -->
+						<exclude>**/packaged_licenses/LICENSE.*.txt</exclude>
+
 						<!-- web dashboard config JSON files -->
 						<exclude>flink-runtime-web/web-dashboard/package.json</exclude>
 						<exclude>flink-runtime-web/web-dashboard/bower.json</exclude>
@@ -982,6 +992,7 @@ under the License.
 						<exclude>docs/content/**</exclude>
 						<exclude>**/scalastyle-output.xml</exclude>
 						<exclude>build-target/**</exclude>
+						<exclude>docs/_includes/generated/**</exclude>
 						<!-- Tools: watchdog -->
 						<exclude>tools/artifacts/**</exclude>
 						<exclude>tools/flink*/**</exclude>
@@ -1115,6 +1126,34 @@ under the License.
 				</executions>
 			</plugin>
 
+			<!-- make sure all licenses that need to be repackaged are in the target folder -->
+			<plugin>
+				<artifactId>maven-resources-plugin</artifactId>
+				<configuration>
+					<encoding>UTF-8</encoding>
+				</configuration>
+				<executions>
+					<execution>
+						<id>copy-packaged-licenses</id>
+						<phase>prepare-package</phase>
+						<goals>
+							<goal>copy-resources</goal>
+						</goals>
+						<configuration>
+							<outputDirectory>${basedir}/target/classes/META-INF/licenses/</outputDirectory>
+							<resources>
+								<resource>
+									<directory>${basedir}/packaged_licenses</directory>
+									<includes>
+										<include>LICENSE.*.txt</include>
+									</includes>
+								</resource>
+							</resources>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
+
 			<!-- We use shading in all packages for relocating some classes, such as
 				Guava and ASM.
 				By doing so, users adding Flink as a dependency won't run into conflicts.
@@ -1173,11 +1212,47 @@ under the License.
 									<shadedPattern>org.apache.flink.shaded.org.objectweb.asm</shadedPattern>
 								</relocation>
 							</relocations>
+							<transformers>
+								<!-- The service transformer is needed to merge META-INF/services files -->
+								<transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+								<!-- The ApacheNoticeResourceTransformer collects and aggregates NOTICE files -->
+								<transformer implementation="org.apache.maven.plugins.shade.resource.ApacheNoticeResourceTransformer"/>
+								<!-- The ApacheLicenseResourceTransformer prevents duplicate Apache Licenses -->
+								<transformer implementation="org.apache.maven.plugins.shade.resource.ApacheLicenseResourceTransformer"/>
+							</transformers>
 						</configuration>
 					</execution>
 				</executions>
 			</plugin>
 
+			<!-- generate configuration docs -->
+			<plugin>
+				<groupId>org.commonjava.maven.plugins</groupId>
+				<artifactId>directory-maven-plugin</artifactId>
+				<version>0.1</version>
+				<executions>
+					<execution>
+						<id>directories</id>
+						<goals>
+							<goal>highest-basedir</goal>
+						</goals>
+						<phase>initialize</phase>
+						<configuration>
+							<property>rootDir</property>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
+			<plugin>
+				<artifactId>maven-clean-plugin</artifactId>
+				<configuration>
+					<filesets>
+						<fileset>
+							<directory>${generated.docs.dir}</directory>
+						</fileset>
+					</filesets>
+				</configuration>
+			</plugin>
 		</plugins>
 
 		<!-- Plugin configurations for plugins activated in sub-projects --> 

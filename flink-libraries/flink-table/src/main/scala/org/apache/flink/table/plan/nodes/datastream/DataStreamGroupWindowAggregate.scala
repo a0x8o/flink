@@ -26,8 +26,9 @@ import org.apache.flink.api.java.tuple.Tuple
 import org.apache.flink.streaming.api.datastream.{AllWindowedStream, DataStream, KeyedStream, WindowedStream}
 import org.apache.flink.streaming.api.windowing.assigners._
 import org.apache.flink.streaming.api.windowing.windows.{Window => DataStreamWindow}
-import org.apache.flink.table.api.{StreamTableEnvironment, TableException}
+import org.apache.flink.table.api.{StreamQueryConfig, StreamTableEnvironment, TableException}
 import org.apache.flink.table.calcite.FlinkRelBuilder.NamedWindowProperty
+import org.apache.flink.table.calcite.FlinkTypeFactory
 import org.apache.flink.table.codegen.CodeGenerator
 import org.apache.flink.table.expressions.ExpressionUtils._
 import org.apache.flink.table.plan.logical._
@@ -107,15 +108,20 @@ class DataStreamGroupWindowAggregate(
           namedProperties))
   }
 
-  override def translateToPlan(tableEnv: StreamTableEnvironment): DataStream[CRow] = {
+  override def translateToPlan(
+      tableEnv: StreamTableEnvironment,
+      queryConfig: StreamQueryConfig): DataStream[CRow] = {
 
-    val inputDS = input.asInstanceOf[DataStreamRel].translateToPlan(tableEnv)
+    val inputDS = input.asInstanceOf[DataStreamRel].translateToPlan(tableEnv, queryConfig)
 
     val physicalNamedAggregates = namedAggregates.map { namedAggregate =>
       new CalcitePair[AggregateCall, String](
         inputSchema.mapAggregateCall(namedAggregate.left),
         namedAggregate.right)
     }
+    val physicalNamedProperties = namedProperties
+      .filter(np => !FlinkTypeFactory.isTimeIndicatorType(np.property.resultType))
+
     val consumeRetraction = DataStreamRetractionRules.isAccRetract(input)
 
     if (consumeRetraction) {
@@ -134,7 +140,7 @@ class DataStreamGroupWindowAggregate(
       namedAggregates,
       namedProperties)
 
-    val keyedAggOpName = s"groupBy: (${groupingToString(schema.logicalType, grouping)}), " +
+    val keyedAggOpName = s"groupBy: (${groupingToString(inputSchema.logicalType, grouping)}), " +
       s"window: ($window), " +
       s"select: ($aggString)"
     val nonKeyedAggOpName = s"window: ($window), select: ($aggString)"
@@ -142,7 +148,7 @@ class DataStreamGroupWindowAggregate(
     val generator = new CodeGenerator(
       tableEnv.getConfig,
       false,
-      inputDS.getType)
+      inputSchema.physicalTypeInfo)
 
     val needMerge = window match {
       case SessionGroupWindow(_, _, _) => true
@@ -157,7 +163,7 @@ class DataStreamGroupWindowAggregate(
         physicalGrouping.length,
         physicalNamedAggregates.size,
         schema.physicalArity,
-        namedProperties)
+        physicalNamedProperties)
 
       val keyedStream = inputDS.keyBy(physicalGrouping: _*)
       val windowedStream =
@@ -183,7 +189,7 @@ class DataStreamGroupWindowAggregate(
       val windowFunction = AggregateUtil.createAggregationAllWindowFunction(
         window,
         schema.physicalArity,
-        namedProperties)
+        physicalNamedProperties)
 
       val windowedStream =
         createNonKeyedWindowedStream(window, inputDS)
