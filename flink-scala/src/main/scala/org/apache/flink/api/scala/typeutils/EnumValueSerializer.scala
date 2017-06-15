@@ -24,12 +24,13 @@ import org.apache.flink.api.common.typeutils.{CompatibilityResult, TypeSerialize
 import org.apache.flink.api.common.typeutils.base.IntSerializer
 import org.apache.flink.api.java.typeutils.runtime.{DataInputViewStream, DataOutputViewStream}
 import org.apache.flink.core.memory.{DataInputView, DataOutputView}
-import org.apache.flink.util.InstantiationUtil
+import org.apache.flink.util.{InstantiationUtil, Preconditions}
 
 /**
  * Serializer for [[Enumeration]] values.
  */
 @Internal
+@SerialVersionUID(-2403076635594572920L)
 class EnumValueSerializer[E <: Enumeration](val enum: E) extends TypeSerializer[E#Value] {
 
   type T = E#Value
@@ -77,8 +78,7 @@ class EnumValueSerializer[E <: Enumeration](val enum: E) extends TypeSerializer[
   // --------------------------------------------------------------------------------------------
 
   override def snapshotConfiguration(): EnumValueSerializer.ScalaEnumSerializerConfigSnapshot[E] = {
-    new EnumValueSerializer.ScalaEnumSerializerConfigSnapshot[E](
-      enum.getClass.asInstanceOf[Class[E]])
+    new EnumValueSerializer.ScalaEnumSerializerConfigSnapshot[E](enum)
   }
 
   override def ensureCompatibility(
@@ -88,14 +88,16 @@ class EnumValueSerializer[E <: Enumeration](val enum: E) extends TypeSerializer[
       case enumSerializerConfigSnapshot: EnumValueSerializer.ScalaEnumSerializerConfigSnapshot[_] =>
         val enumClass = enum.getClass.asInstanceOf[Class[E]]
         if (enumClass.equals(enumSerializerConfigSnapshot.getEnumClass)) {
-          val currentEnumConstants = enumSerializerConfigSnapshot.getEnumClass.getEnumConstants
+          val previousEnumConstants = enumSerializerConfigSnapshot.getEnumConstants
 
-          for ( i <- 0 to currentEnumConstants.length) {
-            // compatible only if new enum constants are only appended,
-            // and original constants must be in the exact same order
+          if (previousEnumConstants != null) {
+            for (i <- enum.values.iterator) {
+              if (!previousEnumConstants(i.id).equals(i.toString)) {
+                // compatible only if new enum constants are only appended,
+                // and original constants must be in the exact same order
 
-            if (currentEnumConstants(i) != enumSerializerConfigSnapshot.getEnumConstants(i)) {
-              return CompatibilityResult.requiresMigration()
+                return CompatibilityResult.requiresMigration()
+              }
             }
           }
 
@@ -111,13 +113,17 @@ class EnumValueSerializer[E <: Enumeration](val enum: E) extends TypeSerializer[
 
 object EnumValueSerializer {
 
-  class ScalaEnumSerializerConfigSnapshot[E <: Enumeration](private var enumClass: Class[E])
+  class ScalaEnumSerializerConfigSnapshot[E <: Enumeration]
       extends TypeSerializerConfigSnapshot {
 
-    var enumConstants: Array[E] = enumClass.getEnumConstants
+    var enumClass: Class[E] = _
+    var enumConstants: List[String] = _
 
-    /** This empty nullary constructor is required for deserializing the configuration. */
-    def this() = this(null)
+    def this(enum: E) = {
+      this()
+      this.enumClass = Preconditions.checkNotNull(enum).getClass.asInstanceOf[Class[E]]
+      this.enumConstants = enum.values.toList.map(_.toString)
+    }
 
     override def write(out: DataOutputView): Unit = {
       super.write(out)
@@ -155,7 +161,7 @@ object EnumValueSerializer {
 
     def getEnumClass: Class[E] = enumClass
 
-    def getEnumConstants: Array[E] = enumConstants
+    def getEnumConstants: List[String] = enumConstants
 
     override def equals(obj: scala.Any): Boolean = {
       if (obj == this) {
@@ -168,12 +174,12 @@ object EnumValueSerializer {
 
       obj.isInstanceOf[ScalaEnumSerializerConfigSnapshot[E]] &&
         enumClass.equals(obj.asInstanceOf[ScalaEnumSerializerConfigSnapshot[E]].enumClass) &&
-        enumConstants.sameElements(
+        enumConstants.equals(
           obj.asInstanceOf[ScalaEnumSerializerConfigSnapshot[E]].enumConstants)
     }
 
     override def hashCode(): Int = {
-      enumClass.hashCode() * 31 + enumConstants.toSeq.hashCode()
+      enumClass.hashCode() * 31 + enumConstants.hashCode()
     }
   }
 
