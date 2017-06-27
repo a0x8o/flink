@@ -43,11 +43,11 @@ import org.apache.flink.table.codegen.Indenter.toISC
 import org.apache.flink.table.codegen.calls.FunctionGenerator
 import org.apache.flink.table.codegen.calls.ScalarOperators._
 import org.apache.flink.table.functions.utils.UserDefinedFunctionUtils
+import org.apache.flink.table.functions.utils.UserDefinedFunctionUtils.{getUserDefinedMethod, signatureToString}
 import org.apache.flink.table.functions.{AggregateFunction, FunctionContext, TimeMaterializationSqlFunction, UserDefinedFunction}
 import org.apache.flink.table.runtime.TableFunctionCollector
 import org.apache.flink.table.typeutils.TypeCheckUtils._
 import org.apache.flink.types.Row
-import org.apache.flink.table.functions.utils.UserDefinedFunctionUtils.{getUserDefinedMethod, signatureToString}
 
 import scala.collection.JavaConversions._
 import scala.collection.mutable
@@ -1726,7 +1726,7 @@ class CodeGenerator(
         |$resultTypeTerm $resultTerm = $defaultValue;
         |boolean $nullTerm = true;
         |""".stripMargin
-      GeneratedExpression(resultTerm, nullTerm, wrappedCode, resultType)
+      GeneratedExpression(resultTerm, nullTerm, wrappedCode, resultType, literal = true)
     } else {
       throw new CodeGenException("Null literals are not allowed if nullCheck is disabled.")
     }
@@ -1751,7 +1751,7 @@ class CodeGenerator(
         |""".stripMargin
     }
 
-    GeneratedExpression(resultTerm, nullTerm, resultCode, literalType)
+    GeneratedExpression(resultTerm, nullTerm, resultCode, literalType, literal = true)
   }
 
   private[flink] def generateSymbol(enum: Enum[_]): GeneratedExpression = {
@@ -1956,6 +1956,48 @@ class CodeGenerator(
           |""".stripMargin
       reusableMemberStatements.add(fieldDecimal)
       fieldTerm
+  }
+
+  /**
+    * Adds a reusable [[java.util.Random]] to the member area of the generated [[Function]].
+    *
+    * The seed parameter must be a literal/constant expression.
+    *
+    * @return member variable term
+    */
+  def addReusableRandom(seedExpr: Option[GeneratedExpression]): String = {
+    val fieldTerm = newName("random")
+
+    val field =
+      s"""
+         |transient java.util.Random $fieldTerm;
+         |""".stripMargin
+    reusableMemberStatements.add(field)
+
+    val fieldInit = seedExpr match {
+      case Some(s) if nullCheck =>
+        s"""
+         |${s.code}
+         |if(!${s.nullTerm}) {
+         |  $fieldTerm = new java.util.Random(${s.resultTerm});
+         |}
+         |else {
+         |  $fieldTerm = new java.util.Random();
+         |}
+         |""".stripMargin
+      case Some(s) =>
+        s"""
+         |${s.code}
+         |$fieldTerm = new java.util.Random(${s.resultTerm});
+         |""".stripMargin
+      case _ =>
+        s"""
+         |$fieldTerm = new java.util.Random();
+         |""".stripMargin
+    }
+
+    reusableInitStatements.add(fieldInit)
+    fieldTerm
   }
 
   /**

@@ -1052,7 +1052,7 @@ object ScalarOperators {
     case "*" => "multiply"
     case "/" => "divide"
     case "%" => "remainder"
-    case _ => throw new CodeGenException(s"Unsupported decimal arithmetic operator: '${operator}'")
+    case _ => throw new CodeGenException(s"Unsupported decimal arithmetic operator: '$operator'")
   }
 
   private def numericCasting(
@@ -1067,7 +1067,7 @@ object ScalarOperators {
       case LONG_TYPE_INFO => "longValueExact"
       case FLOAT_TYPE_INFO => "floatValue"
       case DOUBLE_TYPE_INFO => "doubleValue"
-      case _ => throw new CodeGenException(s"Unsupported decimal casting type: '${targetType}'")
+      case _ => throw new CodeGenException(s"Unsupported decimal casting type: '$targetType'")
     }
 
     val resultTypeTerm = primitiveTypeTermForTypeInfo(resultType)
