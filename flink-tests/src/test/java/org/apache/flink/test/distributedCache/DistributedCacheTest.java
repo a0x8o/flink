@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-package org.apache.flink.test.distributedCache;
+package org.apache.flink.test.distributedcache;
 
 import org.apache.flink.api.common.functions.RichFlatMapFunction;
 import org.apache.flink.api.java.ExecutionEnvironment;
@@ -43,15 +43,17 @@ import java.util.List;
 
 import static org.junit.Assert.assertTrue;
 
-
+/**
+ * Test the distributed cache.
+ */
 public class DistributedCacheTest extends AbstractTestBase {
 
-	public static final String data
-			= "machen\n"
-			+ "zeit\n"
-			+ "heerscharen\n"
-			+ "keiner\n"
-			+ "meine\n";
+	public static final String DATA =
+			"machen\n" +
+			"zeit\n" +
+			"heerscharen\n" +
+			"keiner\n" +
+			"meine\n";
 
 	private static final int PARALLELISM = 4;
 
@@ -76,12 +78,12 @@ public class DistributedCacheTest extends AbstractTestBase {
 	public DistributedCacheTest() {
 		super(new Configuration());
 	}
-	
+
 	// ------------------------------------------------------------------------
 
 	@Test
 	public void testStreamingDistributedCache() throws Exception {
-		String textPath = createTempFile("count.txt", data);
+		String textPath = createTempFile("count.txt", DATA);
 		StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 		env.registerCachedFile(textPath, "cache_test");
 		env.readTextFile(textPath).flatMap(new WordChecker());
@@ -90,13 +92,13 @@ public class DistributedCacheTest extends AbstractTestBase {
 
 	@Test
 	public void testBatchDistributedCache() throws Exception {
-		String textPath = createTempFile("count.txt", data);
+		String textPath = createTempFile("count.txt", DATA);
 		ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
 		env.registerCachedFile(textPath, "cache_test");
 		env.readTextFile(textPath).flatMap(new WordChecker()).count();
 	}
 
-	public static class WordChecker extends RichFlatMapFunction<String, Tuple1<String>> {
+	private static class WordChecker extends RichFlatMapFunction<String, Tuple1<String>> {
 		private static final long serialVersionUID = 1L;
 
 		private final List<String> wordList = new ArrayList<>();
@@ -106,7 +108,7 @@ public class DistributedCacheTest extends AbstractTestBase {
 			File file = getRuntimeContext().getDistributedCache().getFile("cache_test");
 			try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
 				String tempString;
-				while ((tempString= reader.readLine()) != null) {
+				while ((tempString = reader.readLine()) != null) {
 					wordList.add(tempString);
 				}
 			}

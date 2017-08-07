@@ -28,9 +28,11 @@ import org.apache.flink.api.common.typeinfo.{SqlTimeTypeInfo, TypeInformation}
 import org.apache.flink.table.calcite.FlinkRelBuilder
 import org.apache.flink.table.expressions.ExpressionUtils.{divide, getFactor, mod}
 import org.apache.flink.table.expressions.TimeIntervalUnit.TimeIntervalUnit
+import org.apache.flink.table.functions.sql.DateTimeSqlFunction
+import org.apache.flink.table.runtime.functions.DateTimeFunctions
 import org.apache.flink.table.typeutils.TypeCheckUtils.isTimeInterval
 import org.apache.flink.table.typeutils.{TimeIntervalTypeInfo, TypeCheckUtils}
-import org.apache.flink.table.validate.{ValidationResult, ValidationFailure, ValidationSuccess}
+import org.apache.flink.table.validate.{ValidationFailure, ValidationResult, ValidationSuccess}
 
 import scala.collection.JavaConversions._
 
@@ -101,7 +103,9 @@ case class Extract(timeIntervalUnit: Expression, temporal: Expression) extends E
 
     // TODO convert this into Table API expressions to make the code more readable
     val rexBuilder = relBuilder.getRexBuilder
-    val resultType = relBuilder.getTypeFactory().createTypeFromTypeInfo(LONG_TYPE_INFO)
+    val resultType = relBuilder
+      .getTypeFactory()
+      .createTypeFromTypeInfo(LONG_TYPE_INFO, isNullable = true)
     var result = rexBuilder.makeReinterpretCast(
       resultType,
       temporal,
@@ -375,3 +379,13 @@ case class TemporalOverlaps(
   }
 }
 
+case class DateFormat(timestamp: Expression, format: Expression) extends Expression {
+  override private[flink] def children = timestamp :: format :: Nil
+
+  override private[flink] def toRexNode(implicit relBuilder: RelBuilder) =
+    relBuilder.call(DateTimeSqlFunction.DATE_FORMAT, timestamp.toRexNode, format.toRexNode)
+
+  override def toString: String = s"$timestamp.dateFormat($format)"
+
+  override private[flink] def resultType = STRING_TYPE_INFO
+}

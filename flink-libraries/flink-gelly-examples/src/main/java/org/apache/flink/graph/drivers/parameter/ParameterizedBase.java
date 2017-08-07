@@ -46,14 +46,21 @@ implements Parameterized {
 	}
 
 	@Override
+	public String getName() {
+		return this.getClass().getSimpleName();
+	}
+
+	@Override
 	public String getUsage() {
 		StrBuilder strBuilder = new StrBuilder();
 
 		// print parameters as ordered list
 		for (Parameter<?> parameter : parameters) {
-			strBuilder
-				.append(parameter.getUsage())
-				.append(" ");
+			if (!parameter.isHidden()) {
+				strBuilder
+					.append(parameter.getUsage())
+					.append(" ");
+			}
 		}
 
 		return strBuilder.toString();

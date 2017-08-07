@@ -23,6 +23,7 @@ import org.apache.calcite.sql.util.{ChainedSqlOperatorTable, ListSqlOperatorTabl
 import org.apache.calcite.sql.{SqlFunction, SqlOperator, SqlOperatorTable}
 import org.apache.flink.table.api._
 import org.apache.flink.table.expressions._
+import org.apache.flink.table.functions.sql.{DateTimeSqlFunction, ScalarSqlFunctions}
 import org.apache.flink.table.functions.utils.{AggSqlFunction, ScalarSqlFunction, TableSqlFunction}
 import org.apache.flink.table.functions.{AggregateFunction, ScalarFunction, TableFunction}
 
@@ -104,7 +105,9 @@ class FunctionCatalog {
           .getOrElse(throw ValidationException(s"Undefined table function: $name"))
           .asInstanceOf[AggSqlFunction]
         val function = aggregateFunction.getFunction
-        AggFunctionCall(function, children)
+        val returnType = aggregateFunction.returnType
+        val accType = aggregateFunction.accType
+        AggFunctionCall(function, returnType, accType, children)
 
       // general expression call
       case expression if classOf[Expression].isAssignableFrom(expression) =>
@@ -116,19 +119,27 @@ class FunctionCatalog {
               case Failure(e) => throw new ValidationException(e.getMessage)
             }
           case Failure(_) =>
-            val childrenClass = Seq.fill(children.length)(classOf[Expression])
-            // try to find a constructor matching the exact number of children
-            Try(funcClass.getDeclaredConstructor(childrenClass: _*)) match {
+            Try(funcClass.getDeclaredConstructor(classOf[Expression], classOf[Seq[_]])) match {
               case Success(ctor) =>
-                Try(ctor.newInstance(children: _*).asInstanceOf[Expression]) match {
+                Try(ctor.newInstance(children.head, children.tail).asInstanceOf[Expression]) match {
                   case Success(expr) => expr
-                  case Failure(exception) => throw ValidationException(exception.getMessage)
+                  case Failure(e) => throw new ValidationException(e.getMessage)
                 }
               case Failure(_) =>
-                throw ValidationException(s"Invalid number of arguments for function $funcClass")
+                val childrenClass = Seq.fill(children.length)(classOf[Expression])
+                // try to find a constructor matching the exact number of children
+                Try(funcClass.getDeclaredConstructor(childrenClass: _*)) match {
+                  case Success(ctor) =>
+                    Try(ctor.newInstance(children: _*).asInstanceOf[Expression]) match {
+                      case Success(expr) => expr
+                      case Failure(exception) => throw ValidationException(exception.getMessage)
+                    }
+                  case Failure(_) =>
+                    throw ValidationException(
+                      s"Invalid number of arguments for function $funcClass")
+                }
             }
         }
-
       case _ =>
         throw ValidationException("Unsupported function.")
     }
@@ -160,6 +171,7 @@ object FunctionCatalog {
     "lessThan" -> classOf[LessThan],
     "lessThanOrEqual" -> classOf[LessThanOrEqual],
     "notEquals" -> classOf[NotEqualTo],
+    "in" -> classOf[In],
     "isNull" -> classOf[IsNull],
     "isNotNull" -> classOf[IsNotNull],
     "isTrue" -> classOf[IsTrue],
@@ -194,6 +206,8 @@ object FunctionCatalog {
     "upperCase" -> classOf[Upper],
     "position" -> classOf[Position],
     "overlay" -> classOf[Overlay],
+    "concat" -> classOf[Concat],
+    "concat_ws" -> classOf[ConcatWs],
 
     // math functions
     "plus" -> classOf[Plus],
@@ -222,6 +236,9 @@ object FunctionCatalog {
     "sign" -> classOf[Sign],
     "round" -> classOf[Round],
     "pi" -> classOf[Pi],
+    "e" -> classOf[E],
+    "rand" -> classOf[Rand],
+    "randInteger" -> classOf[RandInteger],
 
     // temporal functions
     "extract" -> classOf[Extract],
@@ -233,6 +250,7 @@ object FunctionCatalog {
     "quarter" -> classOf[Quarter],
     "temporalOverlaps" -> classOf[TemporalOverlaps],
     "dateTimePlus" -> classOf[Plus],
+    "dateFormat" -> classOf[DateFormat],
 
     // array
     "array" -> classOf[ArrayConstructor],
@@ -344,6 +362,7 @@ class BasicOperatorTable extends ReflectiveSqlOperatorTable {
     SqlStdOperatorTable.CASE,
     SqlStdOperatorTable.REINTERPRET,
     SqlStdOperatorTable.EXTRACT_DATE,
+    SqlStdOperatorTable.IN,
     // FUNCTIONS
     SqlStdOperatorTable.SUBSTRING,
     SqlStdOperatorTable.OVERLAY,
@@ -370,6 +389,7 @@ class BasicOperatorTable extends ReflectiveSqlOperatorTable {
     SqlStdOperatorTable.CURRENT_TIME,
     SqlStdOperatorTable.CURRENT_TIMESTAMP,
     SqlStdOperatorTable.CURRENT_DATE,
+    DateTimeSqlFunction.DATE_FORMAT,
     SqlStdOperatorTable.CAST,
     SqlStdOperatorTable.EXTRACT,
     SqlStdOperatorTable.QUARTER,
@@ -387,6 +407,14 @@ class BasicOperatorTable extends ReflectiveSqlOperatorTable {
     SqlStdOperatorTable.SIGN,
     SqlStdOperatorTable.ROUND,
     SqlStdOperatorTable.PI,
+    ScalarSqlFunctions.E,
+    SqlStdOperatorTable.RAND,
+    SqlStdOperatorTable.RAND_INTEGER,
+    ScalarSqlFunctions.CONCAT,
+    ScalarSqlFunctions.CONCAT_WS,
+    SqlStdOperatorTable.TIMESTAMP_ADD,
+    ScalarSqlFunctions.LOG,
+
     // EXTENSIONS
     SqlStdOperatorTable.TUMBLE,
     SqlStdOperatorTable.TUMBLE_START,

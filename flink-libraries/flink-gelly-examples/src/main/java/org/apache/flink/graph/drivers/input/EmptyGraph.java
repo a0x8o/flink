@@ -30,19 +30,14 @@ import static org.apache.flink.graph.generator.EmptyGraph.MINIMUM_VERTEX_COUNT;
  * Generate an {@link org.apache.flink.graph.generator.EmptyGraph}.
  */
 public class EmptyGraph
-extends GeneratedGraph<LongValue> {
+extends GeneratedGraph {
 
 	private LongParameter vertexCount = new LongParameter(this, "vertex_count")
 		.setMinimumValue(MINIMUM_VERTEX_COUNT);
 
 	@Override
-	public String getName() {
-		return EmptyGraph.class.getSimpleName();
-	}
-
-	@Override
 	public String getIdentity() {
-		return getTypeName() + " " + getName() + " (" + vertexCount + ")";
+		return getName() + " (" + vertexCount + ")";
 	}
 
 	@Override
@@ -51,8 +46,9 @@ extends GeneratedGraph<LongValue> {
 	}
 
 	@Override
-	public Graph<LongValue, NullValue, NullValue> generate(ExecutionEnvironment env) {
+	public Graph<LongValue, NullValue, NullValue> create(ExecutionEnvironment env) {
 		return new org.apache.flink.graph.generator.EmptyGraph(env, vertexCount.getValue())
+			.setParallelism(parallelism.getValue().intValue())
 			.generate();
 	}
 }

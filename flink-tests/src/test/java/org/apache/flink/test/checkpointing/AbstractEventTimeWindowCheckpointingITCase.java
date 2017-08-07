@@ -47,12 +47,15 @@ import org.apache.flink.streaming.util.TestStreamEnvironment;
 import org.apache.flink.test.util.SuccessException;
 import org.apache.flink.util.Collector;
 import org.apache.flink.util.TestLogger;
+
+import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
+import org.junit.rules.TestName;
 
 import java.io.IOException;
 import java.util.Collections;
@@ -87,6 +90,9 @@ public abstract class AbstractEventTimeWindowCheckpointingITCase extends TestLog
 	@Rule
 	public TemporaryFolder tempFolder = new TemporaryFolder();
 
+	@Rule
+	public TestName name = new TestName();
+
 	private StateBackendEnum stateBackendEnum;
 	private AbstractStateBackend stateBackend;
 
@@ -111,6 +117,7 @@ public abstract class AbstractEventTimeWindowCheckpointingITCase extends TestLog
 		cluster.start();
 
 		env = new TestStreamEnvironment(cluster, PARALLELISM);
+		env.getConfig().setUseSnapshotCompression(true);
 	}
 
 	@AfterClass
@@ -121,7 +128,13 @@ public abstract class AbstractEventTimeWindowCheckpointingITCase extends TestLog
 	}
 
 	@Before
-	public void initStateBackend() throws IOException {
+	public void beforeTest() throws IOException {
+		// print a message when starting a test method to avoid Travis' <tt>"Maven produced no
+		// output for xxx seconds."</tt> messages
+		System.out.println(
+			"Starting " + getClass().getCanonicalName() + "#" + name.getMethodName() + ".");
+
+		// init state back-end
 		switch (stateBackendEnum) {
 			case MEM:
 				this.stateBackend = new MemoryStateBackend(MAX_MEM_STATE_SIZE, false);
@@ -164,15 +177,25 @@ public abstract class AbstractEventTimeWindowCheckpointingITCase extends TestLog
 		}
 	}
 
+	/**
+	 * Prints a message when finishing a test method to avoid Travis' <tt>"Maven produced no output
+	 * for xxx seconds."</tt> messages.
+	 */
+	@After
+	public void afterTest() {
+		System.out.println(
+			"Finished " + getClass().getCanonicalName() + "#" + name.getMethodName() + ".");
+	}
+
 	// ------------------------------------------------------------------------
 
 	@Test
 	public void testTumblingTimeWindow() {
-		final int NUM_ELEMENTS_PER_KEY = numElementsPerKey();
-		final int WINDOW_SIZE = windowSize();
-		final int NUM_KEYS = numKeys();
+		final int numElementsPerKey = numElementsPerKey();
+		final int windowSize = windowSize();
+		final int numKeys = numKeys();
 		FailingSource.reset();
-		
+
 		try {
 			env.setParallelism(PARALLELISM);
 			env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
@@ -182,10 +205,10 @@ public abstract class AbstractEventTimeWindowCheckpointingITCase extends TestLog
 			env.setStateBackend(this.stateBackend);
 
 			env
-					.addSource(new FailingSource(NUM_KEYS, NUM_ELEMENTS_PER_KEY, NUM_ELEMENTS_PER_KEY / 3))
+					.addSource(new FailingSource(numKeys, numElementsPerKey, numElementsPerKey / 3))
 					.rebalance()
 					.keyBy(0)
-					.timeWindow(Time.of(WINDOW_SIZE, MILLISECONDS))
+					.timeWindow(Time.of(windowSize, MILLISECONDS))
 					.apply(new RichWindowFunction<Tuple2<Long, IntType>, Tuple4<Long, Long, Long, IntType>, Tuple, TimeWindow>() {
 
 						private boolean open = false;
@@ -216,8 +239,7 @@ public abstract class AbstractEventTimeWindowCheckpointingITCase extends TestLog
 							out.collect(new Tuple4<>(key, window.getStart(), window.getEnd(), new IntType(sum)));
 						}
 					})
-					.addSink(new ValidatingSink(NUM_KEYS, NUM_ELEMENTS_PER_KEY / WINDOW_SIZE)).setParallelism(1);
-
+					.addSink(new ValidatingSink(numKeys, numElementsPerKey / windowSize)).setParallelism(1);
 
 			tryExecute(env, "Tumbling Window Test");
 		}
@@ -238,9 +260,9 @@ public abstract class AbstractEventTimeWindowCheckpointingITCase extends TestLog
 	}
 
 	public void doTestTumblingTimeWindowWithKVState(int maxParallelism) {
-		final int NUM_ELEMENTS_PER_KEY = numElementsPerKey();
-		final int WINDOW_SIZE = windowSize();
-		final int NUM_KEYS = numKeys();
+		final int numElementsPerKey = numElementsPerKey();
+		final int windowSize = windowSize();
+		final int numKeys = numKeys();
 		FailingSource.reset();
 
 		try {
@@ -253,10 +275,10 @@ public abstract class AbstractEventTimeWindowCheckpointingITCase extends TestLog
 			env.setStateBackend(this.stateBackend);
 
 			env
-					.addSource(new FailingSource(NUM_KEYS, NUM_ELEMENTS_PER_KEY, NUM_ELEMENTS_PER_KEY / 3))
+					.addSource(new FailingSource(numKeys, numElementsPerKey, numElementsPerKey / 3))
 					.rebalance()
 					.keyBy(0)
-					.timeWindow(Time.of(WINDOW_SIZE, MILLISECONDS))
+					.timeWindow(Time.of(windowSize, MILLISECONDS))
 					.apply(new RichWindowFunction<Tuple2<Long, IntType>, Tuple4<Long, Long, Long, IntType>, Tuple, TimeWindow>() {
 
 						private boolean open = false;
@@ -291,8 +313,7 @@ public abstract class AbstractEventTimeWindowCheckpointingITCase extends TestLog
 							out.collect(new Tuple4<>(tuple.<Long>getField(0), window.getStart(), window.getEnd(), new IntType(count.value())));
 						}
 					})
-					.addSink(new CountValidatingSink(NUM_KEYS, NUM_ELEMENTS_PER_KEY / WINDOW_SIZE)).setParallelism(1);
-
+					.addSink(new CountValidatingSink(numKeys, numElementsPerKey / windowSize)).setParallelism(1);
 
 			tryExecute(env, "Tumbling Window Test");
 		}
@@ -304,10 +325,10 @@ public abstract class AbstractEventTimeWindowCheckpointingITCase extends TestLog
 
 	@Test
 	public void testSlidingTimeWindow() {
-		final int NUM_ELEMENTS_PER_KEY = numElementsPerKey();
-		final int WINDOW_SIZE = windowSize();
-		final int WINDOW_SLIDE = windowSlide();
-		final int NUM_KEYS = numKeys();
+		final int numElementsPerKey = numElementsPerKey();
+		final int windowSize = windowSize();
+		final int windowSlide = windowSlide();
+		final int numKeys = numKeys();
 		FailingSource.reset();
 
 		try {
@@ -318,12 +339,13 @@ public abstract class AbstractEventTimeWindowCheckpointingITCase extends TestLog
 			env.setRestartStrategy(RestartStrategies.fixedDelayRestart(3, 0));
 			env.getConfig().disableSysoutLogging();
 			env.setStateBackend(this.stateBackend);
+			env.getConfig().setUseSnapshotCompression(true);
 
 			env
-					.addSource(new FailingSource(NUM_KEYS, NUM_ELEMENTS_PER_KEY, NUM_ELEMENTS_PER_KEY / 3))
+					.addSource(new FailingSource(numKeys, numElementsPerKey, numElementsPerKey / 3))
 					.rebalance()
 					.keyBy(0)
-					.timeWindow(Time.of(WINDOW_SIZE, MILLISECONDS), Time.of(WINDOW_SLIDE, MILLISECONDS))
+					.timeWindow(Time.of(windowSize, MILLISECONDS), Time.of(windowSlide, MILLISECONDS))
 					.apply(new RichWindowFunction<Tuple2<Long, IntType>, Tuple4<Long, Long, Long, IntType>, Tuple, TimeWindow>() {
 
 						private boolean open = false;
@@ -354,8 +376,7 @@ public abstract class AbstractEventTimeWindowCheckpointingITCase extends TestLog
 							out.collect(new Tuple4<>(key, window.getStart(), window.getEnd(), new IntType(sum)));
 						}
 					})
-					.addSink(new ValidatingSink(NUM_KEYS, NUM_ELEMENTS_PER_KEY / WINDOW_SLIDE)).setParallelism(1);
-
+					.addSink(new ValidatingSink(numKeys, numElementsPerKey / windowSlide)).setParallelism(1);
 
 			tryExecute(env, "Tumbling Window Test");
 		}
@@ -367,9 +388,9 @@ public abstract class AbstractEventTimeWindowCheckpointingITCase extends TestLog
 
 	@Test
 	public void testPreAggregatedTumblingTimeWindow() {
-		final int NUM_ELEMENTS_PER_KEY = numElementsPerKey();
-		final int WINDOW_SIZE = windowSize();
-		final int NUM_KEYS = numKeys();
+		final int numElementsPerKey = numElementsPerKey();
+		final int windowSize = windowSize();
+		final int numKeys = numKeys();
 		FailingSource.reset();
 
 		try {
@@ -381,10 +402,10 @@ public abstract class AbstractEventTimeWindowCheckpointingITCase extends TestLog
 			env.setStateBackend(this.stateBackend);
 
 			env
-					.addSource(new FailingSource(NUM_KEYS, NUM_ELEMENTS_PER_KEY, NUM_ELEMENTS_PER_KEY / 3))
+					.addSource(new FailingSource(numKeys, numElementsPerKey, numElementsPerKey / 3))
 					.rebalance()
 					.keyBy(0)
-					.timeWindow(Time.of(WINDOW_SIZE, MILLISECONDS))
+					.timeWindow(Time.of(windowSize, MILLISECONDS))
 					.reduce(
 							new ReduceFunction<Tuple2<Long, IntType>>() {
 
@@ -423,8 +444,7 @@ public abstract class AbstractEventTimeWindowCheckpointingITCase extends TestLog
 							}
 						}
 					})
-					.addSink(new ValidatingSink(NUM_KEYS, NUM_ELEMENTS_PER_KEY / WINDOW_SIZE)).setParallelism(1);
-
+					.addSink(new ValidatingSink(numKeys, numElementsPerKey / windowSize)).setParallelism(1);
 
 			tryExecute(env, "Tumbling Window Test");
 		}
@@ -436,10 +456,10 @@ public abstract class AbstractEventTimeWindowCheckpointingITCase extends TestLog
 
 	@Test
 	public void testPreAggregatedSlidingTimeWindow() {
-		final int NUM_ELEMENTS_PER_KEY = numElementsPerKey();
-		final int WINDOW_SIZE = windowSize();
-		final int WINDOW_SLIDE = windowSlide();
-		final int NUM_KEYS = numKeys();
+		final int numElementsPerKey = numElementsPerKey();
+		final int windowSize = windowSize();
+		final int windowSlide = windowSlide();
+		final int numKeys = numKeys();
 		FailingSource.reset();
 
 		try {
@@ -451,10 +471,10 @@ public abstract class AbstractEventTimeWindowCheckpointingITCase extends TestLog
 			env.setStateBackend(this.stateBackend);
 
 			env
-					.addSource(new FailingSource(NUM_KEYS, NUM_ELEMENTS_PER_KEY, NUM_ELEMENTS_PER_KEY / 3))
+					.addSource(new FailingSource(numKeys, numElementsPerKey, numElementsPerKey / 3))
 					.rebalance()
 					.keyBy(0)
-					.timeWindow(Time.of(WINDOW_SIZE, MILLISECONDS), Time.of(WINDOW_SLIDE, MILLISECONDS))
+					.timeWindow(Time.of(windowSize, MILLISECONDS), Time.of(windowSlide, MILLISECONDS))
 					.reduce(
 							new ReduceFunction<Tuple2<Long, IntType>>() {
 
@@ -495,8 +515,7 @@ public abstract class AbstractEventTimeWindowCheckpointingITCase extends TestLog
 							}
 						}
 					})
-					.addSink(new ValidatingSink(NUM_KEYS, NUM_ELEMENTS_PER_KEY / WINDOW_SLIDE)).setParallelism(1);
-
+					.addSink(new ValidatingSink(numKeys, numElementsPerKey / windowSlide)).setParallelism(1);
 
 			tryExecute(env, "Tumbling Window Test");
 		}
@@ -506,14 +525,12 @@ public abstract class AbstractEventTimeWindowCheckpointingITCase extends TestLog
 		}
 	}
 
-
 	// ------------------------------------------------------------------------
 	//  Utilities
 	// ------------------------------------------------------------------------
 
 	private static class FailingSource extends RichSourceFunction<Tuple2<Long, IntType>>
-			implements ListCheckpointed<Integer>, CheckpointListener
-	{
+			implements ListCheckpointed<Integer>, CheckpointListener {
 		private static volatile boolean failedBefore = false;
 
 		private final int numKeys;
@@ -554,8 +571,7 @@ public abstract class AbstractEventTimeWindowCheckpointingITCase extends TestLog
 				}
 
 				if (numElementsEmitted < numElementsToEmit &&
-						(failedBefore || numElementsEmitted <= failureAfterNumElements))
-				{
+						(failedBefore || numElementsEmitted <= failureAfterNumElements)) {
 					// the function failed before, or we are in the elements before the failure
 					synchronized (ctx.getCheckpointLock()) {
 						int next = numElementsEmitted++;
@@ -667,7 +683,6 @@ public abstract class AbstractEventTimeWindowCheckpointingITCase extends TestLog
 
 			assertEquals("Window start: " + value.f1 + " end: " + value.f2, expectedSum, value.f3.value);
 
-
 			Integer curr = windowCounts.get(value.f0);
 			if (curr != null) {
 				windowCounts.put(value.f0, curr + 1);
@@ -754,7 +769,6 @@ public abstract class AbstractEventTimeWindowCheckpointingITCase extends TestLog
 				windowCounts.put(value.f0, 1);
 			}
 
-
 			// verify the contents of that window, the contents should be:
 			// (key + num windows so far)
 
@@ -797,13 +811,15 @@ public abstract class AbstractEventTimeWindowCheckpointingITCase extends TestLog
 	//  Utilities
 	// ------------------------------------------------------------------------
 
-	public static class IntType {
+	private static class IntType {
 
 		public int value;
 
 		public IntType() {}
 
-		public IntType(int value) { this.value = value; }
+		public IntType(int value) {
+			this.value = value;
+		}
 	}
 
 	protected int numElementsPerKey() {

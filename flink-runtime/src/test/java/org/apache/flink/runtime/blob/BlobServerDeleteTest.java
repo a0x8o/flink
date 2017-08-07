@@ -18,14 +18,15 @@
 
 package org.apache.flink.runtime.blob;
 
+import org.apache.flink.configuration.BlobServerOptions;
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.api.common.JobID;
-import org.apache.flink.runtime.concurrent.Future;
+import org.apache.flink.runtime.concurrent.FlinkFutureException;
 import org.apache.flink.runtime.concurrent.FutureUtils;
-import org.apache.flink.runtime.concurrent.impl.FlinkCompletableFuture;
 import org.apache.flink.util.OperatingSystem;
 import org.apache.flink.util.TestLogger;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
 
 import java.io.File;
 import java.io.IOException;
@@ -33,12 +34,13 @@ import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
-import java.util.concurrent.Callable;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
@@ -52,14 +54,19 @@ public class BlobServerDeleteTest extends TestLogger {
 
 	private final Random rnd = new Random();
 
+	@Rule
+	public TemporaryFolder temporaryFolder = new TemporaryFolder();
+
 	@Test
-	public void testDeleteSingle() {
+	public void testDeleteSingleByBlobKey() {
 		BlobServer server = null;
 		BlobClient client = null;
 		BlobStore blobStore = new VoidBlobStore();
 
 		try {
-			Configuration config = new Configuration();
+			final Configuration config = new Configuration();
+			config.setString(BlobServerOptions.STORAGE_DIRECTORY, temporaryFolder.newFolder().getAbsolutePath());
+
 			server = new BlobServer(config, blobStore);
 
 			InetSocketAddress serverAddress = new InetSocketAddress("localhost", server.getPort());
@@ -72,7 +79,13 @@ public class BlobServerDeleteTest extends TestLogger {
 			BlobKey key = client.put(data);
 			assertNotNull(key);
 
-			// issue a DELETE request
+			// second item
+			data[0] ^= 1;
+			BlobKey key2 = client.put(data);
+			assertNotNull(key2);
+			assertNotEquals(key, key2);
+
+			// issue a DELETE request via the client
 			client.delete(key);
 			client.close();
 
@@ -92,65 +105,11 @@ public class BlobServerDeleteTest extends TestLogger {
 			catch (IllegalStateException e) {
 				// expected
 			}
-		}
-		catch (Exception e) {
-			e.printStackTrace();
-			fail(e.getMessage());
-		}
-		finally {
-			cleanup(server, client);
-		}
-	}
 
-	@Test
-	public void testDeleteAll() {
-		BlobServer server = null;
-		BlobClient client = null;
-		BlobStore blobStore = new VoidBlobStore();
-
-		try {
-			Configuration config = new Configuration();
-			server = new BlobServer(config, blobStore);
-
-			InetSocketAddress serverAddress = new InetSocketAddress("localhost", server.getPort());
-			client = new BlobClient(serverAddress, config);
-
-			byte[] data = new byte[2000000];
-			rnd.nextBytes(data);
-
-			JobID jobID = new JobID();
-			String name1 = "random name";
-			String name2 = "any nyme";
-
-			// put content addressable (like libraries)
-			client.put(jobID, name1, data);
-			client.put(jobID, name2, new byte[712]);
-
-
-			// issue a DELETE ALL request
-			client.deleteAll(jobID);
-			client.close();
-
-			client = new BlobClient(serverAddress, config);
+			// delete a file directly on the server
+			server.delete(key2);
 			try {
-				client.get(jobID, name1);
-				fail("BLOB should have been deleted");
-			}
-			catch (IOException e) {
-				// expected
-			}
-
-			try {
-				client.put(new byte[1]);
-				fail("client should be closed after erroneous operation");
-			}
-			catch (IllegalStateException e) {
-				// expected
-			}
-
-			client = new BlobClient(serverAddress, config);
-			try {
-				client.get(jobID, name2);
+				server.getURL(key2);
 				fail("BLOB should have been deleted");
 			}
 			catch (IOException e) {
@@ -173,7 +132,9 @@ public class BlobServerDeleteTest extends TestLogger {
 		BlobStore blobStore = new VoidBlobStore();
 
 		try {
-			Configuration config = new Configuration();
+			final Configuration config = new Configuration();
+			config.setString(BlobServerOptions.STORAGE_DIRECTORY, temporaryFolder.newFolder().getAbsolutePath());
+
 			server = new BlobServer(config, blobStore);
 
 			InetSocketAddress serverAddress = new InetSocketAddress("localhost", server.getPort());
@@ -189,13 +150,16 @@ public class BlobServerDeleteTest extends TestLogger {
 			File blobFile = server.getStorageLocation(key);
 			assertTrue(blobFile.delete());
 
-			// issue a DELETE request
+			// issue a DELETE request via the client
 			try {
 				client.delete(key);
 			}
 			catch (IOException e) {
 				fail("DELETE operation should not fail if file is already deleted");
 			}
+
+			// issue a DELETE request on the server
+			server.delete(key);
 		}
 		catch (Exception e) {
 			e.printStackTrace();
@@ -207,56 +171,19 @@ public class BlobServerDeleteTest extends TestLogger {
 	}
 
 	@Test
-	public void testDeleteAlreadyDeletedByName() {
-		BlobServer server = null;
-		BlobClient client = null;
-		BlobStore blobStore = new VoidBlobStore();
-
-		try {
-			Configuration config = new Configuration();
-			server = new BlobServer(config, blobStore);
-
-			InetSocketAddress serverAddress = new InetSocketAddress("localhost", server.getPort());
-			client = new BlobClient(serverAddress, config);
-
-			byte[] data = new byte[2000000];
-			rnd.nextBytes(data);
-
-			JobID jid = new JobID();
-			String name = "------------fdghljEgRJHF+##4U789Q345";
-
-			client.put(jid, name, data);
-
-			File blobFile = server.getStorageLocation(jid, name);
-			assertTrue(blobFile.delete());
-
-			// issue a DELETE request
-			try {
-				client.delete(jid, name);
-			}
-			catch (IOException e) {
-				fail("DELETE operation should not fail if file is already deleted");
-			}
-		}
-		catch (Exception e) {
-			e.printStackTrace();
-			fail(e.getMessage());
-		}
-		finally {
-			cleanup(server, client);
-		}
-	}
-
-	@Test
-	public void testDeleteFails() {
+	public void testDeleteByBlobKeyFails() {
 		assumeTrue(!OperatingSystem.isWindows()); //setWritable doesn't work on Windows.
 
 		BlobServer server = null;
 		BlobClient client = null;
 		BlobStore blobStore = new VoidBlobStore();
 
+		File blobFile = null;
+		File directory = null;
 		try {
-			Configuration config = new Configuration();
+			final Configuration config = new Configuration();
+			config.setString(BlobServerOptions.STORAGE_DIRECTORY, temporaryFolder.newFolder().getAbsolutePath());
+
 			server = new BlobServer(config, blobStore);
 
 			InetSocketAddress serverAddress = new InetSocketAddress("localhost", server.getPort());
@@ -269,30 +196,28 @@ public class BlobServerDeleteTest extends TestLogger {
 			BlobKey key = client.put(data);
 			assertNotNull(key);
 
-			File blobFile = server.getStorageLocation(key);
-			File directory = blobFile.getParentFile();
+			blobFile = server.getStorageLocation(key);
+			directory = blobFile.getParentFile();
 
 			assertTrue(blobFile.setWritable(false, false));
 			assertTrue(directory.setWritable(false, false));
 
-			// issue a DELETE request
-			try {
-				client.delete(key);
-				fail("DELETE operation should fail if file cannot be deleted");
-			}
-			catch (IOException e) {
-				// expected
-			}
-			finally {
+			// issue a DELETE request via the client
+			client.delete(key);
+
+			// issue a DELETE request on the server
+			server.delete(key);
+
+			// the file should still be there
+			server.getURL(key);
+		} catch (Exception e) {
+			e.printStackTrace();
+			fail(e.getMessage());
+		} finally {
+			if (blobFile != null && directory != null) {
 				blobFile.setWritable(true, false);
 				directory.setWritable(true, false);
 			}
-		}
-		catch (Exception e) {
-			e.printStackTrace();
-			fail(e.getMessage());
-		}
-		finally {
 			cleanup(server, client);
 		}
 	}
@@ -309,17 +234,19 @@ public class BlobServerDeleteTest extends TestLogger {
 	 */
 	@Test
 	public void testConcurrentDeleteOperations() throws IOException, ExecutionException, InterruptedException {
-		final Configuration configuration = new Configuration();
+		final Configuration config = new Configuration();
+		config.setString(BlobServerOptions.STORAGE_DIRECTORY, temporaryFolder.newFolder().getAbsolutePath());
+
 		final BlobStore blobStore = mock(BlobStore.class);
 
 		final int concurrentDeleteOperations = 3;
 		final ExecutorService executor = Executors.newFixedThreadPool(concurrentDeleteOperations);
 
-		final List<Future<Void>> deleteFutures = new ArrayList<>(concurrentDeleteOperations);
+		final List<CompletableFuture<Void>> deleteFutures = new ArrayList<>(concurrentDeleteOperations);
 
 		final byte[] data = {1, 2, 3};
 
-		try (final BlobServer blobServer = new BlobServer(configuration, blobStore)) {
+		try (final BlobServer blobServer = new BlobServer(config, blobStore)) {
 
 			final BlobKey blobKey;
 
@@ -330,21 +257,22 @@ public class BlobServerDeleteTest extends TestLogger {
 			assertTrue(blobServer.getStorageLocation(blobKey).exists());
 
 			for (int i = 0; i < concurrentDeleteOperations; i++) {
-				Future<Void> deleteFuture = FlinkCompletableFuture.supplyAsync(new Callable<Void>() {
-					@Override
-					public Void call() throws Exception {
+				CompletableFuture<Void> deleteFuture = CompletableFuture.supplyAsync(
+					() -> {
 						try (BlobClient blobClient = blobServer.createClient()) {
 							blobClient.delete(blobKey);
+						} catch (IOException e) {
+							throw new FlinkFutureException("Could not delete the given blob key " + blobKey + '.', e);
 						}
 
 						return null;
-					}
-				}, executor);
+					},
+					executor);
 
 				deleteFutures.add(deleteFuture);
 			}
 
-			Future<Void> waitFuture = FutureUtils.waitForAll(deleteFutures);
+			CompletableFuture<Void> waitFuture = FutureUtils.waitForAll(deleteFutures);
 
 			// make sure all delete operation have completed successfully
 			// in case of no lock, one of the delete operations should eventually fail

@@ -28,10 +28,7 @@ import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
 import org.apache.flink.runtime.clusterframework.types.SlotID;
-import org.apache.flink.runtime.concurrent.CompletableFuture;
-import org.apache.flink.runtime.concurrent.Future;
 import org.apache.flink.runtime.concurrent.ScheduledExecutor;
-import org.apache.flink.runtime.concurrent.impl.FlinkCompletableFuture;
 import org.apache.flink.runtime.deployment.InputGateDeploymentDescriptor;
 import org.apache.flink.runtime.deployment.ResultPartitionDeploymentDescriptor;
 import org.apache.flink.runtime.deployment.TaskDeploymentDescriptor;
@@ -41,8 +38,10 @@ import org.apache.flink.runtime.executiongraph.JobInformation;
 import org.apache.flink.runtime.executiongraph.TaskInformation;
 import org.apache.flink.runtime.filecache.FileCache;
 import org.apache.flink.runtime.heartbeat.HeartbeatListener;
+import org.apache.flink.runtime.heartbeat.HeartbeatManager;
 import org.apache.flink.runtime.heartbeat.HeartbeatManagerImpl;
 import org.apache.flink.runtime.heartbeat.HeartbeatServices;
+import org.apache.flink.runtime.heartbeat.HeartbeatTarget;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.highavailability.nonha.standalone.StandaloneHaServices;
 import org.apache.flink.runtime.highavailability.TestingHighAvailabilityServices;
@@ -63,8 +62,8 @@ import org.apache.flink.runtime.metrics.groups.TaskIOMetricGroup;
 import org.apache.flink.runtime.metrics.groups.TaskManagerMetricGroup;
 import org.apache.flink.runtime.metrics.groups.TaskMetricGroup;
 import org.apache.flink.runtime.query.TaskKvStateRegistry;
-import org.apache.flink.runtime.registration.RegistrationResponse;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerGateway;
+import org.apache.flink.runtime.rpc.TestingRpcService;
 import org.apache.flink.runtime.rpc.TestingSerialRpcService;
 import org.apache.flink.runtime.taskexecutor.exceptions.SlotAllocationException;
 import org.apache.flink.runtime.taskexecutor.slot.SlotOffer;
@@ -81,6 +80,7 @@ import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TestName;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Matchers;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
@@ -91,10 +91,12 @@ import java.net.URL;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeoutException;
 
 import static org.hamcrest.Matchers.contains;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
@@ -163,7 +165,7 @@ public class TaskExecutorTest extends TestLogger {
 				eq(taskManagerLocation),
 				eq(jmLeaderId),
 				any(Time.class)
-		)).thenReturn(FlinkCompletableFuture.<RegistrationResponse>completed(new JMTMRegistrationSuccess(jmResourceId, blobPort)));
+		)).thenReturn(CompletableFuture.completedFuture(new JMTMRegistrationSuccess(jmResourceId, blobPort)));
 		when(jobMasterGateway.getAddress()).thenReturn(jobMasterAddress);
 		when(jobMasterGateway.getHostname()).thenReturn("localhost");
 
@@ -225,7 +227,7 @@ public class TaskExecutorTest extends TestLogger {
 		when(rmGateway.registerTaskExecutor(
 			any(UUID.class), anyString(), any(ResourceID.class), any(SlotReport.class), any(Time.class)))
 			.thenReturn(
-				FlinkCompletableFuture.<RegistrationResponse>completed(
+				CompletableFuture.completedFuture(
 					new TaskExecutorRegistrationSuccess(
 						new InstanceID(),
 						rmResourceId,
@@ -259,13 +261,13 @@ public class TaskExecutorTest extends TestLogger {
 			any(HeartbeatListener.class),
 			any(ScheduledExecutor.class),
 			any(Logger.class))).thenAnswer(
-			new Answer<HeartbeatManagerImpl<Void, Void>>() {
+			new Answer<HeartbeatManagerImpl<SlotReport, Void>>() {
 				@Override
-				public HeartbeatManagerImpl<Void, Void> answer(InvocationOnMock invocation) throws Throwable {
+				public HeartbeatManagerImpl<SlotReport, Void> answer(InvocationOnMock invocation) throws Throwable {
 					return new HeartbeatManagerImpl<>(
 						heartbeatTimeout,
 						taskManagerLocation.getResourceID(),
-						(HeartbeatListener<Void, Void>)invocation.getArguments()[1],
+						(HeartbeatListener<SlotReport, Void>)invocation.getArguments()[1],
 						(Executor)invocation.getArguments()[2],
 						(ScheduledExecutor)invocation.getArguments()[2],
 						(Logger)invocation.getArguments()[3]);
@@ -312,6 +314,143 @@ public class TaskExecutorTest extends TestLogger {
 		}
 	}
 
+	/**
+	 * Tests that the correct slot report is sent as part of the heartbeat response.
+	 */
+	@Test
+	public void testHeartbeatSlotReporting() throws Exception {
+		final long timeout = 1000L;
+		final String rmAddress = "rm";
+		final String tmAddress = "tm";
+		final ResourceID rmResourceId = new ResourceID(rmAddress);
+		final ResourceID tmResourceId = new ResourceID(tmAddress);
+		final UUID rmLeaderId = UUID.randomUUID();
+
+		// register the mock resource manager gateway
+		ResourceManagerGateway rmGateway = mock(ResourceManagerGateway.class);
+		when(rmGateway.registerTaskExecutor(
+			any(UUID.class), anyString(), any(ResourceID.class), any(SlotReport.class), any(Time.class)))
+			.thenReturn(
+				CompletableFuture.completedFuture(
+					new TaskExecutorRegistrationSuccess(
+						new InstanceID(),
+						rmResourceId,
+						10L)));
+
+		final TestingRpcService rpc = new TestingRpcService();
+		rpc.registerGateway(rmAddress, rmGateway);
+
+		final TestingLeaderRetrievalService testLeaderService = new TestingLeaderRetrievalService(
+			null,
+			null);
+		final TestingHighAvailabilityServices haServices = new TestingHighAvailabilityServices();
+		haServices.setResourceManagerLeaderRetriever(testLeaderService);
+
+		final TaskManagerConfiguration taskManagerConfiguration = mock(TaskManagerConfiguration.class);
+		when(taskManagerConfiguration.getNumberSlots()).thenReturn(1);
+		when(taskManagerConfiguration.getTimeout()).thenReturn(Time.seconds(10L));
+
+		final TaskManagerLocation taskManagerLocation = mock(TaskManagerLocation.class);
+		when(taskManagerLocation.getResourceID()).thenReturn(tmResourceId);
+
+		final TaskSlotTable taskSlotTable = mock(TaskSlotTable.class);
+		final SlotID slotId = new SlotID(tmResourceId, 0);
+		final ResourceProfile resourceProfile = new ResourceProfile(1.0, 1);
+		final SlotReport slotReport1 = new SlotReport(
+			new SlotStatus(
+				slotId,
+				resourceProfile));
+		final SlotReport slotReport2 = new SlotReport(
+			new SlotStatus(
+				slotId,
+				resourceProfile,
+				new JobID(),
+				new AllocationID()));
+
+		when(taskSlotTable.createSlotReport(any(ResourceID.class))).thenReturn(slotReport1, slotReport2);
+
+		final TestingFatalErrorHandler testingFatalErrorHandler = new TestingFatalErrorHandler();
+
+		final long heartbeatTimeout = 10000L;
+		final HeartbeatServices heartbeatServices = mock(HeartbeatServices.class);
+
+		when(heartbeatServices.createHeartbeatManager(
+			eq(taskManagerLocation.getResourceID()),
+			any(HeartbeatListener.class),
+			any(ScheduledExecutor.class),
+			any(Logger.class))).thenAnswer(
+			new Answer<HeartbeatManagerImpl<SlotReport, Void>>() {
+				@Override
+				public HeartbeatManagerImpl<SlotReport, Void> answer(InvocationOnMock invocation) throws Throwable {
+					return spy(new HeartbeatManagerImpl<>(
+						heartbeatTimeout,
+						taskManagerLocation.getResourceID(),
+						(HeartbeatListener<SlotReport, Void>)invocation.getArguments()[1],
+						(Executor)invocation.getArguments()[2],
+						(ScheduledExecutor)invocation.getArguments()[2],
+						(Logger)invocation.getArguments()[3]));
+				}
+			}
+		);
+
+		try {
+			final TaskExecutor taskManager = new TaskExecutor(
+				rpc,
+				taskManagerConfiguration,
+				taskManagerLocation,
+				mock(MemoryManager.class),
+				mock(IOManager.class),
+				mock(NetworkEnvironment.class),
+				haServices,
+				heartbeatServices,
+				mock(MetricRegistry.class),
+				mock(TaskManagerMetricGroup.class),
+				mock(BroadcastVariableManager.class),
+				mock(FileCache.class),
+				taskSlotTable,
+				mock(JobManagerTable.class),
+				mock(JobLeaderService.class),
+				testingFatalErrorHandler);
+
+			taskManager.start();
+
+			// wait for spied heartbeat manager instance
+			HeartbeatManager<Void, SlotReport> heartbeatManager = taskManager.getResourceManagerHeartbeatManager();
+
+			// define a leader and see that a registration happens
+			testLeaderService.notifyListener(rmAddress, rmLeaderId);
+
+			// register resource manager success will trigger monitoring heartbeat target between tm and rm
+			verify(rmGateway, timeout(timeout).atLeast(1)).registerTaskExecutor(
+				eq(rmLeaderId), eq(taskManager.getAddress()), eq(tmResourceId), eq(slotReport1), any(Time.class));
+
+			verify(heartbeatManager, timeout(timeout)).monitorTarget(any(ResourceID.class), any(HeartbeatTarget.class));
+
+			TaskExecutorGateway taskExecutorGateway = taskManager.getSelf();
+
+			// trigger the heartbeat asynchronously
+			taskExecutorGateway.heartbeatFromResourceManager(rmResourceId);
+
+			ArgumentCaptor<SlotReport> slotReportArgumentCaptor = ArgumentCaptor.forClass(SlotReport.class);
+
+			// wait for heartbeat response
+			verify(rmGateway, timeout(timeout)).heartbeatFromTaskManager(
+				eq(taskManagerLocation.getResourceID()),
+				slotReportArgumentCaptor.capture());
+
+			SlotReport actualSlotReport = slotReportArgumentCaptor.getValue();
+
+			// the new slot report should be reported
+			assertEquals(slotReport2, actualSlotReport);
+
+			// check if a concurrent error occurred
+			testingFatalErrorHandler.rethrowError();
+
+		} finally {
+			rpc.stopService();
+		}
+	}
+
 	@Test
 	public void testImmediatelyRegistersIfLeaderIsKnown() throws Exception {
 		final ResourceID resourceID = ResourceID.generate();
@@ -325,7 +464,7 @@ public class TaskExecutorTest extends TestLogger {
 			ResourceManagerGateway rmGateway = mock(ResourceManagerGateway.class);
 			when(rmGateway.registerTaskExecutor(
 					any(UUID.class), anyString(), any(ResourceID.class), any(SlotReport.class), any(Time.class)))
-				.thenReturn(FlinkCompletableFuture.<RegistrationResponse>completed(new TaskExecutorRegistrationSuccess(
+				.thenReturn(CompletableFuture.completedFuture(new TaskExecutorRegistrationSuccess(
 					new InstanceID(), resourceManagerResourceId, 10L)));
 
 			TaskManagerConfiguration taskManagerServicesConfiguration = mock(TaskManagerConfiguration.class);
@@ -397,11 +536,11 @@ public class TaskExecutorTest extends TestLogger {
 
 			when(rmGateway1.registerTaskExecutor(
 					any(UUID.class), anyString(), any(ResourceID.class), any(SlotReport.class), any(Time.class)))
-					.thenReturn(FlinkCompletableFuture.<RegistrationResponse>completed(
+					.thenReturn(CompletableFuture.completedFuture(
 						new TaskExecutorRegistrationSuccess(new InstanceID(), rmResourceId1, 10L)));
 			when(rmGateway2.registerTaskExecutor(
 					any(UUID.class), anyString(), any(ResourceID.class), any(SlotReport.class), any(Time.class)))
-					.thenReturn(FlinkCompletableFuture.<RegistrationResponse>completed(
+					.thenReturn(CompletableFuture.completedFuture(
 						new TaskExecutorRegistrationSuccess(new InstanceID(), rmResourceId2, 10L)));
 
 			rpc.registerGateway(address1, rmGateway1);
@@ -586,7 +725,7 @@ public class TaskExecutorTest extends TestLogger {
 
 			taskManager.submitTask(tdd, jobManagerLeaderId);
 
-			Future<Boolean> completionFuture = TestInvokable.completableFuture;
+			CompletableFuture<Boolean> completionFuture = TestInvokable.completableFuture;
 
 			completionFuture.get();
 
@@ -602,7 +741,7 @@ public class TaskExecutorTest extends TestLogger {
 	 */
 	public static class TestInvokable extends AbstractInvokable {
 
-		static final CompletableFuture<Boolean> completableFuture = new FlinkCompletableFuture<>();
+		static final CompletableFuture<Boolean> completableFuture = new CompletableFuture<>();
 
 		@Override
 		public void invoke() throws Exception {
@@ -651,7 +790,7 @@ public class TaskExecutorTest extends TestLogger {
 			any(String.class),
 			eq(resourceId),
 			any(SlotReport.class),
-			any(Time.class))).thenReturn(FlinkCompletableFuture.<RegistrationResponse>completed(new TaskExecutorRegistrationSuccess(registrationId, resourceManagerResourceId, 1000L)));
+			any(Time.class))).thenReturn(CompletableFuture.completedFuture(new TaskExecutorRegistrationSuccess(registrationId, resourceManagerResourceId, 1000L)));
 
 		final String jobManagerAddress = "jm";
 		final UUID jobManagerLeaderId = UUID.randomUUID();
@@ -665,13 +804,13 @@ public class TaskExecutorTest extends TestLogger {
 				eq(taskManagerLocation),
 				eq(jobManagerLeaderId),
 				any(Time.class)
-		)).thenReturn(FlinkCompletableFuture.<RegistrationResponse>completed(new JMTMRegistrationSuccess(jmResourceId, blobPort)));
+		)).thenReturn(CompletableFuture.completedFuture(new JMTMRegistrationSuccess(jmResourceId, blobPort)));
 		when(jobMasterGateway.getHostname()).thenReturn(jobManagerAddress);
 		when(jobMasterGateway.offerSlots(
 			any(ResourceID.class),
 			any(Iterable.class),
 			any(UUID.class),
-			any(Time.class))).thenReturn(mock(Future.class, RETURNS_MOCKS));
+			any(Time.class))).thenReturn(mock(CompletableFuture.class, RETURNS_MOCKS));
 
 		rpc.registerGateway(resourceManagerAddress, resourceManagerGateway);
 		rpc.registerGateway(jobManagerAddress, jobMasterGateway);
@@ -764,7 +903,7 @@ public class TaskExecutorTest extends TestLogger {
 			any(String.class),
 			eq(resourceId),
 			any(SlotReport.class),
-			any(Time.class))).thenReturn(FlinkCompletableFuture.<RegistrationResponse>completed(new TaskExecutorRegistrationSuccess(registrationId, resourceManagerResourceId, 1000L)));
+			any(Time.class))).thenReturn(CompletableFuture.completedFuture(new TaskExecutorRegistrationSuccess(registrationId, resourceManagerResourceId, 1000L)));
 
 		final ResourceID jmResourceId = new ResourceID(jobManagerAddress);
 		final int blobPort = 42;
@@ -781,12 +920,12 @@ public class TaskExecutorTest extends TestLogger {
 				eq(taskManagerLocation),
 				eq(jobManagerLeaderId),
 				any(Time.class)
-		)).thenReturn(FlinkCompletableFuture.<RegistrationResponse>completed(new JMTMRegistrationSuccess(jmResourceId, blobPort)));
+		)).thenReturn(CompletableFuture.completedFuture(new JMTMRegistrationSuccess(jmResourceId, blobPort)));
 		when(jobMasterGateway.getHostname()).thenReturn(jobManagerAddress);
 
 		when(jobMasterGateway.offerSlots(
 				any(ResourceID.class), any(Iterable.class), eq(jobManagerLeaderId), any(Time.class)))
-			.thenReturn(FlinkCompletableFuture.completed((Iterable<SlotOffer>)Collections.singleton(offer1)));
+			.thenReturn(CompletableFuture.completedFuture((Iterable<SlotOffer>)Collections.singleton(offer1)));
 
 		rpc.registerGateway(resourceManagerAddress, resourceManagerGateway);
 		rpc.registerGateway(jobManagerAddress, jobMasterGateway);
@@ -978,7 +1117,7 @@ public class TaskExecutorTest extends TestLogger {
 			eq(resourceId),
 			any(SlotReport.class),
 			any(Time.class))).thenReturn(
-				FlinkCompletableFuture.<RegistrationResponse>completed(new TaskExecutorRegistrationSuccess(registrationId, resourceManagerResourceId, 1000L)));
+				CompletableFuture.completedFuture(new TaskExecutorRegistrationSuccess(registrationId, resourceManagerResourceId, 1000L)));
 
 		final ResourceID jmResourceId = new ResourceID(jobManagerAddress);
 		final int blobPort = 42;
@@ -995,7 +1134,7 @@ public class TaskExecutorTest extends TestLogger {
 			eq(taskManagerLocation),
 			eq(jobManagerLeaderId),
 			any(Time.class)
-		)).thenReturn(FlinkCompletableFuture.<RegistrationResponse>completed(new JMTMRegistrationSuccess(jmResourceId, blobPort)));
+		)).thenReturn(CompletableFuture.completedFuture(new JMTMRegistrationSuccess(jmResourceId, blobPort)));
 		when(jobMasterGateway.getHostname()).thenReturn(jobManagerAddress);
 
 
@@ -1082,7 +1221,7 @@ public class TaskExecutorTest extends TestLogger {
 				Collections.<ResultPartitionDeploymentDescriptor>emptyList(),
 				Collections.<InputGateDeploymentDescriptor>emptyList());
 
-			CompletableFuture<Iterable<SlotOffer>> offerResultFuture = new FlinkCompletableFuture<>();
+			CompletableFuture<Iterable<SlotOffer>> offerResultFuture = new CompletableFuture<>();
 
 			// submit task first and then return acceptance response
 			when(

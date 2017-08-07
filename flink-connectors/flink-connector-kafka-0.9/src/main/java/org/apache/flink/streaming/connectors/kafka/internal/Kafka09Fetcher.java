@@ -23,6 +23,7 @@ import org.apache.flink.streaming.api.functions.AssignerWithPeriodicWatermarks;
 import org.apache.flink.streaming.api.functions.AssignerWithPunctuatedWatermarks;
 import org.apache.flink.streaming.api.functions.source.SourceFunction.SourceContext;
 import org.apache.flink.streaming.connectors.kafka.internals.AbstractFetcher;
+import org.apache.flink.streaming.connectors.kafka.internals.KafkaCommitCallback;
 import org.apache.flink.streaming.connectors.kafka.internals.KafkaTopicPartition;
 import org.apache.flink.streaming.connectors.kafka.internals.KafkaTopicPartitionState;
 import org.apache.flink.streaming.runtime.tasks.ProcessingTimeService;
@@ -35,6 +36,8 @@ import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import javax.annotation.Nonnull;
 
 import java.util.HashMap;
 import java.util.List;
@@ -100,7 +103,7 @@ public class Kafka09Fetcher<T> extends AbstractFetcher<T, TopicPartition> {
 				LOG,
 				handover,
 				kafkaProperties,
-				subscribedPartitionStates(),
+				unassignedPartitionsQueue,
 				kafkaMetricGroup,
 				createCallBridge(),
 				getFetcherName() + " for " + taskNameWithSubtasks,
@@ -122,7 +125,7 @@ public class Kafka09Fetcher<T> extends AbstractFetcher<T, TopicPartition> {
 
 			while (running) {
 				// this blocks until we get the next records
-				// it automatically re-throws exceptions encountered in the fetcher thread
+				// it automatically re-throws exceptions encountered in the consumer thread
 				final ConsumerRecords<byte[], byte[]> records = handover.pollNext();
 
 				// get the records for each topic partition
@@ -209,9 +212,14 @@ public class Kafka09Fetcher<T> extends AbstractFetcher<T, TopicPartition> {
 	}
 
 	@Override
-	public void commitInternalOffsetsToKafka(Map<KafkaTopicPartition, Long> offsets) throws Exception {
-		KafkaTopicPartitionState<TopicPartition>[] partitions = subscribedPartitionStates();
-		Map<TopicPartition, OffsetAndMetadata> offsetsToCommit = new HashMap<>(partitions.length);
+	public void commitInternalOffsetsToKafka(
+			Map<KafkaTopicPartition, Long> offsets,
+			@Nonnull KafkaCommitCallback commitCallback) throws Exception {
+
+		@SuppressWarnings("unchecked")
+		List<KafkaTopicPartitionState<TopicPartition>> partitions = subscribedPartitionStates();
+
+		Map<TopicPartition, OffsetAndMetadata> offsetsToCommit = new HashMap<>(partitions.size());
 
 		for (KafkaTopicPartitionState<TopicPartition> partition : partitions) {
 			Long lastProcessedOffset = offsets.get(partition.getKafkaTopicPartition());
@@ -226,6 +234,6 @@ public class Kafka09Fetcher<T> extends AbstractFetcher<T, TopicPartition> {
 		}
 
 		// record the work to be committed by the main consumer thread and make sure the consumer notices that
-		consumerThread.setOffsetsToCommit(offsetsToCommit);
+		consumerThread.setOffsetsToCommit(offsetsToCommit, commitCallback);
 	}
 }

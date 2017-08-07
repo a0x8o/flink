@@ -24,29 +24,20 @@ import org.apache.flink.graph.drivers.parameter.LongParameter;
 import org.apache.flink.types.LongValue;
 import org.apache.flink.types.NullValue;
 
-import static org.apache.flink.api.common.ExecutionConfig.PARALLELISM_DEFAULT;
 import static org.apache.flink.graph.generator.CompleteGraph.MINIMUM_VERTEX_COUNT;
 
 /**
  * Generate a {@link org.apache.flink.graph.generator.CompleteGraph}.
  */
 public class CompleteGraph
-extends GeneratedGraph<LongValue> {
+extends GeneratedGraph {
 
 	private LongParameter vertexCount = new LongParameter(this, "vertex_count")
 		.setMinimumValue(MINIMUM_VERTEX_COUNT);
 
-	private LongParameter littleParallelism = new LongParameter(this, "little_parallelism")
-		.setDefaultValue(PARALLELISM_DEFAULT);
-
-	@Override
-	public String getName() {
-		return CompleteGraph.class.getSimpleName();
-	}
-
 	@Override
 	public String getIdentity() {
-		return getTypeName() + " " + getName() + " (" + vertexCount.getValue() + ")";
+		return getName() + " (" + vertexCount.getValue() + ")";
 	}
 
 	@Override
@@ -55,9 +46,9 @@ extends GeneratedGraph<LongValue> {
 	}
 
 	@Override
-	protected Graph<LongValue, NullValue, NullValue> generate(ExecutionEnvironment env) throws Exception {
+	public Graph<LongValue, NullValue, NullValue> create(ExecutionEnvironment env) throws Exception {
 		return new org.apache.flink.graph.generator.CompleteGraph(env, vertexCount.getValue())
-			.setParallelism(littleParallelism.getValue().intValue())
+			.setParallelism(parallelism.getValue().intValue())
 			.generate();
 	}
 }

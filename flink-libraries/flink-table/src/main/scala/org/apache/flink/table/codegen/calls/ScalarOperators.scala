@@ -17,6 +17,8 @@
  */
 package org.apache.flink.table.codegen.calls
 
+import java.lang.reflect.Method
+
 import org.apache.calcite.avatica.util.DateTimeUtils.MILLIS_PER_DAY
 import org.apache.calcite.avatica.util.{DateTimeUtils, TimeUnitRange}
 import org.apache.calcite.util.BuiltInMethod
@@ -24,8 +26,9 @@ import org.apache.flink.api.common.typeinfo.BasicTypeInfo._
 import org.apache.flink.api.common.typeinfo._
 import org.apache.flink.api.java.typeutils.{MapTypeInfo, ObjectArrayTypeInfo}
 import org.apache.flink.table.codegen.CodeGenUtils._
+import org.apache.flink.table.codegen.calls.CallGenerator.generateCallIfArgsNotNull
 import org.apache.flink.table.codegen.{CodeGenException, CodeGenerator, GeneratedExpression}
-import org.apache.flink.table.typeutils.TimeIntervalTypeInfo
+import org.apache.flink.table.typeutils.{TimeIntervalTypeInfo, TypeCoercion}
 import org.apache.flink.table.typeutils.TypeCheckUtils._
 
 object ScalarOperators {
@@ -79,6 +82,94 @@ object ScalarOperators {
     }
   }
 
+  def generateIn(
+      codeGenerator: CodeGenerator,
+      needle: GeneratedExpression,
+      haystack: Seq[GeneratedExpression])
+    : GeneratedExpression = {
+
+    // determine common numeric type
+    val widerType = TypeCoercion.widerTypeOf(needle.resultType, haystack.head.resultType)
+
+    // we need to normalize the values for the hash set
+    // decimals are converted to a normalized string
+    val castNumeric = widerType match {
+
+      case Some(t) => (value: GeneratedExpression) =>
+        val casted = numericCasting(value.resultType, t)(value.resultTerm)
+        if (isDecimal(t)) {
+          s"$casted.stripTrailingZeros().toEngineeringString()"
+        } else {
+          casted
+        }
+
+      case None => (value: GeneratedExpression) =>
+        if (isDecimal(value.resultType)) {
+          s"${value.resultTerm}.stripTrailingZeros().toEngineeringString()"
+        } else {
+          value.resultTerm
+        }
+    }
+
+    // add elements to hash set if they are constant
+    if (haystack.forall(_.literal)) {
+      val elements = haystack.map { element =>
+        element.copy(
+            castNumeric(element), // cast element to wider type
+            element.nullTerm,
+            element.code,
+            widerType.getOrElse(needle.resultType))
+      }
+      val setTerm = codeGenerator.addReusableSet(elements)
+
+      val castedNeedle = needle.copy(
+        castNumeric(needle), // cast needle to wider type
+        needle.nullTerm,
+        needle.code,
+        widerType.getOrElse(needle.resultType))
+
+      val resultTerm = newName("result")
+      val nullTerm = newName("isNull")
+      val resultTypeTerm = primitiveTypeTermForTypeInfo(BOOLEAN_TYPE_INFO)
+      val defaultValue = primitiveDefaultValue(BOOLEAN_TYPE_INFO)
+
+      val operatorCode = if (codeGenerator.nullCheck) {
+        s"""
+          |${castedNeedle.code}
+          |$resultTypeTerm $resultTerm;
+          |boolean $nullTerm;
+          |if (!${castedNeedle.nullTerm}) {
+          |  $resultTerm = $setTerm.contains(${castedNeedle.resultTerm});
+          |  $nullTerm = !$resultTerm && $setTerm.contains(null);
+          |}
+          |else {
+          |  $resultTerm = $defaultValue;
+          |  $nullTerm = true;
+          |}
+          |""".stripMargin
+      }
+      else {
+        s"""
+          |${castedNeedle.code}
+          |$resultTypeTerm $resultTerm = $setTerm.contains(${castedNeedle.resultTerm});
+          |""".stripMargin
+      }
+
+      GeneratedExpression(resultTerm, nullTerm, operatorCode, BOOLEAN_TYPE_INFO)
+    } else {
+      // we use a chain of ORs for a set that contains non-constant elements
+      haystack
+        .map(generateEquals(codeGenerator.nullCheck, needle, _))
+        .reduce( (left, right) =>
+          generateOr(
+            nullCheck = true,
+            left,
+            right
+          )
+        )
+    }
+  }  
+  
   def generateEquals(
       nullCheck: Boolean,
       left: GeneratedExpression,
@@ -934,6 +1025,15 @@ object ScalarOperators {
     }
   }
 
+  def generateConcat(
+      method: Method,
+      operands: Seq[GeneratedExpression]): GeneratedExpression = {
+
+    generateCallIfArgsNotNull(false, STRING_TYPE_INFO, operands) {
+      (terms) =>s"${qualifyMethod(method)}(${terms.mkString(", ")})"
+    }
+  }
+
   def generateMapGet(
       codeGenerator: CodeGenerator,
       map: GeneratedExpression,
@@ -1052,7 +1152,7 @@ object ScalarOperators {
     case "*" => "multiply"
     case "/" => "divide"
     case "%" => "remainder"
-    case _ => throw new CodeGenException(s"Unsupported decimal arithmetic operator: '${operator}'")
+    case _ => throw new CodeGenException(s"Unsupported decimal arithmetic operator: '$operator'")
   }
 
   private def numericCasting(
@@ -1067,7 +1167,7 @@ object ScalarOperators {
       case LONG_TYPE_INFO => "longValueExact"
       case FLOAT_TYPE_INFO => "floatValue"
       case DOUBLE_TYPE_INFO => "doubleValue"
-      case _ => throw new CodeGenException(s"Unsupported decimal casting type: '${targetType}'")
+      case _ => throw new CodeGenException(s"Unsupported decimal casting type: '$targetType'")
     }
 
     val resultTypeTerm = primitiveTypeTermForTypeInfo(resultType)
@@ -1087,6 +1187,10 @@ object ScalarOperators {
     // result type and operand type are numeric but not decimal
     else if (isNumeric(operandType) && isNumeric(resultType)
         && !isDecimal(operandType) && !isDecimal(resultType)) {
+      (operandTerm) => s"(($resultTypeTerm) $operandTerm)"
+    }
+    // result type is time interval and operand type is integer
+    else if (isTimeInterval(resultType) && isInteger(operandType)){
       (operandTerm) => s"(($resultTypeTerm) $operandTerm)"
     }
     else {

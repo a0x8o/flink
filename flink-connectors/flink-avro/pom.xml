@@ -135,12 +135,19 @@ under the License.
 						</configuration>
 					</execution>
 				</executions>
+				<configuration>
+					<filesets>
+						<fileset>
+							<directory>${project.basedir}/src/test/java/org/apache/flink/api/io/avro/generated</directory>
+						</fileset>
+					</filesets>
+				</configuration>
 			</plugin>
 			<!-- Generate Test class from avro schema -->
 			<plugin>
 				<groupId>org.apache.avro</groupId>
 				<artifactId>avro-maven-plugin</artifactId>
-				<version>1.7.7</version>
+				<version>1.8.2</version>
 				<executions>
 					<execution>
 						<phase>generate-sources</phase>

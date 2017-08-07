@@ -21,6 +21,7 @@ package org.apache.flink.runtime.webmonitor.handlers;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.configuration.ConfigConstants;
+import org.apache.flink.configuration.CoreOptions;
 import org.apache.flink.runtime.checkpoint.CheckpointCoordinator;
 import org.apache.flink.runtime.executiongraph.AccessExecutionGraph;
 import org.apache.flink.runtime.instance.ActorGateway;
@@ -29,14 +30,15 @@ import org.apache.flink.runtime.messages.JobManagerMessages.CancellationFailure;
 import org.apache.flink.runtime.messages.JobManagerMessages.CancellationSuccess;
 import org.apache.flink.runtime.webmonitor.ExecutionGraphHolder;
 
+import org.apache.flink.shaded.netty4.io.netty.buffer.Unpooled;
+import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.DefaultFullHttpResponse;
+import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.FullHttpResponse;
+import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpHeaders;
+import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpResponseStatus;
+import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpVersion;
+
 import akka.dispatch.OnComplete;
 import com.fasterxml.jackson.core.JsonGenerator;
-import io.netty.buffer.Unpooled;
-import io.netty.handler.codec.http.DefaultFullHttpResponse;
-import io.netty.handler.codec.http.FullHttpResponse;
-import io.netty.handler.codec.http.HttpHeaders;
-import io.netty.handler.codec.http.HttpResponseStatus;
-import io.netty.handler.codec.http.HttpVersion;
 
 import javax.annotation.Nullable;
 
@@ -163,7 +165,7 @@ public class JobCancellationWithSavepointHandlers {
 								throw new IllegalStateException("No savepoint directory configured. " +
 										"You can either specify a directory when triggering this savepoint or " +
 										"configure a cluster-wide default via key '" +
-										ConfigConstants.SAVEPOINT_DIRECTORY_KEY + "'.");
+										CoreOptions.SAVEPOINT_DIRECTORY.key() + "'.");
 							} else {
 								targetDirectory = defaultSavepointDirectory;
 							}
@@ -265,7 +267,7 @@ public class JobCancellationWithSavepointHandlers {
 
 			response.headers().set(HttpHeaders.Names.LOCATION, location);
 
-			response.headers().set(HttpHeaders.Names.CONTENT_TYPE, "application/json");
+			response.headers().set(HttpHeaders.Names.CONTENT_TYPE, "application/json; charset=" + ENCODING.name());
 			response.headers().set(HttpHeaders.Names.CONTENT_LENGTH, response.content().readableBytes());
 
 			FullHttpResponse accepted = response;
@@ -376,7 +378,7 @@ public class JobCancellationWithSavepointHandlers {
 					HttpResponseStatus.CREATED,
 					Unpooled.wrappedBuffer(bytes));
 
-			response.headers().set(HttpHeaders.Names.CONTENT_TYPE, "application/json");
+			response.headers().set(HttpHeaders.Names.CONTENT_TYPE, "application/json; charset=" + ENCODING.name());
 			response.headers().set(HttpHeaders.Names.CONTENT_LENGTH, response.content().readableBytes());
 
 			return response;
@@ -401,7 +403,7 @@ public class JobCancellationWithSavepointHandlers {
 					HttpResponseStatus.ACCEPTED,
 					Unpooled.wrappedBuffer(bytes));
 
-			response.headers().set(HttpHeaders.Names.CONTENT_TYPE, "application/json");
+			response.headers().set(HttpHeaders.Names.CONTENT_TYPE, "application/json; charset=" + ENCODING.name());
 			response.headers().set(HttpHeaders.Names.CONTENT_LENGTH, response.content().readableBytes());
 
 			return response;
@@ -427,7 +429,7 @@ public class JobCancellationWithSavepointHandlers {
 					code,
 					Unpooled.wrappedBuffer(bytes));
 
-			response.headers().set(HttpHeaders.Names.CONTENT_TYPE, "application/json");
+			response.headers().set(HttpHeaders.Names.CONTENT_TYPE, "application/json; charset=" + ENCODING.name());
 			response.headers().set(HttpHeaders.Names.CONTENT_LENGTH, response.content().readableBytes());
 
 			return response;

@@ -31,8 +31,7 @@ import org.junit.runners.Parameterized;
  * Tests for {@link EdgeList}.
  */
 @RunWith(Parameterized.class)
-public class EdgeListITCase
-extends DriverBaseITCase {
+public class EdgeListITCase extends NonTransformableDriverBaseITCase {
 
 	public EdgeListITCase(String idType, TestExecutionMode mode) {
 		super(idType, mode);
@@ -48,37 +47,20 @@ extends DriverBaseITCase {
 	}
 
 	@Test
+	public void testLongDescription() throws Exception {
+		String expected = regexSubstring(new EdgeList().getLongDescription());
+
+		expectedOutputFromException(
+			new String[]{"--algorithm", "EdgeList"},
+			expected,
+			ProgramParametrizationException.class);
+	}
+
+	@Test
 	public void testHashWithCirculantGraph() throws Exception {
-		long checksum;
-		switch (idType) {
-			case "byte":
-			case "nativeByte":
-			case "short":
-			case "nativeShort":
-			case "char":
-			case "nativeChar":
-			case "integer":
-			case "nativeInteger":
-			case "nativeLong":
-				checksum = 0x0000000000344448L;
-				break;
-
-			case "long":
-				checksum = 0x0000000000a19d48L;
-				break;
-
-			case "string":
-			case "nativeString":
-				checksum = 0x000000000c47ca48L;
-				break;
-
-			default:
-				throw new IllegalArgumentException("Unknown type: " + idType);
-		}
-
 		expectedChecksum(
 			parameters("CirculantGraph", "hash", "--vertex_count", "42", "--range0", "13:4"),
-			168, checksum);
+			168, 0x000000000001ae80);
 	}
 
 	@Test
@@ -92,47 +74,10 @@ extends DriverBaseITCase {
 	}
 
 	@Test
-	public void testLongDescription() throws Exception {
-		String expected = regexSubstring(new EdgeList().getLongDescription());
-
-		expectedOutputFromException(
-			new String[]{"--algorithm", "EdgeList"},
-			expected,
-			ProgramParametrizationException.class);
-	}
-
-	@Test
 	public void testHashWithCompleteGraph() throws Exception {
-		long checksum;
-		switch (idType) {
-			case "byte":
-			case "nativeByte":
-			case "short":
-			case "nativeShort":
-			case "char":
-			case "nativeChar":
-			case "integer":
-			case "nativeInteger":
-			case "nativeLong":
-				checksum = 0x000000000217bbe2L;
-				break;
-
-			case "long":
-				checksum = 0x0000000006788c22L;
-				break;
-
-			case "string":
-			case "nativeString":
-				checksum = 0x000000007ddfd962L;
-				break;
-
-			default:
-				throw new IllegalArgumentException("Unknown type: " + idType);
-		}
-
 		expectedChecksum(
 			parameters("CompleteGraph", "hash", "--vertex_count", "42"),
-			1722, checksum);
+			1722, 0x0000000000113ca0L);
 	}
 
 	@Test
@@ -147,36 +92,9 @@ extends DriverBaseITCase {
 
 	@Test
 	public void testHashWithCycleGraph() throws Exception {
-		long checksum;
-		switch (idType) {
-			case "byte":
-			case "nativeByte":
-			case "short":
-			case "nativeShort":
-			case "char":
-			case "nativeChar":
-			case "integer":
-			case "nativeInteger":
-			case "nativeLong":
-				checksum = 0x00000000001a2224L;
-				break;
-
-			case "long":
-				checksum = 0x000000000050cea4L;
-				break;
-
-			case "string":
-			case "nativeString":
-				checksum = 0x000000000623e524L;
-				break;
-
-			default:
-				throw new IllegalArgumentException("Unknown type: " + idType);
-		}
-
 		expectedChecksum(
 			parameters("CycleGraph", "hash", "--vertex_count", "42"),
-			84, checksum);
+			84, 0x000000000000d740L);
 	}
 
 	@Test
@@ -191,36 +109,9 @@ extends DriverBaseITCase {
 
 	@Test
 	public void testHashWithEchoGraph() throws Exception {
-		long checksum;
-		switch (idType) {
-			case "byte":
-			case "nativeByte":
-			case "short":
-			case "nativeShort":
-			case "char":
-			case "nativeChar":
-			case "integer":
-			case "nativeInteger":
-			case "nativeLong":
-				checksum = 0x0000000000a9ddeaL;
-				break;
-
-			case "long":
-				checksum = 0x00000000020d3f2aL;
-				break;
-
-			case "string":
-			case "nativeString":
-				checksum = 0x0000000027e9516aL;
-				break;
-
-			default:
-				throw new IllegalArgumentException("Unknown type: " + idType);
-		}
-
 		expectedChecksum(
 			parameters("EchoGraph", "hash", "--vertex_count", "42", "--vertex_degree", "13"),
-			546, checksum);
+			546, 0x0000000000057720L);
 	}
 
 	@Test
@@ -242,36 +133,9 @@ extends DriverBaseITCase {
 
 	@Test
 	public void testHashWithGridGraph() throws Exception {
-		long checksum;
-		switch (idType) {
-			case "byte":
-			case "nativeByte":
-			case "short":
-			case "nativeShort":
-			case "char":
-			case "nativeChar":
-			case "integer":
-			case "nativeInteger":
-			case "nativeLong":
-				checksum = 0x00000000001ca34aL;
-				break;
-
-			case "long":
-				checksum = 0x000000000071408aL;
-				break;
-
-			case "string":
-			case "nativeString":
-				checksum = 0x00000000081ee80aL;
-				break;
-
-			default:
-				throw new IllegalArgumentException("Unknown type: " + idType);
-		}
-
 		expectedChecksum(
 			parameters("GridGraph", "hash", "--dim0", "2:true", "--dim1", "3:false", "--dim2", "5:true"),
-			130, checksum);
+			130, 0x000000000000eba0L);
 	}
 
 	@Test
@@ -286,36 +150,9 @@ extends DriverBaseITCase {
 
 	@Test
 	public void testHashWithHypercubeGraph() throws Exception {
-		long checksum;
-		switch (idType) {
-			case "byte":
-			case "nativeByte":
-			case "short":
-			case "nativeShort":
-			case "char":
-			case "nativeChar":
-			case "integer":
-			case "nativeInteger":
-			case "nativeLong":
-				checksum = 0x00000000035df180L;
-				break;
-
-			case "long":
-				checksum = 0x0000000005a52180L;
-				break;
-
-			case "string":
-			case "nativeString":
-				checksum = 0x0000000273474480L;
-				break;
-
-			default:
-				throw new IllegalArgumentException("Unknown type: " + idType);
-		}
-
 		expectedChecksum(
 			parameters("HypercubeGraph", "hash", "--dimensions", "7"),
-			896, checksum);
+			896, 0x00000000001bc800L);
 	}
 
 	@Test
@@ -330,36 +167,9 @@ extends DriverBaseITCase {
 
 	@Test
 	public void testHashWithPathGraph() throws Exception {
-		long checksum;
-		switch (idType) {
-			case "byte":
-			case "nativeByte":
-			case "short":
-			case "nativeShort":
-			case "char":
-			case "nativeChar":
-			case "integer":
-			case "nativeInteger":
-			case "nativeLong":
-				checksum = 0x00000000001982daL;
-				break;
-
-			case "long":
-				checksum = 0x00000000004ee21aL;
-				break;
-
-			case "string":
-			case "nativeString":
-				checksum = 0x00000000060a065aL;
-				break;
-
-			default:
-				throw new IllegalArgumentException("Unknown type: " + idType);
-		}
-
 		expectedChecksum(
 			parameters("PathGraph", "hash", "--vertex_count", "42"),
-			82, checksum);
+			82, 0x000000000000d220L);
 	}
 
 	@Test
@@ -374,36 +184,9 @@ extends DriverBaseITCase {
 
 	@Test
 	public void testHashWithRMatGraph() throws Exception {
-		long checksum;
-		switch (idType) {
-			case "byte":
-			case "nativeByte":
-			case "short":
-			case "nativeShort":
-			case "char":
-			case "nativeChar":
-			case "integer":
-			case "nativeInteger":
-			case "nativeLong":
-				checksum = 0x0000000003bf67f7L;
-				break;
-
-			case "long":
-				checksum = 0x0000000008f467f7L;
-				break;
-
-			case "string":
-			case "nativeString":
-				checksum = 0x00000001660861bdL;
-				break;
-
-			default:
-				throw new IllegalArgumentException("Unknown type: " + idType);
-		}
-
 		expectedChecksum(
 			parameters("RMatGraph", "hash", "--scale", "7"),
-			2048, checksum);
+			2048, 0x00000000001ee529);
 	}
 
 	@Test
@@ -418,36 +201,9 @@ extends DriverBaseITCase {
 
 	@Test
 	public void testHashWithDirectedRMatGraph() throws Exception {
-		long checksum;
-		switch (idType) {
-			case "byte":
-			case "nativeByte":
-			case "short":
-			case "nativeShort":
-			case "char":
-			case "nativeChar":
-			case "integer":
-			case "nativeInteger":
-			case "nativeLong":
-				checksum = 0x00000000029aafb3L;
-				break;
-
-			case "long":
-				checksum = 0x000000000592e9b3L;
-				break;
-
-			case "string":
-			case "nativeString":
-				checksum = 0x000000011b079691L;
-				break;
-
-			default:
-				throw new IllegalArgumentException("Unknown type: " + idType);
-		}
-
 		expectedChecksum(
 			parameters("RMatGraph", "hash", "--scale", "7", "--simplify", "directed"),
-			1168, checksum);
+			1168, 0x00000000001579bdL);
 	}
 
 	@Test
@@ -462,36 +218,9 @@ extends DriverBaseITCase {
 
 	@Test
 	public void testHashWithUndirectedRMatGraph() throws Exception {
-		long checksum;
-		switch (idType) {
-			case "byte":
-			case "nativeByte":
-			case "short":
-			case "nativeShort":
-			case "char":
-			case "nativeChar":
-			case "integer":
-			case "nativeInteger":
-			case "nativeLong":
-				checksum = 0x0000000004627ab6L;
-				break;
-
-			case "long":
-				checksum = 0x0000000009193576L;
-				break;
-
-			case "string":
-			case "nativeString":
-				checksum = 0x00000001e9adcf56L;
-				break;
-
-			default:
-				throw new IllegalArgumentException("Unknown type: " + idType);
-		}
-
 		expectedChecksum(
 			parameters("RMatGraph", "hash", "--scale", "7", "--simplify", "undirected"),
-			1854, checksum);
+			1854, 0x0000000000242920L);
 	}
 
 	@Test
@@ -506,36 +235,9 @@ extends DriverBaseITCase {
 
 	@Test
 	public void testHashWithSingletonEdgeGraph() throws Exception {
-		long checksum;
-		switch (idType) {
-			case "byte":
-			case "nativeByte":
-			case "short":
-			case "nativeShort":
-			case "char":
-			case "nativeChar":
-			case "integer":
-			case "nativeInteger":
-			case "nativeLong":
-				checksum = 0x000000000034d5a4L;
-				break;
-
-			case "long":
-				checksum = 0x00000000006b8224L;
-				break;
-
-			case "string":
-			case "nativeString":
-				checksum = 0x000000000757c6a4L;
-				break;
-
-			default:
-				throw new IllegalArgumentException("Unknown type: " + idType);
-		}
-
 		expectedChecksum(
 			parameters("SingletonEdgeGraph", "hash", "--vertex_pair_count", "42"),
-			84, checksum);
+			84, 0x000000000001b3c0L);
 	}
 
 	@Test
@@ -550,36 +252,9 @@ extends DriverBaseITCase {
 
 	@Test
 	public void testHashWithStarGraph() throws Exception {
-		long checksum;
-		switch (idType) {
-			case "byte":
-			case "nativeByte":
-			case "short":
-			case "nativeShort":
-			case "char":
-			case "nativeChar":
-			case "integer":
-			case "nativeInteger":
-			case "nativeLong":
-				checksum = 0x00000000000d195aL;
-				break;
-
-			case "long":
-				checksum = 0x000000000042789aL;
-				break;
-
-			case "string":
-			case "nativeString":
-				checksum = 0x00000000032f0adaL;
-				break;
-
-			default:
-				throw new IllegalArgumentException("Unknown type: " + idType);
-		}
-
 		expectedChecksum(
 			parameters("StarGraph", "hash", "--vertex_count", "42"),
-			82, checksum);
+			82, 0x0000000000006ba0L);
 	}
 
 	@Test

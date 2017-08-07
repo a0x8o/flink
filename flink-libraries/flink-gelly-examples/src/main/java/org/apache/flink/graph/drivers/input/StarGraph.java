@@ -24,29 +24,20 @@ import org.apache.flink.graph.drivers.parameter.LongParameter;
 import org.apache.flink.types.LongValue;
 import org.apache.flink.types.NullValue;
 
-import static org.apache.flink.api.common.ExecutionConfig.PARALLELISM_DEFAULT;
 import static org.apache.flink.graph.generator.StarGraph.MINIMUM_VERTEX_COUNT;
 
 /**
  * Generate a {@link org.apache.flink.graph.generator.StarGraph}.
  */
 public class StarGraph
-extends GeneratedGraph<LongValue> {
+extends GeneratedGraph {
 
 	private LongParameter vertexCount = new LongParameter(this, "vertex_count")
 		.setMinimumValue(MINIMUM_VERTEX_COUNT);
 
-	private LongParameter littleParallelism = new LongParameter(this, "little_parallelism")
-		.setDefaultValue(PARALLELISM_DEFAULT);
-
-	@Override
-	public String getName() {
-		return StarGraph.class.getSimpleName();
-	}
-
 	@Override
 	public String getIdentity() {
-		return getTypeName() + " " + getName() + " (" + vertexCount + ")";
+		return getName() + " (" + vertexCount + ")";
 	}
 
 	@Override
@@ -55,9 +46,9 @@ extends GeneratedGraph<LongValue> {
 	}
 
 	@Override
-	public Graph<LongValue, NullValue, NullValue> generate(ExecutionEnvironment env) {
+	public Graph<LongValue, NullValue, NullValue> create(ExecutionEnvironment env) {
 		return new org.apache.flink.graph.generator.StarGraph(env, vertexCount.getValue())
-			.setParallelism(littleParallelism.getValue().intValue())
+			.setParallelism(parallelism.getValue().intValue())
 			.generate();
 	}
 }

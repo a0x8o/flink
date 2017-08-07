@@ -18,6 +18,7 @@
 
 package org.apache.flink.client;
 
+import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.InvalidProgramException;
 import org.apache.flink.api.common.JobExecutionResult;
 import org.apache.flink.api.common.JobID;
@@ -44,8 +45,8 @@ import org.apache.flink.configuration.ConfigConstants;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.GlobalConfiguration;
 import org.apache.flink.configuration.IllegalConfigurationException;
+import org.apache.flink.configuration.JobManagerOptions;
 import org.apache.flink.core.fs.FileSystem;
-import org.apache.flink.core.fs.Path;
 import org.apache.flink.optimizer.DataStatistics;
 import org.apache.flink.optimizer.Optimizer;
 import org.apache.flink.optimizer.costs.DefaultCostEstimator;
@@ -54,8 +55,6 @@ import org.apache.flink.optimizer.plan.OptimizedPlan;
 import org.apache.flink.optimizer.plan.StreamingPlan;
 import org.apache.flink.optimizer.plandump.PlanJSONDumpGenerator;
 import org.apache.flink.runtime.akka.AkkaUtils;
-import org.apache.flink.runtime.blob.BlobClient;
-import org.apache.flink.runtime.blob.BlobKey;
 import org.apache.flink.runtime.client.JobStatusMessage;
 import org.apache.flink.runtime.instance.ActorGateway;
 import org.apache.flink.runtime.jobgraph.JobStatus;
@@ -91,7 +90,6 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
@@ -127,23 +125,38 @@ public class CliFrontend {
 
 	// --------------------------------------------------------------------------------------------
 
-	private static final List<CustomCommandLine> customCommandLine = new LinkedList<>();
+	private static final List<CustomCommandLine<?>> customCommandLines = new ArrayList<>(3);
 
 	static {
 		//	Command line interface of the YARN session, with a special initialization here
 		//	to prefix all options with y/yarn.
 		//	Tips: DefaultCLI must be added at last, because getActiveCustomCommandLine(..) will get the
 		//	      active CustomCommandLine in order and DefaultCLI isActive always return true.
-		loadCustomCommandLine("org.apache.flink.yarn.cli.FlinkYarnSessionCli", "y", "yarn");
-		loadCustomCommandLine("org.apache.flink.yarn.cli.FlinkYarnCLI", "y", "yarn");
-		customCommandLine.add(new DefaultCLI());
+		final String flinkYarnSessionCLI = "org.apache.flink.yarn.cli.FlinkYarnSessionCli";
+		final String flinkYarnCLI = "org.apache.flink.yarn.cli.FlinkYarnCLI";
+		try {
+			customCommandLines.add(loadCustomCommandLine(flinkYarnSessionCLI, "y", "yarn"));
+		} catch (Exception e) {
+			LOG.warn("Could not load CLI class {}.", flinkYarnSessionCLI, e);
+		}
+
+		try {
+			customCommandLines.add(loadCustomCommandLine(flinkYarnCLI, "y", "yarn"));
+		} catch (Exception e) {
+			LOG.warn("Could not load CLI class {}.", flinkYarnCLI, e);
+		}
+		customCommandLines.add(new DefaultCLI());
 	}
 
 	// --------------------------------------------------------------------------------------------
 
 	private final Configuration config;
 
+	private final String configurationDirectory;
+
 	private final FiniteDuration clientTimeout;
+
+	private final int defaultParallelism;
 
 	/**
 	 *
@@ -154,6 +167,7 @@ public class CliFrontend {
 	}
 
 	public CliFrontend(String configDir) throws Exception {
+		configurationDirectory = Preconditions.checkNotNull(configDir);
 
 		// configure the config directory
 		File configDirectory = new File(configDir);
@@ -171,6 +185,9 @@ public class CliFrontend {
 		}
 
 		this.clientTimeout = AkkaUtils.getClientTimeout(config);
+		this.defaultParallelism = GlobalConfiguration.loadConfiguration().getInteger(
+														ConfigConstants.DEFAULT_PARALLELISM_KEY,
+														ConfigConstants.DEFAULT_PARALLELISM);
 	}
 
 	// --------------------------------------------------------------------------------------------
@@ -188,6 +205,15 @@ public class CliFrontend {
 		copiedConfiguration.addAll(config);
 
 		return copiedConfiguration;
+	}
+
+	/**
+	 * Returns the configuration directory for the CLI frontend.
+	 *
+	 * @return Configuration directory
+	 */
+	public String getConfigurationDirectory() {
+		return configurationDirectory;
 	}
 
 	// --------------------------------------------------------------------------------------------
@@ -252,6 +278,8 @@ public class CliFrontend {
 					+ client.getMaxSlots() + "). "
 					+ "To use another parallelism, set it at the ./bin/flink client.");
 				userParallelism = client.getMaxSlots();
+			} else if (ExecutionConfig.PARALLELISM_DEFAULT == userParallelism) {
+				userParallelism = defaultParallelism;
 			}
 
 			return executeProgram(program, client, userParallelism);
@@ -316,6 +344,9 @@ public class CliFrontend {
 
 		try {
 			int parallelism = options.getParallelism();
+			if (ExecutionConfig.PARALLELISM_DEFAULT == parallelism) {
+				parallelism = defaultParallelism;
+			}
 
 			LOG.info("Creating program plan dump");
 
@@ -757,36 +788,9 @@ public class CliFrontend {
 						"Usage: bin/flink savepoint -d <savepoint-path>");
 			}
 
-			String jarFile = options.getJarFilePath();
-
 			ActorGateway jobManager = getJobManagerGateway(options);
 
-			List<BlobKey> blobKeys = null;
-			if (jarFile != null) {
-				logAndSysout("Disposing savepoint '" + savepointPath + "' with JAR " + jarFile + ".");
-
-				List<File> libs = null;
-				try {
-					libs = PackagedProgram.extractContainedLibraries(new File(jarFile).toURI().toURL());
-					if (!libs.isEmpty()) {
-						List<Path> libPaths = new ArrayList<>(libs.size());
-						for (File f : libs) {
-							libPaths.add(new Path(f.toURI()));
-						}
-
-						logAndSysout("Uploading JAR files.");
-						LOG.debug("JAR files: " + libPaths);
-						blobKeys = BlobClient.uploadJarFiles(jobManager, clientTimeout, config, libPaths);
-						LOG.debug("Blob keys: " + blobKeys.toString());
-					}
-				} finally {
-					if (libs != null) {
-						PackagedProgram.deleteExtractedLibraries(libs);
-					}
-				}
-			} else {
-				logAndSysout("Disposing savepoint '" + savepointPath + "'.");
-			}
+			logAndSysout("Disposing savepoint '" + savepointPath + "'.");
 
 			Object msg = new DisposeSavepoint(savepointPath);
 			Future<Object> response = jobManager.ask(msg, clientTimeout);
@@ -914,7 +918,7 @@ public class CliFrontend {
 	protected ClusterClient retrieveClient(CommandLineOptions options) {
 		CustomCommandLine customCLI = getActiveCustomCommandLine(options.getCommandLine());
 		try {
-			ClusterClient client = customCLI.retrieveCluster(options.getCommandLine(), config);
+			ClusterClient client = customCLI.retrieveCluster(options.getCommandLine(), config, configurationDirectory);
 			logAndSysout("Using address " + client.getJobManagerAddress() + " to connect to JobManager.");
 			return client;
 		} catch (Exception e) {
@@ -951,7 +955,7 @@ public class CliFrontend {
 
 		ClusterClient client;
 		try {
-			client = activeCommandLine.retrieveCluster(options.getCommandLine(), config);
+			client = activeCommandLine.retrieveCluster(options.getCommandLine(), config, configurationDirectory);
 			logAndSysout("Cluster configuration: " + client.getClusterIdentifier());
 		} catch (UnsupportedOperationException e) {
 			try {
@@ -960,6 +964,7 @@ public class CliFrontend {
 					applicationName,
 					options.getCommandLine(),
 					config,
+					configurationDirectory,
 					program.getAllLibraries());
 				logAndSysout("Cluster started: " + client.getClusterIdentifier());
 			} catch (UnsupportedOperationException e2) {
@@ -1176,8 +1181,8 @@ public class CliFrontend {
 	 * @param config The config to write to
 	 */
 	public static void setJobManagerAddressInConfig(Configuration config, InetSocketAddress address) {
-		config.setString(ConfigConstants.JOB_MANAGER_IPC_ADDRESS_KEY, address.getHostString());
-		config.setInteger(ConfigConstants.JOB_MANAGER_IPC_PORT_KEY, address.getPort());
+		config.setString(JobManagerOptions.ADDRESS, address.getHostString());
+		config.setInteger(JobManagerOptions.PORT, address.getPort());
 	}
 
 	// --------------------------------------------------------------------------------------------
@@ -1190,7 +1195,7 @@ public class CliFrontend {
 	 * @return custom command-line which is active (may only be one at a time)
 	 */
 	public CustomCommandLine getActiveCustomCommandLine(CommandLine commandLine) {
-		for (CustomCommandLine cli : customCommandLine) {
+		for (CustomCommandLine cli : customCommandLines) {
 			if (cli.isActive(commandLine, config)) {
 				return cli;
 			}
@@ -1202,8 +1207,8 @@ public class CliFrontend {
 	 * Retrieves the loaded custom command-lines.
 	 * @return An unmodifiyable list of loaded custom command-lines.
 	 */
-	public static List<CustomCommandLine> getCustomCommandLineList() {
-		return Collections.unmodifiableList(customCommandLine);
+	public static List<CustomCommandLine<?>> getCustomCommandLineList() {
+		return Collections.unmodifiableList(customCommandLines);
 	}
 
 	/**
@@ -1211,29 +1216,21 @@ public class CliFrontend {
 	 * @param className The fully-qualified class name to load.
 	 * @param params The constructor parameters
 	 */
-	private static void loadCustomCommandLine(String className, Object... params) {
+	private static CustomCommandLine<?> loadCustomCommandLine(String className, Object... params) throws IllegalAccessException, InvocationTargetException, InstantiationException, ClassNotFoundException, NoSuchMethodException {
 
-		try {
-			Class<? extends CustomCommandLine> customCliClass =
-				Class.forName(className).asSubclass(CustomCommandLine.class);
+		Class<? extends CustomCommandLine> customCliClass =
+			Class.forName(className).asSubclass(CustomCommandLine.class);
 
-			// construct class types from the parameters
-			Class<?>[] types = new Class<?>[params.length];
-			for (int i = 0; i < params.length; i++) {
-				Preconditions.checkNotNull(params[i], "Parameters for custom command-lines may not be null.");
-				types[i] = params[i].getClass();
-			}
-
-			Constructor<? extends CustomCommandLine> constructor = customCliClass.getConstructor(types);
-			final CustomCommandLine cli = constructor.newInstance(params);
-
-			customCommandLine.add(cli);
-
-		} catch (ClassNotFoundException | NoSuchMethodException | IllegalAccessException | InstantiationException
-			| InvocationTargetException e) {
-			LOG.warn("Unable to locate custom CLI class {}. " +
-				"Flink is not compiled with support for this class.", className, e);
+		// construct class types from the parameters
+		Class<?>[] types = new Class<?>[params.length];
+		for (int i = 0; i < params.length; i++) {
+			Preconditions.checkNotNull(params[i], "Parameters for custom command-lines may not be null.");
+			types[i] = params[i].getClass();
 		}
+
+		Constructor<? extends CustomCommandLine> constructor = customCliClass.getConstructor(types);
+
+		return constructor.newInstance(params);
 	}
 
 }

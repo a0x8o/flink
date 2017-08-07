@@ -28,11 +28,22 @@ import org.apache.flink.table.plan.nodes.logical._
 
 object FlinkRuleSets {
 
-  val LOGICAL_OPT_RULES: RuleSet = RuleSets.ofList(
+  /**
+    * Convert sub-queries before query decorrelation.
+    */
+  val TABLE_SUBQUERY_RULES: RuleSet = RuleSets.ofList(
+    SubQueryRemoveRule.FILTER,
+    SubQueryRemoveRule.PROJECT,
+    SubQueryRemoveRule.JOIN)
 
-    // convert a logical table scan to a relational expression
+  /**
+    * Convert table references before query decorrelation.
+    */
+  val TABLE_REF_RULES: RuleSet = RuleSets.ofList(
     TableScanRule.INSTANCE,
-    EnumerableToLogicalTableScan.INSTANCE,
+    EnumerableToLogicalTableScan.INSTANCE)
+
+  val LOGICAL_OPT_RULES: RuleSet = RuleSets.ofList(
 
     // push a filter into a join
     FilterJoinRule.FILTER_ON_JOIN,
@@ -100,7 +111,7 @@ object FlinkRuleSets {
     PushProjectIntoTableSourceScanRule.INSTANCE,
     PushFilterIntoTableSourceScanRule.INSTANCE,
 
-    // Unnest rule
+    // unnest rule
     LogicalUnnestRule.INSTANCE,
 
     // translate to flink logical rel nodes
@@ -179,6 +190,7 @@ object FlinkRuleSets {
     */
   val DATASTREAM_OPT_RULES: RuleSet = RuleSets.ofList(
     // translate to DataStream nodes
+    DataStreamSortRule.INSTANCE,
     DataStreamGroupAggregateRule.INSTANCE,
     DataStreamOverAggregateRule.INSTANCE,
     DataStreamGroupWindowAggregateRule.INSTANCE,
@@ -187,6 +199,7 @@ object FlinkRuleSets {
     DataStreamUnionRule.INSTANCE,
     DataStreamValuesRule.INSTANCE,
     DataStreamCorrelateRule.INSTANCE,
+    DataStreamWindowJoinRule.INSTANCE,
     StreamTableSourceScanRule.INSTANCE
   )
 

@@ -373,7 +373,8 @@ Table result = orders
     <tr>
       <td>
         <strong>Distinct</strong><br>
-        <span class="label label-primary">Batch</span>
+        <span class="label label-primary">Batch</span> <span class="label label-primary">Streaming</span> <br>
+        <span class="label label-info">Result Updating</span>
       </td>
       <td>
         <p>Similar to a SQL DISTINCT clause. Returns records with distinct value combinations.</p>
@@ -381,6 +382,7 @@ Table result = orders
 Table orders = tableEnv.scan("Orders");
 Table result = orders.distinct();
 {% endhighlight %}
+        <p><b>Note:</b> For streaming queries the required state to compute the query result might grow infinitely depending on the number of distinct fields. Please provide a query configuration with valid retention interval to prevent excessive state size. See <a href="streaming.html">Streaming Concepts</a> for details.</p>
       </td>
     </tr>
   </tbody>
@@ -807,6 +809,27 @@ Table result = left.minusAll(right);
 {% endhighlight %}
       </td>
     </tr>
+
+    <tr>
+      <td>
+        <strong>In</strong><br>
+        <span class="label label-primary">Batch</span>
+      </td>
+      <td>
+        <p>Similar to a SQL IN clause. In returns true if an expression exists in a given table sub-query. The sub-query table must consist of one column. This column must have the same data type as the expression.</p>
+{% highlight java %}
+Table left = ds1.toTable(tableEnv, "a, b, c");
+Table right = ds2.toTable(tableEnv, "a");
+
+// using implicit registration
+Table result = left.select("a, b, c").where("a.in(" + right + ")");
+
+// using explicit registration
+tableEnv.registerTable("RightTable", right);
+Table result = left.select("a, b, c").where("a.in(RightTable)");
+{% endhighlight %}
+      </td>
+    </tr>
   </tbody>
 </table>
 
@@ -908,6 +931,21 @@ val result = left.minus(right);
 val left = ds1.toTable(tableEnv, 'a, 'b, 'c);
 val right = ds2.toTable(tableEnv, 'a, 'b, 'c);
 val result = left.minusAll(right);
+{% endhighlight %}
+      </td>
+    </tr>
+
+    <tr>
+      <td>
+        <strong>In</strong><br>
+        <span class="label label-primary">Batch</span>
+      </td>
+      <td>
+        <p>Similar to a SQL IN clause. In returns true if an expression exists in a given table sub-query. The sub-query table must consist of one column. This column must have the same data type as the expression.</p>
+{% highlight scala %}
+val left = ds1.toTable(tableEnv, 'a, 'b, 'c);
+val right = ds2.toTable(tableEnv, 'a);
+val result = left.select('a, 'b, 'c).where('a.in(right));
 {% endhighlight %}
       </td>
     </tr>
@@ -1267,7 +1305,168 @@ A session window is defined by using the `Session` class as follows:
 
 ### Over Windows
 
-**TO BE DONE**
+Over window aggregates are known from standard SQL (`OVER` clause) and defined in the `SELECT` clause of a query. Unlike group windows, which are specified in the `GROUP BY` clause, over windows do not collapse rows. Instead over window aggregates compute an aggregate for each input row over a range of its neighboring rows. 
+
+Over windows are defined using the `window(w: OverWindow*)` clause and referenced via an alias in the `select()` method. The following example shows how to define an over window aggregation on a table.
+
+<div class="codetabs" markdown="1">
+<div data-lang="java" markdown="1">
+{% highlight java %}
+Table table = input
+  .window([OverWindow w].as("w"))           // define over window with alias w
+  .select("a, b.sum over w, c.min over w"); // aggregate over the over window w
+{% endhighlight %}
+</div>
+
+<div data-lang="scala" markdown="1">
+{% highlight scala %}
+val table = input
+  .window([w: OverWindow] as 'w)              // define over window with alias w
+  .select('a, 'b.sum over 'w, 'c.min over 'w) // aggregate over the over window w
+{% endhighlight %}
+</div>
+</div>
+
+The `OverWindow` defines a range of rows over which aggregates are computed. `OverWindow` is not an interface that users can implement. Instead, the Table API provides the `Over` class to configure the properties of the over window. Over windows can be defined on event-time or processing-time and on ranges specified as time interval or row-count. The supported over window definitions are exposed as methods on `Over` (and other classes) and are listed below:
+
+<table class="table table-bordered">
+  <thead>
+    <tr>
+      <th class="text-left" style="width: 20%">Method</th>
+      <th class="text-left">Required</th>
+      <th class="text-left">Description</th>
+    </tr>
+  </thead>
+
+  <tbody>
+    <tr>
+      <td><code>partitionBy</code></td>
+      <td>Optional</td>
+      <td>
+        <p>Defines a partitioning of the input on one or more attributes. Each partition is individually sorted and aggregate functions are applied to each partition separately.</p>
+
+        <p><b>Note:</b> In streaming environments, over window aggregates can only be computed in parallel if the window includes a partition by clause. Without <code>partitionBy(...)</code> the stream is processed by a single, non-parallel task.</p>
+      </td>
+    </tr>
+    <tr>
+      <td><code>orderBy</code></td>
+      <td>Required</td>
+      <td>
+        <p>Defines the order of rows within each partition and thereby the order in which the aggregate functions are applied to rows.</p>
+
+        <p><b>Note:</b> For streaming queries this must be a <a href="streaming.html#time-attributes">declared event-time or processing-time time attribute</a>. Currently, only a single sort attribute is supported.</p>
+      </td>
+    </tr>
+    <tr>
+      <td><code>preceding</code></td>
+      <td>Required</td>
+      <td>
+        <p>Defines the interval of rows that are included in the window and precede the current row. The interval can either be specified as time or row-count interval.</p>
+
+        <p><a href="tableApi.html#bounded-over-windows">Bounded over windows</a> are specified with the size of the interval, e.g., <code>10.minutes</code> for a time interval or <code>10.rows</code> for a row-count interval.</p>
+
+        <p><a href="tableApi.html#unbounded-over-windows">Unbounded over windows</a> are specified using a constant, i.e., <code>UNBOUNDED_RANGE</code> for a time interval or <code>UNBOUNDED_ROW</code> for a row-count interval. Unbounded over windows start with the first row of a partition.</p>
+      </td>
+    </tr>
+    <tr>
+      <td><code>following</code></td>
+      <td>Optional</td>
+      <td>
+        <p>Defines the window interval of rows that are included in the window and follow the current row. The interval must be specified in the same unit as the preceding interval (time or row-count).</p>
+
+        <p>At the moment, over windows with rows following the current row are not supported. Instead you can specify one of two constants:</p>
+
+        <ul>
+          <li><code>CURRENT_ROW</code> sets the upper bound of the window to the current row.</li>
+          <li><code>CURRENT_RANGE</code> sets the upper bound of the window to sort key of the the current row, i.e., all rows with the same sort key as the current row are included in the window.</li>
+        </ul>
+
+        <p>If the <code>following</code> clause is omitted, the upper bound of a time interval window is defined as <code>CURRENT_RANGE</code> and the upper bound of a row-count interval window is defined as <code>CURRENT_ROW</code>.</p>
+      </td>
+    </tr>
+    <tr>
+      <td><code>as</code></td>
+      <td>Required</td>
+      <td>
+        <p>Assigns an alias to the over window. The alias is used to reference the over window in the following <code>select()</code> clause.</p>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+**Note:** Currently, all aggregation functions in the same `select()` call must be computed of the same over window.
+
+#### Unbounded Over Windows
+<div class="codetabs" markdown="1">
+<div data-lang="java" markdown="1">
+{% highlight java %}
+// Unbounded Event-time over window (assuming an event-time attribute "rowtime")
+.window(Over.partitionBy("a").orderBy("rowtime").preceding("unbounded_range").as("w"));
+
+// Unbounded Processing-time over window (assuming a processing-time attribute "proctime")
+.window(Over.partitionBy("a").orderBy("proctime").preceding("unbounded_range").as("w"));
+
+// Unbounded Event-time Row-count over window (assuming an event-time attribute "rowtime")
+.window(Over.partitionBy("a").orderBy("rowtime").preceding("unbounded_row").as("w"));
+ 
+// Unbounded Processing-time Row-count over window (assuming a processing-time attribute "proctime")
+.window(Over.partitionBy("a").orderBy("proctime").preceding("unbounded_row").as("w"));
+{% endhighlight %}
+</div>
+
+<div data-lang="scala" markdown="1">
+{% highlight scala %}
+// Unbounded Event-time over window (assuming an event-time attribute "rowtime")
+.window(Over partitionBy 'a orderBy 'rowtime preceding UNBOUNDED_RANGE as 'w)
+
+// Unbounded Processing-time over window (assuming a processing-time attribute "proctime")
+.window(Over partitionBy 'a orderBy 'proctime preceding UNBOUNDED_RANGE as 'w)
+
+// Unbounded Event-time Row-count over window (assuming an event-time attribute "rowtime")
+.window(Over partitionBy 'a orderBy 'rowtime preceding UNBOUNDED_ROW as 'w)
+ 
+// Unbounded Processing-time Row-count over window (assuming a processing-time attribute "proctime")
+.window(Over partitionBy 'a orderBy 'proctime preceding UNBOUNDED_ROW as 'w)
+{% endhighlight %}
+</div>
+</div>
+
+#### Bounded Over Windows
+<div class="codetabs" markdown="1">
+<div data-lang="java" markdown="1">
+{% highlight java %}
+// Bounded Event-time over window (assuming an event-time attribute "rowtime")
+.window(Over.partitionBy("a").orderBy("rowtime").preceding("1.minutes").as("w"))
+
+// Bounded Processing-time over window (assuming a processing-time attribute "proctime")
+.window(Over.partitionBy("a").orderBy("proctime").preceding("1.minutes").as("w"))
+
+// Bounded Event-time Row-count over window (assuming an event-time attribute "rowtime")
+.window(Over.partitionBy("a").orderBy("rowtime").preceding("10.rows").as("w"))
+ 
+// Bounded Processing-time Row-count over window (assuming a processing-time attribute "proctime")
+.window(Over.partitionBy("a").orderBy("proctime").preceding("10.rows").as("w"))
+{% endhighlight %}
+</div>
+
+<div data-lang="scala" markdown="1">
+{% highlight scala %}
+// Bounded Event-time over window (assuming an event-time attribute "rowtime")
+.window(Over partitionBy 'a orderBy 'rowtime preceding 1.minutes as 'w)
+
+// Bounded Processing-time over window (assuming a processing-time attribute "proctime")
+.window(Over partitionBy 'a orderBy 'proctime preceding 1.minutes as 'w)
+
+// Bounded Event-time Row-count over window (assuming an event-time attribute "rowtime")
+.window(Over partitionBy 'a orderBy 'rowtime preceding 10.rows as 'w)
+  
+// Bounded Processing-time Row-count over window (assuming a processing-time attribute "proctime")
+.window(Over partitionBy 'a orderBy 'proctime preceding 10.rows as 'w)
+{% endhighlight %}
+</div>
+</div>
+
+{% top %}
 
 Data Types
 ----------
@@ -1302,8 +1501,6 @@ Generic types are treated as a black box within Table API and SQL yet.
 Composite types, however, are fully supported types where fields of a composite type can be accessed using the `.get()` operator in Table API and dot operator (e.g. `MyTable.pojoColumn.myField`) in SQL. Composite types can also be flattened using `.flatten()` in Table API or `MyTable.pojoColumn.*` in SQL.
 
 Array types can be accessed using the `myArray.at(1)` operator in Table API and `myArray[1]` operator in SQL. Array literals can be created using `array(1, 2, 3)` in Table API and `ARRAY[1, 2, 3]` in SQL.
-
-**TODO: Clean-up and move relevant parts to the "Mappings Types to Table Schema" section of the Common Concepts & API page.**
 
 {% top %}
 
@@ -1378,8 +1575,6 @@ If working with exact numeric values or large decimals is required, the Table AP
 In order to work with temporal values the Table API supports Java SQL's Date, Time, and Timestamp types. In the Scala Table API literals can be defined by using `java.sql.Date.valueOf("2016-06-27")`, `java.sql.Time.valueOf("10:10:42")`, or `java.sql.Timestamp.valueOf("2016-06-27 10:10:42.123")`. The Java and Scala Table API also support calling `"2016-06-27".toDate()`, `"10:10:42".toTime()`, and `"2016-06-27 10:10:42.123".toTimestamp()` for converting Strings into temporal types. *Note:* Since Java's temporal SQL types are time zone dependent, please make sure that the Flink Client and all TaskManagers use the same time zone.
 
 Temporal intervals can be represented as number of months (`Types.INTERVAL_MONTHS`) or number of milliseconds (`Types.INTERVAL_MILLIS`). Intervals of same type can be added or subtracted (e.g. `1.hour + 10.minutes`). Intervals of milliseconds can be added to time points (e.g. `"2016-08-10".toDate + 5.days`).
-
-**TODO: needs to be reworked, IMO. Grammar might be complete but is hard to understand without concrete examples**
 
 {% top %}
 
@@ -1508,6 +1703,28 @@ STRING.similar(STRING)
       </td>
       <td>
         <p>Returns true, if a string matches the specified SQL regex pattern. E.g. "A+" matches all strings that consist of at least one "A".</p>
+      </td>
+    </tr>
+
+    <tr>
+      <td>
+        {% highlight java %}
+ANY.in(ANY, ANY, ...)
+{% endhighlight %}
+      </td>
+      <td>
+        <p>Returns true if an expression exists in a given list of expressions. This is a shorthand for multiple OR conditions. If the testing set contains null, the result will be null if the element can not be found and true if it can be found. If element is null, the result is always null. E.g. "42.in(1, 2, 3)" leads to false.</p>
+      </td>
+    </tr>
+
+    <tr>
+      <td>
+        {% highlight java %}
+ANY.in(TABLE)
+{% endhighlight %}
+      </td>
+      <td>
+        <p>Returns true if an expression exists in a given table sub-query. The sub-query table must consist of one column. This column must have the same data type as the expression. Note: This operation is not supported in a streaming environment yet.</p>
       </td>
     </tr>
 
@@ -1911,6 +2128,61 @@ pi()
         <p>Returns a value that is closer than any other value to pi.</p>
       </td>
     </tr>
+
+    <tr>
+      <td>
+        {% highlight java %}
+e()
+{% endhighlight %}
+      </td>
+      <td>
+        <p>Returns a value that is closer than any other value to e.</p>
+      </td>
+    </tr>
+
+    <tr>
+      <td>
+        {% highlight java %}
+rand()
+{% endhighlight %}
+      </td>
+      <td>
+        <p>Returns a pseudorandom double value between 0.0 (inclusive) and 1.0 (exclusive).</p>
+      </td>
+    </tr>
+
+    <tr>
+      <td>
+        {% highlight java %}
+rand(seed integer)
+{% endhighlight %}
+      </td>
+      <td>
+        <p>Returns a pseudorandom double value between 0.0 (inclusive) and 1.0 (exclusive) with a initial seed. Two rand functions will return identical sequences of numbers if they have same initial seed.</p>
+      </td>
+    </tr>
+
+    <tr>
+     <td>
+       {% highlight java %}
+randInteger(bound integer)
+{% endhighlight %}
+     </td>
+    <td>
+      <p>Returns a pseudorandom integer value between 0.0 (inclusive) and the specified value (exclusive).</p>
+    </td>
+   </tr>
+
+    <tr>
+     <td>
+       {% highlight java %}
+randInteger(seed integer, bound integer)
+{% endhighlight %}
+     </td>
+    <td>
+      <p>Returns a pseudorandom integer value between 0.0 (inclusive) and the specified value (exclusive) with a initial seed. Two randInteger functions will return identical sequences of numbers if they have same initial seed and same bound.</p>
+    </td>
+   </tr>
     
   </tbody>
 </table>
@@ -2038,6 +2310,27 @@ STRING.initCap()
 
       <td>
         <p>Converts the initial letter of each word in a string to uppercase. Assumes a string containing only [A-Za-z0-9], everything else is treated as whitespace.</p>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        {% highlight text %}
+concat(string1, string2,...)
+{% endhighlight %}
+      </td>
+      <td>
+        <p>Returns the string that results from concatenating the arguments. Returns NULL if any argument is NULL. E.g. <code>concat("AA", "BB", "CC")</code> returns <code>AABBCC</code>.</p>
+      </td>
+    </tr>
+
+    <tr>
+      <td>
+        {% highlight text %}
+concat_ws(separator, string1, string2,...)
+{% endhighlight %}
+      </td>
+      <td>
+        <p>Returns the string that results from concatenating the arguments using a separator. The separator is added between the strings to be concatenated. Returns NULL If the separator is NULL. concat_ws() does not skip empty strings. However, it does skip any NULL argument. E.g. <code>concat_ws("~", "AA", "BB", "", "CC")</code> returns <code>AA~BB~~CC</code></p>
       </td>
     </tr>
 
@@ -2372,6 +2665,18 @@ temporalOverlaps(TIMEPOINT, TEMPORAL, TIMEPOINT, TEMPORAL)
       </td>
       <td>
         <p>Determines whether two anchored time intervals overlap. Time point and temporal are transformed into a range defined by two time points (start, end). The function evaluates <code>leftEnd >= rightStart && rightEnd >= leftStart</code>. E.g. <code>temporalOverlaps("2:55:00".toTime, 1.hour, "3:30:00".toTime, 2.hour)</code> leads to true.</p>
+      </td>
+    </tr>
+
+    <tr>
+      <td>
+        {% highlight java %}
+dateFormat(TIMESTAMP, STRING)
+{% endhighlight %}
+      </td>
+      <td>
+        <p>Formats <code>timestamp</code> as a string using a specified <code>format</code>. The format must be compatible with MySQL's date formatting syntax as used by the <code>date_parse</code> function. The format specification is given in the <a href="sql.html#date-format-specifier">Date Format Specifier table</a> below.</p>
+        <p>For example <code>dateFormat(ts, '%Y, %d %M')</code> results in strings formatted as <code>"2017, 05 May"</code>.</p>
       </td>
     </tr>
 
@@ -2720,6 +3025,28 @@ STRING.similar(STRING)
       </td>
     </tr>
 
+    <tr>
+      <td>
+        {% highlight scala %}
+ANY.in(ANY, ANY, ...)
+{% endhighlight %}
+      </td>
+      <td>
+        <p>Returns true if an expression exists in a given list of expressions. This is a shorthand for multiple OR conditions. If the testing set contains null, the result will be null if the element can not be found and true if it can be found. If element is null, the result is always null. E.g. "42".in(1, 2, 3) leads to false.</p>
+      </td>
+    </tr>
+
+    <tr>
+      <td>
+        {% highlight scala %}
+ANY.in(TABLE)
+{% endhighlight %}
+      </td>
+      <td>
+        <p>Returns true if an expression exists in a given table sub-query. The sub-query table must consist of one column. This column must have the same data type as the expression. Note: This operation is not supported in a streaming environment yet.</p>
+      </td>
+    </tr>
+
   </tbody>
 </table>
 
@@ -3119,6 +3446,61 @@ pi()
         <p>Returns a value that is closer than any other value to pi.</p>
       </td>
     </tr>
+
+    <tr>
+      <td>
+        {% highlight scala %}
+e()
+{% endhighlight %}
+      </td>
+      <td>
+        <p>Returns a value that is closer than any other value to e.</p>
+      </td>
+    </tr>
+
+    <tr>
+      <td>
+        {% highlight scala %}
+rand()
+{% endhighlight %}
+      </td>
+      <td>
+        <p>Returns a pseudorandom double value between 0.0 (inclusive) and 1.0 (exclusive).</p>
+      </td>
+    </tr>
+
+    <tr>
+      <td>
+        {% highlight scala %}
+rand(seed integer)
+{% endhighlight %}
+      </td>
+      <td>
+        <p>Returns a pseudorandom double value between 0.0 (inclusive) and 1.0 (exclusive) with a initial seed. Two rand functions will return identical sequences of numbers if they have same initial seed.</p>
+      </td>
+    </tr>
+
+    <tr>
+     <td>
+       {% highlight scala %}
+randInteger(bound integer)
+{% endhighlight %}
+     </td>
+    <td>
+      <p>Returns a pseudorandom integer value between 0.0 (inclusive) and the specified value (exclusive).</p>
+    </td>
+   </tr>
+
+    <tr>
+     <td>
+       {% highlight scala %}
+randInteger(seed integer, bound integer)
+{% endhighlight %}
+     </td>
+    <td>
+      <p>Returns a pseudorandom integer value between 0.0 (inclusive) and the specified value (exclusive) with a initial seed. Two randInteger functions will return identical sequences of numbers if they have same initial seed and same bound.</p>
+    </td>
+   </tr>
 
   </tbody>
 </table>
@@ -3737,6 +4119,18 @@ ANY.flatten()
       </td>
       <td>
         <p>Converts a Flink composite type (such as Tuple, POJO, etc.) and all of its direct subtypes into a flat representation where every subtype is a separate field. In most cases the fields of the flat representation are named similarly to the original fields but with a dollar separator (e.g. <code>mypojo$mytuple$f0</code>).</p>
+      </td>
+    </tr>
+
+    <tr>
+      <td>
+        {% highlight scala %}
+dateFormat(TIMESTAMP, STRING)
+{% endhighlight %}
+      </td>
+      <td>
+        <p>Formats <code>timestamp</code> as a string using a specified <code>format</code>. The format must be compatible with MySQL's date formatting syntax as used by the <code>date_parse</code> function. The format specification is given in the <a href="sql.html#date-format-specifier">Date Format Specifier table</a> below.</p>
+        <p>For example <code>dateFormat('ts, "%Y, %d %M")</code> results in strings formatted as <code>"2017, 05 May"</code>.</p>
       </td>
     </tr>
 

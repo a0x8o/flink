@@ -33,18 +33,19 @@ import org.apache.flink.api.common.functions.MapFunction
 import org.apache.flink.api.common.typeinfo.{AtomicType, TypeInformation}
 import org.apache.flink.api.common.typeutils.CompositeType
 import org.apache.flink.api.java.tuple.{Tuple2 => JTuple2}
-import org.apache.flink.api.java.typeutils.TupleTypeInfo
+import org.apache.flink.api.java.typeutils.{PojoTypeInfo, TupleTypeInfo}
 import org.apache.flink.api.scala.typeutils.CaseClassTypeInfo
 import org.apache.flink.streaming.api.TimeCharacteristic
 import org.apache.flink.streaming.api.datastream.DataStream
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment
 import org.apache.flink.table.calcite.RelTimeIndicatorConverter
 import org.apache.flink.table.explain.PlanJsonParser
-import org.apache.flink.table.expressions.{Expression, ProctimeAttribute, RowtimeAttribute, UnresolvedFieldReference}
+import org.apache.flink.table.expressions._
 import org.apache.flink.table.plan.nodes.FlinkConventions
 import org.apache.flink.table.plan.nodes.datastream.{DataStreamRel, UpdateAsRetractionTrait, _}
 import org.apache.flink.table.plan.rules.FlinkRuleSets
 import org.apache.flink.table.plan.schema.{DataStreamTable, RowSchema, StreamTableSourceTable}
+import org.apache.flink.table.plan.util.UpdatingPlanChecker
 import org.apache.flink.table.runtime.types.{CRow, CRowTypeInfo}
 import org.apache.flink.table.runtime.{CRowInputJavaTupleOutputMapRunner, CRowInputMapRunner, CRowInputScalaTupleOutputMapRunner}
 import org.apache.flink.table.sinks.{AppendStreamTableSink, RetractStreamTableSink, TableSink, UpsertStreamTableSink}
@@ -173,10 +174,10 @@ abstract class StreamTableEnvironment(
         // optimize plan
         val optimizedPlan = optimize(table.getRelNode, updatesAsRetraction = false)
         // check for append only table
-        val isAppendOnlyTable = isAppendOnly(optimizedPlan)
+        val isAppendOnlyTable = UpdatingPlanChecker.isAppendOnly(optimizedPlan)
         upsertSink.setIsAppendOnly(isAppendOnlyTable)
         // extract unique key fields
-        val tableKeys: Option[Array[String]] = getUniqueKeyFields(optimizedPlan)
+        val tableKeys: Option[Array[String]] = UpdatingPlanChecker.getUniqueKeyFields(optimizedPlan)
         // check that we have keys if the table has changes (is not append-only)
         tableKeys match {
           case Some(keys) => upsertSink.setKeyFields(keys)
@@ -200,7 +201,7 @@ abstract class StreamTableEnvironment(
         // optimize plan
         val optimizedPlan = optimize(table.getRelNode, updatesAsRetraction = false)
         // verify table is an insert-only (append-only) table
-        if (!isAppendOnly(optimizedPlan)) {
+        if (!UpdatingPlanChecker.isAppendOnly(optimizedPlan)) {
           throw new TableException(
             "AppendStreamTableSink requires that Table has only insert changes.")
         }
@@ -257,21 +258,6 @@ abstract class StreamTableEnvironment(
         converterFunction.returnType)
         .asInstanceOf[MapFunction[IN, OUT]]
     }
-  }
-
-  /** Validates that the plan produces only append changes. */
-  protected def isAppendOnly(plan: RelNode): Boolean = {
-    val appendOnlyValidator = new AppendOnlyValidator
-    appendOnlyValidator.go(plan)
-
-    appendOnlyValidator.isAppendOnly
-  }
-
-  /** Extracts the unique keys of the table produced by the plan. */
-  protected def getUniqueKeyFields(plan: RelNode): Option[Array[String]] = {
-    val keyExtractor = new UniqueKeyExtractor
-    keyExtractor.go(plan)
-    keyExtractor.keys
   }
 
   /**
@@ -437,39 +423,69 @@ abstract class StreamTableEnvironment(
     var rowtime: Option[(Int, String)] = None
     var proctime: Option[(Int, String)] = None
 
-    exprs.zipWithIndex.foreach {
-      case (RowtimeAttribute(reference@UnresolvedFieldReference(name)), idx) =>
-        if (rowtime.isDefined) {
-          throw new TableException(
-            "The rowtime attribute can only be defined once in a table schema.")
-        } else {
-          // check type of field that is replaced
-          if (idx < fieldTypes.length &&
-            !(TypeCheckUtils.isLong(fieldTypes(idx)) ||
-              TypeCheckUtils.isTimePoint(fieldTypes(idx)))) {
-            throw new TableException(
-              "The rowtime attribute can only be replace a field with a valid time type, such as " +
-                "Timestamp or Long.")
-          }
-          rowtime = Some(idx, name)
+    def extractRowtime(idx: Int, name: String, origName: Option[String]): Unit = {
+      if (rowtime.isDefined) {
+        throw new TableException(
+          "The rowtime attribute can only be defined once in a table schema.")
+      } else {
+        val mappedIdx = streamType match {
+          case pti: PojoTypeInfo[_] =>
+            pti.getFieldIndex(origName.getOrElse(name))
+          case _ => idx;
         }
-      case (ProctimeAttribute(reference@UnresolvedFieldReference(name)), idx) =>
-        if (proctime.isDefined) {
+        // check type of field that is replaced
+        if (mappedIdx < 0) {
+          throw new TableException(
+            s"The rowtime attribute can only replace a valid field. " +
+              s"${origName.getOrElse(name)} is not a field of type $streamType.")
+        }
+        else if (mappedIdx < fieldTypes.length &&
+          !(TypeCheckUtils.isLong(fieldTypes(mappedIdx)) ||
+            TypeCheckUtils.isTimePoint(fieldTypes(mappedIdx)))) {
+          throw new TableException(
+            s"The rowtime attribute can only replace a field with a valid time type, " +
+              s"such as Timestamp or Long. But was: ${fieldTypes(mappedIdx)}")
+        }
+
+        rowtime = Some(idx, name)
+      }
+    }
+
+    def extractProctime(idx: Int, name: String): Unit = {
+      if (proctime.isDefined) {
           throw new TableException(
             "The proctime attribute can only be defined once in a table schema.")
-        } else {
-          // check that proctime is only appended
-          if (idx < fieldTypes.length) {
-            throw new TableException(
-              "The proctime attribute can only be appended to the table schema and not replace " +
-                "an existing field. Please move it to the end of the schema.")
-          }
-          proctime = Some(idx, name)
+      } else {
+        // check that proctime is only appended
+        if (idx < fieldTypes.length) {
+          throw new TableException(
+            "The proctime attribute can only be appended to the table schema and not replace " +
+              "an existing field. Please move it to the end of the schema.")
         }
-      case (u: UnresolvedFieldReference, _) => fieldNames = u.name :: fieldNames
+        proctime = Some(idx, name)
+      }
+    }
 
-      case _ =>
-        throw new TableException("Time attributes can only be defined on field references.")
+    exprs.zipWithIndex.foreach {
+      case (RowtimeAttribute(UnresolvedFieldReference(name)), idx) =>
+        extractRowtime(idx, name, None)
+
+      case (RowtimeAttribute(Alias(UnresolvedFieldReference(origName), name, _)), idx) =>
+        extractRowtime(idx, name, Some(origName))
+
+      case (ProctimeAttribute(UnresolvedFieldReference(name)), idx) =>
+        extractProctime(idx, name)
+
+      case (ProctimeAttribute(Alias(UnresolvedFieldReference(_), name, _)), idx) =>
+        extractProctime(idx, name)
+
+      case (UnresolvedFieldReference(name), _) => fieldNames = name :: fieldNames
+
+      case (Alias(UnresolvedFieldReference(_), name, _), _) => fieldNames = name :: fieldNames
+
+      case (e, _) =>
+        throw new TableException(s"Time attributes can only be defined on field references or " +
+          s"aliases of field references. But was: $e")
     }
 
     if (rowtime.isDefined && fieldNames.contains(rowtime.get._2)) {
@@ -529,8 +545,19 @@ abstract class StreamTableEnvironment(
     */
   private[flink] def optimize(relNode: RelNode, updatesAsRetraction: Boolean): RelNode = {
 
+    // 0. convert sub-queries before query decorrelation
+    val convSubQueryPlan = runHepPlanner(
+      HepMatchOrder.BOTTOM_UP, FlinkRuleSets.TABLE_SUBQUERY_RULES, relNode, relNode.getTraitSet)
+
+    // 0. convert table references
+    val fullRelNode = runHepPlanner(
+      HepMatchOrder.BOTTOM_UP,
+      FlinkRuleSets.TABLE_REF_RULES,
+      convSubQueryPlan,
+      relNode.getTraitSet)
+
     // 1. decorrelate
-    val decorPlan = RelDecorrelator.decorrelateQuery(relNode)
+    val decorPlan = RelDecorrelator.decorrelateQuery(fullRelNode)
 
     // 2. convert time indicators
     val convPlan = RelTimeIndicatorConverter.convert(decorPlan, getRelBuilder.getRexBuilder)
@@ -604,7 +631,11 @@ abstract class StreamTableEnvironment(
       withChangeFlag: Boolean)(implicit tpe: TypeInformation[A]): DataStream[A] = {
     val relNode = table.getRelNode
     val dataStreamPlan = optimize(relNode, updatesAsRetraction)
-    translate(dataStreamPlan, relNode.getRowType, queryConfig, withChangeFlag)
+
+    // we convert the logical row type to the output row type
+    val convertedOutputType = RelTimeIndicatorConverter.convertOutputType(relNode)
+
+    translate(dataStreamPlan, convertedOutputType, queryConfig, withChangeFlag)
   }
 
   /**
@@ -627,7 +658,7 @@ abstract class StreamTableEnvironment(
       (implicit tpe: TypeInformation[A]): DataStream[A] = {
 
     // if no change flags are requested, verify table is an insert-only (append-only) table.
-    if (!withChangeFlag && !isAppendOnly(logicalPlan)) {
+    if (!withChangeFlag && !UpdatingPlanChecker.isAppendOnly(logicalPlan)) {
       throw new TableException(
         "Table is not an append-only table. " +
         "Use the toRetractStream() in order to handle add and retract messages.")
@@ -709,91 +740,6 @@ abstract class StreamTableEnvironment(
         s"== Physical Execution Plan ==" +
         System.lineSeparator +
         s"$sqlPlan"
-  }
-
-  private class AppendOnlyValidator extends RelVisitor {
-
-    var isAppendOnly = true
-
-    override def visit(node: RelNode, ordinal: Int, parent: RelNode): Unit = {
-      node match {
-        case s: DataStreamRel if s.producesUpdates =>
-          isAppendOnly = false
-        case _ =>
-          super.visit(node, ordinal, parent)
-      }
-    }
-  }
-
-  /** Identifies unique key fields in the output of a RelNode. */
-  private class UniqueKeyExtractor extends RelVisitor {
-
-    var keys: Option[Array[String]] = None
-
-    override def visit(node: RelNode, ordinal: Int, parent: RelNode): Unit = {
-      node match {
-        case c: DataStreamCalc =>
-          super.visit(node, ordinal, parent)
-          // check if input has keys
-          if (keys.isDefined) {
-            // track keys forward
-            val inNames = c.getInput.getRowType.getFieldNames
-            val inOutNames = c.getProgram.getNamedProjects.asScala
-              .map(p => {
-                c.getProgram.expandLocalRef(p.left) match {
-                    // output field is forwarded input field
-                  case i: RexInputRef => (i.getIndex, p.right)
-                    // output field is renamed input field
-                  case a: RexCall if a.getKind.equals(SqlKind.AS) =>
-                    a.getOperands.get(0) match {
-                      case ref: RexInputRef =>
-                        (ref.getIndex, p.right)
-                      case _ =>
-                        (-1, p.right)
-                    }
-                    // output field is not forwarded from input
-                  case _: RexNode => (-1, p.right)
-                }
-              })
-              // filter all non-forwarded fields
-              .filter(_._1 >= 0)
-              // resolve names of input fields
-              .map(io => (inNames.get(io._1), io._2))
-
-            // filter by input keys
-            val outKeys = inOutNames.filter(io => keys.get.contains(io._1)).map(_._2)
-            // check if all keys have been preserved
-            if (outKeys.nonEmpty && outKeys.length == keys.get.length) {
-              // all key have been preserved (but possibly renamed)
-              keys = Some(outKeys.toArray)
-            } else {
-              // some (or all) keys have been removed. Keys are no longer unique and removed
-              keys = None
-            }
-          }
-        case _: DataStreamOverAggregate =>
-          super.visit(node, ordinal, parent)
-          // keys are always forwarded by Over aggregate
-        case a: DataStreamGroupAggregate =>
-          // get grouping keys
-          val groupKeys = a.getRowType.getFieldNames.asScala.take(a.getGroupings.length)
-          keys = Some(groupKeys.toArray)
-        case w: DataStreamGroupWindowAggregate =>
-          // get grouping keys
-          val groupKeys =
-            w.getRowType.getFieldNames.asScala.take(w.getGroupings.length).toArray
-          // get window start and end time
-          val windowStartEnd = w.getWindowProperties.map(_.name)
-          // we have only a unique key if at least one window property is selected
-          if (windowStartEnd.nonEmpty) {
-            keys = Some(groupKeys ++ windowStartEnd)
-          }
-        case _: DataStreamRel =>
-          // anything else does not forward keys or might duplicate key, so we can stop
-          keys = None
-      }
-    }
-
   }
 
 }

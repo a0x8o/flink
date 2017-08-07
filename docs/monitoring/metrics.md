@@ -415,6 +415,35 @@ metrics.reporter.grph.protocol: TCP
 
 {% endhighlight %}
 
+### Prometheus (org.apache.flink.metrics.prometheus.PrometheusReporter)
+
+In order to use this reporter you must copy `/opt/flink-metrics-prometheus-{{site.version}}.jar` into the `/lib` folder
+of your Flink distribution.
+
+Parameters:
+
+- `port` - (optional) the port the Prometheus exporter listens on, defaults to [9249](https://github.com/prometheus/prometheus/wiki/Default-port-allocations).
+
+Example configuration:
+
+{% highlight yaml %}
+
+metrics.reporters: prom
+metrics.reporter.prom.class: org.apache.flink.metrics.prometheus.PrometheusReporter
+
+{% endhighlight %}
+
+Flink metric types are mapped to Prometheus metric types as follows: 
+
+| Flink     | Prometheus | Note                                     |
+| --------- |------------|------------------------------------------|
+| Counter   | Gauge      |Prometheus counters cannot be decremented.|
+| Gauge     | Gauge      |                                          |
+| Histogram | Summary    |Quantiles .5, .75, .95, .98, .99 and .999 |
+| Meter     | Gauge      |The gauge exports the meter's rate.       |
+
+All Flink metrics variables, such as `<host>`, `<job_name>`, `<tm_id>`, `<subtask_index>`, `<task_name>` and `<operator_name>`, are exported to Prometheus as labels. 
+
 ### StatsD (org.apache.flink.metrics.statsd.StatsDReporter)
 
 In order to use this reporter you must copy `/opt/flink-metrics-statsd-{{site.version}}.jar` into the `/lib` folder
@@ -867,6 +896,30 @@ Thus, in order to infer the metric identifier:
   </tbody>
 </table>
 
+#### Connectors:
+
+##### Kafka Connectors
+<table class="table table-bordered">
+  <thead>
+    <tr>
+      <th class="text-left" style="width: 20%">Scope</th>
+      <th class="text-left" style="width: 30%">Metrics</th>
+      <th class="text-left" style="width: 50%">Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th rowspan="1">Operator</th>
+      <td>commitsSucceeded</td>
+      <td>Kafka offset commit success count if Kafka commit is turned on and checkpointing is enabled.</td>
+    </tr>
+    <tr>
+       <th rowspan="1">Operator</th>
+       <td>commitsFailed</td>
+       <td>Kafka offset commit failure count if Kafka commit is turned on and checkpointing is enabled.</td>
+    </tr>
+  </tbody>
+</table>
 
 ### Latency tracking
 

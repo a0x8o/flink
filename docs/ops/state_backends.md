@@ -123,9 +123,7 @@ RocksDBStateBackend is currently the only backend that offers incremental checkp
 
 ## Configuring a State Backend
 
-State backends can be configured per job. In addition, you can define a default state backend to be used when the
-job does not explicitly define a state backend.
-
+The default state backend, if you specify nothing, is the jobmanager. If you wish to establish a different default for all jobs on your cluster, you can do so by defining a new default state backend in **flink-conf.yaml**. The default state backend can be overridden on a per-job basis, as shown below.
 
 ### Setting the Per-job State Backend
 
@@ -151,7 +149,7 @@ env.setStateBackend(new FsStateBackend("hdfs://namenode:40010/flink/checkpoints"
 
 A default state backend can be configured in the `flink-conf.yaml`, using the configuration key `state.backend`.
 
-Possible values for the config entry are *jobmanager* (MemoryStateBackend), *filesystem* (FsStateBackend), or the fully qualified class
+Possible values for the config entry are *jobmanager* (MemoryStateBackend), *filesystem* (FsStateBackend), *rocksdb* (RocksDBStateBackend), or the fully qualified class
 name of the class that implements the state backend factory [FsStateBackendFactory](https://github.com/apache/flink/blob/master/flink-runtime/src/main/java/org/apache/flink/runtime/state/filesystem/FsStateBackendFactory.java),
 such as `org.apache.flink.contrib.streaming.state.RocksDBStateBackendFactory` for RocksDBStateBackend.
 

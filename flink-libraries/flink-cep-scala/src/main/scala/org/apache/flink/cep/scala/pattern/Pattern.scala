@@ -75,6 +75,10 @@ class Pattern[T , F <: T](jPattern: JPattern[T, F]) {
     Option(jPattern.getCondition)
   }
 
+  def getUntilCondition: Option[IterativeCondition[F]] = {
+    Option(jPattern.getUntilCondition)
+  }
+
   /**
     * Adds a condition that has to be satisfied by an event
     * in order to be considered a match. If another condition has already been
@@ -199,6 +203,51 @@ class Pattern[T , F <: T](jPattern: JPattern[T, F]) {
   }
 
   /**
+    * Applies a stop condition for a looping state. It allows cleaning the underlying state.
+    *
+    * @param untilCondition a condition an event has to satisfy to stop collecting events into
+    *                       looping state
+    * @return The same pattern with applied untilCondition
+    */
+  def until(untilCondition: IterativeCondition[F]): Pattern[T, F] = {
+    jPattern.until(untilCondition)
+    this
+  }
+
+  /**
+    * Applies a stop condition for a looping state. It allows cleaning the underlying state.
+    *
+    * @param untilCondition a condition an event has to satisfy to stop collecting events into
+    *                       looping state
+    * @return The same pattern with applied untilCondition
+    */
+  def until(untilCondition: (F, Context[F]) => Boolean): Pattern[T, F] = {
+    val condFun = new IterativeCondition[F] {
+      val cleanCond = cep.scala.cleanClosure(untilCondition)
+
+      override def filter(value: F, ctx: JContext[F]): Boolean =
+        cleanCond(value, new JContextWrapper(ctx))
+    }
+    until(condFun)
+  }
+
+  /**
+    * Applies a stop condition for a looping state. It allows cleaning the underlying state.
+    *
+    * @param untilCondition a condition an event has to satisfy to stop collecting events into
+    *                       looping state
+    * @return The same pattern with applied untilCondition
+    */
+  def until(untilCondition: F => Boolean): Pattern[T, F] = {
+    val condFun = new IterativeCondition[F] {
+      val cleanCond = cep.scala.cleanClosure(untilCondition)
+
+      override def filter(value: F, ctx: JContext[F]): Boolean = cleanCond(value)
+    }
+    until(condFun)
+  }
+
+  /**
     * Defines the maximum time interval in which a matching pattern has to be completed in
     * order to be considered valid. This interval corresponds to the maximum time gap between first
     * and the last event.
@@ -256,7 +305,7 @@ class Pattern[T , F <: T](jPattern: JPattern[T, F]) {
     * @param name Name of the new pattern
     * @return A new pattern which is appended to this one
     */
-  def notFollowedBy(name : String) {
+  def notFollowedBy(name : String): Pattern[T, T] = {
     Pattern[T, T](jPattern.notFollowedBy(name))
   }
 
@@ -316,6 +365,19 @@ class Pattern[T , F <: T](jPattern: JPattern[T, F]) {
   }
 
   /**
+    * Specifies that the pattern can occur between from and to times.
+    *
+    * @param from number of times matching event must appear at least
+    * @param to   number of times matching event must appear at most
+    * @return The same pattern with the number of times range applied
+    * @throws MalformedPatternException if the quantifier is not applicable to this pattern.
+    */
+  def times(from: Int, to: Int): Pattern[T, F] = {
+    jPattern.times(from, to)
+    this
+  }
+
+  /**
     * Applicable only to [[Quantifier.oneOrMore()]] and [[Quantifier.times()]] patterns,
     * this option allows more flexibility to the matching events.
     *
@@ -356,6 +418,40 @@ class Pattern[T , F <: T](jPattern: JPattern[T, F]) {
     this
   }
 
+  /**
+    * Appends a new group pattern to the existing one. The new pattern enforces non-strict
+    * temporal contiguity. This means that a matching event of this pattern and the
+    * preceding matching event might be interleaved with other events which are ignored.
+    *
+    * @param pattern the pattern to append
+    * @return A new pattern which is appended to this one
+    */
+  def followedBy(pattern: Pattern[T, F]): GroupPattern[T, F] =
+    GroupPattern[T, F](jPattern.followedBy(pattern.wrappedPattern))
+
+  /**
+    * Appends a new group pattern to the existing one. The new pattern enforces non-strict
+    * temporal contiguity. This means that a matching event of this pattern and the
+    * preceding matching event might be interleaved with other events which are ignored.
+    *
+    * @param pattern the pattern to append
+    * @return A new pattern which is appended to this one
+    */
+  def followedByAny(pattern: Pattern[T, F]): GroupPattern[T, F] =
+    GroupPattern[T, F](jPattern.followedByAny(pattern.wrappedPattern))
+
+  /**
+    * Appends a new group pattern to the existing one. The new pattern enforces strict
+    * temporal contiguity. This means that the whole pattern sequence matches only
+    * if an event which matches this pattern directly follows the preceding matching
+    * event. Thus, there cannot be any events in between two matching events.
+    *
+    * @param pattern the pattern to append
+    * @return A new pattern which is appended to this one
+    */
+  def next(pattern: Pattern[T, F]): GroupPattern[T, F] =
+    GroupPattern[T, F](jPattern.next(pattern.wrappedPattern))
+
 }
 
 object Pattern {
@@ -380,4 +476,13 @@ object Pattern {
     */
   def begin[X](name: String): Pattern[X, X] = Pattern(JPattern.begin(name))
 
+  /**
+    * Starts a new pattern sequence. The provided pattern is the initial pattern
+    * of the new sequence.
+    *
+    * @param pattern the pattern to begin with
+    * @return the first pattern of a pattern sequence
+    */
+  def begin[T, F <: T](pattern: Pattern[T, F]): GroupPattern[T, F] =
+    GroupPattern[T, F](JPattern.begin(pattern.wrappedPattern))
 }

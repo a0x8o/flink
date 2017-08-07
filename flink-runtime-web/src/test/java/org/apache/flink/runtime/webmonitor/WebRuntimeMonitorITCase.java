@@ -18,7 +18,6 @@
 
 package org.apache.flink.runtime.webmonitor;
 
-import org.apache.flink.configuration.ConfigConstants;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.HighAvailabilityOptions;
 import org.apache.flink.configuration.JobManagerOptions;
@@ -37,9 +36,10 @@ import org.apache.flink.runtime.webmonitor.files.MimeTypes;
 import org.apache.flink.runtime.webmonitor.testutils.HttpTestClient;
 import org.apache.flink.util.TestLogger;
 
+import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpResponseStatus;
+
 import akka.actor.ActorRef;
 import akka.actor.ActorSystem;
-import io.netty.handler.codec.http.HttpResponseStatus;
 import org.apache.curator.test.TestingServer;
 import org.junit.Rule;
 import org.junit.Test;
@@ -109,7 +109,7 @@ public class WebRuntimeMonitorITCase extends TestLogger {
 
 				response = client.getNextResponse(deadline.timeLeft());
 				assertEquals(HttpResponseStatus.OK, response.getStatus());
-				assertEquals(response.getType(), MimeTypes.getMimeTypeForExtension("json"));
+				assertEquals("application/json; charset=UTF-8", response.getType());
 				assertTrue(response.getContent().contains("\"taskmanagers\":1"));
 			}
 		}
@@ -168,7 +168,7 @@ public class WebRuntimeMonitorITCase extends TestLogger {
 			String[] jobManagerAddress = new String[2];
 			for (int i = 0; i < jobManager.length; i++) {
 				Configuration jmConfig = config.clone();
-				jmConfig.setInteger(ConfigConstants.JOB_MANAGER_WEB_PORT_KEY,
+				jmConfig.setInteger(JobManagerOptions.WEB_PORT,
 						webMonitor[i].getServerPort());
 
 				jobManager[i] = JobManager.startJobManagerActors(
@@ -256,7 +256,7 @@ public class WebRuntimeMonitorITCase extends TestLogger {
 
 				response = followingClient.getNextResponse(deadline.timeLeft());
 				assertEquals(HttpResponseStatus.OK, response.getStatus());
-				assertEquals(response.getType(), MimeTypes.getMimeTypeForExtension("json"));
+				assertEquals("application/json; charset=UTF-8", response.getType());
 				assertTrue(response.getContent().contains("\"taskmanagers\":1") ||
 						response.getContent().contains("\"taskmanagers\":0"));
 			} finally {

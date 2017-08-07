@@ -134,12 +134,6 @@ stream = env
 </div>
 </div>
 
-The current FlinkKafkaConsumer implementation will establish a connection from the client (when calling the constructor)
-for querying the list of topics and partitions.
-
-For this to work, the consumer needs to be able to access the consumers from the machine submitting the job to the Flink cluster.
-If you experience any issues with the Kafka consumer on the client side, the client log might contain information about failed requests, etc.
-
 ### The `DeserializationSchema`
 
 The Flink Kafka Consumer needs to know how to turn the binary data in Kafka into Java/Scala objects. The
@@ -291,6 +285,21 @@ So if the topology fails due to loss of a TaskManager, there must still be enoug
 Flink on YARN supports automatic restart of lost YARN containers.
 
 If checkpointing is not enabled, the Kafka consumer will periodically commit the offsets to Zookeeper.
+
+### Kafka Consumers Partition Discovery
+
+The Flink Kafka Consumer supports discovering dynamically created Kafka partitions, and consumes them with
+exactly-once guarantees. All partitions discovered after the initial retrieval of partition metadata (i.e., when the
+job starts running) will be consumed from the earliest possible offset.
+
+By default, partition discovery is disabled. To enable it, set a non-negative value
+for `flink.partition-discovery.interval-millis` in the provided properties config,
+representing the discovery interval in milliseconds. 
+
+<span class="label label-danger">Limitation</span> When the consumer is restored from a savepoint from Flink versions
+prior to Flink 1.3.x, partition discovery cannot be enabled on the restore run. If enabled, the restore would fail
+with an exception. In this case, in order to use partition discovery, please first take a savepoint in Flink 1.3.x and
+then restore again from that.
 
 ### Kafka Consumers Offset Committing Behaviour Configuration
 

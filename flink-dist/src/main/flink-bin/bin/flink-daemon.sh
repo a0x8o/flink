@@ -38,12 +38,20 @@ case $DAEMON in
         CLASS_TO_RUN=org.apache.flink.runtime.taskmanager.TaskManager
     ;;
 
+    (taskexecutor)
+        CLASS_TO_RUN=org.apache.flink.runtime.taskexecutor.TaskManagerRunner
+    ;;
+
     (zookeeper)
         CLASS_TO_RUN=org.apache.flink.runtime.zookeeper.FlinkZooKeeperQuorumPeer
     ;;
 
     (historyserver)
         CLASS_TO_RUN=org.apache.flink.runtime.webmonitor.history.HistoryServer
+    ;;
+
+    (standalonesession)
+        CLASS_TO_RUN=org.apache.flink.runtime.entrypoint.StandaloneSessionClusterEntrypoint
     ;;
 
     (*)

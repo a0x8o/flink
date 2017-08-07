@@ -22,16 +22,22 @@ import java.math.{BigDecimal => JBigDecimal}
 
 import org.apache.calcite.linq4j.tree.Types
 import org.apache.calcite.runtime.SqlFunctions
-import org.apache.flink.table.functions.utils.MathFunctions
+import org.apache.flink.table.runtime.functions.ScalarFunctions
 
 object BuiltInMethods {
+
+  val LOG = Types.lookupMethod(classOf[ScalarFunctions], "log", classOf[Double])
+
+  val LOG_WITH_BASE =
+    Types.lookupMethod(classOf[ScalarFunctions], "log", classOf[Double], classOf[Double])
+
   val LOG10 = Types.lookupMethod(classOf[Math], "log10", classOf[Double])
 
   val EXP = Types.lookupMethod(classOf[Math], "exp", classOf[Double])
 
   val POWER = Types.lookupMethod(classOf[Math], "pow", classOf[Double], classOf[Double])
   val POWER_DEC = Types.lookupMethod(
-    classOf[MathFunctions], "power", classOf[Double], classOf[JBigDecimal])
+    classOf[ScalarFunctions], "power", classOf[Double], classOf[JBigDecimal])
   val POWER_DEC_DEC = Types.lookupMethod(
     classOf[SqlFunctions], "power", classOf[JBigDecimal], classOf[JBigDecimal])
 
@@ -84,4 +90,10 @@ object BuiltInMethods {
   val ROUND_LONG = Types.lookupMethod(classOf[SqlFunctions], "sround", classOf[Long], classOf[Int])
   val ROUND_DEC = Types.lookupMethod(classOf[SqlFunctions], "sround", classOf[JBigDecimal],
     classOf[Int])
+
+  val CONCAT = Types.lookupMethod(classOf[ScalarFunctions], "concat", classOf[Array[String]])
+  val CONCAT_WS =
+    Types.lookupMethod(
+      classOf[ScalarFunctions], "concat_ws", classOf[String], classOf[Array[String]])
+
 }
