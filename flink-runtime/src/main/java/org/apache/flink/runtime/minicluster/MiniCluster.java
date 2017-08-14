@@ -25,10 +25,10 @@ import org.apache.flink.api.common.time.Time;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.UnmodifiableConfiguration;
 import org.apache.flink.runtime.akka.AkkaUtils;
+import org.apache.flink.runtime.blob.BlobServer;
 import org.apache.flink.runtime.client.JobExecutionException;
 import org.apache.flink.runtime.clusterframework.FlinkResourceManager;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
-import org.apache.flink.runtime.concurrent.Future;
 import org.apache.flink.runtime.heartbeat.HeartbeatServices;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServicesUtils;
@@ -52,6 +52,7 @@ import org.slf4j.LoggerFactory;
 import javax.annotation.concurrent.GuardedBy;
 
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
 import static org.apache.flink.util.ExceptionUtils.firstOrSuppressed;
 import static org.apache.flink.util.Preconditions.checkNotNull;
@@ -84,6 +85,9 @@ public class MiniCluster {
 
 	@GuardedBy("lock")
 	private HighAvailabilityServices haServices;
+
+	@GuardedBy("lock")
+	private BlobServer blobServer;
 
 	@GuardedBy("lock")
 	private HeartbeatServices heartbeatServices;
@@ -241,6 +245,8 @@ public class MiniCluster {
 					configuration,
 					commonRpcService.getExecutor());
 
+				blobServer = new BlobServer(configuration, haServices.createBlobStore());
+
 				heartbeatServices = HeartbeatServices.fromConfiguration(configuration);
 
 				// bring up the ResourceManager(s)
@@ -263,6 +269,7 @@ public class MiniCluster {
 				jobDispatcher = new MiniClusterJobDispatcher(
 					configuration,
 					haServices,
+					blobServer,
 					heartbeatServices,
 					metricRegistry,
 					numJobManagers,
@@ -363,6 +370,16 @@ public class MiniCluster {
 		taskManagerRpcServices = null;
 		resourceManagerRpcServices = null;
 
+		// shut down the blob server
+		if (blobServer != null) {
+			try {
+				blobServer.close();
+			} catch (Exception e) {
+				exception = firstOrSuppressed(e, exception);
+			}
+			blobServer = null;
+		}
+
 		// shut down high-availability services
 		if (haServices != null) {
 			try {
@@ -387,7 +404,7 @@ public class MiniCluster {
 
 	public void waitUntilTaskManagerRegistrationsComplete() throws Exception {
 		LeaderRetrievalService rmMasterListener = null;
-		Future<LeaderAddressAndId> addressAndIdFuture;
+		CompletableFuture<LeaderAddressAndId> addressAndIdFuture;
 
 		try {
 			synchronized (lock) {
@@ -632,7 +649,8 @@ public class MiniCluster {
 
 			try {
 				synchronized (lock) {
-					if (taskManagers[index] != null) {
+					// note: if not running (after shutdown) taskManagers may be null!
+					if (running && taskManagers[index] != null) {
 						taskManagers[index].shutDown();
 					}
 				}

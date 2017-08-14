@@ -37,12 +37,14 @@ import org.apache.flink.table.functions.utils.UserDefinedFunctionUtils._
   * @param name function name (used by SQL parser)
   * @param aggregateFunction aggregate function to be called
   * @param returnType the type information of returned value
+  * @param accType the type information of the accumulator
   * @param typeFactory type factory for converting Flink's between Calcite's types
   */
 class AggSqlFunction(
     name: String,
     aggregateFunction: AggregateFunction[_, _],
-    returnType: TypeInformation[_],
+    val returnType: TypeInformation[_],
+    val accType: TypeInformation[_],
     typeFactory: FlinkTypeFactory,
     requiresOver: Boolean)
   extends SqlUserDefinedAggFunction(
@@ -53,6 +55,7 @@ class AggSqlFunction(
     // Do not need to provide a calcite aggregateFunction here. Flink aggregateion function
     // will be generated when translating the calcite relnode to flink runtime execution plan
     null,
+    false,
     requiresOver
   ) {
 
@@ -67,10 +70,11 @@ object AggSqlFunction {
       name: String,
       aggregateFunction: AggregateFunction[_, _],
       returnType: TypeInformation[_],
+      accType: TypeInformation[_],
       typeFactory: FlinkTypeFactory,
       requiresOver: Boolean): AggSqlFunction = {
 
-    new AggSqlFunction(name, aggregateFunction, returnType, typeFactory, requiresOver)
+    new AggSqlFunction(name, aggregateFunction, returnType, accType, typeFactory, requiresOver)
   }
 
   private[flink] def createOperandTypeInference(
@@ -94,7 +98,7 @@ object AggSqlFunction {
               s"Operand types of ${signatureToString(operandTypeInfo)} could not be inferred."))
 
         val inferredTypes = getParameterTypes(aggregateFunction, foundSignature.drop(1))
-          .map(typeFactory.createTypeFromTypeInfo)
+          .map(typeFactory.createTypeFromTypeInfo(_, isNullable = true))
 
         for (i <- operandTypes.indices) {
           if (i < inferredTypes.length - 1) {
@@ -117,7 +121,7 @@ object AggSqlFunction {
 
     new SqlReturnTypeInference {
       override def inferReturnType(opBinding: SqlOperatorBinding): RelDataType = {
-        typeFactory.createTypeFromTypeInfo(resultType)
+        typeFactory.createTypeFromTypeInfo(resultType, isNullable = true)
       }
     }
   }

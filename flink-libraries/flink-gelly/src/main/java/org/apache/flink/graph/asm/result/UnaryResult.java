@@ -20,22 +20,27 @@ package org.apache.flink.graph.asm.result;
 
 import org.apache.flink.graph.GraphAlgorithm;
 
+import java.io.Serializable;
+
 /**
  * A {@link GraphAlgorithm} result for a single vertex.
+ *
+ * @param <K> graph ID type
  */
-public interface UnaryResult<T> {
+public interface UnaryResult<K>
+extends Serializable {
 
 	/**
 	 * Get the first vertex ID.
 	 *
 	 * @return first vertex ID
 	 */
-	T getVertexId0();
+	K getVertexId0();
 
 	/**
 	 * Set the first vertex ID.
 	 *
-	 * @param value new vertex ID
+	 * @param vertexId0 new vertex ID
 	 */
-	void setVertexId0(T value);
+	void setVertexId0(K vertexId0);
 }

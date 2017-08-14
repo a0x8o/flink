@@ -19,8 +19,9 @@
 package org.apache.flink.runtime.jobmanager;
 
 import akka.actor.ActorSystem;
-import org.apache.flink.configuration.ConfigConstants;
+import org.apache.flink.api.common.JobID;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.JobManagerOptions;
 import org.apache.flink.runtime.akka.AkkaUtils;
 import org.apache.flink.runtime.akka.ListeningBehaviour;
 import org.apache.flink.runtime.blob.BlobClient;
@@ -78,8 +79,8 @@ public class JobSubmitTest {
 
 		int port = NetUtils.getAvailablePort();
 
-		jmConfig.setString(ConfigConstants.JOB_MANAGER_IPC_ADDRESS_KEY, "localhost");
-		jmConfig.setInteger(ConfigConstants.JOB_MANAGER_IPC_PORT_KEY, port);
+		jmConfig.setString(JobManagerOptions.ADDRESS, "localhost");
+		jmConfig.setInteger(JobManagerOptions.PORT, port);
 
 		scala.Option<Tuple2<String, Object>> listeningAddress = scala.Option.apply(new Tuple2<String, Object>("localhost", port));
 		jobManagerSystem = AkkaUtils.createActorSystem(jmConfig, listeningAddress);
@@ -136,9 +137,11 @@ public class JobSubmitTest {
 			// upload two dummy bytes and add their keys to the job graph as dependencies
 			BlobKey key1, key2;
 			BlobClient bc = new BlobClient(new InetSocketAddress("localhost", blobPort), jmConfig);
+			// TODO: make use of job-related BLOBs after adapting the BlobLibraryCacheManager
+			JobID jobId = null;
 			try {
-				key1 = bc.put(new byte[10]);
-				key2 = bc.put(new byte[10]);
+				key1 = bc.put(jobId, new byte[10]);
+				key2 = bc.put(jobId, new byte[10]);
 
 				// delete one of the blobs to make sure that the startup failed
 				bc.delete(key2);

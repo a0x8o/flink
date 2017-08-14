@@ -24,7 +24,6 @@ import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.checkpoint.CheckpointRecoveryFactory;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.concurrent.ScheduledExecutor;
-import org.apache.flink.runtime.concurrent.impl.FlinkCompletableFuture;
 import org.apache.flink.runtime.execution.librarycache.BlobLibraryCacheManager;
 import org.apache.flink.runtime.execution.librarycache.FlinkUserCodeClassLoader;
 import org.apache.flink.runtime.executiongraph.restart.RestartStrategyFactory;
@@ -36,7 +35,7 @@ import org.apache.flink.runtime.jobmanager.OnCompletionActions;
 import org.apache.flink.runtime.leaderelection.TestingLeaderRetrievalService;
 import org.apache.flink.runtime.registration.RegistrationResponse;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerGateway;
-import org.apache.flink.runtime.rpc.TestingSerialRpcService;
+import org.apache.flink.runtime.rpc.TestingRpcService;
 import org.apache.flink.runtime.taskexecutor.TaskExecutorGateway;
 import org.apache.flink.runtime.taskmanager.TaskManagerLocation;
 import org.apache.flink.runtime.util.TestingFatalErrorHandler;
@@ -50,6 +49,7 @@ import org.powermock.modules.junit4.PowerMockRunner;
 import java.net.InetAddress;
 import java.net.URL;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -62,6 +62,8 @@ import static org.mockito.Mockito.when;
 @RunWith(PowerMockRunner.class)
 @PrepareForTest(BlobLibraryCacheManager.class)
 public class JobMasterTest extends TestLogger {
+
+	private final Time testingTimeout = Time.seconds(10L);
 
 	@Test
 	public void testHeartbeatTimeoutWithTaskManager() throws Exception {
@@ -82,7 +84,7 @@ public class JobMasterTest extends TestLogger {
 		final TaskManagerLocation taskManagerLocation = new TaskManagerLocation(tmResourceId, InetAddress.getLoopbackAddress(), 1234);
 		final TaskExecutorGateway taskExecutorGateway = mock(TaskExecutorGateway.class);
 
-		final TestingSerialRpcService rpc = new TestingSerialRpcService();
+		final TestingRpcService rpc = new TestingRpcService();
 		rpc.registerGateway(taskManagerAddress, taskExecutorGateway);
 
 		final long heartbeatInterval = 1L;
@@ -90,6 +92,8 @@ public class JobMasterTest extends TestLogger {
 
 		final ScheduledExecutor scheduledExecutor = mock(ScheduledExecutor.class);
 		final HeartbeatServices heartbeatServices = new TestingHeartbeatServices(heartbeatInterval, heartbeatTimeout, scheduledExecutor);
+		final BlobLibraryCacheManager libraryCacheManager = mock(BlobLibraryCacheManager.class);
+		when(libraryCacheManager.getBlobServerPort()).thenReturn(1337);
 
 		final JobGraph jobGraph = new JobGraph();
 
@@ -102,7 +106,7 @@ public class JobMasterTest extends TestLogger {
 				haServices,
 				heartbeatServices,
 				Executors.newScheduledThreadPool(1),
-				mock(BlobLibraryCacheManager.class),
+				libraryCacheManager,
 				mock(RestartStrategyFactory.class),
 				Time.of(10, TimeUnit.SECONDS),
 				null,
@@ -112,8 +116,14 @@ public class JobMasterTest extends TestLogger {
 
 			jobMaster.start(jmLeaderId);
 
+			final JobMasterGateway jobMasterGateway = jobMaster.getSelfGateway(JobMasterGateway.class);
+
 			// register task manager will trigger monitor heartbeat target, schedule heartbeat request at interval time
-			jobMaster.registerTaskManager(taskManagerAddress, taskManagerLocation, jmLeaderId);
+			CompletableFuture<RegistrationResponse> registrationResponse = jobMasterGateway
+				.registerTaskManager(taskManagerAddress, taskManagerLocation, jmLeaderId, testingTimeout);
+
+			// wait for the completion of the registration
+			registrationResponse.get();
 
 			ArgumentCaptor<Runnable> heartbeatRunnableCaptor = ArgumentCaptor.forClass(Runnable.class);
 			verify(scheduledExecutor, times(1)).scheduleAtFixedRate(
@@ -125,7 +135,7 @@ public class JobMasterTest extends TestLogger {
 			Runnable heartbeatRunnable = heartbeatRunnableCaptor.getValue();
 
 			ArgumentCaptor<Runnable> timeoutRunnableCaptor = ArgumentCaptor.forClass(Runnable.class);
-			verify(scheduledExecutor).schedule(timeoutRunnableCaptor.capture(), eq(heartbeatTimeout), eq(TimeUnit.MILLISECONDS));
+			verify(scheduledExecutor, timeout(testingTimeout.toMilliseconds())).schedule(timeoutRunnableCaptor.capture(), eq(heartbeatTimeout), eq(TimeUnit.MILLISECONDS));
 
 			Runnable timeoutRunnable = timeoutRunnableCaptor.getValue();
 
@@ -137,7 +147,7 @@ public class JobMasterTest extends TestLogger {
 			// run the timeout runnable to simulate a heartbeat timeout
 			timeoutRunnable.run();
 
-			verify(taskExecutorGateway).disconnectJobManager(eq(jobGraph.getJobID()), any(TimeoutException.class));
+			verify(taskExecutorGateway, timeout(testingTimeout.toMilliseconds())).disconnectJobManager(eq(jobGraph.getJobID()), any(TimeoutException.class));
 
 			// check if a concurrent error occurred
 			testingFatalErrorHandler.rethrowError();
@@ -177,10 +187,10 @@ public class JobMasterTest extends TestLogger {
 			anyString(),
 			any(JobID.class),
 			any(Time.class)
-		)).thenReturn(FlinkCompletableFuture.<RegistrationResponse>completed(new JobMasterRegistrationSuccess(
+		)).thenReturn(CompletableFuture.completedFuture(new JobMasterRegistrationSuccess(
 			heartbeatInterval, rmLeaderId, rmResourceId)));
 
-		final TestingSerialRpcService rpc = new TestingSerialRpcService();
+		final TestingRpcService rpc = new TestingRpcService();
 		rpc.registerGateway(resourceManagerAddress, resourceManagerGateway);
 
 		final TestingFatalErrorHandler testingFatalErrorHandler = new TestingFatalErrorHandler();
@@ -208,7 +218,7 @@ public class JobMasterTest extends TestLogger {
 			rmLeaderRetrievalService.notifyListener(resourceManagerAddress, rmLeaderId);
 
 			// register job manager success will trigger monitor heartbeat target between jm and rm
-			verify(resourceManagerGateway).registerJobManager(
+			verify(resourceManagerGateway, timeout(testingTimeout.toMilliseconds())).registerJobManager(
 				eq(rmLeaderId),
 				eq(jmLeaderId),
 				eq(jmResourceId),

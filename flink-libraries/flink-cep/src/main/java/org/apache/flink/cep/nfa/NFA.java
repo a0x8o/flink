@@ -42,8 +42,8 @@ import org.apache.flink.core.memory.DataOutputViewStreamWrapper;
 import org.apache.flink.streaming.api.windowing.time.Time;
 import org.apache.flink.util.Preconditions;
 
-import com.google.common.base.Predicate;
-import com.google.common.collect.Iterators;
+import org.apache.flink.shaded.guava18.com.google.common.base.Predicate;
+import org.apache.flink.shaded.guava18.com.google.common.collect.Iterators;
 
 import javax.annotation.Nullable;
 
@@ -289,7 +289,7 @@ public class NFA<T> implements Serializable {
 									newComputationState.getPreviousState().getName()),
 							newComputationState.getEvent(),
 							newComputationState.getTimestamp(),
-							computationState.getCounter());
+							newComputationState.getCounter());
 				} else if (newComputationState.isStopState()) {
 					//reached stop state. release entry for the stop state
 					shouldDiscardPath = true;
@@ -298,7 +298,7 @@ public class NFA<T> implements Serializable {
 									newComputationState.getPreviousState().getName()),
 							newComputationState.getEvent(),
 							newComputationState.getTimestamp(),
-							computationState.getCounter());
+							newComputationState.getCounter());
 				} else {
 					// add new computation state; it will be processed once the next event arrives
 					statesToRetain.add(newComputationState);

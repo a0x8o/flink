@@ -41,11 +41,12 @@ import org.apache.flink.graph.asm.degree.annotate.directed.EdgeSourceDegrees;
 import org.apache.flink.graph.asm.degree.annotate.directed.VertexDegrees;
 import org.apache.flink.graph.asm.degree.annotate.directed.VertexDegrees.Degrees;
 import org.apache.flink.graph.asm.result.PrintableResult;
-import org.apache.flink.graph.asm.result.UnaryResult;
+import org.apache.flink.graph.asm.result.UnaryResultBase;
 import org.apache.flink.graph.library.linkanalysis.Functions.SumScore;
 import org.apache.flink.graph.library.linkanalysis.PageRank.Result;
 import org.apache.flink.graph.utils.GraphUtils;
 import org.apache.flink.graph.utils.MurmurHash;
+import org.apache.flink.graph.utils.proxy.GraphAlgorithmWrappingBase;
 import org.apache.flink.graph.utils.proxy.GraphAlgorithmWrappingDataSet;
 import org.apache.flink.types.DoubleValue;
 import org.apache.flink.types.LongValue;
@@ -54,8 +55,6 @@ import org.apache.flink.util.Preconditions;
 
 import java.util.Collection;
 import java.util.Iterator;
-
-import static org.apache.flink.api.common.ExecutionConfig.PARALLELISM_DEFAULT;
 
 /**
  * PageRank computes a per-vertex score which is the sum of PageRank scores
@@ -84,9 +83,6 @@ extends GraphAlgorithmWrappingDataSet<K, VV, EV, Result<K>> {
 	private int maxIterations;
 
 	private double convergenceThreshold;
-
-	// Optional configuration
-	private int parallelism = PARALLELISM_DEFAULT;
 
 	/**
 	 * PageRank with a fixed number of iterations.
@@ -130,41 +126,14 @@ extends GraphAlgorithmWrappingDataSet<K, VV, EV, Result<K>> {
 		this.convergenceThreshold = convergenceThreshold;
 	}
 
-	/**
-	 * Override the operator parallelism.
-	 *
-	 * @param parallelism operator parallelism
-	 * @return this
-	 */
-	public PageRank<K, VV, EV> setParallelism(int parallelism) {
-		this.parallelism = parallelism;
-
-		return this;
-	}
-
 	@Override
-	protected String getAlgorithmName() {
-		return PageRank.class.getName();
-	}
-
-	@Override
-	protected boolean mergeConfiguration(GraphAlgorithmWrappingDataSet other) {
-		Preconditions.checkNotNull(other);
-
-		if (!PageRank.class.isAssignableFrom(other.getClass())) {
-			return false;
-		}
+	protected void mergeConfiguration(GraphAlgorithmWrappingBase other) {
+		super.mergeConfiguration(other);
 
 		PageRank rhs = (PageRank) other;
 
-		// merge configurations
-
 		maxIterations = Math.max(maxIterations, rhs.maxIterations);
 		convergenceThreshold = Math.min(convergenceThreshold, rhs.convergenceThreshold);
-		parallelism = (parallelism == PARALLELISM_DEFAULT) ? rhs.parallelism :
-			((rhs.parallelism == PARALLELISM_DEFAULT) ? parallelism : Math.min(parallelism, rhs.parallelism));
-
-		return true;
 	}
 
 	@Override
@@ -182,44 +151,45 @@ extends GraphAlgorithmWrappingDataSet<K, VV, EV, Result<K>> {
 		DataSet<Edge<K, LongValue>> edgeSourceDegree = input
 			.run(new EdgeSourceDegrees<K, VV, EV>()
 				.setParallelism(parallelism))
-			.map(new ExtractSourceDegree<K, EV>())
+			.map(new ExtractSourceDegree<>())
 				.setParallelism(parallelism)
 				.name("Extract source degree");
 
 		// vertices with zero in-edges
 		DataSet<Tuple2<K, DoubleValue>> sourceVertices = vertexDegree
-			.flatMap(new InitializeSourceVertices<K>())
+			.flatMap(new InitializeSourceVertices<>())
 			.withBroadcastSet(vertexCount, VERTEX_COUNT)
 				.setParallelism(parallelism)
 				.name("Initialize source vertex scores");
 
 		// s, initial pagerank(s)
 		DataSet<Tuple2<K, DoubleValue>> initialScores = vertexDegree
-			.map(new InitializeVertexScores<K>())
+			.map(new InitializeVertexScores<>())
 			.withBroadcastSet(vertexCount, VERTEX_COUNT)
 				.setParallelism(parallelism)
 				.name("Initialize scores");
 
 		IterativeDataSet<Tuple2<K, DoubleValue>> iterative = initialScores
-			.iterate(maxIterations);
+			.iterate(maxIterations)
+			.setParallelism(parallelism);
 
 		// s, projected pagerank(s)
 		DataSet<Tuple2<K, DoubleValue>> vertexScores = iterative
 			.coGroup(edgeSourceDegree)
 			.where(0)
 			.equalTo(0)
-			.with(new SendScore<K>())
+			.with(new SendScore<>())
 				.setParallelism(parallelism)
 				.name("Send score")
 			.groupBy(0)
-			.reduce(new SumScore<K>())
+			.reduce(new SumScore<>())
 			.setCombineHint(CombineHint.HASH)
 				.setParallelism(parallelism)
 				.name("Sum");
 
 		// ignored ID, total pagerank
 		DataSet<Tuple2<K, DoubleValue>> sumOfScores = vertexScores
-			.reduce(new SumVertexScores<K>())
+			.reduce(new SumVertexScores<>())
 				.setParallelism(parallelism)
 				.name("Sum");
 
@@ -228,7 +198,7 @@ extends GraphAlgorithmWrappingDataSet<K, VV, EV, Result<K>> {
 			.union(sourceVertices)
 				.setParallelism(parallelism)
 				.name("Union with source vertices")
-			.map(new AdjustScores<K>(dampingFactor))
+			.map(new AdjustScores<>(dampingFactor))
 				.withBroadcastSet(sumOfScores, SUM_OF_SCORES)
 				.withBroadcastSet(vertexCount, VERTEX_COUNT)
 					.setParallelism(parallelism)
@@ -241,7 +211,7 @@ extends GraphAlgorithmWrappingDataSet<K, VV, EV, Result<K>> {
 				.join(adjustedScores)
 				.where(0)
 				.equalTo(0)
-				.with(new ChangeInScores<K>())
+				.with(new ChangeInScores<>())
 					.setParallelism(parallelism)
 					.name("Change in scores");
 
@@ -252,7 +222,7 @@ extends GraphAlgorithmWrappingDataSet<K, VV, EV, Result<K>> {
 
 		return iterative
 			.closeWith(passThrough)
-			.map(new TranslateResult<K>())
+			.map(new TranslateResult<>())
 				.setParallelism(parallelism)
 				.name("Map result");
 	}
@@ -483,40 +453,28 @@ extends GraphAlgorithmWrappingDataSet<K, VV, EV, Result<K>> {
 	 *
 	 * @param <T> ID type
 	 */
-	@ForwardedFields("0; 1")
+	@ForwardedFields("0->vertexId0; 1->pageRankScore")
 	private static class TranslateResult<T>
 		implements MapFunction<Tuple2<T, DoubleValue>, Result<T>> {
 		private Result<T> output = new Result<>();
 
 		@Override
 		public Result<T> map(Tuple2<T, DoubleValue> value) throws Exception {
-			output.f0 = value.f0;
-			output.f1 = value.f1;
+			output.setVertexId0(value.f0);
+			output.setPageRankScore(value.f1);
 			return output;
 		}
 	}
 
 	/**
-	 * Wraps the {@link Tuple2} to encapsulate results from the PageRank algorithm.
+	 * A result for the PageRank algorithm.
 	 *
 	 * @param <T> ID type
 	 */
 	public static class Result<T>
-	extends Tuple2<T, DoubleValue>
-	implements PrintableResult, UnaryResult<T> {
-		public static final int HASH_SEED = 0x4010af29;
-
-		private MurmurHash hasher = new MurmurHash(HASH_SEED);
-
-		@Override
-		public T getVertexId0() {
-			return f0;
-		}
-
-		@Override
-		public void setVertexId0(T value) {
-			f0 = value;
-		}
+	extends UnaryResultBase<T>
+	implements PrintableResult {
+		private DoubleValue pageRankScore;
 
 		/**
 		 * Get the PageRank score.
@@ -524,20 +482,46 @@ extends GraphAlgorithmWrappingDataSet<K, VV, EV, Result<K>> {
 		 * @return the PageRank score
 		 */
 		public DoubleValue getPageRankScore() {
-			return f1;
+			return pageRankScore;
+		}
+
+		/**
+		 * Set the PageRank score.
+		 *
+		 * @param pageRankScore the PageRank score
+		 */
+		public void setPageRankScore(DoubleValue pageRankScore) {
+			this.pageRankScore = pageRankScore;
+		}
+
+		@Override
+		public String toString() {
+			return "(" + getVertexId0()
+				+ "," + pageRankScore
+				+ ")";
 		}
 
 		@Override
 		public String toPrintableString() {
 			return "Vertex ID: " + getVertexId0()
-				+ ", PageRank score: " + getPageRankScore();
+				+ ", PageRank score: " + pageRankScore;
 		}
+
+		// ----------------------------------------------------------------------------------------
+
+		public static final int HASH_SEED = 0x4010af29;
+
+		private transient MurmurHash hasher;
 
 		@Override
 		public int hashCode() {
+			if (hasher == null) {
+				hasher = new MurmurHash(HASH_SEED);
+			}
+
 			return hasher.reset()
-				.hash(f0.hashCode())
-				.hash(f1.getValue())
+				.hash(getVertexId0().hashCode())
+				.hash(pageRankScore.getValue())
 				.hash();
 		}
 	}

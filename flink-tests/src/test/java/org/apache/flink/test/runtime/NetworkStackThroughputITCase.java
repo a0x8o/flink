@@ -32,10 +32,9 @@ import org.apache.flink.runtime.jobgraph.JobVertex;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
 import org.apache.flink.runtime.jobmanager.scheduler.SlotSharingGroup;
 import org.apache.flink.test.util.JavaProgramTestBase;
-
 import org.apache.flink.util.TestLogger;
-import org.junit.Ignore;
 
+import org.junit.Ignore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -43,6 +42,9 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.concurrent.TimeUnit;
 
+/**
+ * Manually test the throughput of the network stack.
+ */
 @Ignore
 public class NetworkStackThroughputITCase extends TestLogger {
 
@@ -144,7 +146,6 @@ public class NetworkStackThroughputITCase extends TestLogger {
 			return jobGraph;
 		}
 
-
 		@Override
 		protected void testProgram() throws Exception {
 			JobExecutionResult jer = executor.submitJobAndWait(getJobGraph(), false);
@@ -162,6 +163,13 @@ public class NetworkStackThroughputITCase extends TestLogger {
 
 	// ------------------------------------------------------------------------
 
+	/**
+	 * Invokable that produces records and allows slowdown via {@link #IS_SLOW_EVERY_NUM_RECORDS}
+	 * and {@link #IS_SLOW_SENDER_CONFIG_KEY} and creates records of different data sizes via {@link
+	 * #DATA_VOLUME_GB_CONFIG_KEY}.
+	 *
+	 * <p>NOTE: needs to be <tt>public</tt> so that a task can be run with this!
+	 */
 	public static class SpeedTestProducer extends AbstractInvokable {
 
 		@Override
@@ -197,6 +205,11 @@ public class NetworkStackThroughputITCase extends TestLogger {
 		}
 	}
 
+	/**
+	 * Invokable that forwards incoming records.
+	 *
+	 * <p>NOTE: needs to be <tt>public</tt> so that a task can be run with this!
+	 */
 	public static class SpeedTestForwarder extends AbstractInvokable {
 
 		@Override
@@ -221,6 +234,12 @@ public class NetworkStackThroughputITCase extends TestLogger {
 		}
 	}
 
+	/**
+	 * Invokable that consumes incoming records and allows slowdown via {@link
+	 * #IS_SLOW_EVERY_NUM_RECORDS}.
+	 *
+	 * <p>NOTE: needs to be <tt>public</tt> so that a task can be run with this!
+	 */
 	public static class SpeedTestConsumer extends AbstractInvokable {
 
 		@Override
@@ -246,6 +265,11 @@ public class NetworkStackThroughputITCase extends TestLogger {
 		}
 	}
 
+	/**
+	 * Record type for the speed test.
+	 *
+	 * <p>NOTE: needs to be <tt>public</tt> to allow deserialization!
+	 */
 	public static class SpeedTestRecord implements IOReadableWritable {
 
 		private static final int RECORD_SIZE = 128;

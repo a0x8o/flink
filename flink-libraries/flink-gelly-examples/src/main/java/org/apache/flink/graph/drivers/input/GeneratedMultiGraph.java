@@ -21,6 +21,7 @@ package org.apache.flink.graph.drivers.input;
 import org.apache.flink.api.java.ExecutionEnvironment;
 import org.apache.flink.graph.Graph;
 import org.apache.flink.graph.drivers.parameter.Simplify;
+import org.apache.flink.types.LongValue;
 import org.apache.flink.types.NullValue;
 
 /**
@@ -29,7 +30,7 @@ import org.apache.flink.types.NullValue;
  * @param <K> graph ID type
  */
 public abstract class GeneratedMultiGraph<K extends Comparable<K>>
-extends GeneratedGraph<K> {
+extends GeneratedGraph<LongValue> {
 
 	private Simplify simplify = new Simplify(this);
 
@@ -42,18 +43,15 @@ extends GeneratedGraph<K> {
 		return simplify.getShortString();
 	}
 
-	/**
-	 * Generate the graph as configured.
-	 *
-	 * @param env Flink execution environment
-	 * @return input graph
-	 */
-	public Graph<K, NullValue, NullValue> create(ExecutionEnvironment env)
+	@Override
+	public Graph<LongValue, NullValue, NullValue> create(ExecutionEnvironment env)
 			throws Exception {
-		Graph<K, NullValue, NullValue> graph = super.create(env);
+		Graph<LongValue, NullValue, NullValue> graph = generate(env);
 
 		// simplify after the translation to improve the performance of the
 		// simplify operators by processing smaller data types
 		return simplify.simplify(graph);
 	}
+
+	public abstract Graph<LongValue, NullValue, NullValue> generate(ExecutionEnvironment env) throws Exception;
 }

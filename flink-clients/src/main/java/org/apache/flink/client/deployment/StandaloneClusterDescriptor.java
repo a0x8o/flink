@@ -19,8 +19,9 @@
 package org.apache.flink.client.deployment;
 
 import org.apache.flink.client.program.StandaloneClusterClient;
-import org.apache.flink.configuration.ConfigConstants;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.JobManagerOptions;
+import org.apache.flink.runtime.jobgraph.JobGraph;
 
 /**
  * A deployment descriptor for an existing cluster.
@@ -35,8 +36,8 @@ public class StandaloneClusterDescriptor implements ClusterDescriptor<Standalone
 
 	@Override
 	public String getClusterDescription() {
-		String host = config.getString(ConfigConstants.JOB_MANAGER_IPC_ADDRESS_KEY, "");
-		int port = config.getInteger(ConfigConstants.JOB_MANAGER_IPC_PORT_KEY, -1);
+		String host = config.getString(JobManagerOptions.ADDRESS, "");
+		int port = config.getInteger(JobManagerOptions.PORT, -1);
 		return "Standalone cluster at " + host + ":" + port;
 	}
 
@@ -50,7 +51,12 @@ public class StandaloneClusterDescriptor implements ClusterDescriptor<Standalone
 	}
 
 	@Override
-	public StandaloneClusterClient deploy() throws UnsupportedOperationException {
+	public StandaloneClusterClient deploySessionCluster(ClusterSpecification clusterSpecification) throws UnsupportedOperationException {
 		throw new UnsupportedOperationException("Can't deploy a standalone cluster.");
+	}
+
+	@Override
+	public StandaloneClusterClient deployJobCluster(ClusterSpecification clusterSpecification, JobGraph jobGraph) {
+		throw new UnsupportedOperationException("Can't deploy a standalone per-job cluster.");
 	}
 }

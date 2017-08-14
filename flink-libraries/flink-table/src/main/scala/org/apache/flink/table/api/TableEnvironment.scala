@@ -48,7 +48,7 @@ import org.apache.flink.table.api.java.{BatchTableEnvironment => JavaBatchTableE
 import org.apache.flink.table.api.scala.{BatchTableEnvironment => ScalaBatchTableEnv, StreamTableEnvironment => ScalaStreamTableEnv}
 import org.apache.flink.table.calcite.{FlinkPlannerImpl, FlinkRelBuilder, FlinkTypeFactory, FlinkTypeSystem}
 import org.apache.flink.table.catalog.{ExternalCatalog, ExternalCatalogSchema}
-import org.apache.flink.table.codegen.{CodeGenerator, ExpressionReducer, GeneratedFunction}
+import org.apache.flink.table.codegen.{FunctionCodeGenerator, ExpressionReducer, GeneratedFunction}
 import org.apache.flink.table.expressions.{Alias, Expression, UnresolvedFieldReference}
 import org.apache.flink.table.functions.utils.UserDefinedFunctionUtils._
 import org.apache.flink.table.functions.AggregateFunction
@@ -358,20 +358,32 @@ abstract class TableEnvironment(val config: TableConfig) {
     * Registers an [[AggregateFunction]] under a unique name. Replaces already existing
     * user-defined functions under this name.
     */
-  private[flink] def registerAggregateFunctionInternal[T: TypeInformation, ACC](
+  private[flink] def registerAggregateFunctionInternal[T: TypeInformation, ACC: TypeInformation](
       name: String, function: AggregateFunction[T, ACC]): Unit = {
     // check if class not Scala object
     checkNotSingleton(function.getClass)
     // check if class could be instantiated
     checkForInstantiation(function.getClass)
 
-    val typeInfo: TypeInformation[_] = implicitly[TypeInformation[T]]
+    val resultTypeInfo: TypeInformation[_] = getResultTypeOfAggregateFunction(
+      function,
+      implicitly[TypeInformation[T]])
+
+    val accTypeInfo: TypeInformation[_] = getAccumulatorTypeOfAggregateFunction(
+      function,
+      implicitly[TypeInformation[ACC]])
 
     // register in Table API
     functionCatalog.registerFunction(name, function.getClass)
 
     // register in SQL API
-    val sqlFunctions = createAggregateSqlFunction(name, function, typeInfo, typeFactory)
+    val sqlFunctions = createAggregateSqlFunction(
+      name,
+      function,
+      resultTypeInfo,
+      accTypeInfo,
+      typeFactory)
+
     functionCatalog.registerSqlFunction(sqlFunctions)
   }
 
@@ -446,11 +458,13 @@ abstract class TableEnvironment(val config: TableConfig) {
   @throws[TableException]
   @varargs
   def scan(tablePath: String*): Table = {
-    scanInternal(tablePath.toArray)
+    scanInternal(tablePath.toArray) match {
+      case Some(table) => table
+      case None => throw new TableException(s"Table '${tablePath.mkString(".")}' was not found.")
+    }
   }
 
-  @throws[TableException]
-  private def scanInternal(tablePath: Array[String]): Table = {
+  private[flink] def scanInternal(tablePath: Array[String]): Option[Table] = {
     require(tablePath != null && !tablePath.isEmpty, "tablePath must not be null or empty.")
     val schemaPaths = tablePath.slice(0, tablePath.length - 1)
     val schema = getSchema(schemaPaths)
@@ -458,10 +472,10 @@ abstract class TableEnvironment(val config: TableConfig) {
       val tableName = tablePath(tablePath.length - 1)
       val table = schema.getTable(tableName)
       if (table != null) {
-        return new Table(this, CatalogNode(tablePath, table.getRowType(typeFactory)))
+        return Some(new Table(this, CatalogNode(tablePath, table.getRowType(typeFactory))))
       }
     }
-    throw new TableException(s"Table '${tablePath.mkString(".")}' was not found.")
+    None
   }
 
   private def getSchema(schemaPath: Array[String]): SchemaPlus = {
@@ -778,7 +792,7 @@ abstract class TableEnvironment(val config: TableConfig) {
     }
 
     // code generate MapFunction
-    val generator = new CodeGenerator(
+    val generator = new FunctionCodeGenerator(
       config,
       false,
       inputTypeInfo,

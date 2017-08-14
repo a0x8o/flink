@@ -336,16 +336,18 @@ if [ -z "${JVM_ARGS}" ]; then
     JVM_ARGS=""
 fi
 
-# Check if deprecated HADOOP_HOME is set.
-if [ -n "$HADOOP_HOME" ]; then
-    # HADOOP_HOME is set. Check if its a Hadoop 1.x or 2.x HADOOP_HOME path
-    if [ -d "$HADOOP_HOME/conf" ]; then
-        # its a Hadoop 1.x
-        HADOOP_CONF_DIR="$HADOOP_CONF_DIR:$HADOOP_HOME/conf"
-    fi
-    if [ -d "$HADOOP_HOME/etc/hadoop" ]; then
-        # Its Hadoop 2.2+
-        HADOOP_CONF_DIR="$HADOOP_CONF_DIR:$HADOOP_HOME/etc/hadoop"
+# Check if deprecated HADOOP_HOME is set, and specify config path to HADOOP_CONF_DIR if it's empty.
+if [ -z "$HADOOP_CONF_DIR" ]; then
+    if [ -n "$HADOOP_HOME" ]; then
+        # HADOOP_HOME is set. Check if its a Hadoop 1.x or 2.x HADOOP_HOME path
+        if [ -d "$HADOOP_HOME/conf" ]; then
+            # its a Hadoop 1.x
+            HADOOP_CONF_DIR="$HADOOP_HOME/conf"
+        fi
+        if [ -d "$HADOOP_HOME/etc/hadoop" ]; then
+            # Its Hadoop 2.2+
+            HADOOP_CONF_DIR="$HADOOP_HOME/etc/hadoop"
+        fi
     fi
 fi
 
@@ -464,16 +466,17 @@ readSlaves() {
 }
 
 # starts or stops TMs on all slaves
-# TMSlaves start|stop
+# TMSlaves start|stop [flip6]
 TMSlaves() {
     CMD=$1
+    FLIP6=$2
 
     readSlaves
 
     if [ ${SLAVES_ALL_LOCALHOST} = true ] ; then
         # all-local setup
         for slave in ${SLAVES[@]}; do
-            "${FLINK_BIN_DIR}"/taskmanager.sh "${CMD}"
+            "${FLINK_BIN_DIR}"/taskmanager.sh "${CMD}" "${FLIP6}"
         done
     else
         # non-local setup
@@ -481,11 +484,11 @@ TMSlaves() {
         command -v pdsh >/dev/null 2>&1
         if [[ $? -ne 0 ]]; then
             for slave in ${SLAVES[@]}; do
-                ssh -n $FLINK_SSH_OPTS $slave -- "nohup /bin/bash -l \"${FLINK_BIN_DIR}/taskmanager.sh\" \"${CMD}\" &"
+                ssh -n $FLINK_SSH_OPTS $slave -- "nohup /bin/bash -l \"${FLINK_BIN_DIR}/taskmanager.sh\" \"${CMD}\" \"${FLIP6}\" &"
             done
         else
             PDSH_SSH_ARGS="" PDSH_SSH_ARGS_APPEND=$FLINK_SSH_OPTS pdsh -w $(IFS=, ; echo "${SLAVES[*]}") \
-                "nohup /bin/bash -l \"${FLINK_BIN_DIR}/taskmanager.sh\" \"${CMD}\""
+                "nohup /bin/bash -l \"${FLINK_BIN_DIR}/taskmanager.sh\" \"${CMD}\" \"${FLIP6}\""
         fi
     fi
 }

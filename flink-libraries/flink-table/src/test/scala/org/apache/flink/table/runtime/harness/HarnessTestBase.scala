@@ -30,19 +30,19 @@ import org.apache.flink.streaming.util.{KeyedOneInputStreamOperatorTestHarness, 
 import org.apache.flink.table.codegen.GeneratedAggregationsFunction
 import org.apache.flink.table.functions.AggregateFunction
 import org.apache.flink.table.functions.utils.UserDefinedFunctionUtils
-import org.apache.flink.table.functions.aggfunctions.{LongMaxWithRetractAggFunction, LongMinWithRetractAggFunction, IntSumWithRetractAggFunction}
-import org.apache.flink.table.runtime.aggregate.AggregateUtil
+import org.apache.flink.table.functions.aggfunctions.{IntSumWithRetractAggFunction, LongMaxWithRetractAggFunction, LongMinWithRetractAggFunction}
+import org.apache.flink.table.functions.utils.UserDefinedFunctionUtils.getAccumulatorTypeOfAggregateFunction
 import org.apache.flink.table.runtime.types.{CRow, CRowTypeInfo}
 
 class HarnessTestBase {
 
-  val longMinWithRetractAggFunction =
+  val longMinWithRetractAggFunction: String =
     UserDefinedFunctionUtils.serialize(new LongMinWithRetractAggFunction)
 
-  val longMaxWithRetractAggFunction =
+  val longMaxWithRetractAggFunction: String =
     UserDefinedFunctionUtils.serialize(new LongMaxWithRetractAggFunction)
 
-  val intSumWithRetractAggFunction =
+  val intSumWithRetractAggFunction: String =
     UserDefinedFunctionUtils.serialize(new IntSumWithRetractAggFunction)
 
   protected val MinMaxRowType = new RowTypeInfo(Array[TypeInformation[_]](
@@ -62,18 +62,18 @@ class HarnessTestBase {
   protected val minMaxCRowType = new CRowTypeInfo(MinMaxRowType)
   protected val sumCRowType = new CRowTypeInfo(SumRowType)
 
-  protected val minMaxAggregates =
+  protected val minMaxAggregates: Array[AggregateFunction[_, _]] =
     Array(new LongMinWithRetractAggFunction,
           new LongMaxWithRetractAggFunction).asInstanceOf[Array[AggregateFunction[_, _]]]
 
-  protected val sumAggregates =
+  protected val sumAggregates: Array[AggregateFunction[_, _]] =
     Array(new IntSumWithRetractAggFunction).asInstanceOf[Array[AggregateFunction[_, _]]]
 
   protected val minMaxAggregationStateType: RowTypeInfo =
-    AggregateUtil.createAccumulatorRowType(minMaxAggregates)
+    new RowTypeInfo(minMaxAggregates.map(getAccumulatorTypeOfAggregateFunction(_)): _*)
 
   protected val sumAggregationStateType: RowTypeInfo =
-    AggregateUtil.createAccumulatorRowType(sumAggregates)
+    new RowTypeInfo(sumAggregates.map(getAccumulatorTypeOfAggregateFunction(_)): _*)
 
   val minMaxCode: String =
     s"""
@@ -90,11 +90,11 @@ class HarnessTestBase {
       |
       |    fmin = (org.apache.flink.table.functions.aggfunctions.LongMinWithRetractAggFunction)
       |    org.apache.flink.table.functions.utils.UserDefinedFunctionUtils
-      |    .deserialize("${longMinWithRetractAggFunction}");
+      |    .deserialize("$longMinWithRetractAggFunction");
       |
       |    fmax = (org.apache.flink.table.functions.aggfunctions.LongMaxWithRetractAggFunction)
       |    org.apache.flink.table.functions.utils.UserDefinedFunctionUtils
-      |    .deserialize("${longMaxWithRetractAggFunction}");
+      |    .deserialize("$longMaxWithRetractAggFunction");
       |  }
       |
       |  public void setAggregationResults(
@@ -207,7 +207,7 @@ class HarnessTestBase {
       |
       |sum = (org.apache.flink.table.functions.aggfunctions.IntSumWithRetractAggFunction)
       |org.apache.flink.table.functions.utils.UserDefinedFunctionUtils
-      |.deserialize("${intSumWithRetractAggFunction}");
+      |.deserialize("$intSumWithRetractAggFunction");
       |}
       |
       |  public final void setAggregationResults(
@@ -351,5 +351,4 @@ object HarnessTestBase {
       value.row.getField(selectorField).asInstanceOf[T]
     }
   }
-
 }

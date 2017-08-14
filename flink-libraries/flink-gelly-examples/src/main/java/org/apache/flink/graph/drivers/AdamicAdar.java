@@ -20,14 +20,12 @@ package org.apache.flink.graph.drivers;
 
 import org.apache.flink.api.java.DataSet;
 import org.apache.flink.graph.Graph;
+import org.apache.flink.graph.drivers.parameter.BooleanParameter;
 import org.apache.flink.graph.drivers.parameter.DoubleParameter;
-import org.apache.flink.graph.drivers.parameter.LongParameter;
 import org.apache.flink.types.CopyableValue;
 
 import org.apache.commons.lang3.text.StrBuilder;
 import org.apache.commons.lang3.text.WordUtils;
-
-import static org.apache.flink.api.common.ExecutionConfig.PARALLELISM_DEFAULT;
 
 /**
  * Driver for {@link org.apache.flink.graph.library.similarity.AdamicAdar}.
@@ -43,8 +41,7 @@ extends DriverBase<K, VV, EV> {
 		.setDefaultValue(0.0)
 		.setMinimumValue(0.0, true);
 
-	private LongParameter littleParallelism = new LongParameter(this, "little_parallelism")
-		.setDefaultValue(PARALLELISM_DEFAULT);
+	private BooleanParameter mirrorResults = new BooleanParameter(this, "mirror_results");
 
 	@Override
 	public String getShortDescription() {
@@ -64,12 +61,11 @@ extends DriverBase<K, VV, EV> {
 
 	@Override
 	public DataSet plan(Graph<K, VV, EV> graph) throws Exception {
-		int lp = littleParallelism.getValue().intValue();
-
 		return graph
 			.run(new org.apache.flink.graph.library.similarity.AdamicAdar<K, VV, EV>()
 				.setMinimumRatio(minRatio.getValue().floatValue())
 				.setMinimumScore(minScore.getValue().floatValue())
-				.setLittleParallelism(lp));
+				.setMirrorResults(mirrorResults.getValue())
+				.setParallelism(parallelism.getValue().intValue()));
 	}
 }

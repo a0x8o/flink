@@ -23,16 +23,18 @@ import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
-import org.apache.flink.runtime.concurrent.Future;
 import org.apache.flink.runtime.jobmanager.scheduler.ScheduledUnit;
 import org.apache.flink.runtime.jobmanager.slots.AllocatedSlot;
+import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerGateway;
 import org.apache.flink.runtime.rpc.RpcGateway;
 import org.apache.flink.runtime.rpc.RpcTimeout;
 import org.apache.flink.runtime.taskexecutor.slot.SlotOffer;
 import org.apache.flink.runtime.taskmanager.TaskManagerLocation;
 
+import java.util.Collection;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * The gateway for calls on the {@link SlotPool}. 
@@ -73,11 +75,11 @@ public interface SlotPoolGateway extends RpcGateway {
 
 	void registerTaskManager(ResourceID resourceID);
 
-	void releaseTaskManager(ResourceID resourceID);
+	CompletableFuture<Acknowledge> releaseTaskManager(ResourceID resourceID);
 
-	Future<Boolean> offerSlot(AllocatedSlot slot);
+	CompletableFuture<Boolean> offerSlot(AllocatedSlot slot);
 
-	Future<Iterable<SlotOffer>> offerSlots(Iterable<Tuple2<AllocatedSlot, SlotOffer>> offers);
+	CompletableFuture<Collection<SlotOffer>> offerSlots(Collection<Tuple2<AllocatedSlot, SlotOffer>> offers);
 	
 	void failAllocation(AllocationID allocationID, Exception cause);
 
@@ -85,7 +87,7 @@ public interface SlotPoolGateway extends RpcGateway {
 	//  allocating and disposing slots
 	// ------------------------------------------------------------------------
 
-	Future<SimpleSlot> allocateSlot(
+	CompletableFuture<SimpleSlot> allocateSlot(
 			ScheduledUnit task,
 			ResourceProfile resources,
 			Iterable<TaskManagerLocation> locationPreferences,
