@@ -16,24 +16,34 @@
  * limitations under the License.
  */
 
-package org.apache.flink.runtime.checkpoint;
+package org.apache.flink.test.checkpointing;
 
-import org.apache.flink.api.common.JobID;
-import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
-import org.apache.flink.runtime.rpc.RpcGateway;
+/**
+ * Integration tests for incremental RocksDB backend.
+ */
+public class HAIncrementalRocksDbBackendEventTimeWindowCheckpointingITCase extends AbstractEventTimeWindowCheckpointingITCase {
 
-public interface CheckpointCoordinatorGateway extends RpcGateway {
+	public HAIncrementalRocksDbBackendEventTimeWindowCheckpointingITCase() {
+		super(StateBackendEnum.ROCKSDB_INCREMENTAL_ZK);
+	}
 
-	void acknowledgeCheckpoint(
-			final JobID jobID,
-			final ExecutionAttemptID executionAttemptID,
-			final long checkpointId,
-			final CheckpointMetrics checkpointMetrics,
-			final TaskStateSnapshot subtaskState);
+	@Override
+	protected int numElementsPerKey() {
+		return 3000;
+	}
 
-	void declineCheckpoint(
-			JobID jobID,
-			ExecutionAttemptID executionAttemptID,
-			long checkpointId,
-			Throwable cause);
+	@Override
+	protected int windowSize() {
+		return 1000;
+	}
+
+	@Override
+	protected int windowSlide() {
+		return 100;
+	}
+
+	@Override
+	protected int numKeys() {
+		return 100;
+	}
 }
