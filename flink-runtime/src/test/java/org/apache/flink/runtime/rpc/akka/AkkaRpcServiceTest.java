@@ -22,15 +22,14 @@ import akka.actor.ActorSystem;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.core.testutils.OneShotLatch;
 import org.apache.flink.runtime.akka.AkkaUtils;
-import org.apache.flink.runtime.concurrent.Future;
 import org.apache.flink.runtime.concurrent.ScheduledExecutor;
-import org.apache.flink.runtime.concurrent.impl.FlinkFuture;
 import org.apache.flink.util.TestLogger;
 
 import org.junit.AfterClass;
 import org.junit.Test;
 
 import java.util.concurrent.Callable;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ScheduledFuture;
@@ -91,26 +90,21 @@ public class AkkaRpcServiceTest extends TestLogger {
 	public void testExecuteRunnable() throws Exception {
 		final OneShotLatch latch = new OneShotLatch();
 
-		akkaRpcService.execute(new Runnable() {
-			@Override
-			public void run() {
-				latch.trigger();
-			}
-		});
+		akkaRpcService.execute(() -> latch.trigger());
 
 		latch.await(30L, TimeUnit.SECONDS);
 	}
 
 	/**
 	 * Tests that the {@link AkkaRpcService} can execute callables and returns their result as
-	 * a {@link Future}.
+	 * a {@link CompletableFuture}.
 	 */
 	@Test
 	public void testExecuteCallable() throws InterruptedException, ExecutionException, TimeoutException {
 		final OneShotLatch latch = new OneShotLatch();
 		final int expected = 42;
 
-		Future<Integer> result = akkaRpcService.execute(new Callable<Integer>() {
+		CompletableFuture<Integer> result = akkaRpcService.execute(new Callable<Integer>() {
 			@Override
 			public Integer call() throws Exception {
 				latch.trigger();
@@ -129,6 +123,11 @@ public class AkkaRpcServiceTest extends TestLogger {
 		assertEquals(AkkaUtils.getAddress(actorSystem).host().get(), akkaRpcService.getAddress());
 	}
 
+	@Test
+	public void testGetPort() {
+		assertEquals(AkkaUtils.getAddress(actorSystem).port().get(), akkaRpcService.getPort());
+	}
+
 	/**
 	 * Tests that we can wait for the termination of the rpc service
 	 *
@@ -140,18 +139,11 @@ public class AkkaRpcServiceTest extends TestLogger {
 		final ActorSystem actorSystem = AkkaUtils.createDefaultActorSystem();
 		final AkkaRpcService rpcService = new AkkaRpcService(actorSystem, Time.milliseconds(1000));
 
-		Future<Void> terminationFuture = rpcService.getTerminationFuture();
+		CompletableFuture<Void> terminationFuture = rpcService.getTerminationFuture();
 
 		assertFalse(terminationFuture.isDone());
 
-		FlinkFuture.supplyAsync(new Callable<Void>() {
-			@Override
-			public Void call() throws Exception {
-				rpcService.stopService();
-
-				return null;
-			}
-		}, actorSystem.dispatcher());
+		CompletableFuture.runAsync(() -> rpcService.stopService(), actorSystem.dispatcher());
 
 		terminationFuture.get();
 	}

@@ -28,7 +28,6 @@ import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
 import org.apache.flink.runtime.heartbeat.HeartbeatServices;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
-import org.apache.flink.runtime.instance.InstanceID;
 import org.apache.flink.runtime.metrics.MetricRegistry;
 import org.apache.flink.runtime.resourcemanager.JobLeaderIdService;
 import org.apache.flink.runtime.resourcemanager.ResourceManager;
@@ -38,6 +37,7 @@ import org.apache.flink.runtime.resourcemanager.slotmanager.SlotManager;
 import org.apache.flink.runtime.rpc.FatalErrorHandler;
 import org.apache.flink.runtime.rpc.RpcService;
 import org.apache.flink.util.ExceptionUtils;
+import org.apache.flink.yarn.configuration.YarnConfigOptions;
 
 import org.apache.hadoop.yarn.api.ApplicationConstants;
 import org.apache.hadoop.yarn.api.records.Container;
@@ -134,7 +134,7 @@ public class YarnResourceManager extends ResourceManager<ResourceID> implements 
 		this.yarnConfig = new YarnConfiguration();
 		this.env = env;
 		final int yarnHeartbeatIntervalMS = flinkConfig.getInteger(
-				ConfigConstants.YARN_HEARTBEAT_DELAY_SECONDS, DEFAULT_YARN_HEARTBEAT_INTERVAL_MS / 1000) * 1000;
+				YarnConfigOptions.HEARTBEAT_DELAY_SECONDS) * 1000;
 
 		final long yarnExpiryIntervalMS = yarnConfig.getLong(
 				YarnConfiguration.RM_AM_EXPIRY_INTERVAL_MS,
@@ -171,9 +171,10 @@ public class YarnResourceManager extends ResourceManager<ResourceID> implements 
 	}
 
 	@Override
-	public void shutDown() throws Exception {
+	public void postStop() throws Exception {
 		// shut down all components
 		Throwable firstException = null;
+
 		if (resourceManagerClient != null) {
 			try {
 				resourceManagerClient.stop();
@@ -181,21 +182,24 @@ public class YarnResourceManager extends ResourceManager<ResourceID> implements 
 				firstException = t;
 			}
 		}
+
 		if (nodeManagerClient != null) {
 			try {
 				nodeManagerClient.stop();
 			} catch (Throwable t) {
-				if (firstException == null) {
-					firstException = t;
-				} else {
-					firstException.addSuppressed(t);
-				}
+				firstException = ExceptionUtils.firstOrSuppressed(t, firstException);
 			}
 		}
+
+		try {
+			super.postStop();
+		} catch (Throwable t) {
+			firstException = ExceptionUtils.firstOrSuppressed(t, firstException);
+		}
+
 		if (firstException != null) {
 			ExceptionUtils.rethrowException(firstException, "Error while shutting down YARN resource manager");
 		}
-		super.shutDown();
 	}
 
 	@Override
@@ -223,7 +227,7 @@ public class YarnResourceManager extends ResourceManager<ResourceID> implements 
 	}
 
 	@Override
-	public void stopWorker(InstanceID instanceId) {
+	public void stopWorker(ResourceID resourceID) {
 		// TODO: Implement to stop the worker
 	}
 

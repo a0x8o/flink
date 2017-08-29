@@ -18,6 +18,10 @@
 
 package org.apache.flink.runtime.akka;
 
+import org.apache.flink.runtime.testingUtils.TestingUtils;
+import org.apache.flink.util.Preconditions;
+import org.apache.flink.util.TestLogger;
+
 import akka.actor.ActorRef;
 import akka.actor.ActorSystem;
 import akka.actor.Address;
@@ -26,12 +30,6 @@ import akka.actor.UntypedActor;
 import akka.dispatch.OnComplete;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
-import org.apache.flink.runtime.concurrent.CompletableFuture;
-import org.apache.flink.runtime.concurrent.Future;
-import org.apache.flink.runtime.concurrent.impl.FlinkCompletableFuture;
-import org.apache.flink.runtime.testingUtils.TestingUtils;
-import org.apache.flink.util.Preconditions;
-import org.apache.flink.util.TestLogger;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Assert;
@@ -40,12 +38,17 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import scala.concurrent.duration.FiniteDuration;
 
 import java.util.Properties;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
+import scala.concurrent.duration.FiniteDuration;
+
+/**
+ * Tests for {@link QuarantineMonitor}.
+ */
 public class QuarantineMonitorTest extends TestLogger {
 
 	private static final Logger LOG = LoggerFactory.getLogger(QuarantineMonitorTest.class);
@@ -120,7 +123,7 @@ public class QuarantineMonitorTest extends TestLogger {
 			// start watching the watchee
 			watcher.tell(new Watch(watcheeAddress), ActorRef.noSender());
 
-			Future<String> quarantineFuture = quarantineHandler.getWasQuarantinedByFuture();
+			CompletableFuture<String> quarantineFuture = quarantineHandler.getWasQuarantinedByFuture();
 
 			Assert.assertEquals(actorSystem1Address.toString(), quarantineFuture.get());
 		} finally {
@@ -161,7 +164,7 @@ public class QuarantineMonitorTest extends TestLogger {
 			// start watching the watchee
 			watcher.tell(new Watch(watcheeAddress), ActorRef.noSender());
 
-			Future<String> quarantineFuture = quarantineHandler.getHasQuarantinedFuture();
+			CompletableFuture<String> quarantineFuture = quarantineHandler.getHasQuarantinedFuture();
 
 			Assert.assertEquals(actorSystem1Address.toString(), quarantineFuture.get());
 		} finally {
@@ -177,8 +180,8 @@ public class QuarantineMonitorTest extends TestLogger {
 		private final CompletableFuture<String> hasQuarantinedFuture;
 
 		public TestingQuarantineHandler() {
-			this.wasQuarantinedByFuture = new FlinkCompletableFuture<>();
-			this.hasQuarantinedFuture = new FlinkCompletableFuture<>();
+			this.wasQuarantinedByFuture = new CompletableFuture<>();
+			this.hasQuarantinedFuture = new CompletableFuture<>();
 		}
 
 		@Override
@@ -191,11 +194,11 @@ public class QuarantineMonitorTest extends TestLogger {
 			hasQuarantinedFuture.complete(remoteSystem);
 		}
 
-		public Future<String> getWasQuarantinedByFuture() {
+		public CompletableFuture<String> getWasQuarantinedByFuture() {
 			return wasQuarantinedByFuture;
 		}
 
-		public Future<String> getHasQuarantinedFuture() {
+		public CompletableFuture<String> getHasQuarantinedFuture() {
 			return hasQuarantinedFuture;
 		}
 

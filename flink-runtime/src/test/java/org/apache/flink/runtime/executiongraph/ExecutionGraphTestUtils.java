@@ -24,7 +24,7 @@ import org.apache.flink.api.common.time.Time;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.metrics.groups.UnregisteredMetricsGroup;
 import org.apache.flink.runtime.akka.AkkaUtils;
-import org.apache.flink.runtime.checkpoint.CheckpointRecoveryFactory;
+import org.apache.flink.runtime.checkpoint.StandaloneCheckpointRecoveryFactory;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
@@ -33,6 +33,7 @@ import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.executiongraph.failover.FailoverRegion;
 import org.apache.flink.runtime.executiongraph.restart.NoRestartStrategy;
 import org.apache.flink.runtime.executiongraph.restart.RestartStrategy;
+import org.apache.flink.runtime.executiongraph.utils.SimpleAckingTaskManagerGateway;
 import org.apache.flink.runtime.executiongraph.utils.SimpleSlotProvider;
 import org.apache.flink.runtime.instance.BaseTestingActorGateway;
 import org.apache.flink.runtime.instance.HardwareDescription;
@@ -170,8 +171,8 @@ public class ExecutionGraphTestUtils {
 	}
 
 	/**
-	 * Takes all vertices in the given ExecutionGraph and switches their current
-	 * execution to RUNNING.
+	 * Takes all vertices in the given ExecutionGraph and attempts to move them
+	 * from CANCELING to CANCELED.
 	 */
 	public static void completeCancellingForAllVertices(ExecutionGraph eg) {
 		for (ExecutionVertex vertex : eg.getAllExecutionVertices()) {
@@ -181,11 +182,29 @@ public class ExecutionGraphTestUtils {
 
 	/**
 	 * Takes all vertices in the given ExecutionGraph and switches their current
-	 * execution to RUNNING.
+	 * execution to FINISHED.
 	 */
 	public static void finishAllVertices(ExecutionGraph eg) {
 		for (ExecutionVertex vertex : eg.getAllExecutionVertices()) {
 			vertex.getCurrentExecutionAttempt().markFinished();
+		}
+	}
+
+	/**
+	 * Checks that all execution are in state DEPLOYING and then switches them
+	 * to state RUNNING
+	 */
+	public static void switchToRunning(ExecutionGraph eg) {
+		// check that all execution are in state DEPLOYING
+		for (ExecutionVertex ev : eg.getAllExecutionVertices()) {
+			final Execution exec = ev.getCurrentExecutionAttempt();
+			assert(exec.getState() == ExecutionState.DEPLOYING);
+		}
+
+		// switch executions to RUNNING
+		for (ExecutionVertex ev : eg.getAllExecutionVertices()) {
+			final Execution exec = ev.getCurrentExecutionAttempt();
+			exec.switchToRunning();
 		}
 	}
 
@@ -254,11 +273,9 @@ public class ExecutionGraphTestUtils {
 	 * restart strategy.
 	 */
 	public static ExecutionGraph createSimpleTestGraph(RestartStrategy restartStrategy) throws Exception {
-		JobVertex vertex = new JobVertex("vertex");
-		vertex.setInvokableClass(NoOpInvokable.class);
-		vertex.setParallelism(10);
+		JobVertex vertex = createNoOpVertex(10);
 
-		return createSimpleTestGraph(new JobID(), restartStrategy, vertex);
+		return createSimpleTestGraph(new JobID(), new SimpleAckingTaskManagerGateway(), restartStrategy, vertex);
 	}
 
 	/**
@@ -267,7 +284,7 @@ public class ExecutionGraphTestUtils {
 	 * <p>The execution graph uses {@link NoRestartStrategy} as the restart strategy.
 	 */
 	public static ExecutionGraph createSimpleTestGraph(JobID jid, JobVertex... vertices) throws Exception {
-		return createSimpleTestGraph(jid, new NoRestartStrategy(), vertices);
+		return createSimpleTestGraph(jid, new SimpleAckingTaskManagerGateway(), new NoRestartStrategy(), vertices);
 	}
 
 	/**
@@ -275,6 +292,7 @@ public class ExecutionGraphTestUtils {
 	 */
 	public static ExecutionGraph createSimpleTestGraph(
 			JobID jid,
+			TaskManagerGateway taskManagerGateway,
 			RestartStrategy restartStrategy,
 			JobVertex... vertices) throws Exception {
 
@@ -283,7 +301,7 @@ public class ExecutionGraphTestUtils {
 			numSlotsNeeded += vertex.getParallelism();
 		}
 
-		SlotProvider slotProvider = new SimpleSlotProvider(jid, numSlotsNeeded);
+		SlotProvider slotProvider = new SimpleSlotProvider(jid, numSlotsNeeded, taskManagerGateway);
 
 		return createSimpleTestGraph(jid, slotProvider, restartStrategy, vertices);
 	}
@@ -294,6 +312,16 @@ public class ExecutionGraphTestUtils {
 			RestartStrategy restartStrategy,
 			JobVertex... vertices) throws Exception {
 
+		return createExecutionGraph(jid, slotProvider, restartStrategy, TestingUtils.defaultExecutor(), vertices);
+	}
+
+	public static ExecutionGraph createExecutionGraph(
+			JobID jid,
+			SlotProvider slotProvider,
+			RestartStrategy restartStrategy,
+			ScheduledExecutorService executor,
+			JobVertex... vertices) throws Exception {
+
 		checkNotNull(jid);
 		checkNotNull(restartStrategy);
 		checkNotNull(vertices);
@@ -302,16 +330,23 @@ public class ExecutionGraphTestUtils {
 				null,
 				new JobGraph(jid, "test job", vertices),
 				new Configuration(),
-				TestingUtils.defaultExecutor(),
-				TestingUtils.defaultExecutor(),
+				executor,
+				executor,
 				slotProvider,
 				ExecutionGraphTestUtils.class.getClassLoader(),
-				mock(CheckpointRecoveryFactory.class),
+				new StandaloneCheckpointRecoveryFactory(),
 				Time.seconds(10),
 				restartStrategy,
 				new UnregisteredMetricsGroup(),
 				1,
 				TEST_LOGGER);
+	}
+
+	public static JobVertex createNoOpVertex(int parallelism) {
+		JobVertex vertex = new JobVertex("vertex");
+		vertex.setInvokableClass(NoOpInvokable.class);
+		vertex.setParallelism(parallelism);
+		return vertex;
 	}
 
 	// ------------------------------------------------------------------------

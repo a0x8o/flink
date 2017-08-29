@@ -37,18 +37,17 @@ import org.apache.flink.configuration.Configuration;
 import org.apache.flink.graph.Edge;
 import org.apache.flink.graph.Graph;
 import org.apache.flink.graph.asm.result.PrintableResult;
-import org.apache.flink.graph.asm.result.UnaryResult;
+import org.apache.flink.graph.asm.result.UnaryResultBase;
 import org.apache.flink.graph.library.linkanalysis.Functions.SumScore;
 import org.apache.flink.graph.library.linkanalysis.HITS.Result;
 import org.apache.flink.graph.utils.MurmurHash;
+import org.apache.flink.graph.utils.proxy.GraphAlgorithmWrappingBase;
 import org.apache.flink.graph.utils.proxy.GraphAlgorithmWrappingDataSet;
 import org.apache.flink.types.DoubleValue;
 import org.apache.flink.util.Collector;
 import org.apache.flink.util.Preconditions;
 
 import java.util.Collection;
-
-import static org.apache.flink.api.common.ExecutionConfig.PARALLELISM_DEFAULT;
 
 /**
  * Hyperlink-Induced Topic Search computes two interdependent scores for every
@@ -77,9 +76,6 @@ extends GraphAlgorithmWrappingDataSet<K, VV, EV, Result<K>> {
 	private int maxIterations;
 
 	private double convergenceThreshold;
-
-	// Optional configuration
-	private int parallelism = PARALLELISM_DEFAULT;
 
 	/**
 	 * Hyperlink-Induced Topic Search with a fixed number of iterations.
@@ -118,41 +114,14 @@ extends GraphAlgorithmWrappingDataSet<K, VV, EV, Result<K>> {
 		this.convergenceThreshold = convergenceThreshold;
 	}
 
-	/**
-	 * Override the operator parallelism.
-	 *
-	 * @param parallelism operator parallelism
-	 * @return this
-	 */
-	public HITS<K, VV, EV> setParallelism(int parallelism) {
-		this.parallelism = parallelism;
-
-		return this;
-	}
-
 	@Override
-	protected String getAlgorithmName() {
-		return HITS.class.getName();
-	}
-
-	@Override
-	protected boolean mergeConfiguration(GraphAlgorithmWrappingDataSet other) {
-		Preconditions.checkNotNull(other);
-
-		if (!HITS.class.isAssignableFrom(other.getClass())) {
-			return false;
-		}
+	protected void mergeConfiguration(GraphAlgorithmWrappingBase other) {
+		super.mergeConfiguration(other);
 
 		HITS rhs = (HITS) other;
 
-		// merge configurations
-
 		maxIterations = Math.max(maxIterations, rhs.maxIterations);
 		convergenceThreshold = Math.min(convergenceThreshold, rhs.convergenceThreshold);
-		parallelism = (parallelism == PARALLELISM_DEFAULT) ? rhs.parallelism :
-			((rhs.parallelism == PARALLELISM_DEFAULT) ? parallelism : Math.min(parallelism, rhs.parallelism));
-
-		return true;
 	}
 
 	@Override
@@ -160,41 +129,42 @@ extends GraphAlgorithmWrappingDataSet<K, VV, EV, Result<K>> {
 			throws Exception {
 		DataSet<Tuple2<K, K>> edges = input
 			.getEdges()
-			.map(new ExtractEdgeIDs<K, EV>())
+			.map(new ExtractEdgeIDs<>())
 				.setParallelism(parallelism)
 				.name("Extract edge IDs");
 
 		// ID, hub, authority
 		DataSet<Tuple3<K, DoubleValue, DoubleValue>> initialScores = edges
-			.map(new InitializeScores<K>())
+			.map(new InitializeScores<>())
 				.setParallelism(parallelism)
 				.name("Initial scores")
 			.groupBy(0)
-			.reduce(new SumScores<K>())
+			.reduce(new SumScores<>())
 			.setCombineHint(CombineHint.HASH)
 				.setParallelism(parallelism)
 				.name("Sum");
 
 		IterativeDataSet<Tuple3<K, DoubleValue, DoubleValue>> iterative = initialScores
-			.iterate(maxIterations);
+			.iterate(maxIterations)
+			.setParallelism(parallelism);
 
 		// ID, hubbiness
 		DataSet<Tuple2<K, DoubleValue>> hubbiness = iterative
 			.coGroup(edges)
 			.where(0)
 			.equalTo(1)
-			.with(new Hubbiness<K>())
+			.with(new Hubbiness<>())
 				.setParallelism(parallelism)
 				.name("Hub")
 			.groupBy(0)
-			.reduce(new SumScore<K>())
+			.reduce(new SumScore<>())
 			.setCombineHint(CombineHint.HASH)
 				.setParallelism(parallelism)
 				.name("Sum");
 
 		// sum-of-hubbiness-squared
 		DataSet<DoubleValue> hubbinessSumSquared = hubbiness
-			.map(new Square<K>())
+			.map(new Square<>())
 				.setParallelism(parallelism)
 				.name("Square")
 			.reduce(new Sum())
@@ -207,18 +177,18 @@ extends GraphAlgorithmWrappingDataSet<K, VV, EV, Result<K>> {
 			.coGroup(edges)
 			.where(0)
 			.equalTo(0)
-			.with(new Authority<K>())
+			.with(new Authority<>())
 				.setParallelism(parallelism)
 				.name("Authority")
 			.groupBy(0)
-			.reduce(new SumScore<K>())
+			.reduce(new SumScore<>())
 			.setCombineHint(CombineHint.HASH)
 				.setParallelism(parallelism)
 				.name("Sum");
 
 		// sum-of-authority-squared
 		DataSet<DoubleValue> authoritySumSquared = authority
-			.map(new Square<K>())
+			.map(new Square<>())
 				.setParallelism(parallelism)
 				.name("Square")
 			.reduce(new Sum())
@@ -231,7 +201,7 @@ extends GraphAlgorithmWrappingDataSet<K, VV, EV, Result<K>> {
 			.fullOuterJoin(authority, JoinHint.REPARTITION_SORT_MERGE)
 			.where(0)
 			.equalTo(0)
-			.with(new JoinAndNormalizeHubAndAuthority<K>())
+			.with(new JoinAndNormalizeHubAndAuthority<>())
 			.withBroadcastSet(hubbinessSumSquared, HUBBINESS_SUM_SQUARED)
 			.withBroadcastSet(authoritySumSquared, AUTHORITY_SUM_SQUARED)
 				.setParallelism(parallelism)
@@ -244,7 +214,7 @@ extends GraphAlgorithmWrappingDataSet<K, VV, EV, Result<K>> {
 				.fullOuterJoin(scores, JoinHint.REPARTITION_SORT_MERGE)
 				.where(0)
 				.equalTo(0)
-				.with(new ChangeInScores<K>())
+				.with(new ChangeInScores<>())
 					.setParallelism(parallelism)
 					.name("Change in scores");
 
@@ -255,7 +225,7 @@ extends GraphAlgorithmWrappingDataSet<K, VV, EV, Result<K>> {
 
 		return iterative
 			.closeWith(passThrough)
-			.map(new TranslateResult<K>())
+			.map(new TranslateResult<>())
 				.setParallelism(parallelism)
 				.name("Map result");
 	}
@@ -510,41 +480,31 @@ extends GraphAlgorithmWrappingDataSet<K, VV, EV, Result<K>> {
 	 *
 	 * @param <T> ID type
 	 */
-	@ForwardedFields("0; 1; 2")
+	@ForwardedFields("0->vertexId0; 1->hubScore; 2->authorityScore")
 	private static class TranslateResult<T>
 	implements MapFunction<Tuple3<T, DoubleValue, DoubleValue>, Result<T>> {
 		private Result<T> output = new Result<>();
 
 		@Override
 		public Result<T> map(Tuple3<T, DoubleValue, DoubleValue> value) throws Exception {
-			output.f0 = value.f0;
-			output.f1 = value.f1;
-			output.f2 = value.f2;
+			output.setVertexId0(value.f0);
+			output.setHubScore(value.f1);
+			output.setAuthorityScore(value.f2);
 			return output;
 		}
 	}
 
 	/**
-	 * Wraps the {@link Tuple3} to encapsulate results from the HITS algorithm.
+	 * A result for the HITS algorithm.
 	 *
 	 * @param <T> ID type
 	 */
 	public static class Result<T>
-	extends Tuple3<T, DoubleValue, DoubleValue>
-	implements PrintableResult, UnaryResult<T> {
-		public static final int HASH_SEED = 0xc7e39a63;
+	extends UnaryResultBase<T>
+	implements PrintableResult {
+		private DoubleValue hubScore;
 
-		private MurmurHash hasher = new MurmurHash(HASH_SEED);
-
-		@Override
-		public T getVertexId0() {
-			return f0;
-		}
-
-		@Override
-		public void setVertexId0(T value) {
-			f0 = value;
-		}
+		private DoubleValue authorityScore;
 
 		/**
 		 * Get the hub score. Good hubs link to good authorities.
@@ -552,7 +512,16 @@ extends GraphAlgorithmWrappingDataSet<K, VV, EV, Result<K>> {
 		 * @return the hub score
 		 */
 		public DoubleValue getHubScore() {
-			return f1;
+			return hubScore;
+		}
+
+		/**
+		 * Set the hub score. Good hubs link to good authorities.
+		 *
+		 * @param hubScore the hub score
+		 */
+		public void setHubScore(DoubleValue hubScore) {
+			this.hubScore = hubScore;
 		}
 
 		/**
@@ -561,21 +530,49 @@ extends GraphAlgorithmWrappingDataSet<K, VV, EV, Result<K>> {
 		 * @return the authority score
 		 */
 		public DoubleValue getAuthorityScore() {
-			return f2;
+			return authorityScore;
 		}
 
-		public String toPrintableString() {
-			return "Vertex ID: " + getVertexId0()
-				+ ", hub score: " + getHubScore()
-				+ ", authority score: " + getAuthorityScore();
+		/**
+		 * Set the authority score. Good authorities link to good hubs.
+		 *
+		 * @param authorityScore the authority score
+		 */
+		public void setAuthorityScore(DoubleValue authorityScore) {
+			this.authorityScore = authorityScore;
 		}
 
 		@Override
+		public String toString() {
+			return "(" + getVertexId0()
+				+ "," + hubScore
+				+ "," + authorityScore
+				+ ")";
+		}
+
+		@Override
+		public String toPrintableString() {
+			return "Vertex ID: " + getVertexId0()
+				+ ", hub score: " + hubScore
+				+ ", authority score: " + authorityScore;
+		}
+
+		// ----------------------------------------------------------------------------------------
+
+		public static final int HASH_SEED = 0x4010af29;
+
+		private transient MurmurHash hasher;
+
+		@Override
 		public int hashCode() {
+			if (hasher == null) {
+				hasher = new MurmurHash(HASH_SEED);
+			}
+
 			return hasher.reset()
-				.hash(f0.hashCode())
-				.hash(f1.getValue())
-				.hash(f2.getValue())
+				.hash(getVertexId0().hashCode())
+				.hash(hubScore.getValue())
+				.hash(authorityScore.getValue())
 				.hash();
 		}
 	}

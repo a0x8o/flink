@@ -18,9 +18,11 @@
 
 package org.apache.flink.runtime.query.netty;
 
-import io.netty.buffer.ByteBuf;
-import io.netty.channel.embedded.EmbeddedChannel;
 import org.apache.flink.runtime.query.netty.message.KvStateRequestSerializer;
+
+import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
+import org.apache.flink.shaded.netty4.io.netty.channel.embedded.EmbeddedChannel;
+
 import org.junit.Test;
 
 import java.nio.channels.ClosedChannelException;
@@ -32,6 +34,9 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
+/**
+ * Tests for {@link KvStateClientHandler}.
+ */
 public class KvStateClientHandlerTest {
 
 	/**

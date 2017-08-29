@@ -46,8 +46,6 @@ import org.apache.commons.lang3.builder.HashCodeBuilder;
 import java.io.IOException;
 import java.text.NumberFormat;
 
-import static org.apache.flink.api.common.ExecutionConfig.PARALLELISM_DEFAULT;
-
 /**
  * Compute the following edge metrics in a directed graph.
  *  - number of triangle triplets
@@ -72,20 +70,6 @@ extends GraphAnalyticBase<K, VV, EV, Result> {
 
 	private EdgeMetricsHelper<K> edgeMetricsHelper;
 
-	private int parallelism = PARALLELISM_DEFAULT;
-
-	/**
-	 * Override the operator parallelism.
-	 *
-	 * @param parallelism operator parallelism
-	 * @return this
-	 */
-	public EdgeMetrics<K, VV, EV> setParallelism(int parallelism) {
-		this.parallelism = parallelism;
-
-		return this;
-	}
-
 	/*
 	 * Implementation notes:
 	 *
@@ -108,15 +92,15 @@ extends GraphAnalyticBase<K, VV, EV, Result> {
 
 		// s, d(s), count of (u, v) where deg(u) < deg(v) or (deg(u) == deg(v) and u < v)
 		DataSet<Tuple3<K, Degrees, LongValue>> edgeStats = edgeDegreesPair
-			.flatMap(new EdgeStats<K, EV>())
+			.flatMap(new EdgeStats<>())
 				.setParallelism(parallelism)
 				.name("Edge stats")
 			.groupBy(0, 1)
-			.reduceGroup(new ReduceEdgeStats<K>())
+			.reduceGroup(new ReduceEdgeStats<>())
 				.setParallelism(parallelism)
 				.name("Reduce edge stats")
 			.groupBy(0)
-			.reduce(new SumEdgeStats<K>())
+			.reduce(new SumEdgeStats<>())
 			.setCombineHint(CombineHint.HASH)
 				.setParallelism(parallelism)
 				.name("Sum edge stats");

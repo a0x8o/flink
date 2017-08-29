@@ -44,7 +44,6 @@ import org.apache.flink.runtime.state.filesystem.FsStateBackendFactory;
 import org.apache.flink.runtime.testingUtils.TestingCluster;
 import org.apache.flink.runtime.testingUtils.TestingJobManagerMessages;
 import org.apache.flink.streaming.api.checkpoint.CheckpointedFunction;
-import org.apache.flink.streaming.api.checkpoint.CheckpointedRestoring;
 import org.apache.flink.streaming.api.checkpoint.ListCheckpointed;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
@@ -55,7 +54,6 @@ import org.apache.flink.streaming.api.functions.source.SourceFunction;
 import org.apache.flink.util.Collector;
 import org.apache.flink.util.TestLogger;
 
-import io.netty.util.internal.ConcurrentSet;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.ClassRule;
@@ -70,6 +68,7 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -84,6 +83,9 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
+/**
+ * Test savepoint rescaling.
+ */
 @RunWith(Parameterized.class)
 public class RescalingITCase extends TestLogger {
 
@@ -127,7 +129,7 @@ public class RescalingITCase extends TestLogger {
 
 			config.setString(CoreOptions.STATE_BACKEND, currentBackend);
 			config.setString(FsStateBackendFactory.CHECKPOINT_DIRECTORY_URI_CONF_KEY, checkpointDir.toURI().toString());
-			config.setString(ConfigConstants.SAVEPOINT_DIRECTORY_KEY, savepointDir.toURI().toString());
+			config.setString(CoreOptions.SAVEPOINT_DIRECTORY, savepointDir.toURI().toString());
 
 			cluster = new TestingCluster(config);
 			cluster.start();
@@ -248,7 +250,6 @@ public class RescalingITCase extends TestLogger {
 			}
 
 			assertEquals(expectedResult2, actualResult2);
-
 
 		} finally {
 			// clear the CollectionSink set for the restarted job
@@ -501,7 +502,6 @@ public class RescalingITCase extends TestLogger {
 		testSavepointRescalingPartitionedOperatorState(true, OperatorCheckpointMethod.LIST_CHECKPOINTED);
 	}
 
-
 	/**
 	 * Tests rescaling of partitioned operator state. More specific, we test the mechanism with {@link ListCheckpointed}
 	 * as it subsumes {@link org.apache.flink.streaming.api.checkpoint.CheckpointedFunction}.
@@ -521,11 +521,11 @@ public class RescalingITCase extends TestLogger {
 
 		if (checkpointMethod == OperatorCheckpointMethod.CHECKPOINTED_FUNCTION ||
 				checkpointMethod == OperatorCheckpointMethod.CHECKPOINTED_FUNCTION_BROADCAST) {
-			PartitionedStateSource.CHECK_CORRECT_SNAPSHOT = new int[counterSize];
-			PartitionedStateSource.CHECK_CORRECT_RESTORE = new int[counterSize];
+			PartitionedStateSource.checkCorrectSnapshot = new int[counterSize];
+			PartitionedStateSource.checkCorrectRestore = new int[counterSize];
 		} else {
-			PartitionedStateSourceListCheckpointed.CHECK_CORRECT_SNAPSHOT = new int[counterSize];
-			PartitionedStateSourceListCheckpointed.CHECK_CORRECT_RESTORE = new int[counterSize];
+			PartitionedStateSourceListCheckpointed.checkCorrectSnapshot = new int[counterSize];
+			PartitionedStateSourceListCheckpointed.checkCorrectRestore = new int[counterSize];
 		}
 
 		try {
@@ -583,29 +583,29 @@ public class RescalingITCase extends TestLogger {
 			int sumAct = 0;
 
 			if (checkpointMethod == OperatorCheckpointMethod.CHECKPOINTED_FUNCTION) {
-				for (int c : PartitionedStateSource.CHECK_CORRECT_SNAPSHOT) {
+				for (int c : PartitionedStateSource.checkCorrectSnapshot) {
 					sumExp += c;
 				}
 
-				for (int c : PartitionedStateSource.CHECK_CORRECT_RESTORE) {
+				for (int c : PartitionedStateSource.checkCorrectRestore) {
 					sumAct += c;
 				}
 			} else if (checkpointMethod == OperatorCheckpointMethod.CHECKPOINTED_FUNCTION_BROADCAST) {
-				for (int c : PartitionedStateSource.CHECK_CORRECT_SNAPSHOT) {
+				for (int c : PartitionedStateSource.checkCorrectSnapshot) {
 					sumExp += c;
 				}
 
-				for (int c : PartitionedStateSource.CHECK_CORRECT_RESTORE) {
+				for (int c : PartitionedStateSource.checkCorrectRestore) {
 					sumAct += c;
 				}
 
 				sumExp *= parallelism2;
 			} else {
-				for (int c : PartitionedStateSourceListCheckpointed.CHECK_CORRECT_SNAPSHOT) {
+				for (int c : PartitionedStateSourceListCheckpointed.checkCorrectSnapshot) {
 					sumExp += c;
 				}
 
-				for (int c : PartitionedStateSourceListCheckpointed.CHECK_CORRECT_RESTORE) {
+				for (int c : PartitionedStateSourceListCheckpointed.checkCorrectRestore) {
 					sumAct += c;
 				}
 			}
@@ -776,8 +776,8 @@ public class RescalingITCase extends TestLogger {
 				if (counter < numberElements) {
 					synchronized (lock) {
 						for (int value = subtaskIndex;
-						     value < numberKeys;
-						     value += getRuntimeContext().getNumberOfParallelSubtasks()) {
+							value < numberKeys;
+							value += getRuntimeContext().getNumberOfParallelSubtasks()) {
 
 							ctx.collect(value);
 						}
@@ -866,7 +866,7 @@ public class RescalingITCase extends TestLogger {
 
 	private static class CollectionSink<IN> implements SinkFunction<IN> {
 
-		private static ConcurrentSet<Object> elements = new ConcurrentSet<Object>();
+		private static Set<Object> elements = Collections.newSetFromMap(new ConcurrentHashMap<Object, Boolean>());
 
 		private static final long serialVersionUID = -1652452958040267745L;
 
@@ -942,13 +942,13 @@ public class RescalingITCase extends TestLogger {
 		private static final long serialVersionUID = -4357864582992546L;
 		private static final int NUM_PARTITIONS = 7;
 
-		private static int[] CHECK_CORRECT_SNAPSHOT;
-		private static int[] CHECK_CORRECT_RESTORE;
+		private static int[] checkCorrectSnapshot;
+		private static int[] checkCorrectRestore;
 
 		@Override
 		public List<Integer> snapshotState(long checkpointId, long timestamp) throws Exception {
 
-			CHECK_CORRECT_SNAPSHOT[getRuntimeContext().getIndexOfThisSubtask()] = counter;
+			checkCorrectSnapshot[getRuntimeContext().getIndexOfThisSubtask()] = counter;
 
 			int div = counter / NUM_PARTITIONS;
 			int mod = counter % NUM_PARTITIONS;
@@ -970,11 +970,11 @@ public class RescalingITCase extends TestLogger {
 			for (Integer v : state) {
 				counter += v;
 			}
-			CHECK_CORRECT_RESTORE[getRuntimeContext().getIndexOfThisSubtask()] = counter;
+			checkCorrectRestore[getRuntimeContext().getIndexOfThisSubtask()] = counter;
 		}
 	}
 
-	private static class PartitionedStateSource extends StateSourceBase implements CheckpointedFunction, CheckpointedRestoring<Integer> {
+	private static class PartitionedStateSource extends StateSourceBase implements CheckpointedFunction {
 
 		private static final long serialVersionUID = -359715965103593462L;
 		private static final int NUM_PARTITIONS = 7;
@@ -982,8 +982,8 @@ public class RescalingITCase extends TestLogger {
 		private transient ListState<Integer> counterPartitions;
 		private boolean broadcast;
 
-		private static int[] CHECK_CORRECT_SNAPSHOT;
-		private static int[] CHECK_CORRECT_RESTORE;
+		private static int[] checkCorrectSnapshot;
+		private static int[] checkCorrectRestore;
 
 		public PartitionedStateSource(boolean broadcast) {
 			this.broadcast = broadcast;
@@ -994,7 +994,7 @@ public class RescalingITCase extends TestLogger {
 
 			counterPartitions.clear();
 
-			CHECK_CORRECT_SNAPSHOT[getRuntimeContext().getIndexOfThisSubtask()] = counter;
+			checkCorrectSnapshot[getRuntimeContext().getIndexOfThisSubtask()] = counter;
 
 			int div = counter / NUM_PARTITIONS;
 			int mod = counter % NUM_PARTITIONS;
@@ -1026,13 +1026,8 @@ public class RescalingITCase extends TestLogger {
 				for (int v : counterPartitions.get()) {
 					counter += v;
 				}
-				CHECK_CORRECT_RESTORE[getRuntimeContext().getIndexOfThisSubtask()] = counter;
+				checkCorrectRestore[getRuntimeContext().getIndexOfThisSubtask()] = counter;
 			}
-		}
-
-		@Override
-		public void restoreState(Integer state) throws Exception {
-			counterPartitions.add(state);
 		}
 	}
 }

@@ -153,28 +153,22 @@ abstract class BatchTableEnvironment(
       physicalTypeInfo: TypeInformation[IN],
       schema: RowSchema,
       requestedTypeInfo: TypeInformation[OUT],
-      functionName: String):
-    Option[MapFunction[IN, OUT]] = {
+      functionName: String)
+    : Option[MapFunction[IN, OUT]] = {
 
-    if (requestedTypeInfo.getTypeClass == classOf[Row]) {
-      // Row to Row, no conversion needed
-      None
-    } else {
-      // some type that is neither Row or CRow
+    val converterFunction = generateRowConverterFunction[OUT](
+      physicalTypeInfo.asInstanceOf[TypeInformation[Row]],
+      schema,
+      requestedTypeInfo,
+      functionName
+    )
 
-      val converterFunction = generateRowConverterFunction[OUT](
-        physicalTypeInfo.asInstanceOf[TypeInformation[Row]],
-        schema,
-        requestedTypeInfo,
-        functionName
-      )
-
-      val mapFunction = new MapRunner[IN, OUT](
-        converterFunction.name,
-        converterFunction.code,
-        converterFunction.returnType)
-
-      Some(mapFunction)
+    // add a runner if we need conversion
+    converterFunction.map { func =>
+      new MapRunner[IN, OUT](
+          func.name,
+          func.code,
+          func.returnType)
     }
   }
 
@@ -276,9 +270,16 @@ abstract class BatchTableEnvironment(
     */
   private[flink] def optimize(relNode: RelNode): RelNode = {
 
-    // 0. convert registered tables
+    // 0. convert sub-queries before query decorrelation
+    val convSubQueryPlan = runHepPlanner(
+      HepMatchOrder.BOTTOM_UP, FlinkRuleSets.TABLE_SUBQUERY_RULES, relNode, relNode.getTraitSet)
+
+    // 0. convert table references
     val fullRelNode = runHepPlanner(
-      HepMatchOrder.BOTTOM_UP, FlinkRuleSets.TABLE_CONV_RULES, relNode, relNode.getTraitSet)
+      HepMatchOrder.BOTTOM_UP,
+      FlinkRuleSets.TABLE_REF_RULES,
+      convSubQueryPlan,
+      relNode.getTraitSet)
 
     // 1. decorrelate
     val decorPlan = RelDecorrelator.decorrelateQuery(fullRelNode)

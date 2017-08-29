@@ -25,29 +25,26 @@ import akka.actor.ActorSystem;
 import akka.actor.Address;
 import akka.actor.Cancellable;
 import akka.actor.Identify;
-import akka.actor.PoisonPill;
 import akka.actor.Props;
 import akka.dispatch.Futures;
 import akka.dispatch.Mapper;
 import akka.pattern.Patterns;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.runtime.akka.AkkaUtils;
-import org.apache.flink.runtime.concurrent.CompletableFuture;
-import org.apache.flink.runtime.concurrent.Future;
+import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.concurrent.ScheduledExecutor;
-import org.apache.flink.runtime.concurrent.impl.FlinkCompletableFuture;
-import org.apache.flink.runtime.concurrent.impl.FlinkFuture;
-import org.apache.flink.runtime.rpc.MainThreadExecutable;
 import org.apache.flink.runtime.rpc.RpcEndpoint;
 import org.apache.flink.runtime.rpc.RpcGateway;
 import org.apache.flink.runtime.rpc.RpcService;
-import org.apache.flink.runtime.rpc.SelfGateway;
-import org.apache.flink.runtime.rpc.StartStoppable;
+import org.apache.flink.runtime.rpc.RpcServer;
+import org.apache.flink.runtime.rpc.RpcUtils;
+import org.apache.flink.runtime.rpc.akka.messages.Shutdown;
 import org.apache.flink.runtime.rpc.exceptions.RpcConnectionException;
 import org.apache.flink.util.Preconditions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import scala.Option;
+import scala.concurrent.Future;
 import scala.concurrent.duration.FiniteDuration;
 
 import javax.annotation.Nonnull;
@@ -57,6 +54,7 @@ import java.lang.reflect.Proxy;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Delayed;
 import java.util.concurrent.Executor;
 import java.util.concurrent.FutureTask;
@@ -87,6 +85,7 @@ public class AkkaRpcService implements RpcService {
 	private final long maximumFramesize;
 
 	private final String address;
+	private final int port;
 
 	private final ScheduledExecutor internalScheduledExecutor;
 
@@ -111,6 +110,12 @@ public class AkkaRpcService implements RpcService {
 			address = "";
 		}
 
+		if (actorSystemAddress.port().isDefined()) {
+			port = (Integer) actorSystemAddress.port().get();
+		} else {
+			port = -1;
+		}
+
 		internalScheduledExecutor = new InternalScheduledExecutorImpl(actorSystem);
 	}
 
@@ -119,9 +124,14 @@ public class AkkaRpcService implements RpcService {
 		return address;
 	}
 
+	@Override
+	public int getPort() {
+		return port;
+	}
+
 	// this method does not mutate state and is thus thread-safe
 	@Override
-	public <C extends RpcGateway> Future<C> connect(final String address, final Class<C> clazz) {
+	public <C extends RpcGateway> CompletableFuture<C> connect(final String address, final Class<C> clazz) {
 		checkState(!stopped, "RpcService is stopped");
 
 		LOG.debug("Try to connect to remote RPC endpoint with address {}. Returning a {} gateway.",
@@ -174,14 +184,14 @@ public class AkkaRpcService implements RpcService {
 			}
 		}, actorSystem.dispatcher());
 
-		return new FlinkFuture<>(resultFuture);
+		return FutureUtils.toJava(resultFuture);
 	}
 
 	@Override
-	public <C extends RpcGateway, S extends RpcEndpoint<C>> C startServer(S rpcEndpoint) {
+	public <C extends RpcEndpoint & RpcGateway> RpcServer startServer(C rpcEndpoint) {
 		checkNotNull(rpcEndpoint, "rpc endpoint");
 
-		CompletableFuture<Void> terminationFuture = new FlinkCompletableFuture<>();
+		CompletableFuture<Void> terminationFuture = new CompletableFuture<>();
 		Props akkaRpcActorProps = Props.create(AkkaRpcActor.class, rpcEndpoint, terminationFuture);
 		ActorRef actorRef;
 
@@ -215,22 +225,22 @@ public class AkkaRpcService implements RpcService {
 		// code is loaded dynamically (for example from an OSGI bundle) through a custom ClassLoader
 		ClassLoader classLoader = getClass().getClassLoader();
 
+		Set<Class<? extends RpcGateway>> implementedRpcGateways = RpcUtils.extractImplementedRpcGateways(rpcEndpoint.getClass());
+
+		implementedRpcGateways.add(RpcServer.class);
+		implementedRpcGateways.add(AkkaGateway.class);
+
 		@SuppressWarnings("unchecked")
-		C self = (C) Proxy.newProxyInstance(
+		RpcServer server = (RpcServer) Proxy.newProxyInstance(
 			classLoader,
-			new Class<?>[]{
-				rpcEndpoint.getSelfGatewayType(),
-				SelfGateway.class,
-				MainThreadExecutable.class,
-				StartStoppable.class,
-				AkkaGateway.class},
+			implementedRpcGateways.toArray(new Class<?>[implementedRpcGateways.size()]),
 			akkaInvocationHandler);
 
-		return self;
+		return server;
 	}
 
 	@Override
-	public void stopServer(RpcGateway selfGateway) {
+	public void stopServer(RpcServer selfGateway) {
 		if (selfGateway instanceof AkkaGateway) {
 			AkkaGateway akkaClient = (AkkaGateway) selfGateway;
 
@@ -245,8 +255,8 @@ public class AkkaRpcService implements RpcService {
 
 			if (fromThisService) {
 				ActorRef selfActorRef = akkaClient.getRpcEndpoint();
-				LOG.info("Stopping RPC endpoint {}.", selfActorRef.path());
-				selfActorRef.tell(PoisonPill.getInstance(), ActorRef.noSender());
+				LOG.info("Trigger shut down of RPC endpoint {}.", selfActorRef.path());
+				selfActorRef.tell(Shutdown.getInstance(), ActorRef.noSender());
 			} else {
 				LOG.debug("RPC endpoint {} already stopped or from different RPC service");
 			}
@@ -271,14 +281,10 @@ public class AkkaRpcService implements RpcService {
 	}
 
 	@Override
-	public Future<Void> getTerminationFuture() {
-		return FlinkFuture.supplyAsync(new Callable<Void>(){
-			@Override
-			public Void call() throws Exception {
-				actorSystem.awaitTermination();
-				return null;
-			}
-		}, getExecutor());
+	public CompletableFuture<Void> getTerminationFuture() {
+		return CompletableFuture.runAsync(
+			actorSystem::awaitTermination,
+			getExecutor());
 	}
 
 	@Override
@@ -305,10 +311,10 @@ public class AkkaRpcService implements RpcService {
 	}
 
 	@Override
-	public <T> Future<T> execute(Callable<T> callable) {
-		scala.concurrent.Future<T> scalaFuture = Futures.future(callable, actorSystem.dispatcher());
+	public <T> CompletableFuture<T> execute(Callable<T> callable) {
+		Future<T> scalaFuture = Futures.future(callable, actorSystem.dispatcher());
 
-		return new FlinkFuture<>(scalaFuture);
+		return FutureUtils.toJava(scalaFuture);
 	}
 
 	/**

@@ -19,17 +19,16 @@
 package org.apache.flink.runtime.heartbeat;
 
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
-import org.apache.flink.runtime.concurrent.CompletableFuture;
-import org.apache.flink.runtime.concurrent.Future;
 import org.apache.flink.runtime.concurrent.ScheduledExecutor;
 import org.apache.flink.runtime.concurrent.ScheduledExecutorServiceAdapter;
-import org.apache.flink.runtime.concurrent.impl.FlinkCompletableFuture;
 import org.apache.flink.runtime.util.DirectExecutorService;
 import org.apache.flink.util.TestLogger;
+
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -46,12 +45,14 @@ import static org.mockito.Matchers.anyLong;
 import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-
+/**
+ * Tests for the {@link HeartbeatManager}.
+ */
 public class HeartbeatManagerTest extends TestLogger {
 	private static final Logger LOG = LoggerFactory.getLogger(HeartbeatManagerTest.class);
 
@@ -69,7 +70,7 @@ public class HeartbeatManagerTest extends TestLogger {
 
 		Object expectedObject = new Object();
 
-		when(heartbeatListener.retrievePayload()).thenReturn(FlinkCompletableFuture.completed(expectedObject));
+		when(heartbeatListener.retrievePayload()).thenReturn(CompletableFuture.completedFuture(expectedObject));
 
 		HeartbeatManagerImpl<Object, Object> heartbeatManager = new HeartbeatManagerImpl<>(
 			heartbeatTimeout,
@@ -110,7 +111,7 @@ public class HeartbeatManagerTest extends TestLogger {
 
 		Object expectedObject = new Object();
 
-		when(heartbeatListener.retrievePayload()).thenReturn(FlinkCompletableFuture.completed(expectedObject));
+		when(heartbeatListener.retrievePayload()).thenReturn(CompletableFuture.completedFuture(expectedObject));
 
 		HeartbeatManagerImpl<Object, Object> heartbeatManager = new HeartbeatManagerImpl<>(
 			heartbeatTimeout,
@@ -162,7 +163,7 @@ public class HeartbeatManagerTest extends TestLogger {
 
 		HeartbeatTarget<Object> heartbeatTarget = mock(HeartbeatTarget.class);
 
-		Future<ResourceID> timeoutFuture = heartbeatListener.getTimeoutFuture();
+		CompletableFuture<ResourceID> timeoutFuture = heartbeatListener.getTimeoutFuture();
 
 		heartbeatManager.monitorTarget(targetResourceID, heartbeatTarget);
 
@@ -196,11 +197,11 @@ public class HeartbeatManagerTest extends TestLogger {
 		ResourceID resourceID2 = new ResourceID("barfoo");
 		HeartbeatListener<Object, Object> heartbeatListener = mock(HeartbeatListener.class);
 
-		when(heartbeatListener.retrievePayload()).thenReturn(FlinkCompletableFuture.completed(object));
+		when(heartbeatListener.retrievePayload()).thenReturn(CompletableFuture.completedFuture(object));
 
 		TestingHeartbeatListener heartbeatListener2 = new TestingHeartbeatListener(object2);
 
-		Future<ResourceID> futureTimeout = heartbeatListener2.getTimeoutFuture();
+		CompletableFuture<ResourceID> futureTimeout = heartbeatListener2.getTimeoutFuture();
 
 		HeartbeatManagerImpl<Object, Object> heartbeatManager = new HeartbeatManagerImpl<>(
 			heartbeatTimeout,
@@ -217,7 +218,7 @@ public class HeartbeatManagerTest extends TestLogger {
 			heartbeatListener2,
 			new DirectExecutorService(),
 			new ScheduledExecutorServiceAdapter(new ScheduledThreadPoolExecutor(1)),
-			LOG);;
+			LOG);
 
 		heartbeatManager.monitorTarget(resourceID2, heartbeatManager2);
 		heartbeatManager2.monitorTarget(resourceID, heartbeatManager);
@@ -239,7 +240,7 @@ public class HeartbeatManagerTest extends TestLogger {
 	}
 
 	/**
-	 * Tests that after unmonitoring a target, there won't be a timeout triggered
+	 * Tests that after unmonitoring a target, there won't be a timeout triggered.
 	 */
 	@Test
 	public void testTargetUnmonitoring() throws InterruptedException, ExecutionException {
@@ -263,8 +264,7 @@ public class HeartbeatManagerTest extends TestLogger {
 
 		heartbeatManager.unmonitorTarget(targetID);
 
-		Future<ResourceID> timeout = heartbeatListener.getTimeoutFuture();
-
+		CompletableFuture<ResourceID> timeout = heartbeatListener.getTimeoutFuture();
 
 		try {
 			timeout.get(2 * heartbeatTimeout, TimeUnit.MILLISECONDS);
@@ -276,7 +276,7 @@ public class HeartbeatManagerTest extends TestLogger {
 
 	static class TestingHeartbeatListener implements HeartbeatListener<Object, Object> {
 
-		private final CompletableFuture<ResourceID> future = new FlinkCompletableFuture<>();
+		private final CompletableFuture<ResourceID> future = new CompletableFuture<>();
 
 		private final Object payload;
 
@@ -286,7 +286,7 @@ public class HeartbeatManagerTest extends TestLogger {
 			this.payload = payload;
 		}
 
-		public Future<ResourceID> getTimeoutFuture() {
+		CompletableFuture<ResourceID> getTimeoutFuture() {
 			return future;
 		}
 
@@ -305,8 +305,8 @@ public class HeartbeatManagerTest extends TestLogger {
 		}
 
 		@Override
-		public Future<Object> retrievePayload() {
-			return FlinkCompletableFuture.completed(payload);
+		public CompletableFuture<Object> retrievePayload() {
+			return CompletableFuture.completedFuture(payload);
 		}
 	}
 }

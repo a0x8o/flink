@@ -29,7 +29,9 @@ import org.apache.flink.configuration.ConfigConstants;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.HighAvailabilityOptions;
 import org.apache.flink.configuration.IllegalConfigurationException;
+import org.apache.flink.configuration.JobManagerOptions;
 import org.apache.flink.test.util.TestBaseUtils;
+import org.apache.flink.util.TestLogger;
 import org.apache.flink.yarn.cli.FlinkYarnSessionCli;
 
 import org.apache.commons.cli.CommandLine;
@@ -65,7 +67,7 @@ import static org.junit.Assert.assertEquals;
  * Tests that verify that the CLI client picks up the correct address for the JobManager
  * from configuration and configs.
  */
-public class CliFrontendYarnAddressConfigurationTest {
+public class CliFrontendYarnAddressConfigurationTest extends TestLogger {
 
 	@Rule
 	public TemporaryFolder temporaryFolder = new TemporaryFolder();
@@ -360,14 +362,21 @@ public class CliFrontendYarnAddressConfigurationTest {
 
 			@Override
 			// override cluster descriptor to replace the YarnClient
-			protected AbstractYarnClusterDescriptor getClusterDescriptor() {
-				return new TestingYarnClusterDescriptor();
+			protected AbstractYarnClusterDescriptor getClusterDescriptor(
+					Configuration configuration,
+					String configurationDirecotry,
+					boolean flip6) {
+				return new TestingYarnClusterDescriptor(configuration, configurationDirecotry);
 			}
 
 			/**
 			 * Replace the YarnClient for this test.
 			 */
 			private class TestingYarnClusterDescriptor extends YarnClusterDescriptor {
+
+				public TestingYarnClusterDescriptor(Configuration flinkConfiguration, String configurationDirectory) {
+					super(flinkConfiguration, configurationDirectory);
+				}
 
 				@Override
 				protected YarnClient getYarnClient() {
@@ -377,6 +386,8 @@ public class CliFrontendYarnAddressConfigurationTest {
 				@Override
 				protected YarnClusterClient createYarnClusterClient(
 						AbstractYarnClusterDescriptor descriptor,
+						int numberTaskManagers,
+						int slotsPerTaskManager,
 						YarnClient yarnClient,
 						ApplicationReport report,
 						Configuration flinkConfiguration,
@@ -428,8 +439,8 @@ public class CliFrontendYarnAddressConfigurationTest {
 	}
 
 	private static void checkJobManagerAddress(Configuration config, String expectedAddress, int expectedPort) {
-		String jobManagerAddress = config.getString(ConfigConstants.JOB_MANAGER_IPC_ADDRESS_KEY, null);
-		int jobManagerPort = config.getInteger(ConfigConstants.JOB_MANAGER_IPC_PORT_KEY, -1);
+		String jobManagerAddress = config.getString(JobManagerOptions.ADDRESS);
+		int jobManagerPort = config.getInteger(JobManagerOptions.PORT, -1);
 
 		assertEquals(expectedAddress, jobManagerAddress);
 		assertEquals(expectedPort, jobManagerPort);

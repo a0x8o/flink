@@ -32,8 +32,6 @@ import org.apache.flink.types.StringValue;
 
 import org.apache.commons.math3.random.JDKRandomGenerator;
 
-import static org.apache.flink.api.common.ExecutionConfig.PARALLELISM_DEFAULT;
-
 /**
  * Generate an {@code RMatGraph} with {@link IntValue}, {@link LongValue},
  * or {@link StringValue} keys.
@@ -41,7 +39,7 @@ import static org.apache.flink.api.common.ExecutionConfig.PARALLELISM_DEFAULT;
  * @see org.apache.flink.graph.generator.RMatGraph
  */
 public class RMatGraph
-extends GeneratedMultiGraph<LongValue> {
+extends GeneratedMultiGraph {
 
 	// generate graph with 2^scale vertices
 	private LongParameter scale = new LongParameter(this, "scale")
@@ -79,13 +77,9 @@ extends GeneratedMultiGraph<LongValue> {
 	private LongParameter seed = new LongParameter(this, "seed")
 		.setDefaultValue(JDKRandomGeneratorFactory.DEFAULT_SEED);
 
-	private LongParameter littleParallelism = new LongParameter(this, "little_parallelism")
-		.setDefaultValue(PARALLELISM_DEFAULT);
-
 	@Override
 	public String getIdentity() {
-		return getTypeName() + " " + getName() +
-			" (s" + scale + "e" + edgeFactor + getSimplifyShortString() + ")";
+		return getName() + " (s" + scale + "e" + edgeFactor + getSimplifyShortString() + ")";
 	}
 
 	@Override
@@ -93,16 +87,9 @@ extends GeneratedMultiGraph<LongValue> {
 		return 1L << scale.getValue();
 	}
 
-	/**
-	 * Generate the graph as configured.
-	 *
-	 * @param env Flink execution environment
-	 * @return input graph
-	 */
+	@Override
 	public Graph<LongValue, NullValue, NullValue> generate(ExecutionEnvironment env) throws Exception {
-		int lp = littleParallelism.getValue().intValue();
-
-		RandomGenerableFactory<JDKRandomGenerator> rnd = new JDKRandomGeneratorFactory();
+		RandomGenerableFactory<JDKRandomGenerator> rnd = new JDKRandomGeneratorFactory(seed.getValue());
 
 		long vertexCount = 1L << scale.getValue();
 		long edgeCount = vertexCount * edgeFactor.getValue();
@@ -111,7 +98,7 @@ extends GeneratedMultiGraph<LongValue> {
 				env, rnd, vertexCount, edgeCount)
 			.setConstants(a.getValue().floatValue(), b.getValue().floatValue(), c.getValue().floatValue())
 			.setNoise(noiseEnabled.getValue(), noise.getValue().floatValue())
-			.setParallelism(lp)
+			.setParallelism(parallelism.getValue().intValue())
 			.generate();
 	}
 }

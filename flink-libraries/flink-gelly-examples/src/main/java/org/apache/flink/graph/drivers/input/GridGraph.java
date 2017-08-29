@@ -22,7 +22,6 @@ import org.apache.flink.api.java.ExecutionEnvironment;
 import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.client.program.ProgramParametrizationException;
 import org.apache.flink.graph.Graph;
-import org.apache.flink.graph.drivers.parameter.LongParameter;
 import org.apache.flink.types.LongValue;
 import org.apache.flink.types.NullValue;
 
@@ -32,20 +31,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 
-import static org.apache.flink.api.common.ExecutionConfig.PARALLELISM_DEFAULT;
-
 /**
  * Generate a {@link org.apache.flink.graph.generator.GridGraph}.
  */
 public class GridGraph
-extends GeneratedGraph<LongValue> {
+extends GeneratedGraph {
 
 	private static final String PREFIX = "dim";
 
 	private List<Dimension> dimensions = new ArrayList<>();
-
-	private LongParameter littleParallelism = new LongParameter(this, "little_parallelism")
-		.setDefaultValue(PARALLELISM_DEFAULT);
 
 	@Override
 	public String getUsage() {
@@ -77,7 +71,7 @@ extends GeneratedGraph<LongValue> {
 
 	@Override
 	public String getIdentity() {
-		return getTypeName() + " " + getName() + " (" + dimensions + ")";
+		return getName() + " (" + dimensions + ")";
 	}
 
 	@Override
@@ -97,7 +91,7 @@ extends GeneratedGraph<LongValue> {
 	}
 
 	@Override
-	public Graph<LongValue, NullValue, NullValue> generate(ExecutionEnvironment env) {
+	public Graph<LongValue, NullValue, NullValue> create(ExecutionEnvironment env) {
 		org.apache.flink.graph.generator.GridGraph graph = new org.apache.flink.graph.generator.GridGraph(env);
 
 		for (Dimension dimension : dimensions) {
@@ -105,7 +99,7 @@ extends GeneratedGraph<LongValue> {
 		}
 
 		return graph
-			.setParallelism(littleParallelism.getValue().intValue())
+			.setParallelism(parallelism.getValue().intValue())
 			.generate();
 	}
 

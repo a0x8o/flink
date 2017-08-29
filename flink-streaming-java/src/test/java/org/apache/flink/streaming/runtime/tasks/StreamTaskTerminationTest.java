@@ -23,13 +23,12 @@ import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.core.testutils.OneShotLatch;
+import org.apache.flink.runtime.blob.BlobCache;
 import org.apache.flink.runtime.blob.BlobKey;
 import org.apache.flink.runtime.broadcast.BroadcastVariableManager;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.concurrent.Executors;
-import org.apache.flink.runtime.concurrent.Future;
-import org.apache.flink.runtime.concurrent.impl.FlinkCompletableFuture;
 import org.apache.flink.runtime.deployment.InputGateDeploymentDescriptor;
 import org.apache.flink.runtime.deployment.ResultPartitionDeploymentDescriptor;
 import org.apache.flink.runtime.execution.Environment;
@@ -44,6 +43,7 @@ import org.apache.flink.runtime.io.network.NetworkEnvironment;
 import org.apache.flink.runtime.io.network.netty.PartitionProducerStateChecker;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionConsumableNotifier;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
+import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.jobgraph.tasks.InputSplitProvider;
 import org.apache.flink.runtime.memory.MemoryManager;
 import org.apache.flink.runtime.operators.testutils.UnregisteredTaskMetricsGroup;
@@ -75,6 +75,7 @@ import java.io.IOException;
 import java.net.URL;
 import java.util.Collections;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.FutureTask;
 
 import static org.junit.Assert.assertEquals;
@@ -108,6 +109,7 @@ public class StreamTaskTerminationTest extends TestLogger {
 		final AbstractStateBackend blockingStateBackend = new BlockingStateBackend();
 
 		streamConfig.setStreamOperator(noOpStreamOperator);
+		streamConfig.setOperatorID(new OperatorID());
 		streamConfig.setStateBackend(blockingStateBackend);
 
 		final long checkpointId = 0L;
@@ -152,6 +154,7 @@ public class StreamTaskTerminationTest extends TestLogger {
 			mock(TaskManagerActions.class),
 			mock(InputSplitProvider.class),
 			mock(CheckpointResponder.class),
+			mock(BlobCache.class),
 			new FallbackLibraryCacheManager(),
 			mock(FileCache.class),
 			taskManagerRuntimeInfo,
@@ -160,14 +163,9 @@ public class StreamTaskTerminationTest extends TestLogger {
 			mock(PartitionProducerStateChecker.class),
 			Executors.directExecutor());
 
-		Future<Void> taskRun = FlinkCompletableFuture.supplyAsync(new Callable<Void>() {
-			@Override
-			public Void call() throws Exception {
-				task.run();
-
-				return null;
-			}
-		}, TestingUtils.defaultExecutor());
+		CompletableFuture<Void> taskRun = CompletableFuture.runAsync(
+			() -> task.run(),
+			TestingUtils.defaultExecutor());
 
 		// wait until the stream task started running
 		RUN_LATCH.await();

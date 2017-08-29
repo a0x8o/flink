@@ -21,11 +21,9 @@ package org.apache.flink.runtime.rpc.akka;
 import akka.actor.ActorRef;
 import akka.pattern.Patterns;
 import org.apache.flink.api.common.time.Time;
-import org.apache.flink.api.java.tuple.Tuple2;
-import org.apache.flink.runtime.concurrent.Future;
-import org.apache.flink.runtime.concurrent.impl.FlinkFuture;
+import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.rpc.MainThreadExecutable;
-import org.apache.flink.runtime.rpc.SelfGateway;
+import org.apache.flink.runtime.rpc.RpcServer;
 import org.apache.flink.runtime.rpc.RpcGateway;
 import org.apache.flink.runtime.rpc.RpcTimeout;
 import org.apache.flink.runtime.rpc.StartStoppable;
@@ -39,12 +37,15 @@ import org.apache.flink.util.Preconditions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.annotation.Nullable;
+
 import java.io.IOException;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
-import java.util.BitSet;
+import java.util.Objects;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CompletableFuture;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.apache.flink.util.Preconditions.checkArgument;
@@ -54,7 +55,7 @@ import static org.apache.flink.util.Preconditions.checkArgument;
  * rpc in a {@link LocalRpcInvocation} message and then sends it to the {@link AkkaRpcActor} where it is
  * executed.
  */
-class AkkaInvocationHandler implements InvocationHandler, AkkaGateway, MainThreadExecutable, StartStoppable, SelfGateway {
+class AkkaInvocationHandler implements InvocationHandler, AkkaGateway, RpcServer {
 	private static final Logger LOG = LoggerFactory.getLogger(AkkaInvocationHandler.class);
 
 	/**
@@ -79,7 +80,7 @@ class AkkaInvocationHandler implements InvocationHandler, AkkaGateway, MainThrea
 	private final long maximumFramesize;
 
 	// null if gateway; otherwise non-null
-	private final Future<Void> terminationFuture;
+	private final CompletableFuture<Void> terminationFuture;
 
 	AkkaInvocationHandler(
 			String address,
@@ -87,7 +88,7 @@ class AkkaInvocationHandler implements InvocationHandler, AkkaGateway, MainThrea
 			ActorRef rpcEndpoint,
 			Time timeout,
 			long maximumFramesize,
-			Future<Void> terminationFuture) {
+			@Nullable CompletableFuture<Void> terminationFuture) {
 
 		this.address = Preconditions.checkNotNull(address);
 		this.hostname = Preconditions.checkNotNull(hostname);
@@ -104,9 +105,12 @@ class AkkaInvocationHandler implements InvocationHandler, AkkaGateway, MainThrea
 
 		Object result;
 
-		if (declaringClass.equals(AkkaGateway.class) || declaringClass.equals(MainThreadExecutable.class) ||
-			declaringClass.equals(Object.class) || declaringClass.equals(StartStoppable.class) ||
-			declaringClass.equals(RpcGateway.class) || declaringClass.equals(SelfGateway.class)) {
+		if (declaringClass.equals(AkkaGateway.class) ||
+			declaringClass.equals(Object.class) ||
+			declaringClass.equals(RpcGateway.class) ||
+			declaringClass.equals(StartStoppable.class) ||
+			declaringClass.equals(MainThreadExecutable.class) ||
+			declaringClass.equals(RpcServer.class)) {
 			result = method.invoke(this, args);
 		} else {
 			String methodName = method.getName();
@@ -114,24 +118,19 @@ class AkkaInvocationHandler implements InvocationHandler, AkkaGateway, MainThrea
 			Annotation[][] parameterAnnotations = method.getParameterAnnotations();
 			Time futureTimeout = extractRpcTimeout(parameterAnnotations, args, timeout);
 
-			Tuple2<Class<?>[], Object[]> filteredArguments = filterArguments(
-				parameterTypes,
-				parameterAnnotations,
-				args);
-
 			RpcInvocation rpcInvocation;
 
 			if (isLocal) {
 				rpcInvocation = new LocalRpcInvocation(
 					methodName,
-					filteredArguments.f0,
-					filteredArguments.f1);
+					parameterTypes,
+					args);
 			} else {
 				try {
 					RemoteRpcInvocation remoteRpcInvocation = new RemoteRpcInvocation(
 						methodName,
-						filteredArguments.f0,
-						filteredArguments.f1);
+						parameterTypes,
+						args);
 
 					if (remoteRpcInvocation.getSize() > maximumFramesize) {
 						throw new IOException("The rpc invocation size exceeds the maximum akka framesize.");
@@ -146,20 +145,19 @@ class AkkaInvocationHandler implements InvocationHandler, AkkaGateway, MainThrea
 
 			Class<?> returnType = method.getReturnType();
 
-			if (returnType.equals(Void.TYPE)) {
+			if (Objects.equals(returnType, Void.TYPE)) {
 				rpcEndpoint.tell(rpcInvocation, ActorRef.noSender());
 
 				result = null;
-			} else if (returnType.equals(Future.class)) {
+			} else if (Objects.equals(returnType,CompletableFuture.class)) {
 				// execute an asynchronous call
-				result = new FlinkFuture<>(Patterns.ask(rpcEndpoint, rpcInvocation, futureTimeout.toMilliseconds()));
+				result = FutureUtils.toJava(Patterns.ask(rpcEndpoint, rpcInvocation, futureTimeout.toMilliseconds()));
 			} else {
 				// execute a synchronous call
-				scala.concurrent.Future<?> scalaFuture = Patterns.ask(rpcEndpoint, rpcInvocation, futureTimeout.toMilliseconds());
+				CompletableFuture<?> futureResult = FutureUtils.toJava(
+					Patterns.ask(rpcEndpoint, rpcInvocation, futureTimeout.toMilliseconds()));
 
-				Future<?> futureResult = new FlinkFuture<>(scalaFuture);
-
-				return futureResult.get(futureTimeout.getSize(), futureTimeout.getUnit());
+				result = futureResult.get(futureTimeout.getSize(), futureTimeout.getUnit());
 			}
 		}
 
@@ -191,12 +189,12 @@ class AkkaInvocationHandler implements InvocationHandler, AkkaGateway, MainThrea
 	}
 
 	@Override
-	public <V> Future<V> callAsync(Callable<V> callable, Time callTimeout) {
+	public <V> CompletableFuture<V> callAsync(Callable<V> callable, Time callTimeout) {
 		if(isLocal) {
 			@SuppressWarnings("unchecked")
-			scala.concurrent.Future<V> result = (scala.concurrent.Future<V>) Patterns.ask(rpcEndpoint, new CallAsync(callable), callTimeout.toMilliseconds());
+			scala.concurrent.Future<V> resultFuture = (scala.concurrent.Future<V>) Patterns.ask(rpcEndpoint, new CallAsync(callable), callTimeout.toMilliseconds());
 
-			return new FlinkFuture<>(result);
+			return FutureUtils.toJava(resultFuture);
 		} else {
 			throw new RuntimeException("Trying to send a Callable to a remote actor at " +
 				rpcEndpoint.path() + ". This is not supported.");
@@ -249,62 +247,6 @@ class AkkaInvocationHandler implements InvocationHandler, AkkaGateway, MainThrea
 	}
 
 	/**
-	 * Removes all {@link RpcTimeout} annotated parameters from the parameter type and argument
-	 * list.
-	 *
-	 * @param parameterTypes Array of parameter types
-	 * @param parameterAnnotations Array of parameter annotations
-	 * @param args Arary of arguments
-	 * @return Tuple of filtered parameter types and arguments which no longer contain the
-	 * {@link RpcTimeout} annotated parameter types and arguments
-	 */
-	private static Tuple2<Class<?>[], Object[]> filterArguments(
-		Class<?>[] parameterTypes,
-		Annotation[][] parameterAnnotations,
-		Object[] args) {
-
-		Class<?>[] filteredParameterTypes;
-		Object[] filteredArgs;
-
-		if (args == null) {
-			filteredParameterTypes = parameterTypes;
-			filteredArgs = null;
-		} else {
-			Preconditions.checkArgument(parameterTypes.length == parameterAnnotations.length);
-			Preconditions.checkArgument(parameterAnnotations.length == args.length);
-
-			BitSet isRpcTimeoutParameter = new BitSet(parameterTypes.length);
-			int numberRpcParameters = parameterTypes.length;
-
-			for (int i = 0; i < parameterTypes.length; i++) {
-				if (isRpcTimeout(parameterAnnotations[i])) {
-					isRpcTimeoutParameter.set(i);
-					numberRpcParameters--;
-				}
-			}
-
-			if (numberRpcParameters == parameterTypes.length) {
-				filteredParameterTypes = parameterTypes;
-				filteredArgs = args;
-			} else {
-				filteredParameterTypes = new Class<?>[numberRpcParameters];
-				filteredArgs = new Object[numberRpcParameters];
-				int counter = 0;
-
-				for (int i = 0; i < parameterTypes.length; i++) {
-					if (!isRpcTimeoutParameter.get(i)) {
-						filteredParameterTypes[counter] = parameterTypes[i];
-						filteredArgs[counter] = args[i];
-						counter++;
-					}
-				}
-			}
-		}
-
-		return Tuple2.of(filteredParameterTypes, filteredArgs);
-	}
-
-	/**
 	 * Checks whether any of the annotations is of type {@link RpcTimeout}
 	 *
 	 * @param annotations Array of annotations
@@ -331,7 +273,7 @@ class AkkaInvocationHandler implements InvocationHandler, AkkaGateway, MainThrea
 	}
 
 	@Override
-	public Future<Void> getTerminationFuture() {
+	public CompletableFuture<Void> getTerminationFuture() {
 		return terminationFuture;
 	}
 }

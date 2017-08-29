@@ -23,14 +23,13 @@ import akka.actor.ActorSystem;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.core.testutils.OneShotLatch;
 import org.apache.flink.runtime.akka.AkkaUtils;
-import org.apache.flink.runtime.concurrent.Future;
 import org.apache.flink.runtime.rpc.akka.AkkaRpcService;
 import org.apache.flink.util.TestLogger;
 
 import org.junit.AfterClass;
 import org.junit.Test;
 
-import java.util.concurrent.Callable;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
@@ -68,7 +67,7 @@ public class AsyncCallsTest extends TestLogger {
 
 		TestEndpoint testEndpoint = new TestEndpoint(akkaRpcService, lock);
 		testEndpoint.start();
-		TestGateway gateway = testEndpoint.getSelf();
+		TestGateway gateway = testEndpoint.getSelfGateway(TestGateway.class);
 
 		// a bunch of gateway calls
 		gateway.someCall();
@@ -90,9 +89,8 @@ public class AsyncCallsTest extends TestLogger {
 			});
 		}
 	
-		Future<String> result = testEndpoint.callAsync(new Callable<String>() {
-			@Override
-			public String call() throws Exception {
+		CompletableFuture<String> result = testEndpoint.callAsync(
+			() -> {
 				boolean holdsLock = lock.tryLock();
 				if (holdsLock) {
 					lock.unlock();
@@ -100,8 +98,8 @@ public class AsyncCallsTest extends TestLogger {
 					concurrentAccess.set(true);
 				}
 				return "test";
-			}
-		}, Time.seconds(30L));
+			},
+			Time.seconds(30L));
 
 		String str = result.get(30, TimeUnit.SECONDS);
 		assertEquals("test", str);
@@ -110,7 +108,7 @@ public class AsyncCallsTest extends TestLogger {
 		assertFalse("Rpc Endpoint had concurrent access", testEndpoint.hasConcurrentAccess());
 		assertFalse("Rpc Endpoint had concurrent access", concurrentAccess.get());
 
-		akkaRpcService.stopServer(testEndpoint.getSelf());
+		testEndpoint.shutDown();
 	}
 
 	@Test
@@ -176,7 +174,7 @@ public class AsyncCallsTest extends TestLogger {
 	}
 
 	@SuppressWarnings("unused")
-	public static class TestEndpoint extends RpcEndpoint<TestGateway> {
+	public static class TestEndpoint extends RpcEndpoint implements TestGateway {
 
 		private final ReentrantLock lock;
 
@@ -187,7 +185,7 @@ public class AsyncCallsTest extends TestLogger {
 			this.lock = lock;
 		}
 
-		@RpcMethod
+		@Override
 		public void someCall() {
 			boolean holdsLock = lock.tryLock();
 			if (holdsLock) {
@@ -197,7 +195,7 @@ public class AsyncCallsTest extends TestLogger {
 			}
 		}
 
-		@RpcMethod
+		@Override
 		public void anotherCall() {
 			boolean holdsLock = lock.tryLock();
 			if (holdsLock) {
