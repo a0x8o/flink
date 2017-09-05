@@ -21,6 +21,7 @@ package org.apache.flink.mesos.runtime.clusterframework;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.mesos.runtime.clusterframework.services.MesosServices;
 import org.apache.flink.mesos.runtime.clusterframework.store.MesosWorkerStore;
 import org.apache.flink.mesos.scheduler.ConnectionMonitor;
 import org.apache.flink.mesos.scheduler.LaunchCoordinator;
@@ -32,7 +33,7 @@ import org.apache.flink.mesos.scheduler.messages.ReRegistered;
 import org.apache.flink.mesos.scheduler.messages.Registered;
 import org.apache.flink.mesos.scheduler.messages.ResourceOffers;
 import org.apache.flink.mesos.scheduler.messages.StatusUpdate;
-import org.apache.flink.mesos.util.MesosArtifactResolver;
+import org.apache.flink.mesos.util.MesosArtifactServer;
 import org.apache.flink.mesos.util.MesosConfiguration;
 import org.apache.flink.runtime.akka.AkkaUtils;
 import org.apache.flink.runtime.clusterframework.ApplicationStatus;
@@ -46,6 +47,7 @@ import org.apache.flink.runtime.heartbeat.TestingHeartbeatServices;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.highavailability.TestingHighAvailabilityServices;
 import org.apache.flink.runtime.jobmaster.JobMasterGateway;
+import org.apache.flink.runtime.jobmaster.JobMasterId;
 import org.apache.flink.runtime.jobmaster.JobMasterRegistrationSuccess;
 import org.apache.flink.runtime.leaderelection.TestingLeaderElectionService;
 import org.apache.flink.runtime.leaderelection.TestingLeaderRetrievalService;
@@ -53,6 +55,7 @@ import org.apache.flink.runtime.metrics.MetricRegistry;
 import org.apache.flink.runtime.registration.RegistrationResponse;
 import org.apache.flink.runtime.resourcemanager.JobLeaderIdService;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerConfiguration;
+import org.apache.flink.runtime.resourcemanager.ResourceManagerId;
 import org.apache.flink.runtime.resourcemanager.SlotRequest;
 import org.apache.flink.runtime.resourcemanager.slotmanager.ResourceManagerActions;
 import org.apache.flink.runtime.resourcemanager.slotmanager.SlotManager;
@@ -77,6 +80,7 @@ import org.apache.mesos.SchedulerDriver;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
+import org.mockito.Mockito;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
 import org.slf4j.Logger;
@@ -159,17 +163,15 @@ public class MesosResourceManagerTest extends TestLogger {
 			FatalErrorHandler fatalErrorHandler,
 
 			// Mesos specifics
-			ActorSystem actorSystem,
 			Configuration flinkConfig,
+			MesosServices mesosServices,
 			MesosConfiguration mesosConfig,
-			MesosWorkerStore workerStore,
 			MesosTaskManagerParameters taskManagerParameters,
-			ContainerSpecification taskManagerContainerSpec,
-			MesosArtifactResolver artifactResolver) {
+			ContainerSpecification taskManagerContainerSpec) {
 			super(rpcService, resourceManagerEndpointId, resourceId, resourceManagerConfiguration,
 				highAvailabilityServices, heartbeatServices, slotManager, metricRegistry,
-				jobLeaderIdService, fatalErrorHandler, actorSystem, flinkConfig, mesosConfig, workerStore,
-				taskManagerParameters, taskManagerContainerSpec, artifactResolver);
+				jobLeaderIdService, fatalErrorHandler, flinkConfig, mesosServices, mesosConfig,
+				taskManagerParameters, taskManagerContainerSpec);
 		}
 
 		@Override
@@ -208,6 +210,7 @@ public class MesosResourceManagerTest extends TestLogger {
 		TestingRpcService rpcService;
 		TestingFatalErrorHandler fatalErrorHandler;
 		MockMesosResourceManagerRuntimeServices rmServices;
+		MockMesosServices mesosServices;
 
 		// RM
 		ResourceManagerConfiguration rmConfiguration;
@@ -242,6 +245,7 @@ public class MesosResourceManagerTest extends TestLogger {
 			rpcService = new TestingRpcService();
 			fatalErrorHandler = new TestingFatalErrorHandler();
 			rmServices = new MockMesosResourceManagerRuntimeServices();
+			mesosServices = new MockMesosServices();
 
 			// TaskExecutor templating
 			ContainerSpecification containerSpecification = new ContainerSpecification();
@@ -249,7 +253,7 @@ public class MesosResourceManagerTest extends TestLogger {
 				new ContaineredTaskManagerParameters(1024, 768, 256, 4, new HashMap<String, String>());
 			MesosTaskManagerParameters tmParams = new MesosTaskManagerParameters(
 				1.0, MesosTaskManagerParameters.ContainerType.MESOS, Option.<String>empty(), containeredParams,
-				Collections.<Protos.Volume>emptyList(), Collections.<ConstraintEvaluator>emptyList(), Option.<String>empty(),
+				Collections.<Protos.Volume>emptyList(), Collections.<ConstraintEvaluator>emptyList(), "", Option.<String>empty(),
 				Option.<String>empty());
 
 			// resource manager
@@ -270,13 +274,11 @@ public class MesosResourceManagerTest extends TestLogger {
 					rmServices.jobLeaderIdService,
 					fatalErrorHandler,
 					// Mesos specifics
-					system,
 					flinkConfig,
+					mesosServices,
 					rmServices.mesosConfig,
-					rmServices.workerStore,
 					tmParams,
-					containerSpecification,
-					rmServices.artifactResolver
+					containerSpecification
 				);
 
 			// TaskExecutors
@@ -326,14 +328,14 @@ public class MesosResourceManagerTest extends TestLogger {
 						slotManagerStarted.complete(true);
 						return null;
 					}
-				}).when(slotManager).start(any(UUID.class), any(Executor.class), any(ResourceManagerActions.class));
+				}).when(slotManager).start(any(ResourceManagerId.class), any(Executor.class), any(ResourceManagerActions.class));
 
 				when(slotManager.registerSlotRequest(any(SlotRequest.class))).thenReturn(true);
 			}
 
-			public void grantLeadership() {
+			public void grantLeadership() throws Exception {
 				rmLeaderSessionId = UUID.randomUUID();
-				rmLeaderElectionService.isLeader(rmLeaderSessionId);
+				rmLeaderElectionService.isLeader(rmLeaderSessionId).get(timeout.toMilliseconds(), TimeUnit.MILLISECONDS);
 			}
 		}
 
@@ -341,7 +343,7 @@ public class MesosResourceManagerTest extends TestLogger {
 			public SchedulerDriver schedulerDriver;
 			public MesosConfiguration mesosConfig;
 			public MesosWorkerStore workerStore;
-			public MesosArtifactResolver artifactResolver;
+			public MesosArtifactServer artifactServer;
 
 			MockMesosResourceManagerRuntimeServices() throws Exception {
 				schedulerDriver = mock(SchedulerDriver.class);
@@ -354,7 +356,28 @@ public class MesosResourceManagerTest extends TestLogger {
 				workerStore = mock(MesosWorkerStore.class);
 				when(workerStore.getFrameworkID()).thenReturn(Option.<Protos.FrameworkID>empty());
 
-				artifactResolver = mock(MesosArtifactResolver.class);
+				artifactServer = mock(MesosArtifactServer.class);
+			}
+		}
+
+		class MockMesosServices implements MesosServices {
+			@Override
+			public MesosWorkerStore createMesosWorkerStore(Configuration configuration, Executor executor) throws Exception {
+				return rmServices.workerStore;
+			}
+
+			@Override
+			public ActorSystem getLocalActorSystem() {
+				return system;
+			}
+
+			@Override
+			public MesosArtifactServer getArtifactServer() {
+				return rmServices.artifactServer;
+			}
+
+			@Override
+			public void close(boolean cleanup) throws Exception {
 			}
 		}
 
@@ -363,7 +386,7 @@ public class MesosResourceManagerTest extends TestLogger {
 			public final ResourceID resourceID;
 			public final String address;
 			public final JobMasterGateway gateway;
-			public final UUID leaderSessionID;
+			public final JobMasterId jobMasterId;
 			public final TestingLeaderRetrievalService leaderRetrievalService;
 
 			MockJobMaster(JobID jobID) {
@@ -371,8 +394,8 @@ public class MesosResourceManagerTest extends TestLogger {
 				this.resourceID = new ResourceID(jobID.toString());
 				this.address = "/" + jobID;
 				this.gateway = mock(JobMasterGateway.class);
-				this.leaderSessionID = UUID.randomUUID();
-				this.leaderRetrievalService = new TestingLeaderRetrievalService(this.address, this.leaderSessionID);
+				this.jobMasterId = JobMasterId.generate();
+				this.leaderRetrievalService = new TestingLeaderRetrievalService(this.address, this.jobMasterId.toUUID());
 			}
 		}
 
@@ -420,7 +443,7 @@ public class MesosResourceManagerTest extends TestLogger {
 		 */
 		public void registerJobMaster(MockJobMaster jobMaster) throws Exception  {
 			CompletableFuture<RegistrationResponse> registration = resourceManager.registerJobManager(
-				rmServices.rmLeaderSessionId, jobMaster.leaderSessionID, jobMaster.resourceID, jobMaster.address, jobMaster.jobID, timeout);
+				jobMaster.jobMasterId, jobMaster.resourceID, jobMaster.address, jobMaster.jobID, timeout);
 			assertTrue(registration.get() instanceof JobMasterRegistrationSuccess);
 		}
 
@@ -434,7 +457,7 @@ public class MesosResourceManagerTest extends TestLogger {
 			MesosWorkerStore.Worker expected = MesosWorkerStore.Worker.newWorker(taskID, resourceProfile);
 
 			// drain the probe messages
-			verify(rmServices.workerStore).putWorker(expected);
+			verify(rmServices.workerStore, Mockito.timeout(timeout.toMilliseconds())).putWorker(expected);
 			assertThat(resourceManager.workersInNew, hasEntry(extractResourceID(taskID), expected));
 			resourceManager.taskRouter.expectMsgClass(TaskMonitor.TaskGoalStateUpdated.class);
 			resourceManager.launchCoordinator.expectMsgClass(LaunchCoordinator.Launch.class);
@@ -511,7 +534,7 @@ public class MesosResourceManagerTest extends TestLogger {
 			// verify that a new worker was persisted, the internal state was updated, the task router was notified,
 			// and the launch coordinator was asked to launch a task
 			MesosWorkerStore.Worker expected = MesosWorkerStore.Worker.newWorker(task1, resourceProfile1);
-			verify(rmServices.workerStore).putWorker(expected);
+			verify(rmServices.workerStore, Mockito.timeout(timeout.toMilliseconds())).putWorker(expected);
 			assertThat(resourceManager.workersInNew, hasEntry(extractResourceID(task1), expected));
 			resourceManager.taskRouter.expectMsgClass(TaskMonitor.TaskGoalStateUpdated.class);
 			resourceManager.launchCoordinator.expectMsgClass(LaunchCoordinator.Launch.class);
@@ -596,8 +619,8 @@ public class MesosResourceManagerTest extends TestLogger {
 
 			// send registration message
 			CompletableFuture<RegistrationResponse> successfulFuture =
-				resourceManager.registerTaskExecutor(rmServices.rmLeaderSessionId, task1Executor.address, task1Executor.resourceID, slotReport, timeout);
-			RegistrationResponse response = successfulFuture.get(5, TimeUnit.SECONDS);
+				resourceManager.registerTaskExecutor(task1Executor.address, task1Executor.resourceID, slotReport, timeout);
+			RegistrationResponse response = successfulFuture.get(timeout.toMilliseconds(), TimeUnit.MILLISECONDS);
 			assertTrue(response instanceof TaskExecutorRegistrationSuccess);
 
 			// verify the internal state
@@ -629,6 +652,36 @@ public class MesosResourceManagerTest extends TestLogger {
 
 			// verify that `closeTaskManagerConnection` was called
 			assertThat(resourceManager.closedTaskManagerConnections, hasItem(extractResourceID(task1)));
+		}};
+	}
+
+	/**
+	 * Test planned stop of a launched worker.
+	 */
+	@Test
+	public void testStopWorker() throws Exception {
+		new Context() {{
+			// set the initial persistent state with a launched worker
+			MesosWorkerStore.Worker worker1launched = MesosWorkerStore.Worker.newWorker(task1).launchWorker(slave1, slave1host);
+			when(rmServices.workerStore.getFrameworkID()).thenReturn(Option.apply(framework1));
+			when(rmServices.workerStore.recoverWorkers()).thenReturn(singletonList(worker1launched));
+			startResourceManager();
+
+			// drain the assign message
+			resourceManager.launchCoordinator.expectMsgClass(LaunchCoordinator.Assign.class);
+
+			// tell the RM to stop the worker
+			resourceManager.stopWorker(extractResourceID(task1));
+
+			// verify that the instance state was updated
+			MesosWorkerStore.Worker worker1Released = worker1launched.releaseWorker();
+			verify(rmServices.workerStore).putWorker(worker1Released);
+			assertThat(resourceManager.workersInLaunch.entrySet(), empty());
+			assertThat(resourceManager.workersBeingReturned, hasEntry(extractResourceID(task1), worker1Released));
+
+			// verify that the monitor was notified
+			resourceManager.taskRouter.expectMsgClass(TaskMonitor.TaskGoalStateUpdated.class);
+			resourceManager.launchCoordinator.expectMsgClass(LaunchCoordinator.Unassign.class);
 		}};
 	}
 

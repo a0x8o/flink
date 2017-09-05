@@ -22,13 +22,13 @@ import org.apache.flink.api.common.JobExecutionResult;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.blob.BlobServer;
-import org.apache.flink.runtime.blob.BlobService;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.heartbeat.HeartbeatServices;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.jobmanager.OnCompletionActions;
 import org.apache.flink.runtime.jobmaster.JobManagerRunner;
+import org.apache.flink.runtime.jobmaster.JobManagerServices;
 import org.apache.flink.runtime.metrics.MetricRegistry;
 import org.apache.flink.runtime.resourcemanager.ResourceManager;
 import org.apache.flink.runtime.rpc.FatalErrorHandler;
@@ -43,6 +43,8 @@ import org.apache.flink.util.Preconditions;
 public abstract class JobClusterEntrypoint extends ClusterEntrypoint {
 
 	private ResourceManager<?> resourceManager;
+
+	private JobManagerServices jobManagerServices;
 
 	private JobManagerRunner jobManagerRunner;
 
@@ -68,12 +70,14 @@ public abstract class JobClusterEntrypoint extends ClusterEntrypoint {
 			metricRegistry,
 			this);
 
+		jobManagerServices = JobManagerServices.fromConfiguration(configuration, blobServer);
+
 		jobManagerRunner = createJobManagerRunner(
 			configuration,
 			ResourceID.generate(),
 			rpcService,
 			highAvailabilityServices,
-			blobServer,
+			jobManagerServices,
 			heartbeatServices,
 			metricRegistry,
 			this);
@@ -90,7 +94,7 @@ public abstract class JobClusterEntrypoint extends ClusterEntrypoint {
 			ResourceID resourceId,
 			RpcService rpcService,
 			HighAvailabilityServices highAvailabilityServices,
-			BlobService blobService,
+			JobManagerServices jobManagerServices,
 			HeartbeatServices heartbeatServices,
 			MetricRegistry metricRegistry,
 			FatalErrorHandler fatalErrorHandler) throws Exception {
@@ -103,15 +107,15 @@ public abstract class JobClusterEntrypoint extends ClusterEntrypoint {
 			configuration,
 			rpcService,
 			highAvailabilityServices,
-			blobService,
 			heartbeatServices,
+			jobManagerServices,
 			metricRegistry,
 			new TerminatingOnCompleteActions(jobGraph.getJobID()),
 			fatalErrorHandler);
 	}
 
 	@Override
-	protected void shutDown(boolean cleanupHaData) throws FlinkException {
+	protected void stopClusterComponents(boolean cleanupHaData) throws Exception {
 		Throwable exception = null;
 
 		if (jobManagerRunner != null) {
@@ -119,6 +123,14 @@ public abstract class JobClusterEntrypoint extends ClusterEntrypoint {
 				jobManagerRunner.shutdown();
 			} catch (Throwable t) {
 				exception = t;
+			}
+		}
+
+		if (jobManagerServices != null) {
+			try {
+				jobManagerServices.shutdown();
+			} catch (Throwable t) {
+				exception = ExceptionUtils.firstOrSuppressed(t, exception);
 			}
 		}
 
@@ -130,14 +142,8 @@ public abstract class JobClusterEntrypoint extends ClusterEntrypoint {
 			}
 		}
 
-		try {
-			super.shutDown(cleanupHaData);
-		} catch (Throwable t) {
-			exception = ExceptionUtils.firstOrSuppressed(t, exception);
-		}
-
 		if (exception != null) {
-			throw new FlinkException("Could not properly shut down the session cluster entry point.", exception);
+			throw new FlinkException("Could not properly shut down the job cluster entry point.", exception);
 		}
 	}
 

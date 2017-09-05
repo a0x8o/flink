@@ -23,6 +23,7 @@ import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.GlobalConfiguration;
 import org.apache.flink.configuration.JobManagerOptions;
+import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.runtime.akka.AkkaUtils;
 import org.apache.flink.runtime.blob.BlobServer;
 import org.apache.flink.runtime.clusterframework.BootstrapTools;
@@ -46,7 +47,9 @@ import org.slf4j.LoggerFactory;
 
 import javax.annotation.concurrent.GuardedBy;
 
+import java.io.IOException;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 
 import scala.concurrent.duration.FiniteDuration;
@@ -69,6 +72,8 @@ public abstract class ClusterEntrypoint implements FatalErrorHandler {
 
 	private final Configuration configuration;
 
+	private final CompletableFuture<Boolean> terminationFuture;
+
 	@GuardedBy("lock")
 	private MetricRegistry metricRegistry = null;
 
@@ -86,12 +91,19 @@ public abstract class ClusterEntrypoint implements FatalErrorHandler {
 
 	protected ClusterEntrypoint(Configuration configuration) {
 		this.configuration = Preconditions.checkNotNull(configuration);
+		this.terminationFuture = new CompletableFuture<>();
+	}
+
+	public CompletableFuture<Boolean> getTerminationFuture() {
+		return terminationFuture;
 	}
 
 	protected void startCluster() {
 		LOG.info("Starting {}.", getClass().getSimpleName());
 
 		try {
+			installDefaultFileSystem(configuration);
+
 			SecurityContext securityContext = installSecurityContext(configuration);
 
 			securityContext.runSecured(new Callable<Void>() {
@@ -112,6 +124,17 @@ public abstract class ClusterEntrypoint implements FatalErrorHandler {
 			}
 
 			System.exit(STARTUP_FAILURE_RETURN_CODE);
+		}
+	}
+
+	protected void installDefaultFileSystem(Configuration configuration) throws Exception {
+		LOG.info("Install default filesystem.");
+
+		try {
+			FileSystem.setDefaultScheme(configuration);
+		} catch (IOException e) {
+			throw new IOException("Error while setting the default " +
+				"filesystem scheme from configuration.", e);
 		}
 	}
 
@@ -184,9 +207,18 @@ public abstract class ClusterEntrypoint implements FatalErrorHandler {
 	}
 
 	protected void shutDown(boolean cleanupHaData) throws FlinkException {
+		LOG.info("Stopping {}.", getClass().getSimpleName());
+
 		Throwable exception = null;
 
 		synchronized (lock) {
+
+			try {
+				stopClusterComponents(cleanupHaData);
+			} catch (Throwable t) {
+				exception = ExceptionUtils.firstOrSuppressed(t, exception);
+			}
+
 			if (metricRegistry != null) {
 				try {
 					metricRegistry.shutdown();
@@ -222,6 +254,8 @@ public abstract class ClusterEntrypoint implements FatalErrorHandler {
 					exception = ExceptionUtils.firstOrSuppressed(t, exception);
 				}
 			}
+
+			terminationFuture.complete(true);
 		}
 
 		if (exception != null) {
@@ -243,6 +277,9 @@ public abstract class ClusterEntrypoint implements FatalErrorHandler {
 		BlobServer blobServer,
 		HeartbeatServices heartbeatServices,
 		MetricRegistry metricRegistry) throws Exception;
+
+	protected void stopClusterComponents(boolean cleanupHaData) throws Exception {
+	}
 
 	protected static ClusterConfiguration parseArguments(String[] args) {
 		ParameterTool parameterTool = ParameterTool.fromArgs(args);

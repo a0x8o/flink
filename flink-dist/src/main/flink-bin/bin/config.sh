@@ -351,7 +351,21 @@ if [ -z "$HADOOP_CONF_DIR" ]; then
     fi
 fi
 
+# try and set HADOOP_CONF_DIR to some common default if it's not set
+if [ -z "$HADOOP_CONF_DIR" ]; then
+    if [ -d "/etc/hadoop/conf" ]; then
+        echo "Setting HADOOP_CONF_DIR=/etc/hadoop/conf because no HADOOP_CONF_DIR was set."
+        HADOOP_CONF_DIR="/etc/hadoop/conf"
+    fi
+fi
+
 INTERNAL_HADOOP_CLASSPATHS="${HADOOP_CLASSPATH}:${HADOOP_CONF_DIR}:${YARN_CONF_DIR}"
+
+# check if the "hadoop" binary is available, if yes, use that to augment the CLASSPATH
+if command -v hadoop >/dev/null 2>&1; then
+    echo "Using the result of 'hadoop classpath' to augment the Hadoop classpath: `hadoop classpath`"
+    INTERNAL_HADOOP_CLASSPATHS="${INTERNAL_HADOOP_CLASSPATHS}:`hadoop classpath`"
+fi
 
 if [ -n "${HBASE_CONF_DIR}" ]; then
     # Look for hbase command in HBASE_HOME or search PATH.
