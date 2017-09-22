@@ -29,9 +29,9 @@ import org.apache.flink.streaming.api.operators.TimestampedCollector
 import org.apache.flink.table.api.StreamQueryConfig
 import org.apache.flink.table.codegen.{Compiler, GeneratedAggregationsFunction}
 import org.apache.flink.table.runtime.types.{CRow, CRowTypeInfo}
+import org.apache.flink.table.util.Logging
 import org.apache.flink.types.Row
 import org.apache.flink.util.Collector
-import org.slf4j.{Logger, LoggerFactory}
 
 
 /**
@@ -48,9 +48,8 @@ abstract class RowTimeUnboundedOver(
     rowTimeIdx: Int,
     queryConfig: StreamQueryConfig)
   extends ProcessFunctionWithCleanupState[CRow, CRow](queryConfig)
-    with Compiler[GeneratedAggregations] {
-
-  val LOG: Logger = LoggerFactory.getLogger(this.getClass)
+    with Compiler[GeneratedAggregations]
+    with Logging {
 
   protected var output: CRow = _
   // state to hold the accumulators of the aggregations
@@ -71,6 +70,7 @@ abstract class RowTimeUnboundedOver(
       genAggregations.code)
     LOG.debug("Instantiating AggregateHelper.")
     function = clazz.newInstance()
+    function.open(getRuntimeContext)
 
     output = new CRow(function.createOutputRow(), true)
     sortedTimestamps = new util.LinkedList[Long]()
@@ -150,6 +150,7 @@ abstract class RowTimeUnboundedOver(
         if (noRecordsToProcess) {
           // we clean the state
           cleanupState(rowMapState, accumulatorState)
+          function.cleanup()
         } else {
           // There are records left to process because a watermark has not been received yet.
           // This would only happen if the input stream has stopped. So we don't need to clean up.
@@ -241,6 +242,9 @@ abstract class RowTimeUnboundedOver(
     lastAccumulator: Row,
     out: Collector[CRow]): Unit
 
+  override def close(): Unit = {
+    function.close()
+  }
 }
 
 /**

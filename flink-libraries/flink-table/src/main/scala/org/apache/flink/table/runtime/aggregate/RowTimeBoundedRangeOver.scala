@@ -28,9 +28,9 @@ import org.apache.flink.streaming.api.operators.TimestampedCollector
 import org.apache.flink.table.api.StreamQueryConfig
 import org.apache.flink.table.codegen.{Compiler, GeneratedAggregationsFunction}
 import org.apache.flink.table.runtime.types.{CRow, CRowTypeInfo}
+import org.apache.flink.table.util.Logging
 import org.apache.flink.types.Row
 import org.apache.flink.util.{Collector, Preconditions}
-import org.slf4j.LoggerFactory
 
 /**
  * Process Function for RANGE clause event-time bounded OVER window
@@ -48,7 +48,8 @@ class RowTimeBoundedRangeOver(
     rowTimeIdx: Int,
     queryConfig: StreamQueryConfig)
   extends ProcessFunctionWithCleanupState[CRow, CRow](queryConfig)
-    with Compiler[GeneratedAggregations] {
+    with Compiler[GeneratedAggregations]
+    with Logging {
   Preconditions.checkNotNull(aggregationStateType)
   Preconditions.checkNotNull(precedingOffset)
 
@@ -66,7 +67,6 @@ class RowTimeBoundedRangeOver(
   // to this time stamp.
   private var dataState: MapState[Long, JList[Row]] = _
 
-  val LOG = LoggerFactory.getLogger(this.getClass)
   private var function: GeneratedAggregations = _
 
   override def open(config: Configuration) {
@@ -78,6 +78,7 @@ class RowTimeBoundedRangeOver(
       genAggregations.code)
     LOG.debug("Instantiating AggregateHelper.")
     function = clazz.newInstance()
+    function.open(getRuntimeContext)
 
     output = new CRow(function.createOutputRow(), true)
 
@@ -158,6 +159,7 @@ class RowTimeBoundedRangeOver(
         if (noRecordsToProcess) {
           // we clean the state
           cleanupState(dataState, accumulatorState, lastTriggeringTsState)
+          function.cleanup()
         } else {
           // There are records left to process because a watermark has not been received yet.
           // This would only happen if the input stream has stopped. So we don't need to clean up.
@@ -241,6 +243,10 @@ class RowTimeBoundedRangeOver(
 
     // update cleanup timer
     registerProcessingCleanupTimer(ctx, ctx.timerService().currentProcessingTime())
+  }
+
+  override def close(): Unit = {
+    function.close()
   }
 }
 
