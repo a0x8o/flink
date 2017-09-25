@@ -18,49 +18,51 @@
 
 package org.apache.flink.runtime.rpc.akka;
 
+import org.apache.flink.api.common.time.Time;
+import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.runtime.akka.AkkaUtils;
+import org.apache.flink.runtime.concurrent.FutureUtils;
+import org.apache.flink.runtime.concurrent.ScheduledExecutor;
+import org.apache.flink.runtime.concurrent.akka.ActorSystemScheduledExecutorAdapter;
+import org.apache.flink.runtime.rpc.FencedMainThreadExecutable;
+import org.apache.flink.runtime.rpc.FencedRpcEndpoint;
+import org.apache.flink.runtime.rpc.FencedRpcGateway;
+import org.apache.flink.runtime.rpc.RpcEndpoint;
+import org.apache.flink.runtime.rpc.RpcGateway;
+import org.apache.flink.runtime.rpc.RpcServer;
+import org.apache.flink.runtime.rpc.RpcService;
+import org.apache.flink.runtime.rpc.RpcUtils;
+import org.apache.flink.runtime.rpc.exceptions.RpcConnectionException;
+
 import akka.actor.ActorIdentity;
 import akka.actor.ActorRef;
 import akka.actor.ActorSelection;
 import akka.actor.ActorSystem;
 import akka.actor.Address;
-import akka.actor.Cancellable;
 import akka.actor.Identify;
 import akka.actor.Props;
 import akka.dispatch.Futures;
 import akka.dispatch.Mapper;
 import akka.pattern.Patterns;
-import org.apache.flink.api.common.time.Time;
-import org.apache.flink.runtime.akka.AkkaUtils;
-import org.apache.flink.runtime.concurrent.FutureUtils;
-import org.apache.flink.runtime.concurrent.ScheduledExecutor;
-import org.apache.flink.runtime.rpc.RpcEndpoint;
-import org.apache.flink.runtime.rpc.RpcGateway;
-import org.apache.flink.runtime.rpc.RpcService;
-import org.apache.flink.runtime.rpc.RpcServer;
-import org.apache.flink.runtime.rpc.RpcUtils;
-import org.apache.flink.runtime.rpc.akka.messages.Shutdown;
-import org.apache.flink.runtime.rpc.exceptions.RpcConnectionException;
-import org.apache.flink.util.Preconditions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import scala.Option;
-import scala.concurrent.Future;
-import scala.concurrent.duration.FiniteDuration;
 
-import javax.annotation.Nonnull;
 import javax.annotation.concurrent.ThreadSafe;
+
+import java.io.Serializable;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Proxy;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Delayed;
 import java.util.concurrent.Executor;
-import java.util.concurrent.FutureTask;
-import java.util.concurrent.RunnableScheduledFuture;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
+
+import scala.Option;
+import scala.concurrent.Future;
 
 import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
@@ -116,7 +118,7 @@ public class AkkaRpcService implements RpcService {
 			port = -1;
 		}
 
-		internalScheduledExecutor = new InternalScheduledExecutorImpl(actorSystem);
+		internalScheduledExecutor = new ActorSystemScheduledExecutorAdapter(actorSystem);
 	}
 
 	@Override
@@ -131,60 +133,44 @@ public class AkkaRpcService implements RpcService {
 
 	// this method does not mutate state and is thus thread-safe
 	@Override
-	public <C extends RpcGateway> CompletableFuture<C> connect(final String address, final Class<C> clazz) {
-		checkState(!stopped, "RpcService is stopped");
+	public <C extends RpcGateway> CompletableFuture<C> connect(
+			final String address,
+			final Class<C> clazz) {
 
-		LOG.debug("Try to connect to remote RPC endpoint with address {}. Returning a {} gateway.",
-				address, clazz.getName());
+		return connectInternal(
+			address,
+			clazz,
+			(ActorRef actorRef) -> {
+				Tuple2<String, String> addressHostname = extractAddressHostname(actorRef);
 
-		final ActorSelection actorSel = actorSystem.actorSelection(address);
+				return new AkkaInvocationHandler(
+					addressHostname.f0,
+					addressHostname.f1,
+					actorRef,
+					timeout,
+					maximumFramesize,
+					null);
+			});
+	}
 
-		final scala.concurrent.Future<Object> identify = Patterns.ask(actorSel, new Identify(42), timeout.toMilliseconds());
-		final scala.concurrent.Future<C> resultFuture = identify.map(new Mapper<Object, C>(){
-			@Override
-			public C checkedApply(Object obj) throws Exception {
+	// this method does not mutate state and is thus thread-safe
+	@Override
+	public <F extends Serializable, C extends FencedRpcGateway<F>> CompletableFuture<C> connect(String address, F fencingToken, Class<C> clazz) {
+		return connectInternal(
+			address,
+			clazz,
+			(ActorRef actorRef) -> {
+				Tuple2<String, String> addressHostname = extractAddressHostname(actorRef);
 
-				ActorIdentity actorIdentity = (ActorIdentity) obj;
-
-				if (actorIdentity.getRef() == null) {
-					throw new RpcConnectionException("Could not connect to rpc endpoint under address " + address + '.');
-				} else {
-					ActorRef actorRef = actorIdentity.getRef();
-
-					final String address = AkkaUtils.getAkkaURL(actorSystem, actorRef);
-					final String hostname;
-					Option<String> host = actorRef.path().address().host();
-					if (host.isEmpty()) {
-						hostname = "localhost";
-					} else {
-						hostname = host.get();
-					}
-
-					InvocationHandler akkaInvocationHandler = new AkkaInvocationHandler(
-						address,
-						hostname,
-						actorRef,
-						timeout,
-						maximumFramesize,
-						null);
-
-					// Rather than using the System ClassLoader directly, we derive the ClassLoader
-					// from this class . That works better in cases where Flink runs embedded and all Flink
-					// code is loaded dynamically (for example from an OSGI bundle) through a custom ClassLoader
-					ClassLoader classLoader = AkkaRpcService.this.getClass().getClassLoader();
-
-					@SuppressWarnings("unchecked")
-					C proxy = (C) Proxy.newProxyInstance(
-						classLoader,
-						new Class<?>[]{clazz},
-						akkaInvocationHandler);
-
-					return proxy;
-				}
-			}
-		}, actorSystem.dispatcher());
-
-		return FutureUtils.toJava(resultFuture);
+				return new FencedAkkaInvocationHandler<>(
+					addressHostname.f0,
+					addressHostname.f1,
+					actorRef,
+					timeout,
+					maximumFramesize,
+					null,
+					() -> fencingToken);
+			});
 	}
 
 	@Override
@@ -192,7 +178,14 @@ public class AkkaRpcService implements RpcService {
 		checkNotNull(rpcEndpoint, "rpc endpoint");
 
 		CompletableFuture<Void> terminationFuture = new CompletableFuture<>();
-		Props akkaRpcActorProps = Props.create(AkkaRpcActor.class, rpcEndpoint, terminationFuture);
+		final Props akkaRpcActorProps;
+
+		if (rpcEndpoint instanceof FencedRpcEndpoint) {
+			akkaRpcActorProps = Props.create(FencedAkkaRpcActor.class, rpcEndpoint, terminationFuture);
+		} else {
+			akkaRpcActorProps = Props.create(AkkaRpcActor.class, rpcEndpoint, terminationFuture);
+		}
+
 		ActorRef actorRef;
 
 		synchronized (lock) {
@@ -212,23 +205,39 @@ public class AkkaRpcService implements RpcService {
 			hostname = host.get();
 		}
 
-		InvocationHandler akkaInvocationHandler = new AkkaInvocationHandler(
-			address,
-			hostname,
-			actorRef,
-			timeout,
-			maximumFramesize,
-			terminationFuture);
+		Set<Class<?>> implementedRpcGateways = new HashSet<>(RpcUtils.extractImplementedRpcGateways(rpcEndpoint.getClass()));
+
+		implementedRpcGateways.add(RpcServer.class);
+		implementedRpcGateways.add(AkkaGateway.class);
+
+		final InvocationHandler akkaInvocationHandler;
+
+		if (rpcEndpoint instanceof FencedRpcEndpoint) {
+			// a FencedRpcEndpoint needs a FencedAkkaInvocationHandler
+			akkaInvocationHandler = new FencedAkkaInvocationHandler<>(
+				address,
+				hostname,
+				actorRef,
+				timeout,
+				maximumFramesize,
+				terminationFuture,
+				((FencedRpcEndpoint<?>) rpcEndpoint)::getFencingToken);
+
+			implementedRpcGateways.add(FencedMainThreadExecutable.class);
+		} else {
+			akkaInvocationHandler = new AkkaInvocationHandler(
+				address,
+				hostname,
+				actorRef,
+				timeout,
+				maximumFramesize,
+				terminationFuture);
+		}
 
 		// Rather than using the System ClassLoader directly, we derive the ClassLoader
 		// from this class . That works better in cases where Flink runs embedded and all Flink
 		// code is loaded dynamically (for example from an OSGI bundle) through a custom ClassLoader
 		ClassLoader classLoader = getClass().getClassLoader();
-
-		Set<Class<? extends RpcGateway>> implementedRpcGateways = RpcUtils.extractImplementedRpcGateways(rpcEndpoint.getClass());
-
-		implementedRpcGateways.add(RpcServer.class);
-		implementedRpcGateways.add(AkkaGateway.class);
 
 		@SuppressWarnings("unchecked")
 		RpcServer server = (RpcServer) Proxy.newProxyInstance(
@@ -237,6 +246,33 @@ public class AkkaRpcService implements RpcService {
 			akkaInvocationHandler);
 
 		return server;
+	}
+
+	@Override
+	public <F extends Serializable> RpcServer fenceRpcServer(RpcServer rpcServer, F fencingToken) {
+		if (rpcServer instanceof AkkaGateway) {
+
+			InvocationHandler fencedInvocationHandler = new FencedAkkaInvocationHandler<>(
+				rpcServer.getAddress(),
+				rpcServer.getHostname(),
+				((AkkaGateway) rpcServer).getRpcEndpoint(),
+				timeout,
+				maximumFramesize,
+				null,
+				() -> fencingToken);
+
+			// Rather than using the System ClassLoader directly, we derive the ClassLoader
+			// from this class . That works better in cases where Flink runs embedded and all Flink
+			// code is loaded dynamically (for example from an OSGI bundle) through a custom ClassLoader
+			ClassLoader classLoader = getClass().getClassLoader();
+
+			return (RpcServer) Proxy.newProxyInstance(
+				classLoader,
+				new Class<?>[]{RpcServer.class, AkkaGateway.class},
+				fencedInvocationHandler);
+		} else {
+			throw new RuntimeException("The given RpcServer must implement the AkkaGateway in order to fence it.");
+		}
 	}
 
 	@Override
@@ -256,7 +292,7 @@ public class AkkaRpcService implements RpcService {
 			if (fromThisService) {
 				ActorRef selfActorRef = akkaClient.getRpcEndpoint();
 				LOG.info("Trigger shut down of RPC endpoint {}.", selfActorRef.path());
-				selfActorRef.tell(Shutdown.getInstance(), ActorRef.noSender());
+				actorSystem.stop(selfActorRef);
 			} else {
 				LOG.debug("RPC endpoint {} already stopped or from different RPC service");
 			}
@@ -273,11 +309,14 @@ public class AkkaRpcService implements RpcService {
 			}
 
 			stopped = true;
+
 			actorSystem.shutdown();
 			actors.clear();
 		}
 
 		actorSystem.awaitTermination();
+
+		LOG.info("Stopped Akka RPC service.");
 	}
 
 	@Override
@@ -317,165 +356,64 @@ public class AkkaRpcService implements RpcService {
 		return FutureUtils.toJava(scalaFuture);
 	}
 
-	/**
-	 * Helper class to expose the internal scheduling logic via a {@link ScheduledExecutor}.
-	 */
-	private static final class InternalScheduledExecutorImpl implements ScheduledExecutor {
+	// ---------------------------------------------------------------------------------------
+	// Private helper methods
+	// ---------------------------------------------------------------------------------------
 
-		private final ActorSystem actorSystem;
-
-		private InternalScheduledExecutorImpl(ActorSystem actorSystem) {
-			this.actorSystem = Preconditions.checkNotNull(actorSystem, "rpcService");
+	private Tuple2<String, String> extractAddressHostname(ActorRef actorRef) {
+		final String actorAddress = AkkaUtils.getAkkaURL(actorSystem, actorRef);
+		final String hostname;
+		Option<String> host = actorRef.path().address().host();
+		if (host.isEmpty()) {
+			hostname = "localhost";
+		} else {
+			hostname = host.get();
 		}
 
-		@Override
-		@Nonnull
-		public ScheduledFuture<?> schedule(@Nonnull Runnable command, long delay, @Nonnull TimeUnit unit) {
-			ScheduledFutureTask<Void> scheduledFutureTask = new ScheduledFutureTask<>(command, unit.toNanos(delay), 0L);
+		return Tuple2.of(actorAddress, hostname);
+	}
 
-			Cancellable cancellable = internalSchedule(scheduledFutureTask, delay, unit);
+	private <C extends RpcGateway> CompletableFuture<C> connectInternal(
+			final String address,
+			final Class<C> clazz,
+			Function<ActorRef, InvocationHandler> invocationHandlerFactory) {
+		checkState(!stopped, "RpcService is stopped");
 
-			scheduledFutureTask.setCancellable(cancellable);
+		LOG.debug("Try to connect to remote RPC endpoint with address {}. Returning a {} gateway.",
+			address, clazz.getName());
 
-			return scheduledFutureTask;
-		}
+		final ActorSelection actorSel = actorSystem.actorSelection(address);
 
-		@Override
-		@Nonnull
-		public <V> ScheduledFuture<V> schedule(@Nonnull Callable<V> callable, long delay, @Nonnull TimeUnit unit) {
-			ScheduledFutureTask<V> scheduledFutureTask = new ScheduledFutureTask<>(callable, unit.toNanos(delay), 0L);
-
-			Cancellable cancellable = internalSchedule(scheduledFutureTask, delay, unit);
-
-			scheduledFutureTask.setCancellable(cancellable);
-
-			return scheduledFutureTask;
-		}
-
-		@Override
-		@Nonnull
-		public ScheduledFuture<?> scheduleAtFixedRate(@Nonnull Runnable command, long initialDelay, long period, @Nonnull TimeUnit unit) {
-			ScheduledFutureTask<Void> scheduledFutureTask = new ScheduledFutureTask<>(
-				command,
-				triggerTime(unit.toNanos(initialDelay)),
-				unit.toNanos(period));
-
-			Cancellable cancellable = actorSystem.scheduler().schedule(
-				new FiniteDuration(initialDelay, unit),
-				new FiniteDuration(period, unit),
-				scheduledFutureTask,
-				actorSystem.dispatcher());
-
-			scheduledFutureTask.setCancellable(cancellable);
-
-			return scheduledFutureTask;
-		}
-
-		@Override
-		@Nonnull
-		public ScheduledFuture<?> scheduleWithFixedDelay(@Nonnull Runnable command, long initialDelay, long delay, @Nonnull TimeUnit unit) {
-			ScheduledFutureTask<Void> scheduledFutureTask = new ScheduledFutureTask<>(
-				command,
-				triggerTime(unit.toNanos(initialDelay)),
-				unit.toNanos(-delay));
-
-			Cancellable cancellable = internalSchedule(scheduledFutureTask, initialDelay, unit);
-
-			scheduledFutureTask.setCancellable(cancellable);
-
-			return scheduledFutureTask;
-		}
-
-		@Override
-		public void execute(@Nonnull Runnable command) {
-			actorSystem.dispatcher().execute(command);
-		}
-
-		private Cancellable internalSchedule(Runnable runnable, long delay, TimeUnit unit) {
-			return actorSystem.scheduler().scheduleOnce(
-				new FiniteDuration(delay, unit),
-				runnable,
-				actorSystem.dispatcher());
-		}
-
-		private long now() {
-			return System.nanoTime();
-		}
-
-		private long triggerTime(long delay) {
-			return now() + delay;
-		}
-
-		private final class ScheduledFutureTask<V> extends FutureTask<V> implements RunnableScheduledFuture<V> {
-
-			private long time;
-
-			private final long period;
-
-			private volatile Cancellable cancellable;
-
-			ScheduledFutureTask(Callable<V> callable, long time, long period) {
-				super(callable);
-				this.time = time;
-				this.period = period;
-			}
-
-			ScheduledFutureTask(Runnable runnable, long time, long period) {
-				super(runnable, null);
-				this.time = time;
-				this.period = period;
-			}
-
-			public void setCancellable(Cancellable newCancellable) {
-				this.cancellable = newCancellable;
-			}
-
+		final Future<Object> identify = Patterns.ask(actorSel, new Identify(42), timeout.toMilliseconds());
+		final Future<C> resultFuture = identify.map(new Mapper<Object, C>(){
 			@Override
-			public void run() {
-				if (!isPeriodic()) {
-					super.run();
-				} else if (runAndReset()){
-					if (period > 0L) {
-						time += period;
-					} else {
-						cancellable = internalSchedule(this, -period, TimeUnit.NANOSECONDS);
+			public C checkedApply(Object obj) throws Exception {
 
-						// check whether we have been cancelled concurrently
-						if (isCancelled()) {
-							cancellable.cancel();
-						} else {
-							time = triggerTime(-period);
-						}
-					}
+				ActorIdentity actorIdentity = (ActorIdentity) obj;
+
+				if (actorIdentity.getRef() == null) {
+					throw new RpcConnectionException("Could not connect to rpc endpoint under address " + address + '.');
+				} else {
+					ActorRef actorRef = actorIdentity.getRef();
+
+					InvocationHandler invocationHandler = invocationHandlerFactory.apply(actorRef);
+
+					// Rather than using the System ClassLoader directly, we derive the ClassLoader
+					// from this class . That works better in cases where Flink runs embedded and all Flink
+					// code is loaded dynamically (for example from an OSGI bundle) through a custom ClassLoader
+					ClassLoader classLoader = AkkaRpcService.this.getClass().getClassLoader();
+
+					@SuppressWarnings("unchecked")
+					C proxy = (C) Proxy.newProxyInstance(
+						classLoader,
+						new Class<?>[]{clazz},
+						invocationHandler);
+
+					return proxy;
 				}
 			}
+		}, actorSystem.dispatcher());
 
-			@Override
-			public boolean cancel(boolean mayInterruptIfRunning) {
-				boolean result = super.cancel(mayInterruptIfRunning);
-
-				return result && cancellable.cancel();
-			}
-
-			@Override
-			public long getDelay(@Nonnull  TimeUnit unit) {
-				return unit.convert(time - now(), TimeUnit.NANOSECONDS);
-			}
-
-			@Override
-			public int compareTo(@Nonnull Delayed o) {
-				if (o == this) {
-					return 0;
-				}
-
-				long diff = getDelay(TimeUnit.NANOSECONDS) - o.getDelay(TimeUnit.NANOSECONDS);
-				return (diff < 0L) ? -1 : (diff > 0L) ? 1 : 0;
-			}
-
-			@Override
-			public boolean isPeriodic() {
-				return period != 0L;
-			}
-		}
+		return FutureUtils.toJava(resultFuture);
 	}
 }

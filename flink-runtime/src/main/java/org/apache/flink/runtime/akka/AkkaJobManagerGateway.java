@@ -80,17 +80,6 @@ public class AkkaJobManagerGateway implements JobManagerGateway {
 				.mapTo(ClassTag$.MODULE$.apply(Integer.class)));
 	}
 
-	@Override
-	public CompletableFuture<Integer> requestWebPort(Time timeout) {
-		CompletableFuture<JobManagerMessages.ResponseWebMonitorPort> portResponseFuture = FutureUtils.toJava(
-			jobManagerGateway
-				.ask(JobManagerMessages.getRequestWebMonitorPort(), FutureUtils.toFiniteDuration(timeout))
-				.mapTo(ClassTag$.MODULE$.apply(JobManagerMessages.ResponseWebMonitorPort.class)));
-
-		return portResponseFuture.thenApply(
-			JobManagerMessages.ResponseWebMonitorPort::port);
-	}
-
 	//--------------------------------------------------------------------------------
 	// Job control
 	//--------------------------------------------------------------------------------
@@ -266,5 +255,13 @@ public class AkkaJobManagerGateway implements JobManagerGateway {
 			jobManagerGateway
 				.ask(RequestJobsWithIDsOverview.getInstance(), FutureUtils.toFiniteDuration(timeout))
 				.mapTo(ClassTag$.MODULE$.apply(JobsWithIDsOverview.class)));
+	}
+
+	@Override
+	public CompletableFuture<String> requestRestAddress(Time timeout) {
+		return FutureUtils.toJava(
+			jobManagerGateway
+				.ask(JobManagerMessages.getRequestRestAddress(), FutureUtils.toFiniteDuration(timeout))
+				.mapTo(ClassTag$.MODULE$.apply(String.class)));
 	}
 }

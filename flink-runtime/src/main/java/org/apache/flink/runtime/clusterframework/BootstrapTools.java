@@ -33,9 +33,10 @@ import org.apache.flink.configuration.JobManagerOptions;
 import org.apache.flink.configuration.WebOptions;
 import org.apache.flink.runtime.akka.AkkaUtils;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
+import org.apache.flink.runtime.jobmaster.JobManagerGateway;
 import org.apache.flink.runtime.webmonitor.WebMonitor;
 import org.apache.flink.runtime.webmonitor.WebMonitorUtils;
-import org.apache.flink.runtime.webmonitor.retriever.JobManagerRetriever;
+import org.apache.flink.runtime.webmonitor.retriever.LeaderGatewayRetriever;
 import org.apache.flink.runtime.webmonitor.retriever.MetricQueryServiceRetriever;
 import org.apache.flink.util.NetUtils;
 
@@ -178,7 +179,6 @@ public class BootstrapTools {
 	 * @param queryServiceRetriever to resolve a query service
 	 * @param timeout for asynchronous operations
 	 * @param executor to run asynchronous operations
-	 * @param jobManagerAddress the address of the JobManager for which the WebMonitor is started
 	 * @param logger Logger for log output
 	 * @return WebMonitor instance.
 	 * @throws Exception
@@ -186,11 +186,10 @@ public class BootstrapTools {
 	public static WebMonitor startWebMonitorIfConfigured(
 			Configuration config,
 			HighAvailabilityServices highAvailabilityServices,
-			JobManagerRetriever jobManagerRetriever,
+			LeaderGatewayRetriever<JobManagerGateway> jobManagerRetriever,
 			MetricQueryServiceRetriever queryServiceRetriever,
 			Time timeout,
 			Executor executor,
-			String jobManagerAddress,
 			Logger logger) throws Exception {
 
 		if (config.getInteger(WebOptions.PORT, 0) >= 0) {
@@ -208,7 +207,7 @@ public class BootstrapTools {
 
 			// start the web monitor
 			if (monitor != null) {
-				monitor.start(jobManagerAddress);
+				monitor.start();
 			}
 			return monitor;
 		}

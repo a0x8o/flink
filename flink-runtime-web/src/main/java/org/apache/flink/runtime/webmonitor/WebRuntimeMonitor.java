@@ -24,58 +24,64 @@ import org.apache.flink.configuration.CoreOptions;
 import org.apache.flink.configuration.WebOptions;
 import org.apache.flink.runtime.blob.BlobView;
 import org.apache.flink.runtime.jobmanager.MemoryArchivist;
+import org.apache.flink.runtime.jobmaster.JobManagerGateway;
 import org.apache.flink.runtime.leaderretrieval.LeaderRetrievalService;
 import org.apache.flink.runtime.net.SSLUtils;
-import org.apache.flink.runtime.webmonitor.files.StaticFileServerHandler;
-import org.apache.flink.runtime.webmonitor.handlers.ClusterOverviewHandler;
-import org.apache.flink.runtime.webmonitor.handlers.ConstantTextHandler;
-import org.apache.flink.runtime.webmonitor.handlers.CurrentJobIdsHandler;
-import org.apache.flink.runtime.webmonitor.handlers.CurrentJobsOverviewHandler;
-import org.apache.flink.runtime.webmonitor.handlers.DashboardConfigHandler;
+import org.apache.flink.runtime.rest.handler.WebHandler;
+import org.apache.flink.runtime.rest.handler.legacy.ClusterOverviewHandler;
+import org.apache.flink.runtime.rest.handler.legacy.ConstantTextHandler;
+import org.apache.flink.runtime.rest.handler.legacy.CurrentJobIdsHandler;
+import org.apache.flink.runtime.rest.handler.legacy.CurrentJobsOverviewHandler;
+import org.apache.flink.runtime.rest.handler.legacy.DashboardConfigHandler;
+import org.apache.flink.runtime.rest.handler.legacy.ExecutionGraphHolder;
+import org.apache.flink.runtime.rest.handler.legacy.JobAccumulatorsHandler;
+import org.apache.flink.runtime.rest.handler.legacy.JobCancellationHandler;
+import org.apache.flink.runtime.rest.handler.legacy.JobCancellationWithSavepointHandlers;
+import org.apache.flink.runtime.rest.handler.legacy.JobConfigHandler;
+import org.apache.flink.runtime.rest.handler.legacy.JobDetailsHandler;
+import org.apache.flink.runtime.rest.handler.legacy.JobExceptionsHandler;
+import org.apache.flink.runtime.rest.handler.legacy.JobManagerConfigHandler;
+import org.apache.flink.runtime.rest.handler.legacy.JobPlanHandler;
+import org.apache.flink.runtime.rest.handler.legacy.JobStoppingHandler;
+import org.apache.flink.runtime.rest.handler.legacy.JobVertexAccumulatorsHandler;
+import org.apache.flink.runtime.rest.handler.legacy.JobVertexBackPressureHandler;
+import org.apache.flink.runtime.rest.handler.legacy.JobVertexDetailsHandler;
+import org.apache.flink.runtime.rest.handler.legacy.JobVertexTaskManagersHandler;
+import org.apache.flink.runtime.rest.handler.legacy.RequestHandler;
+import org.apache.flink.runtime.rest.handler.legacy.SubtaskCurrentAttemptDetailsHandler;
+import org.apache.flink.runtime.rest.handler.legacy.SubtaskExecutionAttemptAccumulatorsHandler;
+import org.apache.flink.runtime.rest.handler.legacy.SubtaskExecutionAttemptDetailsHandler;
+import org.apache.flink.runtime.rest.handler.legacy.SubtasksAllAccumulatorsHandler;
+import org.apache.flink.runtime.rest.handler.legacy.SubtasksTimesHandler;
+import org.apache.flink.runtime.rest.handler.legacy.TaskManagerLogHandler;
+import org.apache.flink.runtime.rest.handler.legacy.TaskManagersHandler;
+import org.apache.flink.runtime.rest.handler.legacy.backpressure.BackPressureStatsTracker;
+import org.apache.flink.runtime.rest.handler.legacy.backpressure.StackTraceSampleCoordinator;
+import org.apache.flink.runtime.rest.handler.legacy.checkpoints.CheckpointConfigHandler;
+import org.apache.flink.runtime.rest.handler.legacy.checkpoints.CheckpointStatsCache;
+import org.apache.flink.runtime.rest.handler.legacy.checkpoints.CheckpointStatsDetailsHandler;
+import org.apache.flink.runtime.rest.handler.legacy.checkpoints.CheckpointStatsDetailsSubtasksHandler;
+import org.apache.flink.runtime.rest.handler.legacy.checkpoints.CheckpointStatsHandler;
+import org.apache.flink.runtime.rest.handler.legacy.files.StaticFileServerHandler;
+import org.apache.flink.runtime.rest.handler.legacy.metrics.JobManagerMetricsHandler;
+import org.apache.flink.runtime.rest.handler.legacy.metrics.JobMetricsHandler;
+import org.apache.flink.runtime.rest.handler.legacy.metrics.JobVertexMetricsHandler;
+import org.apache.flink.runtime.rest.handler.legacy.metrics.MetricFetcher;
+import org.apache.flink.runtime.rest.handler.legacy.metrics.TaskManagerMetricsHandler;
 import org.apache.flink.runtime.webmonitor.handlers.JarAccessDeniedHandler;
 import org.apache.flink.runtime.webmonitor.handlers.JarDeleteHandler;
 import org.apache.flink.runtime.webmonitor.handlers.JarListHandler;
 import org.apache.flink.runtime.webmonitor.handlers.JarPlanHandler;
 import org.apache.flink.runtime.webmonitor.handlers.JarRunHandler;
 import org.apache.flink.runtime.webmonitor.handlers.JarUploadHandler;
-import org.apache.flink.runtime.webmonitor.handlers.JobAccumulatorsHandler;
-import org.apache.flink.runtime.webmonitor.handlers.JobCancellationHandler;
-import org.apache.flink.runtime.webmonitor.handlers.JobCancellationWithSavepointHandlers;
-import org.apache.flink.runtime.webmonitor.handlers.JobConfigHandler;
-import org.apache.flink.runtime.webmonitor.handlers.JobDetailsHandler;
-import org.apache.flink.runtime.webmonitor.handlers.JobExceptionsHandler;
-import org.apache.flink.runtime.webmonitor.handlers.JobManagerConfigHandler;
-import org.apache.flink.runtime.webmonitor.handlers.JobPlanHandler;
-import org.apache.flink.runtime.webmonitor.handlers.JobStoppingHandler;
-import org.apache.flink.runtime.webmonitor.handlers.JobVertexAccumulatorsHandler;
-import org.apache.flink.runtime.webmonitor.handlers.JobVertexBackPressureHandler;
-import org.apache.flink.runtime.webmonitor.handlers.JobVertexDetailsHandler;
-import org.apache.flink.runtime.webmonitor.handlers.JobVertexTaskManagersHandler;
-import org.apache.flink.runtime.webmonitor.handlers.RequestHandler;
-import org.apache.flink.runtime.webmonitor.handlers.SubtaskCurrentAttemptDetailsHandler;
-import org.apache.flink.runtime.webmonitor.handlers.SubtaskExecutionAttemptAccumulatorsHandler;
-import org.apache.flink.runtime.webmonitor.handlers.SubtaskExecutionAttemptDetailsHandler;
-import org.apache.flink.runtime.webmonitor.handlers.SubtasksAllAccumulatorsHandler;
-import org.apache.flink.runtime.webmonitor.handlers.SubtasksTimesHandler;
-import org.apache.flink.runtime.webmonitor.handlers.TaskManagerLogHandler;
-import org.apache.flink.runtime.webmonitor.handlers.TaskManagersHandler;
-import org.apache.flink.runtime.webmonitor.handlers.checkpoints.CheckpointConfigHandler;
-import org.apache.flink.runtime.webmonitor.handlers.checkpoints.CheckpointStatsCache;
-import org.apache.flink.runtime.webmonitor.handlers.checkpoints.CheckpointStatsDetailsHandler;
-import org.apache.flink.runtime.webmonitor.handlers.checkpoints.CheckpointStatsDetailsSubtasksHandler;
-import org.apache.flink.runtime.webmonitor.handlers.checkpoints.CheckpointStatsHandler;
 import org.apache.flink.runtime.webmonitor.history.JsonArchivist;
-import org.apache.flink.runtime.webmonitor.metrics.JobManagerMetricsHandler;
-import org.apache.flink.runtime.webmonitor.metrics.JobMetricsHandler;
-import org.apache.flink.runtime.webmonitor.metrics.JobVertexMetricsHandler;
-import org.apache.flink.runtime.webmonitor.metrics.MetricFetcher;
-import org.apache.flink.runtime.webmonitor.metrics.TaskManagerMetricsHandler;
-import org.apache.flink.runtime.webmonitor.retriever.JobManagerRetriever;
+import org.apache.flink.runtime.webmonitor.retriever.LeaderGatewayRetriever;
 import org.apache.flink.runtime.webmonitor.retriever.MetricQueryServiceRetriever;
 import org.apache.flink.runtime.webmonitor.utils.WebFrontendBootstrap;
 import org.apache.flink.util.FileUtils;
 import org.apache.flink.util.Preconditions;
 
+import org.apache.flink.shaded.netty4.io.netty.channel.ChannelInboundHandler;
 import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.router.Router;
 
 import org.slf4j.Logger;
@@ -117,11 +123,11 @@ public class WebRuntimeMonitor implements WebMonitor {
 	private final LeaderRetrievalService leaderRetrievalService;
 
 	/** Service which retrieves the currently leading JobManager and opens a JobManagerGateway. */
-	private final JobManagerRetriever retriever;
+	private final LeaderGatewayRetriever<JobManagerGateway> retriever;
 
 	private final SSLContext serverSSLContext;
 
-	private final CompletableFuture<String> jobManagerAddressFuture = new CompletableFuture<>();
+	private final CompletableFuture<String> localRestAddress = new CompletableFuture<>();
 
 	private final Time timeout;
 
@@ -146,7 +152,7 @@ public class WebRuntimeMonitor implements WebMonitor {
 			Configuration config,
 			LeaderRetrievalService leaderRetrievalService,
 			BlobView blobView,
-			JobManagerRetriever jobManagerRetriever,
+			LeaderGatewayRetriever<JobManagerGateway> jobManagerRetriever,
 			MetricQueryServiceRetriever queryServiceRetriever,
 			Time timeout,
 			Executor executor) throws IOException, InterruptedException {
@@ -187,7 +193,7 @@ public class WebRuntimeMonitor implements WebMonitor {
 			this.uploadDir = null;
 		}
 
-		ExecutionGraphHolder currentGraphs = new ExecutionGraphHolder();
+		ExecutionGraphHolder currentGraphs = new ExecutionGraphHolder(timeout);
 
 		// - Back pressure stats ----------------------------------------------
 
@@ -232,123 +238,126 @@ public class WebRuntimeMonitor implements WebMonitor {
 
 		Router router = new Router();
 		// config how to interact with this web server
-		get(router, new DashboardConfigHandler(cfg.getRefreshInterval()));
+		get(router, new DashboardConfigHandler(executor, cfg.getRefreshInterval()));
 
 		// the overview - how many task managers, slots, free slots, ...
-		get(router, new ClusterOverviewHandler(DEFAULT_REQUEST_TIMEOUT));
+		get(router, new ClusterOverviewHandler(executor, DEFAULT_REQUEST_TIMEOUT));
 
 		// job manager configuration
-		get(router, new JobManagerConfigHandler(config));
+		get(router, new JobManagerConfigHandler(executor, config));
 
 		// overview over jobs
-		get(router, new CurrentJobsOverviewHandler(DEFAULT_REQUEST_TIMEOUT, true, true));
-		get(router, new CurrentJobsOverviewHandler(DEFAULT_REQUEST_TIMEOUT, true, false));
-		get(router, new CurrentJobsOverviewHandler(DEFAULT_REQUEST_TIMEOUT, false, true));
+		get(router, new CurrentJobsOverviewHandler(executor, DEFAULT_REQUEST_TIMEOUT, true, true));
+		get(router, new CurrentJobsOverviewHandler(executor, DEFAULT_REQUEST_TIMEOUT, true, false));
+		get(router, new CurrentJobsOverviewHandler(executor, DEFAULT_REQUEST_TIMEOUT, false, true));
 
-		get(router, new CurrentJobIdsHandler(DEFAULT_REQUEST_TIMEOUT));
+		get(router, new CurrentJobIdsHandler(executor, DEFAULT_REQUEST_TIMEOUT));
 
-		get(router, new JobDetailsHandler(currentGraphs, metricFetcher));
+		get(router, new JobDetailsHandler(currentGraphs, executor, metricFetcher));
 
-		get(router, new JobVertexDetailsHandler(currentGraphs, metricFetcher));
-		get(router, new SubtasksTimesHandler(currentGraphs));
-		get(router, new JobVertexTaskManagersHandler(currentGraphs, metricFetcher));
-		get(router, new JobVertexAccumulatorsHandler(currentGraphs));
-		get(router, new JobVertexBackPressureHandler(currentGraphs,	backPressureStatsTracker, refreshInterval));
-		get(router, new JobVertexMetricsHandler(metricFetcher));
-		get(router, new SubtasksAllAccumulatorsHandler(currentGraphs));
-		get(router, new SubtaskCurrentAttemptDetailsHandler(currentGraphs, metricFetcher));
-		get(router, new SubtaskExecutionAttemptDetailsHandler(currentGraphs, metricFetcher));
-		get(router, new SubtaskExecutionAttemptAccumulatorsHandler(currentGraphs));
+		get(router, new JobVertexDetailsHandler(currentGraphs, executor, metricFetcher));
+		get(router, new SubtasksTimesHandler(currentGraphs, executor));
+		get(router, new JobVertexTaskManagersHandler(currentGraphs, executor, metricFetcher));
+		get(router, new JobVertexAccumulatorsHandler(currentGraphs, executor));
+		get(router, new JobVertexBackPressureHandler(currentGraphs, executor, backPressureStatsTracker, refreshInterval));
+		get(router, new JobVertexMetricsHandler(executor, metricFetcher));
+		get(router, new SubtasksAllAccumulatorsHandler(currentGraphs, executor));
+		get(router, new SubtaskCurrentAttemptDetailsHandler(currentGraphs, executor, metricFetcher));
+		get(router, new SubtaskExecutionAttemptDetailsHandler(currentGraphs, executor, metricFetcher));
+		get(router, new SubtaskExecutionAttemptAccumulatorsHandler(currentGraphs, executor));
 
-		get(router, new JobPlanHandler(currentGraphs));
-		get(router, new JobConfigHandler(currentGraphs));
-		get(router, new JobExceptionsHandler(currentGraphs));
-		get(router, new JobAccumulatorsHandler(currentGraphs));
-		get(router, new JobMetricsHandler(metricFetcher));
+		get(router, new JobPlanHandler(currentGraphs, executor));
+		get(router, new JobConfigHandler(currentGraphs, executor));
+		get(router, new JobExceptionsHandler(currentGraphs, executor));
+		get(router, new JobAccumulatorsHandler(currentGraphs, executor));
+		get(router, new JobMetricsHandler(executor, metricFetcher));
 
-		get(router, new TaskManagersHandler(DEFAULT_REQUEST_TIMEOUT, metricFetcher));
+		get(router, new TaskManagersHandler(executor, DEFAULT_REQUEST_TIMEOUT, metricFetcher));
 		get(router,
 			new TaskManagerLogHandler(
 				retriever,
 				executor,
-				jobManagerAddressFuture,
+				localRestAddress,
 				timeout,
 				TaskManagerLogHandler.FileMode.LOG,
 				config,
-				enableSSL,
 				blobView));
 		get(router,
 			new TaskManagerLogHandler(
 				retriever,
 				executor,
-				jobManagerAddressFuture,
+				localRestAddress,
 				timeout,
 				TaskManagerLogHandler.FileMode.STDOUT,
 				config,
-				enableSSL,
 				blobView));
-		get(router, new TaskManagerMetricsHandler(metricFetcher));
+		get(router, new TaskManagerMetricsHandler(executor, metricFetcher));
 
 		router
 			// log and stdout
 			.GET("/jobmanager/log", logFiles.logFile == null ? new ConstantTextHandler("(log file unavailable)") :
-				new StaticFileServerHandler(retriever, jobManagerAddressFuture, timeout, logFiles.logFile,
-					enableSSL))
+				new StaticFileServerHandler<>(
+					retriever,
+					localRestAddress,
+					timeout,
+					logFiles.logFile))
 
 			.GET("/jobmanager/stdout", logFiles.stdOutFile == null ? new ConstantTextHandler("(stdout file unavailable)") :
-				new StaticFileServerHandler(retriever, jobManagerAddressFuture, timeout, logFiles.stdOutFile,
-					enableSSL));
+				new StaticFileServerHandler<>(retriever, localRestAddress, timeout, logFiles.stdOutFile));
 
-		get(router, new JobManagerMetricsHandler(metricFetcher));
+		get(router, new JobManagerMetricsHandler(executor, metricFetcher));
 
 		// Cancel a job via GET (for proper integration with YARN this has to be performed via GET)
-		get(router, new JobCancellationHandler(timeout));
+		get(router, new JobCancellationHandler(executor, timeout));
 		// DELETE is the preferred way of canceling a job (Rest-conform)
-		delete(router, new JobCancellationHandler(timeout));
+		delete(router, new JobCancellationHandler(executor, timeout));
 
 		get(router, triggerHandler);
 		get(router, inProgressHandler);
 
 		// stop a job via GET (for proper integration with YARN this has to be performed via GET)
-		get(router, new JobStoppingHandler(timeout));
+		get(router, new JobStoppingHandler(executor, timeout));
 		// DELETE is the preferred way of stopping a job (Rest-conform)
-		delete(router, new JobStoppingHandler(timeout));
+		delete(router, new JobStoppingHandler(executor, timeout));
 
 		int maxCachedEntries = config.getInteger(WebOptions.CHECKPOINTS_HISTORY_SIZE);
 		CheckpointStatsCache cache = new CheckpointStatsCache(maxCachedEntries);
 
 		// Register the checkpoint stats handlers
-		get(router, new CheckpointStatsHandler(currentGraphs));
-		get(router, new CheckpointConfigHandler(currentGraphs));
-		get(router, new CheckpointStatsDetailsHandler(currentGraphs, cache));
-		get(router, new CheckpointStatsDetailsSubtasksHandler(currentGraphs, cache));
+		get(router, new CheckpointStatsHandler(currentGraphs, executor));
+		get(router, new CheckpointConfigHandler(currentGraphs, executor));
+		get(router, new CheckpointStatsDetailsHandler(currentGraphs, executor, cache));
+		get(router, new CheckpointStatsDetailsSubtasksHandler(currentGraphs, executor, cache));
 
 		if (webSubmitAllow) {
 			// fetch the list of uploaded jars.
-			get(router, new JarListHandler(uploadDir));
+			get(router, new JarListHandler(executor, uploadDir));
 
 			// get plan for an uploaded jar
-			get(router, new JarPlanHandler(uploadDir));
+			get(router, new JarPlanHandler(executor, uploadDir));
 
 			// run a jar
-			post(router, new JarRunHandler(uploadDir, timeout, config));
+			post(router, new JarRunHandler(executor, uploadDir, timeout, config));
 
 			// upload a jar
-			post(router, new JarUploadHandler(uploadDir));
+			post(router, new JarUploadHandler(executor, uploadDir));
 
 			// delete an uploaded jar from submission interface
-			delete(router, new JarDeleteHandler(uploadDir));
+			delete(router, new JarDeleteHandler(executor, uploadDir));
 		} else {
 			// send an Access Denied message
-			JarAccessDeniedHandler jad = new JarAccessDeniedHandler();
+			JarAccessDeniedHandler jad = new JarAccessDeniedHandler(executor);
 			get(router, jad);
 			post(router, jad);
 			delete(router, jad);
 		}
 
 		// this handler serves all the static contents
-		router.GET("/:*", new StaticFileServerHandler(retriever, jobManagerAddressFuture, timeout, webRootDir,
-			enableSSL));
+		router.GET("/:*", new StaticFileServerHandler<>(
+			retriever,
+			localRestAddress,
+			timeout,
+			webRootDir));
 
 		// add shutdown hook for deleting the directories and remaining temp files on shutdown
 		try {
@@ -367,6 +376,8 @@ public class WebRuntimeMonitor implements WebMonitor {
 		}
 
 		this.netty = new WebFrontendBootstrap(router, LOG, uploadDir, serverSSLContext, configuredAddress, configuredPort, config);
+
+		localRestAddress.complete(netty.getRestAddress());
 	}
 
 	/**
@@ -410,11 +421,8 @@ public class WebRuntimeMonitor implements WebMonitor {
 	}
 
 	@Override
-	public void start(String jobManagerAkkaUrl) throws Exception {
-		LOG.info("Starting with JobManager {} on port {}", jobManagerAkkaUrl, getServerPort());
-
+	public void start() throws Exception {
 		synchronized (startupShutdownLock) {
-			jobManagerAddressFuture.complete(jobManagerAkkaUrl);
 			leaderRetrievalService.start(retriever);
 
 			long delay = backPressureStatsTracker.getCleanUpInterval();
@@ -456,6 +464,11 @@ public class WebRuntimeMonitor implements WebMonitor {
 		return netty.getServerPort();
 	}
 
+	@Override
+	public String getRestAddress() {
+		return netty.getRestAddress();
+	}
+
 	private void cleanup() {
 		if (!cleanedUp.compareAndSet(false, true)) {
 			return;
@@ -478,14 +491,14 @@ public class WebRuntimeMonitor implements WebMonitor {
 	}
 
 	/** These methods are used in the route path setup. They register the given {@link RequestHandler} or
-	 * {@link RuntimeMonitorHandlerBase} with the given {@link Router} for the respective REST method.
+	 * {@link RuntimeMonitorHandler} with the given {@link Router} for the respective REST method.
 	 * The REST paths under which they are registered are defined by the handlers. **/
 
 	private void get(Router router, RequestHandler handler) {
 		get(router, handler(handler));
 	}
 
-	private void get(Router router, RuntimeMonitorHandlerBase handler) {
+	private static <T extends ChannelInboundHandler & WebHandler> void get(Router router, T handler) {
 		for (String path : handler.getPaths()) {
 			router.GET(path, handler);
 		}
@@ -495,17 +508,17 @@ public class WebRuntimeMonitor implements WebMonitor {
 		delete(router, handler(handler));
 	}
 
-	private void delete(Router router, RuntimeMonitorHandlerBase handler) {
+	private static <T extends ChannelInboundHandler & WebHandler> void delete(Router router, T handler) {
 		for (String path : handler.getPaths()) {
 			router.DELETE(path, handler);
 		}
 	}
 
-	private void post(Router router, RequestHandler handler) {
+	private void post(Router router, RequestHandler handler)  {
 		post(router, handler(handler));
 	}
 
-	private void post(Router router, RuntimeMonitorHandlerBase handler) {
+	private static <T extends ChannelInboundHandler & WebHandler> void post(Router router, T handler) {
 		for (String path : handler.getPaths()) {
 			router.POST(path, handler);
 		}
@@ -516,8 +529,7 @@ public class WebRuntimeMonitor implements WebMonitor {
 	// ------------------------------------------------------------------------
 
 	private RuntimeMonitorHandler handler(RequestHandler handler) {
-		return new RuntimeMonitorHandler(cfg, handler, retriever, jobManagerAddressFuture, timeout,
-			serverSSLContext !=  null);
+		return new RuntimeMonitorHandler(cfg, handler, retriever, localRestAddress, timeout);
 	}
 
 	File getBaseDir(Configuration configuration) {

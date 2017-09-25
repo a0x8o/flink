@@ -270,33 +270,33 @@ watchdog () {
 check_shaded_artifacts() {
 	jar tf build-target/lib/flink-dist*.jar > allClasses
 	ASM=`cat allClasses | grep '^org/objectweb/asm/' | wc -l`
-	if [ $ASM != "0" ]; then
+	if [ "$ASM" != "0" ]; then
 		echo "=============================================================================="
-		echo "Detected $ASM unshaded asm dependencies in fat jar"
+		echo "Detected '$ASM' unshaded asm dependencies in fat jar"
 		echo "=============================================================================="
 		return 1
 	fi
 
 	GUAVA=`cat allClasses | grep '^com/google/common' | wc -l`
-	if [ $GUAVA != "0" ]; then
+	if [ "$GUAVA" != "0" ]; then
 		echo "=============================================================================="
-		echo "Detected $GUAVA guava dependencies in fat jar"
+		echo "Detected '$GUAVA' guava dependencies in fat jar"
 		echo "=============================================================================="
 		return 1
 	fi
 
 	SNAPPY=`cat allClasses | grep '^org/xerial/snappy' | wc -l`
-	if [ $SNAPPY == "0" ]; then
+	if [ "$SNAPPY" == "0" ]; then
 		echo "=============================================================================="
 		echo "Missing snappy dependencies in fat jar"
 		echo "=============================================================================="
 		return 1
 	fi
 
-    NETTY=`cat allClasses | grep '^io/netty' | wc -1`
-	if [ $NETTY != "0" ]; then
+	NETTY=`cat allClasses | grep '^io/netty' | wc -l`
+	if [ "$NETTY" != "0" ]; then
 		echo "=============================================================================="
-		echo "Detected $NETTY unshaded netty dependencies in fat jar"
+		echo "Detected '$NETTY' unshaded netty dependencies in fat jar"
 		echo "=============================================================================="
 		return 1
 	fi
@@ -422,6 +422,12 @@ case $TEST in
 			printf "Running Kafka end-to-end test\n"
 			printf "==============================================================================\n"
 			test-infra/end-to-end-test/test_streaming_kafka010.sh build-target cluster
+			EXIT_CODE=$(($EXIT_CODE+$?))
+
+			printf "\n==============================================================================\n"
+			printf "Running class loading end-to-end test\n"
+			printf "==============================================================================\n"
+			test-infra/end-to-end-test/test_streaming_classloader.sh build-target cluster
 			EXIT_CODE=$(($EXIT_CODE+$?))
 		else
 			printf "\n==============================================================================\n"

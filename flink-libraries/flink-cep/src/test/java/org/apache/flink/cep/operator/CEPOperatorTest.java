@@ -21,7 +21,6 @@ package org.apache.flink.cep.operator;
 import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.state.ValueState;
 import org.apache.flink.api.common.typeinfo.BasicTypeInfo;
-import org.apache.flink.api.common.typeutils.base.IntSerializer;
 import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.typeutils.runtime.kryo.KryoSerializer;
@@ -256,9 +255,8 @@ public class CEPOperatorTest extends TestLogger {
 				new SelectTimeoutCepOperator<>(
 					Event.createTypeSerializer(),
 					false,
-					IntSerializer.INSTANCE,
 					new NFAFactory(true),
-					true,
+					null,
 					null,
 					new PatternSelectFunction<Event, Map<String, List<Event>>>() {
 						@Override
@@ -606,6 +604,7 @@ public class CEPOperatorTest extends TestLogger {
 			verifyWatermark(harness.getOutput().poll(), 11L);
 			verifyWatermark(harness.getOutput().poll(), 12L);
 
+			// this is a late event, because timestamp(12) = last watermark(12)
 			harness.processElement(new StreamRecord<Event>(middleEvent3, 12L));
 			harness.processElement(new StreamRecord<>(endEvent2, 13L));
 			harness.processWatermark(20L);
@@ -615,8 +614,9 @@ public class CEPOperatorTest extends TestLogger {
 			assertTrue(!operator2.hasNonEmptyPQ(42));
 			assertEquals(0L, harness.numEventTimeTimers());
 
+			assertEquals(3, harness.getOutput().size());
 			verifyPattern(harness.getOutput().poll(), startEvent2, middleEvent2, endEvent2);
-			verifyPattern(harness.getOutput().poll(), startEvent2, middleEvent3, endEvent2);
+
 			verifyWatermark(harness.getOutput().poll(), 20L);
 			verifyWatermark(harness.getOutput().poll(), 21L);
 		} finally {
@@ -873,9 +873,9 @@ public class CEPOperatorTest extends TestLogger {
 			harness.processElement(new StreamRecord<Event>(middleEvent2, 3));
 			harness.processElement(new StreamRecord<>(startEvent2, 4));
 			harness.processWatermark(5L);
-			harness.processElement(new StreamRecord<>(nextOne, 6));
+			harness.processElement(new StreamRecord<>(nextOne, 7));
 			harness.processElement(new StreamRecord<>(endEvent, 8));
-			harness.processElement(new StreamRecord<Event>(middleEvent4, 5));
+			harness.processElement(new StreamRecord<Event>(middleEvent4, 6));
 			harness.processWatermark(100L);
 
 			List<List<Event>> resultingPatterns = new ArrayList<>();

@@ -282,7 +282,25 @@ public class MesosApplicationMasterRunner {
 				ioExecutor,
 				HighAvailabilityServicesUtils.AddressResolution.NO_ADDRESS_RESOLUTION);
 
-			// 1: the JobManager
+			// 1: the web monitor
+			LOG.debug("Starting Web Frontend");
+
+			Time webMonitorTimeout = Time.milliseconds(config.getLong(WebOptions.TIMEOUT));
+
+			webMonitor = BootstrapTools.startWebMonitorIfConfigured(
+				config,
+				highAvailabilityServices,
+				new AkkaJobManagerRetriever(actorSystem, webMonitorTimeout, 10, Time.milliseconds(50L)),
+				new AkkaQueryServiceRetriever(actorSystem, webMonitorTimeout),
+				webMonitorTimeout,
+				futureExecutor,
+				LOG);
+			if (webMonitor != null) {
+				final URL webMonitorURL = new URL(webMonitor.getRestAddress());
+				mesosConfig.frameworkInfo().setWebuiUrl(webMonitorURL.toExternalForm());
+			}
+
+			// 2: the JobManager
 			LOG.debug("Starting JobManager actor");
 
 			// we start the JobManager with its standard name
@@ -292,29 +310,11 @@ public class MesosApplicationMasterRunner {
 				futureExecutor,
 				ioExecutor,
 				highAvailabilityServices,
+				webMonitor != null ? Option.apply(webMonitor.getRestAddress()) : Option.empty(),
 				Option.apply(JobMaster.JOB_MANAGER_NAME),
 				Option.apply(JobMaster.ARCHIVE_NAME),
 				getJobManagerClass(),
 				getArchivistClass())._1();
-
-			// 2: the web monitor
-			LOG.debug("Starting Web Frontend");
-
-			Time webMonitorTimeout = Time.milliseconds(config.getLong(WebOptions.TIMEOUT));
-
-			webMonitor = BootstrapTools.startWebMonitorIfConfigured(
-				config,
-				highAvailabilityServices,
-				new AkkaJobManagerRetriever(actorSystem, webMonitorTimeout),
-				new AkkaQueryServiceRetriever(actorSystem, webMonitorTimeout),
-				webMonitorTimeout,
-				futureExecutor,
-				AkkaUtils.getAkkaURL(actorSystem, jobManager),
-				LOG);
-			if (webMonitor != null) {
-				final URL webMonitorURL = new URL("http", appMasterHostname, webMonitor.getServerPort(), "/");
-				mesosConfig.frameworkInfo().setWebuiUrl(webMonitorURL.toExternalForm());
-			}
 
 			// 3: Flink's Mesos ResourceManager
 			LOG.debug("Starting Mesos Flink Resource Manager");

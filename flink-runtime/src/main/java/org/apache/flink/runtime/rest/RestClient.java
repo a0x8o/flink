@@ -27,6 +27,7 @@ import org.apache.flink.runtime.rest.messages.MessageParameters;
 import org.apache.flink.runtime.rest.messages.RequestBody;
 import org.apache.flink.runtime.rest.messages.ResponseBody;
 import org.apache.flink.runtime.rest.util.RestClientException;
+import org.apache.flink.runtime.rest.util.RestConstants;
 import org.apache.flink.runtime.rest.util.RestMapperUtils;
 import org.apache.flink.util.FlinkRuntimeException;
 import org.apache.flink.util.Preconditions;
@@ -48,8 +49,11 @@ import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.FullHttpRespon
 import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpClientCodec;
 import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpHeaders;
 import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpObjectAggregator;
+import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpResponse;
+import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpResponseStatus;
 import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpVersion;
 import org.apache.flink.shaded.netty4.io.netty.handler.ssl.SslHandler;
+import org.apache.flink.shaded.netty4.io.netty.util.concurrent.DefaultThreadFactory;
 
 import com.fasterxml.jackson.core.JsonParseException;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -85,22 +89,22 @@ public class RestClient {
 		this.executor = Preconditions.checkNotNull(executor);
 
 		SSLEngine sslEngine = configuration.getSslEngine();
-		ChannelInitializer initializer = new ChannelInitializer<SocketChannel>() {
+		ChannelInitializer<SocketChannel> initializer = new ChannelInitializer<SocketChannel>() {
 			@Override
-			protected void initChannel(SocketChannel ch) throws Exception {
+			protected void initChannel(SocketChannel socketChannel) throws Exception {
 				// SSL should be the first handler in the pipeline
 				if (sslEngine != null) {
-					ch.pipeline().addLast("ssl", new SslHandler(sslEngine));
+					socketChannel.pipeline().addLast("ssl", new SslHandler(sslEngine));
 				}
 
-				ch.pipeline()
+				socketChannel.pipeline()
 					.addLast(new HttpClientCodec())
 					.addLast(new HttpObjectAggregator(1024 * 1024))
 					.addLast(new ClientHandler())
 					.addLast(new PipelineErrorHandler(LOG));
 			}
 		};
-		NioEventLoopGroup group = new NioEventLoopGroup(1);
+		NioEventLoopGroup group = new NioEventLoopGroup(1, new DefaultThreadFactory("flink-rest-client-netty"));
 
 		bootstrap = new Bootstrap();
 		bootstrap
@@ -149,8 +153,8 @@ public class RestClient {
 		FullHttpRequest httpRequest = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, messageHeaders.getHttpMethod().getNettyHttpMethod(), targetUrl, payload);
 		httpRequest.headers()
 			.add(HttpHeaders.Names.CONTENT_LENGTH, payload.capacity())
-			.add(HttpHeaders.Names.CONTENT_TYPE, "application/json; charset=" + ConfigConstants.DEFAULT_CHARSET.name())
-			.set(HttpHeaders.Names.HOST, targetAddress + ":" + targetPort)
+			.add(HttpHeaders.Names.CONTENT_TYPE, RestConstants.REST_CONTENT_TYPE)
+			.set(HttpHeaders.Names.HOST, targetAddress + ':' + targetPort)
 			.set(HttpHeaders.Names.CONNECTION, HttpHeaders.Values.CLOSE);
 
 		return submitRequest(targetAddress, targetPort, httpRequest, messageHeaders.getResponseClass());
@@ -168,29 +172,36 @@ public class RestClient {
 			.thenApply((ChannelFuture::channel))
 			.thenCompose(channel -> {
 				ClientHandler handler = channel.pipeline().get(ClientHandler.class);
-				CompletableFuture<JsonNode> future = handler.getJsonFuture();
+				CompletableFuture<JsonResponse> future = handler.getJsonFuture();
 				channel.writeAndFlush(httpRequest);
-				return future.thenComposeAsync(rawResponse -> parseResponse(rawResponse, responseClass), executor);
-			});
+				return future;
+			}).thenComposeAsync(
+				(JsonResponse rawResponse) -> parseResponse(rawResponse, responseClass),
+				executor
+			);
 	}
 
-	private static <P extends ResponseBody> CompletableFuture<P> parseResponse(JsonNode rawResponse, Class<P> responseClass) {
+	private static <P extends ResponseBody> CompletableFuture<P> parseResponse(JsonResponse rawResponse, Class<P> responseClass) {
 		CompletableFuture<P> responseFuture = new CompletableFuture<>();
 		try {
-			P response = objectMapper.treeToValue(rawResponse, responseClass);
+			P response = objectMapper.treeToValue(rawResponse.getJson(), responseClass);
 			responseFuture.complete(response);
 		} catch (JsonProcessingException jpe) {
 			// the received response did not matched the expected response type
 
 			// lets see if it is an ErrorResponse instead
 			try {
-				ErrorResponseBody error = objectMapper.treeToValue(rawResponse, ErrorResponseBody.class);
-				responseFuture.completeExceptionally(new RestClientException(error.errors.toString()));
+				ErrorResponseBody error = objectMapper.treeToValue(rawResponse.getJson(), ErrorResponseBody.class);
+				responseFuture.completeExceptionally(new RestClientException(error.errors.toString(), rawResponse.getHttpResponseStatus()));
 			} catch (JsonProcessingException jpe2) {
 				// if this fails it is either the expected type or response type was wrong, most likely caused
 				// by a client/search MessageHeaders mismatch
 				LOG.error("Received response was neither of the expected type ({}) nor an error. Response={}", responseClass, rawResponse, jpe2);
-				responseFuture.completeExceptionally(new RestClientException("Response was neither of the expected type(" + responseClass + ") nor an error.", jpe2));
+				responseFuture.completeExceptionally(
+					new RestClientException(
+						"Response was neither of the expected type(" + responseClass + ") nor an error.",
+						jpe2,
+						rawResponse.getHttpResponseStatus()));
 			}
 		}
 		return responseFuture;
@@ -198,9 +209,9 @@ public class RestClient {
 
 	private static class ClientHandler extends SimpleChannelInboundHandler<Object> {
 
-		private final CompletableFuture<JsonNode> jsonFuture = new CompletableFuture<>();
+		private final CompletableFuture<JsonResponse> jsonFuture = new CompletableFuture<>();
 
-		CompletableFuture<JsonNode> getJsonFuture() {
+		CompletableFuture<JsonResponse> getJsonFuture() {
 			return jsonFuture;
 		}
 
@@ -210,7 +221,18 @@ public class RestClient {
 				readRawResponse((FullHttpResponse) msg);
 			} else {
 				LOG.error("Implementation error: Received a response that wasn't a FullHttpResponse.");
-				jsonFuture.completeExceptionally(new RestClientException("Implementation error: Received a response that wasn't a FullHttpResponse."));
+				if (msg instanceof HttpResponse) {
+					jsonFuture.completeExceptionally(
+						new RestClientException(
+							"Implementation error: Received a response that wasn't a FullHttpResponse.",
+							((HttpResponse) msg).getStatus()));
+				} else {
+					jsonFuture.completeExceptionally(
+						new RestClientException(
+							"Implementation error: Received a response that wasn't a FullHttpResponse.",
+							HttpResponseStatus.INTERNAL_SERVER_ERROR));
+				}
+
 			}
 			ctx.close();
 		}
@@ -225,14 +247,32 @@ public class RestClient {
 				LOG.debug("Received response {}.", rawResponse);
 			} catch (JsonParseException je) {
 				LOG.error("Response was not valid JSON.", je);
-				jsonFuture.completeExceptionally(new RestClientException("Response was not valid JSON.", je));
+				jsonFuture.completeExceptionally(new RestClientException("Response was not valid JSON.", je, msg.getStatus()));
 				return;
 			} catch (IOException ioe) {
 				LOG.error("Response could not be read.", ioe);
-				jsonFuture.completeExceptionally(new RestClientException("Response could not be read.", ioe));
+				jsonFuture.completeExceptionally(new RestClientException("Response could not be read.", ioe, msg.getStatus()));
 				return;
 			}
-			jsonFuture.complete(rawResponse);
+			jsonFuture.complete(new JsonResponse(rawResponse, msg.getStatus()));
+		}
+	}
+
+	private static final class JsonResponse {
+		private final JsonNode json;
+		private final HttpResponseStatus httpResponseStatus;
+
+		private JsonResponse(JsonNode json, HttpResponseStatus httpResponseStatus) {
+			this.json = Preconditions.checkNotNull(json);
+			this.httpResponseStatus = Preconditions.checkNotNull(httpResponseStatus);
+		}
+
+		public JsonNode getJson() {
+			return json;
+		}
+
+		public HttpResponseStatus getHttpResponseStatus() {
+			return httpResponseStatus;
 		}
 	}
 }

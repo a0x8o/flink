@@ -29,6 +29,7 @@ import org.apache.flink.api.common.typeutils.base.ListSerializer;
 import org.apache.flink.api.common.typeutils.base.LongSerializer;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.cep.EventComparator;
+import org.apache.flink.cep.nfa.AfterMatchSkipStrategy;
 import org.apache.flink.cep.nfa.NFA;
 import org.apache.flink.cep.nfa.compiler.NFACompiler;
 import org.apache.flink.runtime.state.StateInitializationContext;
@@ -92,13 +93,14 @@ public abstract class AbstractKeyedCEPPatternOperator<IN, KEY, OUT, F extends Fu
 
 	private final EventComparator<IN> comparator;
 
+	protected final AfterMatchSkipStrategy afterMatchSkipStrategy;
+
 	public AbstractKeyedCEPPatternOperator(
 			final TypeSerializer<IN> inputSerializer,
 			final boolean isProcessingTime,
-			final TypeSerializer<KEY> keySerializer,
 			final NFACompiler.NFAFactory<IN> nfaFactory,
-			final boolean migratingFromOldKeyedOperator,
 			final EventComparator<IN> comparator,
+			final AfterMatchSkipStrategy afterMatchSkipStrategy,
 			final F function) {
 		super(function);
 
@@ -106,6 +108,12 @@ public abstract class AbstractKeyedCEPPatternOperator<IN, KEY, OUT, F extends Fu
 		this.isProcessingTime = Preconditions.checkNotNull(isProcessingTime);
 		this.nfaFactory = Preconditions.checkNotNull(nfaFactory);
 		this.comparator = comparator;
+
+		if (afterMatchSkipStrategy == null) {
+			this.afterMatchSkipStrategy = AfterMatchSkipStrategy.noSkip();
+		} else {
+			this.afterMatchSkipStrategy = afterMatchSkipStrategy;
+		}
 	}
 
 	@Override
@@ -162,10 +170,10 @@ public abstract class AbstractKeyedCEPPatternOperator<IN, KEY, OUT, F extends Fu
 			IN value = element.getValue();
 
 			// In event-time processing we assume correctness of the watermark.
-			// Events with timestamp smaller than the last seen watermark are considered late.
+			// Events with timestamp smaller than or equal with the last seen watermark are considered late.
 			// Late events are put in a dedicated side output, if the user has specified one.
 
-			if (timestamp >= lastWatermark) {
+			if (timestamp > lastWatermark) {
 
 				// we have an event with a valid timestamp, so
 				// we buffer it until we receive the proper watermark.
@@ -321,7 +329,7 @@ public abstract class AbstractKeyedCEPPatternOperator<IN, KEY, OUT, F extends Fu
 	 */
 	private void processEvent(NFA<IN> nfa, IN event, long timestamp)  {
 		Tuple2<Collection<Map<String, List<IN>>>, Collection<Tuple2<Map<String, List<IN>>, Long>>> patterns =
-			nfa.process(event, timestamp);
+			nfa.process(event, timestamp, afterMatchSkipStrategy);
 
 		try {
 			processMatchedSequences(patterns.f0, timestamp);
