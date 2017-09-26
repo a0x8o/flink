@@ -29,10 +29,13 @@ import org.apache.flink.runtime.executiongraph.AccessExecutionJobVertex;
 import org.apache.flink.runtime.executiongraph.AccessExecutionVertex;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.jobgraph.JobStatus;
+import org.apache.flink.runtime.jobmaster.JobManagerGateway;
 import org.apache.flink.runtime.leaderretrieval.LeaderRetrievalService;
 import org.apache.flink.runtime.messages.webmonitor.JobDetails;
+import org.apache.flink.runtime.rest.handler.legacy.files.StaticFileServerHandler;
 import org.apache.flink.runtime.webmonitor.history.JsonArchivist;
-import org.apache.flink.runtime.webmonitor.retriever.JobManagerRetriever;
+import org.apache.flink.runtime.webmonitor.retriever.GatewayRetriever;
+import org.apache.flink.runtime.webmonitor.retriever.LeaderGatewayRetriever;
 import org.apache.flink.runtime.webmonitor.retriever.MetricQueryServiceRetriever;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -42,6 +45,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
+import java.io.IOException;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -49,6 +53,8 @@ import java.net.URI;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 
 /**
@@ -130,7 +136,7 @@ public final class WebMonitorUtils {
 	public static WebMonitor startWebRuntimeMonitor(
 			Configuration config,
 			HighAvailabilityServices highAvailabilityServices,
-			JobManagerRetriever jobManagerRetriever,
+			LeaderGatewayRetriever<JobManagerGateway> jobManagerRetriever,
 			MetricQueryServiceRetriever queryServiceRetriever,
 			Time timeout,
 			Executor executor) {
@@ -143,7 +149,7 @@ public final class WebMonitorUtils {
 				Configuration.class,
 				LeaderRetrievalService.class,
 				BlobView.class,
-				JobManagerRetriever.class,
+				LeaderGatewayRetriever.class,
 				MetricQueryServiceRetriever.class,
 				Time.class,
 				Executor.class);
@@ -166,6 +172,40 @@ public final class WebMonitorUtils {
 		} catch (Throwable t) {
 			LOG.error("Failed to instantiate web runtime monitor.", t);
 			return null;
+		}
+	}
+
+	/**
+	 * Checks whether the flink-runtime-web dependency is available and if so returns a
+	 * StaticFileServerHandler which can serve the static file contents.
+	 *
+	 * @param leaderRetriever to be used by the StaticFileServerHandler
+	 * @param restAddressFuture of the underlying REST server endpoint
+	 * @param timeout for lookup requests
+	 * @param tmpDir to be used by the StaticFileServerHandler to store temporary files
+	 * @param <T> type of the gateway to retrieve
+	 * @return StaticFileServerHandler if flink-runtime-web is in the classpath; Otherwise Optional.empty
+	 * @throws IOException if we cannot create the StaticFileServerHandler
+	 */
+	public static <T extends RestfulGateway> Optional<StaticFileServerHandler<T>> tryLoadWebContent(
+			GatewayRetriever<T> leaderRetriever,
+			CompletableFuture<String> restAddressFuture,
+			Time timeout,
+			File tmpDir) throws IOException {
+
+		// 1. Check if flink-runtime-web is in the classpath
+		try {
+			final String classname = "org.apache.flink.runtime.webmonitor.WebRuntimeMonitor";
+			Class.forName(classname).asSubclass(WebMonitor.class);
+
+			return Optional.of(new StaticFileServerHandler<>(
+				leaderRetriever,
+				restAddressFuture,
+				timeout,
+				tmpDir));
+		} catch (ClassNotFoundException ignored) {
+			// class not found means that there is no flink-runtime-web in the classpath
+			return Optional.empty();
 		}
 	}
 
@@ -213,6 +253,7 @@ public final class WebMonitorUtils {
 
 		long started = job.getStatusTimestamp(JobStatus.CREATED);
 		long finished = status.isGloballyTerminalState() ? job.getStatusTimestamp(status) : -1L;
+		long duration = (finished >= 0L ? finished : System.currentTimeMillis()) - started;
 
 		int[] countsPerStatus = new int[ExecutionState.values().length];
 		long lastChanged = 0;
@@ -231,9 +272,16 @@ public final class WebMonitorUtils {
 
 		lastChanged = Math.max(lastChanged, finished);
 
-		return new JobDetails(job.getJobID(), job.getJobName(),
-				started, finished, status, lastChanged,
-				countsPerStatus, numTotalTasks);
+		return new JobDetails(
+			job.getJobID(),
+			job.getJobName(),
+			started,
+			finished,
+			duration,
+			status,
+			lastChanged,
+			countsPerStatus,
+			numTotalTasks);
 	}
 
 	/**

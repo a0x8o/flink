@@ -38,6 +38,9 @@ import org.apache.flink.runtime.jobmaster.JobManagerServices;
 import org.apache.flink.runtime.leaderelection.LeaderContender;
 import org.apache.flink.runtime.leaderelection.LeaderElectionService;
 import org.apache.flink.runtime.messages.Acknowledge;
+import org.apache.flink.runtime.messages.webmonitor.JobDetails;
+import org.apache.flink.runtime.messages.webmonitor.MultipleJobsDetails;
+import org.apache.flink.runtime.messages.webmonitor.StatusOverview;
 import org.apache.flink.runtime.metrics.MetricRegistry;
 import org.apache.flink.runtime.rpc.FatalErrorHandler;
 import org.apache.flink.runtime.rpc.FencedRpcEndpoint;
@@ -48,9 +51,11 @@ import org.apache.flink.util.FlinkException;
 import org.apache.flink.util.Preconditions;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
@@ -80,6 +85,8 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> impleme
 
 	private final LeaderElectionService leaderElectionService;
 
+	private final CompletableFuture<String> restAddressFuture;
+
 	protected Dispatcher(
 			RpcService rpcService,
 			String endpointId,
@@ -88,8 +95,9 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> impleme
 			BlobServer blobServer,
 			HeartbeatServices heartbeatServices,
 			MetricRegistry metricRegistry,
-			FatalErrorHandler fatalErrorHandler) throws Exception {
-		super(rpcService, endpointId, DispatcherId.generate());
+			FatalErrorHandler fatalErrorHandler,
+			Optional<String> restAddress) throws Exception {
+		super(rpcService, endpointId);
 
 		this.configuration = Preconditions.checkNotNull(configuration);
 		this.highAvailabilityServices = Preconditions.checkNotNull(highAvailabilityServices);
@@ -106,6 +114,10 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> impleme
 		jobManagerRunners = new HashMap<>(16);
 
 		leaderElectionService = highAvailabilityServices.getDispatcherLeaderElectionService();
+		this.restAddressFuture = restAddress
+			.map(CompletableFuture::completedFuture)
+			.orElse(FutureUtils.completedExceptionally(new DispatcherException("The Dispatcher has not been started with a REST endpoint.")));
+
 	}
 
 	//------------------------------------------------------
@@ -226,8 +238,43 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> impleme
 
 	@Override
 	public CompletableFuture<Collection<JobID>> listJobs(Time timeout) {
-		// TODO: return proper list of running jobs
 		return CompletableFuture.completedFuture(jobManagerRunners.keySet());
+	}
+
+	@Override
+	public CompletableFuture<String> requestRestAddress(Time timeout) {
+		return restAddressFuture;
+	}
+
+	@Override
+	public CompletableFuture<StatusOverview> requestStatusOverview(Time timeout) {
+		// TODO: Implement proper cluster overview generation
+		return CompletableFuture.completedFuture(
+			new StatusOverview(
+				42,
+				1337,
+				1337,
+				5,
+				6,
+				7,
+				8));
+	}
+
+	@Override
+	public CompletableFuture<MultipleJobsDetails> requestJobDetails(Time timeout) {
+		final int numberJobsRunning = jobManagerRunners.size();
+
+		ArrayList<CompletableFuture<JobDetails>> individualJobDetails = new ArrayList<>(numberJobsRunning);
+
+		for (JobManagerRunner jobManagerRunner : jobManagerRunners.values()) {
+			individualJobDetails.add(jobManagerRunner.getJobManagerGateway().requestJobDetails(timeout));
+		}
+
+		CompletableFuture<Collection<JobDetails>> combinedJobDetails = FutureUtils.combineAll(individualJobDetails);
+
+		return combinedJobDetails.thenApply(
+			(Collection<JobDetails> jobDetails) ->
+				new MultipleJobsDetails(jobDetails, null));
 	}
 
 	/**
@@ -371,7 +418,8 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> impleme
 					log.warn("Could not properly clear the Dispatcher state while revoking leadership.", e);
 				}
 
-				setFencingToken(DispatcherId.generate());
+				// clear the fencing token indicating that we don't have the leadership right now
+				setFencingToken(null);
 			});
 	}
 
