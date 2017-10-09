@@ -18,8 +18,8 @@
 
 package org.apache.flink.runtime.io.network.netty;
 
-import org.apache.flink.core.memory.HeapMemorySegment;
 import org.apache.flink.core.memory.MemorySegment;
+import org.apache.flink.core.memory.MemorySegmentFactory;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferProvider;
 import org.apache.flink.runtime.io.network.netty.NettyMessage.BufferResponse;
@@ -239,7 +239,7 @@ public class PartitionRequestClientHandlerTest {
 	// ---------------------------------------------------------------------------------------------
 
 	private static Buffer createBuffer(boolean fill) {
-		MemorySegment segment = HeapMemorySegment.FACTORY.allocateUnpooledSegment(1024, null);
+		MemorySegment segment = MemorySegmentFactory.allocateUnpooledSegment(1024, null);
 		if (fill) {
 			for (int i = 0; i < 1024; i++) {
 				segment.put(i, (byte) i);
@@ -264,12 +264,10 @@ public class PartitionRequestClientHandlerTest {
 		// Skip general header bytes
 		serialized.readBytes(NettyMessage.HEADER_LENGTH);
 
-		BufferResponse deserialized = new BufferResponse();
-
 		// Deserialize the bytes again. We have to go this way, because we only partly deserialize
 		// the header of the response and wait for a buffer from the buffer pool to copy the payload
 		// data into.
-		deserialized.readFrom(serialized);
+		BufferResponse deserialized = BufferResponse.readFrom(serialized);
 
 		return deserialized;
 	}

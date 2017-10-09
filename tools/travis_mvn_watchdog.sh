@@ -301,6 +301,30 @@ check_shaded_artifacts() {
 		return 1
 	fi
 
+	FLINK_PYTHON=`cat allClasses | grep '^org/apache/flink/python' | wc -l`
+	if [ "$FLINK_PYTHON" != "0" ]; then
+		echo "=============================================================================="
+		echo "Detected that the Flink Python artifact is in the dist jar"
+		echo "=============================================================================="
+		return 1
+	fi
+
+	HADOOP=`cat allClasses | grep '^org/apache/hadoop' | wc -l`
+	if [ "$HADOOP" != "0" ]; then
+		echo "=============================================================================="
+		echo "Detected '$HADOOP' Hadoop classes in the dist jar"
+		echo "=============================================================================="
+		return 1
+	fi
+
+	MAPR=`cat allClasses | grep '^com/mapr' | wc -l`
+	if [ "$MAPR" != "0" ]; then
+		echo "=============================================================================="
+		echo "Detected '$MAPR' MapR classes in the dist jar"
+		echo "=============================================================================="
+		return 1
+	fi
+
 	return 0
 }
 

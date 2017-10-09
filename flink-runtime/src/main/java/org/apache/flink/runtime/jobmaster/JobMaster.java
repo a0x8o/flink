@@ -28,6 +28,7 @@ import org.apache.flink.core.io.InputSplit;
 import org.apache.flink.core.io.InputSplitAssigner;
 import org.apache.flink.metrics.MetricGroup;
 import org.apache.flink.metrics.groups.UnregisteredMetricsGroup;
+import org.apache.flink.runtime.StoppingException;
 import org.apache.flink.runtime.blob.BlobServer;
 import org.apache.flink.runtime.checkpoint.CheckpointCoordinator;
 import org.apache.flink.runtime.checkpoint.CheckpointMetrics;
@@ -39,6 +40,7 @@ import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.execution.librarycache.BlobLibraryCacheManager;
+import org.apache.flink.runtime.executiongraph.AccessExecutionGraph;
 import org.apache.flink.runtime.executiongraph.Execution;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.ExecutionGraph;
@@ -356,6 +358,24 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 	//----------------------------------------------------------------------------------------------
 	// RPC methods
 	//----------------------------------------------------------------------------------------------
+
+	@Override
+	public CompletableFuture<Acknowledge> cancel(Time timeout) {
+		executionGraph.cancel();
+
+		return CompletableFuture.completedFuture(Acknowledge.get());
+	}
+
+	@Override
+	public CompletableFuture<Acknowledge> stop(Time timeout) {
+		try {
+			executionGraph.stop();
+		} catch (StoppingException e) {
+			return FutureUtils.completedExceptionally(e);
+		}
+
+		return CompletableFuture.completedFuture(Acknowledge.get());
+	}
 
 	/**
 	 * Updates the task execution state for a given task.
@@ -723,6 +743,11 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 	@Override
 	public CompletableFuture<JobDetails> requestJobDetails(Time timeout) {
 		return CompletableFuture.supplyAsync(() -> WebMonitorUtils.createDetailsForJob(executionGraph), executor);
+	}
+
+	@Override
+	public CompletableFuture<AccessExecutionGraph> requestArchivedExecutionGraph(Time timeout) {
+		return CompletableFuture.completedFuture(executionGraph.archive());
 	}
 
 	//----------------------------------------------------------------------------------------------

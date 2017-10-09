@@ -46,7 +46,7 @@ import org.apache.flink.runtime.clusterframework.FlinkResourceManager
 import org.apache.flink.runtime.clusterframework.messages._
 import org.apache.flink.runtime.clusterframework.standalone.StandaloneResourceManager
 import org.apache.flink.runtime.clusterframework.types.ResourceID
-import org.apache.flink.runtime.concurrent.{FutureUtils, Executors => FlinkExecutors}
+import org.apache.flink.runtime.concurrent.{FutureUtils, ScheduledExecutorServiceAdapter, Executors => FlinkExecutors}
 import org.apache.flink.runtime.execution.SuppressRestartsException
 import org.apache.flink.runtime.execution.librarycache.FlinkUserCodeClassLoaders.ResolveOrder
 import org.apache.flink.runtime.execution.librarycache.{BlobLibraryCacheManager, LibraryCacheManager}
@@ -80,8 +80,7 @@ import org.apache.flink.runtime.process.ProcessReaper
 import org.apache.flink.runtime.query.KvStateMessage.{LookupKvStateLocation, NotifyKvStateRegistered, NotifyKvStateUnregistered}
 import org.apache.flink.runtime.query.{KvStateMessage, UnknownKvStateLocation}
 import org.apache.flink.runtime.rpc.akka.AkkaRpcServiceUtils
-import org.apache.flink.runtime.security.SecurityUtils
-import org.apache.flink.runtime.security.SecurityUtils.SecurityConfiguration
+import org.apache.flink.runtime.security.{SecurityConfiguration, SecurityUtils}
 import org.apache.flink.runtime.taskexecutor.TaskExecutor
 import org.apache.flink.runtime.taskmanager.TaskManager
 import org.apache.flink.runtime.util._
@@ -2233,7 +2232,7 @@ object JobManager {
           new AkkaJobManagerRetriever(jobManagerSystem, timeout, 10, Time.milliseconds(50L)),
           new AkkaQueryServiceRetriever(jobManagerSystem, timeout),
           timeout,
-          futureExecutor)
+          new ScheduledExecutorServiceAdapter(futureExecutor))
 
         Option(webServer)
       }
@@ -2387,7 +2386,7 @@ object JobManager {
     val configuration = GlobalConfiguration.loadConfiguration(configDir)
 
     try {
-      FileSystem.setDefaultScheme(configuration)
+      FileSystem.initialize(configuration)
     }
     catch {
       case e: IOException => {
@@ -2501,6 +2500,7 @@ object JobManager {
 
     try {
       blobServer = new BlobServer(configuration, blobStore)
+      blobServer.start()
       instanceManager = new InstanceManager()
       scheduler = new FlinkScheduler(ExecutionContext.fromExecutor(futureExecutor))
       libraryCacheManager =
