@@ -26,9 +26,15 @@ import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.heartbeat.HeartbeatServices;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.highavailability.TestingHighAvailabilityServices;
+<<<<<<< HEAD
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.jobmanager.OnCompletionActions;
 import org.apache.flink.runtime.jobmanager.StandaloneSubmittedJobGraphStore;
+=======
+import org.apache.flink.runtime.highavailability.nonha.standalone.StandaloneHaServices;
+import org.apache.flink.runtime.jobgraph.JobGraph;
+import org.apache.flink.runtime.jobmanager.OnCompletionActions;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.runtime.jobmanager.SubmittedJobGraphStore;
 import org.apache.flink.runtime.jobmaster.JobManagerRunner;
 import org.apache.flink.runtime.jobmaster.JobManagerServices;
@@ -87,12 +93,19 @@ public class DispatcherTest extends TestLogger {
 	@Test
 	public void testJobSubmission() throws Exception {
 		TestingFatalErrorHandler fatalErrorHandler = new TestingFatalErrorHandler();
+<<<<<<< HEAD
 
 		TestingLeaderElectionService dispatcherLeaderElectionService = new TestingLeaderElectionService();
 		TestingHighAvailabilityServices haServices = new TestingHighAvailabilityServices();
 		haServices.setDispatcherLeaderElectionService(dispatcherLeaderElectionService);
 		haServices.setSubmittedJobGraphStore(new StandaloneSubmittedJobGraphStore());
 
+=======
+		HighAvailabilityServices haServices = new StandaloneHaServices(
+			"localhost",
+			"localhost",
+			"localhost");
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		HeartbeatServices heartbeatServices = new HeartbeatServices(1000L, 10000L);
 		JobManagerRunner jobManagerRunner = mock(JobManagerRunner.class);
 
@@ -115,11 +128,14 @@ public class DispatcherTest extends TestLogger {
 		try {
 			dispatcher.start();
 
+<<<<<<< HEAD
 			CompletableFuture<UUID> leaderFuture = dispatcherLeaderElectionService.isLeader(UUID.randomUUID());
 
 			// wait for the leader to be elected
 			leaderFuture.get();
 
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			DispatcherGateway dispatcherGateway = dispatcher.getSelfGateway(DispatcherGateway.class);
 
 			CompletableFuture<Acknowledge> acknowledgeFuture = dispatcherGateway.submitJob(jobGraph, timeout);

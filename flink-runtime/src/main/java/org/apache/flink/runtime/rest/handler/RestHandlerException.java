@@ -18,13 +18,17 @@
 
 package org.apache.flink.runtime.rest.handler;
 
+<<<<<<< HEAD
 import org.apache.flink.util.FlinkException;
 
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpResponseStatus;
 
 /**
  * An exception that is thrown if the failure of a REST operation was detected by a handler.
  */
+<<<<<<< HEAD
 public class RestHandlerException extends FlinkException {
 	private static final long serialVersionUID = -1358206297964070876L;
 
@@ -38,6 +42,21 @@ public class RestHandlerException extends FlinkException {
 	public RestHandlerException(String errorMessage, HttpResponseStatus httpResponseStatus, Throwable cause) {
 		super(errorMessage, cause);
 		this.responseCode = httpResponseStatus.code();
+=======
+public class RestHandlerException extends Exception {
+	private static final long serialVersionUID = -1358206297964070876L;
+
+	private final String errorMessage;
+	private final int responseCode;
+
+	public RestHandlerException(String errorMessage, HttpResponseStatus httpResponseStatus) {
+		this.errorMessage = errorMessage;
+		this.responseCode = httpResponseStatus.code();
+	}
+
+	public String getErrorMessage() {
+		return errorMessage;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	}
 
 	public HttpResponseStatus getHttpResponseStatus() {

@@ -18,6 +18,7 @@
 
 package org.apache.flink.table.api.validation
 
+<<<<<<< HEAD
 import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.api.java.typeutils.RowTypeInfo
 import org.apache.flink.streaming.api.TimeCharacteristic
@@ -26,6 +27,10 @@ import org.apache.flink.table.api.{TableEnvironment, TableException, Types}
 import org.apache.flink.table.sources.CsvTableSource
 import org.apache.flink.table.utils.TestTableSourceWithTime
 import org.apache.flink.types.Row
+=======
+import org.apache.flink.table.api.Types
+import org.apache.flink.table.sources.CsvTableSource
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.junit.Test
 
 class TableSourceValidationTest {
@@ -54,6 +59,7 @@ class TableSourceValidationTest {
       // should fail, field can be empty
       .build()
   }
+<<<<<<< HEAD
 
   @Test(expected = classOf[TableException])
   def testNonExistingRowtimeField(): Unit = {
@@ -138,4 +144,6 @@ class TableSourceValidationTest {
     // should fail because configured proctime field is empty
     tEnv.registerTableSource("testTable", ts)
   }
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 }

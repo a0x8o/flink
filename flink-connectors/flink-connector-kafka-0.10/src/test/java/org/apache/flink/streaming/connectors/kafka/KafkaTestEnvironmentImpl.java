@@ -168,10 +168,14 @@ public class KafkaTestEnvironmentImpl extends KafkaTestEnvironment {
 
 	@Override
 	public <T> DataStreamSink<T> writeToKafkaWithTimestamps(DataStream<T> stream, String topic, KeyedSerializationSchema<T> serSchema, Properties props) {
+<<<<<<< HEAD
 		FlinkKafkaProducer010<T> prod = new FlinkKafkaProducer010<>(topic, serSchema, props);
 		prod.setFlushOnCheckpoint(true);
 		prod.setWriteTimestampToKafka(true);
 		return stream.addSink(prod);
+=======
+		return FlinkKafkaProducer010.writeToKafkaWithTimestamps(stream, topic, serSchema, props);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	}
 
 	@Override

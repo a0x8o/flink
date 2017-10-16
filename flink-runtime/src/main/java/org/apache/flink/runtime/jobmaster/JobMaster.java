@@ -28,7 +28,10 @@ import org.apache.flink.core.io.InputSplit;
 import org.apache.flink.core.io.InputSplitAssigner;
 import org.apache.flink.metrics.MetricGroup;
 import org.apache.flink.metrics.groups.UnregisteredMetricsGroup;
+<<<<<<< HEAD
 import org.apache.flink.runtime.StoppingException;
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.runtime.blob.BlobServer;
 import org.apache.flink.runtime.checkpoint.CheckpointCoordinator;
 import org.apache.flink.runtime.checkpoint.CheckpointMetrics;
@@ -318,6 +321,7 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 		super.start();
 
 		return callAsyncWithoutFencing(() -> startJobExecution(newJobMasterId), timeout);
+<<<<<<< HEAD
 	}
 
 	/**
@@ -377,6 +381,49 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 		return CompletableFuture.completedFuture(Acknowledge.get());
 	}
 
+=======
+	}
+
+	/**
+	 * Suspending job, all the running tasks will be cancelled, and communication with other components
+	 * will be disposed.
+	 *
+	 * <p>Mostly job is suspended because of the leadership has been revoked, one can be restart this job by
+	 * calling the {@link #start(JobMasterId, Time)} method once we take the leadership back again.
+	 *
+	 * <p>This method is executed asynchronously
+	 *
+	 * @param cause The reason of why this job been suspended.
+	 * @param timeout for this operation
+	 * @return Future acknowledge indicating that the job has been suspended. Otherwise the future contains an exception
+	 */
+	public CompletableFuture<Acknowledge> suspend(final Throwable cause, final Time timeout) {
+		CompletableFuture<Acknowledge> suspendFuture = callAsyncWithoutFencing(() -> suspendExecution(cause), timeout);
+
+		stop();
+
+		return suspendFuture;
+	}
+
+	/**
+	 * Suspend the job and shutdown all other services including rpc.
+	 */
+	@Override
+	public void postStop() throws Exception {
+		taskManagerHeartbeatManager.stop();
+		resourceManagerHeartbeatManager.stop();
+
+		// make sure there is a graceful exit
+		suspendExecution(new Exception("JobManager is shutting down."));
+
+		super.postStop();
+	}
+
+	//----------------------------------------------------------------------------------------------
+	// RPC methods
+	//----------------------------------------------------------------------------------------------
+
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	/**
 	 * Updates the task execution state for a given task.
 	 *
@@ -745,11 +792,14 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 		return CompletableFuture.supplyAsync(() -> WebMonitorUtils.createDetailsForJob(executionGraph), executor);
 	}
 
+<<<<<<< HEAD
 	@Override
 	public CompletableFuture<AccessExecutionGraph> requestArchivedExecutionGraph(Time timeout) {
 		return CompletableFuture.completedFuture(executionGraph.archive());
 	}
 
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	//----------------------------------------------------------------------------------------------
 	// Internal methods
 	//----------------------------------------------------------------------------------------------
@@ -758,6 +808,7 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 
 	private Acknowledge startJobExecution(JobMasterId newJobMasterId) throws Exception {
 		validateRunsInMainThread();
+<<<<<<< HEAD
 
 		Preconditions.checkNotNull(newJobMasterId, "The new JobMasterId must not be null.");
 
@@ -770,6 +821,20 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 		if (getFencingToken() != null) {
 			log.info("Restarting old job with JobMasterId {}. The new JobMasterId is {}.", getFencingToken(), newJobMasterId);
 
+=======
+
+		Preconditions.checkNotNull(newJobMasterId, "The new JobMasterId must not be null.");
+
+		if (Objects.equals(getFencingToken(), newJobMasterId)) {
+			log.info("Already started the job execution with JobMasterId {}.", newJobMasterId);
+
+			return Acknowledge.get();
+		}
+
+		if (getFencingToken() != null) {
+			log.info("Restarting old job with JobMasterId {}. The new JobMasterId is {}.", getFencingToken(), newJobMasterId);
+
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			// first we have to suspend the current execution
 			suspendExecution(new FlinkException("Old job with JobMasterId " + getFencingToken() +
 				" is restarted with a new JobMasterId " + newJobMasterId + '.'));
@@ -802,10 +867,17 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 			() -> {
 				try {
 					executionGraph.scheduleForExecution();
+<<<<<<< HEAD
 				}
 				catch (Throwable t) {
 					executionGraph.failGlobal(t);
 				}
+=======
+				}
+				catch (Throwable t) {
+					executionGraph.failGlobal(t);
+				}
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			});
 
 		return Acknowledge.get();

@@ -28,7 +28,10 @@ import org.apache.flink.runtime.instance.InstanceID;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.jobmaster.JobManagerGateway;
 import org.apache.flink.runtime.messages.Acknowledge;
+<<<<<<< HEAD
 import org.apache.flink.runtime.messages.FlinkJobNotFoundException;
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.runtime.messages.JobManagerMessages;
 import org.apache.flink.runtime.messages.webmonitor.JobsWithIDsOverview;
 import org.apache.flink.runtime.messages.webmonitor.MultipleJobsDetails;
@@ -227,7 +230,11 @@ public class AkkaJobManagerGateway implements JobManagerGateway {
 	}
 
 	@Override
+<<<<<<< HEAD
 	public CompletableFuture<AccessExecutionGraph> requestJob(JobID jobId, Time timeout) {
+=======
+	public CompletableFuture<Optional<AccessExecutionGraph>> requestJob(JobID jobId, Time timeout) {
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		CompletableFuture<JobManagerMessages.JobResponse> jobResponseFuture = FutureUtils.toJava(
 			jobManagerGateway
 				.ask(new JobManagerMessages.RequestJob(jobId), FutureUtils.toFiniteDuration(timeout))
@@ -236,9 +243,15 @@ public class AkkaJobManagerGateway implements JobManagerGateway {
 		return jobResponseFuture.thenApply(
 			(JobManagerMessages.JobResponse jobResponse) -> {
 				if (jobResponse instanceof JobManagerMessages.JobFound) {
+<<<<<<< HEAD
 					return ((JobManagerMessages.JobFound) jobResponse).executionGraph();
 				} else {
 					throw new CompletionException(new FlinkJobNotFoundException(jobId));
+=======
+					return Optional.of(((JobManagerMessages.JobFound) jobResponse).executionGraph());
+				} else {
+					return Optional.empty();
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 				}
 			});
 	}

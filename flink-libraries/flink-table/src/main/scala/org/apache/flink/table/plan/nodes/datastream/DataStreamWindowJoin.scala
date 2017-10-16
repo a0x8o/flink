@@ -23,20 +23,30 @@ import org.apache.calcite.rel.`type`.RelDataType
 import org.apache.calcite.rel.core.{JoinInfo, JoinRelType}
 import org.apache.calcite.rel.{BiRel, RelNode, RelWriter}
 import org.apache.calcite.rex.RexNode
+<<<<<<< HEAD
 import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.api.java.functions.NullByteKeySelector
 import org.apache.flink.api.java.tuple.Tuple
 import org.apache.flink.streaming.api.datastream.DataStream
 import org.apache.flink.streaming.api.functions.co.CoProcessFunction
+=======
+import org.apache.flink.api.java.functions.NullByteKeySelector
+import org.apache.flink.streaming.api.datastream.DataStream
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.table.api.{StreamQueryConfig, StreamTableEnvironment, TableException}
 import org.apache.flink.table.plan.nodes.CommonJoin
 import org.apache.flink.table.plan.schema.RowSchema
 import org.apache.flink.table.plan.util.UpdatingPlanChecker
+<<<<<<< HEAD
 import org.apache.flink.table.runtime.join.{ProcTimeBoundedStreamInnerJoin, RowTimeBoundedStreamInnerJoin, WindowJoinUtil}
 import org.apache.flink.table.runtime.operators.KeyedCoProcessOperatorWithWatermarkDelay
 import org.apache.flink.table.runtime.types.{CRow, CRowTypeInfo}
 import org.apache.flink.table.util.Logging
 import org.apache.flink.util.Collector
+=======
+import org.apache.flink.table.runtime.join.{ProcTimeWindowInnerJoin, WindowJoinUtil}
+import org.apache.flink.table.runtime.types.{CRow, CRowTypeInfo}
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 /**
   * RelNode for a time windowed stream join.
@@ -54,14 +64,21 @@ class DataStreamWindowJoin(
     isRowTime: Boolean,
     leftLowerBound: Long,
     leftUpperBound: Long,
+<<<<<<< HEAD
     leftTimeIdx: Int,
     rightTimeIdx: Int,
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
     remainCondition: Option[RexNode],
     ruleDescription: String)
   extends BiRel(cluster, traitSet, leftNode, rightNode)
     with CommonJoin
+<<<<<<< HEAD
     with DataStreamRel
     with Logging {
+=======
+    with DataStreamRel {
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
   override def deriveRowType(): RelDataType = schema.relDataType
 
@@ -79,8 +96,11 @@ class DataStreamWindowJoin(
       isRowTime,
       leftLowerBound,
       leftUpperBound,
+<<<<<<< HEAD
       leftTimeIdx,
       rightTimeIdx,
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
       remainCondition,
       ruleDescription)
   }
@@ -118,12 +138,19 @@ class DataStreamWindowJoin(
     val leftDataStream = left.asInstanceOf[DataStreamRel].translateToPlan(tableEnv, queryConfig)
     val rightDataStream = right.asInstanceOf[DataStreamRel].translateToPlan(tableEnv, queryConfig)
 
+<<<<<<< HEAD
     // get the equi-keys and other conditions
     val joinInfo = JoinInfo.of(leftNode, rightNode, joinCondition)
     val leftKeys = joinInfo.leftKeys.toIntArray
     val rightKeys = joinInfo.rightKeys.toIntArray
     val relativeWindowSize = leftUpperBound - leftLowerBound
     val returnTypeInfo = CRowTypeInfo(schema.typeInfo)
+=======
+    // get the equality keys and other condition
+    val joinInfo = JoinInfo.of(leftNode, rightNode, joinCondition)
+    val leftKeys = joinInfo.leftKeys.toIntArray
+    val rightKeys = joinInfo.rightKeys.toIntArray
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
     // generate join function
     val joinFunction =
@@ -136,6 +163,7 @@ class DataStreamWindowJoin(
       remainCondition,
       ruleDescription)
 
+<<<<<<< HEAD
     val joinOpName =
       s"where: (" +
         s"${joinConditionToString(schema.relDataType, joinCondition, getExpressionString)}), " +
@@ -171,6 +199,24 @@ class DataStreamWindowJoin(
               rightKeys
             )
           }
+=======
+    joinType match {
+      case JoinRelType.INNER =>
+        if (isRowTime) {
+          // RowTime JoinCoProcessFunction
+          throw new TableException(
+            "RowTime inner join between stream and stream is not supported yet.")
+        } else {
+          // Proctime JoinCoProcessFunction
+          createProcTimeInnerJoinFunction(
+            leftDataStream,
+            rightDataStream,
+            joinFunction.name,
+            joinFunction.code,
+            leftKeys,
+            rightKeys
+          )
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
         }
       case JoinRelType.FULL =>
         throw new TableException(
@@ -184,6 +230,7 @@ class DataStreamWindowJoin(
     }
   }
 
+<<<<<<< HEAD
   def createEmptyInnerJoin(
       leftDataStream: DataStream[CRow],
       rightDataStream: DataStream[CRow],
@@ -210,12 +257,23 @@ class DataStreamWindowJoin(
       rightDataStream: DataStream[CRow],
       returnTypeInfo: TypeInformation[CRow],
       operatorName: String,
+=======
+  def createProcTimeInnerJoinFunction(
+      leftDataStream: DataStream[CRow],
+      rightDataStream: DataStream[CRow],
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
       joinFunctionName: String,
       joinFunctionCode: String,
       leftKeys: Array[Int],
       rightKeys: Array[Int]): DataStream[CRow] = {
 
+<<<<<<< HEAD
     val procInnerJoinFunc = new ProcTimeBoundedStreamInnerJoin(
+=======
+    val returnTypeInfo = CRowTypeInfo(schema.typeInfo)
+
+    val procInnerJoinFunc = new ProcTimeWindowInnerJoin(
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
       leftLowerBound,
       leftUpperBound,
       leftSchema.typeInfo,
@@ -227,7 +285,10 @@ class DataStreamWindowJoin(
       leftDataStream.connect(rightDataStream)
         .keyBy(leftKeys, rightKeys)
         .process(procInnerJoinFunc)
+<<<<<<< HEAD
         .name(operatorName)
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
         .returns(returnTypeInfo)
     } else {
       leftDataStream.connect(rightDataStream)
@@ -235,6 +296,7 @@ class DataStreamWindowJoin(
         .process(procInnerJoinFunc)
         .setParallelism(1)
         .setMaxParallelism(1)
+<<<<<<< HEAD
         .name(operatorName)
         .returns(returnTypeInfo)
     }
@@ -286,4 +348,9 @@ class DataStreamWindowJoin(
         .setMaxParallelism(1)
     }
   }
+=======
+        .returns(returnTypeInfo)
+    }
+  }
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 }

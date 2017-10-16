@@ -19,16 +19,27 @@
 package org.apache.flink.runtime.webmonitor.handlers;
 
 import org.apache.flink.api.common.time.Time;
+<<<<<<< HEAD
+=======
+import org.apache.flink.runtime.concurrent.FlinkFutureException;
+import org.apache.flink.runtime.concurrent.FutureUtils;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.runtime.jobmaster.JobManagerGateway;
 import org.apache.flink.runtime.messages.webmonitor.StatusOverview;
 import org.apache.flink.runtime.util.EnvironmentInformation;
+import org.apache.flink.util.FlinkException;
 
 import com.fasterxml.jackson.core.JsonGenerator;
 
+import java.io.IOException;
 import java.io.StringWriter;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+<<<<<<< HEAD
 import java.util.concurrent.TimeUnit;
+=======
+import java.util.concurrent.Executor;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
@@ -46,7 +57,12 @@ public class ClusterOverviewHandler extends AbstractJsonRequestHandler {
 
 	private final Time timeout;
 
+<<<<<<< HEAD
 	public ClusterOverviewHandler(Time timeout) {
+=======
+	public ClusterOverviewHandler(Executor executor, Time timeout) {
+		super(executor);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		this.timeout = checkNotNull(timeout);
 	}
 
@@ -56,12 +72,17 @@ public class ClusterOverviewHandler extends AbstractJsonRequestHandler {
 	}
 
 	@Override
+<<<<<<< HEAD
 	public String handleJsonRequest(Map<String, String> pathParams, Map<String, String> queryParams, JobManagerGateway jobManagerGateway) throws Exception {
+=======
+	public CompletableFuture<String> handleJsonRequest(Map<String, String> pathParams, Map<String, String> queryParams, JobManagerGateway jobManagerGateway) {
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		// we need no parameters, get all requests
 		try {
 			if (jobManagerGateway != null) {
 				CompletableFuture<StatusOverview> overviewFuture = jobManagerGateway.requestStatusOverview(timeout);
 
+<<<<<<< HEAD
 				StatusOverview overview = overviewFuture.get(timeout.toMilliseconds(), TimeUnit.MILLISECONDS);
 
 				StringWriter writer = new StringWriter();
@@ -83,12 +104,41 @@ public class ClusterOverviewHandler extends AbstractJsonRequestHandler {
 
 				gen.close();
 				return writer.toString();
+=======
+				return overviewFuture.thenApplyAsync(
+					(StatusOverview overview) -> {
+						StringWriter writer = new StringWriter();
+						try {
+							JsonGenerator gen = JsonFactory.JACKSON_FACTORY.createGenerator(writer);
+
+							gen.writeStartObject();
+							gen.writeNumberField("taskmanagers", overview.getNumTaskManagersConnected());
+							gen.writeNumberField("slots-total", overview.getNumSlotsTotal());
+							gen.writeNumberField("slots-available", overview.getNumSlotsAvailable());
+							gen.writeNumberField("jobs-running", overview.getNumJobsRunningOrPending());
+							gen.writeNumberField("jobs-finished", overview.getNumJobsFinished());
+							gen.writeNumberField("jobs-cancelled", overview.getNumJobsCancelled());
+							gen.writeNumberField("jobs-failed", overview.getNumJobsFailed());
+							gen.writeStringField("flink-version", version);
+							if (!commitID.equals(EnvironmentInformation.UNKNOWN)) {
+								gen.writeStringField("flink-commit", commitID);
+							}
+							gen.writeEndObject();
+
+							gen.close();
+							return writer.toString();
+						} catch (IOException exception) {
+							throw new FlinkFutureException("Could not write cluster overview.", exception);
+						}
+					},
+					executor);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			} else {
 				throw new Exception("No connection to the leading JobManager.");
 			}
 		}
 		catch (Exception e) {
-			throw new RuntimeException("Failed to fetch list of all running jobs: " + e.getMessage(), e);
+			return FutureUtils.completedExceptionally(new FlinkException("Failed to fetch list of all running jobs: ", e));
 		}
 	}
 }

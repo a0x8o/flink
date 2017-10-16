@@ -19,12 +19,20 @@
 package org.apache.flink.runtime.rest.handler.legacy.checkpoints;
 
 import org.apache.flink.runtime.executiongraph.AccessExecutionGraph;
+<<<<<<< HEAD
 import org.apache.flink.runtime.jobgraph.tasks.CheckpointCoordinatorConfiguration;
 import org.apache.flink.runtime.jobgraph.tasks.ExternalizedCheckpointSettings;
 import org.apache.flink.runtime.rest.handler.legacy.AbstractExecutionGraphRequestHandler;
 import org.apache.flink.runtime.rest.handler.legacy.ExecutionGraphCache;
 import org.apache.flink.runtime.rest.handler.legacy.JsonFactory;
 import org.apache.flink.runtime.rest.messages.checkpoints.CheckpointConfigInfo;
+=======
+import org.apache.flink.runtime.jobgraph.tasks.ExternalizedCheckpointSettings;
+import org.apache.flink.runtime.jobgraph.tasks.JobCheckpointingSettings;
+import org.apache.flink.runtime.rest.handler.legacy.AbstractExecutionGraphRequestHandler;
+import org.apache.flink.runtime.rest.handler.legacy.ExecutionGraphHolder;
+import org.apache.flink.runtime.rest.handler.legacy.JsonFactory;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.runtime.webmonitor.history.ArchivedJson;
 import org.apache.flink.runtime.webmonitor.history.JsonArchivist;
 import org.apache.flink.util.FlinkException;
@@ -47,7 +55,11 @@ public class CheckpointConfigHandler extends AbstractExecutionGraphRequestHandle
 
 	private static final String CHECKPOINT_CONFIG_REST_PATH = "/jobs/:jobid/checkpoints/config";
 
+<<<<<<< HEAD
 	public CheckpointConfigHandler(ExecutionGraphCache executionGraphHolder, Executor executor) {
+=======
+	public CheckpointConfigHandler(ExecutionGraphHolder executionGraphHolder, Executor executor) {
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		super(executionGraphHolder, executor);
 	}
 
@@ -86,14 +98,21 @@ public class CheckpointConfigHandler extends AbstractExecutionGraphRequestHandle
 	private static String createCheckpointConfigJson(AccessExecutionGraph graph) throws IOException {
 		StringWriter writer = new StringWriter();
 		JsonGenerator gen = JsonFactory.JACKSON_FACTORY.createGenerator(writer);
+<<<<<<< HEAD
 		CheckpointCoordinatorConfiguration jobCheckpointingConfiguration = graph.getCheckpointCoordinatorConfiguration();
 
 		if (jobCheckpointingConfiguration == null) {
+=======
+		JobCheckpointingSettings settings = graph.getJobCheckpointingSettings();
+
+		if (settings == null) {
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			return "{}";
 		}
 
 		gen.writeStartObject();
 		{
+<<<<<<< HEAD
 			gen.writeStringField(CheckpointConfigInfo.FIELD_NAME_PROCESSING_MODE, jobCheckpointingConfiguration.isExactlyOnce() ? "exactly_once" : "at_least_once");
 			gen.writeNumberField(CheckpointConfigInfo.FIELD_NAME_CHECKPOINT_INTERVAL, jobCheckpointingConfiguration.getCheckpointInterval());
 			gen.writeNumberField(CheckpointConfigInfo.FIELD_NAME_CHECKPOINT_TIMEOUT, jobCheckpointingConfiguration.getCheckpointTimeout());
@@ -108,6 +127,22 @@ public class CheckpointConfigHandler extends AbstractExecutionGraphRequestHandle
 					gen.writeBooleanField(CheckpointConfigInfo.ExternalizedCheckpointInfo.FIELD_NAME_DELETE_ON_CANCELLATION, externalization.deleteOnCancellation());
 				} else {
 					gen.writeBooleanField(CheckpointConfigInfo.ExternalizedCheckpointInfo.FIELD_NAME_ENABLED, false);
+=======
+			gen.writeStringField("mode", settings.isExactlyOnce() ? "exactly_once" : "at_least_once");
+			gen.writeNumberField("interval", settings.getCheckpointInterval());
+			gen.writeNumberField("timeout", settings.getCheckpointTimeout());
+			gen.writeNumberField("min_pause", settings.getMinPauseBetweenCheckpoints());
+			gen.writeNumberField("max_concurrent", settings.getMaxConcurrentCheckpoints());
+
+			ExternalizedCheckpointSettings externalization = settings.getExternalizedCheckpointSettings();
+			gen.writeObjectFieldStart("externalization");
+			{
+				if (externalization.externalizeCheckpoints()) {
+					gen.writeBooleanField("enabled", true);
+					gen.writeBooleanField("delete_on_cancellation", externalization.deleteOnCancellation());
+				} else {
+					gen.writeBooleanField("enabled", false);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 				}
 			}
 			gen.writeEndObject();

@@ -26,7 +26,10 @@ import org.apache.flink.runtime.blob.BlobServer;
 import org.apache.flink.runtime.client.JobSubmissionException;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.concurrent.FutureUtils;
+<<<<<<< HEAD
 import org.apache.flink.runtime.executiongraph.AccessExecutionGraph;
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.runtime.heartbeat.HeartbeatServices;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.highavailability.RunningJobsRegistry;
@@ -39,7 +42,10 @@ import org.apache.flink.runtime.jobmaster.JobManagerServices;
 import org.apache.flink.runtime.leaderelection.LeaderContender;
 import org.apache.flink.runtime.leaderelection.LeaderElectionService;
 import org.apache.flink.runtime.messages.Acknowledge;
+<<<<<<< HEAD
 import org.apache.flink.runtime.messages.FlinkJobNotFoundException;
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.runtime.messages.webmonitor.JobDetails;
 import org.apache.flink.runtime.messages.webmonitor.MultipleJobsDetails;
 import org.apache.flink.runtime.messages.webmonitor.StatusOverview;
@@ -244,6 +250,7 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> impleme
 	}
 
 	@Override
+<<<<<<< HEAD
 	public CompletableFuture<Acknowledge> cancelJob(JobID jobId, Time timeout) {
 		JobManagerRunner jobManagerRunner = jobManagerRunners.get(jobId);
 
@@ -266,6 +273,8 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> impleme
 	}
 
 	@Override
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	public CompletableFuture<String> requestRestAddress(Time timeout) {
 		return restAddressFuture;
 	}
@@ -285,7 +294,11 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> impleme
 	}
 
 	@Override
+<<<<<<< HEAD
 	public CompletableFuture<MultipleJobsDetails> requestJobDetails(boolean includeRunning, boolean includeFinished, Time timeout) {
+=======
+	public CompletableFuture<MultipleJobsDetails> requestJobDetails(Time timeout) {
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		final int numberJobsRunning = jobManagerRunners.size();
 
 		ArrayList<CompletableFuture<JobDetails>> individualJobDetails = new ArrayList<>(numberJobsRunning);
@@ -301,6 +314,7 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> impleme
 				new MultipleJobsDetails(jobDetails, null));
 	}
 
+<<<<<<< HEAD
 	@Override
 	public CompletableFuture<AccessExecutionGraph> requestJob(JobID jobId, Time timeout) {
 		final JobManagerRunner jobManagerRunner = jobManagerRunners.get(jobId);
@@ -317,6 +331,8 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> impleme
 		return CompletableFuture.completedFuture(jobManagerServices.blobServer.getPort());
 	}
 
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	/**
 	 * Cleans up the job related data from the dispatcher. If cleanupHA is true, then
 	 * the data will also be removed from HA.

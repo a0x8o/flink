@@ -26,6 +26,8 @@ import org.apache.flink.runtime.io.network.buffer.BufferRecycler;
 
 import org.apache.flink.shaded.guava18.com.google.common.collect.Queues;
 
+import org.apache.flink.shaded.guava18.com.google.common.collect.Queues;
+
 import java.io.IOException;
 import java.util.Queue;
 import java.util.concurrent.ArrayBlockingQueue;

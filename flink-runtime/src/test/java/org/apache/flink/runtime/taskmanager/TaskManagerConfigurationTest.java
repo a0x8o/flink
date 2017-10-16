@@ -29,7 +29,10 @@ import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.runtime.concurrent.Executors;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServicesUtils;
+<<<<<<< HEAD
 import org.apache.flink.util.IOUtils;
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.junit.Rule;
 import org.junit.Test;
 
@@ -162,11 +165,24 @@ public class TaskManagerConfigurationTest {
 			String[] args = new String[] {"--configDir:" + tmpDir};
 			TaskManager.parseArgsAndLoadConfig(args);
 
+<<<<<<< HEAD
 			assertEquals(defaultFS, FileSystem.getDefaultFsUri());
 		}
 		finally {
 			// reset FS settings
 			FileSystem.initialize(new Configuration());
+=======
+			Field f = FileSystem.class.getDeclaredField("defaultScheme");
+			f.setAccessible(true);
+			URI scheme = (URI) f.get(null);
+
+			assertEquals("Default Filesystem Scheme not configured.", scheme, defaultFS);
+		} finally {
+			// reset default FS scheme:
+			Field f = FileSystem.class.getDeclaredField("defaultScheme");
+			f.setAccessible(true);
+			f.set(null, null);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		}
 	}
 

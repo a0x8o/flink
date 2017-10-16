@@ -29,6 +29,7 @@ public class Kafka08ProducerITCase extends KafkaProducerTestBase {
 	}
 
 	@Override
+<<<<<<< HEAD
 	public void testExactlyOnceCustomOperator() throws Exception {
 		// Kafka08 does not support exactly once semantic
 	}
@@ -39,6 +40,13 @@ public class Kafka08ProducerITCase extends KafkaProducerTestBase {
 	}
 
 	@Override
+=======
+	public void testOneToOneAtLeastOnceRegularSink() throws Exception {
+		// TODO: enable this for Kafka 0.8 - now it hangs indefinitely
+	}
+
+	@Override
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	public void testOneToOneAtLeastOnceCustomOperator() throws Exception {
 		// Disable this test since FlinkKafka08Producer doesn't support custom operator mode
 	}

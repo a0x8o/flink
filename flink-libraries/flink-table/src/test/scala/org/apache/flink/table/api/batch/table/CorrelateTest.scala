@@ -21,6 +21,10 @@ package org.apache.flink.table.api.batch.table
 import org.apache.flink.api.scala._
 import org.apache.flink.table.api.scala._
 import org.apache.flink.table.utils.TableTestUtil._
+<<<<<<< HEAD
+=======
+import org.apache.flink.table.runtime.utils._
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.table.utils.{TableFunc1, TableTestBase}
 import org.junit.Test
 
@@ -40,8 +44,12 @@ class CorrelateTest extends TableTestBase {
         "DataSetCorrelate",
         batchTableNode(0),
         term("invocation", s"${function.functionIdentifier}($$2)"),
+<<<<<<< HEAD
         term("correlate", s"table(${function.getClass.getSimpleName}(c))"),
         term("select", "a", "b", "c", "s"),
+=======
+        term("function", function),
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
         term("rowType",
              "RecordType(INTEGER a, BIGINT b, VARCHAR(65536) c, VARCHAR(65536) s)"),
         term("joinType", "INNER")
@@ -61,8 +69,12 @@ class CorrelateTest extends TableTestBase {
         "DataSetCorrelate",
         batchTableNode(0),
         term("invocation", s"${function.functionIdentifier}($$2, '$$')"),
+<<<<<<< HEAD
         term("correlate", s"table(${function.getClass.getSimpleName}(c, '$$'))"),
         term("select", "a", "b", "c", "s"),
+=======
+        term("function", function),
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
         term("rowType",
              "RecordType(INTEGER a, BIGINT b, VARCHAR(65536) c, VARCHAR(65536) s)"),
         term("joinType", "INNER")
@@ -87,8 +99,12 @@ class CorrelateTest extends TableTestBase {
         "DataSetCorrelate",
         batchTableNode(0),
         term("invocation", s"${function.functionIdentifier}($$2)"),
+<<<<<<< HEAD
         term("correlate", s"table(${function.getClass.getSimpleName}(c))"),
         term("select", "a", "b", "c", "s"),
+=======
+        term("function", function),
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
         term("rowType",
           "RecordType(INTEGER a, BIGINT b, VARCHAR(65536) c, VARCHAR(65536) s)"),
         term("joinType", "LEFT")

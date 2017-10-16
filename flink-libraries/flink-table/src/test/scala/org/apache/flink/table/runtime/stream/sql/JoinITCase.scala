@@ -19,22 +19,33 @@
 package org.apache.flink.table.runtime.stream.sql
 
 import org.apache.flink.api.scala._
+<<<<<<< HEAD
 import org.apache.flink.streaming.api.TimeCharacteristic
 import org.apache.flink.streaming.api.functions.AssignerWithPunctuatedWatermarks
 import org.apache.flink.streaming.api.scala.StreamExecutionEnvironment
 import org.apache.flink.streaming.api.watermark.Watermark
+=======
+import org.apache.flink.streaming.api.scala.StreamExecutionEnvironment
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.table.api.TableEnvironment
 import org.apache.flink.table.api.scala._
 import org.apache.flink.table.runtime.utils.{StreamITCase, StreamingWithStateTestBase}
 import org.apache.flink.types.Row
+<<<<<<< HEAD
 import org.hamcrest.CoreMatchers
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.junit._
 
 import scala.collection.mutable
 
 class JoinITCase extends StreamingWithStateTestBase {
 
+<<<<<<< HEAD
   /** test proctime inner join **/
+=======
+  /** test process time inner join **/
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
   @Test
   def testProcessTimeInnerJoin(): Unit = {
     val env = StreamExecutionEnvironment.getExecutionEnvironment
@@ -43,6 +54,7 @@ class JoinITCase extends StreamingWithStateTestBase {
     StreamITCase.clear
     env.setParallelism(1)
 
+<<<<<<< HEAD
     val sqlQuery =
       """
         |SELECT t2.a, t2.c, t1.c
@@ -51,6 +63,10 @@ class JoinITCase extends StreamingWithStateTestBase {
         |  t1.proctime BETWEEN t2.proctime - INTERVAL '5' SECOND AND
         |    t2.proctime + INTERVAL '5' SECOND
         |""".stripMargin
+=======
+    val sqlQuery = "SELECT t2.a, t2.c, t1.c from T1 as t1 join T2 as t2 on t1.a = t2.a and " +
+      "t1.proctime between t2.proctime - interval '5' second and t2.proctime + interval '5' second"
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
     val data1 = new mutable.MutableList[(Int, Long, String)]
     data1.+=((1, 1L, "Hi1"))
@@ -75,13 +91,20 @@ class JoinITCase extends StreamingWithStateTestBase {
     env.execute()
   }
 
+<<<<<<< HEAD
   /** test proctime inner join with other condition **/
   @Test
   def testProcessTimeInnerJoinWithOtherConditions(): Unit = {
+=======
+  /** test process time inner join with other condition **/
+  @Test
+  def testProcessTimeInnerJoinWithOtherCondition(): Unit = {
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
     val env = StreamExecutionEnvironment.getExecutionEnvironment
     val tEnv = TableEnvironment.getTableEnvironment(env)
     env.setStateBackend(getStateBackend)
     StreamITCase.clear
+<<<<<<< HEAD
     env.setParallelism(2)
 
     val sqlQuery =
@@ -93,6 +116,14 @@ class JoinITCase extends StreamingWithStateTestBase {
        |    t2.proctime + interval '5' second AND
        |  t1.b = t2.b
        |""".stripMargin
+=======
+    env.setParallelism(1)
+
+    val sqlQuery = "SELECT t2.a, t2.c, t1.c from T1 as t1 join T2 as t2 on t1.a = t2.a and " +
+      "t1.proctime between t2.proctime - interval '5' second " +
+      "and t2.proctime + interval '5' second " +
+      "and t1.b > t2.b and t1.b + t2.b < 14"
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
     val data1 = new mutable.MutableList[(String, Long, String)]
     data1.+=(("1", 1L, "Hi1"))
@@ -106,10 +137,13 @@ class JoinITCase extends StreamingWithStateTestBase {
     data2.+=(("1", 5L, "HiHi"))
     data2.+=(("2", 2L, "HeHe"))
 
+<<<<<<< HEAD
     // For null key test
     data1.+=((null.asInstanceOf[String], 20L, "leftNull"))
     data2.+=((null.asInstanceOf[String], 20L, "rightNull"))
 
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
     val t1 = env.fromCollection(data1).toTable(tEnv, 'a, 'b, 'c, 'proctime.proctime)
     val t2 = env.fromCollection(data2).toTable(tEnv, 'a, 'b, 'c, 'proctime.proctime)
 
@@ -119,6 +153,7 @@ class JoinITCase extends StreamingWithStateTestBase {
     val result = tEnv.sqlQuery(sqlQuery).toAppendStream[Row]
     result.addSink(new StreamITCase.StringSink[Row])
     env.execute()
+<<<<<<< HEAD
 
     // Assert there is no result with null keys.
     Assert.assertFalse(StreamITCase.testResults.toString().contains("null"))
@@ -363,10 +398,13 @@ class JoinITCase extends StreamingWithStateTestBase {
     expected.add("A,1970-01-01 00:00:12.0,3")
     expected.add("B,1970-01-01 00:00:08.0,1")
     StreamITCase.compareWithList(expected)
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
   }
 
 }
 
+<<<<<<< HEAD
 private class Row4WatermarkExtractor
   extends AssignerWithPunctuatedWatermarks[(Int, Long, String, Long)] {
 
@@ -398,3 +436,5 @@ private class Row3WatermarkExtractor2
     element._3
   }
 }
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d

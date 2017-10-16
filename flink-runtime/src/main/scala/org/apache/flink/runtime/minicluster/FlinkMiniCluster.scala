@@ -32,7 +32,11 @@ import org.apache.flink.configuration._
 import org.apache.flink.core.fs.Path
 import org.apache.flink.runtime.akka.{AkkaJobManagerGateway, AkkaUtils}
 import org.apache.flink.runtime.client.{JobClient, JobExecutionException}
+<<<<<<< HEAD
 import org.apache.flink.runtime.concurrent.{FutureUtils, ScheduledExecutorServiceAdapter, Executors => FlinkExecutors}
+=======
+import org.apache.flink.runtime.concurrent.{FutureUtils, Executors => FlinkExecutors}
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.runtime.execution.librarycache.FlinkUserCodeClassLoaders
 import org.apache.flink.runtime.highavailability.{HighAvailabilityServices, HighAvailabilityServicesUtils}
 import org.apache.flink.runtime.instance.{ActorGateway, AkkaActorGateway}
@@ -406,7 +410,11 @@ abstract class FlinkMiniCluster(
           new AkkaJobManagerRetriever(actorSystem, flinkTimeout, 10, Time.milliseconds(50L)),
           new AkkaQueryServiceRetriever(actorSystem, flinkTimeout),
           flinkTimeout,
+<<<<<<< HEAD
           new ScheduledExecutorServiceAdapter(futureExecutor))
+=======
+          actorSystem.dispatcher)
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
       )
 
       webServer.foreach(_.start())

@@ -19,8 +19,13 @@
 package org.apache.flink.runtime.execution.librarycache;
 
 import org.apache.flink.api.common.JobID;
+<<<<<<< HEAD
 import org.apache.flink.runtime.blob.PermanentBlobKey;
 import org.apache.flink.runtime.blob.PermanentBlobService;
+=======
+import org.apache.flink.runtime.blob.BlobKey;
+import org.apache.flink.runtime.blob.BlobService;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.util.ExceptionUtils;
 
@@ -45,7 +50,11 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
  * Provides facilities to download a set of libraries (typically JAR files) for a job from a
+<<<<<<< HEAD
  * {@link PermanentBlobService} and create a class loader with references to them.
+=======
+ * {@link BlobService} and create a class loader with references to them.
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
  */
 public class BlobLibraryCacheManager implements LibraryCacheManager {
 
@@ -62,21 +71,34 @@ public class BlobLibraryCacheManager implements LibraryCacheManager {
 	private final Map<JobID, LibraryCacheEntry> cacheEntries = new HashMap<>();
 
 	/** The blob service to download libraries */
+<<<<<<< HEAD
 	private final PermanentBlobService blobService;
+=======
+	private final BlobService blobService;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 	/** The resolve order to use when creating a {@link ClassLoader}. */
 	private final FlinkUserCodeClassLoaders.ResolveOrder classLoaderResolveOrder;
 
 	// --------------------------------------------------------------------------------------------
 
+<<<<<<< HEAD
 	public BlobLibraryCacheManager(PermanentBlobService blobService,
+=======
+	public BlobLibraryCacheManager(
+			BlobService blobService,
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			FlinkUserCodeClassLoaders.ResolveOrder classLoaderResolveOrder) {
 		this.blobService = checkNotNull(blobService);
 		this.classLoaderResolveOrder = checkNotNull(classLoaderResolveOrder);
 	}
 
 	@Override
+<<<<<<< HEAD
 	public void registerJob(JobID id, Collection<PermanentBlobKey> requiredJarFiles, Collection<URL> requiredClasspaths)
+=======
+	public void registerJob(JobID id, Collection<BlobKey> requiredJarFiles, Collection<URL> requiredClasspaths)
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		throws IOException {
 		registerTask(id, JOB_ATTEMPT_ID, requiredJarFiles, requiredClasspaths);
 	}
@@ -85,7 +107,11 @@ public class BlobLibraryCacheManager implements LibraryCacheManager {
 	public void registerTask(
 		JobID jobId,
 		ExecutionAttemptID task,
+<<<<<<< HEAD
 		@Nullable Collection<PermanentBlobKey> requiredJarFiles,
+=======
+		@Nullable Collection<BlobKey> requiredJarFiles,
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		@Nullable Collection<URL> requiredClasspaths) throws IOException {
 
 		checkNotNull(jobId, "The JobId must not be null.");
@@ -106,7 +132,11 @@ public class BlobLibraryCacheManager implements LibraryCacheManager {
 				int count = 0;
 				try {
 					// add URLs to locally cached JAR files
+<<<<<<< HEAD
 					for (PermanentBlobKey key : requiredJarFiles) {
+=======
+					for (BlobKey key : requiredJarFiles) {
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 						urls[count] = blobService.getFile(jobId, key).toURI().toURL();
 						++count;
 					}
@@ -170,9 +200,15 @@ public class BlobLibraryCacheManager implements LibraryCacheManager {
 
 	/**
 	 * Gets the number of tasks holding {@link ClassLoader} references for the given job.
+<<<<<<< HEAD
 	 *
 	 * @param jobId ID of a job
 	 *
+=======
+	 *
+	 * @param jobId ID of a job
+	 *
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	 * @return number of reference holders
 	 */
 	int getNumberOfReferenceHolders(JobID jobId) {
@@ -219,7 +255,11 @@ public class BlobLibraryCacheManager implements LibraryCacheManager {
 		 * <p>The purpose of this is to make sure, future registrations do not differ in content as
 		 * this is a contract of the {@link BlobLibraryCacheManager}.
 		 */
+<<<<<<< HEAD
 		private final Set<PermanentBlobKey> libraries;
+=======
+		private final Set<BlobKey> libraries;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 		/**
 		 * Set of class path URLs used for a previous job/task registration.
@@ -245,7 +285,11 @@ public class BlobLibraryCacheManager implements LibraryCacheManager {
 		 * 		reference holder ID
 		 */
 		LibraryCacheEntry(
+<<<<<<< HEAD
 				Collection<PermanentBlobKey> requiredLibraries,
+=======
+				Collection<BlobKey> requiredLibraries,
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 				Collection<URL> requiredClasspaths,
 				URL[] libraryURLs,
 				ExecutionAttemptID initialReference,
@@ -273,12 +317,20 @@ public class BlobLibraryCacheManager implements LibraryCacheManager {
 			return classLoader;
 		}
 
+<<<<<<< HEAD
 		public Set<PermanentBlobKey> getLibraries() {
+=======
+		public Set<BlobKey> getLibraries() {
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			return libraries;
 		}
 
 		public void register(
+<<<<<<< HEAD
 				ExecutionAttemptID task, Collection<PermanentBlobKey> requiredLibraries,
+=======
+				ExecutionAttemptID task, Collection<BlobKey> requiredLibraries,
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 				Collection<URL> requiredClasspaths) {
 
 			// Make sure the previous registration referred to the same libraries and class paths.

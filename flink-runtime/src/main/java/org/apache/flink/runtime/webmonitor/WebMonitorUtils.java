@@ -55,6 +55,10 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+<<<<<<< HEAD
+=======
+import java.util.concurrent.Executor;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 /**
  * Utilities for the web runtime monitor. This class contains for example methods to build
@@ -130,7 +134,11 @@ public final class WebMonitorUtils {
 	 * @param jobManagerRetriever which retrieves the currently leading JobManager
 	 * @param queryServiceRetriever which retrieves the query service
 	 * @param timeout for asynchronous operations
+<<<<<<< HEAD
 	 * @param scheduledExecutor to run asynchronous operations
+=======
+	 * @param executor to run asynchronous operations
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	 */
 	public static WebMonitor startWebRuntimeMonitor(
 			Configuration config,
@@ -138,7 +146,11 @@ public final class WebMonitorUtils {
 			LeaderGatewayRetriever<JobManagerGateway> jobManagerRetriever,
 			MetricQueryServiceRetriever queryServiceRetriever,
 			Time timeout,
+<<<<<<< HEAD
 			ScheduledExecutor scheduledExecutor) {
+=======
+			Executor executor) {
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		// try to load and instantiate the class
 		try {
 			String classname = "org.apache.flink.runtime.webmonitor.WebRuntimeMonitor";
@@ -147,6 +159,7 @@ public final class WebMonitorUtils {
 			Constructor<? extends WebMonitor> constructor = clazz.getConstructor(
 				Configuration.class,
 				LeaderRetrievalService.class,
+<<<<<<< HEAD
 				LeaderGatewayRetriever.class,
 				MetricQueryServiceRetriever.class,
 				Time.class,
@@ -158,6 +171,21 @@ public final class WebMonitorUtils {
 				queryServiceRetriever,
 				timeout,
 				scheduledExecutor);
+=======
+				BlobView.class,
+				LeaderGatewayRetriever.class,
+				MetricQueryServiceRetriever.class,
+				Time.class,
+				Executor.class);
+			return constructor.newInstance(
+				config,
+				highAvailabilityServices.getJobManagerLeaderRetriever(HighAvailabilityServices.DEFAULT_JOB_ID),
+				highAvailabilityServices.createBlobStore(),
+				jobManagerRetriever,
+				queryServiceRetriever,
+				timeout,
+				executor);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		} catch (ClassNotFoundException e) {
 			LOG.error("Could not load web runtime monitor. " +
 					"Probably reason: flink-runtime-web is not in the classpath");

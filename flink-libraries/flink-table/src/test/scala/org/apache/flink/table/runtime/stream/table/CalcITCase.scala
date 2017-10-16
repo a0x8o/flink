@@ -284,7 +284,11 @@ class CalcITCase extends StreamingMultipleProgramsTestBase {
     val func1 = new Func13("Sunny")
     val func2 = new Func13("kevin2")
 
+<<<<<<< HEAD
     val result = t.select(func0('c), func1('c), func2('c))
+=======
+    val result = t.select(func0('c), func1('c),func2('c))
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
     result.addSink(new StreamITCase.StringSink[Row])
     env.execute()

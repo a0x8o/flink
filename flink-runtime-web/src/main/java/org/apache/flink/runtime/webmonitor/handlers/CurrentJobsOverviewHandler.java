@@ -19,6 +19,11 @@
 package org.apache.flink.runtime.webmonitor.handlers;
 
 import org.apache.flink.api.common.time.Time;
+<<<<<<< HEAD
+=======
+import org.apache.flink.runtime.concurrent.FlinkFutureException;
+import org.apache.flink.runtime.concurrent.FutureUtils;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.executiongraph.AccessExecutionGraph;
 import org.apache.flink.runtime.jobmaster.JobManagerGateway;
@@ -36,7 +41,11 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+<<<<<<< HEAD
 import java.util.concurrent.TimeUnit;
+=======
+import java.util.concurrent.Executor;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
@@ -55,10 +64,15 @@ public class CurrentJobsOverviewHandler extends AbstractJsonRequestHandler {
 	private final boolean includeFinishedJobs;
 
 	public CurrentJobsOverviewHandler(
+<<<<<<< HEAD
+=======
+			Executor executor,
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			Time timeout,
 			boolean includeRunningJobs,
 			boolean includeFinishedJobs) {
 
+		super(executor);
 		this.timeout = checkNotNull(timeout);
 		this.includeRunningJobs = includeRunningJobs;
 		this.includeFinishedJobs = includeFinishedJobs;
@@ -77,6 +91,7 @@ public class CurrentJobsOverviewHandler extends AbstractJsonRequestHandler {
 	}
 
 	@Override
+<<<<<<< HEAD
 	public String handleJsonRequest(Map<String, String> pathParams, Map<String, String> queryParams, JobManagerGateway jobManagerGateway) throws Exception {
 		try {
 			if (jobManagerGateway != null) {
@@ -93,33 +108,52 @@ public class CurrentJobsOverviewHandler extends AbstractJsonRequestHandler {
 					gen.writeArrayFieldStart("running");
 					for (JobDetails detail : result.getRunningJobs()) {
 						writeJobDetailOverviewAsJson(detail, gen, now);
-					}
-					gen.writeEndArray();
+=======
+	public CompletableFuture<String> handleJsonRequest(Map<String, String> pathParams, Map<String, String> queryParams, JobManagerGateway jobManagerGateway) {
+		if (jobManagerGateway != null) {
+			CompletableFuture<MultipleJobsDetails> jobDetailsFuture = jobManagerGateway.requestJobDetails(includeRunningJobs, includeFinishedJobs, timeout);
 
-					gen.writeArrayFieldStart("finished");
-					for (JobDetails detail : result.getFinishedJobs()) {
-						writeJobDetailOverviewAsJson(detail, gen, now);
-					}
-					gen.writeEndArray();
-				}
-				else {
-					gen.writeArrayFieldStart("jobs");
-					for (JobDetails detail : includeRunningJobs ? result.getRunningJobs() : result.getFinishedJobs()) {
-						writeJobDetailOverviewAsJson(detail, gen, now);
-					}
-					gen.writeEndArray();
-				}
+			return jobDetailsFuture.thenApplyAsync(
+				(MultipleJobsDetails result) -> {
+					final long now = System.currentTimeMillis();
 
-				gen.writeEndObject();
-				gen.close();
-				return writer.toString();
-			}
-			else {
-				throw new Exception("No connection to the leading JobManager.");
-			}
+					StringWriter writer = new StringWriter();
+					try {
+						JsonGenerator gen = JsonFactory.JACKSON_FACTORY.createGenerator(writer);
+						gen.writeStartObject();
+
+						if (includeRunningJobs && includeFinishedJobs) {
+							gen.writeArrayFieldStart("running");
+							for (JobDetails detail : result.getRunningJobs()) {
+								writeJobDetailOverviewAsJson(detail, gen, now);
+							}
+							gen.writeEndArray();
+
+							gen.writeArrayFieldStart("finished");
+							for (JobDetails detail : result.getFinishedJobs()) {
+								writeJobDetailOverviewAsJson(detail, gen, now);
+							}
+							gen.writeEndArray();
+						} else {
+							gen.writeArrayFieldStart("jobs");
+							for (JobDetails detail : includeRunningJobs ? result.getRunningJobs() : result.getFinishedJobs()) {
+								writeJobDetailOverviewAsJson(detail, gen, now);
+							}
+							gen.writeEndArray();
+						}
+
+						gen.writeEndObject();
+						gen.close();
+						return writer.toString();
+					} catch (IOException e) {
+						throw new FlinkFutureException("Could not write current jobs overview json.", e);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
+					}
+				},
+				executor);
 		}
-		catch (Exception e) {
-			throw new Exception("Failed to fetch the status overview: " + e.getMessage(), e);
+		else {
+			return FutureUtils.completedExceptionally(new Exception("No connection to the leading JobManager."));
 		}
 	}
 

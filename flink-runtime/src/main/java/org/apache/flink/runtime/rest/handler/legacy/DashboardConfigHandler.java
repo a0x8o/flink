@@ -22,7 +22,11 @@ import org.apache.flink.runtime.dispatcher.DispatcherGateway;
 import org.apache.flink.runtime.jobmaster.JobManagerGateway;
 import org.apache.flink.runtime.rest.handler.HandlerRequest;
 import org.apache.flink.runtime.rest.handler.LegacyRestHandler;
+<<<<<<< HEAD
 import org.apache.flink.runtime.rest.messages.DashboardConfiguration;
+=======
+import org.apache.flink.runtime.rest.handler.legacy.messages.DashboardConfiguration;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.runtime.rest.messages.EmptyMessageParameters;
 import org.apache.flink.runtime.rest.messages.EmptyRequestBody;
 

@@ -40,7 +40,10 @@ import akka.actor.ActorSelection;
 import akka.actor.ActorSystem;
 import akka.actor.Address;
 import akka.actor.Identify;
+<<<<<<< HEAD
 import akka.actor.Kill;
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import akka.actor.Props;
 import akka.dispatch.Futures;
 import akka.dispatch.Mapper;
@@ -48,7 +51,10 @@ import akka.pattern.Patterns;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+<<<<<<< HEAD
 import javax.annotation.concurrent.GuardedBy;
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import javax.annotation.concurrent.ThreadSafe;
 
 import java.io.Serializable;
@@ -65,7 +71,10 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+<<<<<<< HEAD
 import java.util.concurrent.TimeoutException;
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import java.util.function.Function;
 
 import scala.Option;
@@ -129,8 +138,11 @@ public class AkkaRpcService implements RpcService {
 		}
 
 		internalScheduledExecutor = new ActorSystemScheduledExecutorAdapter(actorSystem);
+<<<<<<< HEAD
 
 		stopped = false;
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	}
 
 	@Override
@@ -161,7 +173,10 @@ public class AkkaRpcService implements RpcService {
 					actorRef,
 					timeout,
 					maximumFramesize,
+<<<<<<< HEAD
 					null,
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 					null);
 			});
 	}
@@ -182,7 +197,10 @@ public class AkkaRpcService implements RpcService {
 					timeout,
 					maximumFramesize,
 					null,
+<<<<<<< HEAD
 					null,
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 					() -> fencingToken);
 			});
 	}
@@ -191,6 +209,7 @@ public class AkkaRpcService implements RpcService {
 	public <C extends RpcEndpoint & RpcGateway> RpcServer startServer(C rpcEndpoint) {
 		checkNotNull(rpcEndpoint, "rpc endpoint");
 
+<<<<<<< HEAD
 		CompletableFuture<Boolean> terminationFuture = new CompletableFuture<>();
 		CompletableFuture<Void> internalTerminationFuture = new CompletableFuture<>();
 		final Props akkaRpcActorProps;
@@ -199,6 +218,15 @@ public class AkkaRpcService implements RpcService {
 			akkaRpcActorProps = Props.create(FencedAkkaRpcActor.class, rpcEndpoint, internalTerminationFuture);
 		} else {
 			akkaRpcActorProps = Props.create(AkkaRpcActor.class, rpcEndpoint, internalTerminationFuture);
+=======
+		CompletableFuture<Void> terminationFuture = new CompletableFuture<>();
+		final Props akkaRpcActorProps;
+
+		if (rpcEndpoint instanceof FencedRpcEndpoint) {
+			akkaRpcActorProps = Props.create(FencedAkkaRpcActor.class, rpcEndpoint, terminationFuture);
+		} else {
+			akkaRpcActorProps = Props.create(AkkaRpcActor.class, rpcEndpoint, terminationFuture);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		}
 
 		ActorRef actorRef;
@@ -223,32 +251,51 @@ public class AkkaRpcService implements RpcService {
 		Set<Class<?>> implementedRpcGateways = new HashSet<>(RpcUtils.extractImplementedRpcGateways(rpcEndpoint.getClass()));
 
 		implementedRpcGateways.add(RpcServer.class);
+<<<<<<< HEAD
 		implementedRpcGateways.add(AkkaBasedEndpoint.class);
+=======
+		implementedRpcGateways.add(AkkaGateway.class);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 		final InvocationHandler akkaInvocationHandler;
 
 		if (rpcEndpoint instanceof FencedRpcEndpoint) {
 			// a FencedRpcEndpoint needs a FencedAkkaInvocationHandler
 			akkaInvocationHandler = new FencedAkkaInvocationHandler<>(
+<<<<<<< HEAD
 				akkaAddress,
+=======
+				address,
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 				hostname,
 				actorRef,
 				timeout,
 				maximumFramesize,
 				terminationFuture,
+<<<<<<< HEAD
 				internalTerminationFuture,
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 				((FencedRpcEndpoint<?>) rpcEndpoint)::getFencingToken);
 
 			implementedRpcGateways.add(FencedMainThreadExecutable.class);
 		} else {
 			akkaInvocationHandler = new AkkaInvocationHandler(
+<<<<<<< HEAD
 				akkaAddress,
+=======
+				address,
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 				hostname,
 				actorRef,
 				timeout,
 				maximumFramesize,
+<<<<<<< HEAD
 				terminationFuture,
 				internalTerminationFuture);
+=======
+				terminationFuture);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		}
 
 		// Rather than using the System ClassLoader directly, we derive the ClassLoader
@@ -267,16 +314,27 @@ public class AkkaRpcService implements RpcService {
 
 	@Override
 	public <F extends Serializable> RpcServer fenceRpcServer(RpcServer rpcServer, F fencingToken) {
+<<<<<<< HEAD
 		if (rpcServer instanceof AkkaBasedEndpoint) {
+=======
+		if (rpcServer instanceof AkkaGateway) {
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 			InvocationHandler fencedInvocationHandler = new FencedAkkaInvocationHandler<>(
 				rpcServer.getAddress(),
 				rpcServer.getHostname(),
+<<<<<<< HEAD
 				((AkkaBasedEndpoint) rpcServer).getActorRef(),
 				timeout,
 				maximumFramesize,
 				null,
 				null,
+=======
+				((AkkaGateway) rpcServer).getRpcEndpoint(),
+				timeout,
+				maximumFramesize,
+				null,
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 				() -> fencingToken);
 
 			// Rather than using the System ClassLoader directly, we derive the ClassLoader
@@ -286,7 +344,11 @@ public class AkkaRpcService implements RpcService {
 
 			return (RpcServer) Proxy.newProxyInstance(
 				classLoader,
+<<<<<<< HEAD
 				new Class<?>[]{RpcServer.class, AkkaBasedEndpoint.class},
+=======
+				new Class<?>[]{RpcServer.class, AkkaGateway.class},
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 				fencedInvocationHandler);
 		} else {
 			throw new RuntimeException("The given RpcServer must implement the AkkaGateway in order to fence it.");
@@ -295,8 +357,13 @@ public class AkkaRpcService implements RpcService {
 
 	@Override
 	public void stopServer(RpcServer selfGateway) {
+<<<<<<< HEAD
 		if (selfGateway instanceof AkkaBasedEndpoint) {
 			AkkaBasedEndpoint akkaClient = (AkkaBasedEndpoint) selfGateway;
+=======
+		if (selfGateway instanceof AkkaGateway) {
+			AkkaGateway akkaClient = (AkkaGateway) selfGateway;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 			boolean fromThisService;
 			synchronized (lock) {
@@ -308,6 +375,7 @@ public class AkkaRpcService implements RpcService {
 			}
 
 			if (fromThisService) {
+<<<<<<< HEAD
 				ActorRef selfActorRef = akkaClient.getActorRef();
 				LOG.info("Trigger shut down of RPC endpoint {}.", selfGateway.getAddress());
 
@@ -333,6 +401,11 @@ public class AkkaRpcService implements RpcService {
 								selfGateway.getTerminationFuture().complete(null);
 							}
 						});
+=======
+				ActorRef selfActorRef = akkaClient.getRpcEndpoint();
+				LOG.info("Trigger shut down of RPC endpoint {}.", selfActorRef.path());
+				actorSystem.stop(selfActorRef);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			} else {
 				LOG.debug("RPC endpoint {} already stopped or from different RPC service", selfGateway.getAddress());
 			}
@@ -361,6 +434,7 @@ public class AkkaRpcService implements RpcService {
 
 		actorSystem.awaitTermination();
 
+<<<<<<< HEAD
 		// complete the termination futures of all actors
 		for (RpcEndpoint rpcEndpoint : actorsToTerminate) {
 			final CompletableFuture<Boolean> terminationFuture = rpcEndpoint.getTerminationFuture();
@@ -383,6 +457,8 @@ public class AkkaRpcService implements RpcService {
 				new TimeoutException("The RpcEndpoint " + rpcEndpoint.getAddress() + " did not terminate in time."));
 		}
 
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		LOG.info("Stopped Akka RPC service.");
 	}
 

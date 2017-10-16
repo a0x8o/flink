@@ -353,5 +353,8 @@ Action "savepoint" triggers savepoints for a running job or disposes existing on
   Options for yarn-cluster mode:
      -yid,--yarnapplicationId <arg>   Attach to running YARN session
 ~~~
+<<<<<<< HEAD
 
 {% top %}
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d

@@ -19,6 +19,10 @@
 package org.apache.flink.runtime.io.network.buffer;
 
 import org.apache.flink.core.memory.MemoryType;
+<<<<<<< HEAD
+=======
+import org.apache.flink.runtime.util.event.EventListener;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 import org.apache.flink.shaded.guava18.com.google.common.collect.Lists;
 

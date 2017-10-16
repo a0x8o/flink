@@ -21,7 +21,10 @@ package org.apache.flink.runtime.rpc.akka;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.core.testutils.OneShotLatch;
 import org.apache.flink.runtime.akka.AkkaUtils;
+<<<<<<< HEAD
 import org.apache.flink.runtime.concurrent.FutureUtils;
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.runtime.concurrent.ScheduledExecutor;
 import org.apache.flink.util.TestLogger;
 

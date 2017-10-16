@@ -19,8 +19,13 @@ package org.apache.flink.table.api.stream.table
 
 import org.apache.flink.api.scala._
 import org.apache.flink.table.api.scala._
+<<<<<<< HEAD
 import org.apache.flink.table.expressions.utils.Func13
 import org.apache.flink.table.utils.TableTestUtil._
+=======
+import org.apache.flink.table.utils.TableTestUtil._
+import org.apache.flink.table.runtime.utils._
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.table.utils._
 import org.junit.Test
 
@@ -40,8 +45,12 @@ class CorrelateTest extends TableTestBase {
         "DataStreamCorrelate",
         streamTableNode(0),
         term("invocation", s"${function.functionIdentifier}($$2)"),
+<<<<<<< HEAD
         term("correlate", s"table(${function.getClass.getSimpleName}(c))"),
         term("select", "a", "b", "c", "s"),
+=======
+        term("function", function),
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
         term("rowType",
              "RecordType(INTEGER a, BIGINT b, VARCHAR(65536) c, VARCHAR(65536) s)"),
         term("joinType", "INNER")
@@ -61,8 +70,12 @@ class CorrelateTest extends TableTestBase {
         "DataStreamCorrelate",
         streamTableNode(0),
         term("invocation", s"${function.functionIdentifier}($$2, '$$')"),
+<<<<<<< HEAD
         term("correlate", s"table(${function.getClass.getSimpleName}(c, '$$'))"),
         term("select", "a", "b", "c", "s"),
+=======
+        term("function", function),
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
         term("rowType",
              "RecordType(INTEGER a, BIGINT b, VARCHAR(65536) c, VARCHAR(65536) s)"),
         term("joinType", "INNER")
@@ -87,8 +100,12 @@ class CorrelateTest extends TableTestBase {
         "DataStreamCorrelate",
         streamTableNode(0),
         term("invocation", s"${function.functionIdentifier}($$2)"),
+<<<<<<< HEAD
         term("correlate", s"table(${function.getClass.getSimpleName}(c))"),
         term("select", "a", "b", "c", "s"),
+=======
+        term("function", function),
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
         term("rowType",
           "RecordType(INTEGER a, BIGINT b, VARCHAR(65536) c, VARCHAR(65536) s)"),
         term("joinType", "LEFT")
@@ -104,19 +121,29 @@ class CorrelateTest extends TableTestBase {
     val util = streamTestUtil()
     val table = util.addTable[(Int, Long, String)]("MyTable", 'a, 'b, 'c)
     val function = util.addFunction("func2", new TableFunc2)
+<<<<<<< HEAD
     val scalarFunc = new Func13("pre")
 
     val result = table.join(function(scalarFunc('c)) as ('name, 'len)).select('c, 'name, 'len)
+=======
+
+    val result = table.join(function('c) as ('name, 'len)).select('c, 'name, 'len)
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
     val expected = unaryNode(
       "DataStreamCalc",
       unaryNode(
         "DataStreamCorrelate",
         streamTableNode(0),
+<<<<<<< HEAD
         term("invocation",
              s"${function.functionIdentifier}(${scalarFunc.functionIdentifier}($$2))"),
         term("correlate", s"table(${function.getClass.getSimpleName}(Func13(c)))"),
         term("select", "a", "b", "c", "name", "len"),
+=======
+        term("invocation", s"${function.functionIdentifier}($$2)"),
+        term("function", function),
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
         term("rowType",
           "RecordType(INTEGER a, BIGINT b, VARCHAR(65536) c, " +
            "VARCHAR(65536) name, INTEGER len)"),
@@ -140,8 +167,12 @@ class CorrelateTest extends TableTestBase {
       "DataStreamCorrelate",
       streamTableNode(0),
       term("invocation", s"${function.functionIdentifier}($$2)"),
+<<<<<<< HEAD
       term("correlate", "table(HierarchyTableFunction(c))"),
       term("select", "a", "b", "c", "name", "adult", "len"),
+=======
+      term("function", function),
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
       term("rowType",
         "RecordType(INTEGER a, BIGINT b, VARCHAR(65536) c," +
         " VARCHAR(65536) name, BOOLEAN adult, INTEGER len)"),
@@ -163,8 +194,12 @@ class CorrelateTest extends TableTestBase {
       "DataStreamCorrelate",
       streamTableNode(0),
       term("invocation", s"${function.functionIdentifier}($$2)"),
+<<<<<<< HEAD
       term("correlate", s"table(${function.getClass.getSimpleName}(c))"),
       term("select", "a", "b", "c", "age", "name"),
+=======
+      term("function", function),
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
       term("rowType",
         "RecordType(INTEGER a, BIGINT b, VARCHAR(65536) c, " +
          "INTEGER age, VARCHAR(65536) name)"),
@@ -191,8 +226,12 @@ class CorrelateTest extends TableTestBase {
         "DataStreamCorrelate",
         streamTableNode(0),
         term("invocation", s"${function.functionIdentifier}($$2)"),
+<<<<<<< HEAD
         term("correlate", s"table(${function.getClass.getSimpleName}(c))"),
         term("select", "a", "b", "c", "name", "len"),
+=======
+        term("function", function),
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
         term("rowType",
           "RecordType(INTEGER a, BIGINT b, VARCHAR(65536) c, " +
           "VARCHAR(65536) name, INTEGER len)"),
@@ -217,9 +256,13 @@ class CorrelateTest extends TableTestBase {
         "DataStreamCorrelate",
         streamTableNode(0),
         term("invocation",  s"${function.functionIdentifier}(SUBSTRING($$2, 2, CHAR_LENGTH($$2)))"),
+<<<<<<< HEAD
         term("correlate",
              s"table(${function.getClass.getSimpleName}(SUBSTRING(c, 2, CHAR_LENGTH(c))))"),
         term("select", "a", "b", "c", "s"),
+=======
+        term("function", function),
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
         term("rowType",
           "RecordType(INTEGER a, BIGINT b, VARCHAR(65536) c, VARCHAR(65536) s)"),
         term("joinType", "INNER")

@@ -526,6 +526,7 @@ into a Kafka topic.
   for more explanation.
 </div>
 
+<<<<<<< HEAD
 #### Kafka 0.11
 
 With Flink's checkpointing enabled, the `FlinkKafkaProducer011` can provide
@@ -600,6 +601,8 @@ event of failure of Flink application before first checkpoint, after restarting 
 is no information in the system about previous pool sizes. Thus it is unsafe to scale down Flink
 application before first checkpoint completes, by factor larger then `FlinkKafkaProducer011.SAFE_SCALE_DOWN_FACTOR`.
 
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 ## Using Kafka timestamps and Flink event time in Kafka 0.10
 
 Since Apache Kafka 0.10+, Kafka's messages can carry [timestamps](https://cwiki.apache.org/confluence/display/KAFKA/KIP-32+-+Add+timestamps+to+Kafka+message), indicating

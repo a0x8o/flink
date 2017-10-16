@@ -92,6 +92,7 @@ class SqlITCase extends StreamingWithStateTestBase {
     assertEquals(expected.sorted, StreamITCase.retractedResults.sorted)
   }
 
+<<<<<<< HEAD
   @Test
   def testUnboundedGroupByCollect(): Unit = {
 
@@ -151,6 +152,8 @@ class SqlITCase extends StreamingWithStateTestBase {
     assertEquals(expected.sorted, StreamITCase.retractedResults.sorted)
   }
 
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
   /** test selection **/
   @Test
   def testSelectExpressionFromTable(): Unit = {

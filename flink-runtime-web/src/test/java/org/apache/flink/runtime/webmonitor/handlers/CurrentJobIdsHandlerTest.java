@@ -19,6 +19,10 @@
 package org.apache.flink.runtime.webmonitor.handlers;
 
 import org.apache.flink.api.common.time.Time;
+<<<<<<< HEAD
+=======
+import org.apache.flink.runtime.concurrent.Executors;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 import org.junit.Assert;
 import org.junit.Test;
@@ -29,7 +33,11 @@ import org.junit.Test;
 public class CurrentJobIdsHandlerTest {
 	@Test
 	public void testGetPaths() {
+<<<<<<< HEAD
 		CurrentJobIdsHandler handler = new CurrentJobIdsHandler(Time.seconds(0L));
+=======
+		CurrentJobIdsHandler handler = new CurrentJobIdsHandler(Executors.directExecutor(), Time.seconds(0L));
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		String[] paths = handler.getPaths();
 		Assert.assertEquals(1, paths.length);
 		Assert.assertEquals("/jobs", paths[0]);

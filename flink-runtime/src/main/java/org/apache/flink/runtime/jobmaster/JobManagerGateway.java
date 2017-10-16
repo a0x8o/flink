@@ -21,12 +21,21 @@ package org.apache.flink.runtime.jobmaster;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.runtime.akka.ListeningBehaviour;
+<<<<<<< HEAD
+=======
+import org.apache.flink.runtime.executiongraph.AccessExecutionGraph;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.runtime.instance.Instance;
 import org.apache.flink.runtime.instance.InstanceID;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.messages.JobManagerMessages;
 import org.apache.flink.runtime.messages.webmonitor.JobsWithIDsOverview;
+<<<<<<< HEAD
+=======
+import org.apache.flink.runtime.messages.webmonitor.MultipleJobsDetails;
+import org.apache.flink.runtime.messages.webmonitor.StatusOverview;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.runtime.webmonitor.RestfulGateway;
 
 import javax.annotation.Nullable;
@@ -122,6 +131,40 @@ public interface JobManagerGateway extends RestfulGateway {
 	CompletableFuture<Collection<Instance>> requestTaskManagerInstances(Time timeout);
 
 	/**
+<<<<<<< HEAD
+=======
+	 * Requests job details currently being executed by the JobManager.
+	 *
+	 * @param includeRunning true if running jobs shall be included, otherwise false
+	 * @param includeFinished true if finished jobs shall be included, otherwise false
+	 * @param timeout for the asynchronous operation
+	 * @return Future containing the job details
+	 */
+	CompletableFuture<MultipleJobsDetails> requestJobDetails(
+		boolean includeRunning,
+		boolean includeFinished,
+		Time timeout);
+
+	/**
+	 * Requests the AccessExecutionGraph for the given jobId. If there is no such graph, then
+	 * {@link Optional#empty()} is returned.
+	 *
+	 * @param jobId identifying the job whose AccessExecutionGraph is requested
+	 * @param timeout for the asynchronous operation
+	 * @return Future containing the AccessExecutionGraph for the given jobId, otherwise {@link Optional#empty()}
+	 */
+	CompletableFuture<Optional<AccessExecutionGraph>> requestJob(JobID jobId, Time timeout);
+
+	/**
+	 * Requests the status overview from the JobManager.
+	 *
+	 * @param timeout for the asynchronous operation
+	 * @return Future containing the status overview
+	 */
+	CompletableFuture<StatusOverview> requestStatusOverview(Time timeout);
+
+	/**
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	 * Requests the job overview from the JobManager.
 	 *
 	 * @param timeout for the asynchronous operation

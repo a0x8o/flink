@@ -123,12 +123,20 @@ public class SimpleAckingTaskManagerGateway implements TaskManagerGateway {
 			CheckpointOptions checkpointOptions) {}
 
 	@Override
+<<<<<<< HEAD
 	public CompletableFuture<TransientBlobKey> requestTaskManagerLog(Time timeout) {
+=======
+	public CompletableFuture<BlobKey> requestTaskManagerLog(Time timeout) {
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		return FutureUtils.completedExceptionally(new UnsupportedOperationException());
 	}
 
 	@Override
+<<<<<<< HEAD
 	public CompletableFuture<TransientBlobKey> requestTaskManagerStdout(Time timeout) {
+=======
+	public CompletableFuture<BlobKey> requestTaskManagerStdout(Time timeout) {
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		return FutureUtils.completedExceptionally(new UnsupportedOperationException());
 	}
 }

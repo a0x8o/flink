@@ -20,6 +20,10 @@ package org.apache.flink.runtime.rest.messages;
 
 import org.apache.flink.runtime.rest.HttpMethodWrapper;
 import org.apache.flink.runtime.rest.handler.legacy.DashboardConfigHandler;
+<<<<<<< HEAD
+=======
+import org.apache.flink.runtime.rest.handler.legacy.messages.DashboardConfiguration;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpResponseStatus;
 

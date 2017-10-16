@@ -34,11 +34,17 @@ public interface BlobStore extends BlobView {
 	 * @param localFile The file to copy
 	 * @param jobId ID of the job this blob belongs to (or <tt>null</tt> if job-unrelated)
 	 * @param blobKey   The ID for the file in the blob store
+<<<<<<< HEAD
 	 *
 	 * @return whether the file was copied (<tt>true</tt>) or not (<tt>false</tt>)
 	 * @throws IOException If the copy fails
 	 */
 	boolean put(File localFile, JobID jobId, BlobKey blobKey) throws IOException;
+=======
+	 * @throws IOException If the copy fails
+	 */
+	void put(File localFile, JobID jobId, BlobKey blobKey) throws IOException;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 	/**
 	 * Tries to delete a blob from storage.
@@ -47,11 +53,16 @@ public interface BlobStore extends BlobView {
 	 *
 	 * @param jobId ID of the job this blob belongs to (or <tt>null</tt> if job-unrelated)
 	 * @param blobKey The blob ID
+<<<<<<< HEAD
 	 *
 	 * @return  <tt>true</tt> if the given blob is successfully deleted or non-existing;
 	 *          <tt>false</tt> otherwise
 	 */
 	boolean delete(JobID jobId, BlobKey blobKey);
+=======
+	 */
+	void delete(JobID jobId, BlobKey blobKey);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 	/**
 	 * Tries to delete all blobs for the given job from storage.

@@ -20,7 +20,10 @@ package org.apache.flink.runtime.rest.handler.legacy.checkpoints;
 
 import org.apache.flink.runtime.checkpoint.AbstractCheckpointStats;
 import org.apache.flink.runtime.checkpoint.CheckpointStatsStatus;
+<<<<<<< HEAD
 import org.apache.flink.runtime.rest.handler.job.checkpoints.CheckpointStatsCache;
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 import org.junit.Test;
 

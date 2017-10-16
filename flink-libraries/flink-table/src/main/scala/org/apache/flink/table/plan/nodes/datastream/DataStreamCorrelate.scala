@@ -77,11 +77,15 @@ class DataStreamCorrelate(
     val sqlFunction = rexCall.getOperator.asInstanceOf[TableSqlFunction]
     super.explainTerms(pw)
       .item("invocation", scan.getCall)
+<<<<<<< HEAD
       .item("correlate", correlateToString(
         inputSchema.relDataType,
         rexCall, sqlFunction,
         getExpressionString))
       .item("select", selectToString(schema.relDataType))
+=======
+      .item("function", sqlFunction.getTableFunction.getClass.getCanonicalName)
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
       .item("rowType", schema.relDataType)
       .item("joinType", joinType)
       .itemIf("condition", condition.orNull, condition.isDefined)
@@ -134,6 +138,7 @@ class DataStreamCorrelate(
       .process(processFunc)
       // preserve input parallelism to ensure that acc and retract messages remain in order
       .setParallelism(inputParallelism)
+<<<<<<< HEAD
       .name(correlateOpName(
         inputSchema.relDataType,
         rexCall,
@@ -141,6 +146,9 @@ class DataStreamCorrelate(
         schema.relDataType,
         getExpressionString)
       )
+=======
+      .name(correlateOpName(rexCall, sqlFunction, schema.relDataType))
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
   }
 
 }

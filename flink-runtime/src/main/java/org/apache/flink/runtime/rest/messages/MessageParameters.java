@@ -84,7 +84,11 @@ public abstract class MessageParameters {
 		}
 		boolean isFirstQueryParameter = true;
 		for (MessageQueryParameter<?> queryParameter : parameters.getQueryParameters()) {
+<<<<<<< HEAD
 			if (queryParameter.isResolved()) {
+=======
+			if (parameters.isResolved()) {
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 				if (isFirstQueryParameter) {
 					queryParameters.append('?');
 					isFirstQueryParameter = false;

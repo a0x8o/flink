@@ -60,10 +60,16 @@ public class FencedAkkaInvocationHandler<F extends Serializable> extends AkkaInv
 			ActorRef rpcEndpoint,
 			Time timeout,
 			long maximumFramesize,
+<<<<<<< HEAD
 			@Nullable CompletableFuture<Boolean> terminationFuture,
 			@Nullable CompletableFuture<Void> internalTerminationFuture,
 			Supplier<F> fencingTokenSupplier) {
 		super(address, hostname, rpcEndpoint, timeout, maximumFramesize, terminationFuture, internalTerminationFuture);
+=======
+			@Nullable CompletableFuture<Void> terminationFuture,
+			Supplier<F> fencingTokenSupplier) {
+		super(address, hostname, rpcEndpoint, timeout, maximumFramesize, terminationFuture);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 		this.fencingTokenSupplier = Preconditions.checkNotNull(fencingTokenSupplier);
 	}
@@ -85,11 +91,19 @@ public class FencedAkkaInvocationHandler<F extends Serializable> extends AkkaInv
 		checkNotNull(runnable, "runnable");
 
 		if (isLocal) {
+<<<<<<< HEAD
 			getActorRef().tell(
 				new UnfencedMessage<>(new RunAsync(runnable, 0L)), ActorRef.noSender());
 		} else {
 			throw new RuntimeException("Trying to send a Runnable to a remote actor at " +
 				getActorRef().path() + ". This is not supported.");
+=======
+			getRpcEndpoint().tell(
+				new UnfencedMessage<>(new RunAsync(runnable, 0L)), ActorRef.noSender());
+		} else {
+			throw new RuntimeException("Trying to send a Runnable to a remote actor at " +
+				getRpcEndpoint().path() + ". This is not supported.");
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		}
 	}
 
@@ -102,14 +116,22 @@ public class FencedAkkaInvocationHandler<F extends Serializable> extends AkkaInv
 			@SuppressWarnings("unchecked")
 			CompletableFuture<V> resultFuture = (CompletableFuture<V>) FutureUtils.toJava(
 				Patterns.ask(
+<<<<<<< HEAD
 					getActorRef(),
+=======
+					getRpcEndpoint(),
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 					new UnfencedMessage<>(new CallAsync(callable)),
 					timeout.toMilliseconds()));
 
 			return resultFuture;
 		} else {
 			throw new RuntimeException("Trying to send a Runnable to a remote actor at " +
+<<<<<<< HEAD
 				getActorRef().path() + ". This is not supported.");
+=======
+				getRpcEndpoint().path() + ". This is not supported.");
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		}
 	}
 

@@ -31,7 +31,10 @@ import org.slf4j.LoggerFactory;
 import java.util.Optional;
 import java.util.WeakHashMap;
 import java.util.concurrent.CompletableFuture;
+<<<<<<< HEAD
 import java.util.concurrent.TimeUnit;
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
@@ -65,20 +68,30 @@ public class ExecutionGraphHolder {
 	 *
 	 * @param jid jobID of the execution graph to be retrieved
 	 * @return Optional ExecutionGraph if it has been retrievable, empty if there has been no ExecutionGraph
+<<<<<<< HEAD
 	 * @throws Exception if the ExecutionGraph retrieval failed.
 	 */
 	public Optional<AccessExecutionGraph> getExecutionGraph(JobID jid, JobManagerGateway jobManagerGateway) throws Exception {
+=======
+	 */
+	public CompletableFuture<Optional<AccessExecutionGraph>> getExecutionGraph(JobID jid, JobManagerGateway jobManagerGateway) {
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		AccessExecutionGraph cached = cache.get(jid);
 		if (cached != null) {
 			if (cached.getState() == JobStatus.SUSPENDED) {
 				cache.remove(jid);
 			} else {
+<<<<<<< HEAD
 				return Optional.of(cached);
+=======
+				return CompletableFuture.completedFuture(Optional.of(cached));
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			}
 		}
 
 		CompletableFuture<Optional<AccessExecutionGraph>> executionGraphFuture = jobManagerGateway.requestJob(jid, timeout);
 
+<<<<<<< HEAD
 		Optional<AccessExecutionGraph> result = executionGraphFuture.get(timeout.toMilliseconds(), TimeUnit.MILLISECONDS);
 
 		return result.map((executionGraph) -> {
@@ -86,5 +99,12 @@ public class ExecutionGraphHolder {
 
 			return executionGraph;
 		});
+=======
+		executionGraphFuture.thenAcceptAsync(
+			optExecutionGraph ->
+				optExecutionGraph.ifPresent(executionGraph -> cache.put(jid, executionGraph)));
+
+		return executionGraphFuture;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	}
 }

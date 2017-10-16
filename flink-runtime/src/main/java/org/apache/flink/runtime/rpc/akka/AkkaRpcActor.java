@@ -106,9 +106,15 @@ class AkkaRpcActor<T extends RpcEndpoint & RpcGateway> extends UntypedActor {
 			// Complete the termination future so that others know that we've stopped.
 
 			if (shutdownThrowable != null) {
+<<<<<<< HEAD
 				internalTerminationFuture.completeExceptionally(shutdownThrowable);
 			} else {
 				internalTerminationFuture.complete(null);
+=======
+				terminationFuture.completeExceptionally(shutdownThrowable);
+			} else {
+				terminationFuture.complete(null);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			}
 		} finally {
 			mainThreadValidator.exitMainThread();

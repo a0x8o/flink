@@ -171,11 +171,19 @@ class HarnessTestBase {
       |  }
       |
       |  public void open(org.apache.flink.api.common.functions.RuntimeContext ctx) {
+<<<<<<< HEAD
       |  }
       |
       |  public void cleanup() {
       |  }
       |
+=======
+      |  }
+      |
+      |  public void cleanup() {
+      |  }
+      |
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
       |  public void close() {
       |  }
       |/*******  This test does not use the following methods  *******/

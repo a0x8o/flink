@@ -156,6 +156,7 @@ class FlinkTypeFactory(typeSystem: RelDataTypeSystem) extends JavaTypeFactoryImp
           createTypeFromTypeInfo(mp.getValueTypeInfo, isNullable = true),
           isNullable)
 
+<<<<<<< HEAD
       case mts: MultisetTypeInfo[_] =>
         new MultisetRelDataType(
           mts,
@@ -163,6 +164,8 @@ class FlinkTypeFactory(typeSystem: RelDataTypeSystem) extends JavaTypeFactoryImp
           isNullable
         )
 
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
       case ti: TypeInformation[_] =>
         new GenericRelDataType(
           ti,
@@ -216,6 +219,7 @@ class FlinkTypeFactory(typeSystem: RelDataTypeSystem) extends JavaTypeFactoryImp
       ObjectArrayTypeInfo.getInfoFor(FlinkTypeFactory.toTypeInfo(elementType)),
       elementType,
       isNullable = false)
+<<<<<<< HEAD
 
     canonize(relType)
   }
@@ -258,6 +262,39 @@ class FlinkTypeFactory(typeSystem: RelDataTypeSystem) extends JavaTypeFactoryImp
       case timeIndicator: TimeIndicatorRelDataType =>
         timeIndicator
 
+=======
+
+    canonize(relType)
+  }
+
+  override def createTypeWithNullability(
+      relDataType: RelDataType,
+      isNullable: Boolean): RelDataType = {
+
+    // nullability change not necessary
+    if (relDataType.isNullable == isNullable) {
+      return canonize(relDataType)
+    }
+
+    // change nullability
+    val newType = relDataType match {
+
+      case composite: CompositeRelDataType =>
+        new CompositeRelDataType(composite.compositeType, isNullable, this)
+
+      case array: ArrayRelDataType =>
+        new ArrayRelDataType(array.typeInfo, array.getComponentType, isNullable)
+
+      case map: MapRelDataType =>
+        new MapRelDataType(map.typeInfo, map.keyType, map.valueType, isNullable)
+
+      case generic: GenericRelDataType =>
+        new GenericRelDataType(generic.typeInfo, isNullable, typeSystem)
+
+      case timeIndicator: TimeIndicatorRelDataType =>
+        timeIndicator
+
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
       case _ =>
         super.createTypeWithNullability(relDataType, isNullable)
     }

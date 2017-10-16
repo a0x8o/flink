@@ -61,6 +61,7 @@ public class JobCheckpointingSettings implements Serializable {
 			List<JobVertexID> verticesToTrigger,
 			List<JobVertexID> verticesToAcknowledge,
 			List<JobVertexID> verticesToConfirm,
+<<<<<<< HEAD
 			CheckpointCoordinatorConfiguration checkpointCoordinatorConfiguration,
 			@Nullable SerializedValue<StateBackend> defaultStateBackend) {
 
@@ -71,16 +72,46 @@ public class JobCheckpointingSettings implements Serializable {
 			checkpointCoordinatorConfiguration,
 			defaultStateBackend,
 			null);
+=======
+			long checkpointInterval,
+			long checkpointTimeout,
+			long minPauseBetweenCheckpoints,
+			int maxConcurrentCheckpoints,
+			ExternalizedCheckpointSettings externalizedCheckpointSettings,
+			@Nullable SerializedValue<StateBackend> defaultStateBackend,
+			boolean isExactlyOnce) {
+
+		this(verticesToTrigger, verticesToAcknowledge, verticesToConfirm,
+				checkpointInterval, checkpointTimeout, minPauseBetweenCheckpoints, maxConcurrentCheckpoints,
+				externalizedCheckpointSettings, defaultStateBackend, null, isExactlyOnce);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	}
 
 	public JobCheckpointingSettings(
 			List<JobVertexID> verticesToTrigger,
 			List<JobVertexID> verticesToAcknowledge,
 			List<JobVertexID> verticesToConfirm,
+<<<<<<< HEAD
 			CheckpointCoordinatorConfiguration checkpointCoordinatorConfiguration,
 			@Nullable SerializedValue<StateBackend> defaultStateBackend,
 			@Nullable SerializedValue<MasterTriggerRestoreHook.Factory[]> masterHooks) {
 
+=======
+			long checkpointInterval,
+			long checkpointTimeout,
+			long minPauseBetweenCheckpoints,
+			int maxConcurrentCheckpoints,
+			ExternalizedCheckpointSettings externalizedCheckpointSettings,
+			@Nullable SerializedValue<StateBackend> defaultStateBackend,
+			@Nullable SerializedValue<MasterTriggerRestoreHook.Factory[]> masterHooks,
+			boolean isExactlyOnce) {
+
+		// sanity checks
+		if (checkpointInterval < 1 || checkpointTimeout < 1 ||
+				minPauseBetweenCheckpoints < 0 || maxConcurrentCheckpoints < 1) {
+			throw new IllegalArgumentException();
+		}
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 		this.verticesToTrigger = requireNonNull(verticesToTrigger);
 		this.verticesToAcknowledge = requireNonNull(verticesToAcknowledge);

@@ -30,8 +30,13 @@ import org.apache.flink.core.fs.Path;
 import org.apache.flink.core.fs.SafetyNetCloseableRegistry;
 import org.apache.flink.metrics.MetricGroup;
 import org.apache.flink.runtime.accumulators.AccumulatorRegistry;
+<<<<<<< HEAD
 import org.apache.flink.runtime.blob.BlobCacheService;
 import org.apache.flink.runtime.blob.PermanentBlobKey;
+=======
+import org.apache.flink.runtime.blob.BlobCache;
+import org.apache.flink.runtime.blob.BlobKey;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.runtime.broadcast.BroadcastVariableManager;
 import org.apache.flink.runtime.checkpoint.CheckpointMetaData;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
@@ -205,7 +210,11 @@ public class Task implements Runnable, TaskActions {
 	private final List<TaskExecutionStateListener> taskExecutionStateListeners;
 
 	/** The BLOB cache, from which the task can request BLOB files */
+<<<<<<< HEAD
 	private final BlobCacheService blobService;
+=======
+	private final BlobCache blobCache;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 	/** The library cache, from which the task can request its class loader */
 	private final LibraryCacheManager libraryCache;
@@ -286,7 +295,11 @@ public class Task implements Runnable, TaskActions {
 		TaskManagerActions taskManagerActions,
 		InputSplitProvider inputSplitProvider,
 		CheckpointResponder checkpointResponder,
+<<<<<<< HEAD
 		BlobCacheService blobService,
+=======
+		BlobCache blobCache,
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		LibraryCacheManager libraryCache,
 		FileCache fileCache,
 		TaskManagerRuntimeInfo taskManagerConfig,
@@ -335,7 +348,11 @@ public class Task implements Runnable, TaskActions {
 		this.checkpointResponder = Preconditions.checkNotNull(checkpointResponder);
 		this.taskManagerActions = checkNotNull(taskManagerActions);
 
+<<<<<<< HEAD
 		this.blobService = Preconditions.checkNotNull(blobService);
+=======
+		this.blobCache = Preconditions.checkNotNull(blobCache);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		this.libraryCache = Preconditions.checkNotNull(libraryCache);
 		this.fileCache = Preconditions.checkNotNull(fileCache);
 		this.network = Preconditions.checkNotNull(networkEnvironment);
@@ -574,7 +591,11 @@ public class Task implements Runnable, TaskActions {
 			LOG.info("Creating FileSystem stream leak safety net for task {}", this);
 			FileSystemSafetyNet.initializeSafetyNetForThread();
 
+<<<<<<< HEAD
 			blobService.getPermanentBlobService().registerJob(jobId);
+=======
+			blobCache.registerJob(jobId);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 			// first of all, get a user-code classloader
 			// this may involve downloading the job's JAR files and/or classes
@@ -835,7 +856,11 @@ public class Task implements Runnable, TaskActions {
 
 				// remove all of the tasks library resources
 				libraryCache.unregisterTask(jobId, executionId);
+<<<<<<< HEAD
 				blobService.getPermanentBlobService().releaseJob(jobId);
+=======
+				blobCache.releaseJob(jobId);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 				// remove all files in the distributed cache
 				removeCachedFiles(distributedCacheEntries, fileCache);

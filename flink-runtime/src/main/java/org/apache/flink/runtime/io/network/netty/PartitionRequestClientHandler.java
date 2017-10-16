@@ -30,6 +30,10 @@ import org.apache.flink.runtime.io.network.netty.exception.TransportException;
 import org.apache.flink.runtime.io.network.partition.PartitionNotFoundException;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannelID;
 import org.apache.flink.runtime.io.network.partition.consumer.RemoteInputChannel;
+<<<<<<< HEAD
+=======
+import org.apache.flink.runtime.util.event.EventListener;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 import org.apache.flink.shaded.guava18.com.google.common.collect.Maps;
 import org.apache.flink.shaded.netty4.io.netty.channel.ChannelHandlerContext;

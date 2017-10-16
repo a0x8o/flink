@@ -88,10 +88,17 @@ class CalcTest extends TableTestBase {
       "DataSetCalc",
       batchTableNode(0),
       term("select",
+<<<<<<< HEAD
         "giveMeCaseClass$().my AS _c0",
         "giveMeCaseClass$().clazz AS _c1",
         "giveMeCaseClass$().my AS _c2",
         "giveMeCaseClass$().clazz AS _c3"
+=======
+        s"${giveMeCaseClass.functionIdentifier}().my AS _c0",
+        s"${giveMeCaseClass.functionIdentifier}().clazz AS _c1",
+        s"${giveMeCaseClass.functionIdentifier}().my AS _c2",
+        s"${giveMeCaseClass.functionIdentifier}().clazz AS _c3"
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
       )
     )
 
@@ -171,7 +178,11 @@ class CalcTest extends TableTestBase {
     val expected = unaryNode(
       "DataSetCalc",
       batchTableNode(0),
+<<<<<<< HEAD
       term("select", "MyHashCode$(c) AS _c0", "b")
+=======
+      term("select", s"${MyHashCode.functionIdentifier}(c) AS _c0", "b")
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
     )
 
     util.verifyTable(resultTable, expected)
@@ -283,7 +294,11 @@ class CalcTest extends TableTestBase {
           unaryNode(
             "DataSetCalc",
             batchTableNode(0),
+<<<<<<< HEAD
             term("select", "a", "c", "MyHashCode$(c) AS k")
+=======
+            term("select", "a", "c", s"${MyHashCode.functionIdentifier}(c) AS k")
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
           ),
           term("groupBy", "k"),
           term("select", "k", "SUM(a) AS TMP_0")

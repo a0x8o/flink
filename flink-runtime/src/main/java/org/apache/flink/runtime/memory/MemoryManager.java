@@ -18,9 +18,15 @@
 
 package org.apache.flink.runtime.memory;
 
+<<<<<<< HEAD
 import org.apache.flink.core.memory.HybridMemorySegment;
 import org.apache.flink.core.memory.MemorySegment;
 import org.apache.flink.core.memory.MemorySegmentFactory;
+=======
+import org.apache.flink.core.memory.HeapMemorySegment;
+import org.apache.flink.core.memory.HybridMemorySegment;
+import org.apache.flink.core.memory.MemorySegment;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.core.memory.MemoryType;
 import org.apache.flink.util.MathUtils;
 
@@ -43,8 +49,13 @@ import java.util.Set;
  * is represented in segments of equal size. Operators allocate the memory by requesting a number
  * of memory segments.
  *
+<<<<<<< HEAD
  * <p>The memory may be represented as on-heap byte arrays or as off-heap memory regions
  * (both via {@link HybridMemorySegment}). Which kind of memory the MemoryManager serves can
+=======
+ * <p>The memory may be represented as on-heap byte arrays ({@link HeapMemorySegment}), or as off-heap
+ * memory regions ({@link HybridMemorySegment}). Which kind of memory the MemoryManager serves can
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
  * be passed as an argument to the initialization.
  *
  * <p>The memory manager can either pre-allocate all memory, or allocate the memory on demand. In the

@@ -20,9 +20,13 @@ package org.apache.flink.runtime.jobgraph.tasks;
 
 import org.apache.flink.core.testutils.CommonTestUtils;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
+import org.apache.flink.runtime.state.StateBackend;
 import org.apache.flink.runtime.state.memory.MemoryStateBackend;
 import org.apache.flink.util.SerializedValue;
+<<<<<<< HEAD
 
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.junit.Test;
 
 import java.util.Arrays;
@@ -42,6 +46,7 @@ public class JobCheckpointingSettingsTest {
 			Arrays.asList(new JobVertexID(), new JobVertexID()),
 			Arrays.asList(new JobVertexID(), new JobVertexID()),
 			Arrays.asList(new JobVertexID(), new JobVertexID()),
+<<<<<<< HEAD
 			new CheckpointCoordinatorConfiguration(
 				1231231,
 				1231,
@@ -50,6 +55,15 @@ public class JobCheckpointingSettingsTest {
 				ExternalizedCheckpointSettings.externalizeCheckpoints(true),
 				false),
 			new SerializedValue<>(new MemoryStateBackend()));
+=======
+			1231231,
+			1231,
+			112,
+			12,
+			ExternalizedCheckpointSettings.externalizeCheckpoints(true),
+			new SerializedValue<StateBackend>(new MemoryStateBackend()),
+			false);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 		JobCheckpointingSettings copy = CommonTestUtils.createCopySerializable(settings);
 		assertEquals(settings.getVerticesToAcknowledge(), copy.getVerticesToAcknowledge());

@@ -29,8 +29,14 @@ package org.apache.flink.runtime.rest.handler.legacy;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.configuration.ConfigConstants;
 import org.apache.flink.configuration.Configuration;
+<<<<<<< HEAD
 import org.apache.flink.runtime.blob.TransientBlobCache;
 import org.apache.flink.runtime.blob.TransientBlobKey;
+=======
+import org.apache.flink.runtime.blob.BlobCache;
+import org.apache.flink.runtime.blob.BlobKey;
+import org.apache.flink.runtime.blob.BlobView;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.runtime.instance.Instance;
 import org.apache.flink.runtime.instance.InstanceID;
 import org.apache.flink.runtime.jobmaster.JobManagerGateway;
@@ -38,6 +44,10 @@ import org.apache.flink.runtime.rest.handler.RedirectHandler;
 import org.apache.flink.runtime.rest.handler.WebHandler;
 import org.apache.flink.runtime.webmonitor.retriever.GatewayRetriever;
 import org.apache.flink.util.FlinkException;
+<<<<<<< HEAD
+=======
+import org.apache.flink.util.Preconditions;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.util.StringUtils;
 
 import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
@@ -96,21 +106,35 @@ public class TaskManagerLogHandler extends RedirectHandler<JobManagerGateway> im
 	private static final String TASKMANAGER_OUT_REST_PATH = "/taskmanagers/:taskmanagerid/stdout";
 
 	/** Keep track of last transmitted log, to clean up old ones. */
+<<<<<<< HEAD
 	private final HashMap<String, TransientBlobKey> lastSubmittedLog = new HashMap<>();
 	private final HashMap<String, TransientBlobKey> lastSubmittedStdout = new HashMap<>();
+=======
+	private final HashMap<String, BlobKey> lastSubmittedLog = new HashMap<>();
+	private final HashMap<String, BlobKey> lastSubmittedStdout = new HashMap<>();
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 	/** Keep track of request status, prevents multiple log requests for a single TM running concurrently. */
 	private final ConcurrentHashMap<String, Boolean> lastRequestPending = new ConcurrentHashMap<>();
 	private final Configuration config;
 
 	/** Future of the blob cache. */
+<<<<<<< HEAD
 	private CompletableFuture<TransientBlobCache> cache;
+=======
+	private CompletableFuture<BlobCache> cache;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 	/** Indicates which log file should be displayed. */
 	private FileMode fileMode;
 
 	private final Executor executor;
 
+<<<<<<< HEAD
+=======
+	private final BlobView blobView;
+
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	/** Used to control whether this handler serves the .log or .out file. */
 	public enum FileMode {
 		LOG,
@@ -123,12 +147,22 @@ public class TaskManagerLogHandler extends RedirectHandler<JobManagerGateway> im
 		CompletableFuture<String> localJobManagerAddressPromise,
 		Time timeout,
 		FileMode fileMode,
+<<<<<<< HEAD
 		Configuration config) {
+=======
+		Configuration config,
+		BlobView blobView) {
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		super(localJobManagerAddressPromise, retriever, timeout);
 
 		this.executor = checkNotNull(executor);
 		this.config = config;
 		this.fileMode = fileMode;
+<<<<<<< HEAD
+=======
+
+		this.blobView = Preconditions.checkNotNull(blobView, "blobView");
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	}
 
 	@Override
@@ -152,9 +186,15 @@ public class TaskManagerLogHandler extends RedirectHandler<JobManagerGateway> im
 			cache = blobPortFuture.thenApplyAsync(
 				(Integer port) -> {
 					try {
+<<<<<<< HEAD
 						return new TransientBlobCache(new InetSocketAddress(jobManagerGateway.getHostname(), port), config);
 					} catch (IOException e) {
 						throw new CompletionException(new FlinkException("Could not create TransientBlobCache.", e));
+=======
+						return new BlobCache(new InetSocketAddress(jobManagerGateway.getHostname(), port), config, blobView);
+					} catch (IOException e) {
+						throw new CompletionException(new FlinkException("Could not create BlobCache.", e));
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 					}
 				},
 				executor);
@@ -169,7 +209,11 @@ public class TaskManagerLogHandler extends RedirectHandler<JobManagerGateway> im
 				InstanceID instanceID = new InstanceID(StringUtils.hexStringToByte(taskManagerID));
 				CompletableFuture<Optional<Instance>> taskManagerFuture = jobManagerGateway.requestTaskManagerInstance(instanceID, timeout);
 
+<<<<<<< HEAD
 				CompletableFuture<TransientBlobKey> blobKeyFuture = taskManagerFuture.thenCompose(
+=======
+				CompletableFuture<BlobKey> blobKeyFuture = taskManagerFuture.thenCompose(
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 					(Optional<Instance> optTMInstance) -> {
 						Instance taskManagerInstance = optTMInstance.orElseThrow(
 							() -> new CompletionException(new FlinkException("Could not find instance with " + instanceID + '.')));
@@ -188,11 +232,21 @@ public class TaskManagerLogHandler extends RedirectHandler<JobManagerGateway> im
 						cache,
 						(blobKey, blobCache) -> {
 							//delete previous log file, if it is different than the current one
+<<<<<<< HEAD
 							HashMap<String, TransientBlobKey> lastSubmittedFile = fileMode == FileMode.LOG ? lastSubmittedLog : lastSubmittedStdout;
 							if (lastSubmittedFile.containsKey(taskManagerID)) {
 								if (!Objects.equals(blobKey, lastSubmittedFile.get(taskManagerID))) {
 									if (!blobCache.deleteFromCache(lastSubmittedFile.get(taskManagerID))) {
 										throw new CompletionException(new FlinkException("Could not delete file for " + taskManagerID + '.'));
+=======
+							HashMap<String, BlobKey> lastSubmittedFile = fileMode == FileMode.LOG ? lastSubmittedLog : lastSubmittedStdout;
+							if (lastSubmittedFile.containsKey(taskManagerID)) {
+								if (!Objects.equals(blobKey, lastSubmittedFile.get(taskManagerID))) {
+									try {
+										blobCache.deleteGlobal(lastSubmittedFile.get(taskManagerID));
+									} catch (IOException e) {
+										throw new CompletionException(new FlinkException("Could not delete file for " + taskManagerID + '.', e));
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 									}
 									lastSubmittedFile.put(taskManagerID, blobKey);
 								}

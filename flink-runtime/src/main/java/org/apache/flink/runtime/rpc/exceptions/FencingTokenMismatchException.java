@@ -16,30 +16,27 @@
  * limitations under the License.
  */
 
-package org.apache.flink.runtime.webmonitor.handlers;
+package org.apache.flink.runtime.rpc.exceptions;
 
-import org.apache.flink.api.common.time.Time;
-<<<<<<< HEAD
-=======
-import org.apache.flink.runtime.concurrent.Executors;
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
-
-import org.junit.Assert;
-import org.junit.Test;
+import org.apache.flink.runtime.rpc.FencedRpcEndpoint;
+import org.apache.flink.runtime.rpc.exceptions.RpcException;
 
 /**
- * Tests for the ClusterOverviewHandler.
+ * Exception which is thrown if the fencing tokens of a {@link FencedRpcEndpoint} do
+ * not match.
  */
-public class ClusterOverviewHandlerTest {
-	@Test
-	public void testGetPaths() {
-<<<<<<< HEAD
-		ClusterOverviewHandler handler = new ClusterOverviewHandler(Time.seconds(0L));
-=======
-		ClusterOverviewHandler handler = new ClusterOverviewHandler(Executors.directExecutor(), Time.seconds(0L));
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
-		String[] paths = handler.getPaths();
-		Assert.assertEquals(1, paths.length);
-		Assert.assertEquals("/overview", paths[0]);
+public class FencingTokenMismatchException extends RpcException {
+	private static final long serialVersionUID = -500634972988881467L;
+
+	public FencingTokenMismatchException(String message) {
+		super(message);
+	}
+
+	public FencingTokenMismatchException(String message, Throwable cause) {
+		super(message, cause);
+	}
+
+	public FencingTokenMismatchException(Throwable cause) {
+		super(cause);
 	}
 }

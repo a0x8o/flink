@@ -23,9 +23,15 @@ import org.apache.flink.api.common.time.Time;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.configuration.ConfigConstants;
 import org.apache.flink.configuration.CoreOptions;
+<<<<<<< HEAD
 import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.executiongraph.AccessExecutionGraph;
 import org.apache.flink.runtime.jobgraph.tasks.CheckpointCoordinatorConfiguration;
+=======
+import org.apache.flink.runtime.checkpoint.CheckpointCoordinator;
+import org.apache.flink.runtime.concurrent.FutureUtils;
+import org.apache.flink.runtime.executiongraph.AccessExecutionGraph;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.runtime.jobmaster.JobManagerGateway;
 import org.apache.flink.runtime.messages.JobManagerMessages.CancelJobWithSavepoint;
 import org.apache.flink.runtime.rest.NotFoundException;
@@ -48,6 +54,10 @@ import java.nio.charset.Charset;
 import java.util.ArrayDeque;
 import java.util.HashMap;
 import java.util.Map;
+<<<<<<< HEAD
+=======
+import java.util.Optional;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executor;
@@ -90,13 +100,21 @@ public class JobCancellationWithSavepointHandlers {
 	private final String defaultSavepointDirectory;
 
 	public JobCancellationWithSavepointHandlers(
+<<<<<<< HEAD
 			ExecutionGraphCache currentGraphs,
+=======
+			ExecutionGraphHolder currentGraphs,
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			Executor executor) {
 		this(currentGraphs, executor, null);
 	}
 
 	public JobCancellationWithSavepointHandlers(
+<<<<<<< HEAD
 			ExecutionGraphCache currentGraphs,
+=======
+			ExecutionGraphHolder currentGraphs,
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			Executor executor,
 			@Nullable String defaultSavepointDirectory) {
 
@@ -123,12 +141,20 @@ public class JobCancellationWithSavepointHandlers {
 	class TriggerHandler implements RequestHandler {
 
 		/** Current execution graphs. */
+<<<<<<< HEAD
 		private final ExecutionGraphCache currentGraphs;
+=======
+		private final ExecutionGraphHolder currentGraphs;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 		/** Execution context for futures. */
 		private final Executor executor;
 
+<<<<<<< HEAD
 		public TriggerHandler(ExecutionGraphCache currentGraphs, Executor executor) {
+=======
+		public TriggerHandler(ExecutionGraphHolder currentGraphs, Executor executor) {
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			this.currentGraphs = checkNotNull(currentGraphs);
 			this.executor = checkNotNull(executor);
 		}
@@ -147,6 +173,7 @@ public class JobCancellationWithSavepointHandlers {
 
 			if (jobManagerGateway != null) {
 				JobID jobId = JobID.fromHexString(pathParams.get("jobid"));
+<<<<<<< HEAD
 				final CompletableFuture<AccessExecutionGraph> graphFuture;
 
 				graphFuture = currentGraphs.getExecutionGraph(jobId, jobManagerGateway);
@@ -181,6 +208,41 @@ public class JobCancellationWithSavepointHandlers {
 						}
 					},
 					executor);
+=======
+				final CompletableFuture<Optional<AccessExecutionGraph>> graphFuture;
+
+				graphFuture = currentGraphs.getExecutionGraph(jobId, jobManagerGateway);
+
+				return graphFuture.thenApplyAsync(
+					(Optional<AccessExecutionGraph> optGraph) -> {
+						final AccessExecutionGraph graph = optGraph.orElseThrow(
+							() -> new CompletionException(
+								new NotFoundException("Could not find ExecutionGraph with jobId " + jobId + '.')));
+
+						CheckpointCoordinator coord = graph.getCheckpointCoordinator();
+						if (coord == null) {
+							throw new CompletionException(new FlinkException("Cannot find CheckpointCoordinator for job."));
+						}
+
+						String targetDirectory = pathParams.get("targetDirectory");
+						if (targetDirectory == null) {
+							if (defaultSavepointDirectory == null) {
+								throw new IllegalStateException("No savepoint directory configured. " +
+									"You can either specify a directory when triggering this savepoint or " +
+									"configure a cluster-wide default via key '" +
+									CoreOptions.SAVEPOINT_DIRECTORY.key() + "'.");
+							} else {
+								targetDirectory = defaultSavepointDirectory;
+							}
+						}
+
+						try {
+							return handleNewRequest(jobManagerGateway, jobId, targetDirectory, coord.getCheckpointTimeout());
+						} catch (IOException e) {
+							throw new CompletionException(new FlinkException("Could not cancel job with savepoint.", e));
+						}
+					}, executor);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			} else {
 				return FutureUtils.completedExceptionally(new Exception("No connection to the leading JobManager."));
 			}
@@ -219,9 +281,13 @@ public class JobCancellationWithSavepointHandlers {
 									completed.put(requestId, path);
 								}
 							} finally {
+<<<<<<< HEAD
 								synchronized (lock) {
 									inProgress.remove(jobId);
 								}
+=======
+								inProgress.remove(jobId);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 							}
 						}, executor);
 

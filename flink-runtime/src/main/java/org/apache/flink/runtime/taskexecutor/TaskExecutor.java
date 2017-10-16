@@ -361,6 +361,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 
 			TaskManagerActions taskManagerActions = jobManagerConnection.getTaskManagerActions();
 			CheckpointResponder checkpointResponder = jobManagerConnection.getCheckpointResponder();
+<<<<<<< HEAD
 			BlobCacheService blobService = jobManagerConnection.getBlobService();
 			LibraryCacheManager libraryCache = jobManagerConnection.getLibraryCacheManager();
 			ResultPartitionConsumableNotifier resultPartitionConsumableNotifier = jobManagerConnection.getResultPartitionConsumableNotifier();
@@ -395,6 +396,42 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 
 			log.info("Received task {}.", task.getTaskInfo().getTaskNameWithSubtasks());
 
+=======
+			BlobCache blobCache = jobManagerConnection.getBlobCache();
+			LibraryCacheManager libraryCache = jobManagerConnection.getLibraryCacheManager();
+			ResultPartitionConsumableNotifier resultPartitionConsumableNotifier = jobManagerConnection.getResultPartitionConsumableNotifier();
+			PartitionProducerStateChecker partitionStateChecker = jobManagerConnection.getPartitionStateChecker();
+
+			Task task = new Task(
+				jobInformation,
+				taskInformation,
+				tdd.getExecutionAttemptId(),
+				tdd.getAllocationId(),
+				tdd.getSubtaskIndex(),
+				tdd.getAttemptNumber(),
+				tdd.getProducedPartitions(),
+				tdd.getInputGates(),
+				tdd.getTargetSlotNumber(),
+				tdd.getTaskStateHandles(),
+				memoryManager,
+				ioManager,
+				networkEnvironment,
+				broadcastVariableManager,
+				taskManagerActions,
+				inputSplitProvider,
+				checkpointResponder,
+				blobCache,
+				libraryCache,
+				fileCache,
+				taskManagerConfiguration,
+				taskMetricGroup,
+				resultPartitionConsumableNotifier,
+				partitionStateChecker,
+				getRpcService().getExecutor());
+
+			log.info("Received task {}.", task.getTaskInfo().getTaskNameWithSubtasks());
+
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			boolean taskAdded;
 
 			try {
@@ -935,6 +972,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 		InetSocketAddress blobServerAddress = new InetSocketAddress(jobMasterGateway.getHostname(), blobPort);
 
 		final LibraryCacheManager libraryCacheManager;
+<<<<<<< HEAD
 		final BlobCacheService blobService;
 		try {
 			blobService = new BlobCacheService(
@@ -943,6 +981,16 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 				haServices.createBlobStore());
 			libraryCacheManager = new BlobLibraryCacheManager(
 				blobService.getPermanentBlobService(), taskManagerConfiguration.getClassLoaderResolveOrder());
+=======
+		final BlobCache blobCache;
+		try {
+			blobCache = new BlobCache(
+				blobServerAddress,
+				taskManagerConfiguration.getConfiguration(),
+				haServices.createBlobStore());
+			libraryCacheManager =
+				new BlobLibraryCacheManager(blobCache, taskManagerConfiguration.getClassLoaderResolveOrder());
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		} catch (IOException e) {
 			// Can't pass the IOException up - we need a RuntimeException anyway
 			// two levels up where this is run asynchronously. Also, we don't
@@ -965,7 +1013,11 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 			jobMasterGateway,
 			taskManagerActions,
 			checkpointResponder,
+<<<<<<< HEAD
 			blobService,
+=======
+			blobCache,
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			libraryCacheManager,
 			resultPartitionConsumableNotifier,
 			partitionStateChecker);
@@ -976,7 +1028,11 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 		JobMasterGateway jobManagerGateway = jobManagerConnection.getJobManagerGateway();
 		jobManagerGateway.disconnectTaskManager(getResourceID(), cause);
 		jobManagerConnection.getLibraryCacheManager().shutdown();
+<<<<<<< HEAD
 		jobManagerConnection.getBlobService().close();
+=======
+		jobManagerConnection.getBlobCache().close();
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	}
 
 	// ------------------------------------------------------------------------

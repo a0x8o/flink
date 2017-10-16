@@ -52,6 +52,7 @@ public class HeapMemorySegmentTest extends MemorySegmentTestBase {
 	public void testHeapSegmentSpecifics() {
 		final byte[] buffer = new byte[411];
 		HeapMemorySegment seg = new HeapMemorySegment(buffer);
+<<<<<<< HEAD
 
 		assertFalse(seg.isFreed());
 		assertFalse(seg.isOffHeap());
@@ -61,6 +62,17 @@ public class HeapMemorySegmentTest extends MemorySegmentTestBase {
 		ByteBuffer buf1 = seg.wrap(1, 2);
 		ByteBuffer buf2 = seg.wrap(3, 4);
 
+=======
+
+		assertFalse(seg.isFreed());
+		assertFalse(seg.isOffHeap());
+		assertEquals(buffer.length, seg.size());
+		assertTrue(buffer == seg.getArray());
+
+		ByteBuffer buf1 = seg.wrap(1, 2);
+		ByteBuffer buf2 = seg.wrap(3, 4);
+
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		assertTrue(buf1 != buf2);
 		assertEquals(1, buf1.position());
 		assertEquals(3, buf1.limit());

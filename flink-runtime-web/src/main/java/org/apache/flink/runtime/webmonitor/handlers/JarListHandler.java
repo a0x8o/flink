@@ -77,6 +77,7 @@ public class JarListHandler extends AbstractJsonRequestHandler {
 						}
 					});
 
+<<<<<<< HEAD
 					// last modified ascending order
 					Arrays.sort(list, (f1, f2) -> Long.compare(f2.lastModified(), f1.lastModified()));
 
@@ -84,6 +85,12 @@ public class JarListHandler extends AbstractJsonRequestHandler {
 						// separate the uuid and the name parts.
 						String id = f.getName();
 
+=======
+					for (File f : list) {
+						// separate the uuid and the name parts.
+						String id = f.getName();
+
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 						int startIndex = id.indexOf("_");
 						if (startIndex < 0) {
 							continue;

@@ -29,7 +29,10 @@ import org.apache.flink.runtime.rest.messages.ResponseBody;
 import org.apache.flink.runtime.rest.util.RestMapperUtils;
 import org.apache.flink.runtime.webmonitor.RestfulGateway;
 import org.apache.flink.runtime.webmonitor.retriever.GatewayRetriever;
+<<<<<<< HEAD
 import org.apache.flink.util.ExceptionUtils;
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
 import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBufInputStream;
@@ -68,7 +71,11 @@ public abstract class AbstractRestHandler<T extends RestfulGateway, R extends Re
 
 	protected AbstractRestHandler(
 			CompletableFuture<String> localRestAddress,
+<<<<<<< HEAD
 			GatewayRetriever<? extends T> leaderRetriever,
+=======
+			GatewayRetriever<T> leaderRetriever,
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			Time timeout,
 			MessageHeaders<R, P, M> messageHeaders) {
 		super(localRestAddress, leaderRetriever, timeout);
@@ -103,8 +110,13 @@ public abstract class AbstractRestHandler<T extends RestfulGateway, R extends Re
 				try {
 					request = mapper.readValue("{}", messageHeaders.getRequestClass());
 				} catch (JsonParseException | JsonMappingException je) {
+<<<<<<< HEAD
 					log.error("Request did not conform to expected format.", je);
 					HandlerUtils.sendErrorResponse(ctx, httpRequest, new ErrorResponseBody("Bad request received."), HttpResponseStatus.BAD_REQUEST);
+=======
+					log.error("Implementation error: Get request bodies must have a no-argument constructor.", je);
+					HandlerUtils.sendErrorResponse(ctx, httpRequest, new ErrorResponseBody("Internal server error."), HttpResponseStatus.INTERNAL_SERVER_ERROR);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 					return;
 				}
 			} else {
@@ -118,6 +130,7 @@ public abstract class AbstractRestHandler<T extends RestfulGateway, R extends Re
 				}
 			}
 
+<<<<<<< HEAD
 			final HandlerRequest<R, M> handlerRequest;
 
 			try {
@@ -152,6 +165,21 @@ public abstract class AbstractRestHandler<T extends RestfulGateway, R extends Re
 						log.error("Exception occurred in REST handler.", error);
 
 						HandlerUtils.sendErrorResponse(ctx, httpRequest, new ErrorResponseBody(rhe.getMessage()), rhe.getHttpResponseStatus());
+=======
+			CompletableFuture<P> response;
+			try {
+				HandlerRequest<R, M> handlerRequest = new HandlerRequest<>(request, messageHeaders.getUnresolvedMessageParameters(), routed.pathParams(), routed.queryParams());
+				response = handleRequest(handlerRequest, gateway);
+			} catch (Exception e) {
+				response = FutureUtils.completedExceptionally(e);
+			}
+
+			response.whenComplete((P resp, Throwable error) -> {
+				if (error != null) {
+					if (error instanceof RestHandlerException) {
+						RestHandlerException rhe = (RestHandlerException) error;
+						HandlerUtils.sendErrorResponse(ctx, httpRequest, new ErrorResponseBody(rhe.getErrorMessage()), rhe.getHttpResponseStatus());
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 					} else {
 						log.error("Implementation error: Unhandled exception.", error);
 						HandlerUtils.sendErrorResponse(ctx, httpRequest, new ErrorResponseBody("Internal server error."), HttpResponseStatus.INTERNAL_SERVER_ERROR);
@@ -160,7 +188,11 @@ public abstract class AbstractRestHandler<T extends RestfulGateway, R extends Re
 					HandlerUtils.sendResponse(ctx, httpRequest, resp, messageHeaders.getResponseStatusCode());
 				}
 			});
+<<<<<<< HEAD
 		} catch (Throwable e) {
+=======
+		} catch (Exception e) {
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			log.error("Request processing failed.", e);
 			HandlerUtils.sendErrorResponse(ctx, httpRequest, new ErrorResponseBody("Internal server error."), HttpResponseStatus.INTERNAL_SERVER_ERROR);
 		}

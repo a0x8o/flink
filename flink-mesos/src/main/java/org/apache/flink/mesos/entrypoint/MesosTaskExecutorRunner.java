@@ -99,11 +99,20 @@ public class MesosTaskExecutorRunner {
 			configuration.setString(ConfigConstants.TASK_MANAGER_TMP_DIR_KEY, tmpDirs);
 		}
 
+<<<<<<< HEAD
 		// configure the filesystems
 		try {
 			FileSystem.initialize(configuration);
 		} catch (IOException e) {
 			throw new IOException("Error while configuring the filesystems.", e);
+=======
+		// configure the default filesystem
+		try {
+			FileSystem.setDefaultScheme(configuration);
+		} catch (IOException e) {
+			throw new IOException("Error while setting the default " +
+				"filesystem scheme from configuration.", e);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		}
 
 		// tell akka to die in case of an error

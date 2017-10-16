@@ -55,6 +55,7 @@ import java.util.concurrent.CompletableFuture;
  * {@link JobMaster} rpc gateway interface
  */
 public interface JobMasterGateway extends CheckpointCoordinatorGateway, FencedRpcGateway<JobMasterId> {
+<<<<<<< HEAD
 
 	/**
 	 * Cancels the currently executed job.
@@ -71,6 +72,8 @@ public interface JobMasterGateway extends CheckpointCoordinatorGateway, FencedRp
 	 * @return Future acknowledge if the cancellation was successful
 	 */
 	CompletableFuture<Acknowledge> stop(@RpcTimeout Time timeout);
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 	/**
 	 * Updates the task execution state for a given task.
@@ -113,8 +116,11 @@ public interface JobMasterGateway extends CheckpointCoordinatorGateway, FencedRp
 	 * {@link ResultPartition} instance, either when first producing data (for pipelined executions)
 	 * or when all data has been produced (for staged executions).
 	 *
+<<<<<<< HEAD
 	 * <p>The JobManager then can decide when to schedule the partition consumers of the given session.
 	 *
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	 * @param partitionID     The partition which has already produced data
 	 * @param timeout         before the rpc call fails
 	 * @return Future acknowledge of the schedule or update operation
@@ -234,6 +240,7 @@ public interface JobMasterGateway extends CheckpointCoordinatorGateway, FencedRp
 	 */
 	void heartbeatFromResourceManager(final ResourceID resourceID);
 
+<<<<<<< HEAD
 	/**
 	 * Request the details of the executed job.
 	 *
@@ -249,4 +256,7 @@ public interface JobMasterGateway extends CheckpointCoordinatorGateway, FencedRp
 	 * @return Future archived execution graph derived from the currently executed job
 	 */
 	CompletableFuture<AccessExecutionGraph> requestArchivedExecutionGraph(@RpcTimeout Time timeout);
+=======
+	CompletableFuture<JobDetails> requestJobDetails(@RpcTimeout Time timeout);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 }

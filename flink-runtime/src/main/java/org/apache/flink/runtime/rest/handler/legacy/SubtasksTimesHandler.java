@@ -47,7 +47,11 @@ public class SubtasksTimesHandler extends AbstractJobVertexRequestHandler {
 
 	private static final String SUBTASK_TIMES_REST_PATH = 	"/jobs/:jobid/vertices/:vertexid/subtasktimes";
 
+<<<<<<< HEAD
 	public SubtasksTimesHandler(ExecutionGraphCache executionGraphHolder, Executor executor) {
+=======
+	public SubtasksTimesHandler(ExecutionGraphHolder executionGraphHolder, Executor executor) {
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		super(executionGraphHolder, executor);
 	}
 

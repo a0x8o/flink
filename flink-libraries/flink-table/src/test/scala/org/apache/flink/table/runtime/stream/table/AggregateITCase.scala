@@ -193,6 +193,7 @@ class AggregateITCase extends StreamingWithStateTestBase {
     // verify agg close is called
     assert(JavaUserDefinedAggFunctions.isCloseCalled)
   }
+<<<<<<< HEAD
 
   @Test
   def testRemoveDuplicateRecordsWithUpsertSink(): Unit = {
@@ -218,4 +219,6 @@ class AggregateITCase extends StreamingWithStateTestBase {
     val expected = List("(true,A,1)", "(true,B,2)", "(true,C,3)")
     assertEquals(expected.sorted, RowCollector.getAndClearValues.map(_.toString).sorted)
   }
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 }

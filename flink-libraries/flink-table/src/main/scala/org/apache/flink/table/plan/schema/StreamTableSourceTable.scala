@@ -20,10 +20,17 @@ package org.apache.flink.table.plan.schema
 
 import org.apache.calcite.rel.`type`.{RelDataType, RelDataTypeFactory}
 import org.apache.flink.api.common.typeinfo.TypeInformation
+<<<<<<< HEAD
 import org.apache.flink.table.api.{TableEnvironment, TableException, Types}
 import org.apache.flink.table.calcite.FlinkTypeFactory
 import org.apache.flink.table.plan.stats.FlinkStatistic
 import org.apache.flink.table.sources.{DefinedProctimeAttribute, DefinedRowtimeAttribute, StreamTableSource, TableSource}
+=======
+import org.apache.flink.table.api.{TableEnvironment, TableException}
+import org.apache.flink.table.calcite.FlinkTypeFactory
+import org.apache.flink.table.plan.stats.FlinkStatistic
+import org.apache.flink.table.sources.{DefinedProctimeAttribute, DefinedRowtimeAttribute, TableSource}
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.table.typeutils.TimeIndicatorTypeInfo
 
 class StreamTableSourceTable[T](
@@ -49,6 +56,7 @@ class StreamTableSourceTable[T](
 object StreamTableSourceTable {
 
   private def adjustFieldIndexes(tableSource: TableSource[_]): Array[Int] = {
+<<<<<<< HEAD
     val (_, proctime) = getTimeIndicators(tableSource)
 
     val original = TableEnvironment.getFieldIndices(tableSource)
@@ -99,10 +107,48 @@ object StreamTableSourceTable {
   }
 
   private def getTimeIndicators(tableSource: TableSource[_]): (Option[String], Option[String]) = {
+=======
+    val (rowtime, proctime) = getTimeIndicators(tableSource)
 
-    val fieldNames = TableEnvironment.getFieldNames(tableSource).toList
-    val fieldTypes = TableEnvironment.getFieldTypes(tableSource.getReturnType).toList
+    val original = TableEnvironment.getFieldIndices(tableSource)
 
+    // append rowtime marker
+    val withRowtime = if (rowtime.isDefined) {
+      original :+ TimeIndicatorTypeInfo.ROWTIME_MARKER
+    } else {
+      original
+    }
+
+    // append proctime marker
+    if (proctime.isDefined) {
+      withRowtime :+ TimeIndicatorTypeInfo.PROCTIME_MARKER
+    } else {
+      withRowtime
+    }
+  }
+
+  private def adjustFieldNames(tableSource: TableSource[_]): Array[String] = {
+    val (rowtime, proctime) = getTimeIndicators(tableSource)
+
+    val original = TableEnvironment.getFieldNames(tableSource)
+
+    // append rowtime field
+    val withRowtime = if (rowtime.isDefined) {
+      original :+ rowtime.get
+    } else {
+      original
+    }
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
+
+    // append proctime field
+    if (proctime.isDefined) {
+      withRowtime :+ proctime.get
+    } else {
+      withRowtime
+    }
+  }
+
+<<<<<<< HEAD
     val rowtime: Option[String] = tableSource match {
       case timeSource: DefinedRowtimeAttribute if timeSource.getRowtimeAttribute == null =>
         None
@@ -125,6 +171,39 @@ object StreamTableSourceTable {
             s"Rowtime field '$rowtimeAttribute' must be of type Long or Timestamp " +
             s"but of type ${fieldTypes(rowtimeIdx)}.")
         }
+=======
+  private def adjustFieldTypes(tableSource: TableSource[_]): Array[TypeInformation[_]] = {
+    val (rowtime, proctime) = StreamTableSourceTable.getTimeIndicators(tableSource)
+
+    val original = TableEnvironment.getFieldTypes(tableSource.getReturnType)
+
+    // append rowtime type
+    val withRowtime = if (rowtime.isDefined) {
+      original :+ TimeIndicatorTypeInfo.ROWTIME_INDICATOR
+    } else {
+      original
+    }
+
+    // append proctime type
+    val withProctime = if (proctime.isDefined) {
+      withRowtime :+ TimeIndicatorTypeInfo.PROCTIME_INDICATOR
+    } else {
+      withRowtime
+    }
+
+    withProctime.asInstanceOf[Array[TypeInformation[_]]]
+  }
+
+  private def getTimeIndicators(tableSource: TableSource[_]): (Option[String], Option[String]) = {
+
+    val rowtime: Option[String] = tableSource match {
+      case timeSource: DefinedRowtimeAttribute if timeSource.getRowtimeAttribute == null =>
+        None
+      case timeSource: DefinedRowtimeAttribute if timeSource.getRowtimeAttribute.trim.equals("") =>
+        throw TableException("The name of the rowtime attribute must not be empty.")
+      case timeSource: DefinedRowtimeAttribute =>
+        val rowtimeAttribute = timeSource.getRowtimeAttribute
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
         Some(rowtimeAttribute)
       case _ =>
         None
@@ -144,6 +223,7 @@ object StreamTableSourceTable {
     }
     (rowtime, proctime)
   }
+<<<<<<< HEAD
 
   def deriveRowTypeOfTableSource(
     tableSource: StreamTableSource[_],
@@ -154,4 +234,6 @@ object StreamTableSourceTable {
 
     typeFactory.buildLogicalRowType(fieldNames, fieldTypes)
   }
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 }

@@ -71,7 +71,11 @@ class GroupWindowTest extends TableTestBase {
       batchTableNode(0),
       term("groupBy", "string"),
       term("window", TumblingGroupWindow(WindowReference("w"), 'long, 5.milli)),
+<<<<<<< HEAD
       term("select", "string", "myWeightedAvg(long, int) AS TMP_0")
+=======
+      term("select", "string", "WeightedAvgWithMerge(long, int) AS TMP_0")
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
     )
 
     util.verifyTable(windowedTable, expected)
@@ -212,7 +216,11 @@ class GroupWindowTest extends TableTestBase {
       term("groupBy", "string"),
       term("window",
            SlidingGroupWindow(WindowReference("w"), 'long, 8.milli, 10.milli)),
+<<<<<<< HEAD
       term("select", "string", "myWeightedAvg(long, int) AS TMP_0")
+=======
+      term("select", "string", "WeightedAvgWithMerge(long, int) AS TMP_0")
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
     )
 
     util.verifyTable(windowedTable, expected)
@@ -310,7 +318,11 @@ class GroupWindowTest extends TableTestBase {
       batchTableNode(0),
       term("groupBy", "string"),
       term("window", SessionGroupWindow(WindowReference("w"), 'long, 7.milli)),
+<<<<<<< HEAD
       term("select", "string", "myWeightedAvg(long, int) AS TMP_0")
+=======
+      term("select", "string", "WeightedAvgWithMerge(long, int) AS TMP_0")
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
     )
 
     util.verifyTable(windowedTable, expected)

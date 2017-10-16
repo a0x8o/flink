@@ -409,7 +409,11 @@ FROM Orders LEFT JOIN Product ON Orders.productId = Product.id
           </ul>
         </p>
 
+<<<<<<< HEAD
         <p><b>Note:</b> Currently, only <code>INNER</code> joins are supported.</p>
+=======
+        <p><b>Note:</b> Currently, only processing time window joins and <code>INNER</code> joins are supported.</p>
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 {% highlight sql %}
 SELECT *

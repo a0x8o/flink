@@ -27,6 +27,7 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 
+<<<<<<< HEAD
 import static org.apache.flink.runtime.blob.BlobKey.BlobType.PERMANENT_BLOB;
 import static org.apache.flink.runtime.blob.BlobKey.BlobType.TRANSIENT_BLOB;
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -38,6 +39,13 @@ import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+=======
+import org.apache.flink.core.testutils.CommonTestUtils;
+import org.apache.flink.util.StringUtils;
+import org.apache.flink.util.TestLogger;
+
+import org.junit.Test;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 /**
  * This class contains unit tests for the {@link BlobKey} class.
@@ -186,6 +194,7 @@ public final class BlobKeyTest extends TestLogger {
 
 		assertEquals(k1, k2);
 	}
+<<<<<<< HEAD
 
 	/**
 	 * Verifies that the given <tt>key</tt> is of an expected type.
@@ -200,4 +209,6 @@ public final class BlobKeyTest extends TestLogger {
 			assertThat(key, is(instanceOf(TransientBlobKey.class)));
 		}
 	}
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 }

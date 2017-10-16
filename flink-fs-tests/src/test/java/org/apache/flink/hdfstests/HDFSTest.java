@@ -54,7 +54,10 @@ import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Rule;
 import org.junit.Test;
+<<<<<<< HEAD
 import org.junit.rules.ExpectedException;
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.junit.rules.TemporaryFolder;
 
 import java.io.File;
@@ -80,9 +83,12 @@ public class HDFSTest {
 	@Rule
 	public TemporaryFolder temporaryFolder = new TemporaryFolder();
 
+<<<<<<< HEAD
 	@Rule
 	public final ExpectedException exception = ExpectedException.none();
 
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	@BeforeClass
 	public static void verifyOS() {
 		Assume.assumeTrue("HDFS cluster cannot be started on Windows without extensions.", !OperatingSystem.isWindows());
@@ -254,6 +260,10 @@ public class HDFSTest {
 		org.apache.flink.configuration.Configuration
 			config = new org.apache.flink.configuration.Configuration();
 		config.setString(HighAvailabilityOptions.HA_MODE, "ZOOKEEPER");
+<<<<<<< HEAD
+=======
+		config.setString(CoreOptions.STATE_BACKEND, "ZOOKEEPER");
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		config.setString(BlobServerOptions.STORAGE_DIRECTORY,
 			temporaryFolder.newFolder().getAbsolutePath());
 		config.setString(HighAvailabilityOptions.HA_STORAGE_PATH, hdfsURI);

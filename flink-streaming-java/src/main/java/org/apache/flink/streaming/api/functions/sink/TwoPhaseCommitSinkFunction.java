@@ -107,7 +107,11 @@ public abstract class TwoPhaseCommitSinkFunction<IN, TXN, CONTEXT>
 	/**
 	 * Write value within a transaction.
 	 */
+<<<<<<< HEAD
 	protected abstract void invoke(TXN transaction, IN value, Context context) throws Exception;
+=======
+	protected abstract void invoke(TXN transaction, IN value) throws Exception;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 	/**
 	 * Method that starts a new transaction.
@@ -159,6 +163,7 @@ public abstract class TwoPhaseCommitSinkFunction<IN, TXN, CONTEXT>
 
 	// ------ entry points for above methods implementing {@CheckPointedFunction} and {@CheckpointListener} ------
 
+<<<<<<< HEAD
 
 	/**
 	 * This should not be implemented by subclasses.
@@ -170,6 +175,11 @@ public abstract class TwoPhaseCommitSinkFunction<IN, TXN, CONTEXT>
 	public final void invoke(
 		IN value, Context context) throws Exception {
 		invoke(currentTransaction, value, context);
+=======
+	@Override
+	public final void invoke(IN value) throws Exception {
+		invoke(currentTransaction, value);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	}
 
 	@Override

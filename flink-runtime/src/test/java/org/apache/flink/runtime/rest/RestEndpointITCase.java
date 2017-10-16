@@ -26,19 +26,28 @@ import org.apache.flink.runtime.rest.handler.AbstractRestHandler;
 import org.apache.flink.runtime.rest.handler.HandlerRequest;
 import org.apache.flink.runtime.rest.handler.RestHandlerException;
 import org.apache.flink.runtime.rest.handler.RestHandlerSpecification;
+<<<<<<< HEAD
 import org.apache.flink.runtime.rest.messages.ConversionException;
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.runtime.rest.messages.MessageHeaders;
 import org.apache.flink.runtime.rest.messages.MessageParameters;
 import org.apache.flink.runtime.rest.messages.MessagePathParameter;
 import org.apache.flink.runtime.rest.messages.MessageQueryParameter;
 import org.apache.flink.runtime.rest.messages.RequestBody;
 import org.apache.flink.runtime.rest.messages.ResponseBody;
+<<<<<<< HEAD
 import org.apache.flink.runtime.rest.util.RestClientException;
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.runtime.rpc.RpcUtils;
 import org.apache.flink.runtime.testingUtils.TestingUtils;
 import org.apache.flink.runtime.webmonitor.RestfulGateway;
 import org.apache.flink.runtime.webmonitor.retriever.GatewayRetriever;
+<<<<<<< HEAD
 import org.apache.flink.util.ExceptionUtils;
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.TestLogger;
 
@@ -47,19 +56,29 @@ import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpResponseSt
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
+<<<<<<< HEAD
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
+=======
+import org.junit.Assert;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.junit.Test;
 
 import javax.annotation.Nonnull;
 
+<<<<<<< HEAD
 import java.net.InetSocketAddress;
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+<<<<<<< HEAD
 import java.util.concurrent.ExecutionException;
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 import static org.mockito.Matchers.any;
 import static org.mockito.Mockito.mock;
@@ -75,11 +94,16 @@ public class RestEndpointITCase extends TestLogger {
 	private static final String JOB_ID_KEY = "jobid";
 	private static final Time timeout = Time.seconds(10L);
 
+<<<<<<< HEAD
 	private RestServerEndpoint serverEndpoint;
 	private RestClient clientEndpoint;
 
 	@Before
 	public void setup() throws Exception {
+=======
+	@Test
+	public void testEndpoints() throws Exception {
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		Configuration config = new Configuration();
 
 		RestServerEndpointConfiguration serverConfig = RestServerEndpointConfiguration.fromConfiguration(config);
@@ -96,6 +120,7 @@ public class RestEndpointITCase extends TestLogger {
 			mockGatewayRetriever,
 			RpcUtils.INF_TIMEOUT);
 
+<<<<<<< HEAD
 		serverEndpoint = new TestRestServerEndpoint(serverConfig, testHandler);
 		clientEndpoint = new TestRestClient(clientConfig);
 
@@ -191,6 +216,48 @@ public class RestEndpointITCase extends TestLogger {
 			RestClientException rce = (RestClientException) t;
 
 			Assert.assertEquals(HttpResponseStatus.BAD_REQUEST, rce.getHttpResponseStatus());
+=======
+		RestServerEndpoint serverEndpoint = new TestRestServerEndpoint(serverConfig, testHandler);
+		RestClient clientEndpoint = new TestRestClient(clientConfig);
+
+		try {
+			serverEndpoint.start();
+
+			TestParameters parameters = new TestParameters();
+			parameters.jobIDPathParameter.resolve(PATH_JOB_ID);
+			parameters.jobIDQueryParameter.resolve(Collections.singletonList(QUERY_JOB_ID));
+
+			// send first request and wait until the handler blocks
+			CompletableFuture<TestResponse> response1;
+			synchronized (TestHandler.LOCK) {
+				response1 = clientEndpoint.sendRequest(
+					serverConfig.getEndpointBindAddress(),
+					serverConfig.getEndpointBindPort(),
+					new TestHeaders(),
+					parameters,
+					new TestRequest(1));
+				TestHandler.LOCK.wait();
+			}
+
+			// send second request and verify response
+			CompletableFuture<TestResponse> response2 = clientEndpoint.sendRequest(
+				serverConfig.getEndpointBindAddress(),
+				serverConfig.getEndpointBindPort(),
+				new TestHeaders(),
+				parameters,
+				new TestRequest(2));
+			Assert.assertEquals(2, response2.get().id);
+
+			// wake up blocked handler
+			synchronized (TestHandler.LOCK) {
+				TestHandler.LOCK.notifyAll();
+			}
+			// verify response to first request
+			Assert.assertEquals(1, response1.get().id);
+		} finally {
+			clientEndpoint.shutdown(timeout);
+			serverEndpoint.shutdown(timeout);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		}
 	}
 
@@ -316,6 +383,7 @@ public class RestEndpointITCase extends TestLogger {
 		}
 	}
 
+<<<<<<< HEAD
 	private static class FaultyTestParameters extends TestParameters {
 		private final FaultyJobIDPathParameter faultyJobIDPathParameter = new FaultyJobIDPathParameter();
 
@@ -325,6 +393,8 @@ public class RestEndpointITCase extends TestLogger {
 		}
 	}
 
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	static class JobIDPathParameter extends MessagePathParameter<JobID> {
 		JobIDPathParameter() {
 			super(JOB_ID_KEY);
@@ -341,6 +411,7 @@ public class RestEndpointITCase extends TestLogger {
 		}
 	}
 
+<<<<<<< HEAD
 	static class FaultyJobIDPathParameter extends MessagePathParameter<JobID> {
 
 		FaultyJobIDPathParameter() {
@@ -358,6 +429,8 @@ public class RestEndpointITCase extends TestLogger {
 		}
 	}
 
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	static class JobIDQueryParameter extends MessageQueryParameter<JobID> {
 		JobIDQueryParameter() {
 			super(JOB_ID_KEY, MessageParameterRequisiteness.MANDATORY);

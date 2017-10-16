@@ -27,6 +27,8 @@ import java.io.IOException;
 import java.io.StringWriter;
 import java.util.Map;
 import java.util.TimeZone;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 
 /**
  * Responder that returns the parameters that define how the asynchronous requests
@@ -39,7 +41,8 @@ public class DashboardConfigHandler extends AbstractJsonRequestHandler {
 
 	private final String configString;
 
-	public DashboardConfigHandler(long refreshInterval) {
+	public DashboardConfigHandler(Executor executor, long refreshInterval) {
+		super(executor);
 		try {
 			this.configString = createConfigJson(refreshInterval);
 		}
@@ -55,8 +58,13 @@ public class DashboardConfigHandler extends AbstractJsonRequestHandler {
 	}
 
 	@Override
+<<<<<<< HEAD
 	public String handleJsonRequest(Map<String, String> pathParams, Map<String, String> queryParams, JobManagerGateway jobManagerGateway) throws Exception {
 		return this.configString;
+=======
+	public CompletableFuture<String> handleJsonRequest(Map<String, String> pathParams, Map<String, String> queryParams, JobManagerGateway jobManagerGateway) {
+		return CompletableFuture.completedFuture(configString);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	}
 
 	public static String createConfigJson(long refreshInterval) throws IOException {

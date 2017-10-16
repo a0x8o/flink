@@ -37,8 +37,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
+<<<<<<< HEAD
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.UUID;
@@ -65,12 +68,16 @@ public class BlobUtils {
 	/**
 	 * The prefix of all job-specific directories created by the BLOB server.
 	 */
-	static final String JOB_DIR_PREFIX = "job_";
+	private static final String JOB_DIR_PREFIX = "job_";
 
 	/**
 	 * The prefix of all job-unrelated directories created by the BLOB server.
 	 */
+<<<<<<< HEAD
 	static final String NO_JOB_DIR_PREFIX = "no_job";
+=======
+	private static final String NO_JOB_DIR_PREFIX = "no_job";
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 	/**
 	 * Creates a BlobStore based on the parameters set in the configuration.
@@ -172,11 +179,16 @@ public class BlobUtils {
 	 *
 	 * @param storageDir
 	 * 		storage directory used be the BLOB service
+<<<<<<< HEAD
 	 *
 	 * @return the BLOB service's directory for incoming files
 	 *
 	 * @throws IOException
 	 * 		if creating the directory fails
+=======
+	 *
+	 * @return the BLOB service's directory for incoming files
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	 */
 	static File getIncomingDirectory(File storageDir) throws IOException {
 		final File incomingDir = new File(storageDir, "incoming");
@@ -191,6 +203,7 @@ public class BlobUtils {
 	 *
 	 * @param dir
 	 * 		directory to create
+<<<<<<< HEAD
 	 *
 	 * @throws IOException
 	 * 		if creating the directory fails
@@ -200,6 +213,14 @@ public class BlobUtils {
 		//       directory already existed
 		if (!dir.mkdirs() && !dir.exists()) {
 			throw new IOException(
+=======
+	 */
+	private static void mkdirTolerateExisting(final File dir) {
+		// note: thread-safe create should try to mkdir first and then ignore the case that the
+		//       directory already existed
+		if (!dir.mkdirs() && !dir.exists()) {
+			throw new RuntimeException(
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 				"Cannot create directory '" + dir.getAbsolutePath() + "'.");
 		}
 	}
@@ -215,12 +236,18 @@ public class BlobUtils {
 	 * 		ID of the job for the incoming files (or <tt>null</tt> if job-unrelated)
 	 *
 	 * @return the (designated) physical storage location of the BLOB
+<<<<<<< HEAD
 	 *
 	 * @throws IOException
 	 * 		if creating the directory fails
 	 */
 	static File getStorageLocation(
 			File storageDir, @Nullable JobID jobId, BlobKey key) throws IOException {
+=======
+	 */
+	static File getStorageLocation(
+			File storageDir, @Nullable JobID jobId, BlobKey key) {
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		File file = new File(getStorageLocationPath(storageDir.getAbsolutePath(), jobId, key));
 
 		mkdirTolerateExisting(file.getParentFile());
@@ -418,6 +445,7 @@ public class BlobUtils {
 	 */
 	private BlobUtils() {
 		throw new RuntimeException();
+<<<<<<< HEAD
 	}
 
 	/**
@@ -486,5 +514,7 @@ public class BlobUtils {
 
 			writeLock.unlock();
 		}
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	}
 }

@@ -27,8 +27,13 @@ import org.apache.flink.table.api.{StreamQueryConfig, StreamTableEnvironment}
 import org.apache.flink.table.calcite.FlinkTypeFactory
 import org.apache.flink.table.plan.nodes.PhysicalTableSourceScan
 import org.apache.flink.table.plan.schema.{RowSchema, StreamTableSourceTable}
+<<<<<<< HEAD
+=======
+import org.apache.flink.table.sources._
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.table.runtime.types.CRow
 import org.apache.flink.table.sources.{StreamTableSource, TableSource}
+import org.apache.flink.table.typeutils.TimeIndicatorTypeInfo
 
 /** Flink RelNode to read data from an external source defined by a [[StreamTableSource]]. */
 class StreamTableSourceScan(
@@ -41,9 +46,38 @@ class StreamTableSourceScan(
 
   override def deriveRowType(): RelDataType = {
 
+<<<<<<< HEAD
     StreamTableSourceTable.deriveRowTypeOfTableSource(
       tableSource.asInstanceOf[StreamTableSource[_]],
       cluster.getTypeFactory.asInstanceOf[FlinkTypeFactory])
+=======
+    val fieldNames = TableEnvironment.getFieldNames(tableSource).toList
+    val fieldTypes = TableEnvironment.getFieldTypes(tableSource.getReturnType).toList
+
+    val fields = fieldNames.zip(fieldTypes)
+
+    val withRowtime = tableSource match {
+      case timeSource: DefinedRowtimeAttribute if timeSource.getRowtimeAttribute != null =>
+        val rowtimeAttribute = timeSource.getRowtimeAttribute
+        fields :+ (rowtimeAttribute, TimeIndicatorTypeInfo.ROWTIME_INDICATOR)
+      case _ =>
+        fields
+    }
+
+    val withProctime = tableSource match {
+      case timeSource: DefinedProctimeAttribute if timeSource.getProctimeAttribute != null =>
+        val proctimeAttribute = timeSource.getProctimeAttribute
+        withRowtime :+ (proctimeAttribute, TimeIndicatorTypeInfo.PROCTIME_INDICATOR)
+      case _ =>
+        withRowtime
+    }
+
+    val (fieldNamesWithIndicators, fieldTypesWithIndicators) = withProctime.unzip
+
+    flinkTypeFactory.buildLogicalRowType(
+      fieldNamesWithIndicators,
+      fieldTypesWithIndicators)
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
   }
 
   override def computeSelfCost (planner: RelOptPlanner, metadata: RelMetadataQuery): RelOptCost = {

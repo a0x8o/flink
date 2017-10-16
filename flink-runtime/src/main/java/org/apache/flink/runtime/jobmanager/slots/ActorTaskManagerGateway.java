@@ -209,16 +209,28 @@ public class ActorTaskManagerGateway implements TaskManagerGateway {
 	}
 
 	@Override
+<<<<<<< HEAD
 	public CompletableFuture<TransientBlobKey> requestTaskManagerLog(Time timeout) {
+=======
+	public CompletableFuture<BlobKey> requestTaskManagerLog(Time timeout) {
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		return requestTaskManagerLog((TaskManagerMessages.RequestTaskManagerLog) TaskManagerMessages.getRequestTaskManagerLog(), timeout);
 	}
 
 	@Override
+<<<<<<< HEAD
 	public CompletableFuture<TransientBlobKey> requestTaskManagerStdout(Time timeout) {
 		return requestTaskManagerLog((TaskManagerMessages.RequestTaskManagerLog) TaskManagerMessages.getRequestTaskManagerStdout(), timeout);
 	}
 
 	private CompletableFuture<TransientBlobKey> requestTaskManagerLog(TaskManagerMessages.RequestTaskManagerLog request, Time timeout) {
+=======
+	public CompletableFuture<BlobKey> requestTaskManagerStdout(Time timeout) {
+		return requestTaskManagerLog((TaskManagerMessages.RequestTaskManagerLog) TaskManagerMessages.getRequestTaskManagerStdout(), timeout);
+	}
+
+	private CompletableFuture<BlobKey> requestTaskManagerLog(TaskManagerMessages.RequestTaskManagerLog request, Time timeout) {
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		Preconditions.checkNotNull(request);
 		Preconditions.checkNotNull(timeout);
 

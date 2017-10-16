@@ -36,8 +36,11 @@ import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpResponseSt
 import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.LastHttpContent;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+<<<<<<< HEAD
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 import javax.annotation.Nonnull;
 
@@ -53,8 +56,11 @@ import static org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpVer
  */
 public class HandlerUtils {
 
+<<<<<<< HEAD
 	private static final Logger LOG = LoggerFactory.getLogger(HandlerUtils.class);
 
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	private static final ObjectMapper mapper = RestMapperUtils.getStrictObjectMapper();
 
 	/**
@@ -75,7 +81,10 @@ public class HandlerUtils {
 		try {
 			mapper.writeValue(sw, response);
 		} catch (IOException ioe) {
+<<<<<<< HEAD
 			LOG.error("Internal server error. Could not map response to JSON.", ioe);
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			sendErrorResponse(channelHandlerContext, httpRequest, new ErrorResponseBody("Internal server error. Could not map response to JSON."), HttpResponseStatus.INTERNAL_SERVER_ERROR);
 			return;
 		}
@@ -101,7 +110,10 @@ public class HandlerUtils {
 			mapper.writeValue(sw, errorMessage);
 		} catch (IOException e) {
 			// this should never happen
+<<<<<<< HEAD
 			LOG.error("Internal server error. Could not map error response to JSON.", e);
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			sendResponse(channelHandlerContext, httpRequest, "Internal server error. Could not map error response to JSON.", HttpResponseStatus.INTERNAL_SERVER_ERROR);
 		}
 		sendResponse(channelHandlerContext, httpRequest, sw.toString(), statusCode);

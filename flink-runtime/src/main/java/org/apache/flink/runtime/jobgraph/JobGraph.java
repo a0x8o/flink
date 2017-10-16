@@ -24,7 +24,11 @@ import org.apache.flink.api.common.JobID;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.runtime.blob.BlobClient;
+<<<<<<< HEAD
 import org.apache.flink.runtime.blob.PermanentBlobKey;
+=======
+import org.apache.flink.runtime.blob.BlobKey;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.runtime.jobgraph.tasks.JobCheckpointingSettings;
 import org.apache.flink.util.SerializedValue;
 
@@ -535,10 +539,17 @@ public class JobGraph implements Serializable {
 			InetSocketAddress blobServerAddress,
 			Configuration blobClientConfig) throws IOException {
 		if (!userJars.isEmpty()) {
+<<<<<<< HEAD
 			List<PermanentBlobKey> blobKeys = BlobClient.uploadJarFiles(
 				blobServerAddress, blobClientConfig, jobID, userJars);
 
 			for (PermanentBlobKey blobKey : blobKeys) {
+=======
+			// TODO: make use of job-related BLOBs after adapting the BlobLibraryCacheManager
+			List<BlobKey> blobKeys = BlobClient.uploadJarFiles(blobServerAddress, blobClientConfig, jobID, userJars);
+
+			for (BlobKey blobKey : blobKeys) {
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 				if (!userJarBlobKeys.contains(blobKey)) {
 					userJarBlobKeys.add(blobKey);
 				}

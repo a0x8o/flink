@@ -37,7 +37,10 @@ import org.apache.flink.table.functions.utils.TableSqlFunction._
   */
 class TableSqlFunction(
     name: String,
+<<<<<<< HEAD
     displayName: String,
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
     tableFunction: TableFunction[_],
     rowTypeInfo: TypeInformation[_],
     typeFactory: FlinkTypeFactory,
@@ -67,8 +70,11 @@ class TableSqlFunction(
   def getPojoFieldMapping: Array[Int] = functionImpl.fieldIndexes
 
   override def isDeterministic: Boolean = tableFunction.isDeterministic
+<<<<<<< HEAD
 
   override def toString: String = displayName
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 }
 
 object TableSqlFunction {

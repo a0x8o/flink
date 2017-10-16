@@ -31,7 +31,11 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executor;
 
 /**
+<<<<<<< HEAD
  * Request handler for the cancel request.
+=======
+ * Request handler for the CANCEL request.
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
  */
 public class JobCancellationHandler extends AbstractJsonRequestHandler {
 

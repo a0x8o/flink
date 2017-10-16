@@ -403,6 +403,7 @@ public class HeapKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
 						}
 
 						if (streamStateHandle != null) {
+<<<<<<< HEAD
 
 							KeyGroupRangeOffsets offsets =
 								new KeyGroupRangeOffsets(keyGroupRange, keyGroupRangeOffsets);
@@ -414,6 +415,19 @@ public class HeapKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
 						}
 					}
 
+=======
+
+							KeyGroupRangeOffsets offsets =
+								new KeyGroupRangeOffsets(keyGroupRange, keyGroupRangeOffsets);
+
+							final KeyGroupsStateHandle keyGroupsStateHandle =
+								new KeyGroupsStateHandle(offsets, streamStateHandle);
+
+							return keyGroupsStateHandle;
+						}
+					}
+
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 					return null;
 				}
 			};

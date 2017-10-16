@@ -239,7 +239,11 @@ class OverWindowITCase extends StreamingWithStateTestBase {
       "sum(a) OVER (ORDER BY proctime RANGE UNBOUNDED preceding) " +
       "from T1"
 
+<<<<<<< HEAD
     val result = tEnv.sql(sqlQuery).toAppendStream[Row](queryConfig)
+=======
+    val result = tEnv.sql(sqlQuery).toAppendStream[Row]
+>>>>>>> 19272d3436b4d70ecdbe4b5cacb2c0cc204f571d
     result.addSink(new StreamITCase.StringSink[Row])
     env.execute()
 

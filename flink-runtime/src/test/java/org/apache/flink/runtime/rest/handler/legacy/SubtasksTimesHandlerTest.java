@@ -60,7 +60,11 @@ public class SubtasksTimesHandlerTest extends TestLogger {
 
 	@Test
 	public void testGetPaths() {
+<<<<<<< HEAD
 		SubtasksTimesHandler handler = new SubtasksTimesHandler(mock(ExecutionGraphCache.class), Executors.directExecutor());
+=======
+		SubtasksTimesHandler handler = new SubtasksTimesHandler(mock(ExecutionGraphHolder.class), Executors.directExecutor());
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		String[] paths = handler.getPaths();
 		Assert.assertEquals(1, paths.length);
 		Assert.assertEquals("/jobs/:jobid/vertices/:vertexid/subtasktimes", paths[0]);

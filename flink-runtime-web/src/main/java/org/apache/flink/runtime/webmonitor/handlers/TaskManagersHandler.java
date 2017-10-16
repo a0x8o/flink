@@ -19,6 +19,11 @@
 package org.apache.flink.runtime.webmonitor.handlers;
 
 import org.apache.flink.api.common.time.Time;
+<<<<<<< HEAD
+=======
+import org.apache.flink.runtime.concurrent.FlinkFutureException;
+import org.apache.flink.runtime.concurrent.FutureUtils;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.runtime.instance.Instance;
 import org.apache.flink.runtime.instance.InstanceID;
 import org.apache.flink.runtime.jobmaster.JobManagerGateway;
@@ -28,7 +33,9 @@ import org.apache.flink.util.StringUtils;
 
 import com.fasterxml.jackson.core.JsonGenerator;
 
+import java.io.IOException;
 import java.io.StringWriter;
+<<<<<<< HEAD
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -36,6 +43,14 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+=======
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 import static java.util.Objects.requireNonNull;
 
@@ -53,7 +68,12 @@ public class TaskManagersHandler extends AbstractJsonRequestHandler  {
 
 	private final MetricFetcher fetcher;
 
+<<<<<<< HEAD
 	public TaskManagersHandler(Time timeout, MetricFetcher fetcher) {
+=======
+	public TaskManagersHandler(Executor executor, Time timeout, MetricFetcher fetcher) {
+		super(executor);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		this.timeout = requireNonNull(timeout);
 		this.fetcher = fetcher;
 	}
@@ -64,6 +84,7 @@ public class TaskManagersHandler extends AbstractJsonRequestHandler  {
 	}
 
 	@Override
+<<<<<<< HEAD
 	public String handleJsonRequest(Map<String, String> pathParams, Map<String, String> queryParams, JobManagerGateway jobManagerGateway) throws Exception {
 		try {
 			if (jobManagerGateway != null) {
@@ -90,108 +111,141 @@ public class TaskManagersHandler extends AbstractJsonRequestHandler  {
 					Collection<Instance> tmInstances = tmInstancesFuture.get(timeout.toMilliseconds(), TimeUnit.MILLISECONDS);
 					instances.addAll(tmInstances);
 				}
+=======
+	public CompletableFuture<String> handleJsonRequest(Map<String, String> pathParams, Map<String, String> queryParams, JobManagerGateway jobManagerGateway) {
+		if (jobManagerGateway != null) {
+			// whether one task manager's metrics are requested, or all task manager, we
+			// return them in an array. This avoids unnecessary code complexity.
+			// If only one task manager is requested, we only fetch one task manager metrics.
+			if (pathParams.containsKey(TASK_MANAGER_ID_KEY)) {
+				InstanceID instanceID = new InstanceID(StringUtils.hexStringToByte(pathParams.get(TASK_MANAGER_ID_KEY)));
+				CompletableFuture<Optional<Instance>> tmInstanceFuture = jobManagerGateway.requestTaskManagerInstance(instanceID, timeout);
 
-				StringWriter writer = new StringWriter();
-				JsonGenerator gen = JsonFactory.JACKSON_FACTORY.createGenerator(writer);
+				return tmInstanceFuture.thenApplyAsync(
+					(Optional<Instance> optTaskManager) -> {
+						try {
+							return writeTaskManagersJson(
+								optTaskManager.map(Collections::singleton).orElse(Collections.emptySet()),
+								pathParams);
+						} catch (IOException e) {
+							throw new FlinkFutureException("Could not write TaskManagers JSON.", e);
+						}
+					},
+					executor);
+			} else {
+				CompletableFuture<Collection<Instance>> tmInstancesFuture = jobManagerGateway.requestTaskManagerInstances(timeout);
 
-				gen.writeStartObject();
-				gen.writeArrayFieldStart("taskmanagers");
+				return tmInstancesFuture.thenApplyAsync(
+					(Collection<Instance> taskManagers) -> {
+						try {
+							return writeTaskManagersJson(taskManagers, pathParams);
+						} catch (IOException e) {
+							throw new FlinkFutureException("Could not write TaskManagers JSON.", e);
+						}
+					},
+					executor);
+			}
+		}
+		else {
+			return FutureUtils.completedExceptionally(new Exception("No connection to the leading JobManager."));
+		}
+	}
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
-				for (Instance instance : instances) {
-					gen.writeStartObject();
-					gen.writeStringField("id", instance.getId().toString());
-					gen.writeStringField("path", instance.getTaskManagerGateway().getAddress());
-					gen.writeNumberField("dataPort", instance.getTaskManagerLocation().dataPort());
-					gen.writeNumberField("timeSinceLastHeartbeat", instance.getLastHeartBeat());
-					gen.writeNumberField("slotsNumber", instance.getTotalNumberOfSlots());
-					gen.writeNumberField("freeSlots", instance.getNumberOfAvailableSlots());
-					gen.writeNumberField("cpuCores", instance.getResources().getNumberOfCPUCores());
-					gen.writeNumberField("physicalMemory", instance.getResources().getSizeOfPhysicalMemory());
-					gen.writeNumberField("freeMemory", instance.getResources().getSizeOfJvmHeap());
-					gen.writeNumberField("managedMemory", instance.getResources().getSizeOfManagedMemory());
+	private String writeTaskManagersJson(Collection<Instance> instances, Map<String, String> pathParams) throws IOException {
+		StringWriter writer = new StringWriter();
+		JsonGenerator gen = JsonFactory.JACKSON_FACTORY.createGenerator(writer);
 
-					// only send metrics when only one task manager requests them.
-					if (pathParams.containsKey(TASK_MANAGER_ID_KEY)) {
-						fetcher.update();
-						MetricStore.TaskManagerMetricStore metrics = fetcher.getMetricStore().getTaskManagerMetricStore(instance.getId().toString());
-						if (metrics != null) {
-							gen.writeObjectFieldStart("metrics");
-							long heapUsed = Long.valueOf(metrics.getMetric("Status.JVM.Memory.Heap.Used", "0"));
-							long heapCommitted = Long.valueOf(metrics.getMetric("Status.JVM.Memory.Heap.Committed", "0"));
-							long heapTotal = Long.valueOf(metrics.getMetric("Status.JVM.Memory.Heap.Max", "0"));
+		gen.writeStartObject();
+		gen.writeArrayFieldStart("taskmanagers");
 
-							gen.writeNumberField("heapCommitted", heapCommitted);
-							gen.writeNumberField("heapUsed", heapUsed);
-							gen.writeNumberField("heapMax", heapTotal);
+		for (Instance instance : instances) {
+			gen.writeStartObject();
+			gen.writeStringField("id", instance.getId().toString());
+			gen.writeStringField("path", instance.getTaskManagerGateway().getAddress());
+			gen.writeNumberField("dataPort", instance.getTaskManagerLocation().dataPort());
+			gen.writeNumberField("timeSinceLastHeartbeat", instance.getLastHeartBeat());
+			gen.writeNumberField("slotsNumber", instance.getTotalNumberOfSlots());
+			gen.writeNumberField("freeSlots", instance.getNumberOfAvailableSlots());
+			gen.writeNumberField("cpuCores", instance.getResources().getNumberOfCPUCores());
+			gen.writeNumberField("physicalMemory", instance.getResources().getSizeOfPhysicalMemory());
+			gen.writeNumberField("freeMemory", instance.getResources().getSizeOfJvmHeap());
+			gen.writeNumberField("managedMemory", instance.getResources().getSizeOfManagedMemory());
 
-							long nonHeapUsed = Long.valueOf(metrics.getMetric("Status.JVM.Memory.NonHeap.Used", "0"));
-							long nonHeapCommitted = Long.valueOf(metrics.getMetric("Status.JVM.Memory.NonHeap.Committed", "0"));
-							long nonHeapTotal = Long.valueOf(metrics.getMetric("Status.JVM.Memory.NonHeap.Max", "0"));
+			// only send metrics when only one task manager requests them.
+			if (pathParams.containsKey(TASK_MANAGER_ID_KEY)) {
+				fetcher.update();
+				MetricStore.TaskManagerMetricStore metrics = fetcher.getMetricStore().getTaskManagerMetricStore(instance.getId().toString());
+				if (metrics != null) {
+					gen.writeObjectFieldStart("metrics");
+					long heapUsed = Long.valueOf(metrics.getMetric("Status.JVM.Memory.Heap.Used", "0"));
+					long heapCommitted = Long.valueOf(metrics.getMetric("Status.JVM.Memory.Heap.Committed", "0"));
+					long heapTotal = Long.valueOf(metrics.getMetric("Status.JVM.Memory.Heap.Max", "0"));
 
-							gen.writeNumberField("nonHeapCommitted", nonHeapCommitted);
-							gen.writeNumberField("nonHeapUsed", nonHeapUsed);
-							gen.writeNumberField("nonHeapMax", nonHeapTotal);
+					gen.writeNumberField("heapCommitted", heapCommitted);
+					gen.writeNumberField("heapUsed", heapUsed);
+					gen.writeNumberField("heapMax", heapTotal);
 
-							gen.writeNumberField("totalCommitted", heapCommitted + nonHeapCommitted);
-							gen.writeNumberField("totalUsed", heapUsed + nonHeapUsed);
-							gen.writeNumberField("totalMax", heapTotal + nonHeapTotal);
+					long nonHeapUsed = Long.valueOf(metrics.getMetric("Status.JVM.Memory.NonHeap.Used", "0"));
+					long nonHeapCommitted = Long.valueOf(metrics.getMetric("Status.JVM.Memory.NonHeap.Committed", "0"));
+					long nonHeapTotal = Long.valueOf(metrics.getMetric("Status.JVM.Memory.NonHeap.Max", "0"));
 
-							long directCount = Long.valueOf(metrics.getMetric("Status.JVM.Memory.Direct.Count", "0"));
-							long directUsed = Long.valueOf(metrics.getMetric("Status.JVM.Memory.Direct.MemoryUsed", "0"));
-							long directMax = Long.valueOf(metrics.getMetric("Status.JVM.Memory.Direct.TotalCapacity", "0"));
+					gen.writeNumberField("nonHeapCommitted", nonHeapCommitted);
+					gen.writeNumberField("nonHeapUsed", nonHeapUsed);
+					gen.writeNumberField("nonHeapMax", nonHeapTotal);
 
-							gen.writeNumberField("directCount", directCount);
-							gen.writeNumberField("directUsed", directUsed);
-							gen.writeNumberField("directMax", directMax);
+					gen.writeNumberField("totalCommitted", heapCommitted + nonHeapCommitted);
+					gen.writeNumberField("totalUsed", heapUsed + nonHeapUsed);
+					gen.writeNumberField("totalMax", heapTotal + nonHeapTotal);
 
-							long mappedCount = Long.valueOf(metrics.getMetric("Status.JVM.Memory.Mapped.Count", "0"));
-							long mappedUsed = Long.valueOf(metrics.getMetric("Status.JVM.Memory.Mapped.MemoryUsed", "0"));
-							long mappedMax = Long.valueOf(metrics.getMetric("Status.JVM.Memory.Mapped.TotalCapacity", "0"));
+					long directCount = Long.valueOf(metrics.getMetric("Status.JVM.Memory.Direct.Count", "0"));
+					long directUsed = Long.valueOf(metrics.getMetric("Status.JVM.Memory.Direct.MemoryUsed", "0"));
+					long directMax = Long.valueOf(metrics.getMetric("Status.JVM.Memory.Direct.TotalCapacity", "0"));
 
-							gen.writeNumberField("mappedCount", mappedCount);
-							gen.writeNumberField("mappedUsed", mappedUsed);
-							gen.writeNumberField("mappedMax", mappedMax);
+					gen.writeNumberField("directCount", directCount);
+					gen.writeNumberField("directUsed", directUsed);
+					gen.writeNumberField("directMax", directMax);
 
-							long memorySegmentsAvailable = Long.valueOf(metrics.getMetric("Status.Network.AvailableMemorySegments", "0"));
-							long memorySegmentsTotal = Long.valueOf(metrics.getMetric("Status.Network.TotalMemorySegments", "0"));
+					long mappedCount = Long.valueOf(metrics.getMetric("Status.JVM.Memory.Mapped.Count", "0"));
+					long mappedUsed = Long.valueOf(metrics.getMetric("Status.JVM.Memory.Mapped.MemoryUsed", "0"));
+					long mappedMax = Long.valueOf(metrics.getMetric("Status.JVM.Memory.Mapped.TotalCapacity", "0"));
 
-							gen.writeNumberField("memorySegmentsAvailable", memorySegmentsAvailable);
-							gen.writeNumberField("memorySegmentsTotal", memorySegmentsTotal);
+					gen.writeNumberField("mappedCount", mappedCount);
+					gen.writeNumberField("mappedUsed", mappedUsed);
+					gen.writeNumberField("mappedMax", mappedMax);
 
-							gen.writeArrayFieldStart("garbageCollectors");
+					long memorySegmentsAvailable = Long.valueOf(metrics.getMetric("Status.Network.AvailableMemorySegments", "0"));
+					long memorySegmentsTotal = Long.valueOf(metrics.getMetric("Status.Network.TotalMemorySegments", "0"));
 
-							for (String gcName : metrics.garbageCollectorNames) {
-								String count = metrics.getMetric("Status.JVM.GarbageCollector." + gcName + ".Count", null);
-								String time = metrics.getMetric("Status.JVM.GarbageCollector." + gcName + ".Time", null);
-								if (count != null  && time != null) {
-									gen.writeStartObject();
-									gen.writeStringField("name", gcName);
-									gen.writeNumberField("count", Long.valueOf(count));
-									gen.writeNumberField("time", Long.valueOf(time));
-									gen.writeEndObject();
-								}
-							}
+					gen.writeNumberField("memorySegmentsAvailable", memorySegmentsAvailable);
+					gen.writeNumberField("memorySegmentsTotal", memorySegmentsTotal);
 
-							gen.writeEndArray();
+					gen.writeArrayFieldStart("garbageCollectors");
+
+					for (String gcName : metrics.garbageCollectorNames) {
+						String count = metrics.getMetric("Status.JVM.GarbageCollector." + gcName + ".Count", null);
+						String time = metrics.getMetric("Status.JVM.GarbageCollector." + gcName + ".Time", null);
+						if (count != null  && time != null) {
+							gen.writeStartObject();
+							gen.writeStringField("name", gcName);
+							gen.writeNumberField("count", Long.valueOf(count));
+							gen.writeNumberField("time", Long.valueOf(time));
 							gen.writeEndObject();
 						}
 					}
 
+					gen.writeEndArray();
 					gen.writeEndObject();
 				}
-
-				gen.writeEndArray();
-				gen.writeEndObject();
-
-				gen.close();
-				return writer.toString();
 			}
-			else {
-				throw new Exception("No connection to the leading JobManager.");
-			}
+
+			gen.writeEndObject();
 		}
-		catch (Exception e) {
-			throw new RuntimeException("Failed to fetch list of all task managers: " + e.getMessage(), e);
-		}
+
+		gen.writeEndArray();
+		gen.writeEndObject();
+
+		gen.close();
+		return writer.toString();
 	}
 }

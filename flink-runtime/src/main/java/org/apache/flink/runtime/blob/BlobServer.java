@@ -26,7 +26,6 @@ import org.apache.flink.runtime.net.SSLUtils;
 import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.FileUtils;
 import org.apache.flink.util.NetUtils;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -40,7 +39,10 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
+<<<<<<< HEAD
 import java.security.MessageDigest;
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -200,12 +202,18 @@ public class BlobServer extends Thread implements BlobService, PermanentBlobServ
 	 * @param jobId ID of the job this blob belongs to (or <tt>null</tt> if job-unrelated)
 	 * @param key identifying the file
 	 * @return file handle to the file
+<<<<<<< HEAD
 	 *
 	 * @throws IOException
 	 * 		if creating the directory fails
 	 */
 	@VisibleForTesting
 	public File getStorageLocation(@Nullable JobID jobId, BlobKey key) throws IOException {
+=======
+	 */
+	@VisibleForTesting
+	public File getStorageLocation(JobID jobId, BlobKey key) {
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		return BlobUtils.getStorageLocation(storageDir, jobId, key);
 	}
 
@@ -356,6 +364,7 @@ public class BlobServer extends Thread implements BlobService, PermanentBlobServ
 	 * 		Thrown if the file retrieval failed.
 	 */
 	@Override
+<<<<<<< HEAD
 	public File getFile(TransientBlobKey key) throws IOException {
 		return getFileInternal(null, key);
 	}
@@ -436,6 +445,59 @@ public class BlobServer extends Thread implements BlobService, PermanentBlobServ
 			return localFile;
 		} finally {
 			readWriteLock.readLock().unlock();
+=======
+	public File getFile(BlobKey key) throws IOException {
+		return getFileInternal(null, key);
+	}
+
+	/**
+	 * Retrieves the local path of a file associated with a job and a blob key.
+	 * <p>
+	 * The blob server looks the blob key up in its local storage. If the file exists, it is
+	 * returned. If the file does not exist, it is retrieved from the HA blob store (if available)
+	 * or a {@link FileNotFoundException} is thrown.
+	 *
+	 * @param jobId
+	 * 		ID of the job this blob belongs to
+	 * @param key
+	 * 		blob key associated with the requested file
+	 *
+	 * @return file referring to the local storage location of the BLOB
+	 *
+	 * @throws IOException
+	 * 		Thrown if the file retrieval failed.
+	 */
+	@Override
+	public File getFile(JobID jobId, BlobKey key) throws IOException {
+		checkNotNull(jobId);
+		return getFileInternal(jobId, key);
+	}
+
+	/**
+	 * Retrieves the local path of a file associated with a job and a blob key.
+	 * <p>
+	 * The blob server looks the blob key up in its local storage. If the file exists, it is
+	 * returned. If the file does not exist, it is retrieved from the HA blob store (if available)
+	 * or a {@link FileNotFoundException} is thrown.
+	 *
+	 * @param jobId
+	 * 		ID of the job this blob belongs to (or <tt>null</tt> if job-unrelated)
+	 * @param requiredBlob
+	 * 		blob key associated with the requested file
+	 *
+	 * @return file referring to the local storage location of the BLOB
+	 *
+	 * @throws IOException
+	 * 		Thrown if the file retrieval failed.
+	 */
+	private File getFileInternal(@Nullable JobID jobId, BlobKey requiredBlob) throws IOException {
+		checkArgument(requiredBlob != null, "BLOB key cannot be null.");
+
+		final File localFile = BlobUtils.getStorageLocation(storageDir, jobId, requiredBlob);
+
+		if (localFile.exists()) {
+			return localFile;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		}
 	}
 
@@ -471,6 +533,7 @@ public class BlobServer extends Thread implements BlobService, PermanentBlobServ
 			// use a temporary file (thread-safe without locking)
 			File incomingFile = null;
 			try {
+<<<<<<< HEAD
 				incomingFile = createTemporaryFilename();
 				blobStore.get(jobId, blobKey, incomingFile);
 
@@ -597,11 +660,20 @@ public class BlobServer extends Thread implements BlobService, PermanentBlobServ
 			if (!incomingFile.delete() && incomingFile.exists()) {
 				LOG.warn("Could not delete the staging file {} for blob key {} and job {}.",
 					incomingFile, blobKey, jobId);
+=======
+				// Try the blob store
+				blobStore.get(jobId, requiredBlob, localFile);
+			}
+			catch (Exception e) {
+				throw new IOException(
+					"Failed to copy BLOB " + requiredBlob + " from blob store to " + localFile, e);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			}
 		}
 	}
 
 
+<<<<<<< HEAD
 	/**
 	 * Uploads the data from the given input stream for the given job to the BLOB server.
 	 *
@@ -640,6 +712,10 @@ public class BlobServer extends Thread implements BlobService, PermanentBlobServ
 				}
 				fos.write(buf, 0, bytesRead);
 				md.update(buf, 0, bytesRead);
+=======
+			if (localFile.exists()) {
+				return localFile;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			}
 
 			blobKey = BlobKey.createKey(blobType, md.digest());
@@ -658,6 +734,7 @@ public class BlobServer extends Thread implements BlobService, PermanentBlobServ
 	}
 
 	/**
+<<<<<<< HEAD
 	 * Moves the temporary <tt>incomingFile</tt> to its permanent location where it is available for
 	 * use.
 	 *
@@ -667,6 +744,13 @@ public class BlobServer extends Thread implements BlobService, PermanentBlobServ
 	 * 		ID of the job this blob belongs to or <tt>null</tt> if job-unrelated
 	 * @param blobKey
 	 * 		BLOB key identifying the file
+=======
+	 * Deletes the (job-unrelated) file associated with the blob key in both the local storage as
+	 * well as in the HA store of the blob server.
+	 *
+	 * @param key
+	 * 		blob key associated with the file to be deleted
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	 *
 	 * @throws IOException
 	 * 		thrown if an I/O error occurs while moving the file or uploading it to the HA store
@@ -692,18 +776,29 @@ public class BlobServer extends Thread implements BlobService, PermanentBlobServ
 	 *          <tt>false</tt> otherwise
 	 */
 	@Override
+<<<<<<< HEAD
 	public boolean deleteFromCache(TransientBlobKey key) {
 		return deleteInternal(null, key);
 	}
 
 	/**
 	 * Deletes the file associated with the blob key in the local storage of the blob server.
+=======
+	public void delete(BlobKey key) throws IOException {
+		deleteInternal(null, key);
+	}
+
+	/**
+	 * Deletes the file associated with the blob key in both the local storage as well as in the HA
+	 * store of the blob server.
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	 *
 	 * @param jobId
 	 * 		ID of the job this blob belongs to
 	 * @param key
 	 * 		blob key associated with the file to be deleted
 	 *
+<<<<<<< HEAD
 	 * @return  <tt>true</tt> if the given blob is successfully deleted or non-existing;
 	 *          <tt>false</tt> otherwise
 	 */
@@ -715,24 +810,45 @@ public class BlobServer extends Thread implements BlobService, PermanentBlobServ
 
 	/**
 	 * Deletes the file associated with the blob key in the local storage of the blob server.
+=======
+	 * @throws IOException
+	 */
+	@Override
+	public void delete(JobID jobId, BlobKey key) throws IOException {
+		checkNotNull(jobId);
+		deleteInternal(jobId, key);
+	}
+
+	/**
+	 * Deletes the file associated with the blob key in both the local storage as well as in the HA
+	 * store of the blob server.
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	 *
 	 * @param jobId
 	 * 		ID of the job this blob belongs to (or <tt>null</tt> if job-unrelated)
 	 * @param key
 	 * 		blob key associated with the file to be deleted
 	 *
+<<<<<<< HEAD
 	 * @return  <tt>true</tt> if the given blob is successfully deleted or non-existing;
 	 *          <tt>false</tt> otherwise
 	 */
 	boolean deleteInternal(@Nullable JobID jobId, TransientBlobKey key) {
 		final File localFile =
 			new File(BlobUtils.getStorageLocationPath(storageDir.getAbsolutePath(), jobId, key));
+=======
+	 * @throws IOException
+	 */
+	void deleteInternal(@Nullable JobID jobId, BlobKey key) throws IOException {
+		final File localFile = BlobUtils.getStorageLocation(storageDir, jobId, key);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 		readWriteLock.writeLock().lock();
 
 		try {
 			if (!localFile.delete() && localFile.exists()) {
 				LOG.warn("Failed to locally delete BLOB " + key + " at " + localFile.getAbsolutePath());
+<<<<<<< HEAD
 				return false;
 			}
 			return true;
@@ -773,6 +889,11 @@ public class BlobServer extends Thread implements BlobService, PermanentBlobServ
 			boolean deletedHA = blobStore.deleteAll(jobId);
 
 			return deletedLocally && deletedHA;
+=======
+			}
+
+			blobStore.delete(jobId, key);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		} finally {
 			readWriteLock.writeLock().unlock();
 		}
@@ -787,6 +908,37 @@ public class BlobServer extends Thread implements BlobService, PermanentBlobServ
 	public TransientBlobService getTransientBlobService() {
 		return this;
 	}
+
+	/**
+	 * Removes all BLOBs from local and HA store belonging to the given job ID.
+	 *
+	 * @param jobId
+	 * 		ID of the job this blob belongs to
+	 */
+	public void cleanupJob(JobID jobId) {
+		checkNotNull(jobId);
+
+		final File jobDir =
+			new File(BlobUtils.getStorageLocationPath(storageDir.getAbsolutePath(), jobId));
+
+		readWriteLock.writeLock().lock();
+
+		try {
+			// delete locally
+			try {
+				FileUtils.deleteDirectory(jobDir);
+			} catch (IOException e) {
+				LOG.warn("Failed to locally delete BLOB storage directory at " +
+					jobDir.getAbsolutePath(), e);
+			}
+
+			// delete in HA store
+			blobStore.deleteAll(jobId);
+		} finally {
+			readWriteLock.writeLock().unlock();
+		}
+	}
+
 
 	/**
 	 * Returns the port on which the server is listening.

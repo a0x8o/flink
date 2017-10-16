@@ -25,11 +25,18 @@ import org.apache.flink.configuration.AkkaOptions;
 import org.apache.flink.configuration.BlobServerOptions;
 import org.apache.flink.configuration.ConfigConstants;
 import org.apache.flink.configuration.Configuration;
+<<<<<<< HEAD
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.runtime.akka.AkkaUtils;
 import org.apache.flink.runtime.akka.ListeningBehaviour;
 import org.apache.flink.runtime.blob.BlobClient;
 import org.apache.flink.runtime.blob.PermanentBlobKey;
+=======
+import org.apache.flink.runtime.akka.AkkaUtils;
+import org.apache.flink.runtime.akka.ListeningBehaviour;
+import org.apache.flink.runtime.blob.BlobClient;
+import org.apache.flink.runtime.blob.BlobKey;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.instance.ActorGateway;
 import org.apache.flink.runtime.instance.AkkaActorGateway;
@@ -56,6 +63,7 @@ import java.io.FilenameFilter;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.util.Arrays;
+<<<<<<< HEAD
 import java.util.Collections;
 import java.util.List;
 
@@ -64,6 +72,12 @@ import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
+=======
+
+import static org.apache.flink.runtime.testingUtils.TestingUtils.DEFAULT_AKKA_ASK_TIMEOUT;
+import static org.junit.Assert.assertArrayEquals;
+import static org.junit.Assert.assertNotNull;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import static org.junit.Assert.fail;
 
 /**
@@ -142,7 +156,11 @@ public class JobManagerCleanupITCase extends TestLogger {
 					// Setup
 
 					TestingCluster cluster = null;
+<<<<<<< HEAD
 					File tempBlob = null;
+=======
+					BlobClient bc = null;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 					try {
 						Configuration config = new Configuration();
@@ -187,6 +205,7 @@ public class JobManagerCleanupITCase extends TestLogger {
 						int blobPort = (Integer) Await.result(future, remaining());
 
 						// upload a blob
+<<<<<<< HEAD
 						tempBlob = File.createTempFile("Required", ".jar");
 						List<PermanentBlobKey> keys =
 							BlobClient.uploadJarFiles(new InetSocketAddress("localhost", blobPort),
@@ -198,12 +217,28 @@ public class JobManagerCleanupITCase extends TestLogger {
 						if (testCase == TestCase.JOB_SUBMISSION_FAILS) {
 							// add an invalid key so that the submission fails
 							jobGraph.addBlob(new PermanentBlobKey());
+=======
+						BlobKey key1;
+						bc = new BlobClient(new InetSocketAddress("localhost", blobPort),
+							config);
+						try {
+							key1 = bc.put(jid, new byte[10]);
+						} finally {
+							bc.close();
+						}
+						jobGraph.addBlob(key1);
+
+						if (testCase == TestCase.JOB_SUBMISSION_FAILS) {
+							// add an invalid key so that the submission fails
+							jobGraph.addBlob(new BlobKey());
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 						}
 
 						// Submit the job and wait for all vertices to be running
 						jobManagerGateway.tell(
 							new JobManagerMessages.SubmitJob(
 								jobGraph,
+<<<<<<< HEAD
 								// NOTE: to not receive two different (arbitrarily ordered) messages
 								//       upon cancellation, only listen for the job submission
 								//       message when cancelling the job
@@ -211,11 +246,18 @@ public class JobManagerCleanupITCase extends TestLogger {
 									ListeningBehaviour.DETACHED :
 									ListeningBehaviour.EXECUTION_RESULT
 							),
+=======
+								ListeningBehaviour.EXECUTION_RESULT),
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 							testActorGateway);
 						if (testCase == TestCase.JOB_SUBMISSION_FAILS) {
 							expectMsgClass(JobManagerMessages.JobResultFailure.class);
 						} else {
+<<<<<<< HEAD
 							expectMsgEquals(new JobManagerMessages.JobSubmitSuccess(jid));
+=======
+							expectMsgClass(JobManagerMessages.JobSubmitSuccess.class);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 							if (testCase == TestCase.JOB_FAILS) {
 								// fail a task so that the job is going to be recovered (we actually do not
@@ -230,8 +272,16 @@ public class JobManagerCleanupITCase extends TestLogger {
 								jobManagerGateway.tell(
 									new JobManagerMessages.CancelJob(jid),
 									testActorGateway);
+<<<<<<< HEAD
 
 								expectMsgEquals(new JobManagerMessages.CancellationSuccess(jid, null));
+=======
+								expectMsgClass(JobManagerMessages.CancellationResponse.class);
+
+								// job will be cancelled and everything should be cleaned up
+
+								expectMsgClass(JobManagerMessages.JobResultFailure.class);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 							} else {
 								expectMsgClass(JobManagerMessages.JobResultSuccess.class);
 							}
@@ -254,12 +304,24 @@ public class JobManagerCleanupITCase extends TestLogger {
 						e.printStackTrace();
 						fail(e.getMessage());
 					} finally {
+<<<<<<< HEAD
 						if (cluster != null) {
 							cluster.shutdown();
 						}
 						if (tempBlob != null) {
 							assertTrue(tempBlob.delete());
 						}
+=======
+						if (bc != null) {
+							try {
+								bc.close();
+							} catch (IOException ignored) {
+							}
+						}
+						if (cluster != null) {
+							cluster.shutdown();
+						}
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 					}
 				}
 			};
@@ -275,7 +337,11 @@ public class JobManagerCleanupITCase extends TestLogger {
 	 *
 	 * @param blobDir
 	 * 		directory of a {@link org.apache.flink.runtime.blob.BlobServer} or {@link
+<<<<<<< HEAD
 	 * 		org.apache.flink.runtime.blob.BlobCacheService}
+=======
+	 * 		org.apache.flink.runtime.blob.BlobCache}
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	 * @param remaining
 	 * 		remaining time for this test
 	 *

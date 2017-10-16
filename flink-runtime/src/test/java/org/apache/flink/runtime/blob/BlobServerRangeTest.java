@@ -48,9 +48,14 @@ public class BlobServerRangeTest extends TestLogger {
 		conf.setString(BlobServerOptions.PORT, "0");
 		conf.setString(BlobServerOptions.STORAGE_DIRECTORY, temporaryFolder.newFolder().getAbsolutePath());
 
+<<<<<<< HEAD
 		BlobServer server = new BlobServer(conf, new VoidBlobStore());
 		server.start();
 		server.close();
+=======
+		BlobServer srv = new BlobServer(conf, new VoidBlobStore());
+		srv.close();
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	}
 
 	/**

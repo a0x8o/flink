@@ -247,7 +247,10 @@ public class MiniCluster {
 					commonRpcService.getExecutor());
 
 				blobServer = new BlobServer(configuration, haServices.createBlobStore());
+<<<<<<< HEAD
 				blobServer.start();
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 				heartbeatServices = HeartbeatServices.fromConfiguration(configuration);
 

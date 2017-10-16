@@ -18,6 +18,16 @@
 
 package org.apache.flink.runtime.clusterframework;
 
+<<<<<<< HEAD
+=======
+import akka.actor.ActorSystem;
+import com.typesafe.config.Config;
+
+import org.apache.commons.cli.CommandLine;
+import org.apache.commons.cli.Option;
+import org.apache.commons.lang3.StringUtils;
+
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.configuration.ConfigConstants;
 import org.apache.flink.configuration.Configuration;
@@ -52,6 +62,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.concurrent.Executor;
 
 import scala.concurrent.duration.FiniteDuration;
 
@@ -176,7 +187,11 @@ public class BootstrapTools {
 	 * @param jobManagerRetriever to retrieve the leading JobManagerGateway
 	 * @param queryServiceRetriever to resolve a query service
 	 * @param timeout for asynchronous operations
+<<<<<<< HEAD
 	 * @param scheduledExecutor to run asynchronous operations
+=======
+	 * @param executor to run asynchronous operations
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	 * @param logger Logger for log output
 	 * @return WebMonitor instance.
 	 * @throws Exception
@@ -187,7 +202,11 @@ public class BootstrapTools {
 			LeaderGatewayRetriever<JobManagerGateway> jobManagerRetriever,
 			MetricQueryServiceRetriever queryServiceRetriever,
 			Time timeout,
+<<<<<<< HEAD
 			ScheduledExecutor scheduledExecutor,
+=======
+			Executor executor,
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			Logger logger) throws Exception {
 
 		if (config.getInteger(WebOptions.PORT, 0) >= 0) {
@@ -201,7 +220,11 @@ public class BootstrapTools {
 				jobManagerRetriever,
 				queryServiceRetriever,
 				timeout,
+<<<<<<< HEAD
 				scheduledExecutor);
+=======
+				executor);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 			// start the web monitor
 			if (monitor != null) {

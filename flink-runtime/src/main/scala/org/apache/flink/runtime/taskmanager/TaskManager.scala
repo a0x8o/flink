@@ -35,7 +35,11 @@ import org.apache.flink.configuration._
 import org.apache.flink.core.fs.FileSystem
 import org.apache.flink.runtime.accumulators.AccumulatorSnapshot
 import org.apache.flink.runtime.akka.{AkkaUtils, DefaultQuarantineHandler, QuarantineMonitor}
+<<<<<<< HEAD
 import org.apache.flink.runtime.blob.{BlobClient, BlobService, BlobCacheService}
+=======
+import org.apache.flink.runtime.blob.{BlobCache, BlobClient}
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.runtime.broadcast.BroadcastVariableManager
 import org.apache.flink.runtime.clusterframework.messages.StopCluster
 import org.apache.flink.runtime.clusterframework.types.ResourceID
@@ -159,7 +163,11 @@ class TaskManager(
     * registered at the job manager */
   private val waitForRegistration = scala.collection.mutable.Set[ActorRef]()
 
+<<<<<<< HEAD
   private var blobCache: Option[BlobCacheService] = None
+=======
+  private var blobCache: Option[BlobCache] = None
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
   private var libraryCacheManager: Option[LibraryCacheManager] = None
 
   /* The current leading JobManager Actor associated with */
@@ -839,7 +847,12 @@ class TaskManager(
         if (file.exists()) {
           val fis = new FileInputStream(file);
           Future {
+<<<<<<< HEAD
             blobCache.get.getTransientBlobService.putTransient(fis)
+=======
+            val client: BlobClient = blobCache.get.createClient()
+            client.put(fis);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
           }(context.dispatcher)
             .onComplete {
               case scala.util.Success(value) =>
@@ -968,8 +981,12 @@ class TaskManager(
           highAvailabilityServices.createBlobStore())
         blobCache = Option(blobcache)
         libraryCacheManager = Some(
+<<<<<<< HEAD
           new BlobLibraryCacheManager(
             blobcache.getPermanentBlobService, config.getClassLoaderResolveOrder()))
+=======
+          new BlobLibraryCacheManager(blobcache, config.getClassLoaderResolveOrder()))
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
       }
       catch {
         case e: Exception =>
