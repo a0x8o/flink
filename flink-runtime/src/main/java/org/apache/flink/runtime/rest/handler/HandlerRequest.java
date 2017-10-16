@@ -42,15 +42,11 @@ public class HandlerRequest<R extends RequestBody, M extends MessageParameters> 
 	private final Map<Class<? extends MessagePathParameter<?>>, MessagePathParameter<?>> pathParameters = new HashMap<>(2);
 	private final Map<Class<? extends MessageQueryParameter<?>>, MessageQueryParameter<?>> queryParameters = new HashMap<>(2);
 
-<<<<<<< HEAD
 	public HandlerRequest(R requestBody, M messageParameters) throws HandlerRequestException {
 		this(requestBody, messageParameters, Collections.emptyMap(), Collections.emptyMap());
 	}
 
 	public HandlerRequest(R requestBody, M messageParameters, Map<String, String> receivedPathParameters, Map<String, List<String>> receivedQueryParameters) throws HandlerRequestException {
-=======
-	public HandlerRequest(R requestBody, M messageParameters, Map<String, String> receivedPathParameters, Map<String, List<String>> receivedQueryParameters) {
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		this.requestBody = Preconditions.checkNotNull(requestBody);
 		Preconditions.checkNotNull(messageParameters);
 		Preconditions.checkNotNull(receivedQueryParameters);
@@ -59,15 +55,11 @@ public class HandlerRequest<R extends RequestBody, M extends MessageParameters> 
 		for (MessagePathParameter<?> pathParameter : messageParameters.getPathParameters()) {
 			String value = receivedPathParameters.get(pathParameter.getKey());
 			if (value != null) {
-<<<<<<< HEAD
 				try {
 					pathParameter.resolveFromString(value);
 				} catch (Exception e) {
 					throw new HandlerRequestException("Cannot resolve path parameter (" + pathParameter.getKey() + ") from value \"" + value + "\".");
 				}
-=======
-				pathParameter.resolveFromString(value);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 				@SuppressWarnings("unchecked")
 				Class<? extends MessagePathParameter<?>> clazz = (Class<? extends MessagePathParameter<?>>) pathParameter.getClass();
@@ -80,16 +72,12 @@ public class HandlerRequest<R extends RequestBody, M extends MessageParameters> 
 			if (values != null && !values.isEmpty()) {
 				StringJoiner joiner = new StringJoiner(",");
 				values.forEach(joiner::add);
-<<<<<<< HEAD
 
 				try {
 					queryParameter.resolveFromString(joiner.toString());
 				} catch (Exception e) {
 					throw new HandlerRequestException("Cannot resolve query parameter (" + queryParameter.getKey() + ") from value \"" + joiner + "\".");
 				}
-=======
-				queryParameter.resolveFromString(joiner.toString());
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 				@SuppressWarnings("unchecked")
 				Class<? extends MessageQueryParameter<?>> clazz = (Class<? extends MessageQueryParameter<?>>) queryParameter.getClass();

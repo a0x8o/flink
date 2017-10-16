@@ -22,14 +22,9 @@ import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.core.testutils.OneShotLatch;
-<<<<<<< HEAD
 import org.apache.flink.runtime.blob.BlobCacheService;
 import org.apache.flink.runtime.blob.PermanentBlobCache;
 import org.apache.flink.runtime.blob.TransientBlobCache;
-=======
-import org.apache.flink.runtime.blob.BlobCache;
-import org.apache.flink.runtime.blob.BlobKey;
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.runtime.broadcast.BroadcastVariableManager;
 import org.apache.flink.runtime.checkpoint.CheckpointMetaData;
 import org.apache.flink.runtime.checkpoint.CheckpointMetrics;
@@ -151,13 +146,9 @@ public class TaskAsyncCallTest {
 	}
 	
 	private static Task createTask() throws Exception {
-<<<<<<< HEAD
 		BlobCacheService blobService =
 			new BlobCacheService(mock(PermanentBlobCache.class), mock(TransientBlobCache.class));
 
-=======
-		BlobCache blobCache = mock(BlobCache.class);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		LibraryCacheManager libCache = mock(LibraryCacheManager.class);
 		when(libCache.getClassLoader(any(JobID.class))).thenReturn(ClassLoader.getSystemClassLoader());
 		
@@ -208,11 +199,7 @@ public class TaskAsyncCallTest {
 			mock(TaskManagerActions.class),
 			mock(InputSplitProvider.class),
 			mock(CheckpointResponder.class),
-<<<<<<< HEAD
 			blobService,
-=======
-			blobCache,
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			libCache,
 			mock(FileCache.class),
 			new TestingTaskManagerRuntimeInfo(),

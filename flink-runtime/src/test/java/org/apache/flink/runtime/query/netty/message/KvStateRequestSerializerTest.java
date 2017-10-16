@@ -34,13 +34,6 @@ import org.apache.flink.runtime.state.internal.InternalKvState;
 import org.apache.flink.runtime.state.internal.InternalListState;
 import org.apache.flink.runtime.state.internal.InternalMapState;
 
-<<<<<<< HEAD
-=======
-import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
-import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBufAllocator;
-import org.apache.flink.shaded.netty4.io.netty.buffer.UnpooledByteBufAllocator;
-
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
@@ -59,11 +52,7 @@ import static org.junit.Assert.assertEquals;
 import static org.mockito.Mockito.mock;
 
 /**
-<<<<<<< HEAD
  * Tests for {@link KvStateSerializer}.
-=======
- * Tests for {@link KvStateRequestSerializer}.
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
  */
 @RunWith(Parameterized.class)
 public class KvStateRequestSerializerTest {

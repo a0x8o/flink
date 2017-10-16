@@ -28,16 +28,10 @@ import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.executiongraph.AccessExecutionGraph;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobmaster.JobManagerGateway;
-<<<<<<< HEAD
 import org.apache.flink.runtime.rest.handler.job.checkpoints.CheckpointStatsCache;
 import org.apache.flink.runtime.rest.handler.legacy.AbstractExecutionGraphRequestHandler;
 import org.apache.flink.runtime.rest.handler.legacy.AbstractJobVertexRequestHandler;
 import org.apache.flink.runtime.rest.handler.legacy.ExecutionGraphCache;
-=======
-import org.apache.flink.runtime.rest.handler.legacy.AbstractExecutionGraphRequestHandler;
-import org.apache.flink.runtime.rest.handler.legacy.AbstractJobVertexRequestHandler;
-import org.apache.flink.runtime.rest.handler.legacy.ExecutionGraphHolder;
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.runtime.rest.handler.legacy.JsonFactory;
 import org.apache.flink.runtime.webmonitor.history.ArchivedJson;
 import org.apache.flink.runtime.webmonitor.history.JsonArchivist;
@@ -66,11 +60,7 @@ public class CheckpointStatsDetailsSubtasksHandler extends AbstractExecutionGrap
 
 	private final CheckpointStatsCache cache;
 
-<<<<<<< HEAD
 	public CheckpointStatsDetailsSubtasksHandler(ExecutionGraphCache executionGraphHolder, Executor executor, CheckpointStatsCache cache) {
-=======
-	public CheckpointStatsDetailsSubtasksHandler(ExecutionGraphHolder executionGraphHolder, Executor executor, CheckpointStatsCache cache) {
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		super(executionGraphHolder, executor);
 		this.cache = checkNotNull(cache);
 	}

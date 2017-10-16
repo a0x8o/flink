@@ -43,6 +43,20 @@ import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpHeaders;
 import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpResponseStatus;
 import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpVersion;
 
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+import org.apache.flink.shaded.netty4.io.netty.buffer.Unpooled;
+import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.DefaultFullHttpResponse;
+import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.FullHttpResponse;
+import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpHeaders;
+import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpResponseStatus;
+import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpVersion;
+
+import akka.dispatch.OnComplete;
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
+>>>>>>> axbaretto
 import com.fasterxml.jackson.core.JsonGenerator;
 
 import javax.annotation.Nullable;
@@ -212,9 +226,21 @@ public class JobCancellationWithSavepointHandlers {
 						if (targetDirectory == null) {
 							if (defaultSavepointDirectory == null) {
 								throw new IllegalStateException("No savepoint directory configured. " +
+<<<<<<< HEAD
 									"You can either specify a directory when triggering this savepoint or " +
 									"configure a cluster-wide default via key '" +
 									CoreOptions.SAVEPOINT_DIRECTORY.key() + "'.");
+=======
+<<<<<<< HEAD
+										"You can either specify a directory when triggering this savepoint or " +
+										"configure a cluster-wide default via key '" +
+										CoreOptions.SAVEPOINT_DIRECTORY.key() + "'.");
+=======
+									"You can either specify a directory when triggering this savepoint or " +
+									"configure a cluster-wide default via key '" +
+									CoreOptions.SAVEPOINT_DIRECTORY.key() + "'.");
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
+>>>>>>> axbaretto
 							} else {
 								targetDirectory = defaultSavepointDirectory;
 							}

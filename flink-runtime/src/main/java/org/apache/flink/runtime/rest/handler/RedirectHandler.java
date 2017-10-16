@@ -58,11 +58,7 @@ public abstract class RedirectHandler<T extends RestfulGateway> extends SimpleCh
 
 	protected final CompletableFuture<String> localAddressFuture;
 
-<<<<<<< HEAD
 	protected final GatewayRetriever<? extends T> leaderRetriever;
-=======
-	protected final GatewayRetriever<T> leaderRetriever;
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 	protected final Time timeout;
 
@@ -70,11 +66,7 @@ public abstract class RedirectHandler<T extends RestfulGateway> extends SimpleCh
 
 	protected RedirectHandler(
 			@Nonnull CompletableFuture<String> localAddressFuture,
-<<<<<<< HEAD
 			@Nonnull GatewayRetriever<? extends T> leaderRetriever,
-=======
-			@Nonnull GatewayRetriever<T> leaderRetriever,
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			@Nonnull Time timeout) {
 		this.localAddressFuture = Preconditions.checkNotNull(localAddressFuture);
 		this.leaderRetriever = Preconditions.checkNotNull(leaderRetriever);
@@ -105,17 +97,10 @@ public abstract class RedirectHandler<T extends RestfulGateway> extends SimpleCh
 			}
 
 			try {
-<<<<<<< HEAD
 				OptionalConsumer<? extends T> optLeaderConsumer = OptionalConsumer.of(leaderRetriever.getNow());
 
 				optLeaderConsumer.ifPresent(
 					gateway -> {
-=======
-				OptionalConsumer<T> optLeaderConsumer = OptionalConsumer.of(leaderRetriever.getNow());
-
-				optLeaderConsumer.ifPresent(
-					(T gateway) -> {
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 						CompletableFuture<Optional<String>> optRedirectAddressFuture = HandlerRedirectUtils.getRedirectAddress(
 							localAddress,
 							gateway,
@@ -124,11 +109,7 @@ public abstract class RedirectHandler<T extends RestfulGateway> extends SimpleCh
 						// retain the message for the asynchronous handler
 						ReferenceCountUtil.retain(routed);
 
-<<<<<<< HEAD
 						optRedirectAddressFuture.whenCompleteAsync(
-=======
-						optRedirectAddressFuture.whenComplete(
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 							(Optional<String> optRedirectAddress, Throwable throwable) -> {
 								HttpResponse response;
 								try {
@@ -163,11 +144,7 @@ public abstract class RedirectHandler<T extends RestfulGateway> extends SimpleCh
 									ReferenceCountUtil.release(routed);
 								}
 							}
-<<<<<<< HEAD
 						, channelHandlerContext.executor());
-=======
-						);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 					}
 				).ifNotPresent(
 					() ->

@@ -33,15 +33,10 @@ import java.io.IOException;
 
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assume.assumeTrue;
-<<<<<<< HEAD
 
 /**
  * Tests for {@link BlobUtils}.
  */
-=======
-import static org.mockito.Mockito.mock;
-
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 public class BlobUtilsTest extends TestLogger {
 
 	private static final String CANNOT_CREATE_THIS = "cannot-create-this";
@@ -75,7 +70,6 @@ public class BlobUtilsTest extends TestLogger {
 		BlobUtils.initLocalStorageDirectory(new File(blobUtilsTestDirectory, CANNOT_CREATE_THIS).getAbsolutePath());
 	}
 
-<<<<<<< HEAD
 	@Test(expected = IOException.class)
 	public void testExceptionOnCreateCacheDirectoryFailureNoJob() throws IOException {
 		// Should throw an Exception
@@ -92,17 +86,5 @@ public class BlobUtilsTest extends TestLogger {
 	public void testExceptionOnCreateCacheDirectoryFailureForJobPermanent() throws IOException {
 		// Should throw an Exception
 		BlobUtils.getStorageLocation(new File(blobUtilsTestDirectory, CANNOT_CREATE_THIS), new JobID(), new PermanentBlobKey());
-=======
-	@Test(expected = Exception.class)
-	public void testExceptionOnCreateCacheDirectoryFailureNoJob() {
-		// Should throw an Exception
-		BlobUtils.getStorageLocation(new File(blobUtilsTestDirectory, CANNOT_CREATE_THIS), null, mock(BlobKey.class));
-	}
-
-	@Test(expected = Exception.class)
-	public void testExceptionOnCreateCacheDirectoryFailureForJob() {
-		// Should throw an Exception
-		BlobUtils.getStorageLocation(new File(blobUtilsTestDirectory, CANNOT_CREATE_THIS), new JobID(), mock(BlobKey.class));
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	}
 }

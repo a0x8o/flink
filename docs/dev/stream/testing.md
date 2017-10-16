@@ -261,8 +261,5 @@ Another approach is to write a unit test using the Flink internal testing utilit
 For an example of how to do that please have a look at the `org.apache.flink.streaming.runtime.operators.windowing.WindowOperatorTest` also in the `flink-streaming-java` module.
 
 Be aware that `AbstractStreamOperatorTestHarness` is currently not a part of public API and can be subject to change.
-<<<<<<< HEAD
 
 {% top %}
-=======
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d

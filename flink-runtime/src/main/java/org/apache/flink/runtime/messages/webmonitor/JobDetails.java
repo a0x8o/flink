@@ -93,11 +93,8 @@ public class JobDetails implements Serializable {
 		this.duration = duration;
 		this.status = checkNotNull(status);
 		this.lastUpdateTime = lastUpdateTime;
-<<<<<<< HEAD
 		Preconditions.checkArgument(tasksPerState.length == ExecutionState.values().length, 
 			"tasksPerState argument must be of size {}.", ExecutionState.values().length);
-=======
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		this.tasksPerState = checkNotNull(tasksPerState);
 		this.numTasks = numTasks;
 	}

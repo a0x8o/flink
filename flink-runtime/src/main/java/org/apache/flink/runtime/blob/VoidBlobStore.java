@@ -29,7 +29,6 @@ import java.io.IOException;
 public class VoidBlobStore implements BlobStoreService {
 
 	@Override
-<<<<<<< HEAD
 	public boolean put(File localFile, JobID jobId, BlobKey blobKey) throws IOException {
 		return false;
 	}
@@ -47,21 +46,6 @@ public class VoidBlobStore implements BlobStoreService {
 	@Override
 	public boolean deleteAll(JobID jobId) {
 		return true;
-=======
-	public void put(File localFile, JobID jobId, BlobKey blobKey) throws IOException {
-	}
-
-	@Override
-	public void get(JobID jobId, BlobKey blobKey, File localFile) throws IOException {
-	}
-
-	@Override
-	public void delete(JobID jobId, BlobKey blobKey) {
-	}
-
-	@Override
-	public void deleteAll(JobID jobId) {
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	}
 
 	@Override

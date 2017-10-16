@@ -22,11 +22,6 @@ import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.messages.Acknowledge;
-<<<<<<< HEAD
-=======
-import org.apache.flink.runtime.messages.webmonitor.MultipleJobsDetails;
-import org.apache.flink.runtime.messages.webmonitor.StatusOverview;
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.runtime.rpc.FencedRpcGateway;
 import org.apache.flink.runtime.rpc.RpcTimeout;
 import org.apache.flink.runtime.webmonitor.RestfulGateway;
@@ -51,11 +46,7 @@ public interface DispatcherGateway extends FencedRpcGateway<DispatcherId>, Restf
 		@RpcTimeout Time timeout);
 
 	/**
-<<<<<<< HEAD
 	 * List the current set of submitted jobs.
-=======
-	 * Lists the current set of submitted jobs.
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	 *
 	 * @param timeout RPC timeout
 	 * @return A future collection of currently submitted jobs
@@ -63,7 +54,6 @@ public interface DispatcherGateway extends FencedRpcGateway<DispatcherId>, Restf
 	CompletableFuture<Collection<JobID>> listJobs(
 		@RpcTimeout Time timeout);
 
-<<<<<<< HEAD
 	/**
 	 * Cancel the given job.
 	 *
@@ -89,9 +79,4 @@ public interface DispatcherGateway extends FencedRpcGateway<DispatcherId>, Restf
 	 * @return A future integer of the blob server port
 	 */
 	CompletableFuture<Integer> getBlobServerPort(@RpcTimeout Time timeout);
-=======
-	CompletableFuture<StatusOverview> requestStatusOverview(@RpcTimeout Time timeout);
-
-	CompletableFuture<MultipleJobsDetails> requestJobDetails(@RpcTimeout Time timeout);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 }

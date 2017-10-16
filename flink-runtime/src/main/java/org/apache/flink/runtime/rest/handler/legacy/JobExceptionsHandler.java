@@ -48,11 +48,7 @@ public class JobExceptionsHandler extends AbstractExecutionGraphRequestHandler {
 
 	static final int MAX_NUMBER_EXCEPTION_TO_REPORT = 20;
 
-<<<<<<< HEAD
 	public JobExceptionsHandler(ExecutionGraphCache executionGraphHolder, Executor executor) {
-=======
-	public JobExceptionsHandler(ExecutionGraphHolder executionGraphHolder, Executor executor) {
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		super(executionGraphHolder, executor);
 	}
 

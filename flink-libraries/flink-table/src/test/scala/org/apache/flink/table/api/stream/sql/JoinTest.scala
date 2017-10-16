@@ -20,14 +20,9 @@ package org.apache.flink.table.api.stream.sql
 import org.apache.calcite.rel.logical.LogicalJoin
 import org.apache.flink.api.scala._
 import org.apache.flink.table.api.scala._
-<<<<<<< HEAD
 import org.apache.flink.table.plan.logical.TumblingGroupWindow
 import org.apache.flink.table.runtime.join.WindowJoinUtil
 import org.apache.flink.table.utils.TableTestUtil.{term, _}
-=======
-import org.apache.flink.table.runtime.join.WindowJoinUtil
-import org.apache.flink.table.utils.TableTestUtil._
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.table.utils.{StreamTableTestUtil, TableTestBase}
 import org.junit.Assert._
 import org.junit.Test
@@ -38,11 +33,7 @@ class JoinTest extends TableTestBase {
   streamUtil.addTable[(Int, String, Long)]("MyTable2", 'a, 'b, 'c.rowtime, 'proctime.proctime)
 
   @Test
-<<<<<<< HEAD
   def testProcessingTimeInnerJoinWithOnClause(): Unit = {
-=======
-  def testProcessingTimeInnerJoinWithOnClause() = {
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
     val sqlQuery =
       """
@@ -80,7 +71,6 @@ class JoinTest extends TableTestBase {
   }
 
   @Test
-<<<<<<< HEAD
   def testRowTimeInnerJoinWithOnClause(): Unit = {
 
     val sqlQuery =
@@ -120,9 +110,6 @@ class JoinTest extends TableTestBase {
 
   @Test
   def testProcessingTimeInnerJoinWithWhereClause(): Unit = {
-=======
-  def testProcessingTimeInnerJoinWithWhereClause() = {
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
     val sqlQuery =
       """
@@ -160,7 +147,6 @@ class JoinTest extends TableTestBase {
   }
 
   @Test
-<<<<<<< HEAD
   def testRowTimeInnerJoinWithWhereClause(): Unit = {
 
     val sqlQuery =
@@ -289,8 +275,6 @@ class JoinTest extends TableTestBase {
   }
 
   @Test
-=======
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
   def testJoinTimeBoundary(): Unit = {
     verifyTimeBoundary(
       "t1.proctime between t2.proctime - interval '1' hour " +
@@ -358,27 +342,17 @@ class JoinTest extends TableTestBase {
       "SELECT t1.a, t2.c FROM MyTable3 as t1 join MyTable4 as t2 on t1.a = t2.a and " +
         "t1.b >= t2.b - interval '10' second and t1.b <= t2.b - interval '5' second and " +
         "t1.c > t2.c"
-<<<<<<< HEAD
     // The equi-join predicate should also be included
     verifyRemainConditionConvert(
       query,
       "AND(=($0, $4), >($2, $6))")
-=======
-    verifyRemainConditionConvert(
-      query,
-      ">($2, $6)")
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
     val query1 =
       "SELECT t1.a, t2.c FROM MyTable3 as t1 join MyTable4 as t2 on t1.a = t2.a and " +
         "t1.b >= t2.b - interval '10' second and t1.b <= t2.b - interval '5' second "
     verifyRemainConditionConvert(
       query1,
-<<<<<<< HEAD
       "=($0, $4)")
-=======
-      "")
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
     streamUtil.addTable[(Int, Long, Int)]("MyTable5", 'a, 'b, 'c, 'proctime.proctime)
     streamUtil.addTable[(Int, Long, Int)]("MyTable6", 'a, 'b, 'c, 'proctime.proctime)
@@ -389,11 +363,7 @@ class JoinTest extends TableTestBase {
         "t1.c > t2.c"
     verifyRemainConditionConvert(
       query2,
-<<<<<<< HEAD
       "AND(=($0, $4), >($2, $6))")
-=======
-      ">($2, $6)")
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
   }
 
   private def verifyTimeBoundary(
@@ -407,16 +377,9 @@ class JoinTest extends TableTestBase {
     val resultTable = streamUtil.tableEnv.sqlQuery(query)
     val relNode = resultTable.getRelNode
     val joinNode = relNode.getInput(0).asInstanceOf[LogicalJoin]
-<<<<<<< HEAD
     val (windowBounds, _) =
       WindowJoinUtil.extractWindowBoundsFromPredicate(
         joinNode.getCondition,
-=======
-    val rexNode = joinNode.getCondition
-    val (windowBounds, _) =
-      WindowJoinUtil.extractWindowBoundsFromPredicate(
-        rexNode,
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
         4,
         joinNode.getRowType,
         joinNode.getCluster.getRexBuilder,
@@ -437,17 +400,9 @@ class JoinTest extends TableTestBase {
     val resultTable = streamUtil.tableEnv.sqlQuery(query)
     val relNode = resultTable.getRelNode
     val joinNode = relNode.getInput(0).asInstanceOf[LogicalJoin]
-<<<<<<< HEAD
     val (_, remainCondition) =
       WindowJoinUtil.extractWindowBoundsFromPredicate(
         joinNode.getCondition,
-=======
-    val joinInfo = joinNode.analyzeCondition
-    val rexNode = joinInfo.getRemaining(joinNode.getCluster.getRexBuilder)
-    val (_, remainCondition) =
-      WindowJoinUtil.extractWindowBoundsFromPredicate(
-        rexNode,
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
         4,
         joinNode.getRowType,
         joinNode.getCluster.getRexBuilder,

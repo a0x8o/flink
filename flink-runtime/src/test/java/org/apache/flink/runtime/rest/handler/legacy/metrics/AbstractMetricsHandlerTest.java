@@ -61,53 +61,31 @@ public class AbstractMetricsHandlerTest extends TestLogger {
 		String availableList = handler.handleJsonRequest(pathParams, queryParams, null).get();
 
 		assertEquals("[" +
-<<<<<<< HEAD
 				"{\"id\":\"8.opname.abc.metric6\"}," +
 				"{\"id\":\"8.opname.abc.metric7\"}," +
 				"{\"id\":\"8.abc.metric5\"}" +
-=======
-				"{\"id\":\"8.opname.abc.metric5\"}," +
-				"{\"id\":\"8.abc.metric4\"}" +
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 				"]",
 			availableList);
 
 		// get value for a single metric
-<<<<<<< HEAD
 		queryParams.put("get", "8.opname.abc.metric6");
-=======
-		queryParams.put("get", "8.opname.abc.metric5");
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 		String metricValue = handler.handleJsonRequest(pathParams, queryParams, null).get();
 
 		assertEquals("[" +
-<<<<<<< HEAD
 				"{\"id\":\"8.opname.abc.metric6\",\"value\":\"5\"}" +
-=======
-				"{\"id\":\"8.opname.abc.metric5\",\"value\":\"4\"}" +
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 				"]"
 			, metricValue
 		);
 
 		// get values for multiple metrics
-<<<<<<< HEAD
 		queryParams.put("get", "8.opname.abc.metric6,8.abc.metric5");
-=======
-		queryParams.put("get", "8.opname.abc.metric5,8.abc.metric4");
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 		String metricValues = handler.handleJsonRequest(pathParams, queryParams, null).get();
 
 		assertEquals("[" +
-<<<<<<< HEAD
 				"{\"id\":\"8.opname.abc.metric6\",\"value\":\"5\"}," +
 				"{\"id\":\"8.abc.metric5\",\"value\":\"4\"}" +
-=======
-				"{\"id\":\"8.opname.abc.metric5\",\"value\":\"4\"}," +
-				"{\"id\":\"8.abc.metric4\",\"value\":\"3\"}" +
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 				"]",
 			metricValues
 		);

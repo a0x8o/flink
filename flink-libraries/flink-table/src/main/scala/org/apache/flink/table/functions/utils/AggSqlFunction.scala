@@ -79,7 +79,6 @@ object AggSqlFunction {
       typeFactory: FlinkTypeFactory,
       requiresOver: Boolean): AggSqlFunction = {
 
-<<<<<<< HEAD
     new AggSqlFunction(
       name,
       displayName,
@@ -88,9 +87,6 @@ object AggSqlFunction {
       accType,
       typeFactory,
       requiresOver)
-=======
-    new AggSqlFunction(name, aggregateFunction, returnType, accType, typeFactory, requiresOver)
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
   }
 
   private[flink] def createOperandTypeInference(

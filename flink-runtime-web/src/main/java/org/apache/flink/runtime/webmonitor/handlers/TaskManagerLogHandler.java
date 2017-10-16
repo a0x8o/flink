@@ -33,6 +33,14 @@ import org.apache.flink.runtime.blob.BlobCache;
 import org.apache.flink.runtime.blob.BlobKey;
 import org.apache.flink.runtime.blob.BlobView;
 import org.apache.flink.runtime.concurrent.FlinkFutureException;
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+import org.apache.flink.runtime.concurrent.FutureUtils;
+import org.apache.flink.runtime.instance.ActorGateway;
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
+>>>>>>> axbaretto
 import org.apache.flink.runtime.instance.Instance;
 import org.apache.flink.runtime.instance.InstanceID;
 import org.apache.flink.runtime.jobmaster.JobManagerGateway;
@@ -60,6 +68,13 @@ import org.apache.flink.shaded.netty4.io.netty.handler.stream.ChunkedFile;
 import org.apache.flink.shaded.netty4.io.netty.util.concurrent.Future;
 import org.apache.flink.shaded.netty4.io.netty.util.concurrent.GenericFutureListener;
 
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+import akka.dispatch.Mapper;
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
+>>>>>>> axbaretto
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -71,11 +86,29 @@ import java.net.InetSocketAddress;
 import java.nio.channels.FileChannel;
 import java.util.HashMap;
 import java.util.Objects;
+<<<<<<< HEAD
 import java.util.Optional;
+=======
+<<<<<<< HEAD
+=======
+import java.util.Optional;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
+>>>>>>> axbaretto
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+import scala.Option;
+import scala.concurrent.ExecutionContextExecutor;
+import scala.concurrent.duration.FiniteDuration;
+import scala.reflect.ClassTag$;
+
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
+>>>>>>> axbaretto
 import static org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpHeaders.Names.CONNECTION;
 import static org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpHeaders.Names.CONTENT_TYPE;
 import static org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpResponseStatus.OK;
@@ -154,6 +187,23 @@ public class TaskManagerLogHandler extends RuntimeMonitorHandlerBase {
 	@Override
 	protected void respondAsLeader(final ChannelHandlerContext ctx, final Routed routed, final JobManagerGateway jobManagerGateway) {
 		if (cache == null) {
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+			scala.concurrent.Future<Object> portFuture = jobManager.ask(JobManagerMessages.getRequestBlobManagerPort(), timeout);
+			scala.concurrent.Future<BlobCache> cacheFuture = portFuture.map(new Mapper<Object, BlobCache>() {
+				@Override
+				public BlobCache checkedApply(Object result) throws IOException {
+					Option<String> hostOption = jobManager.actor().path().address().host();
+					String host = hostOption.isDefined() ? hostOption.get() : "localhost";
+					int port = (int) result;
+					return new BlobCache(new InetSocketAddress(host, port), config, blobView);
+				}
+			}, executor);
+
+			cache = FutureUtils.toJava(cacheFuture);
+=======
+>>>>>>> axbaretto
 			CompletableFuture<Integer> blobPortFuture = jobManagerGateway.requestBlobServerPort(timeout);
 			cache = blobPortFuture.thenApplyAsync(
 				(Integer port) -> {
@@ -164,6 +214,10 @@ public class TaskManagerLogHandler extends RuntimeMonitorHandlerBase {
 					}
 				},
 				executor);
+<<<<<<< HEAD
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
+>>>>>>> axbaretto
 		}
 
 		final String taskManagerID = routed.pathParams().get(TaskManagersHandler.TASK_MANAGER_ID_KEY);
@@ -173,7 +227,23 @@ public class TaskManagerLogHandler extends RuntimeMonitorHandlerBase {
 		if (lastRequestPending.putIfAbsent(taskManagerID, true) == null) {
 			try {
 				InstanceID instanceID = new InstanceID(StringUtils.hexStringToByte(taskManagerID));
+<<<<<<< HEAD
 				CompletableFuture<Optional<Instance>> taskManagerFuture = jobManagerGateway.requestTaskManagerInstance(instanceID, timeout);
+=======
+<<<<<<< HEAD
+				scala.concurrent.Future<JobManagerMessages.TaskManagerInstance> scalaTaskManagerFuture = jobManager
+					.ask(new JobManagerMessages.RequestTaskManagerInstance(instanceID), timeout)
+					.mapTo(ClassTag$.MODULE$.<JobManagerMessages.TaskManagerInstance>apply(JobManagerMessages.TaskManagerInstance.class));
+
+				CompletableFuture<JobManagerMessages.TaskManagerInstance> taskManagerFuture = FutureUtils.toJava(scalaTaskManagerFuture);
+
+				CompletableFuture<BlobKey> blobKeyFuture = taskManagerFuture.thenCompose(
+					taskManagerInstance -> {
+						Instance taskManager = taskManagerInstance.instance().get();
+=======
+				CompletableFuture<Optional<Instance>> taskManagerFuture = jobManagerGateway.requestTaskManagerInstance(instanceID, timeout);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
+>>>>>>> axbaretto
 
 				CompletableFuture<BlobKey> blobKeyFuture = taskManagerFuture.thenCompose(
 					(Optional<Instance> optTMInstance) -> {
@@ -208,7 +278,15 @@ public class TaskManagerLogHandler extends RuntimeMonitorHandlerBase {
 								lastSubmittedFile.put(taskManagerID, blobKey);
 							}
 							try {
+<<<<<<< HEAD
 								return blobCache.getFile(blobKey).getAbsolutePath();
+=======
+<<<<<<< HEAD
+								return blobCache.getURL(blobKey).getFile();
+=======
+								return blobCache.getFile(blobKey).getAbsolutePath();
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
+>>>>>>> axbaretto
 							} catch (IOException e) {
 								throw new FlinkFutureException("Could not retrieve blob for " + blobKey + '.', e);
 							}

@@ -28,17 +28,14 @@ import org.apache.flink.runtime.instance.InstanceID;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.jobmaster.JobManagerGateway;
 import org.apache.flink.runtime.messages.Acknowledge;
-<<<<<<< HEAD
 import org.apache.flink.runtime.messages.FlinkJobNotFoundException;
-=======
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.runtime.messages.JobManagerMessages;
+import org.apache.flink.runtime.messages.webmonitor.ClusterOverview;
 import org.apache.flink.runtime.messages.webmonitor.JobsWithIDsOverview;
 import org.apache.flink.runtime.messages.webmonitor.MultipleJobsDetails;
 import org.apache.flink.runtime.messages.webmonitor.RequestJobDetails;
 import org.apache.flink.runtime.messages.webmonitor.RequestJobsWithIDsOverview;
 import org.apache.flink.runtime.messages.webmonitor.RequestStatusOverview;
-import org.apache.flink.runtime.messages.webmonitor.StatusOverview;
 import org.apache.flink.util.FlinkException;
 import org.apache.flink.util.Preconditions;
 
@@ -230,11 +227,7 @@ public class AkkaJobManagerGateway implements JobManagerGateway {
 	}
 
 	@Override
-<<<<<<< HEAD
 	public CompletableFuture<AccessExecutionGraph> requestJob(JobID jobId, Time timeout) {
-=======
-	public CompletableFuture<Optional<AccessExecutionGraph>> requestJob(JobID jobId, Time timeout) {
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		CompletableFuture<JobManagerMessages.JobResponse> jobResponseFuture = FutureUtils.toJava(
 			jobManagerGateway
 				.ask(new JobManagerMessages.RequestJob(jobId), FutureUtils.toFiniteDuration(timeout))
@@ -243,25 +236,19 @@ public class AkkaJobManagerGateway implements JobManagerGateway {
 		return jobResponseFuture.thenApply(
 			(JobManagerMessages.JobResponse jobResponse) -> {
 				if (jobResponse instanceof JobManagerMessages.JobFound) {
-<<<<<<< HEAD
 					return ((JobManagerMessages.JobFound) jobResponse).executionGraph();
 				} else {
 					throw new CompletionException(new FlinkJobNotFoundException(jobId));
-=======
-					return Optional.of(((JobManagerMessages.JobFound) jobResponse).executionGraph());
-				} else {
-					return Optional.empty();
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 				}
 			});
 	}
 
 	@Override
-	public CompletableFuture<StatusOverview> requestStatusOverview(Time timeout) {
+	public CompletableFuture<ClusterOverview> requestClusterOverview(Time timeout) {
 		return FutureUtils.toJava(
 			jobManagerGateway
 				.ask(RequestStatusOverview.getInstance(), FutureUtils.toFiniteDuration(timeout))
-				.mapTo(ClassTag$.MODULE$.apply(StatusOverview.class)));
+				.mapTo(ClassTag$.MODULE$.apply(ClusterOverview.class)));
 	}
 
 	@Override

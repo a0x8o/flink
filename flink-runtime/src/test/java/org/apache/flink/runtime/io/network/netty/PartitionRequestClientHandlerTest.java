@@ -18,10 +18,6 @@
 
 package org.apache.flink.runtime.io.network.netty;
 
-<<<<<<< HEAD
-=======
-import org.apache.flink.core.memory.HeapMemorySegment;
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.core.memory.MemorySegment;
 import org.apache.flink.core.memory.MemorySegmentFactory;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
@@ -35,10 +31,6 @@ import org.apache.flink.runtime.io.network.partition.consumer.InputChannelID;
 import org.apache.flink.runtime.io.network.partition.consumer.RemoteInputChannel;
 import org.apache.flink.runtime.io.network.util.TestBufferFactory;
 import org.apache.flink.runtime.testutils.DiscardingRecycler;
-<<<<<<< HEAD
-=======
-import org.apache.flink.runtime.util.event.EventListener;
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
 import org.apache.flink.shaded.netty4.io.netty.buffer.UnpooledByteBufAllocator;

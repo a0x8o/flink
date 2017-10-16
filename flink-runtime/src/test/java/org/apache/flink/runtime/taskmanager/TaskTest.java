@@ -23,14 +23,9 @@ import org.apache.flink.api.common.JobID;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.TaskManagerOptions;
 import org.apache.flink.core.testutils.OneShotLatch;
-<<<<<<< HEAD
 import org.apache.flink.runtime.blob.BlobCacheService;
 import org.apache.flink.runtime.blob.PermanentBlobCache;
 import org.apache.flink.runtime.blob.TransientBlobCache;
-=======
-import org.apache.flink.runtime.blob.BlobCache;
-import org.apache.flink.runtime.blob.BlobKey;
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.runtime.broadcast.BroadcastVariableManager;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.concurrent.Executors;
@@ -233,12 +228,8 @@ public class TaskTest extends TestLogger {
 	@Test
 	public void testLibraryCacheRegistrationFailed() {
 		try {
-<<<<<<< HEAD
 			BlobCacheService blobService = createBlobCache();
 			Task task = createTask(TestInvokableCorrect.class, blobService,
-=======
-			Task task = createTask(TestInvokableCorrect.class, mock(BlobCache.class),
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 				mock(LibraryCacheManager.class));
 
 			// task should be new and perfect
@@ -273,11 +264,7 @@ public class TaskTest extends TestLogger {
 	@Test
 	public void testExecutionFailsInNetworkRegistration() {
 		try {
-<<<<<<< HEAD
 			BlobCacheService blobService = createBlobCache();
-=======
-			BlobCache blobCache = mock(BlobCache.class);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			// mock a working library cache
 			LibraryCacheManager libCache = mock(LibraryCacheManager.class);
 			when(libCache.getClassLoader(any(JobID.class))).thenReturn(getClass().getClassLoader());
@@ -292,11 +279,7 @@ public class TaskTest extends TestLogger {
 			when(network.getDefaultIOMode()).thenReturn(IOManager.IOMode.SYNC);
 			doThrow(new RuntimeException("buffers")).when(network).registerTask(any(Task.class));
 
-<<<<<<< HEAD
 			Task task = createTask(TestInvokableCorrect.class, blobService, libCache, network, consumableNotifier, partitionProducerStateChecker, executor);
-=======
-			Task task = createTask(TestInvokableCorrect.class, blobCache, libCache, network, consumableNotifier, partitionProducerStateChecker, executor);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 			task.registerExecutionListener(listener);
 
@@ -641,11 +624,7 @@ public class TaskTest extends TestLogger {
 		IntermediateDataSetID resultId = new IntermediateDataSetID();
 		ResultPartitionID partitionId = new ResultPartitionID();
 
-<<<<<<< HEAD
 		BlobCacheService blobService = createBlobCache();
-=======
-		BlobCache blobCache = mock(BlobCache.class);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		LibraryCacheManager libCache = mock(LibraryCacheManager.class);
 		when(libCache.getClassLoader(any(JobID.class))).thenReturn(getClass().getClassLoader());
 
@@ -658,11 +637,7 @@ public class TaskTest extends TestLogger {
 		when(network.createKvStateTaskRegistry(any(JobID.class), any(JobVertexID.class)))
 			.thenReturn(mock(TaskKvStateRegistry.class));
 
-<<<<<<< HEAD
 		createTask(InvokableBlockingInInvoke.class, blobService, libCache, network, consumableNotifier, partitionChecker, Executors.directExecutor());
-=======
-		createTask(InvokableBlockingInInvoke.class, blobCache, libCache, network, consumableNotifier, partitionChecker, Executors.directExecutor());
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 		// Test all branches of trigger partition state check
 
@@ -671,11 +646,7 @@ public class TaskTest extends TestLogger {
 			createQueuesAndActors();
 
 			// PartitionProducerDisposedException
-<<<<<<< HEAD
 			Task task = createTask(InvokableBlockingInInvoke.class, blobService, libCache, network, consumableNotifier, partitionChecker, Executors.directExecutor());
-=======
-			Task task = createTask(InvokableBlockingInInvoke.class, blobCache, libCache, network, consumableNotifier, partitionChecker, Executors.directExecutor());
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 			CompletableFuture<ExecutionState> promise = new CompletableFuture<>();
 			when(partitionChecker.requestPartitionProducerState(eq(task.getJobID()), eq(resultId), eq(partitionId))).thenReturn(promise);
@@ -691,11 +662,7 @@ public class TaskTest extends TestLogger {
 			createQueuesAndActors();
 
 			// Any other exception
-<<<<<<< HEAD
 			Task task = createTask(InvokableBlockingInInvoke.class, blobService, libCache, network, consumableNotifier, partitionChecker, Executors.directExecutor());
-=======
-			Task task = createTask(InvokableBlockingInInvoke.class, blobCache, libCache, network, consumableNotifier, partitionChecker, Executors.directExecutor());
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 			CompletableFuture<ExecutionState> promise = new CompletableFuture<>();
 			when(partitionChecker.requestPartitionProducerState(eq(task.getJobID()), eq(resultId), eq(partitionId))).thenReturn(promise);
@@ -712,11 +679,7 @@ public class TaskTest extends TestLogger {
 			createQueuesAndActors();
 
 			// TimeoutException handled special => retry
-<<<<<<< HEAD
 			Task task = createTask(InvokableBlockingInInvoke.class, blobService, libCache, network, consumableNotifier, partitionChecker, Executors.directExecutor());
-=======
-			Task task = createTask(InvokableBlockingInInvoke.class, blobCache, libCache, network, consumableNotifier, partitionChecker, Executors.directExecutor());
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			SingleInputGate inputGate = mock(SingleInputGate.class);
 			when(inputGate.getConsumedResultId()).thenReturn(resultId);
 
@@ -747,11 +710,7 @@ public class TaskTest extends TestLogger {
 			createQueuesAndActors();
 
 			// Success
-<<<<<<< HEAD
 			Task task = createTask(InvokableBlockingInInvoke.class, blobService, libCache, network, consumableNotifier, partitionChecker, Executors.directExecutor());
-=======
-			Task task = createTask(InvokableBlockingInInvoke.class, blobCache, libCache, network, consumableNotifier, partitionChecker, Executors.directExecutor());
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			SingleInputGate inputGate = mock(SingleInputGate.class);
 			when(inputGate.getConsumedResultId()).thenReturn(resultId);
 
@@ -943,7 +902,6 @@ public class TaskTest extends TestLogger {
 	}
 
 	private Task createTask(Class<? extends AbstractInvokable> invokable, Configuration config) throws IOException {
-<<<<<<< HEAD
 		BlobCacheService blobService = createBlobCache();
 		LibraryCacheManager libCache = mock(LibraryCacheManager.class);
 		when(libCache.getClassLoader(any(JobID.class))).thenReturn(getClass().getClassLoader());
@@ -955,43 +913,19 @@ public class TaskTest extends TestLogger {
 		LibraryCacheManager libCache = mock(LibraryCacheManager.class);
 		when(libCache.getClassLoader(any(JobID.class))).thenReturn(getClass().getClassLoader());
 		return createTask(invokable, blobService,libCache, config, execConfig);
-=======
-		BlobCache blobCache = mock(BlobCache.class);
-		LibraryCacheManager libCache = mock(LibraryCacheManager.class);
-		when(libCache.getClassLoader(any(JobID.class))).thenReturn(getClass().getClassLoader());
-		return createTask(invokable, blobCache,libCache, config, new ExecutionConfig());
-	}
-
-	private Task createTask(Class<? extends AbstractInvokable> invokable, Configuration config, ExecutionConfig execConfig) throws IOException {
-		BlobCache blobCache = mock(BlobCache.class);
-		LibraryCacheManager libCache = mock(LibraryCacheManager.class);
-		when(libCache.getClassLoader(any(JobID.class))).thenReturn(getClass().getClassLoader());
-		return createTask(invokable, blobCache,libCache, config, execConfig);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	}
 
 	private Task createTask(
 			Class<? extends AbstractInvokable> invokable,
-<<<<<<< HEAD
 			BlobCacheService blobService,
 			LibraryCacheManager libCache) throws IOException {
 
 		return createTask(invokable, blobService,libCache, new Configuration(), new ExecutionConfig());
-=======
-			BlobCache blobCache,
-			LibraryCacheManager libCache) throws IOException {
-
-		return createTask(invokable, blobCache,libCache, new Configuration(), new ExecutionConfig());
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	}
 
 	private Task createTask(
 			Class<? extends AbstractInvokable> invokable,
-<<<<<<< HEAD
 			BlobCacheService blobService,
-=======
-			BlobCache blobCache,
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			LibraryCacheManager libCache,
 			Configuration config,
 			ExecutionConfig execConfig) throws IOException {
@@ -1006,39 +940,23 @@ public class TaskTest extends TestLogger {
 		when(network.createKvStateTaskRegistry(any(JobID.class), any(JobVertexID.class)))
 				.thenReturn(mock(TaskKvStateRegistry.class));
 
-<<<<<<< HEAD
 		return createTask(invokable, blobService, libCache, network, consumableNotifier, partitionProducerStateChecker, executor, config, execConfig);
-=======
-		return createTask(invokable, blobCache, libCache, network, consumableNotifier, partitionProducerStateChecker, executor, config, execConfig);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	}
 
 	private Task createTask(
 			Class<? extends AbstractInvokable> invokable,
-<<<<<<< HEAD
 			BlobCacheService blobService,
-=======
-			BlobCache blobCache,
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			LibraryCacheManager libCache,
 			NetworkEnvironment networkEnvironment,
 			ResultPartitionConsumableNotifier consumableNotifier,
 			PartitionProducerStateChecker partitionProducerStateChecker,
 			Executor executor) throws IOException {
-<<<<<<< HEAD
 		return createTask(invokable, blobService, libCache, networkEnvironment, consumableNotifier, partitionProducerStateChecker, executor, new Configuration(), new ExecutionConfig());
-=======
-		return createTask(invokable, blobCache, libCache, networkEnvironment, consumableNotifier, partitionProducerStateChecker, executor, new Configuration(), new ExecutionConfig());
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	}
 	
 	private Task createTask(
 		Class<? extends AbstractInvokable> invokable,
-<<<<<<< HEAD
 		BlobCacheService blobService,
-=======
-		BlobCache blobCache,
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		LibraryCacheManager libCache,
 		NetworkEnvironment networkEnvironment,
 		ResultPartitionConsumableNotifier consumableNotifier,
@@ -1099,11 +1017,7 @@ public class TaskTest extends TestLogger {
 			taskManagerConnection,
 			inputSplitProvider,
 			checkpointResponder,
-<<<<<<< HEAD
 			blobService,
-=======
-			blobCache,
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			libCache,
 			mock(FileCache.class),
 			new TestingTaskManagerRuntimeInfo(taskManagerConfig),

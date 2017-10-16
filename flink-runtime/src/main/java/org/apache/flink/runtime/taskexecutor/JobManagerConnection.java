@@ -19,11 +19,7 @@
 package org.apache.flink.runtime.taskexecutor;
 
 import org.apache.flink.api.common.JobID;
-<<<<<<< HEAD
 import org.apache.flink.runtime.blob.BlobCacheService;
-=======
-import org.apache.flink.runtime.blob.BlobCache;
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.execution.librarycache.LibraryCacheManager;
 import org.apache.flink.runtime.io.network.netty.PartitionProducerStateChecker;
@@ -55,11 +51,7 @@ public class JobManagerConnection {
 	private final CheckpointResponder checkpointResponder;
 
 	// BLOB cache connected to the BLOB server at the specific job manager
-<<<<<<< HEAD
 	private final BlobCacheService blobService;
-=======
-	private final BlobCache blobCache;
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 	// Library cache manager connected to the specific job manager
 	private final LibraryCacheManager libraryCacheManager;
@@ -76,11 +68,7 @@ public class JobManagerConnection {
 				JobMasterGateway jobMasterGateway,
 				TaskManagerActions taskManagerActions,
 				CheckpointResponder checkpointResponder,
-<<<<<<< HEAD
 				BlobCacheService blobService, LibraryCacheManager libraryCacheManager,
-=======
-				BlobCache blobCache, LibraryCacheManager libraryCacheManager,
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 				ResultPartitionConsumableNotifier resultPartitionConsumableNotifier,
 				PartitionProducerStateChecker partitionStateChecker) {
 		this.jobID = Preconditions.checkNotNull(jobID);
@@ -88,11 +76,7 @@ public class JobManagerConnection {
 		this.jobMasterGateway = Preconditions.checkNotNull(jobMasterGateway);
 		this.taskManagerActions = Preconditions.checkNotNull(taskManagerActions);
 		this.checkpointResponder = Preconditions.checkNotNull(checkpointResponder);
-<<<<<<< HEAD
 		this.blobService = Preconditions.checkNotNull(blobService);
-=======
-		this.blobCache = Preconditions.checkNotNull(blobCache);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		this.libraryCacheManager = Preconditions.checkNotNull(libraryCacheManager);
 		this.resultPartitionConsumableNotifier = Preconditions.checkNotNull(resultPartitionConsumableNotifier);
 		this.partitionStateChecker = Preconditions.checkNotNull(partitionStateChecker);
@@ -131,13 +115,8 @@ public class JobManagerConnection {
 	 *
 	 * @return BLOB cache
 	 */
-<<<<<<< HEAD
 	public BlobCacheService getBlobService() {
 		return blobService;
-=======
-	public BlobCache getBlobCache() {
-		return blobCache;
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	}
 
 	public ResultPartitionConsumableNotifier getResultPartitionConsumableNotifier() {

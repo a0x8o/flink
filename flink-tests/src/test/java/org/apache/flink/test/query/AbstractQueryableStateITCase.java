@@ -45,7 +45,15 @@ import org.apache.flink.runtime.state.AbstractStateBackend;
 import org.apache.flink.runtime.state.CheckpointListener;
 import org.apache.flink.runtime.state.VoidNamespace;
 import org.apache.flink.runtime.state.VoidNamespaceTypeInfo;
+<<<<<<< HEAD
 import org.apache.flink.runtime.testingUtils.TestingJobManagerMessages;
+=======
+<<<<<<< HEAD
+import org.apache.flink.runtime.testingUtils.TestingCluster;
+=======
+import org.apache.flink.runtime.testingUtils.TestingJobManagerMessages;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
+>>>>>>> axbaretto
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.QueryableStateStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
@@ -58,7 +66,15 @@ import akka.dispatch.Futures;
 import akka.dispatch.OnSuccess;
 import akka.dispatch.Recover;
 import akka.pattern.Patterns;
+<<<<<<< HEAD
 import org.junit.Assert;
+=======
+<<<<<<< HEAD
+import org.junit.AfterClass;
+=======
+import org.junit.Assert;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
+>>>>>>> axbaretto
 import org.junit.Before;
 import org.junit.Test;
 
@@ -76,6 +92,14 @@ import scala.concurrent.duration.Deadline;
 import scala.concurrent.duration.FiniteDuration;
 import scala.reflect.ClassTag$;
 
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+import static org.apache.flink.runtime.testingUtils.TestingJobManagerMessages.JobStatusIs;
+import static org.apache.flink.runtime.testingUtils.TestingJobManagerMessages.NotifyWhenJobStatus;
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
+>>>>>>> axbaretto
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
@@ -84,10 +108,27 @@ import static org.junit.Assert.assertTrue;
  */
 public abstract class AbstractQueryableStateITCase extends TestLogger {
 
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+	private static final FiniteDuration TEST_TIMEOUT = new FiniteDuration(100, TimeUnit.SECONDS);
+	private static final FiniteDuration QUERY_RETRY_DELAY = new FiniteDuration(100, TimeUnit.MILLISECONDS);
+
+	private static ActorSystem testActorSystem;
+
+	private static final int NUM_TMS = 2;
+	private static final int NUM_SLOTS_PER_TM = 4;
+	private static final int NUM_SLOTS = NUM_TMS * NUM_SLOTS_PER_TM;
+=======
+>>>>>>> axbaretto
 	protected static final FiniteDuration TEST_TIMEOUT = new FiniteDuration(10000, TimeUnit.SECONDS);
 	private static final FiniteDuration QUERY_RETRY_DELAY = new FiniteDuration(100, TimeUnit.MILLISECONDS);
 
 	protected static ActorSystem testActorSystem;
+<<<<<<< HEAD
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
+>>>>>>> axbaretto
 
 	/**
 	 * State backend to use.
@@ -100,7 +141,48 @@ public abstract class AbstractQueryableStateITCase extends TestLogger {
 	 */
 	protected static FlinkMiniCluster cluster;
 
+<<<<<<< HEAD
 	protected static int maxParallelism;
+=======
+<<<<<<< HEAD
+	@BeforeClass
+	public static void setup() {
+		try {
+			Configuration config = new Configuration();
+			config.setLong(TaskManagerOptions.MANAGED_MEMORY_SIZE, 4L);
+			config.setInteger(ConfigConstants.LOCAL_NUMBER_TASK_MANAGER, NUM_TMS);
+			config.setInteger(ConfigConstants.TASK_MANAGER_NUM_TASK_SLOTS, NUM_SLOTS_PER_TM);
+			config.setInteger(QueryableStateOptions.CLIENT_NETWORK_THREADS, 1);
+			config.setBoolean(QueryableStateOptions.SERVER_ENABLE, true);
+			config.setInteger(QueryableStateOptions.SERVER_NETWORK_THREADS, 1);
+
+			cluster = new TestingCluster(config, false);
+			cluster.start(true);
+
+			testActorSystem = AkkaUtils.createDefaultActorSystem();
+		} catch (Exception e) {
+			e.printStackTrace();
+			fail(e.getMessage());
+		}
+	}
+
+	@AfterClass
+	public static void tearDown() {
+		try {
+			cluster.shutdown();
+		} catch (Exception e) {
+			e.printStackTrace();
+			fail(e.getMessage());
+		}
+
+		if (testActorSystem != null) {
+			testActorSystem.shutdown();
+		}
+	}
+=======
+	protected static int maxParallelism;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
+>>>>>>> axbaretto
 
 	@Before
 	public void setUp() throws Exception {
@@ -505,7 +587,15 @@ public abstract class AbstractQueryableStateITCase extends TestLogger {
 			final StateDescriptor<?, Tuple2<Integer, Long>> stateDescriptor,
 			final long expected) throws Exception {
 
+<<<<<<< HEAD
 		for (int key = 0; key < maxParallelism; key++) {
+=======
+<<<<<<< HEAD
+		for (int key = 0; key < NUM_SLOTS; key++) {
+=======
+		for (int key = 0; key < maxParallelism; key++) {
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
+>>>>>>> axbaretto
 			boolean success = false;
 			while (deadline.hasTimeLeft() && !success) {
 				Future<Tuple2<Integer, Long>> future = getKvStateWithRetries(client,
@@ -533,7 +623,15 @@ public abstract class AbstractQueryableStateITCase extends TestLogger {
 	}
 
 	/**
+<<<<<<< HEAD
 	 * Retry a query for state for keys between 0 and {@link #maxParallelism} until
+=======
+<<<<<<< HEAD
+	 * Retry a query for state for keys between 0 and {@link #NUM_SLOTS} until
+=======
+	 * Retry a query for state for keys between 0 and {@link #maxParallelism} until
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
+>>>>>>> axbaretto
 	 * <tt>expected</tt> equals the value of the result tuple's second field.
 	 */
 	private void executeQuery(
@@ -544,7 +642,15 @@ public abstract class AbstractQueryableStateITCase extends TestLogger {
 			final TypeSerializer<Tuple2<Integer, Long>> valueSerializer,
 			final long expected) throws Exception {
 
+<<<<<<< HEAD
 		for (int key = 0; key < maxParallelism; key++) {
+=======
+<<<<<<< HEAD
+		for (int key = 0; key < NUM_SLOTS; key++) {
+=======
+		for (int key = 0; key < maxParallelism; key++) {
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
+>>>>>>> axbaretto
 			boolean success = false;
 			while (deadline.hasTimeLeft() && !success) {
 				Future<Tuple2<Integer, Long>> future = getKvStateWithRetries(client,
@@ -785,7 +891,15 @@ public abstract class AbstractQueryableStateITCase extends TestLogger {
 			// Now query
 			String expected = Integer.toString(numElements * (numElements + 1) / 2);
 
+<<<<<<< HEAD
 			for (int key = 0; key < maxParallelism; key++) {
+=======
+<<<<<<< HEAD
+			for (int key = 0; key < NUM_SLOTS; key++) {
+=======
+			for (int key = 0; key < maxParallelism; key++) {
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
+>>>>>>> axbaretto
 				boolean success = false;
 				while (deadline.hasTimeLeft() && !success) {
 					Future<String> future = getKvStateWithRetries(client,
@@ -896,6 +1010,11 @@ public abstract class AbstractQueryableStateITCase extends TestLogger {
 	}
 
 	private static <K, V> Future<V> getKvStateWithRetries(
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+=======
+>>>>>>> axbaretto
 			final QueryableStateClient client,
 			final JobID jobId,
 			final String queryName,
@@ -943,6 +1062,70 @@ public abstract class AbstractQueryableStateITCase extends TestLogger {
 	}
 
 	private static <K, V> Future<V> getKvStateWithRetries(
+<<<<<<< HEAD
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
+			final QueryableStateClient client,
+			final JobID jobId,
+			final String queryName,
+			final K key,
+			final TypeInformation<K> keyTypeInfo,
+<<<<<<< HEAD
+			final TypeSerializer<V> valueTypeSerializer,
+			final FiniteDuration retryDelay,
+			final boolean failForUnknownKeyOrNamespace) {
+
+		return client.getKvState(jobId, queryName, key, VoidNamespace.INSTANCE, keyTypeInfo, VoidNamespaceTypeInfo.INSTANCE, valueTypeSerializer)
+=======
+			final StateDescriptor<?, V> stateDescriptor,
+			final FiniteDuration retryDelay,
+			final boolean failForUnknownKeyOrNamespace) {
+
+		return client.getKvState(jobId, queryName, key, VoidNamespace.INSTANCE, keyTypeInfo, VoidNamespaceTypeInfo.INSTANCE, stateDescriptor)
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
+				.recoverWith(new Recover<Future<V>>() {
+					@Override
+					public Future<V> recover(Throwable failure) throws Throwable {
+						if (failure instanceof AssertionError) {
+							return Futures.failed(failure);
+						} else if (failForUnknownKeyOrNamespace &&
+								(failure instanceof UnknownKeyOrNamespace)) {
+							return Futures.failed(failure);
+						} else {
+							// At startup some failures are expected
+							// due to races. Make sure that they don't
+							// fail this test.
+							return Patterns.after(
+									retryDelay,
+									testActorSystem.scheduler(),
+									testActorSystem.dispatcher(),
+									new Callable<Future<V>>() {
+										@Override
+										public Future<V> call() throws Exception {
+											return getKvStateWithRetries(
+													client,
+													jobId,
+													queryName,
+													key,
+													keyTypeInfo,
+<<<<<<< HEAD
+													valueTypeSerializer,
+=======
+													stateDescriptor,
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
+													retryDelay,
+													failForUnknownKeyOrNamespace);
+										}
+									});
+						}
+					}
+				}, testActorSystem.dispatcher());
+<<<<<<< HEAD
+
+	}
+
+	private static <K, V> Future<V> getKvStateWithRetries(
+>>>>>>> axbaretto
 			final QueryableStateClient client,
 			final JobID jobId,
 			final String queryName,
@@ -986,6 +1169,11 @@ public abstract class AbstractQueryableStateITCase extends TestLogger {
 						}
 					}
 				}, testActorSystem.dispatcher());
+<<<<<<< HEAD
+=======
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
+>>>>>>> axbaretto
 	}
 
 	/**

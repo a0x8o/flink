@@ -35,11 +35,7 @@ import java.util.concurrent.Executor;
  */
 public abstract class AbstractSubtaskAttemptRequestHandler extends AbstractSubtaskRequestHandler {
 
-<<<<<<< HEAD
 	public AbstractSubtaskAttemptRequestHandler(ExecutionGraphCache executionGraphHolder, Executor executor) {
-=======
-	public AbstractSubtaskAttemptRequestHandler(ExecutionGraphHolder executionGraphHolder, Executor executor) {
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		super(executionGraphHolder, executor);
 	}
 

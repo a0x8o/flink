@@ -100,11 +100,20 @@ public class BlobRecoveryITCase extends TestLogger {
 
 			// Put job-related data, verify that the checksums match
 			JobID[] jobId = new JobID[] { new JobID(), new JobID() };
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+=======
+>>>>>>> axbaretto
 			BlobKey key;
 			key = client.put(jobId[0], expected); // Request 3
 			assertEquals(keys[0], key);
 			key = client.put(jobId[1], expected, 32, 256); // Request 4
 			assertEquals(keys[1], key);
+<<<<<<< HEAD
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
+>>>>>>> axbaretto
 
 			// check that the storage directory exists
 			final Path blobServerPath = new Path(storagePath, "blob");
@@ -136,6 +145,14 @@ public class BlobRecoveryITCase extends TestLogger {
 				}
 			}
 
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+			// Remove again
+			client.delete(keys[0]);
+			client.delete(keys[1]);
+=======
+>>>>>>> axbaretto
 			// Verify request 3
 			try (InputStream is = client.get(jobId[0], keys[0])) {
 				byte[] actual = new byte[expected.length];
@@ -161,6 +178,10 @@ public class BlobRecoveryITCase extends TestLogger {
 			client.delete(keys[1]);
 			client.delete(jobId[0], keys[0]);
 			client.delete(jobId[1], keys[1]);
+<<<<<<< HEAD
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
+>>>>>>> axbaretto
 
 			// Verify everything is clean
 			assertTrue("HA storage directory does not exist", fs.exists(new Path(storagePath)));

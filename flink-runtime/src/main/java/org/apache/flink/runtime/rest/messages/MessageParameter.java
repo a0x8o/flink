@@ -72,11 +72,7 @@ public abstract class MessageParameter<X> {
 	 *
 	 * @param value string representation of value to resolve this parameter with
 	 */
-<<<<<<< HEAD
 	public final void resolveFromString(String value) throws ConversionException {
-=======
-	public final void resolveFromString(String value) {
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		resolve(convertFromString(value));
 	}
 
@@ -86,11 +82,7 @@ public abstract class MessageParameter<X> {
 	 * @param value string representation of parameter value
 	 * @return parameter value
 	 */
-<<<<<<< HEAD
 	protected abstract X convertFromString(String value) throws ConversionException;
-=======
-	protected abstract X convertFromString(String value);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 	/**
 	 * Converts the given value to its string representation.

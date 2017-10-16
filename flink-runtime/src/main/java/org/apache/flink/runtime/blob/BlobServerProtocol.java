@@ -26,15 +26,11 @@ public class BlobServerProtocol {
 	/** The buffer size in bytes for network transfers. */
 	static final int BUFFER_SIZE = 65536; // 64 K
 
-<<<<<<< HEAD
 	/**
 	 * Internal code to identify a PUT operation.
 	 *
 	 * <p>Note: previously, there was also <tt>DELETE_OPERATION</tt> (code <tt>2</tt>).
 	 */
-=======
-	/** Internal code to identify a PUT operation. */
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	static final byte PUT_OPERATION = 0;
 
 	/**
@@ -51,7 +47,6 @@ public class BlobServerProtocol {
 	static final byte RETURN_ERROR = 1;
 
 	/**
-<<<<<<< HEAD
 	 * Internal code to identify a job-unrelated BLOBs (only for transient BLOBs!).
 	 *
 	 * <p>Note: previously, there was also <tt>NAME_ADDRESSABLE</tt> (code <tt>1</tt>).
@@ -64,22 +59,6 @@ public class BlobServerProtocol {
 	 * <p>Note: This is equal to the previous <tt>JOB_ID_SCOPE</tt> (code <tt>2</tt>).
 	 */
 	static final byte JOB_RELATED_CONTENT = 2;
-=======
-	 * Internal code to identify a job-unrelated reference via content hash as the key.
-	 * <p>
-	 * Note: previously, there was also <tt>NAME_ADDRESSABLE</tt> (code <tt>1</tt>) and
-	 * <tt>JOB_ID_SCOPE</tt> (code <tt>2</tt>).
-	 */
-	static final byte CONTENT_NO_JOB = 0;
-
-	/**
-	 * Internal code to identify a job-related reference via content hash as the key.
-	 * <p>
-	 * Note: previously, there was also <tt>NAME_ADDRESSABLE</tt> (code <tt>1</tt>) and
-	 * <tt>JOB_ID_SCOPE</tt> (code <tt>2</tt>).
-	 */
-	static final byte CONTENT_FOR_JOB = 3;
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 	// --------------------------------------------------------------------------------------------
 

@@ -32,13 +32,8 @@ import org.apache.flink.api.common.time.Time;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.akka.AkkaUtils;
 import org.apache.flink.runtime.akka.ListeningBehaviour;
-<<<<<<< HEAD
 import org.apache.flink.runtime.blob.PermanentBlobCache;
 import org.apache.flink.runtime.blob.PermanentBlobKey;
-=======
-import org.apache.flink.runtime.blob.BlobCache;
-import org.apache.flink.runtime.blob.BlobKey;
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.runtime.execution.librarycache.FlinkUserCodeClassLoaders;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.jobgraph.JobGraph;
@@ -220,11 +215,7 @@ public class JobClient {
 			JobManagerMessages.ClassloadingProps props = optProps.get();
 
 			InetSocketAddress serverAddress = new InetSocketAddress(jobManager.getHostname(), props.blobManagerPort());
-<<<<<<< HEAD
 			final PermanentBlobCache permanentBlobCache;
-=======
-			final BlobCache blobClient;
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			try {
 				// TODO: Fix lifecycle of PermanentBlobCache to properly close it upon usage
 				permanentBlobCache = new PermanentBlobCache(serverAddress, config, highAvailabilityServices.createBlobStore());
@@ -243,11 +234,7 @@ public class JobClient {
 			int pos = 0;
 			for (PermanentBlobKey blobKey : props.requiredJarFiles()) {
 				try {
-<<<<<<< HEAD
 					allURLs[pos++] = permanentBlobCache.getFile(jobID, blobKey).toURI().toURL();
-=======
-					allURLs[pos++] = blobClient.getFile(jobID, blobKey).toURI().toURL();
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 				} catch (Exception e) {
 					try {
 						permanentBlobCache.close();
@@ -444,7 +431,6 @@ public class JobClient {
 			blobServerAddress = blobServerAddressFuture.get(timeout.toMilliseconds(), TimeUnit.MILLISECONDS);
 		} catch (Exception e) {
 			throw new JobSubmissionException(jobGraph.getJobID(), "Could not retrieve BlobServer address.", e);
-<<<<<<< HEAD
 		}
 
 		try {
@@ -465,28 +451,6 @@ public class JobClient {
 		} catch (Throwable throwable) {
 			Throwable stripped = ExceptionUtils.stripExecutionException(throwable);
 
-=======
-		}
-
-		try {
-			jobGraph.uploadUserJars(blobServerAddress, config);
-		}
-		catch (IOException e) {
-			throw new JobSubmissionException(jobGraph.getJobID(),
-				"Could not upload the program's JAR files to the JobManager.", e);
-		}
-
-		CompletableFuture<Acknowledge> submissionFuture = jobManagerGateway.submitJob(jobGraph, ListeningBehaviour.DETACHED, timeout);
-
-		try {
-			submissionFuture.get(timeout.toMilliseconds(), TimeUnit.MILLISECONDS);
-		} catch (TimeoutException e) {
-			throw new JobTimeoutException(jobGraph.getJobID(),
-				"JobManager did not respond within " + timeout, e);
-		} catch (Throwable throwable) {
-			Throwable stripped = ExceptionUtils.stripExecutionException(throwable);
-			
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			try {
 				ExceptionUtils.tryDeserializeAndThrow(stripped, classLoader);
 			} catch (JobExecutionException jee) {

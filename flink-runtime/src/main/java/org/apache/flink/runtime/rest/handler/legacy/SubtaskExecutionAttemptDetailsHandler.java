@@ -55,11 +55,7 @@ public class SubtaskExecutionAttemptDetailsHandler extends AbstractSubtaskAttemp
 
 	private final MetricFetcher fetcher;
 
-<<<<<<< HEAD
 	public SubtaskExecutionAttemptDetailsHandler(ExecutionGraphCache executionGraphHolder, Executor executor, MetricFetcher fetcher) {
-=======
-	public SubtaskExecutionAttemptDetailsHandler(ExecutionGraphHolder executionGraphHolder, Executor executor, MetricFetcher fetcher) {
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		super(executionGraphHolder, executor);
 		this.fetcher = fetcher;
 	}

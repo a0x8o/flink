@@ -22,14 +22,9 @@ import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.configuration.Configuration;
-<<<<<<< HEAD
 import org.apache.flink.runtime.blob.BlobCacheService;
 import org.apache.flink.runtime.blob.PermanentBlobCache;
 import org.apache.flink.runtime.blob.TransientBlobCache;
-=======
-import org.apache.flink.runtime.blob.BlobCache;
-import org.apache.flink.runtime.blob.BlobKey;
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.runtime.broadcast.BroadcastVariableManager;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
@@ -501,15 +496,9 @@ public class TaskExecutorTest extends TestLogger {
 
 		TaskManagerConfiguration taskManagerServicesConfiguration = mock(TaskManagerConfiguration.class);
 		when(taskManagerServicesConfiguration.getNumberSlots()).thenReturn(1);
-<<<<<<< HEAD
 
 		rpc.registerGateway(resourceManagerAddress, rmGateway);
 
-=======
-
-		rpc.registerGateway(resourceManagerAddress, rmGateway);
-
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		TaskManagerLocation taskManagerLocation = mock(TaskManagerLocation.class);
 		when(taskManagerLocation.getResourceID()).thenReturn(resourceID);
 
@@ -596,7 +585,6 @@ public class TaskExecutorTest extends TestLogger {
 		when(taskManagerServicesConfiguration.getNumberSlots()).thenReturn(1);
 		when(taskManagerServicesConfiguration.getConfiguration()).thenReturn(new Configuration());
 		when(taskManagerServicesConfiguration.getTmpDirectories()).thenReturn(new String[1]);
-<<<<<<< HEAD
 
 		TaskManagerLocation taskManagerLocation = mock(TaskManagerLocation.class);
 		when(taskManagerLocation.getResourceID()).thenReturn(tmResourceID);
@@ -608,19 +596,6 @@ public class TaskExecutorTest extends TestLogger {
 
 		final TestingFatalErrorHandler testingFatalErrorHandler = new TestingFatalErrorHandler();
 
-=======
-
-		TaskManagerLocation taskManagerLocation = mock(TaskManagerLocation.class);
-		when(taskManagerLocation.getResourceID()).thenReturn(tmResourceID);
-		when(taskManagerLocation.getHostname()).thenReturn("foobar");
-
-		final TaskSlotTable taskSlotTable = mock(TaskSlotTable.class);
-		final SlotReport slotReport = new SlotReport();
-		when(taskSlotTable.createSlotReport(any(ResourceID.class))).thenReturn(slotReport);
-
-		final TestingFatalErrorHandler testingFatalErrorHandler = new TestingFatalErrorHandler();
-
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		TaskExecutor taskManager = new TaskExecutor(
 			rpc,
 			taskManagerServicesConfiguration,
@@ -721,12 +696,9 @@ public class TaskExecutorTest extends TestLogger {
 
 		final JobMasterGateway jobMasterGateway = mock(JobMasterGateway.class);
 		when(jobMasterGateway.getFencingToken()).thenReturn(jobMasterId);
-<<<<<<< HEAD
 
 		BlobCacheService blobService =
 			new BlobCacheService(mock(PermanentBlobCache.class), mock(TransientBlobCache.class));
-=======
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 		final JobManagerConnection jobManagerConnection = new JobManagerConnection(
 			jobId,
@@ -734,11 +706,7 @@ public class TaskExecutorTest extends TestLogger {
 			jobMasterGateway,
 			mock(TaskManagerActions.class),
 			mock(CheckpointResponder.class),
-<<<<<<< HEAD
 			blobService,
-=======
-			mock(BlobCache.class),
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			libraryCacheManager,
 			mock(ResultPartitionConsumableNotifier.class),
 			mock(PartitionProducerStateChecker.class));
@@ -768,7 +736,6 @@ public class TaskExecutorTest extends TestLogger {
 		when(haServices.getResourceManagerLeaderRetriever()).thenReturn(mock(LeaderRetrievalService.class));
 
 		final TestingFatalErrorHandler testingFatalErrorHandler = new TestingFatalErrorHandler();
-<<<<<<< HEAD
 
 		TaskExecutor taskManager = new TaskExecutor(
 			rpc,
@@ -788,40 +755,13 @@ public class TaskExecutorTest extends TestLogger {
 			mock(JobLeaderService.class),
 			testingFatalErrorHandler);
 
-=======
-
-		TaskExecutor taskManager = new TaskExecutor(
-			rpc,
-			taskManagerConfiguration,
-			mock(TaskManagerLocation.class),
-			mock(MemoryManager.class),
-			mock(IOManager.class),
-			networkEnvironment,
-			haServices,
-			mock(HeartbeatServices.class, RETURNS_MOCKS),
-			mock(MetricRegistry.class),
-			taskManagerMetricGroup,
-			mock(BroadcastVariableManager.class),
-			mock(FileCache.class),
-			taskSlotTable,
-			jobManagerTable,
-			mock(JobLeaderService.class),
-			testingFatalErrorHandler);
-
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		try {
 			taskManager.start();
 
 			final TaskExecutorGateway tmGateway = taskManager.getSelfGateway(TaskExecutorGateway.class);
-<<<<<<< HEAD
 
 			tmGateway.submitTask(tdd, jobMasterId, timeout);
 
-=======
-
-			tmGateway.submitTask(tdd, jobMasterId, timeout);
-
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			CompletableFuture<Boolean> completionFuture = TestInvokable.completableFuture;
 
 			completionFuture.get();
@@ -1282,11 +1222,7 @@ public class TaskExecutorTest extends TestLogger {
 			jobMasterGateway,
 			mock(TaskManagerActions.class),
 			mock(CheckpointResponder.class),
-<<<<<<< HEAD
 			blobService,
-=======
-			mock(BlobCache.class),
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			libraryCacheManager,
 			mock(ResultPartitionConsumableNotifier.class),
 			mock(PartitionProducerStateChecker.class));

@@ -692,15 +692,9 @@ public class StreamingJobGraphGenerator {
 				cfg.getMinPauseBetweenCheckpoints(),
 				cfg.getMaxConcurrentCheckpoints(),
 				externalizedCheckpointSettings,
-<<<<<<< HEAD
 				isExactlyOnce),
 			serializedStateBackend,
 			serializedHooks);
-=======
-				serializedStateBackend,
-				serializedHooks,
-				isExactlyOnce);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 		jobGraph.setSnapshotSettings(settings);
 	}

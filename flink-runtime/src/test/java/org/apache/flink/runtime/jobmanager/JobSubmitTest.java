@@ -19,10 +19,6 @@
 package org.apache.flink.runtime.jobmanager;
 
 import akka.actor.ActorSystem;
-<<<<<<< HEAD
-=======
-import org.apache.flink.api.common.JobID;
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.JobManagerOptions;
 import org.apache.flink.runtime.akka.AkkaUtils;
@@ -135,32 +131,8 @@ public class JobSubmitTest {
 			jobVertex.setInvokableClass(NoOpInvokable.class);
 			JobGraph jg = new JobGraph("test job", jobVertex);
 
-<<<<<<< HEAD
 			// add a reference to some non-existing BLOB to the job graph as a dependency
 			jg.addBlob(new PermanentBlobKey());
-=======
-			// request the blob port from the job manager
-			Future<Object> future = jmGateway.ask(JobManagerMessages.getRequestBlobManagerPort(), timeout);
-			int blobPort = (Integer) Await.result(future, timeout);
-
-			// upload two dummy bytes and add their keys to the job graph as dependencies
-			BlobKey key1, key2;
-			BlobClient bc = new BlobClient(new InetSocketAddress("localhost", blobPort), jmConfig);
-			JobID jobId = jg.getJobID();
-			try {
-				key1 = bc.put(jobId, new byte[10]);
-				key2 = bc.put(jobId, new byte[10]);
-
-				// delete one of the blobs to make sure that the startup failed
-				bc.delete(jobId, key2);
-			}
-			finally {
-				bc.close();
-			}
-
-			jg.addBlob(key1);
-			jg.addBlob(key2);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 			// submit the job
 			Future<Object> submitFuture = jmGateway.ask(

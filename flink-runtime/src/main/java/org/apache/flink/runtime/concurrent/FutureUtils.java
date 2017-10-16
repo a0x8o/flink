@@ -445,7 +445,6 @@ public class FutureUtils {
 
 		return result;
 	}
-<<<<<<< HEAD
 
 	// ------------------------------------------------------------------------
 	//  Future Completed with an exception.
@@ -462,6 +461,4 @@ public class FutureUtils {
 		failedAttempt.completeExceptionally(throwable);
 		return failedAttempt;
 	}
-=======
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 }

@@ -305,13 +305,6 @@ public abstract class MemorySegmentTestBase {
 	@Test
 	public void testCharAccess() {
 		final MemorySegment segment = createSegment(pageSize);
-<<<<<<< HEAD
-
-		// test exceptions
-
-		try {
-			segment.putChar(-1, 'a');
-=======
 
 		// test exceptions
 
@@ -333,7 +326,6 @@ public abstract class MemorySegmentTestBase {
 
 		try {
 			segment.putChar(Integer.MIN_VALUE, 'a');
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			fail("IndexOutOfBoundsException expected");
 		}
 		catch (Exception e) {
@@ -341,11 +333,7 @@ public abstract class MemorySegmentTestBase {
 		}
 
 		try {
-<<<<<<< HEAD
-			segment.putChar(pageSize, 'a');
-=======
 			segment.putChar(Integer.MAX_VALUE, 'a');
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			fail("IndexOutOfBoundsException expected");
 		}
 		catch (Exception e) {
@@ -353,11 +341,7 @@ public abstract class MemorySegmentTestBase {
 		}
 
 		try {
-<<<<<<< HEAD
-			segment.putChar(Integer.MIN_VALUE, 'a');
-=======
 			segment.putChar(Integer.MAX_VALUE - 1, 'a');
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			fail("IndexOutOfBoundsException expected");
 		}
 		catch (Exception e) {
@@ -365,11 +349,7 @@ public abstract class MemorySegmentTestBase {
 		}
 
 		try {
-<<<<<<< HEAD
-			segment.putChar(Integer.MAX_VALUE, 'a');
-=======
 			segment.getChar(-1);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			fail("IndexOutOfBoundsException expected");
 		}
 		catch (Exception e) {
@@ -377,50 +357,13 @@ public abstract class MemorySegmentTestBase {
 		}
 
 		try {
-<<<<<<< HEAD
-			segment.putChar(Integer.MAX_VALUE - 1, 'a');
-=======
 			segment.getChar(pageSize);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			fail("IndexOutOfBoundsException expected");
 		}
 		catch (Exception e) {
 			assertTrue(e instanceof IndexOutOfBoundsException);
 		}
 
-		try {
-<<<<<<< HEAD
-			segment.getChar(-1);
-=======
-			segment.getChar(Integer.MIN_VALUE);
-			fail("IndexOutOfBoundsException expected");
-		}
-		catch (Exception e) {
-			assertTrue(e instanceof IndexOutOfBoundsException);
-		}
-
-		try {
-			segment.getChar(Integer.MAX_VALUE);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
-			fail("IndexOutOfBoundsException expected");
-		}
-		catch (Exception e) {
-			assertTrue(e instanceof IndexOutOfBoundsException);
-		}
-
-		try {
-<<<<<<< HEAD
-			segment.getChar(pageSize);
-=======
-			segment.getChar(Integer.MAX_VALUE - 1);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
-			fail("IndexOutOfBoundsException expected");
-		}
-		catch (Exception e) {
-			assertTrue(e instanceof IndexOutOfBoundsException);
-		}
-
-<<<<<<< HEAD
 		try {
 			segment.getChar(Integer.MIN_VALUE);
 			fail("IndexOutOfBoundsException expected");
@@ -463,25 +406,6 @@ public abstract class MemorySegmentTestBase {
 
 		random.setSeed(seed);
 		boolean[] occupied = new boolean[pageSize];
-=======
-		// test expected correct behavior, sequential access
-
-		long seed = random.nextLong();
-
-		random.setSeed(seed);
-		for (int i = 0; i <= pageSize - 2; i += 2) {
-			segment.putChar(i, (char) (random.nextInt(Character.MAX_VALUE)));
-		}
-
-		random.setSeed(seed);
-		for (int i = 0; i <= pageSize - 2; i += 2) {
-			assertEquals((char) (random.nextInt(Character.MAX_VALUE)), segment.getChar(i));
-		}
-
-		// test expected correct behavior, random access
-
-		random.setSeed(seed);
-		boolean[] occupied = new boolean[pageSize];
 
 		for (int i = 0; i < 1000; i++) {
 			int pos = random.nextInt(pageSize - 1);
@@ -490,24 +414,6 @@ public abstract class MemorySegmentTestBase {
 				continue;
 			} else {
 				occupied[pos] = true;
-				occupied[pos+1] = true;
-			}
-
-			segment.putChar(pos, (char) (random.nextInt(Character.MAX_VALUE)));
-		}
-
-		random.setSeed(seed);
-		occupied = new boolean[pageSize];
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
-
-		for (int i = 0; i < 1000; i++) {
-			int pos = random.nextInt(pageSize - 1);
-
-			if (occupied[pos] || occupied[pos + 1]) {
-				continue;
-			} else {
-				occupied[pos] = true;
-<<<<<<< HEAD
 				occupied[pos + 1] = true;
 			}
 
@@ -525,11 +431,6 @@ public abstract class MemorySegmentTestBase {
 			} else {
 				occupied[pos] = true;
 				occupied[pos + 1] = true;
-			}
-
-			assertEquals((char) (random.nextInt(Character.MAX_VALUE)), segment.getChar(pos));
-=======
-				occupied[pos+1] = true;
 			}
 
 			assertEquals((char) (random.nextInt(Character.MAX_VALUE)), segment.getChar(pos));
@@ -548,19 +449,8 @@ public abstract class MemorySegmentTestBase {
 		}
 		catch (Exception e) {
 			assertTrue(e instanceof IndexOutOfBoundsException);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		}
 
-<<<<<<< HEAD
-	@Test
-	public void testShortAccess() {
-		final MemorySegment segment = createSegment(pageSize);
-
-		// test exceptions
-
-		try {
-			segment.putShort(-1, (short) 0);
-=======
 		try {
 			segment.putShort(pageSize, (short) 0);
 			fail("IndexOutOfBoundsException expected");
@@ -587,7 +477,6 @@ public abstract class MemorySegmentTestBase {
 
 		try {
 			segment.putShort(Integer.MAX_VALUE - 1, (short) 0);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			fail("IndexOutOfBoundsException expected");
 		}
 		catch (Exception e) {
@@ -595,66 +484,13 @@ public abstract class MemorySegmentTestBase {
 		}
 
 		try {
-<<<<<<< HEAD
-			segment.putShort(pageSize, (short) 0);
-=======
 			segment.getShort(-1);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			fail("IndexOutOfBoundsException expected");
 		}
 		catch (Exception e) {
 			assertTrue(e instanceof IndexOutOfBoundsException);
 		}
 
-		try {
-<<<<<<< HEAD
-			segment.putShort(Integer.MIN_VALUE, (short) 0);
-=======
-			segment.getShort(pageSize);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
-			fail("IndexOutOfBoundsException expected");
-		}
-		catch (Exception e) {
-			assertTrue(e instanceof IndexOutOfBoundsException);
-		}
-
-		try {
-<<<<<<< HEAD
-			segment.putShort(Integer.MAX_VALUE, (short) 0);
-=======
-			segment.getShort(Integer.MIN_VALUE);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
-			fail("IndexOutOfBoundsException expected");
-		}
-		catch (Exception e) {
-			assertTrue(e instanceof IndexOutOfBoundsException);
-		}
-
-		try {
-<<<<<<< HEAD
-			segment.putShort(Integer.MAX_VALUE - 1, (short) 0);
-=======
-			segment.getShort(Integer.MAX_VALUE);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
-			fail("IndexOutOfBoundsException expected");
-		}
-		catch (Exception e) {
-			assertTrue(e instanceof IndexOutOfBoundsException);
-		}
-
-		try {
-<<<<<<< HEAD
-			segment.getShort(-1);
-=======
-			segment.getShort(Integer.MAX_VALUE - 1);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
-			fail("IndexOutOfBoundsException expected");
-		}
-		catch (Exception e) {
-			assertTrue(e instanceof IndexOutOfBoundsException);
-		}
-
-<<<<<<< HEAD
 		try {
 			segment.getShort(pageSize);
 			fail("IndexOutOfBoundsException expected");
@@ -705,25 +541,6 @@ public abstract class MemorySegmentTestBase {
 
 		random.setSeed(seed);
 		boolean[] occupied = new boolean[pageSize];
-=======
-		// test expected correct behavior, sequential access
-
-		long seed = random.nextLong();
-
-		random.setSeed(seed);
-		for (int i = 0; i <= pageSize - 2; i += 2) {
-			segment.putShort(i, (short) random.nextInt());
-		}
-
-		random.setSeed(seed);
-		for (int i = 0; i <= pageSize - 2; i += 2) {
-			assertEquals((short) random.nextInt(), segment.getShort(i));
-		}
-
-		// test expected correct behavior, random access
-
-		random.setSeed(seed);
-		boolean[] occupied = new boolean[pageSize];
 
 		for (int i = 0; i < 1000; i++) {
 			int pos = random.nextInt(pageSize - 1);
@@ -732,24 +549,6 @@ public abstract class MemorySegmentTestBase {
 				continue;
 			} else {
 				occupied[pos] = true;
-				occupied[pos+1] = true;
-			}
-
-			segment.putShort(pos, (short) random.nextInt());
-		}
-
-		random.setSeed(seed);
-		occupied = new boolean[pageSize];
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
-
-		for (int i = 0; i < 1000; i++) {
-			int pos = random.nextInt(pageSize - 1);
-
-			if (occupied[pos] || occupied[pos + 1]) {
-				continue;
-			} else {
-				occupied[pos] = true;
-<<<<<<< HEAD
 				occupied[pos + 1] = true;
 			}
 
@@ -767,11 +566,6 @@ public abstract class MemorySegmentTestBase {
 			} else {
 				occupied[pos] = true;
 				occupied[pos + 1] = true;
-			}
-
-			assertEquals((short) random.nextInt(), segment.getShort(pos));
-=======
-				occupied[pos+1] = true;
 			}
 
 			assertEquals((short) random.nextInt(), segment.getShort(pos));
@@ -790,19 +584,8 @@ public abstract class MemorySegmentTestBase {
 		}
 		catch (Exception e) {
 			assertTrue(e instanceof IndexOutOfBoundsException);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		}
 
-<<<<<<< HEAD
-	@Test
-	public void testIntAccess() {
-		final MemorySegment segment = createSegment(pageSize);
-
-		// test exceptions
-
-		try {
-			segment.putInt(-1, 0);
-=======
 		try {
 			segment.putInt(pageSize, 0);
 			fail("IndexOutOfBoundsException expected");
@@ -821,7 +604,6 @@ public abstract class MemorySegmentTestBase {
 
 		try {
 			segment.putInt(Integer.MIN_VALUE, 0);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			fail("IndexOutOfBoundsException expected");
 		}
 		catch (Exception e) {
@@ -829,11 +611,7 @@ public abstract class MemorySegmentTestBase {
 		}
 
 		try {
-<<<<<<< HEAD
-			segment.putInt(pageSize, 0);
-=======
 			segment.putInt(Integer.MAX_VALUE, 0);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			fail("IndexOutOfBoundsException expected");
 		}
 		catch (Exception e) {
@@ -841,11 +619,7 @@ public abstract class MemorySegmentTestBase {
 		}
 
 		try {
-<<<<<<< HEAD
-			segment.putInt(pageSize - 3, 0);
-=======
 			segment.putInt(Integer.MAX_VALUE - 3, 0);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			fail("IndexOutOfBoundsException expected");
 		}
 		catch (Exception e) {
@@ -853,11 +627,7 @@ public abstract class MemorySegmentTestBase {
 		}
 
 		try {
-<<<<<<< HEAD
-			segment.putInt(Integer.MIN_VALUE, 0);
-=======
 			segment.getInt(-1);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			fail("IndexOutOfBoundsException expected");
 		}
 		catch (Exception e) {
@@ -865,11 +635,7 @@ public abstract class MemorySegmentTestBase {
 		}
 
 		try {
-<<<<<<< HEAD
-			segment.putInt(Integer.MAX_VALUE, 0);
-=======
 			segment.getInt(pageSize);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			fail("IndexOutOfBoundsException expected");
 		}
 		catch (Exception e) {
@@ -877,54 +643,13 @@ public abstract class MemorySegmentTestBase {
 		}
 
 		try {
-<<<<<<< HEAD
-			segment.putInt(Integer.MAX_VALUE - 3, 0);
-=======
 			segment.getInt(pageSize - 3);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			fail("IndexOutOfBoundsException expected");
 		}
 		catch (Exception e) {
 			assertTrue(e instanceof IndexOutOfBoundsException);
 		}
 
-		try {
-<<<<<<< HEAD
-			segment.getInt(-1);
-=======
-			segment.getInt(Integer.MIN_VALUE);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
-			fail("IndexOutOfBoundsException expected");
-		}
-		catch (Exception e) {
-			assertTrue(e instanceof IndexOutOfBoundsException);
-		}
-
-		try {
-<<<<<<< HEAD
-			segment.getInt(pageSize);
-=======
-			segment.getInt(Integer.MAX_VALUE);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
-			fail("IndexOutOfBoundsException expected");
-		}
-		catch (Exception e) {
-			assertTrue(e instanceof IndexOutOfBoundsException);
-		}
-
-		try {
-<<<<<<< HEAD
-			segment.getInt(pageSize - 3);
-=======
-			segment.getInt(Integer.MAX_VALUE - 3);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
-			fail("IndexOutOfBoundsException expected");
-		}
-		catch (Exception e) {
-			assertTrue(e instanceof IndexOutOfBoundsException);
-		}
-
-<<<<<<< HEAD
 		try {
 			segment.getInt(Integer.MIN_VALUE);
 			fail("IndexOutOfBoundsException expected");
@@ -989,61 +714,13 @@ public abstract class MemorySegmentTestBase {
 		for (int i = 0; i < 1000; i++) {
 			int pos = random.nextInt(pageSize - 3);
 
-=======
-		// test expected correct behavior, sequential access
-
-		long seed = random.nextLong();
-
-		random.setSeed(seed);
-		for (int i = 0; i <= pageSize - 4; i += 4) {
-			segment.putInt(i, random.nextInt());
-		}
-
-		random.setSeed(seed);
-		for (int i = 0; i <= pageSize - 4; i += 4) {
-			assertEquals(random.nextInt(), segment.getInt(i));
-		}
-
-		// test expected correct behavior, random access
-
-		random.setSeed(seed);
-		boolean[] occupied = new boolean[pageSize];
-
-		for (int i = 0; i < 1000; i++) {
-			int pos = random.nextInt(pageSize - 3);
-
 			if (occupied[pos] || occupied[pos + 1] || occupied[pos + 2] || occupied[pos + 3]) {
 				continue;
 			} else {
 				occupied[pos] = true;
-				occupied[pos+1] = true;
-				occupied[pos+2] = true;
-				occupied[pos+3] = true;
-			}
-
-			segment.putInt(pos, random.nextInt());
-		}
-
-		random.setSeed(seed);
-		occupied = new boolean[pageSize];
-
-		for (int i = 0; i < 1000; i++) {
-			int pos = random.nextInt(pageSize - 3);
-
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
-			if (occupied[pos] || occupied[pos + 1] || occupied[pos + 2] || occupied[pos + 3]) {
-				continue;
-			} else {
-				occupied[pos] = true;
-<<<<<<< HEAD
 				occupied[pos + 1] = true;
 				occupied[pos + 2] = true;
 				occupied[pos + 3] = true;
-=======
-				occupied[pos+1] = true;
-				occupied[pos+2] = true;
-				occupied[pos+3] = true;
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			}
 
 			assertEquals(random.nextInt(), segment.getInt(pos));
@@ -1175,17 +852,11 @@ public abstract class MemorySegmentTestBase {
 			int pos = random.nextInt(pageSize - 7);
 
 			if (occupied[pos] || occupied[pos + 1] || occupied[pos + 2] || occupied[pos + 3] ||
-<<<<<<< HEAD
 					occupied[pos + 4] || occupied[pos + 5] || occupied[pos + 6] || occupied[pos + 7]) {
-=======
-					occupied[pos + 4] || occupied[pos + 5] || occupied[pos + 6] || occupied[pos + 7])
-			{
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 				continue;
 			}
 			else {
 				occupied[pos] = true;
-<<<<<<< HEAD
 				occupied[pos + 1] = true;
 				occupied[pos + 2] = true;
 				occupied[pos + 3] = true;
@@ -1193,15 +864,6 @@ public abstract class MemorySegmentTestBase {
 				occupied[pos + 5] = true;
 				occupied[pos + 6] = true;
 				occupied[pos + 7] = true;
-=======
-				occupied[pos+1] = true;
-				occupied[pos+2] = true;
-				occupied[pos+3] = true;
-				occupied[pos+4] = true;
-				occupied[pos+5] = true;
-				occupied[pos+6] = true;
-				occupied[pos+7] = true;
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			}
 
 			segment.putLong(pos, random.nextLong());
@@ -1214,17 +876,11 @@ public abstract class MemorySegmentTestBase {
 			int pos = random.nextInt(pageSize - 7);
 
 			if (occupied[pos] || occupied[pos + 1] || occupied[pos + 2] || occupied[pos + 3] ||
-<<<<<<< HEAD
 					occupied[pos + 4] || occupied[pos + 5] || occupied[pos + 6] || occupied[pos + 7]) {
-=======
-					occupied[pos + 4] || occupied[pos + 5] || occupied[pos + 6] || occupied[pos + 7])
-			{
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 				continue;
 			}
 			else {
 				occupied[pos] = true;
-<<<<<<< HEAD
 				occupied[pos + 1] = true;
 				occupied[pos + 2] = true;
 				occupied[pos + 3] = true;
@@ -1232,15 +888,6 @@ public abstract class MemorySegmentTestBase {
 				occupied[pos + 5] = true;
 				occupied[pos + 6] = true;
 				occupied[pos + 7] = true;
-=======
-				occupied[pos+1] = true;
-				occupied[pos+2] = true;
-				occupied[pos+3] = true;
-				occupied[pos+4] = true;
-				occupied[pos+5] = true;
-				occupied[pos+6] = true;
-				occupied[pos+7] = true;
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			}
 
 			assertEquals(random.nextLong(), segment.getLong(pos));
@@ -1250,7 +897,6 @@ public abstract class MemorySegmentTestBase {
 	@Test
 	public void testFloatAccess() {
 		final MemorySegment segment = createSegment(pageSize);
-<<<<<<< HEAD
 
 		// test exceptions
 
@@ -1272,13 +918,6 @@ public abstract class MemorySegmentTestBase {
 
 		try {
 			segment.putFloat(pageSize - 3, 0.0f);
-=======
-
-		// test exceptions
-
-		try {
-			segment.putFloat(-1, 0.0f);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			fail("IndexOutOfBoundsException expected");
 		}
 		catch (Exception e) {
@@ -1286,11 +925,7 @@ public abstract class MemorySegmentTestBase {
 		}
 
 		try {
-<<<<<<< HEAD
 			segment.putFloat(Integer.MIN_VALUE, 0.0f);
-=======
-			segment.putFloat(pageSize, 0.0f);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			fail("IndexOutOfBoundsException expected");
 		}
 		catch (Exception e) {
@@ -1298,33 +933,6 @@ public abstract class MemorySegmentTestBase {
 		}
 
 		try {
-<<<<<<< HEAD
-			segment.putFloat(Integer.MAX_VALUE, 0.0f);
-=======
-			segment.putFloat(pageSize - 3, 0.0f);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
-			fail("IndexOutOfBoundsException expected");
-		}
-		catch (Exception e) {
-			assertTrue(e instanceof IndexOutOfBoundsException);
-		}
-
-		try {
-<<<<<<< HEAD
-			segment.putFloat(Integer.MAX_VALUE - 3, 0.0f);
-=======
-			segment.putFloat(Integer.MIN_VALUE, 0.0f);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
-			fail("IndexOutOfBoundsException expected");
-		}
-		catch (Exception e) {
-			assertTrue(e instanceof IndexOutOfBoundsException);
-		}
-
-		try {
-<<<<<<< HEAD
-			segment.getFloat(-1);
-=======
 			segment.putFloat(Integer.MAX_VALUE, 0.0f);
 			fail("IndexOutOfBoundsException expected");
 		}
@@ -1334,7 +942,6 @@ public abstract class MemorySegmentTestBase {
 
 		try {
 			segment.putFloat(Integer.MAX_VALUE - 3, 0.0f);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			fail("IndexOutOfBoundsException expected");
 		}
 		catch (Exception e) {
@@ -1342,11 +949,7 @@ public abstract class MemorySegmentTestBase {
 		}
 
 		try {
-<<<<<<< HEAD
-			segment.getFloat(pageSize);
-=======
 			segment.getFloat(-1);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			fail("IndexOutOfBoundsException expected");
 		}
 		catch (Exception e) {
@@ -1354,11 +957,7 @@ public abstract class MemorySegmentTestBase {
 		}
 
 		try {
-<<<<<<< HEAD
-			segment.getFloat(pageSize - 3);
-=======
 			segment.getFloat(pageSize);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			fail("IndexOutOfBoundsException expected");
 		}
 		catch (Exception e) {
@@ -1366,11 +965,7 @@ public abstract class MemorySegmentTestBase {
 		}
 
 		try {
-<<<<<<< HEAD
-			segment.getFloat(Integer.MIN_VALUE);
-=======
 			segment.getFloat(pageSize - 3);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			fail("IndexOutOfBoundsException expected");
 		}
 		catch (Exception e) {
@@ -1378,11 +973,7 @@ public abstract class MemorySegmentTestBase {
 		}
 
 		try {
-<<<<<<< HEAD
-			segment.getFloat(Integer.MAX_VALUE);
-=======
 			segment.getFloat(Integer.MIN_VALUE);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			fail("IndexOutOfBoundsException expected");
 		}
 		catch (Exception e) {
@@ -1390,41 +981,13 @@ public abstract class MemorySegmentTestBase {
 		}
 
 		try {
-<<<<<<< HEAD
-			segment.getFloat(Integer.MAX_VALUE - 3);
-=======
 			segment.getFloat(Integer.MAX_VALUE);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			fail("IndexOutOfBoundsException expected");
 		}
 		catch (Exception e) {
 			assertTrue(e instanceof IndexOutOfBoundsException);
 		}
 
-<<<<<<< HEAD
-		// test expected correct behavior, sequential access
-
-		long seed = random.nextLong();
-
-		random.setSeed(seed);
-		for (int i = 0; i <= pageSize - 4; i += 4) {
-			segment.putFloat(i, random.nextFloat());
-		}
-
-		random.setSeed(seed);
-		for (int i = 0; i <= pageSize - 4; i += 4) {
-			assertEquals(random.nextFloat(), segment.getFloat(i), 0.0);
-		}
-
-		// test expected correct behavior, random access
-
-		random.setSeed(seed);
-		boolean[] occupied = new boolean[pageSize];
-
-		for (int i = 0; i < 1000; i++) {
-			int pos = random.nextInt(pageSize - 3);
-
-=======
 		try {
 			segment.getFloat(Integer.MAX_VALUE - 3);
 			fail("IndexOutOfBoundsException expected");
@@ -1455,25 +1018,17 @@ public abstract class MemorySegmentTestBase {
 		for (int i = 0; i < 1000; i++) {
 			int pos = random.nextInt(pageSize - 3);
 
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			if (occupied[pos] || occupied[pos + 1] || occupied[pos + 2] || occupied[pos + 3]) {
 				continue;
 			} else {
 				occupied[pos] = true;
-<<<<<<< HEAD
 				occupied[pos + 1] = true;
 				occupied[pos + 2] = true;
 				occupied[pos + 3] = true;
-=======
-				occupied[pos+1] = true;
-				occupied[pos+2] = true;
-				occupied[pos+3] = true;
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			}
 
 			segment.putFloat(pos, random.nextFloat());
 		}
-<<<<<<< HEAD
 
 		random.setSeed(seed);
 		occupied = new boolean[pageSize];
@@ -1481,28 +1036,13 @@ public abstract class MemorySegmentTestBase {
 		for (int i = 0; i < 1000; i++) {
 			int pos = random.nextInt(pageSize - 3);
 
-=======
-
-		random.setSeed(seed);
-		occupied = new boolean[pageSize];
-
-		for (int i = 0; i < 1000; i++) {
-			int pos = random.nextInt(pageSize - 3);
-
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			if (occupied[pos] || occupied[pos + 1] || occupied[pos + 2] || occupied[pos + 3]) {
 				continue;
 			} else {
 				occupied[pos] = true;
-<<<<<<< HEAD
 				occupied[pos + 1] = true;
 				occupied[pos + 2] = true;
 				occupied[pos + 3] = true;
-=======
-				occupied[pos+1] = true;
-				occupied[pos+2] = true;
-				occupied[pos+3] = true;
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			}
 
 			assertEquals(random.nextFloat(), segment.getFloat(pos), 0.0);
@@ -1633,17 +1173,11 @@ public abstract class MemorySegmentTestBase {
 			int pos = random.nextInt(pageSize - 7);
 
 			if (occupied[pos] || occupied[pos + 1] || occupied[pos + 2] || occupied[pos + 3] ||
-<<<<<<< HEAD
 					occupied[pos + 4] || occupied[pos + 5] || occupied[pos + 6] || occupied[pos + 7]) {
-=======
-					occupied[pos + 4] || occupied[pos + 5] || occupied[pos + 6] || occupied[pos + 7])
-			{
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 				continue;
 			}
 			else {
 				occupied[pos] = true;
-<<<<<<< HEAD
 				occupied[pos + 1] = true;
 				occupied[pos + 2] = true;
 				occupied[pos + 3] = true;
@@ -1651,15 +1185,6 @@ public abstract class MemorySegmentTestBase {
 				occupied[pos + 5] = true;
 				occupied[pos + 6] = true;
 				occupied[pos + 7] = true;
-=======
-				occupied[pos+1] = true;
-				occupied[pos+2] = true;
-				occupied[pos+3] = true;
-				occupied[pos+4] = true;
-				occupied[pos+5] = true;
-				occupied[pos+6] = true;
-				occupied[pos+7] = true;
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			}
 
 			segment.putDouble(pos, random.nextDouble());
@@ -1672,17 +1197,11 @@ public abstract class MemorySegmentTestBase {
 			int pos = random.nextInt(pageSize - 7);
 
 			if (occupied[pos] || occupied[pos + 1] || occupied[pos + 2] || occupied[pos + 3] ||
-<<<<<<< HEAD
 					occupied[pos + 4] || occupied[pos + 5] || occupied[pos + 6] || occupied[pos + 7]) {
-=======
-					occupied[pos + 4] || occupied[pos + 5] || occupied[pos + 6] || occupied[pos + 7])
-			{
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 				continue;
 			}
 			else {
 				occupied[pos] = true;
-<<<<<<< HEAD
 				occupied[pos + 1] = true;
 				occupied[pos + 2] = true;
 				occupied[pos + 3] = true;
@@ -1690,15 +1209,6 @@ public abstract class MemorySegmentTestBase {
 				occupied[pos + 5] = true;
 				occupied[pos + 6] = true;
 				occupied[pos + 7] = true;
-=======
-				occupied[pos+1] = true;
-				occupied[pos+2] = true;
-				occupied[pos+3] = true;
-				occupied[pos+4] = true;
-				occupied[pos+5] = true;
-				occupied[pos+6] = true;
-				occupied[pos+7] = true;
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			}
 
 			assertEquals(random.nextDouble(), segment.getDouble(pos), 0.0);
@@ -1713,11 +1223,7 @@ public abstract class MemorySegmentTestBase {
 	public void testBulkBytePutExceptions() {
 		final MemorySegment segment = createSegment(pageSize);
 
-<<<<<<< HEAD
 		byte[] bytes = new byte[pageSize / 4 + (pageSize % 4)];
-=======
-		byte[] bytes = new byte[pageSize / 4 + (pageSize%4)];
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		random.nextBytes(bytes);
 
 		// wrong positions into memory segment
@@ -2223,15 +1729,6 @@ public abstract class MemorySegmentTestBase {
 		byte[] bytes = new byte[segmentSize];
 		random.nextBytes(bytes);
 		seg.put(0, bytes);
-<<<<<<< HEAD
-
-		// out of bounds when writing
-		{
-			DataOutputStream out = new DataOutputStream(new ByteArrayOutputStream());
-
-			try {
-				seg.get(out, -1, segmentSize / 2);
-=======
 
 		// out of bounds when writing
 		{
@@ -2247,7 +1744,6 @@ public abstract class MemorySegmentTestBase {
 
 			try {
 				seg.get(out, segmentSize, segmentSize / 2);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 				fail("IndexOutOfBoundsException expected");
 			}
 			catch (Exception e) {
@@ -2255,11 +1751,7 @@ public abstract class MemorySegmentTestBase {
 			}
 
 			try {
-<<<<<<< HEAD
-				seg.get(out, segmentSize, segmentSize / 2);
-=======
 				seg.get(out, -segmentSize, segmentSize / 2);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 				fail("IndexOutOfBoundsException expected");
 			}
 			catch (Exception e) {
@@ -2267,11 +1759,7 @@ public abstract class MemorySegmentTestBase {
 			}
 
 			try {
-<<<<<<< HEAD
-				seg.get(out, -segmentSize, segmentSize / 2);
-=======
 				seg.get(out, Integer.MIN_VALUE, segmentSize / 2);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 				fail("IndexOutOfBoundsException expected");
 			}
 			catch (Exception e) {
@@ -2279,11 +1767,7 @@ public abstract class MemorySegmentTestBase {
 			}
 
 			try {
-<<<<<<< HEAD
-				seg.get(out, Integer.MIN_VALUE, segmentSize / 2);
-=======
 				seg.get(out, Integer.MAX_VALUE, segmentSize / 2);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 				fail("IndexOutOfBoundsException expected");
 			}
 			catch (Exception e) {
@@ -2296,28 +1780,7 @@ public abstract class MemorySegmentTestBase {
 			DataInputStream in = new DataInputStream(new ByteArrayInputStream(new byte[segmentSize]));
 
 			try {
-<<<<<<< HEAD
-				seg.get(out, Integer.MAX_VALUE, segmentSize / 2);
-=======
 				seg.put(in, -1, segmentSize / 2);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
-				fail("IndexOutOfBoundsException expected");
-			}
-			catch (Exception e) {
-				assertTrue(e instanceof IndexOutOfBoundsException);
-			}
-		}
-
-		// out of bounds when reading
-		{
-			DataInputStream in = new DataInputStream(new ByteArrayInputStream(new byte[segmentSize]));
-
-			try {
-<<<<<<< HEAD
-				seg.put(in, -1, segmentSize / 2);
-=======
-				seg.put(in, segmentSize, segmentSize / 2);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 				fail("IndexOutOfBoundsException expected");
 			}
 			catch (Exception e) {
@@ -2325,17 +1788,12 @@ public abstract class MemorySegmentTestBase {
 			}
 
 			try {
-<<<<<<< HEAD
 				seg.put(in, segmentSize, segmentSize / 2);
-=======
-				seg.put(in, -segmentSize, segmentSize / 2);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 				fail("IndexOutOfBoundsException expected");
 			}
 			catch (Exception e) {
 				assertTrue(e instanceof IndexOutOfBoundsException);
 			}
-<<<<<<< HEAD
 
 			try {
 				seg.put(in, -segmentSize, segmentSize / 2);
@@ -2344,8 +1802,6 @@ public abstract class MemorySegmentTestBase {
 			catch (Exception e) {
 				assertTrue(e instanceof IndexOutOfBoundsException);
 			}
-=======
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 			try {
 				seg.put(in, Integer.MIN_VALUE, segmentSize / 2);
@@ -2593,18 +2049,12 @@ public abstract class MemorySegmentTestBase {
 
 		for (ByteBuffer bb : new ByteBuffer[] {
 						ByteBuffer.allocate(bbCapacity),
-<<<<<<< HEAD
 						ByteBuffer.allocateDirect(bbCapacity) }) {
-=======
-						ByteBuffer.allocateDirect(bbCapacity) } )
-		{
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			for (int off : validOffsets) {
 				for (int len : invalidLengths) {
 					try {
 						seg.put(off, bb, len);
 						fail("should fail with an IndexOutOfBoundsException");
-<<<<<<< HEAD
 					}
 					catch (IndexOutOfBoundsException | BufferUnderflowException ignored) {}
 
@@ -2632,15 +2082,6 @@ public abstract class MemorySegmentTestBase {
 						seg.get(off, bb, len);
 						fail("should fail with an IndexOutOfBoundsException");
 					}
-=======
-					}
-					catch (IndexOutOfBoundsException | BufferUnderflowException ignored) {}
-
-					try {
-						seg.get(off, bb, len);
-						fail("should fail with an IndexOutOfBoundsException");
-					}
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 					catch (IndexOutOfBoundsException | BufferOverflowException ignored) {}
 
 					// position/limit may not have changed
@@ -2649,29 +2090,6 @@ public abstract class MemorySegmentTestBase {
 				}
 			}
 
-<<<<<<< HEAD
-=======
-			for (int off : invalidOffsets) {
-				for (int len : validLengths) {
-					try {
-						seg.put(off, bb, len);
-						fail("should fail with an IndexOutOfBoundsException");
-					}
-					catch (IndexOutOfBoundsException | BufferUnderflowException ignored) {}
-
-					try {
-						seg.get(off, bb, len);
-						fail("should fail with an IndexOutOfBoundsException");
-					}
-					catch (IndexOutOfBoundsException | BufferOverflowException ignored) {}
-
-					// position/limit may not have changed
-					assertEquals(0, bb.position());
-					assertEquals(bb.capacity(), bb.limit());
-				}
-			}
-
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			for (int off : validOffsets) {
 				for (int len : validLengths) {
 					if (off + len > pageSize) {
@@ -2712,7 +2130,6 @@ public abstract class MemorySegmentTestBase {
 		// position / limit should not have been modified
 		assertEquals(0, bb.position());
 		assertEquals(bb.capacity(), bb.limit());
-<<<<<<< HEAD
 
 		try {
 			seg.put(pageSize / 5, bb, pageSize / 10 + 2);
@@ -2723,19 +2140,6 @@ public abstract class MemorySegmentTestBase {
 		// position / limit should not have been modified
 		assertEquals(0, bb.position());
 		assertEquals(bb.capacity(), bb.limit());
-=======
-
-		try {
-			seg.put(pageSize / 5, bb, pageSize / 10 + 2);
-			fail("should fail with an exception");
-		}
-		catch (BufferUnderflowException ignored) {}
-
-		// position / limit should not have been modified
-		assertEquals(0, bb.position());
-		assertEquals(bb.capacity(), bb.limit());
-
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 		int pos = bb.capacity() / 3;
 		int limit = 2 * bb.capacity() / 3;
@@ -2794,11 +2198,7 @@ public abstract class MemorySegmentTestBase {
 			int pos2 = random.nextInt(bytes2.length);
 
 			int len = Math.min(Math.min(bytes1.length - pos1, bytes2.length - pos2),
-<<<<<<< HEAD
 					random.nextInt(pageSize / 50));
-=======
-					random.nextInt(pageSize / 50 ));
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 			int cmp = seg1.compare(seg2, pos1, pos2, len);
 
@@ -2813,59 +2213,34 @@ public abstract class MemorySegmentTestBase {
 
 	@Test
 	public void testSwapBytes() {
-<<<<<<< HEAD
 		final int halfPageSize = pageSize / 2;
 
 		final byte[] bytes1 = new byte[pageSize];
 		final byte[] bytes2 = new byte[halfPageSize];
-=======
-		final int HALF_SIZE = pageSize / 2;
-
-		final byte[] bytes1 = new byte[pageSize];
-		final byte[] bytes2 = new byte[HALF_SIZE];
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 		Arrays.fill(bytes2, (byte) 1);
 
 		MemorySegment seg1 = createSegment(pageSize);
-<<<<<<< HEAD
 		MemorySegment seg2 = createSegment(halfPageSize);
-=======
-		MemorySegment seg2 = createSegment(HALF_SIZE);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		seg1.put(0, bytes1);
 		seg2.put(0, bytes2);
 
 		// wap the second half of the first segment with the second segment
 
 		int pos = 0;
-<<<<<<< HEAD
 		while (pos < halfPageSize) {
 			int len = random.nextInt(pageSize / 40);
 			len = Math.min(len, halfPageSize - pos);
 			seg1.swapBytes(new byte[len], seg2, pos + halfPageSize, pos, len);
-=======
-		while (pos < HALF_SIZE) {
-			int len = random.nextInt(pageSize / 40);
-			len = Math.min(len, HALF_SIZE - pos);
-			seg1.swapBytes(new byte[len], seg2, pos + HALF_SIZE, pos, len);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			pos += len;
 		}
 
 		// the second segment should now be all zeros, the first segment should have one in its second half
 
-<<<<<<< HEAD
 		for (int i = 0; i < halfPageSize; i++) {
 			assertEquals((byte) 0, seg1.get(i));
 			assertEquals((byte) 0, seg2.get(i));
 			assertEquals((byte) 1, seg1.get(i + halfPageSize));
-=======
-		for (int i = 0; i < HALF_SIZE; i++) {
-			assertEquals((byte) 0, seg1.get(i));
-			assertEquals((byte) 0, seg2.get(i));
-			assertEquals((byte) 1, seg1.get(i + HALF_SIZE));
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		}
 	}
 
@@ -2973,7 +2348,6 @@ public abstract class MemorySegmentTestBase {
 		try {
 			seg.wrap(10, 1024);
 			fail("should throw an exception");
-<<<<<<< HEAD
 		}
 		catch (IndexOutOfBoundsException | IllegalArgumentException ignored) {}
 
@@ -2984,18 +2358,6 @@ public abstract class MemorySegmentTestBase {
 			seg.wrap(13, 47);
 			fail("should fail with an exception");
 		}
-=======
-		}
-		catch (IndexOutOfBoundsException | IllegalArgumentException ignored) {}
-
-		// after freeing, no wrapping should be possible any more.
-		seg.free();
-
-		try {
-			seg.wrap(13, 47);
-			fail("should fail with an exception");
-		}
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		catch (IllegalStateException e) {
 			// expected
 		}
@@ -3026,26 +2388,15 @@ public abstract class MemorySegmentTestBase {
 	@Test
 	public void testSizeAndFreeing() {
 		// a segment without an owner has a null owner
-<<<<<<< HEAD
 		final int segmentSize = 651;
 		MemorySegment seg = createSegment(segmentSize);
 
 		assertEquals(segmentSize, seg.size());
-=======
-		final int SIZE = 651;
-		MemorySegment seg = createSegment(SIZE);
-
-		assertEquals(SIZE, seg.size());
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		assertFalse(seg.isFreed());
 
 		seg.free();
 		assertTrue(seg.isFreed());
-<<<<<<< HEAD
 		assertEquals(segmentSize, seg.size());
-=======
-		assertEquals(SIZE, seg.size());
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	}
 
 	// ------------------------------------------------------------------------

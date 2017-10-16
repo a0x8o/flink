@@ -24,24 +24,15 @@ import org.apache.flink.streaming.api.datastream.DataStream
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment
 import org.apache.flink.table.api.Types
 import org.apache.flink.table.api.scala._
-<<<<<<< HEAD
 import org.apache.flink.table.sources._
 import org.apache.flink.table.utils.TableTestUtil._
 import org.apache.flink.table.utils.TableTestBase
 import org.apache.flink.types.Row
 import org.junit.{Assert, Test}
-=======
-import org.apache.flink.table.sources.{DefinedProctimeAttribute, DefinedRowtimeAttribute, StreamTableSource}
-import org.apache.flink.table.utils.TableTestUtil._
-import org.apache.flink.table.utils.TableTestBase
-import org.apache.flink.types.Row
-import org.junit.Test
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 class TableSourceTest extends TableTestBase {
 
   @Test
-<<<<<<< HEAD
   def testTableSourceWithLongRowTimeField(): Unit = {
 
     val tableSource = new TestRowtimeSource(
@@ -55,18 +46,10 @@ class TableSourceTest extends TableTestBase {
     util.tableEnv.registerTableSource("rowTimeT", tableSource)
 
     val t = util.tableEnv.scan("rowTimeT").select("rowtime, id, name, val")
-=======
-  def testRowTimeTableSourceSimple(): Unit = {
-    val util = streamTestUtil()
-    util.tableEnv.registerTableSource("rowTimeT", new TestRowtimeSource("addTime"))
-
-    val t = util.tableEnv.scan("rowTimeT").select("addTime, id, name, val")
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
     val expected =
       unaryNode(
         "DataStreamCalc",
-<<<<<<< HEAD
         "StreamTableSourceScan(table=[[rowTimeT]], fields=[id, rowtime, val, name])",
         term("select", "rowtime", "id", "name", "val")
       )
@@ -93,17 +76,12 @@ class TableSourceTest extends TableTestBase {
         "DataStreamCalc",
         "StreamTableSourceScan(table=[[rowTimeT]], fields=[id, rowtime, val, name])",
         term("select", "rowtime", "id", "name", "val")
-=======
-        "StreamTableSourceScan(table=[[rowTimeT]], fields=[id, val, name, addTime])",
-        term("select", "addTime", "id", "name", "val")
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
       )
     util.verifyTable(t, expected)
   }
 
   @Test
   def testRowTimeTableSourceGroupWindow(): Unit = {
-<<<<<<< HEAD
 
     val tableSource = new TestRowtimeSource(
       Array("id", "rowtime", "val", "name"),
@@ -118,14 +96,6 @@ class TableSourceTest extends TableTestBase {
     val t = util.tableEnv.scan("rowTimeT")
       .filter("val > 100")
       .window(Tumble over 10.minutes on 'rowtime as 'w)
-=======
-    val util = streamTestUtil()
-    util.tableEnv.registerTableSource("rowTimeT", new TestRowtimeSource("addTime"))
-
-    val t = util.tableEnv.scan("rowTimeT")
-      .filter("val > 100")
-      .window(Tumble over 10.minutes on 'addTime as 'w)
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
       .groupBy('name, 'w)
       .select('name, 'w.end, 'val.avg)
 
@@ -136,21 +106,12 @@ class TableSourceTest extends TableTestBase {
           "DataStreamGroupWindowAggregate",
           unaryNode(
             "DataStreamCalc",
-<<<<<<< HEAD
             "StreamTableSourceScan(table=[[rowTimeT]], fields=[id, rowtime, val, name])",
             term("select", "name", "val", "rowtime"),
             term("where", ">(val, 100)")
           ),
           term("groupBy", "name"),
           term("window", "TumblingGroupWindow('w, 'rowtime, 600000.millis)"),
-=======
-            "StreamTableSourceScan(table=[[rowTimeT]], fields=[id, val, name, addTime])",
-            term("select", "name", "val", "addTime"),
-            term("where", ">(val, 100)")
-          ),
-          term("groupBy", "name"),
-          term("window", "TumblingGroupWindow('w, 'addTime, 600000.millis)"),
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
           term("select", "name", "AVG(val) AS TMP_1", "end('w) AS TMP_0")
         ),
         term("select", "name", "TMP_0", "TMP_1")
@@ -200,7 +161,6 @@ class TableSourceTest extends TableTestBase {
       )
     util.verifyTable(t, expected)
   }
-<<<<<<< HEAD
 
   @Test
   def testProjectableProcTimeTableSource(): Unit = {
@@ -276,21 +236,6 @@ class TestRowtimeSource(
 
   override def getReturnType: TypeInformation[Row] = {
     new RowTypeInfo(fieldTypes, fieldNames)
-=======
-}
-
-class TestRowtimeSource(timeField: String)
-    extends StreamTableSource[Row] with DefinedRowtimeAttribute {
-
-  override def getDataStream(execEnv: StreamExecutionEnvironment): DataStream[Row] = ???
-
-  override def getRowtimeAttribute: String = timeField
-
-  override def getReturnType: TypeInformation[Row] = {
-    new RowTypeInfo(
-      Array(Types.INT, Types.LONG, Types.STRING).asInstanceOf[Array[TypeInformation[_]]],
-      Array("id", "val", "name"))
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
   }
 }
 

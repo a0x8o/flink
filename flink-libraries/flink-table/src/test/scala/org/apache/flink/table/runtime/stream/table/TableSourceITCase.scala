@@ -18,7 +18,6 @@
 
 package org.apache.flink.table.runtime.stream.table
 
-<<<<<<< HEAD
 import org.apache.calcite.runtime.SqlFunctions.{internalToTimestamp => toTimestamp}
 import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.api.java.typeutils.RowTypeInfo
@@ -34,18 +33,6 @@ import org.apache.flink.types.Row
 import org.junit.Assert._
 import org.junit.Test
 import java.lang.{Integer => JInt, Long => JLong}
-=======
-import org.apache.flink.api.scala._
-import org.apache.flink.streaming.api.scala.StreamExecutionEnvironment
-import org.apache.flink.streaming.util.StreamingMultipleProgramsTestBase
-import org.apache.flink.table.api.TableEnvironment
-import org.apache.flink.table.api.scala._
-import org.apache.flink.table.runtime.utils.{CommonTestData, StreamITCase}
-import org.apache.flink.table.utils.TestFilterableTableSource
-import org.apache.flink.types.Row
-import org.junit.Assert._
-import org.junit.Test
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 import scala.collection.mutable
 
@@ -95,7 +82,6 @@ class TableSourceITCase extends StreamingMultipleProgramsTestBase {
       "5,Record_5", "6,Record_6", "7,Record_7", "8,Record_8")
     assertEquals(expected.sorted, StreamITCase.testResults.sorted)
   }
-<<<<<<< HEAD
 
   @Test
   def testRowtimeTableSource(): Unit = {
@@ -231,6 +217,4 @@ class TableSourceITCase extends StreamingMultipleProgramsTestBase {
     assertEquals(expected.sorted, StreamITCase.testResults.sorted)
   }
 
-=======
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 }

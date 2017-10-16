@@ -31,10 +31,7 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.util.Optional;
-<<<<<<< HEAD
 import java.util.concurrent.CompletionException;
-=======
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import java.util.concurrent.ExecutionException;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
@@ -320,7 +317,6 @@ public final class ExceptionUtils {
 	}
 
 	/**
-<<<<<<< HEAD
 	 * Unpacks an {@link CompletionException} and returns its cause. Otherwise the given
 	 * Throwable is returned.
 	 *
@@ -336,8 +332,6 @@ public final class ExceptionUtils {
 	}
 
 	/**
-=======
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	 * Tries to find a {@link SerializedThrowable} as the cause of the given throwable and throws its
 	 * deserialized value. If there is no such throwable, then the original throwable is thrown.
 	 *

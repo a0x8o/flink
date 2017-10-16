@@ -110,14 +110,11 @@ public class JavaUserDefinedAggFunctions {
 				acc.sum += a.sum;
 			}
 		}
-<<<<<<< HEAD
 
 		@Override
 		public String toString() {
 			return "myWeightedAvg";
 		}
-=======
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	}
 
 	/**

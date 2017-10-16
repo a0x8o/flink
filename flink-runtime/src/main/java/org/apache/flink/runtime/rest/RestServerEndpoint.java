@@ -54,11 +54,8 @@ import java.util.concurrent.TimeUnit;
  * An abstract class for netty-based REST server endpoints.
  */
 public abstract class RestServerEndpoint {
-<<<<<<< HEAD
 
 	public static final int MAX_REQUEST_SIZE_BYTES = 1024 * 1024 * 10;
-=======
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	protected final Logger log = LoggerFactory.getLogger(getClass());
 
 	private final Object lock = new Object();
@@ -125,11 +122,7 @@ public abstract class RestServerEndpoint {
 
 					ch.pipeline()
 						.addLast(new HttpServerCodec())
-<<<<<<< HEAD
 						.addLast(new HttpObjectAggregator(MAX_REQUEST_SIZE_BYTES))
-=======
-						.addLast(new HttpObjectAggregator(1024 * 1024 * 10))
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 						.addLast(handler.name(), handler)
 						.addLast(new PipelineErrorHandler(log));
 				}
@@ -265,7 +258,6 @@ public abstract class RestServerEndpoint {
 			case POST:
 				router.POST(specificationHandler.f0.getTargetRestEndpointURL(), specificationHandler.f1);
 				break;
-<<<<<<< HEAD
 			case DELETE:
 				router.DELETE(specificationHandler.f0.getTargetRestEndpointURL(), specificationHandler.f1);
 				break;
@@ -274,8 +266,6 @@ public abstract class RestServerEndpoint {
 				break;
 			default:
 				throw new RuntimeException("Unsupported http method: " + specificationHandler.f0.getHttpMethod() + '.');
-=======
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		}
 	}
 }

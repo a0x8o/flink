@@ -36,11 +36,7 @@ public class JobPlanHandler extends AbstractExecutionGraphRequestHandler {
 
 	private static final String JOB_PLAN_REST_PATH = "/jobs/:jobid/plan";
 
-<<<<<<< HEAD
 	public JobPlanHandler(ExecutionGraphCache executionGraphHolder, Executor executor) {
-=======
-	public JobPlanHandler(ExecutionGraphHolder executionGraphHolder, Executor executor) {
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		super(executionGraphHolder, executor);
 	}
 

@@ -18,21 +18,15 @@
 
 package org.apache.flink.runtime.webmonitor;
 
-<<<<<<< HEAD
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.runtime.executiongraph.AccessExecutionGraph;
 import org.apache.flink.runtime.messages.FlinkJobNotFoundException;
+import org.apache.flink.runtime.messages.webmonitor.ClusterOverview;
 import org.apache.flink.runtime.messages.webmonitor.MultipleJobsDetails;
-import org.apache.flink.runtime.messages.webmonitor.StatusOverview;
 import org.apache.flink.runtime.rpc.RpcEndpoint;
 import org.apache.flink.runtime.rpc.RpcGateway;
 import org.apache.flink.runtime.rpc.RpcTimeout;
-=======
-import org.apache.flink.api.common.time.Time;
-import org.apache.flink.runtime.rpc.RpcEndpoint;
-import org.apache.flink.runtime.rpc.RpcGateway;
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 import java.util.concurrent.CompletableFuture;
 
@@ -50,7 +44,6 @@ public interface RestfulGateway extends RpcGateway {
 	 * @param timeout for this operation
 	 * @return Future REST endpoint address
 	 */
-<<<<<<< HEAD
 	CompletableFuture<String> requestRestAddress(@RpcTimeout  Time timeout);
 
 	/**
@@ -82,8 +75,5 @@ public interface RestfulGateway extends RpcGateway {
 	 * @param timeout for the asynchronous operation
 	 * @return Future containing the status overview
 	 */
-	CompletableFuture<StatusOverview> requestStatusOverview(@RpcTimeout Time timeout);
-=======
-	CompletableFuture<String> requestRestAddress(Time timeout);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
+	CompletableFuture<ClusterOverview> requestClusterOverview(@RpcTimeout Time timeout);
 }

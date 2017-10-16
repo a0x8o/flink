@@ -235,8 +235,5 @@ Compression can be activated through the `ExecutionConfig`:
 
 **Notice:** The compression option has no impact on incremental snapshots, because they are using RocksDB's internal
 format which is always using snappy compression out of the box.
-<<<<<<< HEAD
 
 {% top %}
-=======
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d

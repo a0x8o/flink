@@ -30,9 +30,21 @@ import org.apache.flink.streaming.api.functions.co.CoProcessFunction
 import org.apache.flink.table.codegen.Compiler
 import org.apache.flink.table.runtime.CRowWrappingCollector
 import org.apache.flink.table.runtime.types.CRow
+<<<<<<< HEAD
 import org.apache.flink.table.util.Logging
 import org.apache.flink.types.Row
 import org.apache.flink.util.Collector
+=======
+<<<<<<< HEAD
+import org.apache.flink.types.Row
+import org.apache.flink.util.Collector
+import org.slf4j.LoggerFactory
+=======
+import org.apache.flink.table.util.Logging
+import org.apache.flink.types.Row
+import org.apache.flink.util.Collector
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
+>>>>>>> axbaretto
 
 /**
   * A CoProcessFunction to support stream join stream, currently just support inner-join
@@ -55,8 +67,17 @@ class ProcTimeWindowInnerJoin(
     private val genJoinFuncName: String,
     private val genJoinFuncCode: String)
   extends CoProcessFunction[CRow, CRow, CRow]
+<<<<<<< HEAD
     with Compiler[FlatJoinFunction[Row, Row, Row]]
     with Logging {
+=======
+<<<<<<< HEAD
+    with Compiler[FlatJoinFunction[Row, Row, Row]]{
+=======
+    with Compiler[FlatJoinFunction[Row, Row, Row]]
+    with Logging {
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
+>>>>>>> axbaretto
 
   private var cRowWrapper: CRowWrappingCollector = _
 
@@ -81,6 +102,14 @@ class ProcTimeWindowInnerJoin(
   private val leftStreamWinSize: Long = if (leftLowerBound <= 0) -leftLowerBound else -1
   private val rightStreamWinSize: Long = if (leftUpperBound >= 0) leftUpperBound else -1
 
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+  val LOG = LoggerFactory.getLogger(this.getClass)
+
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
+>>>>>>> axbaretto
   override def open(config: Configuration) {
     LOG.debug(s"Compiling JoinFunction: $genJoinFuncName \n\n " +
       s"Code:\n$genJoinFuncCode")
@@ -323,6 +352,22 @@ class ProcTimeWindowInnerJoin(
       }
     }
 
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+    // Remove expired records from state
+    var i = removeList.size - 1
+    while (i >= 0) {
+      rowMapState.remove(removeList.get(i))
+      i -= 1
+    }
+    removeList.clear()
+
+    // If the state has non-expired timestamps, register a new timer.
+    // Otherwise clean the complete state for this input.
+    if (validTimestamp) {
+=======
+>>>>>>> axbaretto
     // If the state has non-expired timestamps, register a new timer.
     // Otherwise clean the complete state for this input.
     if (validTimestamp) {
@@ -335,6 +380,10 @@ class ProcTimeWindowInnerJoin(
       }
       removeList.clear()
 
+<<<<<<< HEAD
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
+>>>>>>> axbaretto
       val cleanupTime = curTime + winSize + 1
       ctx.timerService.registerProcessingTimeTimer(cleanupTime)
       timerState.update(cleanupTime)

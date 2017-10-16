@@ -71,6 +71,10 @@ flink-libraries/flink-table"
 
 MODULES_CONNECTORS="\
 flink-contrib/flink-connector-wikiedits,\
+flink-filesystems/flink-hadoop-fs,\
+flink-filesystems/flink-mapr-fs,\
+flink-filesystems/flink-s3-fs-hadoop,\
+flink-filesystems/flink-s3-fs-presto,\
 flink-connectors/flink-avro,\
 flink-connectors/flink-hbase,\
 flink-connectors/flink-hcatalog,\
@@ -93,13 +97,10 @@ flink-connectors/flink-connector-twitter"
 MODULES_TESTS="\
 flink-tests"
 
-<<<<<<< HEAD
 if [[ $PROFILE != *"scala-2.10"* ]]; then
 	MODULES_CONNECTORS="$MODULES_CONNECTORS,flink-connectors/flink-connector-kafka-0.11"
 fi
 
-=======
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 if [[ $PROFILE == *"include-kinesis"* ]]; then
 	case $TEST in
 		(connectors)
@@ -294,7 +295,6 @@ check_shaded_artifacts() {
 
 	SNAPPY=`cat allClasses | grep '^org/xerial/snappy' | wc -l`
 	if [ "$SNAPPY" == "0" ]; then
-<<<<<<< HEAD
 		echo "=============================================================================="
 		echo "Missing snappy dependencies in fat jar"
 		echo "=============================================================================="
@@ -329,25 +329,10 @@ check_shaded_artifacts() {
 	if [ "$MAPR" != "0" ]; then
 		echo "=============================================================================="
 		echo "Detected '$MAPR' MapR classes in the dist jar"
-=======
-		echo "=============================================================================="
-		echo "Missing snappy dependencies in fat jar"
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		echo "=============================================================================="
 		return 1
 	fi
 
-<<<<<<< HEAD
-=======
-	NETTY=`cat allClasses | grep '^io/netty' | wc -l`
-	if [ "$NETTY" != "0" ]; then
-		echo "=============================================================================="
-		echo "Detected '$NETTY' unshaded netty dependencies in fat jar"
-		echo "=============================================================================="
-		return 1
-	fi
-
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	return 0
 }
 
@@ -385,15 +370,9 @@ echo -en "travis_fold:end:disk_info${FOLD_ESCAPE}"
 cd $HERE/../
 
 # Compile modules
-<<<<<<< HEAD
 
 echo "RUNNING '${MVN_COMPILE}'."
 
-=======
-
-echo "RUNNING '${MVN_COMPILE}'."
-
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 # Run $MVN_COMPILE and pipe output to $MVN_OUT for the watchdog. The PID is written to $MVN_PID to
 # allow the watchdog to kill $MVN if it is not producing any output anymore. $MVN_EXIT contains
 # the exit code. This is important for Travis' build life-cycle (success/failure).
@@ -408,7 +387,6 @@ rm $MVN_EXIT
 
 # Run tests if compilation was successful
 if [ $EXIT_CODE == 0 ]; then
-<<<<<<< HEAD
 
 	echo "RUNNING '${MVN_TEST}'."
 
@@ -431,30 +409,6 @@ fi
 
 # Post
 
-=======
-
-	echo "RUNNING '${MVN_TEST}'."
-
-	# Run $MVN_TEST and pipe output to $MVN_OUT for the watchdog. The PID is written to $MVN_PID to
-	# allow the watchdog to kill $MVN if it is not producing any output anymore. $MVN_EXIT contains
-	# the exit code. This is important for Travis' build life-cycle (success/failure).
-	( $MVN_TEST & PID=$! ; echo $PID >&3 ; wait $PID ; echo $? >&4 ) 3>$MVN_PID 4>$MVN_EXIT | tee $MVN_OUT
-
-	EXIT_CODE=$(<$MVN_EXIT)
-
-	echo "MVN exited with EXIT CODE: ${EXIT_CODE}."
-
-	rm $MVN_PID
-	rm $MVN_EXIT
-else
-	echo "=============================================================================="
-	echo "Compilation failure detected, skipping test execution."
-	echo "=============================================================================="
-fi
-
-# Post
-
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 # Make sure to kill the watchdog in any case after $MVN_COMPILE and $MVN_TEST have completed
 echo "Trying to KILL watchdog (${WD_PID})."
 ( kill $WD_PID 2>&1 ) > /dev/null

@@ -160,12 +160,8 @@ class TimeIndicatorConversionTest extends TableTestBase {
         streamTableNode(0),
         term("invocation",
           s"${func.functionIdentifier}(CAST($$0):TIMESTAMP(3) NOT NULL, PROCTIME($$3), '')"),
-<<<<<<< HEAD
         term("correlate", s"table(TableFunc(CAST(rowtime), PROCTIME(proctime), ''))"),
         term("select", "rowtime", "long", "int", "proctime", "s"),
-=======
-        term("function", func),
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
         term("rowType", "RecordType(TIME ATTRIBUTE(ROWTIME) rowtime, BIGINT long, INTEGER int, " +
           "TIME ATTRIBUTE(PROCTIME) proctime, VARCHAR(65536) s)"),
         term("joinType", "INNER")

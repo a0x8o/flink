@@ -198,10 +198,7 @@ under the License.
 	<suppress
 		files="(.*)test[/\\](.*)runtime[/\\]zookeeper[/\\](.*)"
 		checks="AvoidStarImport"/>
-<<<<<<< HEAD
 	<suppress
 		files="(.*)StateBackendTestBase.java"
 		checks="FileLength"/>
-=======
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 </suppressions>

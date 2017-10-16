@@ -32,11 +32,7 @@ import java.util.concurrent.Executor;
  */
 public abstract class AbstractJobVertexRequestHandler extends AbstractExecutionGraphRequestHandler {
 
-<<<<<<< HEAD
 	public AbstractJobVertexRequestHandler(ExecutionGraphCache executionGraphHolder, Executor executor) {
-=======
-	public AbstractJobVertexRequestHandler(ExecutionGraphHolder executionGraphHolder, Executor executor) {
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		super(executionGraphHolder, executor);
 	}
 

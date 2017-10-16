@@ -45,7 +45,6 @@ public class MessageParametersTest extends TestLogger {
 		Assert.assertEquals("/jobs/" + pathJobID + "/state?jobid=" + queryJobID, resolvedUrl);
 	}
 
-<<<<<<< HEAD
 	@Test
 	public void testUnresolvedParameters() {
 		String genericUrl = "/jobs/:jobid/state";
@@ -63,8 +62,6 @@ public class MessageParametersTest extends TestLogger {
 		Assert.assertEquals("/jobs/" + jobID + "/state", resolvedUrl);
 	}
 
-=======
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	private static class TestMessageParameters extends MessageParameters {
 		private final TestPathParameter pathParameter = new TestPathParameter();
 		private final TestQueryParameter queryParameter = new TestQueryParameter();
@@ -100,11 +97,7 @@ public class MessageParametersTest extends TestLogger {
 	private static class TestQueryParameter extends MessageQueryParameter<JobID> {
 
 		TestQueryParameter() {
-<<<<<<< HEAD
 			super("jobid", MessageParameterRequisiteness.OPTIONAL);
-=======
-			super("jobid", MessageParameterRequisiteness.MANDATORY);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		}
 
 		@Override

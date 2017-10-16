@@ -255,7 +255,6 @@ abstract class CodeGenerator(
         generateRowtimeAccess()
       case TimeIndicatorTypeInfo.PROCTIME_MARKER =>
         // attribute is proctime indicator.
-<<<<<<< HEAD
         // we use a null literal and generate a timestamp when we need it.
         generateNullLiteral(TimeIndicatorTypeInfo.PROCTIME_INDICATOR)
       case idx =>
@@ -281,13 +280,6 @@ abstract class CodeGenerator(
         } else {
           inputAccess
         }
-=======
-        // We use a null literal and generate a timestamp when we need it.
-        generateNullLiteral(TimeIndicatorTypeInfo.PROCTIME_INDICATOR)
-      case idx =>
-        // regular attribute. Access attribute in input data type.
-        generateInputAccess(input1, input1Term, idx)
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
     }
 
     val input2AccessExprs = input2 match {

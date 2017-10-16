@@ -77,7 +77,6 @@ public class CheckpointSettingsSerializableTest extends TestLogger {
 				Collections.<JobVertexID>emptyList(),
 				Collections.<JobVertexID>emptyList(),
 				Collections.<JobVertexID>emptyList(),
-<<<<<<< HEAD
 				new CheckpointCoordinatorConfiguration(
 					1000L,
 					10000L,
@@ -87,16 +86,6 @@ public class CheckpointSettingsSerializableTest extends TestLogger {
 					true),
 				new SerializedValue<StateBackend>(new CustomStateBackend(outOfClassPath)),
 				serHooks);
-=======
-				1000L,
-				10000L,
-				0L,
-				1,
-				ExternalizedCheckpointSettings.none(),
-				new SerializedValue<StateBackend>(new CustomStateBackend(outOfClassPath)),
-				serHooks,
-				true);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 		final JobGraph jobGraph = new JobGraph(new JobID(), "test job");
 		jobGraph.setSnapshotSettings(checkpointingSettings);
@@ -147,10 +136,7 @@ public class CheckpointSettingsSerializableTest extends TestLogger {
 
 	private static final class CustomStateBackend implements StateBackend {
 
-<<<<<<< HEAD
 		private static final long serialVersionUID = -6107964383429395816L;
-=======
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		/**
 		 * Simulate a custom option that is not in the normal classpath.
 		 */

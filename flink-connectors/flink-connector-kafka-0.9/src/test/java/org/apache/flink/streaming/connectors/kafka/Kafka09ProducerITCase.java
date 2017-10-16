@@ -24,7 +24,6 @@ package org.apache.flink.streaming.connectors.kafka;
 @SuppressWarnings("serial")
 public class Kafka09ProducerITCase extends KafkaProducerTestBase {
 	@Override
-<<<<<<< HEAD
 	public void testExactlyOnceRegularSink() throws Exception {
 		// Kafka08 does not support exactly once semantic
 	}
@@ -38,9 +37,4 @@ public class Kafka09ProducerITCase extends KafkaProducerTestBase {
 	public void testOneToOneAtLeastOnceCustomOperator() throws Exception {
 		// Disable this test since FlinkKafka09Producer doesn't support custom operator mode
 	}
-=======
-	public void testOneToOneAtLeastOnceCustomOperator() throws Exception {
-		// Disable this test since FlinkKafka09Producer doesn't support custom operator mode
-	}
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 }

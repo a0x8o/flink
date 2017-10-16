@@ -23,10 +23,7 @@ import org.apache.flink.runtime.executiongraph.Execution;
 import org.apache.flink.runtime.executiongraph.ExecutionJobVertex;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobgraph.OperatorID;
-<<<<<<< HEAD
 import org.apache.flink.runtime.jobgraph.OperatorInstanceID;
-=======
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.runtime.state.KeyGroupRange;
 import org.apache.flink.runtime.state.KeyGroupRangeAssignment;
 import org.apache.flink.runtime.state.KeyGroupsStateHandle;
@@ -173,7 +170,6 @@ public class StateAssignmentOperation {
 		 * op3   sh(3,0)	 sh(3,1)	   sh(3,2)		sh(3,3)
 		 *
 		 */
-<<<<<<< HEAD
 		assignTaskStateToExecutionJobVertices(
 			executionJobVertex,
 			newManagedOperatorStates,
@@ -190,14 +186,6 @@ public class StateAssignmentOperation {
 			Map<OperatorInstanceID, List<KeyedStateHandle>> subManagedKeyedState,
 			Map<OperatorInstanceID, List<KeyedStateHandle>> subRawKeyedState,
 			int newParallelism) {
-=======
-		for (int subTaskIndex = 0; subTaskIndex < newParallelism; subTaskIndex++) {
-
-			Execution currentExecutionAttempt = executionJobVertex.getTaskVertices()[subTaskIndex]
-				.getCurrentExecutionAttempt();
-
-			Tuple2<Collection<KeyedStateHandle>, Collection<KeyedStateHandle>> subKeyedState = null;
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 		List<OperatorID> operatorIDs = executionJobVertex.getOperatorIDs();
 
@@ -206,7 +194,6 @@ public class StateAssignmentOperation {
 			Execution currentExecutionAttempt = executionJobVertex.getTaskVertices()[subTaskIndex]
 				.getCurrentExecutionAttempt();
 
-<<<<<<< HEAD
 			TaskStateSnapshot taskState = new TaskStateSnapshot();
 			boolean statelessTask = true;
 
@@ -222,70 +209,16 @@ public class StateAssignmentOperation {
 
 				if (operatorSubtaskState.hasState()) {
 					statelessTask = false;
-=======
-				// PartitionedState
-				reAssignSubPartitionableState(
-					newManagedOperatorStates,
-					newRawOperatorStates,
-					subTaskIndex,
-					operatorIndex,
-					subManagedOperatorState,
-					subRawOperatorState);
-
-				// KeyedState
-				if (isHeadOperator(operatorIndex, operatorIDs)) {
-					subKeyedState = reAssignSubKeyedStates(
-						operatorState,
-						keyGroupPartitions,
-						subTaskIndex,
-						newParallelism,
-						oldParallelism);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 				}
 				taskState.putSubtaskStateByOperatorID(operatorID, operatorSubtaskState);
 			}
 
-<<<<<<< HEAD
 			if (!statelessTask) {
-=======
-			// check if a stateless task
-			if (!allElementsAreNull(subManagedOperatorState) ||
-				!allElementsAreNull(subRawOperatorState) ||
-				subKeyedState != null) {
-
-				TaskStateSnapshot taskState = new TaskStateSnapshot();
-
-				for (int i = 0; i < operatorIDs.size(); ++i) {
-
-					OperatorID operatorID = operatorIDs.get(i);
-
-					Collection<KeyedStateHandle> rawKeyed = Collections.emptyList();
-					Collection<KeyedStateHandle> managedKeyed = Collections.emptyList();
-
-					// keyed state case
-					if (subKeyedState != null) {
-						managedKeyed = subKeyedState.f0;
-						rawKeyed = subKeyedState.f1;
-					}
-
-					OperatorSubtaskState operatorSubtaskState =
-						new OperatorSubtaskState(
-							subManagedOperatorState.get(i),
-							subRawOperatorState.get(i),
-							managedKeyed,
-							rawKeyed
-						);
-
-					taskState.putSubtaskStateByOperatorID(operatorID, operatorSubtaskState);
-				}
-
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 				currentExecutionAttempt.setInitialState(taskState);
 			}
 		}
 	}
 
-<<<<<<< HEAD
 	private static OperatorSubtaskState operatorSubtaskStateFrom(
 			OperatorInstanceID instanceID,
 			Map<OperatorInstanceID, List<OperatorStateHandle>> subManagedOperatorState,
@@ -310,8 +243,6 @@ public class StateAssignmentOperation {
 			subRawKeyedState.getOrDefault(instanceID, Collections.emptyList()));
 	}
 
-=======
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	private static boolean isHeadOperator(int opIdx, List<OperatorID> operatorIDs) {
 		return opIdx == operatorIDs.size() - 1;
 	}
@@ -322,7 +253,6 @@ public class StateAssignmentOperation {
 		}
 	}
 
-<<<<<<< HEAD
 	private void reDistributeKeyedStates(
 			List<OperatorState> oldOperatorStates,
 			int newParallelism,
@@ -355,27 +285,6 @@ public class StateAssignmentOperation {
 						.addAll(subKeyedStates.f1);
 				}
 			}
-=======
-
-	private void reAssignSubPartitionableState(
-			List<List<Collection<OperatorStateHandle>>> newMangedOperatorStates,
-			List<List<Collection<OperatorStateHandle>>> newRawOperatorStates,
-			int subTaskIndex, int operatorIndex,
-			List<Collection<OperatorStateHandle>> subManagedOperatorState,
-			List<Collection<OperatorStateHandle>> subRawOperatorState) {
-
-		if (newMangedOperatorStates.get(operatorIndex) != null && !newMangedOperatorStates.get(operatorIndex).isEmpty()) {
-			Collection<OperatorStateHandle> operatorStateHandles = newMangedOperatorStates.get(operatorIndex).get(subTaskIndex);
-			subManagedOperatorState.add(operatorStateHandles != null ? operatorStateHandles : Collections.<OperatorStateHandle>emptyList());
-		} else {
-			subManagedOperatorState.add(Collections.<OperatorStateHandle>emptyList());
-		}
-		if (newRawOperatorStates.get(operatorIndex) != null && !newRawOperatorStates.get(operatorIndex).isEmpty()) {
-			Collection<OperatorStateHandle> operatorStateHandles = newRawOperatorStates.get(operatorIndex).get(subTaskIndex);
-			subRawOperatorState.add(operatorStateHandles != null ? operatorStateHandles : Collections.<OperatorStateHandle>emptyList());
-		} else {
-			subRawOperatorState.add(Collections.<OperatorStateHandle>emptyList());
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		}
 	}
 
@@ -402,7 +311,6 @@ public class StateAssignmentOperation {
 			subManagedKeyedState = getManagedKeyedStateHandles(operatorState, keyGroupPartitions.get(subTaskIndex));
 			subRawKeyedState = getRawKeyedStateHandles(operatorState, keyGroupPartitions.get(subTaskIndex));
 		}
-<<<<<<< HEAD
 
 		if (subManagedKeyedState.isEmpty() && subRawKeyedState.isEmpty()) {
 			return new Tuple2<>(Collections.emptyList(), Collections.emptyList());
@@ -411,26 +319,6 @@ public class StateAssignmentOperation {
 		}
 	}
 
-=======
-
-		if (subManagedKeyedState.isEmpty() && subRawKeyedState.isEmpty()) {
-			return null;
-		} else {
-			return new Tuple2<>(subManagedKeyedState, subRawKeyedState);
-		}
-	}
-
-
-	private <X> boolean allElementsAreNull(List<X> nonPartitionableStates) {
-		for (Object streamStateHandle : nonPartitionableStates) {
-			if (streamStateHandle != null) {
-				return false;
-			}
-		}
-		return true;
-	}
-
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	private void reDistributePartitionableStates(
 			List<OperatorState> oldOperatorStates,
 			int newParallelism,

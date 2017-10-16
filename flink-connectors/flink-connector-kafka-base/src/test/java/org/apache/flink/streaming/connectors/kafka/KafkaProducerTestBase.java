@@ -38,10 +38,7 @@ import org.apache.flink.streaming.api.functions.source.SourceFunction;
 import org.apache.flink.streaming.api.operators.StreamSink;
 import org.apache.flink.streaming.connectors.kafka.partitioner.FlinkKafkaPartitioner;
 import org.apache.flink.streaming.connectors.kafka.testutils.FailingIdentityMapper;
-<<<<<<< HEAD
 import org.apache.flink.streaming.connectors.kafka.testutils.IntegerSource;
-=======
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.streaming.util.serialization.KeyedSerializationSchema;
 import org.apache.flink.streaming.util.serialization.KeyedSerializationSchemaWrapper;
 import org.apache.flink.streaming.util.serialization.SerializationSchema;
@@ -50,25 +47,16 @@ import org.apache.flink.test.util.SuccessException;
 import org.apache.flink.test.util.TestUtils;
 import org.apache.flink.util.Preconditions;
 
-<<<<<<< HEAD
-=======
-import org.apache.kafka.clients.consumer.ConsumerRecord;
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.junit.Test;
 
 import java.io.Serializable;
 import java.util.ArrayList;
-<<<<<<< HEAD
-=======
-import java.util.Collection;
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
-import java.util.Set;
 
 import static org.apache.flink.test.util.TestUtils.tryExecute;
 import static org.junit.Assert.assertEquals;
@@ -306,7 +294,6 @@ public abstract class KafkaProducerTestBase extends KafkaTestBase {
 	}
 
 	/**
-<<<<<<< HEAD
 	 * Tests the exactly-once semantic for the simple writes into Kafka.
 	 */
 	@Test
@@ -380,40 +367,6 @@ public abstract class KafkaProducerTestBase extends KafkaTestBase {
 			30000L);
 
 		deleteTestTopic(topic);
-=======
-	 * We manually handle the timeout instead of using JUnit's timeout to return failure instead of timeout error.
-	 * After timeout we assume that there are missing records and there is a bug, not that the test has run out of time.
-	 */
-	private void assertAtLeastOnceForTopic(
-			Properties properties,
-			String topic,
-			int partition,
-			Set<Integer> expectedElements,
-			long timeoutMillis) throws Exception {
-
-		long startMillis = System.currentTimeMillis();
-		Set<Integer> actualElements = new HashSet<>();
-
-		// until we timeout...
-		while (System.currentTimeMillis() < startMillis + timeoutMillis) {
-			properties.put("key.deserializer", "org.apache.kafka.common.serialization.IntegerDeserializer");
-			properties.put("value.deserializer", "org.apache.kafka.common.serialization.IntegerDeserializer");
-
-			// query kafka for new records ...
-			Collection<ConsumerRecord<Integer, Integer>> records = kafkaServer.getAllRecordsFromTopic(properties, topic, partition, 100);
-
-			for (ConsumerRecord<Integer, Integer> record : records) {
-				actualElements.add(record.value());
-			}
-
-			// succeed if we got all expectedElements
-			if (actualElements.containsAll(expectedElements)) {
-				return;
-			}
-		}
-
-		fail(String.format("Expected to contain all of: <%s>, but was: <%s>", expectedElements, actualElements));
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	}
 
 	private List<Integer> getIntegersSequence(int size) {

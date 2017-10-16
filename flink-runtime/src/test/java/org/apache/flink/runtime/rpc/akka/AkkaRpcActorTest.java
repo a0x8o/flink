@@ -21,10 +21,7 @@ package org.apache.flink.runtime.rpc.akka;
 import akka.actor.ActorSystem;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.runtime.akka.AkkaUtils;
-<<<<<<< HEAD
 import org.apache.flink.runtime.concurrent.FutureUtils;
-=======
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.runtime.rpc.RpcEndpoint;
 import org.apache.flink.runtime.rpc.RpcGateway;
 import org.apache.flink.runtime.rpc.RpcService;
@@ -179,11 +176,7 @@ public class AkkaRpcActorTest extends TestLogger {
 		final DummyRpcEndpoint rpcEndpoint = new DummyRpcEndpoint(akkaRpcService);
 		rpcEndpoint.start();
 
-<<<<<<< HEAD
 		CompletableFuture<Boolean> terminationFuture = rpcEndpoint.getTerminationFuture();
-=======
-		CompletableFuture<Void> terminationFuture = rpcEndpoint.getTerminationFuture();
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 		assertFalse(terminationFuture.isDone());
 
@@ -244,11 +237,7 @@ public class AkkaRpcActorTest extends TestLogger {
 
 		rpcEndpoint.shutDown();
 
-<<<<<<< HEAD
 		CompletableFuture<Boolean> terminationFuture = rpcEndpoint.getTerminationFuture();
-=======
-		CompletableFuture<Void> terminationFuture = rpcEndpoint.getTerminationFuture();
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 		try {
 			terminationFuture.get();
@@ -267,18 +256,13 @@ public class AkkaRpcActorTest extends TestLogger {
 
 		simpleRpcEndpoint.shutDown();
 
-<<<<<<< HEAD
 		CompletableFuture<Boolean> terminationFuture = simpleRpcEndpoint.getTerminationFuture();
-=======
-		CompletableFuture<Void> terminationFuture = simpleRpcEndpoint.getTerminationFuture();
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 		// check that we executed the postStop method in the main thread, otherwise an exception
 		// would be thrown here.
 		terminationFuture.get();
 	}
 
-<<<<<<< HEAD
 	/**
 	 * Tests that actors are properly terminated when the AkkaRpcService is shut down.
 	 */
@@ -303,8 +287,6 @@ public class AkkaRpcActorTest extends TestLogger {
 		}
 	}
 
-=======
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	// ------------------------------------------------------------------------
 	//  Test Actors and Interfaces
 	// ------------------------------------------------------------------------

@@ -39,6 +39,7 @@ import org.apache.flink.core.fs.FSDataOutputStream;
 import org.apache.flink.core.fs.FileStatus;
 import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.core.fs.Path;
+import org.apache.flink.core.memory.ByteArrayInputStreamWithPos;
 import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataInputViewStreamWrapper;
 import org.apache.flink.core.memory.DataOutputView;
@@ -102,6 +103,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
@@ -255,7 +257,6 @@ public class RocksDBKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
 		this.materializedSstFiles = new TreeMap<>();
 		this.backendUID = UUID.randomUUID();
 		LOG.debug("Setting initial keyed backend uid for operator {} to {}.", this.operatorIdentifier, this.backendUID);
-<<<<<<< HEAD
 	}
 
 	@Override
@@ -271,8 +272,6 @@ public class RocksDBKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
 		Iterable<K> iterable = () -> new RocksIteratorWrapper<>(iterator, state, keySerializer, keyGroupPrefixBytes);
 		Stream<K> targetStream = StreamSupport.stream(iterable.spliterator(), false);
 		return targetStream.onClose(iterator::close);
-=======
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	}
 
 	/**
@@ -1471,19 +1470,11 @@ public class RocksDBKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
 										stateMetaInfoSnapshot.getName(),
 										registeredStateMetaInfoEntry);
 								}
-<<<<<<< HEAD
 
 								ColumnFamilyHandle targetColumnFamilyHandle = registeredStateMetaInfoEntry.f0;
 
 								try (RocksIterator iterator = restoreDb.newIterator(columnFamilyHandle)) {
 
-=======
-
-								ColumnFamilyHandle targetColumnFamilyHandle = registeredStateMetaInfoEntry.f0;
-
-								try (RocksIterator iterator = restoreDb.newIterator(columnFamilyHandle)) {
-
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 									int startKeyGroup = stateBackend.getKeyGroupRange().getStartKeyGroup();
 									byte[] startKeyGroupPrefixBytes = new byte[stateBackend.keyGroupPrefixBytes];
 									for (int j = 0; j < stateBackend.keyGroupPrefixBytes; ++j) {
@@ -2009,7 +2000,6 @@ public class RocksDBKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
 	public boolean supportsAsynchronousSnapshots() {
 		return true;
 	}
-<<<<<<< HEAD
 
 	@VisibleForTesting
 	@SuppressWarnings("unchecked")
@@ -2070,6 +2060,4 @@ public class RocksDBKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
 			}
 		}
 	}
-=======
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 }

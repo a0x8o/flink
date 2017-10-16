@@ -39,7 +39,6 @@ import scala.collection.JavaConverters._
   */
 object WindowJoinUtil {
 
-<<<<<<< HEAD
   case class WindowBounds(
     isEventTime: Boolean,
     leftLowerBound: Long,
@@ -57,16 +56,6 @@ object WindowJoinUtil {
     pred: RexCall)
 
   protected case class TimeAttributeAccess(isEventTime: Boolean, isLeftInput: Boolean, idx: Int)
-=======
-  case class WindowBounds(isEventTime: Boolean, leftLowerBound: Long, leftUpperBound: Long)
-
-  protected case class WindowBound(bound: Long, isLeftLower: Boolean)
-  protected case class TimePredicate(
-    isEventTime: Boolean,
-    leftInputOnLeftSide: Boolean,
-    pred: RexCall)
-  protected case class TimeAttributeAccess(isEventTime: Boolean, isLeftInput: Boolean)
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
   /**
     * Extracts the window bounds from a join predicate.
@@ -136,7 +125,6 @@ object WindowJoinUtil {
         Some(otherPreds.reduceLeft((l, r) => RelOptUtil.andJoinFilters(rexBuilder, l, r)))
     }
 
-<<<<<<< HEAD
     val bounds = if (timePreds.head.leftInputOnLeftSide) {
       Some(WindowBounds(
         timePreds.head.isEventTime,
@@ -152,9 +140,6 @@ object WindowJoinUtil {
         timePreds.head.rightTimeIdx,
         timePreds.head.leftTimeIdx))
     }
-=======
-    val bounds = Some(WindowBounds(timePreds.head.isEventTime, leftLowerBound, leftUpperBound))
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
     (bounds, remainCondition)
   }
@@ -234,13 +219,8 @@ object WindowJoinUtil {
               case (Some(left), Some(right)) if left.isLeftInput == right.isLeftInput =>
                 // Window join predicates must reference the time attribute of both inputs.
                 Right(pred)
-<<<<<<< HEAD
               case (Some(left), Some(right)) =>
                 Left(TimePredicate(left.isEventTime, left.isLeftInput, left.idx, right.idx, c))
-=======
-              case (Some(left), Some(_)) =>
-                Left(TimePredicate(left.isEventTime, left.isLeftInput, c))
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
             }
           // not a comparison predicate.
           case _ => Right(pred)
@@ -267,16 +247,11 @@ object WindowJoinUtil {
         inputType.getFieldList.get(idx).getType match {
           case t: TimeIndicatorRelDataType =>
             // time attribute access. Remember time type and side of input
-<<<<<<< HEAD
             if (idx < leftFieldCount) {
               Seq(TimeAttributeAccess(t.isEventTime, true, idx))
             } else {
               Seq(TimeAttributeAccess(t.isEventTime, false, idx - leftFieldCount))
             }
-=======
-            val isLeftInput = idx < leftFieldCount
-            Seq(TimeAttributeAccess(t.isEventTime, isLeftInput))
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
           case _ =>
             // not a time attribute access.
             Seq()
@@ -291,30 +266,6 @@ object WindowJoinUtil {
   }
 
   /**
-<<<<<<< HEAD
-=======
-    * Checks if an expression accesses a time attribute.
-    *
-    * @param expr The expression to check.
-    * @param inputType The input type of the expression.
-    * @return True, if the expression accesses a time attribute. False otherwise.
-    */
-  def accessesTimeAttribute(expr: RexNode, inputType: RelDataType): Boolean = {
-    expr match {
-      case i: RexInputRef =>
-        val accessedType = inputType.getFieldList.get(i.getIndex).getType
-        accessedType match {
-          case _: TimeIndicatorRelDataType => true
-          case _ => false
-        }
-      case c: RexCall =>
-        c.operands.asScala.exists(accessesTimeAttribute(_, inputType))
-      case _ => false
-    }
-  }
-
-  /**
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
     * Checks if an expression accesses a non-time attribute.
     *
     * @param expr The expression to check.

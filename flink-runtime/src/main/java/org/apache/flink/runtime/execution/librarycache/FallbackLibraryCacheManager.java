@@ -19,11 +19,7 @@
 package org.apache.flink.runtime.execution.librarycache;
 
 import org.apache.flink.api.common.JobID;
-<<<<<<< HEAD
 import org.apache.flink.runtime.blob.PermanentBlobKey;
-=======
-import org.apache.flink.runtime.blob.BlobKey;
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,20 +37,12 @@ public class FallbackLibraryCacheManager implements LibraryCacheManager {
 	}
 
 	@Override
-<<<<<<< HEAD
 	public void registerJob(JobID id, Collection<PermanentBlobKey> requiredJarFiles, Collection<URL> requiredClasspaths) {
-=======
-	public void registerJob(JobID id, Collection<BlobKey> requiredJarFiles, Collection<URL> requiredClasspaths) {
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		LOG.warn("FallbackLibraryCacheManager cannot download files associated with blob keys.");
 	}
 
 	@Override
-<<<<<<< HEAD
 	public void registerTask(JobID id, ExecutionAttemptID execution, Collection<PermanentBlobKey> requiredJarFiles,
-=======
-	public void registerTask(JobID id, ExecutionAttemptID execution, Collection<BlobKey> requiredJarFiles,
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		Collection<URL> requiredClasspaths) {
 		LOG.warn("FallbackLibraryCacheManager cannot download files associated with blob keys.");
 	}

@@ -276,11 +276,7 @@ object UserDefinedFunctionUtils {
     : SqlFunction = {
     val (fieldNames, fieldIndexes, _) = UserDefinedFunctionUtils.getFieldInfo(resultType)
     val function = new FlinkTableFunctionImpl(resultType, fieldIndexes, fieldNames)
-<<<<<<< HEAD
     new TableSqlFunction(name, displayName, tableFunction, resultType, typeFactory, function)
-=======
-    new TableSqlFunction(name, tableFunction, resultType, typeFactory, function)
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
   }
 
   /**
@@ -304,10 +300,7 @@ object UserDefinedFunctionUtils {
 
     AggSqlFunction(
       name,
-<<<<<<< HEAD
       displayName,
-=======
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
       aggFunction,
       resultType,
       accTypeInfo,

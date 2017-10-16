@@ -250,13 +250,10 @@ public class MetricStore {
 	private abstract static class ComponentMetricStore {
 		public final Map<String, String> metrics = new HashMap<>();
 
-<<<<<<< HEAD
 		public String getMetric(String name) {
 			return this.metrics.get(name);
 		}
 
-=======
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		public String getMetric(String name, String defaultValue) {
 			String value = this.metrics.get(name);
 			return value != null

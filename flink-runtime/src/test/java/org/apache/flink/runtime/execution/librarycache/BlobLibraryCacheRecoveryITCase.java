@@ -65,19 +65,11 @@ public class BlobLibraryCacheRecoveryITCase extends TestLogger {
 		BlobServer[] server = new BlobServer[2];
 		InetSocketAddress[] serverAddress = new InetSocketAddress[2];
 		BlobLibraryCacheManager[] libServer = new BlobLibraryCacheManager[2];
-<<<<<<< HEAD
 		PermanentBlobCache cache = null;
-=======
-		BlobCache cache = null;
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		BlobStoreService blobStoreService = null;
 
 		Configuration config = new Configuration();
 		config.setString(HighAvailabilityOptions.HA_MODE, "ZOOKEEPER");
-<<<<<<< HEAD
-=======
-		config.setString(CoreOptions.STATE_BACKEND, "FILESYSTEM");
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		config.setString(BlobServerOptions.STORAGE_DIRECTORY,
 			temporaryFolder.newFolder().getAbsolutePath());
 		config.setString(HighAvailabilityOptions.HA_STORAGE_PATH,
@@ -102,25 +94,13 @@ public class BlobLibraryCacheRecoveryITCase extends TestLogger {
 
 			JobID jobId = new JobID();
 
-			JobID jobId = new JobID();
-
 			// Upload some data (libraries)
-<<<<<<< HEAD
 			keys.add(server[0].putPermanent(jobId, expected)); // Request 1
 			byte[] expected2 = Arrays.copyOfRange(expected, 32, 288);
 			keys.add(server[0].putPermanent(jobId, expected2)); // Request 2
 
 			// The cache
 			cache = new PermanentBlobCache(serverAddress[0], config, blobStoreService);
-=======
-			try (BlobClient client = new BlobClient(serverAddress[0], config)) {
-				keys.add(client.put(jobId, expected)); // Request 1
-				keys.add(client.put(jobId, expected, 32, 256)); // Request 2
-			}
-
-			// The cache
-			cache = new BlobCache(serverAddress[0], config, blobStoreService);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 			// Register uploaded libraries
 			ExecutionAttemptID executionId = new ExecutionAttemptID();
@@ -141,11 +121,7 @@ public class BlobLibraryCacheRecoveryITCase extends TestLogger {
 			// Shutdown cache and start with other server
 			cache.close();
 
-<<<<<<< HEAD
 			cache = new PermanentBlobCache(serverAddress[1], config, blobStoreService);
-=======
-			cache = new BlobCache(serverAddress[1], config, blobStoreService);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 			// Verify key 1
 			f = cache.getFile(jobId, keys.get(0));
@@ -161,11 +137,7 @@ public class BlobLibraryCacheRecoveryITCase extends TestLogger {
 
 			// Verify key 2
 			f = cache.getFile(jobId, keys.get(1));
-<<<<<<< HEAD
 			assertEquals(expected2.length, f.length());
-=======
-			assertEquals(256, f.length());
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 			try (FileInputStream fis = new FileInputStream(f)) {
 				for (int i = 0; i < 256 && fis.available() > 0; i++) {
@@ -176,14 +148,7 @@ public class BlobLibraryCacheRecoveryITCase extends TestLogger {
 			}
 
 			// Remove blobs again
-<<<<<<< HEAD
 			server[1].cleanupJob(jobId);
-=======
-			try (BlobClient client = new BlobClient(serverAddress[1], config)) {
-				client.delete(jobId, keys.get(0));
-				client.delete(jobId, keys.get(1));
-			}
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 			// Verify everything is clean below recoveryDir/<cluster_id>
 			final String clusterId = config.getString(HighAvailabilityOptions.HA_CLUSTER_ID);

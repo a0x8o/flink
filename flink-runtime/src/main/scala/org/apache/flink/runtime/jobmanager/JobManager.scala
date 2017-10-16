@@ -46,11 +46,7 @@ import org.apache.flink.runtime.clusterframework.FlinkResourceManager
 import org.apache.flink.runtime.clusterframework.messages._
 import org.apache.flink.runtime.clusterframework.standalone.StandaloneResourceManager
 import org.apache.flink.runtime.clusterframework.types.ResourceID
-<<<<<<< HEAD
 import org.apache.flink.runtime.concurrent.{FutureUtils, ScheduledExecutorServiceAdapter, Executors => FlinkExecutors}
-=======
-import org.apache.flink.runtime.concurrent.{FutureUtils, Executors => FlinkExecutors}
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.runtime.execution.SuppressRestartsException
 import org.apache.flink.runtime.execution.librarycache.FlinkUserCodeClassLoaders.ResolveOrder
 import org.apache.flink.runtime.execution.librarycache.{BlobLibraryCacheManager, LibraryCacheManager}
@@ -1680,7 +1676,7 @@ class JobManager(
           val future = (archive ? RequestJobsOverview.getInstance())(timeout)
           future.onSuccess {
             case archiveOverview: JobsOverview =>
-              theSender ! new StatusOverview(numTMs, numSlotsTotal, numSlotsAvailable,
+              theSender ! new ClusterOverview(numTMs, numSlotsTotal, numSlotsAvailable,
                 ourJobs, archiveOverview)
           }(context.dispatcher)
 
@@ -2236,11 +2232,7 @@ object JobManager {
           new AkkaJobManagerRetriever(jobManagerSystem, timeout, 10, Time.milliseconds(50L)),
           new AkkaQueryServiceRetriever(jobManagerSystem, timeout),
           timeout,
-<<<<<<< HEAD
           new ScheduledExecutorServiceAdapter(futureExecutor))
-=======
-          futureExecutor)
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
         Option(webServer)
       }

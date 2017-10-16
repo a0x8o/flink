@@ -122,21 +122,13 @@ public class RpcTaskManagerGateway implements TaskManagerGateway {
 	}
 
 	@Override
-<<<<<<< HEAD
 	public CompletableFuture<TransientBlobKey> requestTaskManagerLog(Time timeout) {
-=======
-	public CompletableFuture<BlobKey> requestTaskManagerLog(Time timeout) {
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 //		return taskExecutorGateway.requestTaskManagerLog(timeout);
 		throw new UnsupportedOperationException("Operation is not yet supported.");
 	}
 
 	@Override
-<<<<<<< HEAD
 	public CompletableFuture<TransientBlobKey> requestTaskManagerStdout(Time timeout) {
-=======
-	public CompletableFuture<BlobKey> requestTaskManagerStdout(Time timeout) {
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 //		return taskExecutorGateway.requestTaskManagerStdout(timeout);
 		throw new UnsupportedOperationException("Operation is not yet supported.");
 	}

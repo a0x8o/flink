@@ -57,11 +57,7 @@ import static org.apache.flink.util.Preconditions.checkArgument;
  * rpc in a {@link LocalRpcInvocation} message and then sends it to the {@link AkkaRpcActor} where it is
  * executed.
  */
-<<<<<<< HEAD
 class AkkaInvocationHandler implements InvocationHandler, AkkaBasedEndpoint, RpcServer {
-=======
-class AkkaInvocationHandler implements InvocationHandler, AkkaGateway, RpcServer {
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	private static final Logger LOG = LoggerFactory.getLogger(AkkaInvocationHandler.class);
 
 	/**
@@ -86,16 +82,12 @@ class AkkaInvocationHandler implements InvocationHandler, AkkaGateway, RpcServer
 	private final long maximumFramesize;
 
 	// null if gateway; otherwise non-null
-<<<<<<< HEAD
 	@Nullable
 	private final CompletableFuture<Boolean> terminationFuture;
 
 	// null if gateway; otherwise non-null
 	@Nullable
 	private final CompletableFuture<Void> internalTerminationFuture;
-=======
-	private final CompletableFuture<Void> terminationFuture;
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 	AkkaInvocationHandler(
 			String address,
@@ -103,12 +95,8 @@ class AkkaInvocationHandler implements InvocationHandler, AkkaGateway, RpcServer
 			ActorRef rpcEndpoint,
 			Time timeout,
 			long maximumFramesize,
-<<<<<<< HEAD
 			@Nullable CompletableFuture<Boolean> terminationFuture,
 			@Nullable CompletableFuture<Void> internalTerminationFuture) {
-=======
-			@Nullable CompletableFuture<Void> terminationFuture) {
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 		this.address = Preconditions.checkNotNull(address);
 		this.hostname = Preconditions.checkNotNull(hostname);
@@ -126,11 +114,7 @@ class AkkaInvocationHandler implements InvocationHandler, AkkaGateway, RpcServer
 
 		Object result;
 
-<<<<<<< HEAD
 		if (declaringClass.equals(AkkaBasedEndpoint.class) ||
-=======
-		if (declaringClass.equals(AkkaGateway.class) ||
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			declaringClass.equals(Object.class) ||
 			declaringClass.equals(RpcGateway.class) ||
 			declaringClass.equals(StartStoppable.class) ||
@@ -362,11 +346,7 @@ class AkkaInvocationHandler implements InvocationHandler, AkkaGateway, RpcServer
 	}
 
 	@Override
-<<<<<<< HEAD
 	public CompletableFuture<Boolean> getTerminationFuture() {
-=======
-	public CompletableFuture<Void> getTerminationFuture() {
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		return terminationFuture;
 	}
 

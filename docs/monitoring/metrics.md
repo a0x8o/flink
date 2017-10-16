@@ -845,30 +845,6 @@ Thus, in order to infer the metric identifier:
       <td>The number of total checkpoints (in progress, completed, failed).</td>
     </tr>
     <tr>
-      <td>lastCheckpointRestoreTimestamp</td>
-      <td>Timestamp when the last checkpoint was restored at the coordinator.</td>
-    </tr>
-    <tr>
-      <td>lastCheckpointAlignmentBuffered</td>
-      <td>The number of buffered bytes during alignment over all subtasks for the last checkpoint.</td>
-    </tr>
-    <tr>
-      <td>numberOfInProgressCheckpoints</td>
-      <td>The number of in progress checkpoints.</td>
-    </tr>
-    <tr>
-      <td>numberOfCompletedCheckpoints</td>
-      <td>The number of successfully completed checkpoints.</td>
-    </tr>            
-    <tr>
-      <td>numberOfFailedCheckpoints</td>
-      <td>The number of failed checkpoints.</td>
-    </tr>
-    <tr>
-      <td>totalNumberOfCheckpoints</td>
-      <td>The number of total checkpoints (in progress, completed, failed).</td>
-    </tr>
-    <tr>
       <th rowspan="1">Task</th>
       <td>checkpointAlignmentTime</td>
       <td>The time in nanoseconds that the last barrier alignment took to complete, or how long the current alignment has taken so far.</td>
@@ -944,15 +920,9 @@ Thus, in order to infer the metric identifier:
   </tbody>
 </table>
 
-<<<<<<< HEAD
 ### Connectors
 
 #### Kafka Connectors
-=======
-#### Connectors:
-
-##### Kafka Connectors
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 <table class="table table-bordered">
   <thead>
     <tr>

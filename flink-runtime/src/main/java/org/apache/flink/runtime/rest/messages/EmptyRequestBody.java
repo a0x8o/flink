@@ -22,7 +22,6 @@ package org.apache.flink.runtime.rest.messages;
  * Request which do not have a request payload.
  */
 public class EmptyRequestBody implements RequestBody {
-<<<<<<< HEAD
 
 	private static final EmptyRequestBody INSTANCE = new EmptyRequestBody();
 
@@ -32,6 +31,4 @@ public class EmptyRequestBody implements RequestBody {
 	public static EmptyRequestBody getInstance() {
 		return INSTANCE;
 	}
-=======
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 }

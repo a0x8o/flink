@@ -21,11 +21,8 @@ package org.apache.flink.runtime.rest;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.configuration.ConfigConstants;
 import org.apache.flink.runtime.rest.handler.PipelineErrorHandler;
-<<<<<<< HEAD
 import org.apache.flink.runtime.rest.messages.EmptyMessageParameters;
 import org.apache.flink.runtime.rest.messages.EmptyRequestBody;
-=======
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.runtime.rest.messages.ErrorResponseBody;
 import org.apache.flink.runtime.rest.messages.MessageHeaders;
 import org.apache.flink.runtime.rest.messages.MessageParameters;
@@ -138,7 +135,6 @@ public class RestClient {
 		}
 	}
 
-<<<<<<< HEAD
 	public <M extends MessageHeaders<EmptyRequestBody, P, U>, U extends MessageParameters, P extends ResponseBody> CompletableFuture<P> sendRequest(String targetAddress, int targetPort, M messageHeaders, U messageParameters) throws IOException {
 		return sendRequest(targetAddress, targetPort, messageHeaders, messageParameters, EmptyRequestBody.getInstance());
 	}
@@ -151,8 +147,6 @@ public class RestClient {
 		return sendRequest(targetAddress, targetPort, messageHeaders, EmptyMessageParameters.getInstance(), EmptyRequestBody.getInstance());
 	}
 
-=======
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	public <M extends MessageHeaders<R, P, U>, U extends MessageParameters, R extends RequestBody, P extends ResponseBody> CompletableFuture<P> sendRequest(String targetAddress, int targetPort, M messageHeaders, U messageParameters, R request) throws IOException {
 		Preconditions.checkNotNull(targetAddress);
 		Preconditions.checkArgument(0 <= targetPort && targetPort < 65536, "The target port " + targetPort + " is not in the range (0, 65536].");
@@ -267,7 +261,6 @@ public class RestClient {
 				LOG.debug("Received response {}.", rawResponse);
 			} catch (JsonParseException je) {
 				LOG.error("Response was not valid JSON.", je);
-<<<<<<< HEAD
 				// let's see if it was a plain-text message instead
 				content.readerIndex(0);
 				try {
@@ -280,9 +273,6 @@ public class RestClient {
 				} catch (IOException e) {
 					jsonFuture.completeExceptionally(new RestClientException("Response was not valid JSON, nor plain-text.", je, msg.getStatus()));
 				}
-=======
-				jsonFuture.completeExceptionally(new RestClientException("Response was not valid JSON.", je, msg.getStatus()));
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 				return;
 			} catch (IOException ioe) {
 				LOG.error("Response could not be read.", ioe);

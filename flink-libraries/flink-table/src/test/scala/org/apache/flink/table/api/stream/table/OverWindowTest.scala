@@ -23,10 +23,6 @@ import org.apache.flink.table.api.scala._
 import org.apache.flink.table.expressions.utils.Func1
 import org.apache.flink.table.api.Table
 import org.apache.flink.table.utils.TableTestUtil._
-<<<<<<< HEAD
-=======
-import org.apache.flink.table.utils.StreamTableTestUtil
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.table.utils.{StreamTableTestUtil, TableTestBase}
 import org.junit.Test
 
@@ -68,11 +64,7 @@ class OverWindowTest extends TableTestBase {
                "WeightedAvgWithRetract(c, a) AS w0$o2")
         ),
         term("select",
-<<<<<<< HEAD
              s"Func1$$(w0$$o0) AS d",
-=======
-             s"${plusOne.functionIdentifier}(w0$$o0) AS d",
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
              "EXP(CAST(w0$o1)) AS _c1",
              "+(w0$o2, 1) AS _c2",
              "||('AVG:', CAST(w0$o2)) AS _c3",

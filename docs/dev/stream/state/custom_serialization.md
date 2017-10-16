@@ -186,8 +186,5 @@ fundamental components to compatibility checks on upgraded serializers and would
 is not present. Since configuration snapshots are written to checkpoints using custom serialization, the implementation
 of the class is free to be changed, as long as compatibility of the configuration change is handled using the versioning
 mechanisms in `TypeSerializerConfigSnapshot`.
-<<<<<<< HEAD
 
 {% top %}
-=======
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d

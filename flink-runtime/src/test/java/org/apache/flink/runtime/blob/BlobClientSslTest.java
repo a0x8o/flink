@@ -21,10 +21,7 @@ package org.apache.flink.runtime.blob;
 import org.apache.flink.configuration.BlobServerOptions;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.SecurityOptions;
-<<<<<<< HEAD
 
-=======
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.ClassRule;
@@ -85,10 +82,7 @@ public class BlobClientSslTest extends BlobClientTest {
 		config.setString(SecurityOptions.SSL_KEYSTORE_PASSWORD, "password");
 		config.setString(SecurityOptions.SSL_KEY_PASSWORD, "password");
 		BLOB_NON_SSL_SERVER = new BlobServer(config, new VoidBlobStore());
-<<<<<<< HEAD
 		BLOB_NON_SSL_SERVER.start();
-=======
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 		nonSslClientConfig = new Configuration();
 		nonSslClientConfig.setBoolean(SecurityOptions.SSL_ENABLED, true);
@@ -119,11 +113,7 @@ public class BlobClientSslTest extends BlobClientTest {
 	}
 
 	/**
-<<<<<<< HEAD
 	 * Verify ssl client to ssl server upload.
-=======
-	 * Verify ssl client to ssl server upload
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	 */
 	@Test
 	public void testUploadJarFilesHelper() throws Exception {
@@ -131,11 +121,7 @@ public class BlobClientSslTest extends BlobClientTest {
 	}
 
 	/**
-<<<<<<< HEAD
 	 * Verify ssl client to non-ssl server failure.
-=======
-	 * Verify ssl client to non-ssl server failure
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	 */
 	@Test(expected = IOException.class)
 	public void testSSLClientFailure() throws Exception {
@@ -144,11 +130,7 @@ public class BlobClientSslTest extends BlobClientTest {
 	}
 
 	/**
-<<<<<<< HEAD
 	 * Verify ssl client to non-ssl server failure.
-=======
-	 * Verify ssl client to non-ssl server failure
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	 */
 	@Test(expected = IOException.class)
 	public void testSSLClientFailure2() throws Exception {
@@ -157,11 +139,7 @@ public class BlobClientSslTest extends BlobClientTest {
 	}
 
 	/**
-<<<<<<< HEAD
 	 * Verify non-ssl client to ssl server failure.
-=======
-	 * Verify non-ssl client to ssl server failure
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	 */
 	@Test(expected = IOException.class)
 	public void testSSLServerFailure() throws Exception {
@@ -170,11 +148,7 @@ public class BlobClientSslTest extends BlobClientTest {
 	}
 
 	/**
-<<<<<<< HEAD
 	 * Verify non-ssl client to ssl server failure.
-=======
-	 * Verify non-ssl client to ssl server failure
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	 */
 	@Test(expected = IOException.class)
 	public void testSSLServerFailure2() throws Exception {
@@ -183,11 +157,7 @@ public class BlobClientSslTest extends BlobClientTest {
 	}
 
 	/**
-<<<<<<< HEAD
 	 * Verify non-ssl connection sanity.
-=======
-	 * Verify non-ssl connection sanity
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	 */
 	@Test
 	public void testNonSSLConnection() throws Exception {
@@ -195,11 +165,7 @@ public class BlobClientSslTest extends BlobClientTest {
 	}
 
 	/**
-<<<<<<< HEAD
 	 * Verify non-ssl connection sanity.
-=======
-	 * Verify non-ssl connection sanity
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	 */
 	@Test
 	public void testNonSSLConnection2() throws Exception {
@@ -207,11 +173,7 @@ public class BlobClientSslTest extends BlobClientTest {
 	}
 
 	/**
-<<<<<<< HEAD
 	 * Verify non-ssl connection sanity.
-=======
-	 * Verify non-ssl connection sanity
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	 */
 	@Test
 	public void testNonSSLConnection3() throws Exception {

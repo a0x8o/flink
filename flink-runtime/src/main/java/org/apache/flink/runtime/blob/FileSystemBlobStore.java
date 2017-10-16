@@ -24,8 +24,6 @@ import org.apache.flink.core.fs.Path;
 
 import org.apache.flink.shaded.guava18.com.google.common.io.Files;
 
-import org.apache.flink.shaded.guava18.com.google.common.io.Files;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -67,13 +65,8 @@ public class FileSystemBlobStore implements BlobStoreService {
 	// - Put ------------------------------------------------------------------
 
 	@Override
-<<<<<<< HEAD
 	public boolean put(File localFile, JobID jobId, BlobKey blobKey) throws IOException {
 		return put(localFile, BlobUtils.getStorageLocationPath(basePath, jobId, blobKey));
-=======
-	public void put(File localFile, JobID jobId, BlobKey blobKey) throws IOException {
-		put(localFile, BlobUtils.getStorageLocationPath(basePath, jobId, blobKey));
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	}
 
 	private boolean put(File fromFile, String toBlobPath) throws IOException {
@@ -87,19 +80,11 @@ public class FileSystemBlobStore implements BlobStoreService {
 	// - Get ------------------------------------------------------------------
 
 	@Override
-<<<<<<< HEAD
 	public boolean get(JobID jobId, BlobKey blobKey, File localFile) throws IOException {
 		return get(BlobUtils.getStorageLocationPath(basePath, jobId, blobKey), localFile, blobKey);
 	}
 
 	private boolean get(String fromBlobPath, File toFile, BlobKey blobKey) throws IOException {
-=======
-	public void get(JobID jobId, BlobKey blobKey, File localFile) throws IOException {
-		get(BlobUtils.getStorageLocationPath(basePath, jobId, blobKey), localFile);
-	}
-
-	private void get(String fromBlobPath, File toFile) throws IOException {
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		checkNotNull(fromBlobPath, "Blob path");
 		checkNotNull(toFile, "File");
 		checkNotNull(blobKey, "Blob key");
@@ -151,7 +136,6 @@ public class FileSystemBlobStore implements BlobStoreService {
 	// - Delete ---------------------------------------------------------------
 
 	@Override
-<<<<<<< HEAD
 	public boolean delete(JobID jobId, BlobKey blobKey) {
 		return delete(BlobUtils.getStorageLocationPath(basePath, jobId, blobKey));
 	}
@@ -159,15 +143,6 @@ public class FileSystemBlobStore implements BlobStoreService {
 	@Override
 	public boolean deleteAll(JobID jobId) {
 		return delete(BlobUtils.getStorageLocationPath(basePath, jobId));
-=======
-	public void delete(JobID jobId, BlobKey blobKey) {
-		delete(BlobUtils.getStorageLocationPath(basePath, jobId, blobKey));
-	}
-
-	@Override
-	public void deleteAll(JobID jobId) {
-		delete(BlobUtils.getStorageLocationPath(basePath, jobId));
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	}
 
 	private boolean delete(String blobPath) {

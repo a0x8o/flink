@@ -104,11 +104,7 @@ public class CrossSegmentTypeTest {
 
 	@Test
 	public void testSwapBytesMixedSegments() {
-<<<<<<< HEAD
 		final int halfPageSize = pageSize / 2;
-=======
-		final int HALF_SIZE = pageSize / 2;
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 		MemorySegment[] segs1 = {
 				new HeapMemorySegment(new byte[pageSize]),
@@ -117,26 +113,16 @@ public class CrossSegmentTypeTest {
 		};
 
 		MemorySegment[] segs2 = {
-<<<<<<< HEAD
 				new HeapMemorySegment(new byte[halfPageSize]),
 				new HybridMemorySegment(new byte[halfPageSize]),
 				new HybridMemorySegment(ByteBuffer.allocateDirect(halfPageSize))
-=======
-				new HeapMemorySegment(new byte[HALF_SIZE]),
-				new HybridMemorySegment(new byte[HALF_SIZE]),
-				new HybridMemorySegment(ByteBuffer.allocateDirect(HALF_SIZE))
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		};
 
 		Random rnd = new Random();
 
 		for (MemorySegment seg1 : segs1) {
 			for (MemorySegment seg2 : segs2) {
-<<<<<<< HEAD
 				testSwap(seg1, seg2, rnd, halfPageSize);
-=======
-				testSwap(seg1, seg2, rnd, HALF_SIZE);
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			}
 		}
 	}

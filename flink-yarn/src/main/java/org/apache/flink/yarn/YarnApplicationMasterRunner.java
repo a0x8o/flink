@@ -354,11 +354,7 @@ public class YarnApplicationMasterRunner {
 				new AkkaJobManagerRetriever(actorSystem, webMonitorTimeout, 10, Time.milliseconds(50L)),
 				new AkkaQueryServiceRetriever(actorSystem, webMonitorTimeout),
 				webMonitorTimeout,
-<<<<<<< HEAD
 				new ScheduledExecutorServiceAdapter(futureExecutor),
-=======
-				futureExecutor,
->>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 				LOG);
 
 			// 2: the JobManager
