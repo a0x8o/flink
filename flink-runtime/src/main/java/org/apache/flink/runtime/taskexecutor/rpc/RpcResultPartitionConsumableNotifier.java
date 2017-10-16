@@ -29,7 +29,10 @@ import org.apache.flink.util.Preconditions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+<<<<<<< HEAD
 import java.util.UUID;
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 
@@ -37,25 +40,26 @@ public class RpcResultPartitionConsumableNotifier implements ResultPartitionCons
 
 	private static final Logger LOG = LoggerFactory.getLogger(RpcResultPartitionConsumableNotifier.class);
 
-	private final UUID jobMasterLeaderId;
 	private final JobMasterGateway jobMasterGateway;
 	private final Executor executor;
 	private final Time timeout;
 
 	public RpcResultPartitionConsumableNotifier(
-			UUID jobMasterLeaderId,
 			JobMasterGateway jobMasterGateway,
 			Executor executor,
 			Time timeout) {
-		this.jobMasterLeaderId = Preconditions.checkNotNull(jobMasterLeaderId);
 		this.jobMasterGateway = Preconditions.checkNotNull(jobMasterGateway);
 		this.executor = Preconditions.checkNotNull(executor);
 		this.timeout = Preconditions.checkNotNull(timeout);
 	}
 	@Override
 	public void notifyPartitionConsumable(JobID jobId, ResultPartitionID partitionId, final TaskActions taskActions) {
+<<<<<<< HEAD
 		CompletableFuture<Acknowledge> acknowledgeFuture = jobMasterGateway.scheduleOrUpdateConsumers(
 				jobMasterLeaderId, partitionId, timeout);
+=======
+		CompletableFuture<Acknowledge> acknowledgeFuture = jobMasterGateway.scheduleOrUpdateConsumers(partitionId, timeout);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 		acknowledgeFuture.whenCompleteAsync(
 			(Acknowledge ack, Throwable throwable) -> {

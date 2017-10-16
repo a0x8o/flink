@@ -18,12 +18,12 @@
 
 package org.apache.flink.table.catalog
 
-import java.util.{Collections => JCollections, Collection => JCollection, LinkedHashSet => JLinkedHashSet, Set => JSet}
+import java.util.{Collection => JCollection, Collections => JCollections, LinkedHashSet => JLinkedHashSet, Set => JSet}
 
 import org.apache.calcite.linq4j.tree.Expression
 import org.apache.calcite.schema._
 import org.apache.flink.table.api.{CatalogNotExistException, TableNotExistException}
-import org.slf4j.{Logger, LoggerFactory}
+import org.apache.flink.table.util.Logging
 
 import scala.collection.JavaConverters._
 
@@ -38,9 +38,7 @@ import scala.collection.JavaConverters._
   */
 class ExternalCatalogSchema(
     catalogIdentifier: String,
-    catalog: ExternalCatalog) extends Schema {
-
-  private val LOG: Logger = LoggerFactory.getLogger(this.getClass)
+    catalog: ExternalCatalog) extends Schema with Logging {
 
   /**
     * Looks up a sub-schema by the given sub-schema name in the external catalog.
@@ -97,6 +95,8 @@ class ExternalCatalogSchema(
   override def getTableNames: JSet[String] = JCollections.emptySet[String]
 
   override def contentsHaveChangedSince(lastCheck: Long, now: Long): Boolean = true
+
+  override def snapshot(l: Long): Schema = this
 
   /**
     * Registers sub-Schemas to current schema plus

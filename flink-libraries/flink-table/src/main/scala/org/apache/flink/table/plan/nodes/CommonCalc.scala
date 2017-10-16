@@ -42,8 +42,13 @@ trait CommonCalc {
     GeneratedFunction[T, Row] = {
 
     val projection = generator.generateResultExpression(
+<<<<<<< HEAD
       returnSchema.physicalTypeInfo,
       returnSchema.physicalFieldNames,
+=======
+      returnSchema.typeInfo,
+      returnSchema.fieldNames,
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
       calcProjection)
 
     // only projection
@@ -80,7 +85,7 @@ trait CommonCalc {
       ruleDescription,
       functionClass,
       body,
-      returnSchema.physicalTypeInfo)
+      returnSchema.typeInfo)
   }
 
   private[flink] def conditionToString(

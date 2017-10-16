@@ -475,8 +475,14 @@ are other constructor variants that allow providing the following:
  
 ### Kafka Producers and Fault Tolerance
 
-With Flink's checkpointing enabled, the Flink Kafka Producer can provide
-at-least-once delivery guarantees.
+#### Kafka 0.8
+
+Before 0.9 Kafka did not provide any mechanisms to guarantee at-least-once or exactly-once semantics.
+
+#### Kafka 0.9 and 0.10
+
+With Flink's checkpointing enabled, the `FlinkKafkaProducer09` and `FlinkKafkaProducer010`
+can provide at-least-once delivery guarantees.
 
 Besides enabling Flink's checkpointing, you should also configure the setter
 methods `setLogFailuresOnly(boolean)` and `setFlushOnCheckpoint(boolean)` appropriately,
@@ -498,6 +504,19 @@ we recommend setting the number of retries to a higher value.
 
 **Note**: There is currently no transactional producer for Kafka, so Flink can not guarantee exactly-once delivery
 into a Kafka topic.
+
+<div class="alert alert-warning">
+  <strong>Attention:</strong> Depending on your Kafka configuration, even after Kafka acknowledges
+  writes you can still experience data loss. In particular keep in mind the following Kafka settings:
+  <ul>
+    <li><tt>acks</tt></li>
+    <li><tt>log.flush.interval.messages</tt></li>
+    <li><tt>log.flush.interval.ms</tt></li>
+    <li><tt>log.flush.*</tt></li>
+  </ul>
+  Default values for the above options can easily lead to data loss. Please refer to Kafka documentation
+  for more explanation.
+</div>
 
 ## Using Kafka timestamps and Flink event time in Kafka 0.10
 
@@ -573,5 +592,5 @@ Once Kerberos-based Flink security is enabled, you can authenticate to Kafka wit
 When using standalone Flink deployment, you can also use `SASL_SSL`; please see how to configure the Kafka client for SSL [here](https://kafka.apache.org/documentation/#security_configclients). 
 - Set `sasl.kerberos.service.name` to `kafka` (default `kafka`): The value for this should match the `sasl.kerberos.service.name` used for Kafka broker configurations. A mismatch in service name between client and server configuration will cause the authentication to fail.
 
-For more information on Flink configuration for Kerberos security, please see [here]({{ site.baseurl}}/setup/config.html).
+For more information on Flink configuration for Kerberos security, please see [here]({{ site.baseurl}}/ops/config.html).
 You can also find [here]({{ site.baseurl}}/ops/security-kerberos.html) further details on how Flink internally setups Kerberos-based security.

@@ -73,6 +73,7 @@ $FLINK_DIR/bin/flink run -d build-target/examples/streaming/Kafka010Example.jar 
 # send some data to Kafka
 echo -e "hello\nwhats\nup" | $KAFKA_DIR/bin/kafka-console-producer.sh --broker-list localhost:9092 --topic test-input
 
+<<<<<<< HEAD
 # wait at most (roughly) 5 minutes until the results are there
 for i in {1..300}; do
   DATA_FROM_KAFKA=$($KAFKA_DIR/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic test-output --from-beginning --timeout-ms 0 2> /dev/null)
@@ -91,6 +92,9 @@ done
 
 # verify again to set the PASS variable
 DATA_FROM_KAFKA=$($KAFKA_DIR/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic test-output --from-beginning --timeout-ms 0 2> /dev/null)
+=======
+DATA_FROM_KAFKA=$($KAFKA_DIR/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic test-output --from-beginning --max-messages 3 2> /dev/null)
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 # make sure we have actual newlines in the string, not "\n"
 EXPECTED=$(printf "PREFIX:hello\nPREFIX:whats\nPREFIX:up")

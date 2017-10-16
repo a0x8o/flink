@@ -68,7 +68,11 @@ class OverWindowITCase extends StreamingWithStateTestBase {
       "    PARTITION BY a ORDER BY proctime ROWS BETWEEN 4 PRECEDING AND CURRENT ROW) " +
       "FROM MyTable"
 
+<<<<<<< HEAD
     val result = tEnv.sql(sqlQuery).toAppendStream[Row]
+=======
+    val result = tEnv.sqlQuery(sqlQuery).toAppendStream[Row]
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
     result.addSink(new StreamITCase.StringSink[Row])
     env.execute()
 
@@ -110,7 +114,11 @@ class OverWindowITCase extends StreamingWithStateTestBase {
       "  MIN(c) OVER (" +
       "    ORDER BY proctime ROWS BETWEEN 10 PRECEDING AND CURRENT ROW) " +
       "FROM MyTable"
+<<<<<<< HEAD
     val result = tEnv.sql(sqlQuery).toAppendStream[Row]
+=======
+    val result = tEnv.sqlQuery(sqlQuery).toAppendStream[Row]
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
     result.addSink(new StreamITCase.StringSink[Row])
     env.execute()
 
@@ -153,7 +161,11 @@ class OverWindowITCase extends StreamingWithStateTestBase {
       "sum(a) OVER (PARTITION BY c ORDER BY proctime RANGE UNBOUNDED preceding) " +
       "from T1"
 
+<<<<<<< HEAD
     val result = tEnv.sql(sqlQuery).toAppendStream[Row]
+=======
+    val result = tEnv.sqlQuery(sqlQuery).toAppendStream[Row]
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
     result.addSink(new StreamITCase.StringSink[Row])
     env.execute()
 
@@ -181,7 +193,11 @@ class OverWindowITCase extends StreamingWithStateTestBase {
       " OVER (PARTITION BY c ORDER BY proctime ROWS BETWEEN UNBOUNDED preceding AND CURRENT ROW) " +
       "as cnt1 from T1)"
 
+<<<<<<< HEAD
     val result = tEnv.sql(sqlQuery).toAppendStream[Row]
+=======
+    val result = tEnv.sqlQuery(sqlQuery).toAppendStream[Row]
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
     result.addSink(new StreamITCase.StringSink[Row])
     env.execute()
 
@@ -215,7 +231,11 @@ class OverWindowITCase extends StreamingWithStateTestBase {
       "sum(a) OVER (ORDER BY proctime RANGE UNBOUNDED preceding) " +
       "from T1"
 
+<<<<<<< HEAD
     val result = tEnv.sql(sqlQuery).toAppendStream[Row](queryConfig)
+=======
+    val result = tEnv.sqlQuery(sqlQuery).toAppendStream[Row](queryConfig)
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
     result.addSink(new StreamITCase.StringSink[Row])
     env.execute()
 
@@ -240,7 +260,11 @@ class OverWindowITCase extends StreamingWithStateTestBase {
       "count(a) OVER (ORDER BY proctime ROWS BETWEEN UNBOUNDED preceding AND CURRENT ROW) " +
       "from T1"
 
+<<<<<<< HEAD
     val result = tEnv.sql(sqlQuery).toAppendStream[Row]
+=======
+    val result = tEnv.sqlQuery(sqlQuery).toAppendStream[Row]
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
     result.addSink(new StreamITCase.StringSink[Row])
     env.execute()
 
@@ -302,7 +326,11 @@ class OverWindowITCase extends StreamingWithStateTestBase {
       "    BETWEEN INTERVAL '1' SECOND PRECEDING AND CURRENT ROW)" +
       " FROM T1"
 
+<<<<<<< HEAD
     val result = tEnv.sql(sqlQuery).toAppendStream[Row]
+=======
+    val result = tEnv.sqlQuery(sqlQuery).toAppendStream[Row]
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
     result.addSink(new StreamITCase.StringSink[Row])
     env.execute()
 
@@ -363,7 +391,11 @@ class OverWindowITCase extends StreamingWithStateTestBase {
       "    OVER (PARTITION BY c ORDER BY rowtime ROWS BETWEEN 2 PRECEDING AND CURRENT ROW) " +
       "FROM T1"
 
+<<<<<<< HEAD
     val result = tEnv.sql(sqlQuery).toAppendStream[Row]
+=======
+    val result = tEnv.sqlQuery(sqlQuery).toAppendStream[Row]
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
     result.addSink(new StreamITCase.StringSink[Row])
     env.execute()
 
@@ -431,7 +463,11 @@ class OverWindowITCase extends StreamingWithStateTestBase {
       "    OVER (ORDER BY rowtime RANGE BETWEEN INTERVAL '1' SECOND PRECEDING AND CURRENT ROW) " +
       " FROM T1"
 
+<<<<<<< HEAD
     val result = tEnv.sql(sqlQuery).toAppendStream[Row]
+=======
+    val result = tEnv.sqlQuery(sqlQuery).toAppendStream[Row]
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
     result.addSink(new StreamITCase.StringSink[Row])
     env.execute()
 
@@ -492,7 +528,11 @@ class OverWindowITCase extends StreamingWithStateTestBase {
       "  SUM(a) OVER (ORDER BY rowtime ROWS BETWEEN 2 preceding AND CURRENT ROW) " +
       "FROM T1"
 
+<<<<<<< HEAD
     val result = tEnv.sql(sqlQuery).toAppendStream[Row]
+=======
+    val result = tEnv.sqlQuery(sqlQuery).toAppendStream[Row]
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
     result.addSink(new StreamITCase.StringSink[Row])
     env.execute()
 
@@ -553,7 +593,11 @@ class OverWindowITCase extends StreamingWithStateTestBase {
 
     tEnv.registerTable("T1", t1)
 
+<<<<<<< HEAD
     val result = tEnv.sql(sqlQuery).toAppendStream[Row]
+=======
+    val result = tEnv.sqlQuery(sqlQuery).toAppendStream[Row]
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
     result.addSink(new StreamITCase.StringSink[Row])
     env.execute()
 
@@ -619,7 +663,11 @@ class OverWindowITCase extends StreamingWithStateTestBase {
 
     tEnv.registerTable("T1", t1)
 
+<<<<<<< HEAD
     val result = tEnv.sql(sqlQuery).toAppendStream[Row]
+=======
+    val result = tEnv.sqlQuery(sqlQuery).toAppendStream[Row]
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
     result.addSink(new StreamITCase.StringSink[Row])
     env.execute()
 
@@ -681,7 +729,11 @@ class OverWindowITCase extends StreamingWithStateTestBase {
 
     tEnv.registerTable("T1", t1)
 
+<<<<<<< HEAD
     val result = tEnv.sql(sqlQuery).toAppendStream[Row]
+=======
+    val result = tEnv.sqlQuery(sqlQuery).toAppendStream[Row]
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
     result.addSink(new StreamITCase.StringSink[Row])
     env.execute()
 
@@ -742,7 +794,11 @@ class OverWindowITCase extends StreamingWithStateTestBase {
 
     tEnv.registerTable("T1", t1)
 
+<<<<<<< HEAD
     val result = tEnv.sql(sqlQuery).toAppendStream[Row]
+=======
+    val result = tEnv.sqlQuery(sqlQuery).toAppendStream[Row]
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
     result.addSink(new StreamITCase.StringSink[Row])
     env.execute()
 
@@ -814,7 +870,11 @@ class OverWindowITCase extends StreamingWithStateTestBase {
 
     tEnv.registerTable("T1", t1)
 
+<<<<<<< HEAD
     val result = tEnv.sql(sqlQuery).toAppendStream[Row]
+=======
+    val result = tEnv.sqlQuery(sqlQuery).toAppendStream[Row]
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
     result.addSink(new StreamITCase.StringSink[Row])
     env.execute()
 

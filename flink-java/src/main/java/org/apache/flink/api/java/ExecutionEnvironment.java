@@ -33,7 +33,6 @@ import org.apache.flink.api.common.operators.OperatorInformation;
 import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.api.common.typeinfo.BasicTypeInfo;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
-import org.apache.flink.api.java.hadoop.mapred.HadoopInputFormat;
 import org.apache.flink.api.java.io.CollectionInputFormat;
 import org.apache.flink.api.java.io.CsvReader;
 import org.apache.flink.api.java.io.IteratorInputFormat;
@@ -61,8 +60,11 @@ import org.apache.flink.util.SplittableIterator;
 import org.apache.flink.util.Visitor;
 
 import com.esotericsoftware.kryo.Serializer;
+<<<<<<< HEAD
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapreduce.Job;
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -582,6 +584,7 @@ public abstract class ExecutionEnvironment {
 		return new DataSource<>(this, inputFormat, producedType, Utils.getCallLocationName());
 	}
 
+<<<<<<< HEAD
 	// ----------------------------------- Hadoop Input Format ---------------------------------------
 
 	/**
@@ -685,6 +688,8 @@ public abstract class ExecutionEnvironment {
 		return this.createInput(hadoopInputFormat);
 	}
 
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	// ----------------------------------- Collection ---------------------------------------
 
 	/**

@@ -61,7 +61,11 @@ public class JavaSqlITCase extends TableProgramsCollectionTestBase {
 		String sqlQuery = "VALUES (1, 'Test', TRUE, DATE '1944-02-24', 12.4444444444444445)," +
 			"(2, 'Hello', TRUE, DATE '1944-02-24', 12.666666665)," +
 			"(3, 'World', FALSE, DATE '1944-12-24', 12.54444445)";
+<<<<<<< HEAD
 		Table result = tableEnv.sql(sqlQuery);
+=======
+		Table result = tableEnv.sqlQuery(sqlQuery);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 		DataSet<Row> resultSet = tableEnv.toDataSet(result, Row.class);
 
@@ -83,7 +87,11 @@ public class JavaSqlITCase extends TableProgramsCollectionTestBase {
 		tableEnv.registerTable("T", in);
 
 		String sqlQuery = "SELECT a, c FROM T";
+<<<<<<< HEAD
 		Table result = tableEnv.sql(sqlQuery);
+=======
+		Table result = tableEnv.sqlQuery(sqlQuery);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 		DataSet<Row> resultSet = tableEnv.toDataSet(result, Row.class);
 		List<Row> results = resultSet.collect();
@@ -106,7 +114,11 @@ public class JavaSqlITCase extends TableProgramsCollectionTestBase {
 		tableEnv.registerDataSet("DataSetTable", ds, "x, y, z");
 
 		String sqlQuery = "SELECT x FROM DataSetTable WHERE z LIKE '%Hello%'";
+<<<<<<< HEAD
 		Table result = tableEnv.sql(sqlQuery);
+=======
+		Table result = tableEnv.sqlQuery(sqlQuery);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 		DataSet<Row> resultSet = tableEnv.toDataSet(result, Row.class);
 		List<Row> results = resultSet.collect();
@@ -123,7 +135,11 @@ public class JavaSqlITCase extends TableProgramsCollectionTestBase {
 		tableEnv.registerDataSet("AggTable", ds, "x, y, z");
 
 		String sqlQuery = "SELECT sum(x), min(x), max(x), count(y), avg(x) FROM AggTable";
+<<<<<<< HEAD
 		Table result = tableEnv.sql(sqlQuery);
+=======
+		Table result = tableEnv.sqlQuery(sqlQuery);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 		DataSet<Row> resultSet = tableEnv.toDataSet(result, Row.class);
 		List<Row> results = resultSet.collect();
@@ -143,7 +159,11 @@ public class JavaSqlITCase extends TableProgramsCollectionTestBase {
 		tableEnv.registerDataSet("t2", ds2, "d, e, f, g, h");
 
 		String sqlQuery = "SELECT c, g FROM t1, t2 WHERE b = e";
+<<<<<<< HEAD
 		Table result = tableEnv.sql(sqlQuery);
+=======
+		Table result = tableEnv.sqlQuery(sqlQuery);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 		DataSet<Row> resultSet = tableEnv.toDataSet(result, Row.class);
 		List<Row> results = resultSet.collect();
@@ -168,7 +188,11 @@ public class JavaSqlITCase extends TableProgramsCollectionTestBase {
 		tableEnv.registerDataSet("t1", ds1, "a, b");
 
 		String sqlQuery = "SELECT b['foo'] FROM t1";
+<<<<<<< HEAD
 		Table result = tableEnv.sql(sqlQuery);
+=======
+		Table result = tableEnv.sqlQuery(sqlQuery);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 		DataSet<Row> resultSet = tableEnv.toDataSet(result, Row.class);
 		List<Row> results = resultSet.collect();

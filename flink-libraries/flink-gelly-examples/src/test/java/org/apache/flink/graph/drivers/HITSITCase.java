@@ -59,4 +59,12 @@ public class HITSITCase extends DriverBaseITCase {
 
 		expectedCount(parameters(8, "print"), 233);
 	}
+<<<<<<< HEAD
+=======
+
+	@Test
+	public void testParallelism() throws Exception {
+		TestUtils.verifyParallelism(parameters(8, "print"));
+	}
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 }

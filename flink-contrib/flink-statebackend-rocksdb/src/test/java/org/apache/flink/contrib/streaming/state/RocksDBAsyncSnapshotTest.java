@@ -26,14 +26,14 @@ import org.apache.flink.api.common.typeutils.base.StringSerializer;
 import org.apache.flink.api.common.typeutils.base.VoidSerializer;
 import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.configuration.ConfigConstants;
-import org.apache.flink.core.fs.FSDataInputStream;
-import org.apache.flink.core.fs.FSDataOutputStream;
 import org.apache.flink.core.testutils.OneShotLatch;
 import org.apache.flink.runtime.checkpoint.CheckpointMetaData;
 import org.apache.flink.runtime.checkpoint.CheckpointMetrics;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
-import org.apache.flink.runtime.checkpoint.SubtaskState;
+import org.apache.flink.runtime.checkpoint.OperatorSubtaskState;
+import org.apache.flink.runtime.checkpoint.TaskStateSnapshot;
 import org.apache.flink.runtime.execution.Environment;
+import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.operators.testutils.DummyEnvironment;
 import org.apache.flink.runtime.operators.testutils.MockInputSplitProvider;
 import org.apache.flink.runtime.state.AbstractKeyedStateBackend;
@@ -48,7 +48,6 @@ import org.apache.flink.runtime.state.memory.MemoryStateBackend;
 import org.apache.flink.streaming.api.graph.StreamConfig;
 import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
-import org.apache.flink.streaming.api.operators.StreamCheckpointedOperator;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.runtime.tasks.AsynchronousException;
 import org.apache.flink.streaming.runtime.tasks.OneInputStreamTask;
@@ -57,23 +56,18 @@ import org.apache.flink.streaming.runtime.tasks.StreamMockEnvironment;
 import org.apache.flink.streaming.runtime.tasks.StreamTask;
 import org.apache.flink.util.FutureUtil;
 
-import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.FileSystem;
-import org.apache.hadoop.fs.LocalFileSystem;
 import org.junit.Assert;
 import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.powermock.api.mockito.PowerMockito;
 import org.powermock.core.classloader.annotations.PowerMockIgnore;
-import org.powermock.core.classloader.annotations.PrepareForTest;
 import org.powermock.modules.junit4.PowerMockRunner;
 
 import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.Field;
-import java.net.URI;
 import java.util.Arrays;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
@@ -81,7 +75,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RunnableFuture;
 import java.util.concurrent.TimeUnit;
 
-import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.anyInt;
@@ -96,7 +90,6 @@ import static org.mockito.Mockito.verify;
  * Tests for asynchronous RocksDB Key/Value state checkpoints.
  */
 @RunWith(PowerMockRunner.class)
-@PrepareForTest({FileSystem.class})
 @PowerMockIgnore({"javax.management.*", "com.sun.jndi.*", "org.apache.log4j.*"})
 @SuppressWarnings("serial")
 public class RocksDBAsyncSnapshotTest {
@@ -110,10 +103,6 @@ public class RocksDBAsyncSnapshotTest {
 	 */
 	@Test
 	public void testFullyAsyncSnapshot() throws Exception {
-
-		LocalFileSystem localFS = new LocalFileSystem();
-		localFS.initialize(new URI("file:///"), new Configuration());
-		PowerMockito.stub(PowerMockito.method(FileSystem.class, "get", URI.class, Configuration.class)).toReturn(localFS);
 
 		final OneInputStreamTask<String, String> task = new OneInputStreamTask<>();
 
@@ -137,6 +126,7 @@ public class RocksDBAsyncSnapshotTest {
 		streamConfig.setStateBackend(backend);
 
 		streamConfig.setStreamOperator(new AsyncCheckpointOperator());
+		streamConfig.setOperatorID(new OperatorID());
 
 		final OneShotLatch delayCheckpointLatch = new OneShotLatch();
 		final OneShotLatch ensureCheckpointLatch = new OneShotLatch();
@@ -152,7 +142,7 @@ public class RocksDBAsyncSnapshotTest {
 			public void acknowledgeCheckpoint(
 					long checkpointId,
 					CheckpointMetrics checkpointMetrics,
-					SubtaskState checkpointStateHandles) {
+					TaskStateSnapshot checkpointStateHandles) {
 
 				super.acknowledgeCheckpoint(checkpointId, checkpointMetrics);
 
@@ -164,8 +154,16 @@ public class RocksDBAsyncSnapshotTest {
 					throw new RuntimeException(e);
 				}
 
+				boolean hasManagedKeyedState = false;
+				for (Map.Entry<OperatorID, OperatorSubtaskState> entry : checkpointStateHandles.getSubtaskStateMappings()) {
+					OperatorSubtaskState state = entry.getValue();
+					if (state != null) {
+						hasManagedKeyedState |= state.getManagedKeyedState() != null;
+					}
+				}
+
 				// should be one k/v state
-				assertNotNull(checkpointStateHandles.getManagedKeyedState());
+				assertTrue(hasManagedKeyedState);
 
 				// we now know that the checkpoint went through
 				ensureCheckpointLatch.trigger();
@@ -213,10 +211,6 @@ public class RocksDBAsyncSnapshotTest {
 	@Test
 	@Ignore
 	public void testCancelFullyAsyncCheckpoints() throws Exception {
-		LocalFileSystem localFS = new LocalFileSystem();
-		localFS.initialize(new URI("file:///"), new Configuration());
-		PowerMockito.stub(PowerMockito.method(FileSystem.class, "get", URI.class, Configuration.class)).toReturn(localFS);
-
 		final OneInputStreamTask<String, String> task = new OneInputStreamTask<>();
 
 		final OneInputStreamTaskTestHarness<String, String> testHarness = new OneInputStreamTaskTestHarness<>(task, BasicTypeInfo.STRING_TYPE_INFO, BasicTypeInfo.STRING_TYPE_INFO);
@@ -241,6 +235,7 @@ public class RocksDBAsyncSnapshotTest {
 		streamConfig.setStateBackend(backend);
 
 		streamConfig.setStreamOperator(new AsyncCheckpointOperator());
+		streamConfig.setOperatorID(new OperatorID());
 
 		StreamMockEnvironment mockEnv = new StreamMockEnvironment(
 				testHarness.jobConfig,
@@ -438,7 +433,7 @@ public class RocksDBAsyncSnapshotTest {
 
 	private static class AsyncCheckpointOperator
 		extends AbstractStreamOperator<String>
-		implements OneInputStreamOperator<String, String>, StreamCheckpointedOperator {
+		implements OneInputStreamOperator<String, String> {
 
 		@Override
 		public void open() throws Exception {
@@ -464,17 +459,5 @@ public class RocksDBAsyncSnapshotTest {
 
 			state.update(element.getValue());
 		}
-
-		@Override
-		public void snapshotState(
-				FSDataOutputStream out, long checkpointId, long timestamp) throws Exception {
-			// do nothing so that we don't block
-		}
-
-		@Override
-		public void restoreState(FSDataInputStream in) throws Exception {
-			// do nothing so that we don't block
-		}
-
 	}
 }

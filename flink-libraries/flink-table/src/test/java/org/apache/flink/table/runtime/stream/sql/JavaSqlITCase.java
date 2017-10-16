@@ -68,7 +68,11 @@ public class JavaSqlITCase extends StreamingMultipleProgramsTestBase {
 		tableEnv.registerTable("MyTableRow", in);
 
 		String sqlQuery = "SELECT a,c FROM MyTableRow";
+<<<<<<< HEAD
 		Table result = tableEnv.sql(sqlQuery);
+=======
+		Table result = tableEnv.sqlQuery(sqlQuery);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 		DataStream<Row> resultSet = tableEnv.toAppendStream(result, Row.class);
 		resultSet.addSink(new StreamITCase.StringSink<Row>());
@@ -93,7 +97,11 @@ public class JavaSqlITCase extends StreamingMultipleProgramsTestBase {
 		tableEnv.registerTable("MyTable", in);
 
 		String sqlQuery = "SELECT * FROM MyTable";
+<<<<<<< HEAD
 		Table result = tableEnv.sql(sqlQuery);
+=======
+		Table result = tableEnv.sqlQuery(sqlQuery);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 		DataStream<Row> resultSet = tableEnv.toAppendStream(result, Row.class);
 		resultSet.addSink(new StreamITCase.StringSink<Row>());
@@ -117,7 +125,11 @@ public class JavaSqlITCase extends StreamingMultipleProgramsTestBase {
 		tableEnv.registerDataStream("MyTable", ds, "a, b, c, d, e");
 
 		String sqlQuery = "SELECT a, b, e FROM MyTable WHERE c < 4";
+<<<<<<< HEAD
 		Table result = tableEnv.sql(sqlQuery);
+=======
+		Table result = tableEnv.sqlQuery(sqlQuery);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 		DataStream<Row> resultSet = tableEnv.toAppendStream(result, Row.class);
 		resultSet.addSink(new StreamITCase.StringSink<Row>());
@@ -148,7 +160,11 @@ public class JavaSqlITCase extends StreamingMultipleProgramsTestBase {
 		String sqlQuery = "SELECT * FROM T1 " +
 							"UNION ALL " +
 							"(SELECT a, b, c FROM T2 WHERE a	< 3)";
+<<<<<<< HEAD
 		Table result = tableEnv.sql(sqlQuery);
+=======
+		Table result = tableEnv.sqlQuery(sqlQuery);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 		DataStream<Row> resultSet = tableEnv.toAppendStream(result, Row.class);
 		resultSet.addSink(new StreamITCase.StringSink<Row>());

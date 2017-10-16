@@ -67,6 +67,7 @@ class ScalarFunctionsValidationTest extends ScalarTypesTestBase {
   // Temporal functions
   // ----------------------------------------------------------------------------------------------
 
+<<<<<<< HEAD
   @Test(expected = classOf[ValidationException])
   def testTimestampAddWithDate(): Unit ={
     testSqlApi("TIMESTAMPADD(DAY, 1, date '2016-06-15')", "2016-06-16")
@@ -74,11 +75,19 @@ class ScalarFunctionsValidationTest extends ScalarTypesTestBase {
 
   @Test(expected = classOf[SqlParserException])
   def testTimestampAddWithrongTimestampInterval(): Unit ={
+=======
+  @Test(expected = classOf[SqlParserException])
+  def testTimestampAddWithWrongTimestampInterval(): Unit ={
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
     testSqlApi("TIMESTAMPADD(XXX, 1, timestamp '2016-02-24'))", "2016-06-16")
   }
 
   @Test(expected = classOf[SqlParserException])
+<<<<<<< HEAD
   def testTimestampAddWithrongTimestampFormat(): Unit ={
+=======
+  def testTimestampAddWithWrongTimestampFormat(): Unit ={
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
     testSqlApi("TIMESTAMPADD(YEAR, 1, timestamp '2016-02-24'))", "2016-06-16")
   }
 

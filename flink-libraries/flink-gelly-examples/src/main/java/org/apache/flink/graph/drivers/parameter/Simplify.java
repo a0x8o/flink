@@ -109,12 +109,12 @@ implements Parameter<Ordering> {
 	 * @return output graph
 	 * @throws Exception on error
 	 */
-	public <T extends Comparable<T>> Graph<T, NullValue, NullValue> simplify(Graph<T, NullValue, NullValue> graph)
+	public <T extends Comparable<T>> Graph<T, NullValue, NullValue> simplify(Graph<T, NullValue, NullValue> graph, int parallelism)
 			throws Exception {
-
 		switch (value) {
 			case DIRECTED:
 				graph = graph
+<<<<<<< HEAD
 					.run(new org.apache.flink.graph.asm.simple.directed.Simplify<>());
 				break;
 			case UNDIRECTED:
@@ -124,6 +124,20 @@ implements Parameter<Ordering> {
 			case UNDIRECTED_CLIP_AND_FLIP:
 				graph = graph
 					.run(new org.apache.flink.graph.asm.simple.undirected.Simplify<>(true));
+=======
+					.run(new org.apache.flink.graph.asm.simple.directed.Simplify<T, NullValue, NullValue>()
+						.setParallelism(parallelism));
+				break;
+			case UNDIRECTED:
+				graph = graph
+					.run(new org.apache.flink.graph.asm.simple.undirected.Simplify<T, NullValue, NullValue>(false)
+						.setParallelism(parallelism));
+				break;
+			case UNDIRECTED_CLIP_AND_FLIP:
+				graph = graph
+					.run(new org.apache.flink.graph.asm.simple.undirected.Simplify<T, NullValue, NullValue>(true)
+						.setParallelism(parallelism));
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 				break;
 		}
 

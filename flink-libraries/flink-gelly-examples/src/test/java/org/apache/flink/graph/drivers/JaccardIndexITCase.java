@@ -59,6 +59,7 @@ public class JaccardIndexITCase extends CopyableValueDriverBaseITCase {
 	@Test
 	public void testHashWithRMatGraph() throws Exception {
 		expectedChecksum(parameters(8, "hash"), 39276, 0x00004caba2e663d5L);
+<<<<<<< HEAD
 	}
 
 	@Test
@@ -67,5 +68,23 @@ public class JaccardIndexITCase extends CopyableValueDriverBaseITCase {
 		Assume.assumeFalse(idType.equals("char") || idType.equals("nativeChar"));
 
 		expectedOutputChecksum(parameters(8, "print"), new Checksum(39276, 0x00004c5a726220c0L));
+=======
+	}
+
+	@Test
+	public void testPrintWithRMatGraph() throws Exception {
+		// skip 'char' since it is not printed as a number
+		Assume.assumeFalse(idType.equals("char") || idType.equals("nativeChar"));
+
+		expectedOutputChecksum(parameters(8, "print"), new Checksum(39276, 0x00004c5a726220c0L));
+	}
+
+	@Test
+	public void testParallelism() throws Exception {
+		TestUtils.verifyParallelism(parameters(8, "print"),
+			"FlatMap \\(Mirror results\\)",
+			"GroupReduce \\(Compute scores\\)",
+			"GroupReduce \\(Generate group pairs\\)");
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	}
 }

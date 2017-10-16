@@ -21,6 +21,7 @@ package org.apache.flink.runtime.rpc;
 import org.apache.flink.runtime.concurrent.ScheduledExecutor;
 import org.apache.flink.runtime.rpc.exceptions.RpcConnectionException;
 
+import java.io.Serializable;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
@@ -61,25 +62,62 @@ public interface RpcService {
 	 * @return Future containing the rpc gateway or an {@link RpcConnectionException} if the
 	 * connection attempt failed
 	 */
+<<<<<<< HEAD
 	<C extends RpcGateway> CompletableFuture<C> connect(String address, Class<C> clazz);
+=======
+	<C extends RpcGateway> CompletableFuture<C> connect(
+		String address,
+		Class<C> clazz);
+
+	/**
+	 * Connect to ta remote fenced rpc server under the provided address. Returns a fenced rpc gateway
+	 * which can be used to communicate with the rpc server. If the connection failed, then the
+	 * returned future is failed with a {@link RpcConnectionException}.
+	 *
+	 * @param address Address of the remote rpc server
+	 * @param fencingToken Fencing token to be used when communicating with the server
+	 * @param clazz Class of the rpc gateway to return
+	 * @param <F> Type of the fencing token
+	 * @param <C> Type of the rpc gateway to return
+	 * @return Future containing the fenced rpc gateway or an {@link RpcConnectionException} if the
+	 * connection attempt failed
+	 */
+	<F extends Serializable, C extends FencedRpcGateway<F>> CompletableFuture<C> connect(
+		String address,
+		F fencingToken,
+		Class<C> clazz);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 	/**
 	 * Start a rpc server which forwards the remote procedure calls to the provided rpc endpoint.
 	 *
-	 * @param rpcEndpoint Rpc protocl to dispath the rpcs to
-	 * @param <S> Type of the rpc endpoint
-	 * @param <C> Type of the self rpc gateway associated with the rpc server
+	 * @param rpcEndpoint Rpc protocol to dispatch the rpcs to
+	 * @param <C> Type of the rpc endpoint
 	 * @return Self gateway to dispatch remote procedure calls to oneself
 	 */
-	<C extends RpcGateway, S extends RpcEndpoint<C>> C startServer(S rpcEndpoint);
+	<C extends RpcEndpoint & RpcGateway> RpcServer startServer(C rpcEndpoint);
+
+
+	/**
+	 * Fence the given RpcServer with the given fencing token.
+	 *
+	 * <p>Fencing the RpcServer means that we fix the fencing token to the provided value.
+	 * All RPCs will then be enriched with this fencing token. This expects that the receiving
+	 * RPC endpoint extends {@link FencedRpcEndpoint}.
+	 *
+	 * @param rpcServer to fence with the given fencing token
+	 * @param fencingToken to fence the RpcServer with
+	 * @param <F> type of the fencing token
+	 * @return Fenced RpcServer
+	 */
+	<F extends Serializable> RpcServer fenceRpcServer(RpcServer rpcServer, F fencingToken);
 
 	/**
 	 * Stop the underlying rpc server of the provided self gateway.
 	 *
 	 * @param selfGateway Self gateway describing the underlying rpc server
-	 * @param <C> Type of the rpc gateway
 	 */
-	<C extends RpcGateway> void stopServer(C selfGateway);
+	void stopServer(RpcServer selfGateway);
 
 	/**
 	 * Stop the rpc service shutting down all started rpc servers.

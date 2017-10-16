@@ -33,6 +33,7 @@ import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.executiongraph.failover.FailoverRegion;
 import org.apache.flink.runtime.executiongraph.restart.NoRestartStrategy;
 import org.apache.flink.runtime.executiongraph.restart.RestartStrategy;
+import org.apache.flink.runtime.executiongraph.utils.SimpleAckingTaskManagerGateway;
 import org.apache.flink.runtime.executiongraph.utils.SimpleSlotProvider;
 import org.apache.flink.runtime.instance.BaseTestingActorGateway;
 import org.apache.flink.runtime.instance.HardwareDescription;
@@ -190,6 +191,7 @@ public class ExecutionGraphTestUtils {
 	}
 
 	/**
+<<<<<<< HEAD
 	 * Turns a newly scheduled execution graph into a state where all vertices run.
 	 * This waits until all executions have reached state 'DEPLOYING' and then switches them to running.
 	 */
@@ -212,6 +214,19 @@ public class ExecutionGraphTestUtils {
 			Thread.currentThread().interrupt();
 		}
 
+=======
+	 * Checks that all execution are in state DEPLOYING and then switches them
+	 * to state RUNNING
+	 */
+	public static void switchToRunning(ExecutionGraph eg) {
+		// check that all execution are in state DEPLOYING
+		for (ExecutionVertex ev : eg.getAllExecutionVertices()) {
+			final Execution exec = ev.getCurrentExecutionAttempt();
+			assert(exec.getState() == ExecutionState.DEPLOYING);
+		}
+
+		// switch executions to RUNNING
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		for (ExecutionVertex ev : eg.getAllExecutionVertices()) {
 			final Execution exec = ev.getCurrentExecutionAttempt();
 			exec.switchToRunning();
@@ -285,7 +300,7 @@ public class ExecutionGraphTestUtils {
 	public static ExecutionGraph createSimpleTestGraph(RestartStrategy restartStrategy) throws Exception {
 		JobVertex vertex = createNoOpVertex(10);
 
-		return createSimpleTestGraph(new JobID(), restartStrategy, vertex);
+		return createSimpleTestGraph(new JobID(), new SimpleAckingTaskManagerGateway(), restartStrategy, vertex);
 	}
 
 	/**
@@ -294,7 +309,7 @@ public class ExecutionGraphTestUtils {
 	 * <p>The execution graph uses {@link NoRestartStrategy} as the restart strategy.
 	 */
 	public static ExecutionGraph createSimpleTestGraph(JobID jid, JobVertex... vertices) throws Exception {
-		return createSimpleTestGraph(jid, new NoRestartStrategy(), vertices);
+		return createSimpleTestGraph(jid, new SimpleAckingTaskManagerGateway(), new NoRestartStrategy(), vertices);
 	}
 
 	/**
@@ -302,6 +317,7 @@ public class ExecutionGraphTestUtils {
 	 */
 	public static ExecutionGraph createSimpleTestGraph(
 			JobID jid,
+			TaskManagerGateway taskManagerGateway,
 			RestartStrategy restartStrategy,
 			JobVertex... vertices) throws Exception {
 
@@ -310,7 +326,7 @@ public class ExecutionGraphTestUtils {
 			numSlotsNeeded += vertex.getParallelism();
 		}
 
-		SlotProvider slotProvider = new SimpleSlotProvider(jid, numSlotsNeeded);
+		SlotProvider slotProvider = new SimpleSlotProvider(jid, numSlotsNeeded, taskManagerGateway);
 
 		return createSimpleTestGraph(jid, slotProvider, restartStrategy, vertices);
 	}

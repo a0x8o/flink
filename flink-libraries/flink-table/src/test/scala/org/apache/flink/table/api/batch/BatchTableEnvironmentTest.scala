@@ -31,7 +31,11 @@ class BatchTableEnvironmentTest extends TableTestBase {
     val util = batchTestUtil()
     val table = util.addTable[(Long, Int, String)]("tableName", 'a, 'b, 'c)
 
+<<<<<<< HEAD
     val sqlTable = util.tableEnv.sql(s"SELECT a, b, c FROM $table WHERE b > 12")
+=======
+    val sqlTable = util.tableEnv.sqlQuery(s"SELECT a, b, c FROM $table WHERE b > 12")
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
     val expected = unaryNode(
       "DataSetCalc",
@@ -43,7 +47,11 @@ class BatchTableEnvironmentTest extends TableTestBase {
 
     val table2 = util.addTable[(Long, Int, String)]('d, 'e, 'f)
 
+<<<<<<< HEAD
     val sqlTable2 = util.tableEnv.sql(s"SELECT d, e, f FROM $table, $table2 WHERE c = d")
+=======
+    val sqlTable2 = util.tableEnv.sqlQuery(s"SELECT d, e, f FROM $table, $table2 WHERE c = d")
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
     val join = unaryNode(
       "DataSetJoin",

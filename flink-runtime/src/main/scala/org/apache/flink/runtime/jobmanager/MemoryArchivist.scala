@@ -189,7 +189,11 @@ class MemoryArchivist(
           v => WebMonitorUtils.createDetailsForJob(v)
         }.toArray[JobDetails]
 
+<<<<<<< HEAD
         theSender ! decorateMessage(new MultipleJobsDetails(null, details))
+=======
+        theSender ! decorateMessage(new MultipleJobsDetails(null, util.Arrays.asList(details: _*)))
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
     }
   }
 

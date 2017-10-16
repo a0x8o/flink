@@ -22,16 +22,20 @@ import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.rpc.RpcService;
 import org.apache.flink.runtime.rpc.TestingRpcService;
+import org.apache.flink.runtime.testingUtils.TestingUtils;
 import org.apache.flink.util.TestLogger;
 
 import org.junit.Test;
+<<<<<<< HEAD
+=======
+import org.mockito.invocation.InvocationOnMock;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.slf4j.LoggerFactory;
 
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
@@ -115,7 +119,7 @@ public class RetryingRegistrationTest extends TestLogger {
 		final String testId = "laissez les bon temps roulez";
 		final UUID leaderId = UUID.randomUUID();
 
-		ExecutorService executor = Executors.newCachedThreadPool();
+		ExecutorService executor = TestingUtils.defaultExecutor();
 		TestRegistrationGateway testGateway = new TestRegistrationGateway(new TestRegistrationSuccess(testId));
 
 		try {
@@ -126,12 +130,29 @@ public class RetryingRegistrationTest extends TestLogger {
 					CompletableFuture.completedFuture(testGateway)                         // second connection attempt succeeds
 			);
 			when(rpc.getExecutor()).thenReturn(executor);
+			when(rpc.scheduleRunnable(any(Runnable.class), anyLong(), any(TimeUnit.class))).thenAnswer(
+				(InvocationOnMock invocation) -> {
+					final Runnable runnable = invocation.getArgumentAt(0, Runnable.class);
+					final long delay = invocation.getArgumentAt(1, Long.class);
+					final TimeUnit timeUnit = invocation.getArgumentAt(2, TimeUnit.class);
+					return TestingUtils.defaultScheduledExecutor().schedule(runnable, delay, timeUnit);
+				});
 
 			TestRetryingRegistration registration = new TestRetryingRegistration(rpc, "foobar address", leaderId);
+
+			long start = System.currentTimeMillis();
+
 			registration.startRegistration();
 
 			Tuple2<TestRegistrationGateway, TestRegistrationSuccess> success =
 				registration.getFuture().get(10L, TimeUnit.SECONDS);
+
+			// measure the duration of the registration --> should be longer than the error delay
+			long duration = System.currentTimeMillis() - start;
+
+			assertTrue(
+				"The registration should have failed the first time. Thus the duration should be longer than at least a single error delay.",
+				duration > TestRetryingRegistration.DELAY_ON_ERROR);
 
 			// validate correct invocation and result
 			assertEquals(testId, success.f1.getCorrelationId());
@@ -139,7 +160,6 @@ public class RetryingRegistrationTest extends TestLogger {
 		}
 		finally {
 			testGateway.stop();
-			executor.shutdown();
 		}
 	}
 
@@ -320,7 +340,11 @@ public class RetryingRegistrationTest extends TestLogger {
 		}
 	}
 
+<<<<<<< HEAD
 	static class TestRetryingRegistration extends RetryingRegistration<TestRegistrationGateway, TestRegistrationSuccess> {
+=======
+	static class TestRetryingRegistration extends RetryingRegistration<UUID, TestRegistrationGateway, TestRegistrationSuccess> {
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 		// we use shorter timeouts here to speed up the tests
 		static final long INITIAL_TIMEOUT = 20;

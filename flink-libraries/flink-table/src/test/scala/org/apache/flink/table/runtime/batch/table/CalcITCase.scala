@@ -446,7 +446,11 @@ class CalcITCase(
 
     val sqlQuery = "SELECT c FROM t1 where RichFunc2(c)='ABC#Hello'"
 
+<<<<<<< HEAD
     val result = tEnv.sql(sqlQuery)
+=======
+    val result = tEnv.sqlQuery(sqlQuery)
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
     val expected = "Hello"
     val results = result.toDataSet[Row].collect()
@@ -467,7 +471,11 @@ class CalcITCase(
 
     val sqlQuery = "SELECT c FROM t1 where RichFunc3(c)=true"
 
+<<<<<<< HEAD
     val result = tEnv.sql(sqlQuery)
+=======
+    val result = tEnv.sqlQuery(sqlQuery)
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
     val expected = "Hello"
     val results = result.toDataSet[Row].collect()
@@ -488,7 +496,11 @@ class CalcITCase(
     val sqlQuery = "SELECT c FROM t1 where " +
       "RichFunc2(c)='Abc#Hello' or RichFunc1(a)=3 and b=2"
 
+<<<<<<< HEAD
     val result = tEnv.sql(sqlQuery)
+=======
+    val result = tEnv.sqlQuery(sqlQuery)
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
     val expected = "Hello\nHello world"
     val results = result.toDataSet[Row].collect()

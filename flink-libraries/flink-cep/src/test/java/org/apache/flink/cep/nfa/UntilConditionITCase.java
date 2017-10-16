@@ -25,7 +25,12 @@ import org.apache.flink.cep.pattern.conditions.IterativeCondition;
 import org.apache.flink.cep.pattern.conditions.SimpleCondition;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 
+<<<<<<< HEAD
 import com.google.common.collect.Lists;
+=======
+import org.apache.flink.shaded.guava18.com.google.common.collect.Lists;
+
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.junit.Test;
 
 import java.util.ArrayList;

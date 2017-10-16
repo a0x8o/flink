@@ -24,15 +24,20 @@ import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.util.Preconditions;
 
+<<<<<<< HEAD
 import org.apache.commons.cli.Option;
 import org.apache.commons.lang3.math.NumberUtils;
 import org.apache.hadoop.util.GenericOptionsParser;
+=======
+import org.apache.commons.lang3.math.NumberUtils;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.Serializable;
 import java.util.Arrays;
@@ -155,17 +160,53 @@ public class ParameterTool extends ExecutionConfig.GlobalJobParameters implement
 	 */
 	public static ParameterTool fromPropertiesFile(String path) throws IOException {
 		File propertiesFile = new File(path);
+<<<<<<< HEAD
 		if (!propertiesFile.exists()) {
 			throw new FileNotFoundException("Properties file " + propertiesFile.getAbsolutePath() + " does not exist");
+=======
+		return fromPropertiesFile(propertiesFile);
+	}
+
+	/**
+	 * Returns {@link ParameterTool} for the given {@link Properties} file.
+	 *
+	 * @param file File object to the properties file
+	 * @return A {@link ParameterTool}
+	 * @throws IOException If the file does not exist
+	 * @see Properties
+	 */
+	public static ParameterTool fromPropertiesFile(File file) throws IOException {
+		if (!file.exists()) {
+			throw new FileNotFoundException("Properties file " + file.getAbsolutePath() + " does not exist");
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		}
-		Properties props = new Properties();
-		try (FileInputStream fis = new FileInputStream(propertiesFile)) {
-			props.load(fis);
+		try (FileInputStream fis = new FileInputStream(file)) {
+			return fromPropertiesFile(fis);
 		}
+<<<<<<< HEAD
 		return fromMap((Map) props);
 	}
 
 	/**
+=======
+	}
+
+	/**
+	 * Returns {@link ParameterTool} for the given InputStream from {@link Properties} file.
+	 *
+	 * @param inputStream InputStream from the properties file
+	 * @return A {@link ParameterTool}
+	 * @throws IOException If the file does not exist
+	 * @see Properties
+	 */
+	public static ParameterTool fromPropertiesFile(InputStream inputStream) throws IOException {
+		Properties props = new Properties();
+		props.load(inputStream);
+		return fromMap((Map) props);
+	}
+
+	/**
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	 * Returns {@link ParameterTool} for the given map.
 	 *
 	 * @param map A map of arguments. Both Key and Value have to be Strings
@@ -187,6 +228,7 @@ public class ParameterTool extends ExecutionConfig.GlobalJobParameters implement
 		return fromMap((Map) System.getProperties());
 	}
 
+<<<<<<< HEAD
 	/**
 	 * Returns {@link ParameterTool} for the arguments parsed by {@link GenericOptionsParser}.
 	 *
@@ -209,6 +251,8 @@ public class ParameterTool extends ExecutionConfig.GlobalJobParameters implement
 		return fromMap(map);
 	}
 
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	// ------------------ ParameterUtil  ------------------------
 	protected final Map<String, String> data;
 	protected final Map<String, String> defaultData;

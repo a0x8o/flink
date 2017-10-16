@@ -18,7 +18,10 @@
 
 package org.apache.flink.streaming.api.operators.async.queue;
 
+<<<<<<< HEAD
 import org.apache.flink.runtime.concurrent.FlinkFutureException;
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.streaming.api.operators.async.OperatorActions;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
@@ -34,6 +37,10 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+<<<<<<< HEAD
+=======
+import java.util.concurrent.CompletionException;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -98,7 +105,11 @@ public class OrderedStreamElementQueueTest extends TestLogger {
 					try {
 						result.add(queue.poll());
 					} catch (InterruptedException e) {
+<<<<<<< HEAD
 						throw new FlinkFutureException(e);
+=======
+						throw new CompletionException(e);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 					}
 				}
 
@@ -110,15 +121,15 @@ public class OrderedStreamElementQueueTest extends TestLogger {
 
 		Assert.assertFalse(pollOperation.isDone());
 
-		entry2.collect(Collections.<Integer>emptyList());
+		entry2.complete(Collections.<Integer>emptyList());
 
-		entry4.collect(Collections.<Integer>emptyList());
+		entry4.complete(Collections.<Integer>emptyList());
 
 		Thread.sleep(10L);
 
 		Assert.assertEquals(4, queue.size());
 
-		entry1.collect(Collections.<Integer>emptyList());
+		entry1.complete(Collections.<Integer>emptyList());
 
 		Assert.assertEquals(expected, pollOperation.get());
 

@@ -33,8 +33,13 @@ import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.messages.StackTrace;
 import org.apache.flink.runtime.messages.StackTraceSampleResponse;
 
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+<<<<<<< HEAD
+=======
+import java.util.function.Consumer;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 /**
  * A TaskManagerGateway that simply acks the basic operations (deploy, cancel, update) and does not
@@ -43,6 +48,16 @@ import java.util.concurrent.CompletableFuture;
 public class SimpleAckingTaskManagerGateway implements TaskManagerGateway {
 
 	private final String address = UUID.randomUUID().toString();
+
+	private Optional<Consumer<ExecutionAttemptID>> optSubmitCondition;
+
+	public SimpleAckingTaskManagerGateway() {
+		optSubmitCondition = Optional.empty();
+	}
+
+	public void setCondition(Consumer<ExecutionAttemptID> predicate) {
+		optSubmitCondition = Optional.of(predicate);
+	}
 
 	@Override
 	public String getAddress() {
@@ -73,6 +88,10 @@ public class SimpleAckingTaskManagerGateway implements TaskManagerGateway {
 
 	@Override
 	public CompletableFuture<Acknowledge> submitTask(TaskDeploymentDescriptor tdd, Time timeout) {
+<<<<<<< HEAD
+=======
+		optSubmitCondition.ifPresent(condition -> condition.accept(tdd.getExecutionAttemptId()));
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		return CompletableFuture.completedFuture(Acknowledge.get());
 	}
 

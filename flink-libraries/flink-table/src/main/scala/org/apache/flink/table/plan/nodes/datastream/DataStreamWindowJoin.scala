@@ -54,7 +54,11 @@ class DataStreamWindowJoin(
     with CommonJoin
     with DataStreamRel {
 
+<<<<<<< HEAD
   override def deriveRowType(): RelDataType = schema.logicalType
+=======
+  override def deriveRowType(): RelDataType = schema.relDataType
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
   override def copy(traitSet: RelTraitSet, inputs: java.util.List[RelNode]): RelNode = {
     new DataStreamWindowJoin(
@@ -76,7 +80,11 @@ class DataStreamWindowJoin(
 
   override def toString: String = {
     joinToString(
+<<<<<<< HEAD
       schema.logicalType,
+=======
+      schema.relDataType,
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
       joinCondition,
       joinType,
       getExpressionString)
@@ -85,7 +93,11 @@ class DataStreamWindowJoin(
   override def explainTerms(pw: RelWriter): RelWriter = {
     joinExplainTerms(
       super.explainTerms(pw),
+<<<<<<< HEAD
       schema.logicalType,
+=======
+      schema.relDataType,
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
       joinCondition,
       joinType,
       getExpressionString)
@@ -117,8 +129,13 @@ class DataStreamWindowJoin(
     WindowJoinUtil.generateJoinFunction(
       config,
       joinType,
+<<<<<<< HEAD
       leftSchema.physicalTypeInfo,
       rightSchema.physicalTypeInfo,
+=======
+      leftSchema.typeInfo,
+      rightSchema.typeInfo,
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
       schema,
       remainCondition,
       ruleDescription)
@@ -160,13 +177,22 @@ class DataStreamWindowJoin(
       leftKeys: Array[Int],
       rightKeys: Array[Int]): DataStream[CRow] = {
 
+<<<<<<< HEAD
     val returnTypeInfo = CRowTypeInfo(schema.physicalTypeInfo)
+=======
+    val returnTypeInfo = CRowTypeInfo(schema.typeInfo)
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
     val procInnerJoinFunc = new ProcTimeWindowInnerJoin(
       leftLowerBound,
       leftUpperBound,
+<<<<<<< HEAD
       leftSchema.physicalTypeInfo,
       rightSchema.physicalTypeInfo,
+=======
+      leftSchema.typeInfo,
+      rightSchema.typeInfo,
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
       joinFunctionName,
       joinFunctionCode)
 

@@ -33,7 +33,12 @@ import org.apache.flink.streaming.api.operators.AbstractUdfStreamOperator;
 import org.apache.flink.streaming.api.operators.StreamGroupedFold;
 import org.apache.flink.streaming.api.operators.StreamGroupedReduce;
 
+<<<<<<< HEAD
 import com.google.common.collect.EvictingQueue;
+=======
+import org.apache.flink.shaded.guava18.com.google.common.collect.EvictingQueue;
+
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.junit.Assert;
 
 import java.util.Collections;

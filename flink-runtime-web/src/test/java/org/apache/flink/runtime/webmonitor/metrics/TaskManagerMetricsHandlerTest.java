@@ -18,17 +18,17 @@
 
 package org.apache.flink.runtime.webmonitor.metrics;
 
-import org.apache.flink.runtime.webmonitor.JobManagerRetriever;
+import org.apache.flink.runtime.concurrent.Executors;
+import org.apache.flink.runtime.testingUtils.TestingUtils;
+import org.apache.flink.runtime.webmonitor.retriever.JobManagerRetriever;
+import org.apache.flink.runtime.webmonitor.retriever.MetricQueryServiceRetriever;
 import org.apache.flink.util.TestLogger;
 
-import akka.actor.ActorSystem;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.HashMap;
 import java.util.Map;
-
-import scala.concurrent.ExecutionContext;
 
 import static org.apache.flink.runtime.webmonitor.handlers.TaskManagersHandler.TASK_MANAGER_ID_KEY;
 import static org.junit.Assert.assertEquals;
@@ -41,7 +41,7 @@ import static org.powermock.api.mockito.PowerMockito.mock;
 public class TaskManagerMetricsHandlerTest extends TestLogger {
 	@Test
 	public void testGetPaths() {
-		TaskManagerMetricsHandler handler = new TaskManagerMetricsHandler(mock(MetricFetcher.class));
+		TaskManagerMetricsHandler handler = new TaskManagerMetricsHandler(Executors.directExecutor(), mock(MetricFetcher.class));
 		String[] paths = handler.getPaths();
 		Assert.assertEquals(1, paths.length);
 		Assert.assertEquals("/taskmanagers/:taskmanagerid/metrics", paths[0]);
@@ -49,10 +49,14 @@ public class TaskManagerMetricsHandlerTest extends TestLogger {
 
 	@Test
 	public void getMapFor() throws Exception {
-		MetricFetcher fetcher = new MetricFetcher(mock(ActorSystem.class), mock(JobManagerRetriever.class), mock(ExecutionContext.class));
+		MetricFetcher fetcher = new MetricFetcher(
+			mock(JobManagerRetriever.class),
+			mock(MetricQueryServiceRetriever.class),
+			Executors.directExecutor(),
+			TestingUtils.TIMEOUT());
 		MetricStore store = MetricStoreTest.setupStore(fetcher.getMetricStore());
 
-		TaskManagerMetricsHandler handler = new TaskManagerMetricsHandler(fetcher);
+		TaskManagerMetricsHandler handler = new TaskManagerMetricsHandler(Executors.directExecutor(), fetcher);
 
 		Map<String, String> pathParams = new HashMap<>();
 		pathParams.put(TASK_MANAGER_ID_KEY, "tmid");
@@ -64,10 +68,14 @@ public class TaskManagerMetricsHandlerTest extends TestLogger {
 
 	@Test
 	public void getMapForNull() {
-		MetricFetcher fetcher = new MetricFetcher(mock(ActorSystem.class), mock(JobManagerRetriever.class), mock(ExecutionContext.class));
+		MetricFetcher fetcher = new MetricFetcher(
+			mock(JobManagerRetriever.class),
+			mock(MetricQueryServiceRetriever.class),
+			Executors.directExecutor(),
+			TestingUtils.TIMEOUT());
 		MetricStore store = fetcher.getMetricStore();
 
-		TaskManagerMetricsHandler handler = new TaskManagerMetricsHandler(fetcher);
+		TaskManagerMetricsHandler handler = new TaskManagerMetricsHandler(Executors.directExecutor(), fetcher);
 
 		Map<String, String> pathParams = new HashMap<>();
 

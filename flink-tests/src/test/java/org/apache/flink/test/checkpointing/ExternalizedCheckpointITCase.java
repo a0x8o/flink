@@ -40,6 +40,10 @@ import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.graph.StreamGraph;
 import org.apache.flink.streaming.api.windowing.time.Time;
 import org.apache.flink.test.state.ManualWindowSpeedITCase;
+<<<<<<< HEAD
+=======
+import org.apache.flink.util.TestLogger;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 import org.apache.curator.test.TestingServer;
 import org.junit.ClassRule;
@@ -47,6 +51,10 @@ import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
 import java.io.File;
+<<<<<<< HEAD
+=======
+import java.util.concurrent.CountDownLatch;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 /**
  * IT case for externalized checkpoints with {@link org.apache.flink.runtime.checkpoint.StandaloneCompletedCheckpointStore}
@@ -54,7 +62,11 @@ import java.io.File;
  *
  * <p>This tests considers full and incremental checkpoints and was introduced to guard against problems like FLINK-6964.
  */
+<<<<<<< HEAD
 public class ExternalizedCheckpointITCase {
+=======
+public class ExternalizedCheckpointITCase extends TestLogger {
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 	private static final int PARALLELISM = 2;
 	private static final int NUM_TASK_MANAGERS = 2;
@@ -177,7 +189,14 @@ public class ExternalizedCheckpointITCase {
 				env.setStreamTimeCharacteristic(TimeCharacteristic.IngestionTime);
 				env.setParallelism(PARALLELISM);
 
+<<<<<<< HEAD
 				env.addSource(new ManualWindowSpeedITCase.InfiniteTupleSource(10_000))
+=======
+				// initialize count down latch
+				NotifyingInfiniteTupleSource.countDownLatch = new CountDownLatch(PARALLELISM);
+
+				env.addSource(new NotifyingInfiniteTupleSource(10_000))
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 					.keyBy(0)
 					.timeWindow(Time.seconds(3))
 					.reduce(new ReduceFunction<Tuple2<String, Integer>>() {
@@ -212,8 +231,13 @@ public class ExternalizedCheckpointITCase {
 				config.addAll(jobGraph.getJobConfiguration());
 				JobSubmissionResult submissionResult = cluster.submitJobDetached(jobGraph);
 
+<<<<<<< HEAD
 				// let the job do some progress
 				Thread.sleep(200);
+=======
+				// wait until all sources have been started
+				NotifyingInfiniteTupleSource.countDownLatch.await();
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 				externalCheckpoint =
 					cluster.requestCheckpoint(submissionResult.getJobID(), CheckpointOptions.forFullCheckpoint());
@@ -225,4 +249,30 @@ public class ExternalizedCheckpointITCase {
 			cluster.awaitTermination();
 		}
 	}
+<<<<<<< HEAD
+=======
+
+	/**
+	 * Infinite source which notifies when all of its sub tasks have been started via the count down latch.
+	 */
+	public static class NotifyingInfiniteTupleSource extends ManualWindowSpeedITCase.InfiniteTupleSource {
+
+		private static final long serialVersionUID = 8120981235081181746L;
+
+		private static CountDownLatch countDownLatch;
+
+		public NotifyingInfiniteTupleSource(int numKeys) {
+			super(numKeys);
+		}
+
+		@Override
+		public void run(SourceContext<Tuple2<String, Integer>> out) throws Exception {
+			if (countDownLatch != null) {
+				countDownLatch.countDown();
+			}
+
+			super.run(out);
+		}
+	}
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 }

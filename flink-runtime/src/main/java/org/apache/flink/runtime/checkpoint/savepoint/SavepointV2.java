@@ -29,7 +29,10 @@ import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.state.ChainedStateHandle;
 import org.apache.flink.runtime.state.KeyedStateHandle;
 import org.apache.flink.runtime.state.OperatorStateHandle;
+<<<<<<< HEAD
 import org.apache.flink.runtime.state.StreamStateHandle;
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.util.Preconditions;
 
 import java.util.Collection;
@@ -207,9 +210,6 @@ public class SavepointV2 implements Savepoint {
 					continue;
 				}
 
-				@SuppressWarnings("deprecation")
-				ChainedStateHandle<StreamStateHandle> nonPartitionedState =
-					subtaskState.getLegacyOperatorState();
 				ChainedStateHandle<OperatorStateHandle> partitioneableState =
 					subtaskState.getManagedOperatorState();
 				ChainedStateHandle<OperatorStateHandle> rawOperatorState =
@@ -240,7 +240,10 @@ public class SavepointV2 implements Savepoint {
 						}
 
 						OperatorSubtaskState operatorSubtaskState = new OperatorSubtaskState(
+<<<<<<< HEAD
 							nonPartitionedState != null ? nonPartitionedState.get(operatorIndex) : null,
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 							partitioneableState != null ? partitioneableState.get(operatorIndex) : null,
 							rawOperatorState != null ? rawOperatorState.get(operatorIndex) : null,
 							managedKeyedState,

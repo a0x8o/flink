@@ -60,6 +60,11 @@ object SortUtil {
     inputTypeInfo: TypeInformation[Row],
     execCfg: ExecutionConfig): ProcessFunction[CRow, CRow] = {
 
+<<<<<<< HEAD
+=======
+    val rowtimeIdx = collationSort.getFieldCollations.get(0).getFieldIndex
+
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
     val collectionRowComparator = if (collationSort.getFieldCollations.size() > 1) {
 
       val rowComp = createRowComparator(
@@ -76,6 +81,10 @@ object SortUtil {
  
     new RowTimeSortProcessFunction(
       inputCRowType,
+<<<<<<< HEAD
+=======
+      rowtimeIdx,
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
       collectionRowComparator)
 
   }
@@ -139,7 +148,11 @@ object SortUtil {
     }
 
     new RowComparator(
+<<<<<<< HEAD
       new RowSchema(inputType).physicalArity,
+=======
+      new RowSchema(inputType).arity,
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
       sortFields.toArray,
       fieldComps.toArray,
       new Array[TypeSerializer[AnyRef]](0), // not required because we only compare objects.

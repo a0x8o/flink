@@ -39,12 +39,15 @@ import static org.junit.Assert.assertEquals;
 /**
  * Tests for {@link TriangleListing}.
  */
-public class TriangleListingTest
-extends AsmTestBase {
+public class TriangleListingTest extends AsmTestBase {
 
 	@Test
+<<<<<<< HEAD
 	public void testSimpleGraphSorted()
 			throws Exception {
+=======
+	public void testSimpleGraphSorted() throws Exception {
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		DataSet<Result<IntValue>> tl = directedSimpleGraph
 			.run(new TriangleListing<IntValue, NullValue, NullValue>()
 				.setSortTriangleVertices(true));
@@ -57,8 +60,12 @@ extends AsmTestBase {
 	}
 
 	@Test
+<<<<<<< HEAD
 	public void testSimpleGraphPermuted()
 			throws Exception {
+=======
+	public void testSimpleGraphPermuted() throws Exception {
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		DataSet<Result<IntValue>> tl = directedSimpleGraph
 			.run(new TriangleListing<IntValue, NullValue, NullValue>()
 				.setPermuteResults(true));
@@ -107,8 +114,23 @@ extends AsmTestBase {
 	}
 
 	@Test
-	public void testRMatGraph()
-			throws Exception {
+	public void testWithEmptyGraphWithVertices() throws Exception {
+		DataSet<Result<LongValue>> tl = emptyGraphWithVertices
+			.run(new TriangleListing<>());
+
+		assertEquals(0, tl.collect().size());
+	}
+
+	@Test
+	public void testWithEmptyGraphWithoutVertices() throws Exception {
+		DataSet<Result<LongValue>> tl = emptyGraphWithoutVertices
+			.run(new TriangleListing<>());
+
+		assertEquals(0, tl.collect().size());
+	}
+
+	@Test
+	public void testRMatGraph() throws Exception {
 		DataSet<Result<LongValue>> tl = directedRMatGraph(10, 16)
 			.run(new TriangleListing<LongValue, NullValue, NullValue>()
 				.setSortTriangleVertices(true));

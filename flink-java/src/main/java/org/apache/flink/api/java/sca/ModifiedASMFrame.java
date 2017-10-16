@@ -20,11 +20,19 @@ package org.apache.flink.api.java.sca;
 
 import org.apache.flink.annotation.Internal;
 
+<<<<<<< HEAD
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.analysis.AnalyzerException;
 import org.objectweb.asm.tree.analysis.Frame;
 import org.objectweb.asm.tree.analysis.Interpreter;
 import org.objectweb.asm.tree.analysis.Value;
+=======
+import org.apache.flink.shaded.asm5.org.objectweb.asm.tree.AbstractInsnNode;
+import org.apache.flink.shaded.asm5.org.objectweb.asm.tree.analysis.AnalyzerException;
+import org.apache.flink.shaded.asm5.org.objectweb.asm.tree.analysis.Frame;
+import org.apache.flink.shaded.asm5.org.objectweb.asm.tree.analysis.Interpreter;
+import org.apache.flink.shaded.asm5.org.objectweb.asm.tree.analysis.Value;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 import java.lang.reflect.Field;
 import java.util.Arrays;

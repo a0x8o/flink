@@ -17,10 +17,17 @@
 
 package org.apache.flink.streaming.connectors.kafka.internals;
 
+<<<<<<< HEAD
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+=======
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Set;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
@@ -68,7 +75,11 @@ public abstract class AbstractPartitionDiscoverer {
 	 * to keep track of only the largest partition id because Kafka partition numbers are only
 	 * allowed to be increased and has incremental ids.
 	 */
+<<<<<<< HEAD
 	private Map<String, Integer> topicsToLargestDiscoveredPartitionId;
+=======
+	private Set<KafkaTopicPartition> discoveredPartitions;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 	public AbstractPartitionDiscoverer(
 			KafkaTopicsDescriptor topicsDescriptor,
@@ -78,7 +89,11 @@ public abstract class AbstractPartitionDiscoverer {
 		this.topicsDescriptor = checkNotNull(topicsDescriptor);
 		this.indexOfThisSubtask = indexOfThisSubtask;
 		this.numParallelSubtasks = numParallelSubtasks;
+<<<<<<< HEAD
 		this.topicsToLargestDiscoveredPartitionId = new HashMap<>();
+=======
+		this.discoveredPartitions = new HashSet<>();
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	}
 
 	/**
@@ -149,10 +164,13 @@ public abstract class AbstractPartitionDiscoverer {
 				if (newDiscoveredPartitions == null || newDiscoveredPartitions.isEmpty()) {
 					throw new RuntimeException("Unable to retrieve any partitions with KafkaTopicsDescriptor: " + topicsDescriptor);
 				} else {
+<<<<<<< HEAD
 					// sort so that we make sure the topicsToLargestDiscoveredPartitionId state is updated
 					// with incremental partition ids of the same topics (otherwise some partition ids may be skipped)
 					KafkaTopicPartition.sort(newDiscoveredPartitions);
 
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 					Iterator<KafkaTopicPartition> iter = newDiscoveredPartitions.iterator();
 					KafkaTopicPartition nextPartition;
 					while (iter.hasNext()) {
@@ -196,7 +214,11 @@ public abstract class AbstractPartitionDiscoverer {
 	 */
 	public boolean setAndCheckDiscoveredPartition(KafkaTopicPartition partition) {
 		if (isUndiscoveredPartition(partition)) {
+<<<<<<< HEAD
 			topicsToLargestDiscoveredPartitionId.put(partition.getTopic(), partition.getPartition());
+=======
+			discoveredPartitions.add(partition);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 			return KafkaTopicPartitionAssigner.assign(partition, numParallelSubtasks) == indexOfThisSubtask;
 		}
@@ -246,11 +268,15 @@ public abstract class AbstractPartitionDiscoverer {
 	}
 
 	private boolean isUndiscoveredPartition(KafkaTopicPartition partition) {
+<<<<<<< HEAD
 		return !topicsToLargestDiscoveredPartitionId.containsKey(partition.getTopic())
 			||  partition.getPartition() > topicsToLargestDiscoveredPartitionId.get(partition.getTopic());
 	}
 
 	public static boolean shouldAssignToThisSubtask(KafkaTopicPartition partition, int indexOfThisSubtask, int numParallelSubtasks) {
 		return Math.abs(partition.hashCode() % numParallelSubtasks) == indexOfThisSubtask;
+=======
+		return !discoveredPartitions.contains(partition);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	}
 }

@@ -23,6 +23,10 @@ import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.GlobalConfiguration;
 import org.apache.flink.configuration.JobManagerOptions;
+<<<<<<< HEAD
+=======
+import org.apache.flink.core.fs.FileSystem;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.runtime.akka.AkkaUtils;
 import org.apache.flink.runtime.blob.BlobServer;
 import org.apache.flink.runtime.clusterframework.BootstrapTools;
@@ -34,6 +38,10 @@ import org.apache.flink.runtime.metrics.MetricRegistryConfiguration;
 import org.apache.flink.runtime.rpc.FatalErrorHandler;
 import org.apache.flink.runtime.rpc.RpcService;
 import org.apache.flink.runtime.rpc.akka.AkkaRpcService;
+<<<<<<< HEAD
+=======
+import org.apache.flink.runtime.security.SecurityConfiguration;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.runtime.security.SecurityContext;
 import org.apache.flink.runtime.security.SecurityUtils;
 import org.apache.flink.util.ExceptionUtils;
@@ -46,7 +54,13 @@ import org.slf4j.LoggerFactory;
 
 import javax.annotation.concurrent.GuardedBy;
 
+<<<<<<< HEAD
 import java.util.concurrent.Callable;
+=======
+import java.io.IOException;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CompletableFuture;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import java.util.concurrent.Executor;
 
 import scala.concurrent.duration.FiniteDuration;
@@ -69,6 +83,11 @@ public abstract class ClusterEntrypoint implements FatalErrorHandler {
 
 	private final Configuration configuration;
 
+<<<<<<< HEAD
+=======
+	private final CompletableFuture<Boolean> terminationFuture;
+
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	@GuardedBy("lock")
 	private MetricRegistry metricRegistry = null;
 
@@ -86,12 +105,25 @@ public abstract class ClusterEntrypoint implements FatalErrorHandler {
 
 	protected ClusterEntrypoint(Configuration configuration) {
 		this.configuration = Preconditions.checkNotNull(configuration);
+<<<<<<< HEAD
+=======
+		this.terminationFuture = new CompletableFuture<>();
+	}
+
+	public CompletableFuture<Boolean> getTerminationFuture() {
+		return terminationFuture;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	}
 
 	protected void startCluster() {
 		LOG.info("Starting {}.", getClass().getSimpleName());
 
 		try {
+<<<<<<< HEAD
+=======
+			installDefaultFileSystem(configuration);
+
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			SecurityContext securityContext = installSecurityContext(configuration);
 
 			securityContext.runSecured(new Callable<Void>() {
@@ -115,10 +147,28 @@ public abstract class ClusterEntrypoint implements FatalErrorHandler {
 		}
 	}
 
+<<<<<<< HEAD
 	protected SecurityContext installSecurityContext(Configuration configuration) throws Exception {
 		LOG.info("Install security context.");
 
 		SecurityUtils.install(new SecurityUtils.SecurityConfiguration(configuration));
+=======
+	protected void installDefaultFileSystem(Configuration configuration) throws Exception {
+		LOG.info("Install default filesystem.");
+
+		try {
+			FileSystem.setDefaultScheme(configuration);
+		} catch (IOException e) {
+			throw new IOException("Error while setting the default " +
+				"filesystem scheme from configuration.", e);
+		}
+	}
+
+	protected SecurityContext installSecurityContext(Configuration configuration) throws Exception {
+		LOG.info("Install security context.");
+
+		SecurityUtils.install(new SecurityConfiguration(configuration));
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 		return SecurityUtils.getInstalledContext();
 	}
@@ -184,9 +234,24 @@ public abstract class ClusterEntrypoint implements FatalErrorHandler {
 	}
 
 	protected void shutDown(boolean cleanupHaData) throws FlinkException {
+<<<<<<< HEAD
 		Throwable exception = null;
 
 		synchronized (lock) {
+=======
+		LOG.info("Stopping {}.", getClass().getSimpleName());
+
+		Throwable exception = null;
+
+		synchronized (lock) {
+
+			try {
+				stopClusterComponents(cleanupHaData);
+			} catch (Throwable t) {
+				exception = ExceptionUtils.firstOrSuppressed(t, exception);
+			}
+
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			if (metricRegistry != null) {
 				try {
 					metricRegistry.shutdown();
@@ -222,6 +287,11 @@ public abstract class ClusterEntrypoint implements FatalErrorHandler {
 					exception = ExceptionUtils.firstOrSuppressed(t, exception);
 				}
 			}
+<<<<<<< HEAD
+=======
+
+			terminationFuture.complete(true);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		}
 
 		if (exception != null) {
@@ -244,6 +314,12 @@ public abstract class ClusterEntrypoint implements FatalErrorHandler {
 		HeartbeatServices heartbeatServices,
 		MetricRegistry metricRegistry) throws Exception;
 
+<<<<<<< HEAD
+=======
+	protected void stopClusterComponents(boolean cleanupHaData) throws Exception {
+	}
+
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	protected static ClusterConfiguration parseArguments(String[] args) {
 		ParameterTool parameterTool = ParameterTool.fromArgs(args);
 

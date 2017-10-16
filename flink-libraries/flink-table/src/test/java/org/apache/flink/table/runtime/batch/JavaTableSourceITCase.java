@@ -80,7 +80,11 @@ public class JavaTableSourceITCase extends TableProgramsCollectionTestBase {
 		tableEnv.registerTableSource("persons", csvTable);
 
 		Table result = tableEnv
+<<<<<<< HEAD
 			.sql("SELECT `last`, FLOOR(id), score * 2 FROM persons WHERE score < 20");
+=======
+			.sqlQuery("SELECT `last`, FLOOR(id), score * 2 FROM persons WHERE score < 20");
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 		DataSet<Row> resultSet = tableEnv.toDataSet(result, Row.class);
 		List<Row> results = resultSet.collect();

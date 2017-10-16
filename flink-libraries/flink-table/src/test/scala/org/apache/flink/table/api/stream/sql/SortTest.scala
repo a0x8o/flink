@@ -41,7 +41,11 @@ class SortTest extends TableTestBase {
         unaryNode("DataStreamSort",
           streamTableNode(0),
           term("orderBy", "proctime ASC", "c ASC")),
+<<<<<<< HEAD
         term("select", "a", "TIME_MATERIALIZATION(proctime) AS proctime", "c"))
+=======
+        term("select", "a", "PROCTIME(proctime) AS proctime", "c"))
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
     streamUtil.verifySql(sqlQuery, expected)
   }
@@ -57,7 +61,11 @@ class SortTest extends TableTestBase {
         unaryNode("DataStreamSort",
           streamTableNode(0),
           term("orderBy", "rowtime ASC, c ASC")),
+<<<<<<< HEAD
         term("select", "a", "TIME_MATERIALIZATION(rowtime) AS rowtime", "c"))
+=======
+        term("select", "a", "rowtime", "c"))
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
        
     streamUtil.verifySql(sqlQuery, expected)
   }

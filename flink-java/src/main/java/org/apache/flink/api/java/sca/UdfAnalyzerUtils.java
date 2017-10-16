@@ -26,12 +26,21 @@ import org.apache.flink.api.java.typeutils.PojoTypeInfo;
 import org.apache.flink.api.java.typeutils.TupleTypeInfo;
 import org.apache.flink.api.java.typeutils.TupleTypeInfoBase;
 
+<<<<<<< HEAD
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.tree.analysis.BasicValue;
 import org.objectweb.asm.tree.analysis.Value;
+=======
+import org.apache.flink.shaded.asm5.org.objectweb.asm.ClassReader;
+import org.apache.flink.shaded.asm5.org.objectweb.asm.Type;
+import org.apache.flink.shaded.asm5.org.objectweb.asm.tree.ClassNode;
+import org.apache.flink.shaded.asm5.org.objectweb.asm.tree.MethodNode;
+import org.apache.flink.shaded.asm5.org.objectweb.asm.tree.analysis.BasicValue;
+import org.apache.flink.shaded.asm5.org.objectweb.asm.tree.analysis.Value;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 import java.io.IOException;
 import java.io.InputStream;

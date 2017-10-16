@@ -18,6 +18,8 @@
 
 package org.apache.flink.table.calcite
 
+import java.util
+
 import org.apache.calcite.avatica.util.TimeUnit
 import org.apache.calcite.jdbc.JavaTypeFactoryImpl
 import org.apache.calcite.rel.`type`._
@@ -172,23 +174,16 @@ class FlinkTypeFactory(typeSystem: RelDataTypeSystem) extends JavaTypeFactoryImp
     *
     * @param fieldNames field names
     * @param fieldTypes field types, every element is Flink's [[TypeInformation]]
-    * @param rowtime optional system field to indicate event-time; the index determines the index
-    *                in the final record. If the index is smaller than the number of specified
-    *                fields, it shifts all following fields.
-    * @param proctime optional system field to indicate processing-time; the index determines the
-    *                 index in the final record. If the index is smaller than the number of
-    *                 specified fields, it shifts all following fields.
     * @return a struct type with the input fieldNames, input fieldTypes, and system fields
     */
   def buildLogicalRowType(
       fieldNames: Seq[String],
-      fieldTypes: Seq[TypeInformation[_]],
-      rowtime: Option[(Int, String)],
-      proctime: Option[(Int, String)])
+      fieldTypes: Seq[TypeInformation[_]])
     : RelDataType = {
     val logicalRowTypeBuilder = builder
 
     val fields = fieldNames.zip(fieldTypes)
+<<<<<<< HEAD
 
     var totalNumberOfFields = fields.length
     if (rowtime.isDefined) {
@@ -211,6 +206,13 @@ class FlinkTypeFactory(typeSystem: RelDataTypeSystem) extends JavaTypeFactoryImp
         logicalRowTypeBuilder.add(field._1, createTypeFromTypeInfo(field._2, isNullable = true))
       }
     }
+=======
+    fields.foreach(f => {
+      // time indicators are not nullable
+      val nullable = !FlinkTypeFactory.isTimeIndicatorType(f._2)
+      logicalRowTypeBuilder.add(f._1, createTypeFromTypeInfo(f._2, nullable))
+    })
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
     logicalRowTypeBuilder.build
   }
@@ -219,7 +221,7 @@ class FlinkTypeFactory(typeSystem: RelDataTypeSystem) extends JavaTypeFactoryImp
 
   override def createSqlType(typeName: SqlTypeName, precision: Int): RelDataType = {
     // it might happen that inferred VARCHAR types overflow as we set them to Int.MaxValue
-    // always set those to default value
+    // Calcite will limit the length of the VARCHAR type to 65536.
     if (typeName == VARCHAR && precision < 0) {
       createSqlType(typeName, getTypeSystem.getDefaultPrecision(typeName))
     } else {
@@ -269,6 +271,39 @@ class FlinkTypeFactory(typeSystem: RelDataTypeSystem) extends JavaTypeFactoryImp
 
     canonize(newType)
   }
+<<<<<<< HEAD
+=======
+
+  override def leastRestrictive(types: util.List[RelDataType]): RelDataType = {
+    val type0 = types.get(0)
+    if (type0.getSqlTypeName != null) {
+      val resultType = resolveAny(types)
+      if (resultType != null) {
+        return resultType
+      }
+    }
+    super.leastRestrictive(types)
+  }
+
+  private def resolveAny(types: util.List[RelDataType]): RelDataType = {
+    val allTypes = types.asScala
+    val hasAny = allTypes.exists(_.getSqlTypeName == SqlTypeName.ANY)
+    if (hasAny) {
+      val head = allTypes.head
+      // only allow ANY with exactly the same GenericRelDataType for all types
+      if (allTypes.forall(_ == head)) {
+        val nullable = allTypes.exists(
+          sqlType => sqlType.isNullable || sqlType.getSqlTypeName == SqlTypeName.NULL
+        )
+        createTypeWithNullability(head, nullable)
+      } else {
+        throw TableException("Generic ANY types must have a common type information.")
+      }
+    } else {
+      null
+    }
+  }
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 }
 
 object FlinkTypeFactory {

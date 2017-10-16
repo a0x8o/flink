@@ -25,13 +25,18 @@ import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
 import org.apache.flink.runtime.jobmanager.scheduler.ScheduledUnit;
 import org.apache.flink.runtime.jobmanager.slots.AllocatedSlot;
+import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerGateway;
 import org.apache.flink.runtime.rpc.RpcGateway;
 import org.apache.flink.runtime.rpc.RpcTimeout;
 import org.apache.flink.runtime.taskexecutor.slot.SlotOffer;
 import org.apache.flink.runtime.taskmanager.TaskManagerLocation;
 
+<<<<<<< HEAD
 import java.util.UUID;
+=======
+import java.util.Collection;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -53,10 +58,9 @@ public interface SlotPoolGateway extends RpcGateway {
 	 * Connects the SlotPool to the given ResourceManager. After this method is called, the
 	 * SlotPool will be able to request resources from the given ResourceManager.
 	 * 
-	 * @param resourceManagerLeaderId The leader session ID of the resource manager.
 	 * @param resourceManagerGateway  The RPC gateway for the resource manager.
 	 */
-	void connectToResourceManager(UUID resourceManagerLeaderId, ResourceManagerGateway resourceManagerGateway);
+	void connectToResourceManager(ResourceManagerGateway resourceManagerGateway);
 
 	/**
 	 * Disconnects the slot pool from its current Resource Manager. After this call, the pool will not
@@ -73,11 +77,15 @@ public interface SlotPoolGateway extends RpcGateway {
 
 	void registerTaskManager(ResourceID resourceID);
 
-	void releaseTaskManager(ResourceID resourceID);
+	CompletableFuture<Acknowledge> releaseTaskManager(ResourceID resourceID);
 
 	CompletableFuture<Boolean> offerSlot(AllocatedSlot slot);
 
+<<<<<<< HEAD
 	CompletableFuture<Iterable<SlotOffer>> offerSlots(Iterable<Tuple2<AllocatedSlot, SlotOffer>> offers);
+=======
+	CompletableFuture<Collection<SlotOffer>> offerSlots(Collection<Tuple2<AllocatedSlot, SlotOffer>> offers);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	
 	void failAllocation(AllocationID allocationID, Exception cause);
 

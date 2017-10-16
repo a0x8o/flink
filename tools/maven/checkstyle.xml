@@ -211,7 +211,11 @@ This file is based on the checkstyle file of Apache Beam.
     </module>
 
     <module name="IllegalImport">
+<<<<<<< HEAD
       <property name="illegalPkgs" value="autovalue.shaded, avro.shaded, com.google.api.client.repackaged, com.google.appengine.repackaged, io.netty"/>
+=======
+      <property name="illegalPkgs" value="autovalue.shaded, avro.shaded, com.google.api.client.repackaged, com.google.appengine.repackaged, org.codehaus.jackson, io.netty, org.objectweb.asm, com.google.common"/>
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
     </module>
 
     <module name="RedundantModifier">

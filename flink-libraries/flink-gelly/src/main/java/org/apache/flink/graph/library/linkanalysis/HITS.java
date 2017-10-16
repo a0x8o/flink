@@ -48,6 +48,10 @@ import org.apache.flink.util.Collector;
 import org.apache.flink.util.Preconditions;
 
 import java.util.Collection;
+<<<<<<< HEAD
+=======
+import java.util.Iterator;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 /**
  * Hyperlink-Induced Topic Search computes two interdependent scores for every
@@ -168,7 +172,6 @@ extends GraphAlgorithmWrappingDataSet<K, VV, EV, Result<K>> {
 				.setParallelism(parallelism)
 				.name("Square")
 			.reduce(new Sum())
-			.setCombineHint(CombineHint.HASH)
 				.setParallelism(parallelism)
 				.name("Sum");
 
@@ -192,7 +195,6 @@ extends GraphAlgorithmWrappingDataSet<K, VV, EV, Result<K>> {
 				.setParallelism(parallelism)
 				.name("Square")
 			.reduce(new Sum())
-			.setCombineHint(CombineHint.HASH)
 				.setParallelism(parallelism)
 				.name("Sum");
 
@@ -387,12 +389,13 @@ extends GraphAlgorithmWrappingDataSet<K, VV, EV, Result<K>> {
 		public void open(Configuration parameters) throws Exception {
 			super.open(parameters);
 
-			Collection<DoubleValue> var;
-			var = getRuntimeContext().getBroadcastVariable(HUBBINESS_SUM_SQUARED);
-			hubbinessRootSumSquared = Math.sqrt(var.iterator().next().getValue());
+			Collection<DoubleValue> hubbinessSumSquared = getRuntimeContext().getBroadcastVariable(HUBBINESS_SUM_SQUARED);
+			Iterator<DoubleValue> hubbinessSumSquaredIterator = hubbinessSumSquared.iterator();
+			this.hubbinessRootSumSquared = hubbinessSumSquaredIterator.hasNext() ? Math.sqrt(hubbinessSumSquaredIterator.next().getValue()) : Double.NaN;
 
-			var = getRuntimeContext().getBroadcastVariable(AUTHORITY_SUM_SQUARED);
-			authorityRootSumSquared = Math.sqrt(var.iterator().next().getValue());
+			Collection<DoubleValue> authoritySumSquared = getRuntimeContext().getBroadcastVariable(AUTHORITY_SUM_SQUARED);
+			Iterator<DoubleValue> authoritySumSquaredIterator = authoritySumSquared.iterator();
+			authorityRootSumSquared = authoritySumSquaredIterator.hasNext() ? Math.sqrt(authoritySumSquaredIterator.next().getValue()) : Double.NaN;
 		}
 
 		@Override
@@ -531,6 +534,7 @@ extends GraphAlgorithmWrappingDataSet<K, VV, EV, Result<K>> {
 		 */
 		public DoubleValue getAuthorityScore() {
 			return authorityScore;
+<<<<<<< HEAD
 		}
 
 		/**
@@ -550,6 +554,27 @@ extends GraphAlgorithmWrappingDataSet<K, VV, EV, Result<K>> {
 				+ ")";
 		}
 
+=======
+		}
+
+		/**
+		 * Set the authority score. Good authorities link to good hubs.
+		 *
+		 * @param authorityScore the authority score
+		 */
+		public void setAuthorityScore(DoubleValue authorityScore) {
+			this.authorityScore = authorityScore;
+		}
+
+		@Override
+		public String toString() {
+			return "(" + getVertexId0()
+				+ "," + hubScore
+				+ "," + authorityScore
+				+ ")";
+		}
+
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		@Override
 		public String toPrintableString() {
 			return "Vertex ID: " + getVertexId0()

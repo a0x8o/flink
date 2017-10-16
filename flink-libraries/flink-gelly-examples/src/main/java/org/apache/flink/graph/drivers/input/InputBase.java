@@ -19,8 +19,16 @@
 
 package org.apache.flink.graph.drivers.input;
 
+<<<<<<< HEAD
 import org.apache.flink.graph.drivers.parameter.ParameterizedBase;
 
+=======
+import org.apache.flink.graph.drivers.parameter.LongParameter;
+import org.apache.flink.graph.drivers.parameter.ParameterizedBase;
+
+import static org.apache.flink.api.common.ExecutionConfig.PARALLELISM_DEFAULT;
+
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 /**
  * Base class for inputs.
  *
@@ -31,4 +39,17 @@ import org.apache.flink.graph.drivers.parameter.ParameterizedBase;
 public abstract class InputBase<K, VV, EV>
 extends ParameterizedBase
 implements Input<K, VV, EV> {
+<<<<<<< HEAD
+=======
+
+	protected LongParameter parallelism = new LongParameter(this, "__parallelism")
+		.setDefaultValue(PARALLELISM_DEFAULT)
+		.setMinimumValue(1)
+		.setMaximumValue(Integer.MAX_VALUE);
+
+	@Override
+	public String getName() {
+		return this.getClass().getSimpleName();
+	}
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 }

@@ -18,6 +18,10 @@
 
 package org.apache.flink.runtime.concurrent;
 
+<<<<<<< HEAD
+=======
+import org.apache.flink.api.common.time.Time;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.util.Preconditions;
 
 import akka.dispatch.OnComplete;
@@ -25,14 +29,27 @@ import akka.dispatch.OnComplete;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+<<<<<<< HEAD
 import java.util.concurrent.Callable;
+=======
+import java.util.concurrent.CancellationException;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
+<<<<<<< HEAD
 
 import scala.concurrent.Future;
+=======
+import java.util.function.Supplier;
+
+import scala.concurrent.Future;
+import scala.concurrent.duration.FiniteDuration;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
@@ -45,6 +62,7 @@ public class FutureUtils {
 	//  retrying operations
 	// ------------------------------------------------------------------------
 
+
 	/**
 	 * Retry the given operation the given number of times in case of a failure.
 	 *
@@ -55,6 +73,7 @@ public class FutureUtils {
 	 * @return Future containing either the result of the operation or a {@link RetryException}
 	 */
 	public static <T> CompletableFuture<T> retry(
+<<<<<<< HEAD
 		final Callable<CompletableFuture<T>> operation,
 		final int retries,
 		final Executor executor) {
@@ -65,8 +84,66 @@ public class FutureUtils {
 			operationResultFuture = operation.call();
 		} catch (Exception e) {
 			return FutureUtils.completedExceptionally(new RetryException("Could not execute the provided operation.", e));
-		}
+=======
+			final Supplier<CompletableFuture<T>> operation,
+			final int retries,
+			final Executor executor) {
 
+		final CompletableFuture<T> resultFuture = new CompletableFuture<>();
+
+		retryOperation(resultFuture, operation, retries, executor);
+
+		return resultFuture;
+	}
+
+	/**
+	 * Helper method which retries the provided operation in case of a failure.
+	 *
+	 * @param resultFuture to complete
+	 * @param operation to retry
+	 * @param retries until giving up
+	 * @param executor to run the futures
+	 * @param <T> type of the future's result
+	 */
+	private static <T> void retryOperation(
+			final CompletableFuture<T> resultFuture,
+			final Supplier<CompletableFuture<T>> operation,
+			final int retries,
+			final Executor executor) {
+
+		if (!resultFuture.isDone()) {
+			final CompletableFuture<T> operationFuture = operation.get();
+
+			operationFuture.whenCompleteAsync(
+				(t, throwable) -> {
+					if (throwable != null) {
+						if (throwable instanceof CancellationException) {
+							resultFuture.completeExceptionally(new RetryException("Operation future was cancelled.", throwable));
+						} else {
+							if (retries > 0) {
+								retryOperation(
+									resultFuture,
+									operation,
+									retries - 1,
+									executor);
+							} else {
+								resultFuture.completeExceptionally(new RetryException("Could not complete the operation. Number of retries " +
+									"has been exhausted.", throwable));
+							}
+						}
+					} else {
+						resultFuture.complete(t);
+					}
+				},
+				executor);
+
+			resultFuture.whenComplete(
+				(t, throwable) -> operationFuture.cancel(false));
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
+		}
+	}
+
+<<<<<<< HEAD
 		return operationResultFuture.handleAsync(
 			(t, throwable) -> {
 				if (throwable != null) {
@@ -82,8 +159,80 @@ public class FutureUtils {
 			},
 			executor)
 		.thenCompose(value -> value);
+=======
+	/**
+	 * Retry the given operation with the given delay in between failures.
+	 *
+	 * @param operation to retry
+	 * @param retries number of retries
+	 * @param retryDelay delay between retries
+	 * @param scheduledExecutor executor to be used for the retry operation
+	 * @param <T> type of the result
+	 * @return Future which retries the given operation a given amount of times and delays the retry in case of failures
+	 */
+	public static <T> CompletableFuture<T> retryWithDelay(
+			final Supplier<CompletableFuture<T>> operation,
+			final int retries,
+			final Time retryDelay,
+			final ScheduledExecutor scheduledExecutor) {
+
+		final CompletableFuture<T> resultFuture = new CompletableFuture<>();
+
+		retryOperationWithDelay(
+			resultFuture,
+			operation,
+			retries,
+			retryDelay,
+			scheduledExecutor);
+
+		return resultFuture;
 	}
 
+	private static <T> void retryOperationWithDelay(
+			final CompletableFuture<T> resultFuture,
+			final Supplier<CompletableFuture<T>> operation,
+			final int retries,
+			final Time retryDelay,
+			final ScheduledExecutor scheduledExecutor) {
+
+		if (!resultFuture.isDone()) {
+			final CompletableFuture<T> operationResultFuture = operation.get();
+
+			operationResultFuture.whenCompleteAsync(
+				(t, throwable) -> {
+					if (throwable != null) {
+						if (throwable instanceof CancellationException) {
+							resultFuture.completeExceptionally(new RetryException("Operation future was cancelled.", throwable));
+						} else {
+							if (retries > 0) {
+								final ScheduledFuture<?> scheduledFuture = scheduledExecutor.schedule(
+									() -> retryOperationWithDelay(resultFuture, operation, retries - 1, retryDelay, scheduledExecutor),
+									retryDelay.toMilliseconds(),
+									TimeUnit.MILLISECONDS);
+
+								resultFuture.whenComplete(
+									(innerT, innerThrowable) -> scheduledFuture.cancel(false));
+							} else {
+								resultFuture.completeExceptionally(new RetryException("Could not complete the operation. Number of retries " +
+									"has been exhausted.", throwable));
+							}
+						}
+					} else {
+						resultFuture.complete(t);
+					}
+				},
+				scheduledExecutor);
+
+			resultFuture.whenComplete(
+				(t, throwable) -> operationResultFuture.cancel(false));
+		}
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
+	}
+
+	/**
+	 * Exception with which the returned future is completed if the {@link #retry(Supplier, int, Executor)}
+	 * operation fails.
+	 */
 	public static class RetryException extends Exception {
 
 		private static final long serialVersionUID = 3613470781274141862L;
@@ -106,14 +255,14 @@ public class FutureUtils {
 	// ------------------------------------------------------------------------
 
 	/**
-	 * Creates a future that is complete once multiple other futures completed. 
+	 * Creates a future that is complete once multiple other futures completed.
 	 * The future fails (completes exceptionally) once one of the futures in the
 	 * conjunction fails. Upon successful completion, the future returns the
 	 * collection of the futures' results.
 	 *
 	 * <p>The ConjunctFuture gives access to how many Futures in the conjunction have already
-	 * completed successfully, via {@link ConjunctFuture#getNumFuturesCompleted()}. 
-	 * 
+	 * completed successfully, via {@link ConjunctFuture#getNumFuturesCompleted()}.
+	 *
 	 * @param futures The futures that make up the conjunction. No null entries are allowed.
 	 * @return The ConjunctFuture that completes once all given futures are complete (or one fails).
 	 */
@@ -155,7 +304,7 @@ public class FutureUtils {
 	 * A future that is complete once multiple other futures completed. The futures are not
 	 * necessarily of the same type. The ConjunctFuture fails (completes exceptionally) once
 	 * one of the Futures in the conjunction fails.
-	 * 
+	 *
 	 * <p>The advantage of using the ConjunctFuture over chaining all the futures (such as via
 	 * {@link CompletableFuture#thenCombine(CompletionStage, BiFunction)} )}) is that ConjunctFuture
 	 * also tracks how many of the Futures are already complete.
@@ -180,16 +329,16 @@ public class FutureUtils {
 	 */
 	private static class ResultConjunctFuture<T> extends ConjunctFuture<Collection<T>> {
 
-		/** The total number of futures in the conjunction */
+		/** The total number of futures in the conjunction. */
 		private final int numTotal;
 
-		/** The next free index in the results arrays */
+		/** The next free index in the results arrays. */
 		private final AtomicInteger nextIndex = new AtomicInteger(0);
 
-		/** The number of futures in the conjunction that are already complete */
+		/** The number of futures in the conjunction that are already complete. */
 		private final AtomicInteger numCompleted = new AtomicInteger(0);
 
-		/** The set of collected results so far */
+		/** The set of collected results so far. */
 		private volatile T[] results;
 
 		/** The function that is attached to all futures in the conjunction. Once a future
@@ -212,7 +361,7 @@ public class FutureUtils {
 		@SuppressWarnings("unchecked")
 		ResultConjunctFuture(int numTotal) {
 			this.numTotal = numTotal;
-			results = (T[])new Object[numTotal];
+			results = (T[]) new Object[numTotal];
 		}
 
 		@Override
@@ -232,13 +381,17 @@ public class FutureUtils {
 	 */
 	private static final class WaitingConjunctFuture extends ConjunctFuture<Void> {
 
-		/** Number of completed futures */
+		/** Number of completed futures. */
 		private final AtomicInteger numCompleted = new AtomicInteger(0);
 
-		/** Total number of futures to wait on */
+		/** Total number of futures to wait on. */
 		private final int numTotal;
 
+<<<<<<< HEAD
 		/** Method which increments the atomic completion counter and completes or fails the WaitingFutureImpl */
+=======
+		/** Method which increments the atomic completion counter and completes or fails the WaitingFutureImpl. */
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		private void handleCompletedFuture(Object ignored, Throwable throwable) {
 			if (throwable == null) {
 				if (numTotal == numCompleted.incrementAndGet()) {
@@ -292,6 +445,29 @@ public class FutureUtils {
 		return result;
 	}
 
+<<<<<<< HEAD
+=======
+	/**
+	 * Converts Flink time into a {@link FiniteDuration}.
+	 *
+	 * @param time to convert into a FiniteDuration
+	 * @return FiniteDuration with the length of the given time
+	 */
+	public static FiniteDuration toFiniteDuration(Time time) {
+		return new FiniteDuration(time.toMilliseconds(), TimeUnit.MILLISECONDS);
+	}
+
+	/**
+	 * Converts {@link FiniteDuration} into Flink time.
+	 *
+	 * @param finiteDuration to convert into Flink time
+	 * @return Flink time with the length of the given finite duration
+	 */
+	public static Time toTime(FiniteDuration finiteDuration) {
+		return Time.milliseconds(finiteDuration.toMillis());
+	}
+
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	// ------------------------------------------------------------------------
 	//  Converting futures
 	// ------------------------------------------------------------------------

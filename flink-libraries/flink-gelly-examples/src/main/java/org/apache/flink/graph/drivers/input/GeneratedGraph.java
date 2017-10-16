@@ -18,7 +18,10 @@
 
 package org.apache.flink.graph.drivers.input;
 
+<<<<<<< HEAD
 import org.apache.flink.graph.drivers.parameter.LongParameter;
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.graph.drivers.transform.GraphKeyTypeTransform;
 import org.apache.flink.graph.drivers.transform.Transform;
 import org.apache.flink.graph.drivers.transform.Transformable;
@@ -26,8 +29,11 @@ import org.apache.flink.types.NullValue;
 
 import java.util.Arrays;
 import java.util.List;
+<<<<<<< HEAD
 
 import static org.apache.flink.api.common.ExecutionConfig.PARALLELISM_DEFAULT;
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 /**
  * Base class for generated graphs.
@@ -42,9 +48,12 @@ implements Transformable {
 	public List<Transform> getTransformers() {
 		return Arrays.<Transform>asList(new GraphKeyTypeTransform(vertexCount()));
 	}
+<<<<<<< HEAD
 
 	protected LongParameter parallelism = new LongParameter(this, "__parallelism")
 		.setDefaultValue(PARALLELISM_DEFAULT);
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 	/**
 	 * The vertex count is verified to be no greater than the capacity of the

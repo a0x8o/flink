@@ -162,8 +162,12 @@ public class ZooKeeperCompletedCheckpointStoreTest extends TestLogger {
 			stateStorage,
 			Executors.directExecutor());
 
+<<<<<<< HEAD
 		SharedStateRegistry sharedStateRegistry = spy(new SharedStateRegistry());
 		zooKeeperCompletedCheckpointStore.recover(sharedStateRegistry);
+=======
+		zooKeeperCompletedCheckpointStore.recover();
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 		verify(retrievableStateHandle1.retrieveState(), times(1)).registerSharedStatesAfterRestored(sharedStateRegistry);
 		verify(retrievableStateHandle2.retrieveState(), times(1)).registerSharedStatesAfterRestored(sharedStateRegistry);

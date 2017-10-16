@@ -184,7 +184,14 @@ public class FlinkYarnSessionCliTest extends TestLogger {
 		}
 
 		@Override
+<<<<<<< HEAD
 		protected AbstractYarnClusterDescriptor getClusterDescriptor(Configuration configuration, String configurationDirectory) {
+=======
+		protected AbstractYarnClusterDescriptor getClusterDescriptor(
+			Configuration configuration,
+			String configurationDirectory,
+			boolean flip6) {
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			return new JarAgnosticClusterDescriptor(configuration, configurationDirectory);
 		}
 	}

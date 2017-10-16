@@ -20,16 +20,17 @@ package org.apache.flink.runtime.rpc;
 
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.util.Preconditions;
-import org.apache.flink.util.ReflectionUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nonnull;
+
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
@@ -51,11 +52,15 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * of Erlang or Akka.
  *
  * <p>The RPC endpoint provides provides {@link #runAsync(Runnable)}, {@link #callAsync(Callable, Time)}
+<<<<<<< HEAD
   * and the {@link #getMainThreadExecutor()} to execute code in the RPC endpoint's main thread.
  *
  * @param <C> The RPC gateway counterpart for the implementing RPC endpoint
+=======
+ * and the {@link #getMainThreadExecutor()} to execute code in the RPC endpoint's main thread.
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
  */
-public abstract class RpcEndpoint<C extends RpcGateway> {
+public abstract class RpcEndpoint implements RpcGateway {
 
 	protected final Logger log = LoggerFactory.getLogger(getClass());
 
@@ -67,18 +72,15 @@ public abstract class RpcEndpoint<C extends RpcGateway> {
 	/** Unique identifier for this rpc endpoint */
 	private final String endpointId;
 
-	/** Class of the self gateway */
-	private final Class<C> selfGatewayType;
+	/** Interface to access the underlying rpc server */
+	protected final RpcServer rpcServer;
 
-	/** Self gateway which can be used to schedule asynchronous calls on yourself */
-	private final C self;
+	/** A reference to the endpoint's main thread, if the current method is called by the main thread */
+	final AtomicReference<Thread> currentMainThread = new AtomicReference<>(null);
 
 	/** The main thread executor to be used to execute future callbacks in the main thread
 	 * of the executing rpc server. */
-	private final Executor mainThreadExecutor;
-
-	/** A reference to the endpoint's main thread, if the current method is called by the main thread */
-	final AtomicReference<Thread> currentMainThread = new AtomicReference<>(null); 
+	private final MainThreadExecutor mainThreadExecutor;
 
 	/**
 	 * Initializes the RPC endpoint.
@@ -90,12 +92,9 @@ public abstract class RpcEndpoint<C extends RpcGateway> {
 		this.rpcService = checkNotNull(rpcService, "rpcService");
 		this.endpointId = checkNotNull(endpointId, "endpointId");
 
-		// IMPORTANT: Don't change order of selfGatewayType and self because rpcService.startServer
-		// requires that selfGatewayType has been initialized
-		this.selfGatewayType = determineSelfGatewayType();
-		this.self = rpcService.startServer(this);
+		this.rpcServer = rpcService.startServer(this);
 
-		this.mainThreadExecutor = new MainThreadExecutor((MainThreadExecutable) self);
+		this.mainThreadExecutor = new MainThreadExecutor(rpcServer);
 	}
 
 	/**
@@ -105,15 +104,6 @@ public abstract class RpcEndpoint<C extends RpcGateway> {
 	 */
 	protected RpcEndpoint(final RpcService rpcService) {
 		this(rpcService, UUID.randomUUID().toString());
-	}
-
-	/**
-	 * Returns the class of the self gateway type.
-	 *
-	 * @return Class of the self gateway type
-	 */
-	public final Class<C> getSelfGatewayType() {
-		return selfGatewayType;
 	}
 
 	/**
@@ -139,14 +129,26 @@ public abstract class RpcEndpoint<C extends RpcGateway> {
 	 * @throws Exception indicating that something went wrong while starting the RPC endpoint
 	 */
 	public void start() throws Exception {
-		((StartStoppable) self).start();
+		rpcServer.start();
 	}
 
 	/**
+<<<<<<< HEAD
+=======
+	 * Stops the rpc endpoint. This tells the underlying rpc server that the rpc endpoint is
+	 * no longer ready to process remote procedure calls.
+	 */
+	protected final void stop() {
+		rpcServer.stop();
+	}
+
+	/**
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	 * User overridable callback.
 	 *
 	 * <p>This method is called when the RpcEndpoint is being shut down. The method is guaranteed
 	 * to be executed in the main thread context and can be used to clean up internal state.
+<<<<<<< HEAD
 	 *
 	 * IMPORTANT: This method should never be called directly by the user.
 	 *
@@ -157,11 +159,27 @@ public abstract class RpcEndpoint<C extends RpcGateway> {
 	/**
 	 * Triggers the shut down of the rpc endpoint. The shut down is executed asynchronously.
 	 *
+=======
+	 *
+	 * IMPORTANT: This method should never be called directly by the user.
+	 *
+	 * @throws Exception if an error occurs. The exception is returned as result of the termination future.
+	 */
+	public void postStop() throws Exception {}
+
+	/**
+	 * Triggers the shut down of the rpc endpoint. The shut down is executed asynchronously.
+	 *
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	 * <p>In order to wait on the completion of the shut down, obtain the termination future
 	 * via {@link #getTerminationFuture()}} and wait on its completion.
 	 */
 	public final void shutDown() {
+<<<<<<< HEAD
 		rpcService.stopServer(self);
+=======
+		rpcService.stopServer(rpcServer);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	}
 
 	// ------------------------------------------------------------------------
@@ -169,15 +187,25 @@ public abstract class RpcEndpoint<C extends RpcGateway> {
 	// ------------------------------------------------------------------------
 
 	/**
-	 * Get self-gateway which should be used to run asynchronous RPC calls on this endpoint.
+	 * Returns a self gateway of the specified type which can be used to issue asynchronous
+	 * calls against the RpcEndpoint.
 	 *
-	 * <p><b>IMPORTANT</b>: Always issue local method calls via the self-gateway if the current thread
-	 * is not the main thread of the underlying rpc server, e.g. from within a future callback.
+	 * <p>IMPORTANT: The self gateway type must be implemented by the RpcEndpoint. Otherwise
+	 * the method will fail.
 	 *
-	 * @return The self gateway
+	 * @param selfGatewayType class of the self gateway type
+	 * @param <C> type of the self gateway to create
+	 * @return Self gateway of the specified type which can be used to issue asynchronous rpcs
 	 */
-	public C getSelf() {
-		return self;
+	public <C extends RpcGateway> C getSelfGateway(Class<C> selfGatewayType) {
+		if (selfGatewayType.isInstance(rpcServer)) {
+			@SuppressWarnings("unchecked")
+			C selfGateway = ((C) rpcServer);
+
+			return selfGateway;
+		} else {
+			throw new RuntimeException("RpcEndpoint does not implement the RpcGateway interface of type " + selfGatewayType + '.');
+		}
 	}
 
 	/**
@@ -186,8 +214,19 @@ public abstract class RpcEndpoint<C extends RpcGateway> {
 	 *
 	 * @return Fully qualified address of the underlying RPC endpoint
 	 */
+	@Override
 	public String getAddress() {
-		return self.getAddress();
+		return rpcServer.getAddress();
+	}
+
+	/**
+	 * Gets the hostname of the underlying RPC endpoint.
+	 *
+	 * @return Hostname on which the RPC endpoint is running
+	 */
+	@Override
+	public String getHostname() {
+		return rpcServer.getHostname();
 	}
 
 	/**
@@ -196,7 +235,7 @@ public abstract class RpcEndpoint<C extends RpcGateway> {
 	 *
 	 * @return Main thread execution context
 	 */
-	protected Executor getMainThreadExecutor() {
+	protected MainThreadExecutor getMainThreadExecutor() {
 		return mainThreadExecutor;
 	}
 
@@ -215,7 +254,11 @@ public abstract class RpcEndpoint<C extends RpcGateway> {
 	 * @return Future which is completed when the rpc endpoint has been terminated.
 	 */
 	public CompletableFuture<Void> getTerminationFuture() {
+<<<<<<< HEAD
 		return ((SelfGateway)self).getTerminationFuture();
+=======
+		return rpcServer.getTerminationFuture();
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	}
 
 	// ------------------------------------------------------------------------
@@ -229,7 +272,7 @@ public abstract class RpcEndpoint<C extends RpcGateway> {
 	 * @param runnable Runnable to be executed in the main thread of the underlying RPC endpoint
 	 */
 	protected void runAsync(Runnable runnable) {
-		((MainThreadExecutable) self).runAsync(runnable);
+		rpcServer.runAsync(runnable);
 	}
 
 	/**
@@ -251,13 +294,13 @@ public abstract class RpcEndpoint<C extends RpcGateway> {
 	 * @param delay    The delay after which the runnable will be executed
 	 */
 	protected void scheduleRunAsync(Runnable runnable, long delay, TimeUnit unit) {
-		((MainThreadExecutable) self).scheduleRunAsync(runnable, unit.toMillis(delay));
+		rpcServer.scheduleRunAsync(runnable, unit.toMillis(delay));
 	}
 
 	/**
 	 * Execute the callable in the main thread of the underlying RPC service, returning a future for
 	 * the result of the callable. If the callable is not completed within the given timeout, then
-	 * the future will be failed with a {@link java.util.concurrent.TimeoutException}.
+	 * the future will be failed with a {@link TimeoutException}.
 	 *
 	 * @param callable Callable to be executed in the main thread of the underlying rpc server
 	 * @param timeout Timeout for the callable to be completed
@@ -265,7 +308,11 @@ public abstract class RpcEndpoint<C extends RpcGateway> {
 	 * @return Future for the result of the callable.
 	 */
 	protected <V> CompletableFuture<V> callAsync(Callable<V> callable, Time timeout) {
+<<<<<<< HEAD
 		return ((MainThreadExecutable) self).callAsync(callable, timeout);
+=======
+		return rpcServer.callAsync(callable, timeout);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	}
 
 	// ------------------------------------------------------------------------
@@ -298,7 +345,7 @@ public abstract class RpcEndpoint<C extends RpcGateway> {
 	/**
 	 * Executor which executes runnables in the main thread context.
 	 */
-	private static class MainThreadExecutor implements Executor {
+	protected static class MainThreadExecutor implements Executor {
 
 		private final MainThreadExecutable gateway;
 
@@ -310,24 +357,5 @@ public abstract class RpcEndpoint<C extends RpcGateway> {
 		public void execute(@Nonnull Runnable runnable) {
 			gateway.runAsync(runnable);
 		}
-	}
-
-	/**
-	 * Determines the self gateway type specified in one of the subclasses which extend this class.
-	 * May traverse multiple class hierarchies until a Gateway type is found as a first type argument.
-	 * @return Class<C> The determined self gateway type
-	 */
-	private Class<C> determineSelfGatewayType() {
-
-		// determine self gateway type
-		Class<?> c = getClass();
-		Class<C> determinedSelfGatewayType;
-		do {
-			determinedSelfGatewayType = ReflectionUtil.getTemplateType1(c);
-			// check if super class contains self gateway type in next loop
-			c = c.getSuperclass();
-		} while (!RpcGateway.class.isAssignableFrom(determinedSelfGatewayType));
-
-		return determinedSelfGatewayType;
 	}
 }

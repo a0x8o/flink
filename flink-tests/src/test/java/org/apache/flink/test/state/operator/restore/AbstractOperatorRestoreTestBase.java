@@ -23,6 +23,7 @@ import org.apache.flink.configuration.ConfigConstants;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.akka.AkkaUtils;
 import org.apache.flink.runtime.akka.ListeningBehaviour;
+import org.apache.flink.runtime.checkpoint.savepoint.SavepointSerializers;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServicesUtils;
@@ -89,6 +90,11 @@ public abstract class AbstractOperatorRestoreTestBase extends TestLogger {
 	private static final FiniteDuration timeout = new FiniteDuration(30L, TimeUnit.SECONDS);
 
 	@BeforeClass
+	public static void beforeClass() {
+		SavepointSerializers.setFailWhenLegacyStateDetected(false);
+	}
+
+	@BeforeClass
 	public static void setupCluster() throws Exception {
 		final Configuration configuration = new Configuration();
 
@@ -106,6 +112,7 @@ public abstract class AbstractOperatorRestoreTestBase extends TestLogger {
 			TestingUtils.defaultExecutor(),
 			TestingUtils.defaultExecutor(),
 			highAvailabilityServices,
+			Option.empty(),
 			Option.apply("jm"),
 			Option.apply("arch"),
 			TestingJobManager.class,

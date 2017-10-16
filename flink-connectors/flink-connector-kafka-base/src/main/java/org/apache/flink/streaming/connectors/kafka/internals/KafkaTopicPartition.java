@@ -131,8 +131,11 @@ public final class KafkaTopicPartition implements Serializable {
 			}
 		}
 	}
+<<<<<<< HEAD
 
 	public static void sort(List<KafkaTopicPartition> partitions) {
 		Collections.sort(partitions, new Comparator());
 	}
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 }

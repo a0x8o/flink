@@ -35,7 +35,11 @@ class JoinValidationTest extends TableTestBase {
 
     val sqlQuery = "SELECT c, g FROM Table3, Table5 WHERE foo = e"
 
+<<<<<<< HEAD
     util.tableEnv.sql(sqlQuery)
+=======
+    util.tableEnv.sqlQuery(sqlQuery)
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
   }
 
   @Test(expected = classOf[TableException])
@@ -46,7 +50,11 @@ class JoinValidationTest extends TableTestBase {
 
     val sqlQuery = "SELECT c, g FROM Table3, Table5 WHERE a = g"
 
+<<<<<<< HEAD
     util.tableEnv.sql(sqlQuery).toDataSet[Row]
+=======
+    util.tableEnv.sqlQuery(sqlQuery).toDataSet[Row]
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
   }
 
   @Test(expected = classOf[ValidationException])
@@ -57,7 +65,11 @@ class JoinValidationTest extends TableTestBase {
 
     val sqlQuery = "SELECT c, g FROM Table3, Table5 WHERE a = d"
 
+<<<<<<< HEAD
     util.tableEnv.sql(sqlQuery).toDataSet[Row]
+=======
+    util.tableEnv.sqlQuery(sqlQuery).toDataSet[Row]
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
   }
 
   @Test(expected = classOf[TableException])
@@ -68,7 +80,11 @@ class JoinValidationTest extends TableTestBase {
 
     val sqlQuery = "SELECT c, g FROM Table3, Table5 WHERE d = f"
 
+<<<<<<< HEAD
     util.tableEnv.sql(sqlQuery).toDataSet[Row]
+=======
+    util.tableEnv.sqlQuery(sqlQuery).toDataSet[Row]
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
   }
 
   @Test(expected = classOf[TableException])
@@ -79,7 +95,11 @@ class JoinValidationTest extends TableTestBase {
 
     val sqlQuery = "SELECT a, a1 FROM Table3 CROSS JOIN Table4"
 
+<<<<<<< HEAD
     util.tableEnv.sql(sqlQuery).toDataSet[Row]
+=======
+    util.tableEnv.sqlQuery(sqlQuery).toDataSet[Row]
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
   }
 
   @Test(expected = classOf[TableException])
@@ -90,7 +110,11 @@ class JoinValidationTest extends TableTestBase {
 
     val sqlQuery = "SELECT c, g FROM Table3 RIGHT OUTER JOIN Table5 ON b = e and a > d"
 
+<<<<<<< HEAD
     util.tableEnv.sql(sqlQuery).toDataSet[Row]
+=======
+    util.tableEnv.sqlQuery(sqlQuery).toDataSet[Row]
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
   }
 
   @Test(expected = classOf[TableException])
@@ -101,7 +125,11 @@ class JoinValidationTest extends TableTestBase {
 
     val sqlQuery = "SELECT c, g FROM Table3 LEFT OUTER JOIN Table5 ON b = e and a > d"
 
+<<<<<<< HEAD
     util.tableEnv.sql(sqlQuery).toDataSet[Row]
+=======
+    util.tableEnv.sqlQuery(sqlQuery).toDataSet[Row]
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
   }
 
   @Test(expected = classOf[TableException])
@@ -112,7 +140,11 @@ class JoinValidationTest extends TableTestBase {
 
     val sqlQuery = "SELECT c, g FROM Table3 FULL OUTER JOIN Table5 ON b = e and a > d"
 
+<<<<<<< HEAD
     util.tableEnv.sql(sqlQuery).toDataSet[Row]
+=======
+    util.tableEnv.sqlQuery(sqlQuery).toDataSet[Row]
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
   }
 
   @Test(expected = classOf[TableException])
@@ -123,7 +155,11 @@ class JoinValidationTest extends TableTestBase {
 
     val sqlQuery = "SELECT c, g FROM Table3 RIGHT OUTER JOIN Table5 ON b = e and e > 3"
 
+<<<<<<< HEAD
     util.tableEnv.sql(sqlQuery).toDataSet[Row]
+=======
+    util.tableEnv.sqlQuery(sqlQuery).toDataSet[Row]
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
   }
 
   @Test(expected = classOf[TableException])
@@ -134,7 +170,11 @@ class JoinValidationTest extends TableTestBase {
 
     val sqlQuery = "SELECT c, g FROM Table3 LEFT OUTER JOIN Table5 ON b = e and b > 3"
 
+<<<<<<< HEAD
     util.tableEnv.sql(sqlQuery).toDataSet[Row]
+=======
+    util.tableEnv.sqlQuery(sqlQuery).toDataSet[Row]
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
   }
 
   @Test(expected = classOf[TableException])
@@ -145,6 +185,10 @@ class JoinValidationTest extends TableTestBase {
 
     val sqlQuery = "SELECT c, g FROM Table3 FULL OUTER JOIN Table5 ON b = e and b > 3"
 
+<<<<<<< HEAD
     util.tableEnv.sql(sqlQuery).toDataSet[Row]
+=======
+    util.tableEnv.sqlQuery(sqlQuery).toDataSet[Row]
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
   }
 }

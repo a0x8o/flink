@@ -20,7 +20,10 @@ package org.apache.flink.runtime.security;
 
 import org.apache.flink.annotation.Internal;
 
+<<<<<<< HEAD
 import org.apache.hadoop.security.authentication.util.KerberosUtil;
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -52,6 +55,13 @@ public class KerberosUtils {
 
 	private static final AppConfigurationEntry userKerberosAce;
 
+	/* Return the Kerberos login module name */
+	public static String getKrb5LoginModuleName() {
+		return System.getProperty("java.vendor").contains("IBM")
+			? "com.ibm.security.auth.module.Krb5LoginModule"
+			: "com.sun.security.auth.module.Krb5LoginModule";
+	}
+
 	static {
 
 		IBM_JAVA = JAVA_VENDOR_NAME.contains("IBM");
@@ -80,7 +90,7 @@ public class KerberosUtils {
 		kerberosCacheOptions.putAll(debugOptions);
 
 		userKerberosAce = new AppConfigurationEntry(
-				KerberosUtil.getKrb5LoginModuleName(),
+				getKrb5LoginModuleName(),
 				AppConfigurationEntry.LoginModuleControlFlag.OPTIONAL,
 				kerberosCacheOptions);
 
@@ -112,7 +122,7 @@ public class KerberosUtils {
 		keytabKerberosOptions.putAll(debugOptions);
 
 		AppConfigurationEntry keytabKerberosAce = new AppConfigurationEntry(
-				KerberosUtil.getKrb5LoginModuleName(),
+				getKrb5LoginModuleName(),
 				AppConfigurationEntry.LoginModuleControlFlag.REQUIRED,
 				keytabKerberosOptions);
 

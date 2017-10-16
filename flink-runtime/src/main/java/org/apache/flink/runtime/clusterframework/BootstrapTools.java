@@ -18,22 +18,29 @@
 
 package org.apache.flink.runtime.clusterframework;
 
-import akka.actor.ActorRef;
 import akka.actor.ActorSystem;
-import akka.actor.Address;
 import com.typesafe.config.Config;
 
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.Option;
 import org.apache.commons.lang3.StringUtils;
+
+import org.apache.flink.api.common.time.Time;
 import org.apache.flink.configuration.ConfigConstants;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.CoreOptions;
 import org.apache.flink.configuration.JobManagerOptions;
+<<<<<<< HEAD
+=======
+import org.apache.flink.configuration.WebOptions;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.runtime.akka.AkkaUtils;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
+import org.apache.flink.runtime.jobmaster.JobManagerGateway;
 import org.apache.flink.runtime.webmonitor.WebMonitor;
 import org.apache.flink.runtime.webmonitor.WebMonitorUtils;
+import org.apache.flink.runtime.webmonitor.retriever.LeaderGatewayRetriever;
+import org.apache.flink.runtime.webmonitor.retriever.MetricQueryServiceRetriever;
 import org.apache.flink.util.NetUtils;
 
 import org.slf4j.Logger;
@@ -51,6 +58,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.concurrent.Executor;
 
 /**
  * Tools for starting JobManager and TaskManager processes, including the
@@ -170,7 +178,10 @@ public class BootstrapTools {
 	 *
 	 * @param config The Flink config.
 	 * @param highAvailabilityServices Service factory for high availability services
-	 * @param actorSystem The ActorSystem to start the web frontend in.
+	 * @param jobManagerRetriever to retrieve the leading JobManagerGateway
+	 * @param queryServiceRetriever to resolve a query service
+	 * @param timeout for asynchronous operations
+	 * @param executor to run asynchronous operations
 	 * @param logger Logger for log output
 	 * @return WebMonitor instance.
 	 * @throws Exception
@@ -178,10 +189,13 @@ public class BootstrapTools {
 	public static WebMonitor startWebMonitorIfConfigured(
 			Configuration config,
 			HighAvailabilityServices highAvailabilityServices,
-			ActorSystem actorSystem,
-			ActorRef jobManager,
+			LeaderGatewayRetriever<JobManagerGateway> jobManagerRetriever,
+			MetricQueryServiceRetriever queryServiceRetriever,
+			Time timeout,
+			Executor executor,
 			Logger logger) throws Exception {
 
+<<<<<<< HEAD
 
 		// this ensures correct values are present in the web frontend
 		final Address address = AkkaUtils.getAddress(actorSystem);
@@ -189,6 +203,9 @@ public class BootstrapTools {
 		config.setInteger(JobManagerOptions.PORT, Integer.parseInt(address.port().get().toString()));
 
 		if (config.getInteger(JobManagerOptions.WEB_PORT.key(), 0) >= 0) {
+=======
+		if (config.getInteger(WebOptions.PORT, 0) >= 0) {
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			logger.info("Starting JobManager Web Frontend");
 
 			// start the web frontend. we need to load this dynamically
@@ -196,12 +213,14 @@ public class BootstrapTools {
 			WebMonitor monitor = WebMonitorUtils.startWebRuntimeMonitor(
 				config,
 				highAvailabilityServices,
-				actorSystem);
+				jobManagerRetriever,
+				queryServiceRetriever,
+				timeout,
+				executor);
 
 			// start the web monitor
 			if (monitor != null) {
-				String jobManagerAkkaURL = AkkaUtils.getAkkaURL(actorSystem, jobManager);
-				monitor.start(jobManagerAkkaURL);
+				monitor.start();
 			}
 			return monitor;
 		}

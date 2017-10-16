@@ -20,12 +20,21 @@ package org.apache.flink.api.java.sca;
 
 import org.apache.flink.annotation.Internal;
 
+<<<<<<< HEAD
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.InsnList;
 import org.objectweb.asm.tree.JumpInsnNode;
 import org.objectweb.asm.tree.analysis.Analyzer;
 import org.objectweb.asm.tree.analysis.Frame;
 import org.objectweb.asm.tree.analysis.Interpreter;
+=======
+import org.apache.flink.shaded.asm5.org.objectweb.asm.tree.AbstractInsnNode;
+import org.apache.flink.shaded.asm5.org.objectweb.asm.tree.InsnList;
+import org.apache.flink.shaded.asm5.org.objectweb.asm.tree.JumpInsnNode;
+import org.apache.flink.shaded.asm5.org.objectweb.asm.tree.analysis.Analyzer;
+import org.apache.flink.shaded.asm5.org.objectweb.asm.tree.analysis.Frame;
+import org.apache.flink.shaded.asm5.org.objectweb.asm.tree.analysis.Interpreter;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 import java.lang.reflect.Field;
 

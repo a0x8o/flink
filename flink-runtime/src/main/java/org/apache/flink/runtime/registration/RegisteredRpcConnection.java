@@ -23,7 +23,11 @@ import org.apache.flink.runtime.rpc.RpcGateway;
 
 import org.slf4j.Logger;
 
+<<<<<<< HEAD
 import java.util.UUID;
+=======
+import java.io.Serializable;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 
@@ -39,16 +43,22 @@ import static org.apache.flink.util.Preconditions.checkState;
  * The RPC connection can be closed, for example when the target where it tries to register
  * at looses leader status.
  *
- * @param <Gateway> The type of the gateway to connect to.
- * @param <Success> The type of the successful registration responses.
+ * @param <F> The type of the fencing token
+ * @param <G> The type of the gateway to connect to.
+ * @param <S> The type of the successful registration responses.
  */
-public abstract class RegisteredRpcConnection<Gateway extends RpcGateway, Success extends RegistrationResponse.Success> {
+public abstract class RegisteredRpcConnection<F extends Serializable, G extends RpcGateway, S extends RegistrationResponse.Success> {
 
 	/** The logger for all log messages of this class. */
 	protected final Logger log;
 
+<<<<<<< HEAD
 	/** The target component leaderID, for example the ResourceManager leaderID. */
 	private final UUID targetLeaderId;
+=======
+	/** The fencing token fo the remote component. */
+	private final F fencingToken;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 	/** The target component Address, for example the ResourceManager Address. */
 	private final String targetAddress;
@@ -57,20 +67,31 @@ public abstract class RegisteredRpcConnection<Gateway extends RpcGateway, Succes
 	private final Executor executor;
 
 	/** The Registration of this RPC connection. */
+<<<<<<< HEAD
 	private RetryingRegistration<Gateway, Success> pendingRegistration;
 
 	/** The gateway to register, it's null until the registration is completed. */
 	private volatile Gateway targetGateway;
+=======
+	private RetryingRegistration<F, G, S> pendingRegistration;
+
+	/** The gateway to register, it's null until the registration is completed. */
+	private volatile G targetGateway;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 	/** Flag indicating that the RPC connection is closed. */
 	private volatile boolean closed;
 
 	// ------------------------------------------------------------------------
 
+<<<<<<< HEAD
 	public RegisteredRpcConnection(Logger log, String targetAddress, UUID targetLeaderId, Executor executor) {
+=======
+	public RegisteredRpcConnection(Logger log, String targetAddress, F fencingToken, Executor executor) {
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		this.log = checkNotNull(log);
 		this.targetAddress = checkNotNull(targetAddress);
-		this.targetLeaderId = checkNotNull(targetLeaderId);
+		this.fencingToken = checkNotNull(fencingToken);
 		this.executor = checkNotNull(executor);
 	}
 
@@ -86,10 +107,17 @@ public abstract class RegisteredRpcConnection<Gateway extends RpcGateway, Succes
 		pendingRegistration = checkNotNull(generateRegistration());
 		pendingRegistration.startRegistration();
 
+<<<<<<< HEAD
 		CompletableFuture<Tuple2<Gateway, Success>> future = pendingRegistration.getFuture();
 
 		future.whenCompleteAsync(
 			(Tuple2<Gateway, Success> result, Throwable failure) -> {
+=======
+		CompletableFuture<Tuple2<G, S>> future = pendingRegistration.getFuture();
+
+		future.whenCompleteAsync(
+			(Tuple2<G, S> result, Throwable failure) -> {
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 				// this future should only ever fail if there is a bug, not if the registration is declined
 				if (failure != null) {
 					onRegistrationFailure(failure);
@@ -103,12 +131,12 @@ public abstract class RegisteredRpcConnection<Gateway extends RpcGateway, Succes
 	/**
 	 * This method generate a specific Registration, for example TaskExecutor Registration at the ResourceManager.
 	 */
-	protected abstract RetryingRegistration<Gateway, Success> generateRegistration();
+	protected abstract RetryingRegistration<F, G, S> generateRegistration();
 
 	/**
 	 * This method handle the Registration Response.
 	 */
-	protected abstract void onRegistrationSuccess(Success success);
+	protected abstract void onRegistrationSuccess(S success);
 
 	/**
 	 * This method handle the Registration failure.
@@ -135,8 +163,8 @@ public abstract class RegisteredRpcConnection<Gateway extends RpcGateway, Succes
 	//  Properties
 	// ------------------------------------------------------------------------
 
-	public UUID getTargetLeaderId() {
-		return targetLeaderId;
+	public F getTargetLeaderId() {
+		return fencingToken;
 	}
 
 	public String getTargetAddress() {
@@ -146,7 +174,7 @@ public abstract class RegisteredRpcConnection<Gateway extends RpcGateway, Succes
 	/**
 	 * Gets the RegisteredGateway. This returns null until the registration is completed.
 	 */
-	public Gateway getTargetGateway() {
+	public G getTargetGateway() {
 		return targetGateway;
 	}
 
@@ -158,7 +186,7 @@ public abstract class RegisteredRpcConnection<Gateway extends RpcGateway, Succes
 
 	@Override
 	public String toString() {
-		String connectionInfo = "(ADDRESS: " + targetAddress + " LEADERID: " + targetLeaderId + ")";
+		String connectionInfo = "(ADDRESS: " + targetAddress + " FENCINGTOKEN: " + fencingToken + ")";
 
 		if (isConnected()) {
 			connectionInfo = "RPC connection to " + targetGateway.getClass().getSimpleName() + " " + connectionInfo;

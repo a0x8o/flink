@@ -18,10 +18,15 @@
 
 package org.apache.flink.runtime.entrypoint;
 
+<<<<<<< HEAD
+=======
+import org.apache.flink.api.common.time.Time;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.blob.BlobServer;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.dispatcher.Dispatcher;
+<<<<<<< HEAD
 import org.apache.flink.runtime.dispatcher.StandaloneDispatcher;
 import org.apache.flink.runtime.heartbeat.HeartbeatServices;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
@@ -32,6 +37,29 @@ import org.apache.flink.runtime.rpc.RpcService;
 import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.FlinkException;
 
+=======
+import org.apache.flink.runtime.dispatcher.DispatcherGateway;
+import org.apache.flink.runtime.dispatcher.DispatcherId;
+import org.apache.flink.runtime.dispatcher.DispatcherRestEndpoint;
+import org.apache.flink.runtime.dispatcher.StandaloneDispatcher;
+import org.apache.flink.runtime.heartbeat.HeartbeatServices;
+import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
+import org.apache.flink.runtime.leaderretrieval.LeaderRetrievalService;
+import org.apache.flink.runtime.metrics.MetricRegistry;
+import org.apache.flink.runtime.resourcemanager.ResourceManager;
+import org.apache.flink.runtime.rest.RestServerEndpointConfiguration;
+import org.apache.flink.runtime.rest.handler.RestHandlerConfiguration;
+import org.apache.flink.runtime.rpc.FatalErrorHandler;
+import org.apache.flink.runtime.rpc.RpcService;
+import org.apache.flink.runtime.webmonitor.retriever.LeaderGatewayRetriever;
+import org.apache.flink.runtime.webmonitor.retriever.impl.RpcGatewayRetriever;
+import org.apache.flink.util.ExceptionUtils;
+import org.apache.flink.util.FlinkException;
+
+import java.util.Optional;
+import java.util.concurrent.Executor;
+
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 /**
  * Base class for session cluster entry points.
  */
@@ -41,6 +69,13 @@ public abstract class SessionClusterEntrypoint extends ClusterEntrypoint {
 
 	private Dispatcher dispatcher;
 
+<<<<<<< HEAD
+=======
+	private LeaderRetrievalService dispatcherLeaderRetrievalService;
+
+	private DispatcherRestEndpoint dispatcherRestEndpoint;
+
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	public SessionClusterEntrypoint(Configuration configuration) {
 		super(configuration);
 	}
@@ -54,6 +89,26 @@ public abstract class SessionClusterEntrypoint extends ClusterEntrypoint {
 			HeartbeatServices heartbeatServices,
 			MetricRegistry metricRegistry) throws Exception {
 
+<<<<<<< HEAD
+=======
+		dispatcherLeaderRetrievalService = highAvailabilityServices.getDispatcherLeaderRetriever();
+
+		LeaderGatewayRetriever<DispatcherGateway> dispatcherGatewayRetriever = new RpcGatewayRetriever<>(
+			rpcService,
+			DispatcherGateway.class,
+			DispatcherId::new,
+			10,
+			Time.milliseconds(50L));
+
+		dispatcherRestEndpoint = createDispatcherRestEndpoint(
+			configuration,
+			dispatcherGatewayRetriever,
+			rpcService.getExecutor());
+
+		LOG.debug("Starting Dispatcher REST endpoint.");
+		dispatcherRestEndpoint.start();
+
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		resourceManager = createResourceManager(
 			configuration,
 			ResourceID.generate(),
@@ -70,24 +125,55 @@ public abstract class SessionClusterEntrypoint extends ClusterEntrypoint {
 			blobServer,
 			heartbeatServices,
 			metricRegistry,
+<<<<<<< HEAD
 			this);
+=======
+			this,
+			Optional.of(dispatcherRestEndpoint.getRestAddress()));
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 		LOG.debug("Starting ResourceManager.");
 		resourceManager.start();
 
 		LOG.debug("Starting Dispatcher.");
 		dispatcher.start();
+<<<<<<< HEAD
 	}
 
 	@Override
 	protected void shutDown(boolean cleanupHaData) throws FlinkException {
 		Throwable exception = null;
 
+=======
+		dispatcherLeaderRetrievalService.start(dispatcherGatewayRetriever);
+	}
+
+	@Override
+	protected void stopClusterComponents(boolean cleanupHaData) throws Exception {
+		Throwable exception = null;
+
+		if (dispatcherRestEndpoint != null) {
+			dispatcherRestEndpoint.shutdown(Time.seconds(10L));
+		}
+
+		if (dispatcherLeaderRetrievalService != null) {
+			try {
+				dispatcherLeaderRetrievalService.stop();
+			} catch (Throwable t) {
+				exception = ExceptionUtils.firstOrSuppressed(t, exception);
+			}
+		}
+
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		if (dispatcher != null) {
 			try {
 				dispatcher.shutDown();
 			} catch (Throwable t) {
+<<<<<<< HEAD
 				exception = t;
+=======
+				exception = ExceptionUtils.firstOrSuppressed(t, exception);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			}
 		}
 
@@ -99,17 +185,36 @@ public abstract class SessionClusterEntrypoint extends ClusterEntrypoint {
 			}
 		}
 
+<<<<<<< HEAD
 		try {
 			super.shutDown(cleanupHaData);
 		} catch (Throwable t) {
 			exception = ExceptionUtils.firstOrSuppressed(t, exception);
 		}
 
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		if (exception != null) {
 			throw new FlinkException("Could not properly shut down the session cluster entry point.", exception);
 		}
 	}
 
+<<<<<<< HEAD
+=======
+	protected DispatcherRestEndpoint createDispatcherRestEndpoint(
+			Configuration configuration,
+			LeaderGatewayRetriever<DispatcherGateway> dispatcherGatewayRetriever,
+			Executor executor) throws Exception {
+
+		return new DispatcherRestEndpoint(
+			RestServerEndpointConfiguration.fromConfiguration(configuration),
+			dispatcherGatewayRetriever,
+			configuration,
+			RestHandlerConfiguration.fromConfiguration(configuration),
+			executor);
+	}
+
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	protected Dispatcher createDispatcher(
 		Configuration configuration,
 		RpcService rpcService,
@@ -117,7 +222,12 @@ public abstract class SessionClusterEntrypoint extends ClusterEntrypoint {
 		BlobServer blobServer,
 		HeartbeatServices heartbeatServices,
 		MetricRegistry metricRegistry,
+<<<<<<< HEAD
 		FatalErrorHandler fatalErrorHandler) throws Exception {
+=======
+		FatalErrorHandler fatalErrorHandler,
+		Optional<String> restAddress) throws Exception {
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 		// create the default dispatcher
 		return new StandaloneDispatcher(
@@ -128,7 +238,12 @@ public abstract class SessionClusterEntrypoint extends ClusterEntrypoint {
 			blobServer,
 			heartbeatServices,
 			metricRegistry,
+<<<<<<< HEAD
 			fatalErrorHandler);
+=======
+			fatalErrorHandler,
+			restAddress);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	}
 
 	protected abstract ResourceManager<?> createResourceManager(

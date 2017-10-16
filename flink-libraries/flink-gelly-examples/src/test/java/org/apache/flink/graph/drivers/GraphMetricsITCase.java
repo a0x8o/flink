@@ -98,4 +98,13 @@ public class GraphMetricsITCase extends DriverBaseITCase {
 		expectedOutput(parameters(7, "undirected", "hash"), expected);
 		expectedOutput(parameters(7, "undirected", "print"), expected);
 	}
+<<<<<<< HEAD
+=======
+
+	@Test
+	public void testParallelism() throws Exception {
+		TestUtils.verifyParallelism(parameters(8, "directed", "print"));
+		TestUtils.verifyParallelism(parameters(8, "undirected", "print"));
+	}
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 }

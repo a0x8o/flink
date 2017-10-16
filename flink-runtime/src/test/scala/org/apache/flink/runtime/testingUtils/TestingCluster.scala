@@ -28,6 +28,10 @@ import akka.testkit.CallingThreadDispatcher
 import org.apache.flink.api.common.JobID
 import org.apache.flink.configuration.{Configuration, JobManagerOptions}
 import org.apache.flink.runtime.akka.AkkaUtils
+<<<<<<< HEAD
+=======
+import org.apache.flink.runtime.blob.BlobServer
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.runtime.checkpoint.savepoint.Savepoint
 import org.apache.flink.runtime.checkpoint.{CheckpointOptions, CheckpointRecoveryFactory}
 import org.apache.flink.runtime.clusterframework.FlinkResourceManager
@@ -44,7 +48,11 @@ import org.apache.flink.runtime.messages.JobManagerMessages._
 import org.apache.flink.runtime.metrics.MetricRegistry
 import org.apache.flink.runtime.minicluster.LocalFlinkMiniCluster
 import org.apache.flink.runtime.taskmanager.TaskManager
+<<<<<<< HEAD
 import org.apache.flink.runtime.testingUtils.TestingJobManagerMessages.{CheckpointRequest, CheckpointRequestFailure, CheckpointRequestSuccess, ResponseSavepoint}
+=======
+import org.apache.flink.runtime.testingUtils.TestingJobManagerMessages._
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.runtime.testingUtils.TestingMessages.Alive
 import org.apache.flink.runtime.testingUtils.TestingTaskManagerMessages.NotifyWhenRegisteredAtJobManager
 import org.apache.flink.runtime.testutils.TestingResourceManager
@@ -110,6 +118,7 @@ class TestingCluster(
     ioExecutor: Executor,
     instanceManager: InstanceManager,
     scheduler: Scheduler,
+    blobServer: BlobServer,
     libraryCacheManager: BlobLibraryCacheManager,
     archive: ActorRef,
     restartStrategyFactory: RestartStrategyFactory,
@@ -118,7 +127,8 @@ class TestingCluster(
     submittedJobGraphStore: SubmittedJobGraphStore,
     checkpointRecoveryFactory: CheckpointRecoveryFactory,
     jobRecoveryTimeout: FiniteDuration,
-    metricsRegistry: Option[MetricRegistry]): Props = {
+    metricsRegistry: Option[MetricRegistry],
+    optRestAddress: Option[String]): Props = {
 
     val props = super.getJobManagerProps(
       jobManagerClass,
@@ -127,6 +137,7 @@ class TestingCluster(
       ioExecutor,
       instanceManager,
       scheduler,
+      blobServer,
       libraryCacheManager,
       archive,
       restartStrategyFactory,
@@ -135,7 +146,8 @@ class TestingCluster(
       submittedJobGraphStore,
       checkpointRecoveryFactory,
       jobRecoveryTimeout,
-      metricsRegistry)
+      metricsRegistry,
+      optRestAddress)
 
     if (synchronousDispatcher) {
       props.withDispatcher(CallingThreadDispatcher.Id)
@@ -237,7 +249,10 @@ class TestingCluster(
           // reset the original configuration
           originalConfiguration.setInteger(JobManagerOptions.PORT, oldPort)
 
-          val newJobManagerActor = startJobManager(index, newJobManagerActorSystem)
+          val newJobManagerActor = startJobManager(
+            index,
+            newJobManagerActorSystem,
+            webMonitor.map(_.getRestAddress))
 
           jobManagerActors = Some(jmActors.patch(index, Seq(newJobManagerActor), 1))
           jobManagerActorSystems = Some(jmActorSystems.patch(
@@ -378,12 +393,22 @@ class TestingCluster(
   def requestCheckpoint(jobId: JobID, options : CheckpointOptions): String = {
     val jobManagerGateway = getLeaderGateway(timeout)
 
+<<<<<<< HEAD
+=======
+    // wait until the cluster is ready to take a checkpoint.
+    val allRunning = jobManagerGateway.ask(
+      TestingJobManagerMessages.WaitForAllVerticesToBeRunning(jobId), timeout)
+
+    Await.ready(allRunning, timeout)
+
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
     // trigger checkpoint
     val result = Await.result(
       jobManagerGateway.ask(CheckpointRequest(jobId, options), timeout), timeout)
 
     result match {
       case success: CheckpointRequestSuccess => success.path
+<<<<<<< HEAD
       case fail: CheckpointRequestFailure => {
         // TODO right now, this is a dirty way to detect whether the checkpoint
         // failed because tasks were not ready.This would not be required if
@@ -393,19 +418,47 @@ class TestingCluster(
         Thread.sleep(50)
         requestCheckpoint(jobId, options)
       }
+=======
+      case fail: CheckpointRequestFailure => throw fail.cause
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
       case _ => throw new IllegalStateException("Trigger checkpoint failed")
     }
   }
 
+<<<<<<< HEAD
+=======
+  /**
+    * This cancels the given job and waits until it has been completely removed from
+    * the cluster.
+    *
+    * @param jobId identifying the job to cancel
+    * @throws Exception if something goes wrong
+    */
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
   @throws[Exception]
   def cancelJob(jobId: JobID): Unit = {
     if (getCurrentlyRunningJobsJava.contains(jobId)) {
       val jobManagerGateway = getLeaderGateway(timeout)
+<<<<<<< HEAD
       val cancelFuture = jobManagerGateway.ask(new JobManagerMessages.CancelJob(jobId), timeout)
       val result = Await.result(cancelFuture, timeout)
       if (!result.isInstanceOf[JobManagerMessages.CancellationSuccess]) {
         throw new Exception("Cancellation failed")
       }
+=======
+      val jobRemoved = jobManagerGateway.ask(NotifyWhenJobRemoved(jobId), timeout)
+      val cancelFuture = jobManagerGateway.ask(new JobManagerMessages.CancelJob(jobId), timeout)
+      val result = Await.result(cancelFuture, timeout)
+
+      result match {
+        case CancellationFailure(_, cause) =>
+          throw new Exception("Cancellation failed", cause)
+        case _ => // noop
+      }
+
+      // wait until the job has been removed
+      Await.result(jobRemoved, timeout)
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
     }
     else throw new IllegalStateException("Job is not running")
   }

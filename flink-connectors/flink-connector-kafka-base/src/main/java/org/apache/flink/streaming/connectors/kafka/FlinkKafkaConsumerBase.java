@@ -33,7 +33,6 @@ import org.apache.flink.runtime.state.DefaultOperatorStateBackend;
 import org.apache.flink.runtime.state.FunctionInitializationContext;
 import org.apache.flink.runtime.state.FunctionSnapshotContext;
 import org.apache.flink.streaming.api.checkpoint.CheckpointedFunction;
-import org.apache.flink.streaming.api.checkpoint.CheckpointedRestoring;
 import org.apache.flink.streaming.api.functions.AssignerWithPeriodicWatermarks;
 import org.apache.flink.streaming.api.functions.AssignerWithPunctuatedWatermarks;
 import org.apache.flink.streaming.api.functions.source.RichParallelSourceFunction;
@@ -78,8 +77,7 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
 public abstract class FlinkKafkaConsumerBase<T> extends RichParallelSourceFunction<T> implements
 		CheckpointListener,
 		ResultTypeQueryable<T>,
-		CheckpointedFunction,
-		CheckpointedRestoring<HashMap<KafkaTopicPartition, Long>> {
+		CheckpointedFunction {
 
 	private static final long serialVersionUID = -6272159445203409112L;
 
@@ -703,6 +701,7 @@ public abstract class FlinkKafkaConsumerBase<T> extends RichParallelSourceFuncti
 			for (Tuple2<KafkaTopicPartition, Long> kafkaOffset : oldRoundRobinListState.get()) {
 				restoredFromOldState = true;
 				unionOffsetStates.add(kafkaOffset);
+<<<<<<< HEAD
 			}
 			oldRoundRobinListState.clear();
 
@@ -716,6 +715,21 @@ public abstract class FlinkKafkaConsumerBase<T> extends RichParallelSourceFuncti
 				restoredState.put(kafkaOffset.f0, kafkaOffset.f1);
 			}
 
+=======
+			}
+			oldRoundRobinListState.clear();
+
+			if (restoredFromOldState && discoveryIntervalMillis != PARTITION_DISCOVERY_DISABLED) {
+				throw new IllegalArgumentException(
+					"Topic / partition discovery cannot be enabled if the job is restored from a savepoint from Flink 1.2.x.");
+			}
+
+			// populate actual holder for restored state
+			for (Tuple2<KafkaTopicPartition, Long> kafkaOffset : unionOffsetStates.get()) {
+				restoredState.put(kafkaOffset.f0, kafkaOffset.f1);
+			}
+
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			LOG.info("Setting restore state in the FlinkKafkaConsumer: {}", restoredState);
 		} else {
 			LOG.info("No restore state for FlinkKafkaConsumer.");
@@ -767,6 +781,7 @@ public abstract class FlinkKafkaConsumerBase<T> extends RichParallelSourceFuncti
 	}
 
 	@Override
+<<<<<<< HEAD
 	public final void restoreState(HashMap<KafkaTopicPartition, Long> restoredOffsets) {
 		LOG.info("{} (taskIdx={}) restoring offsets from an older version: {}",
 			getClass().getSimpleName(), getRuntimeContext().getIndexOfThisSubtask(), restoredOffsets);
@@ -783,6 +798,8 @@ public abstract class FlinkKafkaConsumerBase<T> extends RichParallelSourceFuncti
 	}
 
 	@Override
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	public final void notifyCheckpointComplete(long checkpointId) throws Exception {
 		if (!running) {
 			LOG.debug("notifyCheckpointComplete() called on closed source");

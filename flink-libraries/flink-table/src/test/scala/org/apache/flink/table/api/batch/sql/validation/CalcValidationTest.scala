@@ -34,6 +34,10 @@ class CalcValidationTest extends TableTestBase {
 
     val sqlQuery = "SELECT a, foo FROM MyTable"
 
+<<<<<<< HEAD
     util.tableEnv.sql(sqlQuery)
+=======
+    util.tableEnv.sqlQuery(sqlQuery)
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
   }
 }

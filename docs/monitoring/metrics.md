@@ -229,7 +229,7 @@ public class MyMapper extends RichMapFunction<Long, Integer> {
 ## Scope
 
 Every metric is assigned an identifier under which it will be reported that is based on 3 components: the user-provided name when registering the metric, an optional user-defined scope and a system-provided scope.
-For example, if `A.B` is the sytem scope, `C.D` the user scope and `E` the name, then the identifier for the metric will be `A.B.C.D.E`.
+For example, if `A.B` is the system scope, `C.D` the user scope and `E` the name, then the identifier for the metric will be `A.B.C.D.E`.
 
 You can configure which delimiter to use for the identifier (default: `.`) by setting the `metrics.scope.delimiter` key in `conf/flink-conf.yaml`.
 
@@ -553,7 +553,7 @@ Thus, in order to infer the metric identifier:
     <tr>                                                           
       <th rowspan="12"><strong>Job-/TaskManager</strong></th>
       <td rowspan="12">Status.JVM.Memory</td>
-      <td>Memory.Heap.Used</td>
+      <td>Heap.Used</td>
       <td>The amount of heap memory currently used.</td>
     </tr>
     <tr>
@@ -808,7 +808,7 @@ Thus, in order to infer the metric identifier:
   </thead>
   <tbody>
     <tr>
-      <th rowspan="3"><strong>Job (only available on JobManager)</strong></th>
+      <th rowspan="9"><strong>Job (only available on JobManager)</strong></th>
       <td>lastCheckpointDuration</td>
       <td>The time it took to complete the last checkpoint.</td>
     </tr>
@@ -819,6 +819,30 @@ Thus, in order to infer the metric identifier:
     <tr>
       <td>lastCheckpointExternalPath</td>
       <td>The path where the last checkpoint was stored.</td>
+    </tr>
+    <tr>
+      <td>lastCheckpointRestoreTimestamp</td>
+      <td>Timestamp when the last checkpoint was restored at the coordinator.</td>
+    </tr>
+    <tr>
+      <td>lastCheckpointAlignmentBuffered</td>
+      <td>The number of buffered bytes during alignment over all subtasks for the last checkpoint.</td>
+    </tr>
+    <tr>
+      <td>numberOfInProgressCheckpoints</td>
+      <td>The number of in progress checkpoints.</td>
+    </tr>
+    <tr>
+      <td>numberOfCompletedCheckpoints</td>
+      <td>The number of successfully completed checkpoints.</td>
+    </tr>            
+    <tr>
+      <td>numberOfFailedCheckpoints</td>
+      <td>The number of failed checkpoints.</td>
+    </tr>
+    <tr>
+      <td>totalNumberOfCheckpoints</td>
+      <td>The number of total checkpoints (in progress, completed, failed).</td>
     </tr>
     <tr>
       <th rowspan="1">Task</th>

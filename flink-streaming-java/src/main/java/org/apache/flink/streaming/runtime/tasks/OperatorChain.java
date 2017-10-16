@@ -526,6 +526,16 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 				StreamRecord<T> copy = castRecord.copy(serializer.copy(castRecord.getValue()));
 				operator.setKeyContextElement1(copy);
 				operator.processElement(copy);
+			} catch (ClassCastException e) {
+				// Enrich error message
+				ClassCastException replace = new ClassCastException(
+						String.format("%s. Failed to push OutputTag with id '%s' to operator. " +
+								"This can occur when multiple OutputTags with different types " +
+								"but identical names are being used.",
+								e.getMessage(), outputTag.getId()));
+
+				throw new ExceptionInChainedOperatorException(replace);
+
 			} catch (Exception e) {
 				throw new ExceptionInChainedOperatorException(e);
 			}
@@ -612,8 +622,10 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 				output.collect(shallowCopy);
 			}
 
-			// don't copy for the last output
-			outputs[outputs.length - 1].collect(record);
+			if (outputs.length > 0) {
+				// don't copy for the last output
+				outputs[outputs.length - 1].collect(record);
+			}
 		}
 
 		@Override
@@ -625,8 +637,10 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 				output.collect(outputTag, shallowCopy);
 			}
 
-			// don't copy for the last output
-			outputs[outputs.length - 1].collect(outputTag, record);
+			if (outputs.length > 0) {
+				// don't copy for the last output
+				outputs[outputs.length - 1].collect(outputTag, record);
+			}
 		}
 	}
 }

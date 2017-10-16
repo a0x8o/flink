@@ -38,6 +38,7 @@ import org.apache.flink.runtime.leaderretrieval.LeaderRetrievalService;
 import org.apache.flink.runtime.metrics.MetricRegistry;
 import org.apache.flink.runtime.metrics.MetricRegistryConfiguration;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerGateway;
+import org.apache.flink.runtime.resourcemanager.ResourceManagerId;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerRunner;
 import org.apache.flink.runtime.rpc.FatalErrorHandler;
 import org.apache.flink.runtime.rpc.RpcService;
@@ -95,15 +96,18 @@ public class MiniCluster {
 	@GuardedBy("lock")
 	private ResourceManagerRunner[] resourceManagerRunners;
 
+<<<<<<< HEAD
 	@GuardedBy("lock")
 	private TaskExecutor[] taskManagers;
+=======
+	private volatile TaskExecutor[] taskManagers;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 	@GuardedBy("lock")
 	private MiniClusterJobDispatcher jobDispatcher;
 
 	/** Flag marking the mini cluster as started/running */
-	@GuardedBy("lock")
-	private boolean running;
+	private volatile boolean running;
 
 	// ------------------------------------------------------------------------
 
@@ -150,6 +154,8 @@ public class MiniCluster {
 	@Deprecated
 	public MiniCluster(Configuration config, boolean singleRpcService) {
 		this(createConfig(config, singleRpcService));
+
+		running = false;
 	}
 
 	// ------------------------------------------------------------------------
@@ -352,6 +358,11 @@ public class MiniCluster {
 				if (tm != null) {
 					try {
 						tm.shutDown();
+<<<<<<< HEAD
+=======
+						// wait for the TaskManager to properly terminate
+						tm.getTerminationFuture().get();
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 					} catch (Throwable t) {
 						exception = firstOrSuppressed(t, exception);
 					}
@@ -419,14 +430,14 @@ public class MiniCluster {
 			final LeaderAddressAndId addressAndId = addressAndIdFuture.get();
 
 			final ResourceManagerGateway resourceManager = 
-					commonRpcService.connect(addressAndId.leaderAddress(), ResourceManagerGateway.class).get();
+					commonRpcService.connect(addressAndId.leaderAddress(), new ResourceManagerId(addressAndId.leaderId()), ResourceManagerGateway.class).get();
 
 			final int numTaskManagersToWaitFor = taskManagers.length;
 
 			// poll and wait until enough TaskManagers are available
 			while (true) {
 				int numTaskManagersAvailable = 
-						resourceManager.getNumberOfRegisteredTaskManagers(addressAndId.leaderId()).get();
+						resourceManager.getNumberOfRegisteredTaskManagers().get();
 
 				if (numTaskManagersAvailable >= numTaskManagersToWaitFor) {
 					break;
@@ -645,6 +656,7 @@ public class MiniCluster {
 
 		@Override
 		public void onFatalError(Throwable exception) {
+<<<<<<< HEAD
 			LOG.error("TaskManager #{} failed.", index, exception);
 
 			try {
@@ -656,6 +668,20 @@ public class MiniCluster {
 				}
 			} catch (Exception e) {
 				LOG.error("TaskManager #{} could not be properly terminated.", index, e);
+=======
+			// first check if we are still running
+			if (running) {
+				LOG.error("TaskManager #{} failed.", index, exception);
+
+				// let's check if there are still TaskManagers because there could be a concurrent
+				// shut down operation taking place
+				TaskExecutor[] currentTaskManagers = taskManagers;
+
+				if (currentTaskManagers != null) {
+					// the shutDown is asynchronous
+					currentTaskManagers[index].shutDown();
+				}
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			}
 		}
 	}

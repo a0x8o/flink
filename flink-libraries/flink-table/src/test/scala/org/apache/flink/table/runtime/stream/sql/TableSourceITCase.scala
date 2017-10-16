@@ -43,7 +43,11 @@ class TableSourceITCase extends StreamingMultipleProgramsTestBase {
 
     tEnv.registerTableSource("persons", csvTable)
 
+<<<<<<< HEAD
     tEnv.sql(
+=======
+    tEnv.sqlQuery(
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
       "SELECT id, `first`, `last`, score FROM persons WHERE id < 4 ")
       .toAppendStream[Row]
       .addSink(new StreamITCase.StringSink[Row])

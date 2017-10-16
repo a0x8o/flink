@@ -32,7 +32,7 @@ import org.apache.flink.runtime.io.network.partition.ResultPartitionID
 import org.apache.flink.runtime.jobgraph.{IntermediateDataSetID, JobGraph, JobStatus, JobVertexID}
 import org.apache.flink.runtime.jobmanager.SubmittedJobGraph
 import org.apache.flink.runtime.messages.checkpoint.AbstractCheckpointMessage
-import org.apache.flink.runtime.util.SerializedThrowable
+import org.apache.flink.util.SerializedThrowable
 
 import scala.collection.JavaConverters._
 
@@ -464,15 +464,8 @@ object JobManagerMessages {
   /** Response containing the ActorRef of the archiver */
   case class ResponseArchive(actor: ActorRef)
 
-  /** Request for the [[org.apache.flink.runtime.webmonitor.WebMonitor]] port. */
-  case object RequestWebMonitorPort
-
-  /**
-   * Response containing the [[org.apache.flink.runtime.webmonitor.WebMonitor]] port.
-   *
-   * -1 indicates that there is no web monitor running.
-   */
-  case class ResponseWebMonitorPort(port: Integer)
+  /** Request for the JobManager's REST endpoint address */
+  case object RequestRestAddress
 
   /**
     * Triggers a savepoint for the specified job.
@@ -580,8 +573,8 @@ object JobManagerMessages {
     RecoverAllJobs
   }
 
-  def getRequestWebMonitorPort: AnyRef = {
-    RequestWebMonitorPort
+  def getRequestRestAddress: AnyRef = {
+    RequestRestAddress
   }
 
   def getDisposeSavepointSuccess: AnyRef = {

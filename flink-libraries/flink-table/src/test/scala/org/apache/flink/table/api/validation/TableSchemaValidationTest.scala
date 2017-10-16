@@ -24,12 +24,43 @@ import org.junit.Test
 
 class TableSchemaValidationTest extends TableTestBase {
 
+<<<<<<< HEAD
   @Test(expected = classOf[TableException])
   def testInvalidSchema() {
+=======
+  @Test
+  def testColumnNameAndColumnTypeNotEqual() {
+    thrown.expect(classOf[TableException])
+    thrown.expectMessage(
+      "Number of field names and field types must be equal.\n" +
+        "Number of names is 3, number of types is 2.\n" +
+        "List of field names: [a, b, c].\n" +
+        "List of field types: [Integer, String].")
+
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
     val fieldNames = Array("a", "b", "c")
     val typeInfos: Array[TypeInformation[_]] = Array(
       BasicTypeInfo.INT_TYPE_INFO,
       BasicTypeInfo.STRING_TYPE_INFO)
     new TableSchema(fieldNames, typeInfos)
   }
+<<<<<<< HEAD
+=======
+
+  @Test
+  def testColumnNamesDuplicate() {
+    thrown.expect(classOf[TableException])
+    thrown.expectMessage(
+      "Field names must be unique.\n" +
+        "List of duplicate fields: [a].\n" +
+        "List of all fields: [a, a, c].")
+
+    val fieldNames = Array("a", "a", "c")
+    val typeInfos: Array[TypeInformation[_]] = Array(
+      BasicTypeInfo.INT_TYPE_INFO,
+      BasicTypeInfo.INT_TYPE_INFO,
+      BasicTypeInfo.STRING_TYPE_INFO)
+    new TableSchema(fieldNames, typeInfos)
+  }
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 }

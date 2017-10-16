@@ -45,14 +45,21 @@ import org.apache.flink.streaming.util.serialization.TypeInformationSerializatio
 import org.apache.flink.test.util.SuccessException;
 import org.apache.flink.util.Preconditions;
 
+<<<<<<< HEAD
 import com.google.common.collect.ImmutableSet;
 import kafka.server.KafkaServer;
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.junit.Test;
 
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collection;
+<<<<<<< HEAD
+=======
+import java.util.Collections;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -214,7 +221,15 @@ public abstract class KafkaProducerTestBase extends KafkaTestBase {
 
 	/**
 	 * This test sets KafkaProducer so that it will not automatically flush the data and
+<<<<<<< HEAD
 	 * and fails the broker to check whether FlinkKafkaProducer flushed records manually on snapshotState.
+=======
+	 * simulate network failure between Flink and Kafka to check whether FlinkKafkaProducer
+	 * flushed records manually on snapshotState.
+	 *
+	 * <p>Due to legacy reasons there are two different ways of instantiating a Kafka 0.10 sink. The
+	 * parameter controls which method is used.
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	 */
 	protected void testOneToOneAtLeastOnce(boolean regularSink) throws Exception {
 		final String topic = regularSink ? "oneToOneTopicRegularSink" : "oneToOneTopicCustomOperator";
@@ -243,13 +258,21 @@ public abstract class KafkaProducerTestBase extends KafkaTestBase {
 		properties.setProperty("batch.size", "10240000");
 		properties.setProperty("linger.ms", "10000");
 
+<<<<<<< HEAD
 		int leaderId = kafkaServer.getLeaderToShutDown(topic);
 		BrokerRestartingMapper.resetState();
+=======
+		BrokerRestartingMapper.resetState(kafkaServer::blockProxyTraffic);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 		// process exactly failAfterElements number of elements and then shutdown Kafka broker and fail application
 		DataStream<Integer> inputStream = env
 			.fromCollection(getIntegersSequence(numElements))
+<<<<<<< HEAD
 			.map(new BrokerRestartingMapper<Integer>(leaderId, failAfterElements));
+=======
+			.map(new BrokerRestartingMapper<>(failAfterElements));
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 		StreamSink<Integer> kafkaSink = kafkaServer.getProducerSink(topic, keyedSerializationSchema, properties, new FlinkKafkaPartitioner<Integer>() {
 			@Override
@@ -276,17 +299,28 @@ public abstract class KafkaProducerTestBase extends KafkaTestBase {
 			fail("Job should fail!");
 		}
 		catch (JobExecutionException ex) {
+<<<<<<< HEAD
 			assertEquals("Broker was shutdown!", ex.getCause().getMessage());
 		}
 
 		kafkaServer.restartBroker(leaderId);
+=======
+			// ignore error, it can be one of many errors so it would be hard to check the exception message/cause
+		}
+
+		kafkaServer.unblockProxyTraffic();
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 		// assert that before failure we successfully snapshot/flushed all expected elements
 		assertAtLeastOnceForTopic(
 				properties,
 				topic,
 				partition,
+<<<<<<< HEAD
 				ImmutableSet.copyOf(getIntegersSequence(BrokerRestartingMapper.numElementsBeforeSnapshot)),
+=======
+				Collections.unmodifiableSet(new HashSet<>(getIntegersSequence(BrokerRestartingMapper.numElementsBeforeSnapshot))),
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 				30000L);
 
 		deleteTestTopic(topic);
@@ -438,14 +472,20 @@ public abstract class KafkaProducerTestBase extends KafkaTestBase {
 		public static volatile boolean restartedLeaderBefore;
 		public static volatile boolean hasBeenCheckpointedBeforeFailure;
 		public static volatile int numElementsBeforeSnapshot;
+<<<<<<< HEAD
 
 		private final int shutdownBrokerId;
+=======
+		public static volatile Runnable shutdownAction;
+
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		private final int failCount;
 		private int numElementsTotal;
 
 		private boolean failer;
 		private boolean hasBeenCheckpointed;
 
+<<<<<<< HEAD
 		public static void resetState() {
 			restartedLeaderBefore = false;
 			hasBeenCheckpointedBeforeFailure = false;
@@ -454,6 +494,16 @@ public abstract class KafkaProducerTestBase extends KafkaTestBase {
 
 		public BrokerRestartingMapper(int shutdownBrokerId, int failCount) {
 			this.shutdownBrokerId = shutdownBrokerId;
+=======
+		public static void resetState(Runnable shutdownAction) {
+			restartedLeaderBefore = false;
+			hasBeenCheckpointedBeforeFailure = false;
+			numElementsBeforeSnapshot = 0;
+			BrokerRestartingMapper.shutdownAction = shutdownAction;
+		}
+
+		public BrokerRestartingMapper(int failCount) {
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			this.failCount = failCount;
 		}
 
@@ -471,6 +521,7 @@ public abstract class KafkaProducerTestBase extends KafkaTestBase {
 
 				if (failer && numElementsTotal >= failCount) {
 					// shut down a Kafka broker
+<<<<<<< HEAD
 					KafkaServer toShutDown = null;
 					for (KafkaServer server : kafkaServer.getBrokers()) {
 
@@ -496,6 +547,11 @@ public abstract class KafkaProducerTestBase extends KafkaTestBase {
 						toShutDown.awaitShutdown();
 						throw new Exception("Broker was shutdown!");
 					}
+=======
+					hasBeenCheckpointedBeforeFailure = hasBeenCheckpointed;
+					restartedLeaderBefore = true;
+					shutdownAction.run();
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 				}
 			}
 			return value;

@@ -20,6 +20,7 @@ package org.apache.flink.runtime.jobmanager
 
 import java.io.IOException
 import java.net._
+import java.util
 import java.util.UUID
 import java.util.concurrent.{TimeUnit, Future => _, TimeoutException => _, _}
 import java.util.function.{BiFunction, Consumer}
@@ -45,8 +46,13 @@ import org.apache.flink.runtime.clusterframework.FlinkResourceManager
 import org.apache.flink.runtime.clusterframework.messages._
 import org.apache.flink.runtime.clusterframework.standalone.StandaloneResourceManager
 import org.apache.flink.runtime.clusterframework.types.ResourceID
+<<<<<<< HEAD
 import org.apache.flink.runtime.concurrent.{Executors => FlinkExecutors}
+=======
+import org.apache.flink.runtime.concurrent.{FutureUtils, Executors => FlinkExecutors}
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.runtime.execution.SuppressRestartsException
+import org.apache.flink.runtime.execution.librarycache.FlinkUserCodeClassLoaders.ResolveOrder
 import org.apache.flink.runtime.execution.librarycache.{BlobLibraryCacheManager, LibraryCacheManager}
 import org.apache.flink.runtime.executiongraph.restart.RestartStrategyFactory
 import org.apache.flink.runtime.executiongraph._
@@ -73,18 +79,23 @@ import org.apache.flink.runtime.messages.webmonitor.{InfoMessage, _}
 import org.apache.flink.runtime.metrics.groups.JobManagerMetricGroup
 import org.apache.flink.runtime.metrics.{MetricRegistryConfiguration, MetricRegistry => FlinkMetricRegistry}
 import org.apache.flink.runtime.metrics.util.MetricUtils
+import org.apache.flink.runtime.net.SSLUtils
 import org.apache.flink.runtime.process.ProcessReaper
 import org.apache.flink.runtime.query.KvStateMessage.{LookupKvStateLocation, NotifyKvStateRegistered, NotifyKvStateUnregistered}
 import org.apache.flink.runtime.query.{KvStateMessage, UnknownKvStateLocation}
 import org.apache.flink.runtime.rpc.akka.AkkaRpcServiceUtils
-import org.apache.flink.runtime.security.SecurityUtils
-import org.apache.flink.runtime.security.SecurityUtils.SecurityConfiguration
+import org.apache.flink.runtime.security.{SecurityConfiguration, SecurityUtils}
 import org.apache.flink.runtime.taskexecutor.TaskExecutor
 import org.apache.flink.runtime.taskmanager.TaskManager
 import org.apache.flink.runtime.util._
+import org.apache.flink.runtime.webmonitor.retriever.impl.{AkkaJobManagerRetriever, AkkaQueryServiceRetriever}
 import org.apache.flink.runtime.webmonitor.{WebMonitor, WebMonitorUtils}
 import org.apache.flink.runtime.{FlinkActor, LeaderSessionMessageFilter, LogMessages}
+<<<<<<< HEAD
 import org.apache.flink.util.{InstantiationUtil, NetUtils}
+=======
+import org.apache.flink.util.{FlinkException, InstantiationUtil, NetUtils, SerializedThrowable}
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 import scala.collection.JavaConverters._
 import scala.collection.mutable
@@ -125,6 +136,7 @@ class JobManager(
     protected val ioExecutor: Executor,
     protected val instanceManager: InstanceManager,
     protected val scheduler: FlinkScheduler,
+    protected val blobServer: BlobServer,
     protected val libraryCacheManager: BlobLibraryCacheManager,
     protected val archive: ActorRef,
     protected val restartStrategyFactory: RestartStrategyFactory,
@@ -133,7 +145,8 @@ class JobManager(
     protected val submittedJobGraphs : SubmittedJobGraphStore,
     protected val checkpointRecoveryFactory : CheckpointRecoveryFactory,
     protected val jobRecoveryTimeout: FiniteDuration,
-    protected val metricsRegistry: Option[FlinkMetricRegistry])
+    protected val metricsRegistry: Option[FlinkMetricRegistry],
+    protected val optRestAddress: Option[String])
   extends FlinkActor
   with LeaderSessionMessageFilter // mixin oder is important, we want filtering after logging
   with LogMessages // mixin order is important, we want first logging
@@ -162,6 +175,7 @@ class JobManager(
   /** Futures which have to be completed before terminating the job manager */
   var futuresToComplete: Option[Seq[Future[Unit]]] = None
 
+<<<<<<< HEAD
   /**
    * The port of the web monitor as configured. Make sure that it is actually configured before
    * starting the JobManager. This tightly couples the web monitor with the job manager. It is a
@@ -172,6 +186,8 @@ class JobManager(
   val webMonitorPort : Int = flinkConfiguration.getInteger(
     JobManagerOptions.WEB_PORT.key(), -1)
 
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
   /** The default directory for savepoints. */
   val defaultSavepointDir: String = flinkConfiguration.getString(CoreOptions.SAVEPOINT_DIRECTORY)
 
@@ -271,11 +287,12 @@ class JobManager(
 
     instanceManager.shutdown()
     scheduler.shutdown()
+    libraryCacheManager.shutdown()
 
     try {
-      libraryCacheManager.shutdown()
+      blobServer.close()
     } catch {
-      case e: IOException => log.error("Could not properly shutdown the library cache manager.", e)
+      case e: IOException => log.error("Could not properly shutdown the blob server.", e)
     }
 
     // failsafe shutdown of the metrics registry
@@ -421,7 +438,7 @@ class JobManager(
         taskManager ! decorateMessage(
           AlreadyRegistered(
             instanceID,
-            libraryCacheManager.getBlobServerPort))
+            blobServer.getPort))
       } else {
         try {
           val actorGateway = new AkkaActorGateway(taskManager, leaderSessionID.orNull)
@@ -436,7 +453,7 @@ class JobManager(
           taskManagerMap.put(taskManager, instanceID)
 
           taskManager ! decorateMessage(
-            AcknowledgeRegistration(instanceID, libraryCacheManager.getBlobServerPort))
+            AcknowledgeRegistration(instanceID, blobServer.getPort))
 
           // to be notified when the taskManager is no longer reachable
           context.watch(taskManager)
@@ -575,11 +592,11 @@ class JobManager(
       currentJobs.get(jobID) match {
         case Some((executionGraph, _)) =>
           // execute the cancellation asynchronously
+          val origSender = sender
           Future {
             executionGraph.cancel()
+            origSender ! decorateMessage(CancellationSuccess(jobID))
           }(context.dispatcher)
-
-          sender ! decorateMessage(CancellationSuccess(jobID))
         case None =>
           log.info(s"No job found with ID $jobID.")
           sender ! decorateMessage(
@@ -838,6 +855,7 @@ class JobManager(
         try {
           log.info(s"Disposing savepoint at '$savepointPath'.")
           //TODO user code class loader ?
+          // (has not been used so far and new savepoints can simply be deleted by file)
           val savepoint = SavepointStore.loadSavepoint(
             savepointPath,
             Thread.currentThread().getContextClassLoader)
@@ -1059,7 +1077,7 @@ class JobManager(
         case Some((graph, jobInfo)) =>
           sender() ! decorateMessage(
             ClassloadingProps(
-              libraryCacheManager.getBlobServerPort,
+              blobServer.getPort,
               graph.getRequiredJarFiles,
               graph.getRequiredClasspaths))
         case None =>
@@ -1067,7 +1085,7 @@ class JobManager(
       }
 
     case RequestBlobManagerPort =>
-      sender ! decorateMessage(libraryCacheManager.getBlobServerPort)
+      sender ! decorateMessage(blobServer.getPort)
 
     case RequestArchive =>
       sender ! decorateMessage(ResponseArchive(archive))
@@ -1204,8 +1222,13 @@ class JobManager(
     case RequestLeaderSessionID =>
       sender() ! ResponseLeaderSessionID(leaderSessionID.orNull)
 
-    case RequestWebMonitorPort =>
-      sender() ! ResponseWebMonitorPort(webMonitorPort)
+    case RequestRestAddress =>
+      sender() !
+        decorateMessage(
+          optRestAddress.getOrElse(
+            Status.Failure(
+              new FlinkException("No REST endpoint has been started for the JobManager.")))
+        )
   }
 
   /**
@@ -1253,8 +1276,8 @@ class JobManager(
         // because this makes sure that the uploaded jar files are removed in case of
         // unsuccessful
         try {
-          libraryCacheManager.registerJob(jobGraph.getJobID, jobGraph.getUserJarBlobKeys,
-            jobGraph.getClasspaths)
+          libraryCacheManager.registerJob(
+            jobGraph.getJobID, jobGraph.getUserJarBlobKeys, jobGraph.getClasspaths)
         }
         catch {
           case t: Throwable =>
@@ -1343,6 +1366,7 @@ class JobManager(
           log.error(s"Failed to submit job $jobId ($jobName)", t)
 
           libraryCacheManager.unregisterJob(jobId)
+          blobServer.cleanupJob(jobId)
           currentJobs.remove(jobId)
 
           if (executionGraph != null) {
@@ -1691,10 +1715,12 @@ class JobManager(
             val future = (archive ? msg)(timeout)
             future.onSuccess {
               case archiveDetails: MultipleJobsDetails =>
-                theSender ! new MultipleJobsDetails(ourDetails, archiveDetails.getFinishedJobs())
+                theSender ! new MultipleJobsDetails(
+                  util.Arrays.asList(ourDetails: _*),
+                  archiveDetails.getFinished())
             }(context.dispatcher)
           } else {
-            theSender ! new MultipleJobsDetails(ourDetails, null)
+            theSender ! new MultipleJobsDetails(util.Arrays.asList(ourDetails: _*), null)
           }
           
         case _ => log.error("Unrecognized info message " + actorMessage)
@@ -1784,12 +1810,19 @@ class JobManager(
       case None => None
     }
 
+<<<<<<< HEAD
     try {
       libraryCacheManager.unregisterJob(jobID)
     } catch {
       case t: Throwable =>
         log.error(s"Could not properly unregister job $jobID from the library cache.", t)
     }
+=======
+    // remove all job-related BLOBs from local and HA store
+    libraryCacheManager.unregisterJob(jobID)
+    blobServer.cleanupJob(jobID)
+
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
     jobManagerMetricGroup.foreach(_.removeJob(jobID))
 
     futureOption
@@ -2216,15 +2249,24 @@ object JobManager {
     : (ActorRef, ActorRef, Option[WebMonitor], Option[ActorRef]) = {
 
     val webMonitor: Option[WebMonitor] =
+<<<<<<< HEAD
       if (configuration.getInteger(JobManagerOptions.WEB_PORT.key(), 0) >= 0) {
+=======
+      if (configuration.getInteger(WebOptions.PORT, 0) >= 0) {
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
         LOG.info("Starting JobManager web frontend")
+
+        val timeout = FutureUtils.toTime(AkkaUtils.getTimeout(configuration))
 
         // start the web frontend. we need to load this dynamically
         // because it is not in the same project/dependencies
         val webServer = WebMonitorUtils.startWebRuntimeMonitor(
           configuration,
           highAvailabilityServices,
-          jobManagerSystem)
+          new AkkaJobManagerRetriever(jobManagerSystem, timeout, 10, Time.milliseconds(50L)),
+          new AkkaQueryServiceRetriever(jobManagerSystem, timeout),
+          timeout,
+          futureExecutor)
 
         Option(webServer)
       }
@@ -2234,7 +2276,11 @@ object JobManager {
 
     // Reset the port (necessary in case of automatic port selection)
     webMonitor.foreach{ monitor => configuration.setInteger(
+<<<<<<< HEAD
       JobManagerOptions.WEB_PORT, monitor.getServerPort) }
+=======
+      WebOptions.PORT, monitor.getServerPort) }
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
     try {
       // bring up the job manager actor
@@ -2245,6 +2291,7 @@ object JobManager {
         futureExecutor,
         ioExecutor,
         highAvailabilityServices,
+        webMonitor.map(_.getRestAddress),
         jobManagerClass,
         archiveClass)
 
@@ -2285,15 +2332,7 @@ object JobManager {
 
       // start web monitor
       webMonitor.foreach {
-        monitor =>
-          val hostnamePort = HighAvailabilityServicesUtils.getJobManagerAddress(configuration)
-          val jobManagerAkkaUrl = AkkaRpcServiceUtils.getRpcUrl(
-            hostnamePort.f0,
-            hostnamePort.f1,
-            JobMaster.JOB_MANAGER_NAME,
-            AddressResolution.NO_ADDRESS_RESOLUTION,
-            configuration)
-          monitor.start(jobManagerAkkaUrl)
+        _.start()
       }
 
       val resourceManager =
@@ -2395,7 +2434,11 @@ object JobManager {
     }
 
     if (cliOptions.getWebUIPort() >= 0) {
+<<<<<<< HEAD
       configuration.setInteger(JobManagerOptions.WEB_PORT, cliOptions.getWebUIPort())
+=======
+      configuration.setInteger(WebOptions.PORT, cliOptions.getWebUIPort())
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
     }
 
     if (cliOptions.getHost() != null) {
@@ -2457,6 +2500,7 @@ object JobManager {
       blobStore: BlobStore) :
     (InstanceManager,
     FlinkScheduler,
+    BlobServer,
     BlobLibraryCacheManager,
     RestartStrategyFactory,
     FiniteDuration, // timeout
@@ -2468,13 +2512,11 @@ object JobManager {
 
     val timeout: FiniteDuration = AkkaUtils.getTimeout(configuration)
 
-    val cleanupInterval = configuration.getLong(
-      ConfigConstants.LIBRARY_CACHE_MANAGER_CLEANUP_INTERVAL,
-      ConfigConstants.DEFAULT_LIBRARY_CACHE_MANAGER_CLEANUP_INTERVAL) * 1000
+    val classLoaderResolveOrder = configuration.getString(CoreOptions.CLASSLOADER_RESOLVE_ORDER)
 
     val restartStrategy = RestartStrategyFactory.createRestartStrategyFactory(configuration)
 
-    val archiveCount = configuration.getInteger(JobManagerOptions.WEB_ARCHIVE_COUNT)
+    val archiveCount = configuration.getInteger(WebOptions.ARCHIVE_COUNT)
 
     val archiveDir = configuration.getString(JobManagerOptions.ARCHIVE_DIR)
 
@@ -2502,20 +2544,21 @@ object JobManager {
       blobServer = new BlobServer(configuration, blobStore)
       instanceManager = new InstanceManager()
       scheduler = new FlinkScheduler(ExecutionContext.fromExecutor(futureExecutor))
-      libraryCacheManager = new BlobLibraryCacheManager(blobServer, cleanupInterval)
+      libraryCacheManager =
+        new BlobLibraryCacheManager(blobServer, ResolveOrder.fromString(classLoaderResolveOrder))
 
       instanceManager.addInstanceListener(scheduler)
     }
     catch {
       case t: Throwable =>
-        if (libraryCacheManager != null) {
-          libraryCacheManager.shutdown()
-        }
         if (scheduler != null) {
           scheduler.shutdown()
         }
         if (instanceManager != null) {
           instanceManager.shutdown()
+        }
+        if (libraryCacheManager != null) {
+          libraryCacheManager.shutdown()
         }
         if (blobServer != null) {
           blobServer.close()
@@ -2548,6 +2591,7 @@ object JobManager {
 
     (instanceManager,
       scheduler,
+      blobServer,
       libraryCacheManager,
       restartStrategy,
       timeout,
@@ -2565,6 +2609,8 @@ object JobManager {
    * @param actorSystem The actor system running the JobManager
    * @param futureExecutor to run JobManager's futures
    * @param ioExecutor to run blocking io operations
+   * @param highAvailabilityServices high availability services
+   * @param optRestAddress optional rest address
    * @param jobManagerClass The class of the JobManager to be started
    * @param archiveClass The class of the MemoryArchivist to be started
    * @return A tuple of references (JobManager Ref, Archiver Ref)
@@ -2575,6 +2621,7 @@ object JobManager {
       futureExecutor: ScheduledExecutorService,
       ioExecutor: Executor,
       highAvailabilityServices: HighAvailabilityServices,
+      optRestAddress: Option[String],
       jobManagerClass: Class[_ <: JobManager],
       archiveClass: Class[_ <: MemoryArchivist])
     : (ActorRef, ActorRef) = {
@@ -2585,6 +2632,7 @@ object JobManager {
       futureExecutor,
       ioExecutor,
       highAvailabilityServices,
+      optRestAddress,
       Some(JobMaster.JOB_MANAGER_NAME),
       Some(JobMaster.ARCHIVE_NAME),
       jobManagerClass,
@@ -2599,6 +2647,8 @@ object JobManager {
    * @param actorSystem The actor system running the JobManager
    * @param futureExecutor to run JobManager's futures
    * @param ioExecutor to run blocking io operations
+   * @param highAvailabilityServices high availability services
+   * @param optRestAddress optional rest address
    * @param jobManagerActorName Optionally the name of the JobManager actor. If none is given,
    *                          the actor will have the name generated by the actor system.
    * @param archiveActorName Optionally the name of the archive actor. If none is given,
@@ -2613,6 +2663,7 @@ object JobManager {
       futureExecutor: ScheduledExecutorService,
       ioExecutor: Executor,
       highAvailabilityServices: HighAvailabilityServices,
+      optRestAddress: Option[String],
       jobManagerActorName: Option[String],
       archiveActorName: Option[String],
       jobManagerClass: Class[_ <: JobManager],
@@ -2621,6 +2672,7 @@ object JobManager {
 
     val (instanceManager,
     scheduler,
+    blobServer,
     libraryCacheManager,
     restartStrategy,
     timeout,
@@ -2648,6 +2700,7 @@ object JobManager {
       ioExecutor,
       instanceManager,
       scheduler,
+      blobServer,
       libraryCacheManager,
       archive,
       restartStrategy,
@@ -2657,7 +2710,8 @@ object JobManager {
       highAvailabilityServices.getSubmittedJobGraphStore(),
       highAvailabilityServices.getCheckpointRecoveryFactory(),
       jobRecoveryTimeout,
-      metricsRegistry)
+      metricsRegistry,
+      optRestAddress)
 
     val jobManager: ActorRef = jobManagerActorName match {
       case Some(actorName) => actorSystem.actorOf(jobManagerProps, actorName)
@@ -2687,6 +2741,7 @@ object JobManager {
     ioExecutor: Executor,
     instanceManager: InstanceManager,
     scheduler: FlinkScheduler,
+    blobServer: BlobServer,
     libraryCacheManager: LibraryCacheManager,
     archive: ActorRef,
     restartStrategyFactory: RestartStrategyFactory,
@@ -2695,7 +2750,8 @@ object JobManager {
     submittedJobGraphStore: SubmittedJobGraphStore,
     checkpointRecoveryFactory: CheckpointRecoveryFactory,
     jobRecoveryTimeout: FiniteDuration,
-    metricsRegistry: Option[FlinkMetricRegistry]): Props = {
+    metricsRegistry: Option[FlinkMetricRegistry],
+    optRestAddress: Option[String]): Props = {
 
     Props(
       jobManagerClass,
@@ -2704,6 +2760,7 @@ object JobManager {
       ioExecutor,
       instanceManager,
       scheduler,
+      blobServer,
       libraryCacheManager,
       archive,
       restartStrategyFactory,
@@ -2712,6 +2769,7 @@ object JobManager {
       submittedJobGraphStore,
       checkpointRecoveryFactory,
       jobRecoveryTimeout,
-      metricsRegistry)
+      metricsRegistry,
+      optRestAddress)
   }
 }

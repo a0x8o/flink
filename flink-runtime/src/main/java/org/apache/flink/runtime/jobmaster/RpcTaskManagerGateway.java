@@ -33,7 +33,10 @@ import org.apache.flink.runtime.messages.StackTraceSampleResponse;
 import org.apache.flink.runtime.taskexecutor.TaskExecutorGateway;
 import org.apache.flink.util.Preconditions;
 
+<<<<<<< HEAD
 import java.util.UUID;
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -43,11 +46,11 @@ public class RpcTaskManagerGateway implements TaskManagerGateway {
 
 	private final TaskExecutorGateway taskExecutorGateway;
 
-	private final UUID leaderId;
+	private final JobMasterId jobMasterId;
 
-	public RpcTaskManagerGateway(TaskExecutorGateway taskExecutorGateway, UUID leaderId) {
+	public RpcTaskManagerGateway(TaskExecutorGateway taskExecutorGateway, JobMasterId jobMasterId) {
 		this.taskExecutorGateway = Preconditions.checkNotNull(taskExecutorGateway);
-		this.leaderId = Preconditions.checkNotNull(leaderId);
+		this.jobMasterId = Preconditions.checkNotNull(jobMasterId);
 	}
 
 	@Override
@@ -87,7 +90,11 @@ public class RpcTaskManagerGateway implements TaskManagerGateway {
 
 	@Override
 	public CompletableFuture<Acknowledge> submitTask(TaskDeploymentDescriptor tdd, Time timeout) {
+<<<<<<< HEAD
 		return taskExecutorGateway.submitTask(tdd, leaderId, timeout);
+=======
+		return taskExecutorGateway.submitTask(tdd, jobMasterId, timeout);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	}
 
 	@Override

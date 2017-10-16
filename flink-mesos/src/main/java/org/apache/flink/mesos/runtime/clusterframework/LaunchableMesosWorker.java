@@ -23,6 +23,7 @@ import org.apache.flink.configuration.Configuration;
 import org.apache.flink.mesos.Utils;
 import org.apache.flink.mesos.scheduler.LaunchableTask;
 import org.apache.flink.mesos.util.MesosArtifactResolver;
+import org.apache.flink.mesos.util.MesosArtifactServer;
 import org.apache.flink.mesos.util.MesosConfiguration;
 import org.apache.flink.runtime.clusterframework.ContainerSpecification;
 import org.apache.flink.runtime.clusterframework.ContaineredTaskManagerParameters;
@@ -36,6 +37,7 @@ import org.apache.mesos.Protos;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -196,8 +198,8 @@ public class LaunchableMesosWorker implements LaunchableTask {
 			.setSlaveId(slaveId)
 			.setTaskId(taskID)
 			.setName(taskID.getValue())
-			.addResources(scalar("cpus", assignment.getRequest().getCPUs()))
-			.addResources(scalar("mem", assignment.getRequest().getMemory()));
+			.addResources(scalar("cpus", mesosConfiguration.frameworkInfo().getRole(), assignment.getRequest().getCPUs()))
+			.addResources(scalar("mem", mesosConfiguration.frameworkInfo().getRole(), assignment.getRequest().getMemory()));
 
 		final Protos.CommandInfo.Builder cmd = taskInfo.getCommandBuilder();
 		final Protos.Environment.Builder env = cmd.getEnvironmentBuilder();
@@ -222,7 +224,7 @@ public class LaunchableMesosWorker implements LaunchableTask {
 		for (int i = 0; i < TM_PORT_KEYS.length; i++) {
 			int port = assignment.getAssignedPorts().get(i);
 			String key = TM_PORT_KEYS[i];
-			taskInfo.addResources(ranges("ports", range(port, port)));
+			taskInfo.addResources(ranges("ports", mesosConfiguration.frameworkInfo().getRole(), range(port, port)));
 			dynamicProperties.setInteger(key, port);
 		}
 
@@ -261,12 +263,15 @@ public class LaunchableMesosWorker implements LaunchableTask {
 		env.addVariables(variable(MesosConfigKeys.ENV_FRAMEWORK_NAME, mesosConfiguration.frameworkInfo().getName()));
 
 		// build the launch command w/ dynamic application properties
-		Option<String> bootstrapCmdOption = params.bootstrapCommand();
-
-		final String bootstrapCommand = bootstrapCmdOption.isDefined() ? bootstrapCmdOption.get() + " && " : "";
-		final String launchCommand = bootstrapCommand + "$FLINK_HOME/bin/mesos-taskmanager.sh " + ContainerSpecification.formatSystemProperties(dynamicProperties);
-
-		cmd.setValue(launchCommand);
+		StringBuilder launchCommand = new StringBuilder();
+		if (params.bootstrapCommand().isDefined()) {
+			launchCommand.append(params.bootstrapCommand().get()).append(" && ");
+		}
+		launchCommand
+			.append(params.command())
+			.append(" ")
+			.append(ContainerSpecification.formatSystemProperties(dynamicProperties));
+		cmd.setValue(launchCommand.toString());
 
 		// build the container info
 		Protos.ContainerInfo.Builder containerInfo = Protos.ContainerInfo.newBuilder();
@@ -311,5 +316,18 @@ public class LaunchableMesosWorker implements LaunchableTask {
 			"taskID=" + taskID +
 			"taskRequest=" + taskRequest +
 			'}';
+	}
+
+	/**
+	 * Configures an artifact server to serve the artifacts associated with a container specification.
+	 * @param server the server to configure.
+	 * @param container the container with artifacts to serve.
+	 * @throws IOException if the artifacts cannot be accessed.
+	 */
+	static void configureArtifactServer(MesosArtifactServer server, ContainerSpecification container) throws IOException {
+		// serve the artifacts associated with the container environment
+		for (ContainerSpecification.Artifact artifact : container.getArtifacts()) {
+			server.addPath(artifact.source, artifact.dest);
+		}
 	}
 }

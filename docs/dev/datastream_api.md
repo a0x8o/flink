@@ -38,7 +38,7 @@ to the basic concepts of the Flink API.
 In order to create your own Flink DataStream program, we encourage you to start with
 [anatomy of a Flink Program]({{ site.baseurl }}/dev/api_concepts.html#anatomy-of-a-flink-program)
 and gradually add your own
-[transformations](#datastream-transformations). The remaining sections act as references for additional
+[stream transformations]({{ site.baseurl }}/dev/stream/operators/index.html). The remaining sections act as references for additional
 operations and advanced features.
 
 
@@ -135,6 +135,7 @@ word count program. If you want to see counts greater than 1, type the same word
 
 {% top %}
 
+<<<<<<< HEAD
 DataStream Transformations
 --------------------------
 
@@ -1276,6 +1277,8 @@ someStream.filter(...).slotSharingGroup("name")
 
 {% top %}
 
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 Data Sources
 ------------
 
@@ -1396,6 +1399,13 @@ Custom:
 
 </div>
 </div>
+
+{% top %}
+
+DataStream Transformations
+--------------------------
+
+Please see [operators]({{ site.baseurl }}/dev/stream/operators/index.html) for an overview of the available stream transformations.
 
 {% top %}
 
@@ -1604,7 +1614,7 @@ for an explanation of most parameters. These parameters pertain specifically to 
 
 ### Fault Tolerance
 
-[State & Checkpointing]({{ site.baseurl }}/dev/stream/checkpointing.html) describes how to enable and configure Flink's checkpointing mechanism.
+[State & Checkpointing]({{ site.baseurl }}/dev/stream/state/checkpointing.html) describes how to enable and configure Flink's checkpointing mechanism.
 
 ### Controlling Latency
 
@@ -1753,9 +1763,19 @@ import org.apache.flink.contrib.streaming.DataStreamUtils
 import scala.collection.JavaConverters.asScalaIteratorConverter
 
 val myResult: DataStream[(String, Int)] = ...
-val myOutput: Iterator[(String, Int)] = DataStreamUtils.collect(myResult.getJavaStream).asScala
+val myOutput: Iterator[(String, Int)] = DataStreamUtils.collect(myResult.javaStream).asScala
 {% endhighlight %}
 </div>
 </div>
+
+{% top %}
+
+Where to go next?
+-----------------
+
+* [Operators]({{ site.baseurl }}/dev/stream/operators/index.html): Specification of available streaming operators.
+* [Event Time]({{ site.baseurl }}/dev/event_time.html): Introduction to Flink's notion of time.
+* [State & Fault Tolerance]({{ site.baseurl }}/dev/stream/state/index.html): Explanation of how to develop stateful applications.
+* [Connectors]({{ site.baseurl }}/dev/connectors/index.html): Description of available input and output connectors.
 
 {% top %}

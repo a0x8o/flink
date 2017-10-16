@@ -53,7 +53,11 @@ class DataStreamSort(
   with CommonSort
   with DataStreamRel {
 
+<<<<<<< HEAD
   override def deriveRowType(): RelDataType = schema.logicalType
+=======
+  override def deriveRowType(): RelDataType = schema.relDataType
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
   override def copy(
     traitSet: RelTraitSet,
@@ -75,13 +79,21 @@ class DataStreamSort(
   }
 
   override def toString: String = {
+<<<<<<< HEAD
     sortToString(schema.logicalType, sortCollation, sortOffset, sortFetch)
+=======
+    sortToString(schema.relDataType, sortCollation, sortOffset, sortFetch)
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
   }
   
   override def explainTerms(pw: RelWriter) : RelWriter = {
     sortExplainTerms(
       pw.input("input", getInput()),
+<<<<<<< HEAD
       schema.logicalType,
+=======
+      schema.relDataType,
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
       sortCollation, 
       sortOffset, 
       sortFetch)
@@ -94,7 +106,11 @@ class DataStreamSort(
     val inputDS = input.asInstanceOf[DataStreamRel].translateToPlan(tableEnv, queryConfig)
     
     // need to identify time between others order fields. Time needs to be first sort element
+<<<<<<< HEAD
     val timeType = SortUtil.getFirstSortField(sortCollation, schema.logicalType).getType
+=======
+    val timeType = SortUtil.getFirstSortField(sortCollation, schema.relDataType).getType
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
     
     // time ordering needs to be ascending
     if (SortUtil.getFirstSortDirection(sortCollation) != Direction.ASCENDING) {
@@ -141,15 +157,24 @@ class DataStreamSort(
     inputDS: DataStream[CRow],
     execCfg: ExecutionConfig): DataStream[CRow] = {
 
+<<<<<<< HEAD
    val returnTypeInfo = CRowTypeInfo(schema.physicalTypeInfo)
+=======
+   val returnTypeInfo = CRowTypeInfo(schema.typeInfo)
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
     
     // if the order has secondary sorting fields in addition to the proctime
     if (sortCollation.getFieldCollations.size() > 1) {
     
       val processFunction = SortUtil.createProcTimeSortFunction(
         sortCollation,
+<<<<<<< HEAD
         inputSchema.logicalType, 
         inputSchema.physicalTypeInfo, 
+=======
+        inputSchema.relDataType,
+        inputSchema.typeInfo,
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
         execCfg)
       
       inputDS.keyBy(new NullByteKeySelector[CRow])
@@ -173,12 +198,21 @@ class DataStreamSort(
     inputDS: DataStream[CRow],
     execCfg: ExecutionConfig): DataStream[CRow] = {
 
+<<<<<<< HEAD
     val returnTypeInfo = CRowTypeInfo(schema.physicalTypeInfo)
        
     val processFunction = SortUtil.createRowTimeSortFunction(
       sortCollation,
       inputSchema.logicalType, 
       inputSchema.physicalTypeInfo, 
+=======
+    val returnTypeInfo = CRowTypeInfo(schema.typeInfo)
+       
+    val processFunction = SortUtil.createRowTimeSortFunction(
+      sortCollation,
+      inputSchema.relDataType,
+      inputSchema.typeInfo,
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
       execCfg)
       
     inputDS.keyBy(new NullByteKeySelector[CRow])

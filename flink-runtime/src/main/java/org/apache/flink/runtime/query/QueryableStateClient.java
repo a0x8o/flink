@@ -31,7 +31,9 @@ import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.IllegalConfigurationException;
 import org.apache.flink.configuration.QueryableStateOptions;
 import org.apache.flink.runtime.akka.AkkaUtils;
+import org.apache.flink.runtime.concurrent.Executors;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
+import org.apache.flink.runtime.highavailability.HighAvailabilityServicesUtils;
 import org.apache.flink.runtime.leaderretrieval.LeaderRetrievalService;
 import org.apache.flink.runtime.query.AkkaKvStateLocationLookupService.FixedDelayLookupRetryStrategyFactory;
 import org.apache.flink.runtime.query.AkkaKvStateLocationLookupService.LookupRetryStrategyFactory;
@@ -109,6 +111,23 @@ public class QueryableStateClient {
 
 	private ExecutionConfig executionConfig;
 
+<<<<<<< HEAD
+=======
+	/**
+	 * Creates a client from the given configuration.
+	 *
+	 * <p>This will create multiple Thread pools: one for the started actor
+	 * system and another for the network client.
+	 *
+	 * @param config Configuration to use.
+	 * @throws Exception Failures are forwarded
+	 */
+	public QueryableStateClient(Configuration config) throws Exception {
+		this(config, HighAvailabilityServicesUtils.createHighAvailabilityServices(
+				config, Executors.directExecutor(), HighAvailabilityServicesUtils.AddressResolution.TRY_ADDRESS_RESOLUTION));
+	}
+
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	/**
 	 * Creates a client from the given configuration.
 	 *
@@ -118,7 +137,11 @@ public class QueryableStateClient {
 	 * @param config Configuration to use.
 	 * @param highAvailabilityServices Service factory for high availability services
 	 * @throws Exception Failures are forwarded
+	 *
+	 * @deprecated This constructor is deprecated and stays only for backwards compatibility. Use the
+	 * {@link #QueryableStateClient(Configuration)} instead.
 	 */
+	@Deprecated
 	public QueryableStateClient(
 			Configuration config,
 			HighAvailabilityServices highAvailabilityServices) throws Exception {

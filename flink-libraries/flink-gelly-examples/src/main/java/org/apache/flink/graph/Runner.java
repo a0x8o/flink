@@ -123,6 +123,11 @@ extends ParameterizedBase {
 		.addClass(Hash.class)
 		.addClass(Print.class);
 
+<<<<<<< HEAD
+=======
+	// parameters
+
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	private final ParameterTool parameters;
 
 	private final BooleanParameter disableObjectReuse = new BooleanParameter(this, "__disable_object_reuse");
@@ -133,6 +138,21 @@ extends ParameterizedBase {
 	private StringParameter jobName = new StringParameter(this, "__job_name")
 		.setDefaultValue(null);
 
+<<<<<<< HEAD
+=======
+	// state
+
+	private ExecutionEnvironment env;
+
+	private DataSet result;
+
+	private String executionName;
+
+	private Driver algorithm;
+
+	private Output output;
+
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	/**
 	 * Create an algorithm runner from the given arguments.
 	 *
@@ -147,6 +167,29 @@ extends ParameterizedBase {
 		return this.getClass().getSimpleName();
 	}
 
+<<<<<<< HEAD
+=======
+	/**
+	 * Get the ExecutionEnvironment. The ExecutionEnvironment is only available
+	 * after calling {@link Runner#run()}.
+	 *
+	 * @return the ExecutionEnvironment
+	 */
+	public ExecutionEnvironment getExecutionEnvironment() {
+		return env;
+	}
+
+	/**
+	 * Get the result DataSet. The result is only available after calling
+	 * {@link Runner#run()}.
+	 *
+	 * @return the result DataSet
+	 */
+	public DataSet getResult() {
+		return result;
+	}
+
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	/**
 	 * List available algorithms. This is displayed to the user when no valid
 	 * algorithm is given in the program parameterization.
@@ -246,9 +289,21 @@ extends ParameterizedBase {
 		}
 	}
 
+<<<<<<< HEAD
 	public void run() throws Exception {
+=======
+	/**
+	 * Setup the Flink job with the graph input, algorithm, and output.
+	 *
+	 * <p>To then execute the job call {@link #execute}.
+	 *
+	 * @return this
+	 * @throws Exception on error
+	 */
+	public Runner run() throws Exception {
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		// Set up the execution environment
-		final ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
+		env = ExecutionEnvironment.getExecutionEnvironment();
 		ExecutionConfig config = env.getConfig();
 
 		// should not have any non-Flink data types
@@ -282,7 +337,7 @@ extends ParameterizedBase {
 		}
 
 		String algorithmName = parameters.get(ALGORITHM);
-		Driver algorithm = driverFactory.get(algorithmName);
+		algorithm = driverFactory.get(algorithmName);
 
 		if (algorithm == null) {
 			throw new ProgramParametrizationException("Unknown algorithm name: " + algorithmName);
@@ -314,7 +369,11 @@ extends ParameterizedBase {
 		}
 
 		String outputName = parameters.get(OUTPUT);
+<<<<<<< HEAD
 		Output output = outputFactory.get(outputName);
+=======
+		output = outputFactory.get(outputName);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 		if (output == null) {
 			throw new ProgramParametrizationException("Unknown output type: " + outputName);
@@ -338,6 +397,7 @@ extends ParameterizedBase {
 
 		for (Transform transform : transforms) {
 			parameterize(transform);
+<<<<<<< HEAD
 		}
 
 		// unused parameters
@@ -345,6 +405,15 @@ extends ParameterizedBase {
 			throw new ProgramParametrizationException("Unrequested parameters: " + parameters.getUnrequestedParameters());
 		}
 
+=======
+		}
+
+		// unused parameters
+		if (parameters.getUnrequestedParameters().size() > 0) {
+			throw new ProgramParametrizationException("Unrequested parameters: " + parameters.getUnrequestedParameters());
+		}
+
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		// ----------------------------------------------------------------------------------------
 		// Execute
 		// ----------------------------------------------------------------------------------------
@@ -358,10 +427,17 @@ extends ParameterizedBase {
 		}
 
 		// Run algorithm
+<<<<<<< HEAD
 		DataSet results = algorithm.plan(graph);
 
 		// Output
 		String executionName = jobName.getValue() != null ? jobName.getValue() + ": " : "";
+=======
+		result = algorithm.plan(graph);
+
+		// Output
+		executionName = jobName.getValue() != null ? jobName.getValue() + ": " : "";
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 		executionName += input.getIdentity() + " ⇨ " + algorithmName + " ⇨ " + output.getName();
 
@@ -386,22 +462,48 @@ extends ParameterizedBase {
 			throw new ProgramParametrizationException(ex.getMessage());
 		}
 
+<<<<<<< HEAD
 		if (results == null) {
 			env.execute(executionName);
 		} else {
+=======
+		if (result != null) {
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			// Transform output if algorithm returned result DataSet
 			if (transforms.size() > 0) {
 				Collections.reverse(transforms);
 				for (Transform transform : transforms) {
+<<<<<<< HEAD
 					results = (DataSet) transform.transformResult(results);
 				}
 			}
 
 			output.write(executionName.toString(), System.out, results);
+=======
+					result = (DataSet) transform.transformResult(result);
+				}
+			}
+		}
+
+		return this;
+	}
+
+	/**
+	 * Execute the Flink job.
+	 *
+	 * @throws Exception on error
+	 */
+	private void execute() throws Exception {
+		if (result == null) {
+			env.execute(executionName);
+		} else {
+			output.write(executionName.toString(), System.out, result);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		}
 
 		System.out.println();
 		algorithm.printAnalytics(System.out);
+<<<<<<< HEAD
 
 		if (jobDetailsPath.getValue() != null) {
 			writeJobDetails(env, jobDetailsPath.getValue());
@@ -439,6 +541,45 @@ extends ParameterizedBase {
 			}
 			json.writeEndObject();
 
+=======
+
+		if (jobDetailsPath.getValue() != null) {
+			writeJobDetails(env, jobDetailsPath.getValue());
+		}
+	}
+
+	/**
+	 * Write the following job details as a JSON encoded file: runtime environment
+	 * job ID, runtime, parameters, and accumulators.
+	 *
+	 * @param env the execution environment
+	 * @param jobDetailsPath filesystem path to write job details
+	 * @throws IOException on error writing to jobDetailsPath
+	 */
+	private static void writeJobDetails(ExecutionEnvironment env, String jobDetailsPath) throws IOException {
+		JobExecutionResult result = env.getLastJobExecutionResult();
+
+		File jsonFile = new File(jobDetailsPath);
+
+		try (JsonGenerator json = new JsonFactory().createGenerator(jsonFile, JsonEncoding.UTF8)) {
+			json.writeStartObject();
+
+			json.writeObjectFieldStart("Apache Flink");
+			json.writeStringField("version", EnvironmentInformation.getVersion());
+			json.writeStringField("commit ID", EnvironmentInformation.getRevisionInformation().commitId);
+			json.writeStringField("commit date", EnvironmentInformation.getRevisionInformation().commitDate);
+			json.writeEndObject();
+
+			json.writeStringField("job_id", result.getJobID().toString());
+			json.writeNumberField("runtime_ms", result.getNetRuntime());
+
+			json.writeObjectFieldStart("parameters");
+			for (Map.Entry<String, String> entry : env.getConfig().getGlobalJobParameters().toMap().entrySet()) {
+				json.writeStringField(entry.getKey(), entry.getValue());
+			}
+			json.writeEndObject();
+
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			json.writeObjectFieldStart("accumulators");
 			for (Map.Entry<String, Object> entry : result.getAllAccumulatorResults().entrySet()) {
 				json.writeStringField(entry.getKey(), entry.getValue().toString());
@@ -450,7 +591,11 @@ extends ParameterizedBase {
 	}
 
 	public static void main(String[] args) throws Exception {
+<<<<<<< HEAD
 		new Runner(args).run();
+=======
+		new Runner(args).run().execute();
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	}
 
 	/**

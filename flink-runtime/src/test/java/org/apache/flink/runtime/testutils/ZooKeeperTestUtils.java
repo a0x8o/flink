@@ -22,7 +22,11 @@ import org.apache.flink.configuration.AkkaOptions;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.CoreOptions;
 import org.apache.flink.configuration.HighAvailabilityOptions;
+<<<<<<< HEAD
 import org.apache.flink.configuration.JobManagerOptions;
+=======
+import org.apache.flink.configuration.WebOptions;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.runtime.jobmanager.HighAvailabilityMode;
 import org.apache.flink.runtime.state.filesystem.FsStateBackendFactory;
 
@@ -66,7 +70,11 @@ public class ZooKeeperTestUtils {
 		checkNotNull(fsStateHandlePath, "File state handle backend path");
 
 		// Web frontend, you have been dismissed. Sorry.
+<<<<<<< HEAD
 		config.setInteger(JobManagerOptions.WEB_PORT, -1);
+=======
+		config.setInteger(WebOptions.PORT, -1);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 		// ZooKeeper recovery mode
 		config.setString(HighAvailabilityOptions.HA_MODE, "ZOOKEEPER");

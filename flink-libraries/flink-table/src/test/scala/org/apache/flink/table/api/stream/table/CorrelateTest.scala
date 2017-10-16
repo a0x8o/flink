@@ -42,7 +42,11 @@ class CorrelateTest extends TableTestBase {
         term("invocation", s"${function.functionIdentifier}($$2)"),
         term("function", function),
         term("rowType",
+<<<<<<< HEAD
              "RecordType(INTEGER a, BIGINT b, VARCHAR(2147483647) c, VARCHAR(2147483647) s)"),
+=======
+             "RecordType(INTEGER a, BIGINT b, VARCHAR(65536) c, VARCHAR(65536) s)"),
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
         term("joinType", "INNER")
       ),
       term("select", "c", "s")
@@ -62,7 +66,11 @@ class CorrelateTest extends TableTestBase {
         term("invocation", s"${function.functionIdentifier}($$2, '$$')"),
         term("function", function),
         term("rowType",
+<<<<<<< HEAD
              "RecordType(INTEGER a, BIGINT b, VARCHAR(2147483647) c, VARCHAR(2147483647) s)"),
+=======
+             "RecordType(INTEGER a, BIGINT b, VARCHAR(65536) c, VARCHAR(65536) s)"),
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
         term("joinType", "INNER")
       ),
       term("select", "c", "s")
@@ -87,7 +95,11 @@ class CorrelateTest extends TableTestBase {
         term("invocation", s"${function.functionIdentifier}($$2)"),
         term("function", function),
         term("rowType",
+<<<<<<< HEAD
           "RecordType(INTEGER a, BIGINT b, VARCHAR(2147483647) c, VARCHAR(2147483647) s)"),
+=======
+          "RecordType(INTEGER a, BIGINT b, VARCHAR(65536) c, VARCHAR(65536) s)"),
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
         term("joinType", "LEFT")
       ),
       term("select", "c", "s")
@@ -112,8 +124,13 @@ class CorrelateTest extends TableTestBase {
         term("invocation", s"${function.functionIdentifier}($$2)"),
         term("function", function),
         term("rowType",
+<<<<<<< HEAD
           "RecordType(INTEGER a, BIGINT b, VARCHAR(2147483647) c, " +
            "VARCHAR(2147483647) name, INTEGER len)"),
+=======
+          "RecordType(INTEGER a, BIGINT b, VARCHAR(65536) c, " +
+           "VARCHAR(65536) name, INTEGER len)"),
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
         term("joinType", "INNER")
       ),
       term("select", "c", "name", "len")
@@ -136,8 +153,13 @@ class CorrelateTest extends TableTestBase {
       term("invocation", s"${function.functionIdentifier}($$2)"),
       term("function", function),
       term("rowType",
+<<<<<<< HEAD
         "RecordType(INTEGER a, BIGINT b, VARCHAR(2147483647) c," +
         " VARCHAR(2147483647) name, BOOLEAN adult, INTEGER len)"),
+=======
+        "RecordType(INTEGER a, BIGINT b, VARCHAR(65536) c," +
+        " VARCHAR(65536) name, BOOLEAN adult, INTEGER len)"),
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
       term("joinType", "INNER")
     )
 
@@ -158,8 +180,13 @@ class CorrelateTest extends TableTestBase {
       term("invocation", s"${function.functionIdentifier}($$2)"),
       term("function", function),
       term("rowType",
+<<<<<<< HEAD
         "RecordType(INTEGER a, BIGINT b, VARCHAR(2147483647) c, " +
          "INTEGER age, VARCHAR(2147483647) name)"),
+=======
+        "RecordType(INTEGER a, BIGINT b, VARCHAR(65536) c, " +
+         "INTEGER age, VARCHAR(65536) name)"),
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
       term("joinType", "INNER")
     )
 
@@ -185,8 +212,13 @@ class CorrelateTest extends TableTestBase {
         term("invocation", s"${function.functionIdentifier}($$2)"),
         term("function", function),
         term("rowType",
+<<<<<<< HEAD
           "RecordType(INTEGER a, BIGINT b, VARCHAR(2147483647) c, " +
           "VARCHAR(2147483647) name, INTEGER len)"),
+=======
+          "RecordType(INTEGER a, BIGINT b, VARCHAR(65536) c, " +
+          "VARCHAR(65536) name, INTEGER len)"),
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
         term("joinType", "INNER"),
         term("condition", ">($1, 2)")
       ),
@@ -210,7 +242,11 @@ class CorrelateTest extends TableTestBase {
         term("invocation",  s"${function.functionIdentifier}(SUBSTRING($$2, 2, CHAR_LENGTH($$2)))"),
         term("function", function),
         term("rowType",
+<<<<<<< HEAD
           "RecordType(INTEGER a, BIGINT b, VARCHAR(2147483647) c, VARCHAR(2147483647) s)"),
+=======
+          "RecordType(INTEGER a, BIGINT b, VARCHAR(65536) c, VARCHAR(65536) s)"),
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
         term("joinType", "INNER")
     )
 

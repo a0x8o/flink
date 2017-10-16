@@ -186,7 +186,11 @@ public class GroupingSetsITCase extends TableProgramsClusterTestBase {
 	 * @param expected Expected result.
 	 */
 	private void checkSql(String query, String expected) throws Exception {
+<<<<<<< HEAD
 		Table resultTable = tableEnv.sql(query);
+=======
+		Table resultTable = tableEnv.sqlQuery(query);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		DataSet<Row> resultDataSet = tableEnv.toDataSet(resultTable, Row.class);
 		List<Row> results = resultDataSet.collect();
 		TestBaseUtils.compareResultAsText(results, expected);
@@ -204,12 +208,20 @@ public class GroupingSetsITCase extends TableProgramsClusterTestBase {
 		};
 
 		// Execute first query and store results
+<<<<<<< HEAD
 		Table resultTable1 = tableEnv.sql(query1);
+=======
+		Table resultTable1 = tableEnv.sqlQuery(query1);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		DataSet<Row> resultDataSet1 = tableEnv.toDataSet(resultTable1, Row.class);
 		List<String> results1 = resultDataSet1.map(mapFunction).collect();
 
 		// Execute second query and store results
+<<<<<<< HEAD
 		Table resultTable2 = tableEnv.sql(query2);
+=======
+		Table resultTable2 = tableEnv.sqlQuery(query2);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		DataSet<Row> resultDataSet2 = tableEnv.toDataSet(resultTable2, Row.class);
 		List<String> results2 = resultDataSet2.map(mapFunction).collect();
 

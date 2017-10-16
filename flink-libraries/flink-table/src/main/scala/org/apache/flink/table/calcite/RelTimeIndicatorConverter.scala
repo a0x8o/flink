@@ -26,8 +26,13 @@ import org.apache.calcite.rex._
 import org.apache.calcite.sql.fun.SqlStdOperatorTable
 import org.apache.flink.api.common.typeinfo.SqlTimeTypeInfo
 import org.apache.flink.table.api.{TableException, ValidationException}
+<<<<<<< HEAD
 import org.apache.flink.table.calcite.FlinkTypeFactory.isTimeIndicatorType
 import org.apache.flink.table.functions.TimeMaterializationSqlFunction
+=======
+import org.apache.flink.table.calcite.FlinkTypeFactory.{isRowtimeIndicatorType, _}
+import org.apache.flink.table.functions.sql.ProctimeSqlFunction
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.table.plan.logical.rel.LogicalWindowAggregate
 import org.apache.flink.table.plan.schema.TimeIndicatorRelDataType
 
@@ -242,9 +247,13 @@ class RelTimeIndicatorConverter(rexBuilder: RexBuilder) extends RelShuttle {
         case lp: LogicalProject =>
           val projects = lp.getProjects.zipWithIndex.map { case (expr, idx) =>
             if (isTimeIndicatorType(expr.getType) && refIndices.contains(idx)) {
-              rexBuilder.makeCall(
-                TimeMaterializationSqlFunction,
-                expr)
+              if (isRowtimeIndicatorType(expr.getType)) {
+                // cast rowtime indicator to regular timestamp
+                rexBuilder.makeAbstractCast(timestamp, expr)
+              } else {
+                // generate proctime access
+                rexBuilder.makeCall(ProctimeSqlFunction, expr)
+              }
             } else {
               expr
             }
@@ -259,9 +268,17 @@ class RelTimeIndicatorConverter(rexBuilder: RexBuilder) extends RelShuttle {
         case _ =>
           val projects = input.getRowType.getFieldList.map { field =>
             if (isTimeIndicatorType(field.getType) && refIndices.contains(field.getIndex)) {
-              rexBuilder.makeCall(
-                TimeMaterializationSqlFunction,
-                new RexInputRef(field.getIndex, field.getType))
+              if (isRowtimeIndicatorType(field.getType)) {
+                // cast rowtime indicator to regular timestamp
+                rexBuilder.makeAbstractCast(
+                  timestamp,
+                  new RexInputRef(field.getIndex, field.getType))
+              } else {
+                // generate proctime access
+                rexBuilder.makeCall(
+                  ProctimeSqlFunction,
+                  new RexInputRef(field.getIndex, field.getType))
+              }
             } else {
               new RexInputRef(field.getIndex, field.getType)
             }
@@ -311,19 +328,19 @@ object RelTimeIndicatorConverter {
 
     var needsConversion = false
 
-    // materialize all remaining time indicators
+    // materialize remaining proctime indicators
     val projects = convertedRoot.getRowType.getFieldList.map(field =>
-      if (isTimeIndicatorType(field.getType)) {
+      if (isProctimeIndicatorType(field.getType)) {
         needsConversion = true
         rexBuilder.makeCall(
-          TimeMaterializationSqlFunction,
+          ProctimeSqlFunction,
           new RexInputRef(field.getIndex, field.getType))
       } else {
         new RexInputRef(field.getIndex, field.getType)
       }
     )
 
-    // add final conversion
+    // add final conversion if necessary
     if (needsConversion) {
       LogicalProject.create(
       convertedRoot,
@@ -334,6 +351,7 @@ object RelTimeIndicatorConverter {
     }
   }
 
+<<<<<<< HEAD
   def convertOutputType(rootRel: RelNode): RelDataType = {
 
     val timestamp = rootRel
@@ -355,6 +373,8 @@ object RelTimeIndicatorConverter {
     new RelRecordType(fields)
   }
 
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
   /**
     * Materializes time indicator accesses in an expression.
     *
@@ -415,7 +435,17 @@ class RexTimeIndicatorMaterializer(
       case _ =>
         updatedCall.getOperands.map { o =>
           if (isTimeIndicatorType(o.getType)) {
+<<<<<<< HEAD
             rexBuilder.makeCall(TimeMaterializationSqlFunction, o)
+=======
+            if (isRowtimeIndicatorType(o.getType)) {
+              // cast rowtime indicator to regular timestamp
+              rexBuilder.makeAbstractCast(timestamp, o)
+            } else {
+              // generate proctime access
+              rexBuilder.makeCall(ProctimeSqlFunction, o)
+            }
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
           } else {
             o
           }

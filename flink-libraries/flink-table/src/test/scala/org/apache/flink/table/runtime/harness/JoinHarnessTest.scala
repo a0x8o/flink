@@ -154,7 +154,11 @@ class JoinHarnessTest extends HarnessTestBase{
     expectedOutput.add(new StreamRecord(
       CRow(Row.of(2: JInt, "bbb2", 2: JInt, "Hello2"), true), 25))
 
+<<<<<<< HEAD
     verify(expectedOutput, result, new RowResultSortComparator(6))
+=======
+    verify(expectedOutput, result, new RowResultSortComparator())
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
     testHarness.close()
   }
@@ -227,7 +231,11 @@ class JoinHarnessTest extends HarnessTestBase{
     expectedOutput.add(new StreamRecord(
       CRow(Row.of(1: JInt, "aaa3", 1: JInt, "bbb12"), true), 12))
 
+<<<<<<< HEAD
     verify(expectedOutput, result, new RowResultSortComparator(6))
+=======
+    verify(expectedOutput, result, new RowResultSortComparator())
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
     testHarness.close()
   }

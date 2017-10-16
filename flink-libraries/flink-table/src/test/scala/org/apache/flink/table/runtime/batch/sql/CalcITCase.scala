@@ -53,7 +53,11 @@ class CalcITCase(
     val ds = CollectionDataSets.get3TupleDataSet(env).toTable(tEnv).as('a, 'b, 'c)
     tEnv.registerTable("MyTable", ds)
 
+<<<<<<< HEAD
     val result = tEnv.sql(sqlQuery)
+=======
+    val result = tEnv.sqlQuery(sqlQuery)
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
     val expected = "1,1,Hi\n" + "2,2,Hello\n" + "3,2,Hello world\n" +
       "4,3,Hello world, how are you?\n" + "5,3,I am fine.\n" + "6,3,Luke Skywalker\n" +
@@ -77,7 +81,11 @@ class CalcITCase(
     val ds = CollectionDataSets.get3TupleDataSet(env)
     tEnv.registerDataSet("MyTable", ds, 'a, 'b, 'c)
 
+<<<<<<< HEAD
     val result = tEnv.sql(sqlQuery)
+=======
+    val result = tEnv.sqlQuery(sqlQuery)
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
     val expected = "1,1,Hi\n" + "2,2,Hello\n" + "3,2,Hello world\n" +
       "4,3,Hello world, how are you?\n" + "5,3,I am fine.\n" + "6,3,Luke Skywalker\n" +
@@ -101,7 +109,11 @@ class CalcITCase(
     val ds = CollectionDataSets.get3TupleDataSet(env).toTable(tEnv).as('a, 'b, 'c)
     tEnv.registerTable("MyTable", ds)
 
+<<<<<<< HEAD
     val result = tEnv.sql(sqlQuery)
+=======
+    val result = tEnv.sqlQuery(sqlQuery)
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
     val expected = "1,1,Hi\n" + "2,2,Hello\n" + "3,2,Hello world\n" +
       "4,3,Hello world, how are you?\n" + "5,3,I am fine.\n" + "6,3,Luke Skywalker\n" +
@@ -125,7 +137,11 @@ class CalcITCase(
     val ds = CollectionDataSets.get3TupleDataSet(env).toTable(tEnv)
     tEnv.registerTable("MyTable", ds)
 
+<<<<<<< HEAD
     val result = tEnv.sql(sqlQuery)
+=======
+    val result = tEnv.sqlQuery(sqlQuery)
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
     val expected = "1,1\n" + "2,2\n" + "3,2\n" + "4,3\n" + "5,3\n" + "6,3\n" + "7,4\n" +
       "8,4\n" + "9,4\n" + "10,4\n" + "11,5\n" + "12,5\n" + "13,5\n" + "14,5\n" + "15,5\n" +
@@ -146,7 +162,11 @@ class CalcITCase(
     val ds = CollectionDataSets.get3TupleDataSet(env).toTable(tEnv).as('a, 'b, 'c)
     tEnv.registerTable("MyTable", ds)
 
+<<<<<<< HEAD
     tEnv.sql(sqlQuery)
+=======
+    tEnv.sqlQuery(sqlQuery)
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
   }
 
   @Test
@@ -160,7 +180,11 @@ class CalcITCase(
     val ds = CollectionDataSets.get3TupleDataSet(env).toTable(tEnv)
     tEnv.registerTable("MyTable", ds)
 
+<<<<<<< HEAD
     val result = tEnv.sql(sqlQuery)
+=======
+    val result = tEnv.sqlQuery(sqlQuery)
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
     val expected = "\n"
     val results = result.toDataSet[Row].collect()
@@ -178,7 +202,11 @@ class CalcITCase(
     val ds = CollectionDataSets.get3TupleDataSet(env).toTable(tEnv)
     tEnv.registerTable("MyTable", ds)
 
+<<<<<<< HEAD
     val result = tEnv.sql(sqlQuery)
+=======
+    val result = tEnv.sqlQuery(sqlQuery)
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
     val expected = "1,1,Hi\n" + "2,2,Hello\n" + "3,2,Hello world\n" + "4,3,Hello world, " +
       "how are you?\n" + "5,3,I am fine.\n" + "6,3,Luke Skywalker\n" + "7,4," +
@@ -201,7 +229,11 @@ class CalcITCase(
     val ds = CollectionDataSets.get3TupleDataSet(env).toTable(tEnv).as('a, 'b, 'c)
     tEnv.registerTable("MyTable", ds)
 
+<<<<<<< HEAD
     val result = tEnv.sql(sqlQuery)
+=======
+    val result = tEnv.sqlQuery(sqlQuery)
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
     val expected = "3,2,Hello world\n" + "4,3,Hello world, how are you?\n"
     val results = result.toDataSet[Row].collect()
@@ -219,7 +251,11 @@ class CalcITCase(
     val ds = CollectionDataSets.get3TupleDataSet(env).toTable(tEnv).as('a, 'b, 'c)
     tEnv.registerTable("MyTable", ds)
 
+<<<<<<< HEAD
     val result = tEnv.sql(sqlQuery)
+=======
+    val result = tEnv.sqlQuery(sqlQuery)
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
     val expected = "2,2,Hello\n" + "4,3,Hello world, how are you?\n" +
       "6,3,Luke Skywalker\n" + "8,4," + "Comment#2\n" + "10,4,Comment#4\n" +
@@ -240,7 +276,11 @@ class CalcITCase(
     val ds = CollectionDataSets.get3TupleDataSet(env).toTable(tEnv).as('a, 'b, 'c)
     tEnv.registerTable("MyTable", ds)
 
+<<<<<<< HEAD
     val result = tEnv.sql(sqlQuery)
+=======
+    val result = tEnv.sqlQuery(sqlQuery)
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
     val expected = "1,1,Hi\n" + "21,6,Comment#15\n"
     val results = result.toDataSet[Row].collect()
@@ -258,7 +298,11 @@ class CalcITCase(
     val ds = CollectionDataSets.get3TupleDataSet(env).toTable(tEnv).as('a, 'b, 'c)
     tEnv.registerTable("MyTable", ds)
 
+<<<<<<< HEAD
     val result = tEnv.sql(sqlQuery)
+=======
+    val result = tEnv.sqlQuery(sqlQuery)
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
     val expected = "3,2,Hello world\n" + "7,4,Comment#1\n" +
       "9,4,Comment#3\n" + "17,6,Comment#11\n" +
@@ -281,7 +325,11 @@ class CalcITCase(
       Timestamp.valueOf("1984-07-12 14:34:24")))
     tEnv.registerDataSet("MyTable", ds, 'a, 'b, 'c)
 
+<<<<<<< HEAD
     val result = tEnv.sql(sqlQuery)
+=======
+    val result = tEnv.sqlQuery(sqlQuery)
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
     val expected = "1984-07-12,14:34:24,1984-07-12 14:34:24.0," +
       "1984-07-12,14:34:24,1984-07-12 14:34:24.0"
@@ -300,7 +348,11 @@ class CalcITCase(
     val ds = env.fromElements("a", "b", "c")
     tEnv.registerDataSet("MyTable", ds, 'text)
 
+<<<<<<< HEAD
     val result = tEnv.sql("SELECT hashCode(text) FROM MyTable")
+=======
+    val result = tEnv.sqlQuery("SELECT hashCode(text) FROM MyTable")
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
     val expected = "97\n98\n99"
     val results = result.toDataSet[Row].collect()

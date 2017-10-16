@@ -20,10 +20,11 @@ package org.apache.flink.table.plan.util
 
 import org.apache.calcite.plan.RelOptUtil
 import org.apache.calcite.rex._
+import org.apache.calcite.sql.fun.SqlStdOperatorTable
 import org.apache.calcite.sql.{SqlFunction, SqlPostfixOperator}
 import org.apache.flink.table.api.TableException
 import org.apache.flink.table.calcite.FlinkTypeFactory
-import org.apache.flink.table.expressions.{Expression, Literal, ResolvedFieldReference}
+import org.apache.flink.table.expressions.{And, Expression, Literal, Or, ResolvedFieldReference}
 import org.apache.flink.table.validate.FunctionCatalog
 import org.apache.flink.util.Preconditions
 
@@ -149,6 +150,9 @@ class RexNodeToExpressionConverter(
     ))
   }
 
+  override def visitTableInputRef(rexTableInputRef: RexTableInputRef): Option[Expression] =
+    visitInputRef(rexTableInputRef)
+
   override def visitLocalRef(localRef: RexLocalRef): Option[Expression] = {
     throw new TableException("Bug: RexLocalRef should have been expanded")
   }
@@ -167,6 +171,10 @@ class RexNodeToExpressionConverter(
       None
     } else {
         call.getOperator match {
+          case SqlStdOperatorTable.OR =>
+            Option(operands.reduceLeft(Or))
+          case SqlStdOperatorTable.AND =>
+            Option(operands.reduceLeft(And))
           case function: SqlFunction =>
             lookupFunction(replace(function.getName), operands)
           case postfix: SqlPostfixOperator =>

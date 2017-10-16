@@ -22,8 +22,16 @@ import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.messages.Acknowledge;
+<<<<<<< HEAD
 import org.apache.flink.runtime.rpc.RpcGateway;
 import org.apache.flink.runtime.rpc.RpcTimeout;
+=======
+import org.apache.flink.runtime.messages.webmonitor.MultipleJobsDetails;
+import org.apache.flink.runtime.messages.webmonitor.StatusOverview;
+import org.apache.flink.runtime.rpc.FencedRpcGateway;
+import org.apache.flink.runtime.rpc.RpcTimeout;
+import org.apache.flink.runtime.webmonitor.RestfulGateway;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 import java.util.Collection;
 import java.util.concurrent.CompletableFuture;
@@ -31,7 +39,11 @@ import java.util.concurrent.CompletableFuture;
 /**
  * Gateway for the Dispatcher component.
  */
+<<<<<<< HEAD
 public interface DispatcherGateway extends RpcGateway {
+=======
+public interface DispatcherGateway extends FencedRpcGateway<DispatcherId>, RestfulGateway {
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 	/**
 	 * Submit a job to the dispatcher.
@@ -52,4 +64,11 @@ public interface DispatcherGateway extends RpcGateway {
 	 */
 	CompletableFuture<Collection<JobID>> listJobs(
 		@RpcTimeout Time timeout);
+<<<<<<< HEAD
+=======
+
+	CompletableFuture<StatusOverview> requestStatusOverview(@RpcTimeout Time timeout);
+
+	CompletableFuture<MultipleJobsDetails> requestJobDetails(@RpcTimeout Time timeout);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 }

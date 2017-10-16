@@ -26,16 +26,17 @@ import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 import org.apache.flink.runtime.jobmaster.JobMasterGateway;
 import org.apache.flink.util.Preconditions;
 
+<<<<<<< HEAD
 import java.util.UUID;
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import java.util.concurrent.CompletableFuture;
 
 public class RpcPartitionStateChecker implements PartitionProducerStateChecker {
 
-	private final UUID jobMasterLeaderId;
 	private final JobMasterGateway jobMasterGateway;
 
-	public RpcPartitionStateChecker(UUID jobMasterLeaderId, JobMasterGateway jobMasterGateway) {
-		this.jobMasterLeaderId = Preconditions.checkNotNull(jobMasterLeaderId);
+	public RpcPartitionStateChecker(JobMasterGateway jobMasterGateway) {
 		this.jobMasterGateway = Preconditions.checkNotNull(jobMasterGateway);
 	}
 
@@ -45,6 +46,6 @@ public class RpcPartitionStateChecker implements PartitionProducerStateChecker {
 			IntermediateDataSetID resultId,
 			ResultPartitionID partitionId) {
 
-		return jobMasterGateway.requestPartitionState(jobMasterLeaderId, resultId, partitionId);
+		return jobMasterGateway.requestPartitionState(resultId, partitionId);
 	}
 }

@@ -19,10 +19,23 @@
 package org.apache.flink.table.runtime.stream
 
 import java.math.BigDecimal
+<<<<<<< HEAD
 
 import org.apache.flink.api.scala._
 import org.apache.flink.streaming.api.TimeCharacteristic
 import org.apache.flink.streaming.api.functions.AssignerWithPunctuatedWatermarks
+=======
+import java.lang.{Long => JLong, Integer => JInt}
+
+import org.apache.flink.api.common.typeinfo.TypeInformation
+import org.apache.flink.api.java.typeutils.RowTypeInfo
+import org.apache.flink.api.scala._
+import org.apache.flink.streaming.api.TimeCharacteristic
+import org.apache.flink.streaming.api.datastream.DataStream
+import org.apache.flink.streaming.api.environment.{StreamExecutionEnvironment => JStreamExecEnv}
+import org.apache.flink.streaming.api.functions.AssignerWithPunctuatedWatermarks
+import org.apache.flink.streaming.api.functions.timestamps.AscendingTimestampExtractor
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.streaming.api.scala.StreamExecutionEnvironment
 import org.apache.flink.streaming.api.watermark.Watermark
 import org.apache.flink.streaming.util.StreamingMultipleProgramsTestBase
@@ -33,11 +46,19 @@ import org.apache.flink.table.api.{TableEnvironment, Types}
 import org.apache.flink.table.expressions.{ExpressionParser, TimeIntervalUnit}
 import org.apache.flink.table.runtime.stream.TimeAttributesITCase.{TestPojo, TimestampWithEqualWatermark, TimestampWithEqualWatermarkPojo}
 import org.apache.flink.table.runtime.utils.StreamITCase
+<<<<<<< HEAD
+=======
+import org.apache.flink.table.sources.{DefinedProctimeAttribute, DefinedRowtimeAttribute, StreamTableSource}
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.types.Row
 import org.junit.Assert._
 import org.junit.Test
 
 import scala.collection.mutable
+<<<<<<< HEAD
+=======
+import scala.collection.JavaConverters._
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 /**
   * Tests for access and materialization of time attributes.
@@ -63,7 +84,12 @@ class TimeAttributesITCase extends StreamingMultipleProgramsTestBase {
     val stream = env
       .fromCollection(data)
       .assignTimestampsAndWatermarks(new TimestampWithEqualWatermark())
+<<<<<<< HEAD
     val table = stream.toTable(tEnv, 'rowtime.rowtime, 'int, 'double, 'float, 'bigdec, 'string)
+=======
+    val table = stream.toTable(
+      tEnv, 'rowtime.rowtime, 'int, 'double, 'float, 'bigdec, 'string, 'proctime.proctime)
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
     val t = table.select('rowtime.cast(Types.STRING))
 
@@ -123,6 +149,16 @@ class TimeAttributesITCase extends StreamingMultipleProgramsTestBase {
       tEnv, 'rowtime.rowtime, 'int, 'double, 'float, 'bigdec, 'string, 'proctime.proctime)
     val func = new TableFunc
 
+<<<<<<< HEAD
+=======
+    // we test if this can be executed with any exceptions
+    table.join(func('proctime, 'proctime, 'string) as 's).toAppendStream[Row]
+
+    // we test if this can be executed with any exceptions
+    table.join(func('rowtime, 'rowtime, 'string) as 's).toAppendStream[Row]
+
+    // we can only test rowtime, not proctime
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
     val t = table.join(func('rowtime, 'proctime, 'string) as 's).select('rowtime, 's)
 
     val results = t.toAppendStream[Row]
@@ -221,7 +257,11 @@ class TimeAttributesITCase extends StreamingMultipleProgramsTestBase {
     val table = stream.toTable(tEnv, 'rowtime.rowtime, 'int, 'double, 'float, 'bigdec, 'string)
     tEnv.registerTable("MyTable", table)
 
+<<<<<<< HEAD
     val t = tEnv.sql("SELECT COUNT(`rowtime`) FROM MyTable " +
+=======
+    val t = tEnv.sqlQuery("SELECT COUNT(`rowtime`) FROM MyTable " +
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
       "GROUP BY TUMBLE(rowtime, INTERVAL '0.003' SECOND)")
 
     val results = t.toAppendStream[Row]
@@ -284,7 +324,11 @@ class TimeAttributesITCase extends StreamingMultipleProgramsTestBase {
     tEnv.registerTable("T1", table)
     val querySql = "select rowtime as ts, string as msg from T1"
 
+<<<<<<< HEAD
     val results = tEnv.sql(querySql).toAppendStream[Pojo1]
+=======
+    val results = tEnv.sqlQuery(querySql).toAppendStream[Pojo1]
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
     results.addSink(new StreamITCase.StringSink[Pojo1])
     env.execute()
 
@@ -361,6 +405,35 @@ class TimeAttributesITCase extends StreamingMultipleProgramsTestBase {
       "1970-01-01 00:00:00.043,And me.,13")
     assertEquals(expected.sorted, StreamITCase.testResults.sorted)
   }
+<<<<<<< HEAD
+=======
+
+  @Test
+  def testTableSourceWithTimeIndicators(): Unit = {
+
+    val env = StreamExecutionEnvironment.getExecutionEnvironment
+    env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime)
+    val tEnv = TableEnvironment.getTableEnvironment(env)
+    tEnv.registerTableSource("testTable", new TestTableSource)
+    StreamITCase.clear
+
+    val result = tEnv
+      .scan("testTable")
+      .where('a % 2 === 1)
+      .select('rowtime, 'a, 'b, 'c)
+      .toAppendStream[Row]
+
+    result.addSink(new StreamITCase.StringSink[Row])
+    env.execute()
+
+    val expected = Seq(
+      "1970-01-01 00:00:01.0,1,A,1000",
+      "1970-01-01 00:00:03.0,3,C,3000",
+      "1970-01-01 00:00:05.0,5,E,5000")
+
+    assertEquals(expected.sorted, StreamITCase.testResults.sorted)
+  }
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 }
 
 object TimeAttributesITCase {
@@ -405,3 +478,43 @@ object TimeAttributesITCase {
     var c: String = _
   }
 }
+<<<<<<< HEAD
+=======
+
+class TestTableSource
+    extends StreamTableSource[Row]
+    with DefinedRowtimeAttribute
+    with DefinedProctimeAttribute {
+
+  override def getDataStream(env: JStreamExecEnv): DataStream[Row] = {
+
+    def toRow(i: Int, s: String, l: Long) = Row.of(i.asInstanceOf[JInt], s, l.asInstanceOf[JLong])
+
+    val rows = Seq(
+      toRow(1, "A", 1000L),
+      toRow(2, "B", 2000L),
+      toRow(3, "C", 3000L),
+      toRow(4, "D", 4000L),
+      toRow(5, "E", 5000L),
+      toRow(6, "F", 6000L)
+    )
+
+    env
+      .fromCollection(rows.asJava).returns(getReturnType)
+      .assignTimestampsAndWatermarks(new AscendingTimestampExtractor[Row] {
+        override def extractAscendingTimestamp(r: Row): Long = r.getField(2).asInstanceOf[Long]
+      })
+  }
+
+  override def getRowtimeAttribute: String = "rowtime"
+
+  override def getProctimeAttribute: String = "proctime"
+
+  override def getReturnType: TypeInformation[Row] = {
+    new RowTypeInfo(
+      Array(Types.INT, Types.STRING, Types.LONG).asInstanceOf[Array[TypeInformation[_]]],
+      Array("a", "b", "c")
+    )
+  }
+}
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d

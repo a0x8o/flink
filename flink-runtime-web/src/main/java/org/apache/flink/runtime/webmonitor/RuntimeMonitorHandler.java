@@ -18,11 +18,18 @@
 
 package org.apache.flink.runtime.webmonitor;
 
-import org.apache.flink.configuration.ConfigConstants;
-import org.apache.flink.runtime.instance.ActorGateway;
-import org.apache.flink.runtime.webmonitor.handlers.RequestHandler;
+import org.apache.flink.api.common.time.Time;
+import org.apache.flink.runtime.concurrent.FutureUtils;
+import org.apache.flink.runtime.jobmaster.JobManagerGateway;
+import org.apache.flink.runtime.rest.NotFoundException;
+import org.apache.flink.runtime.rest.handler.RedirectHandler;
+import org.apache.flink.runtime.rest.handler.WebHandler;
+import org.apache.flink.runtime.rest.handler.legacy.RequestHandler;
+import org.apache.flink.runtime.rest.handler.util.HandlerRedirectUtils;
+import org.apache.flink.runtime.webmonitor.retriever.GatewayRetriever;
 import org.apache.flink.util.ExceptionUtils;
 
+<<<<<<< HEAD
 import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
 import org.apache.flink.shaded.netty4.io.netty.buffer.Unpooled;
 import org.apache.flink.shaded.netty4.io.netty.channel.ChannelHandler;
@@ -32,21 +39,27 @@ import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.FullHttpRespon
 import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpHeaders;
 import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpResponseStatus;
 import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpVersion;
+=======
+import org.apache.flink.shaded.netty4.io.netty.channel.ChannelHandler;
+import org.apache.flink.shaded.netty4.io.netty.channel.ChannelHandlerContext;
+import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.FullHttpResponse;
+import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpHeaders;
+import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpResponse;
+import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpResponseStatus;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.router.KeepAliveWrite;
 import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.router.Routed;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.net.InetSocketAddress;
 import java.net.URLDecoder;
-import java.nio.charset.Charset;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 
-import scala.concurrent.Future;
-import scala.concurrent.duration.FiniteDuration;
-
+import static org.apache.flink.runtime.rest.handler.util.HandlerRedirectUtils.ENCODING;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
@@ -56,11 +69,9 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * proper codes, like OK, NOT_FOUND, or SERVER_ERROR.
  */
 @ChannelHandler.Sharable
-public class RuntimeMonitorHandler extends RuntimeMonitorHandlerBase {
+public class RuntimeMonitorHandler extends RedirectHandler<JobManagerGateway> implements WebHandler {
 
 	private static final Logger LOG = LoggerFactory.getLogger(RuntimeMonitorHandler.class);
-
-	private static final Charset ENCODING = ConfigConstants.DEFAULT_CHARSET;
 
 	public static final String WEB_MONITOR_ADDRESS_KEY = "web.monitor.address";
 
@@ -71,24 +82,22 @@ public class RuntimeMonitorHandler extends RuntimeMonitorHandlerBase {
 	public RuntimeMonitorHandler(
 			WebMonitorConfig cfg,
 			RequestHandler handler,
-			JobManagerRetriever retriever,
-			Future<String> localJobManagerAddressFuture,
-			FiniteDuration timeout,
-			boolean httpsEnabled) {
+			GatewayRetriever<JobManagerGateway> retriever,
+			CompletableFuture<String> localJobManagerAddressFuture,
+			Time timeout) {
 
-		super(retriever, localJobManagerAddressFuture, timeout, httpsEnabled);
+		super(localJobManagerAddressFuture, retriever, timeout);
 		this.handler = checkNotNull(handler);
 		this.allowOrigin = cfg.getAllowOrigin();
 	}
 
-	@Override
 	public String[] getPaths() {
 		return handler.getPaths();
 	}
 
 	@Override
-	protected void respondAsLeader(ChannelHandlerContext ctx, Routed routed, ActorGateway jobManager) {
-		FullHttpResponse response;
+	protected void respondAsLeader(ChannelHandlerContext ctx, Routed routed, JobManagerGateway jobManagerGateway) {
+		CompletableFuture<FullHttpResponse> responseFuture;
 
 		try {
 			// we only pass the first element in the list to the handlers.
@@ -102,10 +111,9 @@ public class RuntimeMonitorHandler extends RuntimeMonitorHandlerBase {
 				pathParams.put(key, URLDecoder.decode(routed.pathParams().get(key), ENCODING.toString()));
 			}
 
-			InetSocketAddress address = (InetSocketAddress) ctx.channel().localAddress();
-			queryParams.put(WEB_MONITOR_ADDRESS_KEY,
-				(httpsEnabled ? "https://" : "http://") + address.getHostName() + ":" + address.getPort());
+			queryParams.put(WEB_MONITOR_ADDRESS_KEY, localAddressFuture.get());
 
+<<<<<<< HEAD
 			response = handler.handleRequest(pathParams, queryParams, jobManager);
 		}
 		catch (NotFoundException e) {
@@ -128,7 +136,35 @@ public class RuntimeMonitorHandler extends RuntimeMonitorHandlerBase {
 		}
 
 		response.headers().set(HttpHeaders.Names.ACCESS_CONTROL_ALLOW_ORIGIN, allowOrigin);
+=======
+			responseFuture = handler.handleRequest(pathParams, queryParams, jobManagerGateway);
 
-		KeepAliveWrite.flush(ctx, routed.request(), response);
+		} catch (Exception e) {
+			responseFuture = FutureUtils.completedExceptionally(e);
+		}
+
+		responseFuture.whenComplete(
+			(HttpResponse httpResponse, Throwable throwable) -> {
+				final HttpResponse finalResponse;
+
+				if (throwable != null) {
+					LOG.debug("Error while handling request.", throwable);
+
+					Optional<Throwable> optNotFound = ExceptionUtils.findThrowable(throwable, NotFoundException.class);
+
+					if (optNotFound.isPresent()) {
+						// this should result in a 404 error code (not found)
+						finalResponse = HandlerRedirectUtils.getResponse(HttpResponseStatus.NOT_FOUND, optNotFound.get().getMessage());
+					} else {
+						finalResponse = HandlerRedirectUtils.getErrorResponse(throwable);
+					}
+				} else {
+					finalResponse = httpResponse;
+				}
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
+
+				finalResponse.headers().set(HttpHeaders.Names.ACCESS_CONTROL_ALLOW_ORIGIN, allowOrigin);
+				KeepAliveWrite.flush(ctx, routed.request(), finalResponse);
+			});
 	}
 }

@@ -25,6 +25,10 @@ import org.apache.flink.client.program.StandaloneClusterClient;
 import org.apache.flink.configuration.ConfigConstants;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.CoreOptions;
+<<<<<<< HEAD
+=======
+import org.apache.flink.runtime.checkpoint.savepoint.SavepointSerializers;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.runtime.client.JobListeningContext;
 import org.apache.flink.runtime.instance.ActorGateway;
 import org.apache.flink.runtime.jobgraph.JobGraph;
@@ -39,6 +43,7 @@ import org.apache.flink.test.util.TestBaseUtils;
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.BeforeClass;
 import org.junit.Rule;
 import org.junit.rules.TemporaryFolder;
 import org.slf4j.Logger;
@@ -63,6 +68,11 @@ import static junit.framework.Assert.fail;
  * Test savepoint migration.
  */
 public class SavepointMigrationTestBase extends TestBaseUtils {
+
+	@BeforeClass
+	public static void before() {
+		SavepointSerializers.setFailWhenLegacyStateDetected(false);
+	}
 
 	@Rule
 	public TemporaryFolder tempFolder = new TemporaryFolder();

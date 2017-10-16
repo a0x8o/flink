@@ -72,5 +72,22 @@ public class ClusteringCoefficientITCase extends CopyableValueDriverBaseITCase {
 			"\n" + new Checksum(233, 0x00000076635e00e2L) + expected);
 		expectedOutput(parameters(8, "undirected", "undirected", "hash"),
 			"\n" + new Checksum(233, 0x000000743ef6d14bL) + expected);
+<<<<<<< HEAD
+=======
+	}
+
+	@Test
+	public void testParallelism() throws Exception {
+		String[] largeOperators = new String[]{
+			"Combine \\(Count triangles\\)",
+			"FlatMap \\(Split triangle vertices\\)",
+			"Join \\(Triangle listing\\)",
+			"GroupReduce \\(Generate triplets\\)",
+			"DataSink \\(Count\\)"};
+
+		TestUtils.verifyParallelism(parameters(8, "directed", "directed", "print"), largeOperators);
+		TestUtils.verifyParallelism(parameters(8, "directed", "undirected", "print"), largeOperators);
+		TestUtils.verifyParallelism(parameters(8, "undirected", "undirected", "print"), largeOperators);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	}
 }

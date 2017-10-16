@@ -430,7 +430,11 @@ class ExpressionReductionRulesTest extends TableTestBase {
 
     util.addTable[(Int, Long, String)]("MyTable", 'a, 'b, 'c)
 
+<<<<<<< HEAD
     val newTable = util.tableEnv.sql("SELECT 1 + 1 + a AS a FROM MyTable")
+=======
+    val newTable = util.tableEnv.sqlQuery("SELECT 1 + 1 + a AS a FROM MyTable")
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
     util.tableEnv.registerTable("NewTable", newTable)
 
@@ -448,7 +452,11 @@ class ExpressionReductionRulesTest extends TableTestBase {
 
     util.addTable[(Int, Long, String)]("MyTable", 'a, 'b, 'c)
 
+<<<<<<< HEAD
     val newTable = util.tableEnv.sql("SELECT 1 + 1 + a AS a FROM MyTable")
+=======
+    val newTable = util.tableEnv.sqlQuery("SELECT 1 + 1 + a AS a FROM MyTable")
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
     util.tableEnv.registerTable("NewTable", newTable)
 

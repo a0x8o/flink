@@ -270,19 +270,36 @@ watchdog () {
 check_shaded_artifacts() {
 	jar tf build-target/lib/flink-dist*.jar > allClasses
 	ASM=`cat allClasses | grep '^org/objectweb/asm/' | wc -l`
-	if [ $ASM != "0" ]; then
+	if [ "$ASM" != "0" ]; then
 		echo "=============================================================================="
-		echo "Detected $ASM asm dependencies in fat jar"
+		echo "Detected '$ASM' unshaded asm dependencies in fat jar"
 		echo "=============================================================================="
 		return 1
 	fi
 
 	GUAVA=`cat allClasses | grep '^com/google/common' | wc -l`
-	if [ $GUAVA != "0" ]; then
+	if [ "$GUAVA" != "0" ]; then
 		echo "=============================================================================="
-		echo "Detected $GUAVA guava dependencies in fat jar"
+		echo "Detected '$GUAVA' guava dependencies in fat jar"
 		echo "=============================================================================="
 		return 1
+	fi
+
+	SNAPPY=`cat allClasses | grep '^org/xerial/snappy' | wc -l`
+	if [ "$SNAPPY" == "0" ]; then
+		echo "=============================================================================="
+		echo "Missing snappy dependencies in fat jar"
+		echo "=============================================================================="
+		return 1
+	fi
+
+	NETTY=`cat allClasses | grep '^io/netty' | wc -l`
+	if [ "$NETTY" != "0" ]; then
+		echo "=============================================================================="
+		echo "Detected '$NETTY' unshaded netty dependencies in fat jar"
+		echo "=============================================================================="
+		return 1
+<<<<<<< HEAD
 	fi
 
 	SNAPPY=`cat allClasses | grep '^org/xerial/snappy' | wc -l`
@@ -299,6 +316,8 @@ check_shaded_artifacts() {
 		echo "Detected $NETTY unshaded netty dependencies in fat jar"
 		echo "=============================================================================="
 		return 1
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	fi
 
 	return 0
@@ -357,6 +376,7 @@ rm $MVN_EXIT
 if [ $EXIT_CODE == 0 ]; then
 
 	echo "RUNNING '${MVN_TEST}'."
+<<<<<<< HEAD
 
 	# Run $MVN_TEST and pipe output to $MVN_OUT for the watchdog. The PID is written to $MVN_PID to
 	# allow the watchdog to kill $MVN if it is not producing any output anymore. $MVN_EXIT contains
@@ -381,6 +401,32 @@ fi
 echo "Trying to KILL watchdog (${WD_PID})."
 ( kill $WD_PID 2>&1 ) > /dev/null
 
+=======
+
+	# Run $MVN_TEST and pipe output to $MVN_OUT for the watchdog. The PID is written to $MVN_PID to
+	# allow the watchdog to kill $MVN if it is not producing any output anymore. $MVN_EXIT contains
+	# the exit code. This is important for Travis' build life-cycle (success/failure).
+	( $MVN_TEST & PID=$! ; echo $PID >&3 ; wait $PID ; echo $? >&4 ) 3>$MVN_PID 4>$MVN_EXIT | tee $MVN_OUT
+
+	EXIT_CODE=$(<$MVN_EXIT)
+
+	echo "MVN exited with EXIT CODE: ${EXIT_CODE}."
+
+	rm $MVN_PID
+	rm $MVN_EXIT
+else
+	echo "=============================================================================="
+	echo "Compilation failure detected, skipping test execution."
+	echo "=============================================================================="
+fi
+
+# Post
+
+# Make sure to kill the watchdog in any case after $MVN_COMPILE and $MVN_TEST have completed
+echo "Trying to KILL watchdog (${WD_PID})."
+( kill $WD_PID 2>&1 ) > /dev/null
+
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 # only misc builds flink-dist and flink-yarn-tests
 case $TEST in
 	(misc)
@@ -408,6 +454,7 @@ cd ../../
 case $TEST in
 	(misc)
 		if [ $EXIT_CODE == 0 ]; then
+<<<<<<< HEAD
 			echo "\n=============================================================================="
 			echo "Running end-to-end tests"
 			echo "=============================================================================="
@@ -427,6 +474,33 @@ case $TEST in
 			echo "=============================================================================="
 			echo "Previous build failure detected, skipping end-to-end tests."
 			echo "=============================================================================="
+=======
+			printf "\n\n==============================================================================\n"
+			printf "Running end-to-end tests\n"
+			printf "==============================================================================\n"
+
+			printf "\n==============================================================================\n"
+			printf "Running Wordcount end-to-end test\n"
+			printf "==============================================================================\n"
+			test-infra/end-to-end-test/test_batch_wordcount.sh build-target cluster
+			EXIT_CODE=$(($EXIT_CODE+$?))
+
+			printf "\n==============================================================================\n"
+			printf "Running Kafka end-to-end test\n"
+			printf "==============================================================================\n"
+			test-infra/end-to-end-test/test_streaming_kafka010.sh build-target cluster
+			EXIT_CODE=$(($EXIT_CODE+$?))
+
+			printf "\n==============================================================================\n"
+			printf "Running class loading end-to-end test\n"
+			printf "==============================================================================\n"
+			test-infra/end-to-end-test/test_streaming_classloader.sh build-target cluster
+			EXIT_CODE=$(($EXIT_CODE+$?))
+		else
+			printf "\n==============================================================================\n"
+			printf "Previous build failure detected, skipping end-to-end tests.\n"
+			printf "==============================================================================\n"
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		fi
 	;;
 esac

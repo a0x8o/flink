@@ -70,18 +70,27 @@ import scala.concurrent.duration.FiniteDuration;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.util.Iterator;
+<<<<<<< HEAD
+=======
+import java.util.concurrent.CompletableFuture;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 
 import static org.apache.flink.runtime.executiongraph.ExecutionGraphTestUtils.SimpleActorGateway;
 import static org.apache.flink.runtime.executiongraph.ExecutionGraphTestUtils.completeCancellingForAllVertices;
 import static org.apache.flink.runtime.executiongraph.ExecutionGraphTestUtils.createNoOpVertex;
 import static org.apache.flink.runtime.executiongraph.ExecutionGraphTestUtils.createSimpleTestGraph;
 import static org.apache.flink.runtime.executiongraph.ExecutionGraphTestUtils.finishAllVertices;
+<<<<<<< HEAD
 import static org.apache.flink.runtime.executiongraph.ExecutionGraphTestUtils.waitUntilDeployedAndSwitchToRunning;
+=======
+import static org.apache.flink.runtime.executiongraph.ExecutionGraphTestUtils.switchToRunning;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import static org.apache.flink.runtime.executiongraph.ExecutionGraphTestUtils.waitUntilJobStatus;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
@@ -585,11 +594,32 @@ public class ExecutionGraphRestartTest extends TestLogger {
 
 	@Test
 	public void testConcurrentLocalFailAndRestart() throws Exception {
+<<<<<<< HEAD
 		final ExecutionGraph eg = createSimpleTestGraph(new FixedDelayRestartStrategy(10, 0L));
 		eg.setScheduleMode(ScheduleMode.EAGER);
 		eg.scheduleForExecution();
 
 		waitUntilDeployedAndSwitchToRunning(eg, 1000);
+=======
+		final int parallelism = 10;
+		SimpleAckingTaskManagerGateway taskManagerGateway = new SimpleAckingTaskManagerGateway();
+
+		final ExecutionGraph eg = createSimpleTestGraph(
+			new JobID(),
+			taskManagerGateway,
+			new FixedDelayRestartStrategy(10, 0L),
+			createNoOpVertex(parallelism));
+
+		WaitForTasks waitForTasks = new WaitForTasks(parallelism);
+		taskManagerGateway.setCondition(waitForTasks);
+
+		eg.setScheduleMode(ScheduleMode.EAGER);
+		eg.scheduleForExecution();
+
+		waitForTasks.getFuture().get(1000, TimeUnit.MILLISECONDS);
+
+		switchToRunning(eg);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 		final ExecutionJobVertex vertex = eg.getVerticesTopologically().iterator().next();
 		final Execution first = vertex.getTaskVertices()[0].getCurrentExecutionAttempt();
@@ -629,10 +659,24 @@ public class ExecutionGraphRestartTest extends TestLogger {
 		failTrigger.trigger();
 
 		waitUntilJobStatus(eg, JobStatus.FAILING, 1000);
+<<<<<<< HEAD
 		completeCancellingForAllVertices(eg);
 
 		waitUntilJobStatus(eg, JobStatus.RUNNING, 1000);
 		waitUntilDeployedAndSwitchToRunning(eg, 1000);
+=======
+
+		WaitForTasks waitForTasksAfterRestart = new WaitForTasks(parallelism);
+		taskManagerGateway.setCondition(waitForTasksAfterRestart);
+
+		completeCancellingForAllVertices(eg);
+
+		waitUntilJobStatus(eg, JobStatus.RUNNING, 1000);
+
+		waitForTasksAfterRestart.getFuture().get(1000, TimeUnit.MILLISECONDS);
+
+		switchToRunning(eg);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		finishAllVertices(eg);
 
 		eg.waitUntilTerminal();
@@ -646,6 +690,7 @@ public class ExecutionGraphRestartTest extends TestLogger {
 		final int parallelism = 10;
 		final JobID jid = new JobID();
 		final JobVertex vertex = createNoOpVertex(parallelism);
+<<<<<<< HEAD
 		final SlotProvider slots = new SimpleSlotProvider(jid, parallelism, new NotCancelAckingTaskGateway());
 		final TriggeredRestartStrategy restartStrategy = new TriggeredRestartStrategy(restartTrigger);
 
@@ -654,10 +699,34 @@ public class ExecutionGraphRestartTest extends TestLogger {
 		eg.scheduleForExecution();
 
 		waitUntilDeployedAndSwitchToRunning(eg, 1000);
+=======
+		final NotCancelAckingTaskGateway taskManagerGateway = new NotCancelAckingTaskGateway();
+		final SlotProvider slots = new SimpleSlotProvider(jid, parallelism, taskManagerGateway);
+		final TriggeredRestartStrategy restartStrategy = new TriggeredRestartStrategy(restartTrigger);
+
+		final ExecutionGraph eg = createSimpleTestGraph(jid, slots, restartStrategy, vertex);
+
+		WaitForTasks waitForTasks = new WaitForTasks(parallelism);
+		taskManagerGateway.setCondition(waitForTasks);
+
+		eg.setScheduleMode(ScheduleMode.EAGER);
+		eg.scheduleForExecution();
+
+		waitForTasks.getFuture().get(1000, TimeUnit.MILLISECONDS);
+
+		switchToRunning(eg);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 		// fail into 'RESTARTING'
 		eg.failGlobal(new Exception("intended test failure 1"));
 		assertEquals(JobStatus.FAILING, eg.getState());
+<<<<<<< HEAD
+=======
+
+		WaitForTasks waitForTasksRestart = new WaitForTasks(parallelism);
+		taskManagerGateway.setCondition(waitForTasksRestart);
+
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		completeCancellingForAllVertices(eg);
 		waitUntilJobStatus(eg, JobStatus.RESTARTING, 1000);
 
@@ -668,7 +737,13 @@ public class ExecutionGraphRestartTest extends TestLogger {
 		restartTrigger.trigger();
 
 		waitUntilJobStatus(eg, JobStatus.RUNNING, 1000);
+<<<<<<< HEAD
 		waitUntilDeployedAndSwitchToRunning(eg, 1000);
+=======
+
+		waitForTasksRestart.getFuture().get(1000, TimeUnit.MILLISECONDS);
+		switchToRunning(eg);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		finishAllVertices(eg);
 
 		eg.waitUntilTerminal();
@@ -684,8 +759,14 @@ public class ExecutionGraphRestartTest extends TestLogger {
 		// this test is inconclusive if not used with a proper multi-threaded executor
 		assertTrue("test assumptions violated", ((ThreadPoolExecutor) executor).getCorePoolSize() > 1);
 
+<<<<<<< HEAD
 		final int parallelism = 20;
 		final Scheduler scheduler = createSchedulerWithInstances(parallelism);
+=======
+		SimpleAckingTaskManagerGateway taskManagerGateway = new SimpleAckingTaskManagerGateway();
+		final int parallelism = 20;
+		final Scheduler scheduler = createSchedulerWithInstances(parallelism, taskManagerGateway);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 		final SlotSharingGroup sharingGroup = new SlotSharingGroup();
 
@@ -701,11 +782,19 @@ public class ExecutionGraphRestartTest extends TestLogger {
 		sink.connectNewDataSetAsInput(source, DistributionPattern.POINTWISE, ResultPartitionType.PIPELINED_BOUNDED);
 
 		final ExecutionGraph eg = ExecutionGraphTestUtils.createExecutionGraph(
+<<<<<<< HEAD
 				new JobID(), scheduler, new FixedDelayRestartStrategy(Integer.MAX_VALUE, 0), executor, source, sink);
+=======
+			new JobID(), scheduler, new FixedDelayRestartStrategy(Integer.MAX_VALUE, 0), executor, source, sink);
+
+		WaitForTasks waitForTasks = new WaitForTasks(parallelism * 2);
+		taskManagerGateway.setCondition(waitForTasks);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 		eg.setScheduleMode(ScheduleMode.EAGER);
 		eg.scheduleForExecution();
 
+<<<<<<< HEAD
 		waitUntilDeployedAndSwitchToRunning(eg, 1000);
 
 		// fail into 'RESTARTING'
@@ -713,11 +802,32 @@ public class ExecutionGraphRestartTest extends TestLogger {
 				new Exception("intended test failure"));
 
 		assertEquals(JobStatus.FAILING, eg.getState());
+=======
+		waitForTasks.getFuture().get(1000, TimeUnit.MILLISECONDS);
+
+		switchToRunning(eg);
+
+		// fail into 'RESTARTING'
+		eg.getAllExecutionVertices().iterator().next().getCurrentExecutionAttempt().fail(
+			new Exception("intended test failure"));
+
+		assertEquals(JobStatus.FAILING, eg.getState());
+
+		WaitForTasks waitForTasksAfterRestart = new WaitForTasks(parallelism * 2);
+		taskManagerGateway.setCondition(waitForTasksAfterRestart);
+
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		completeCancellingForAllVertices(eg);
 
 		// clean termination
 		waitUntilJobStatus(eg, JobStatus.RUNNING, 1000);
+<<<<<<< HEAD
 		waitUntilDeployedAndSwitchToRunning(eg, 1000);
+=======
+
+		waitForTasksAfterRestart.getFuture().get(1000, TimeUnit.MILLISECONDS);
+		switchToRunning(eg);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		finishAllVertices(eg);
 		waitUntilJobStatus(eg, JobStatus.FINISHED, 1000);
 	}
@@ -730,7 +840,12 @@ public class ExecutionGraphRestartTest extends TestLogger {
 		final int numRestarts = 10;
 		final int parallelism = 20;
 
+<<<<<<< HEAD
 		final Scheduler scheduler = createSchedulerWithInstances(parallelism - 1);
+=======
+		TaskManagerGateway taskManagerGateway = new SimpleAckingTaskManagerGateway();
+		final Scheduler scheduler = createSchedulerWithInstances(parallelism - 1, taskManagerGateway);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 		final SlotSharingGroup sharingGroup = new SlotSharingGroup();
 
@@ -768,24 +883,40 @@ public class ExecutionGraphRestartTest extends TestLogger {
 	//  Utilities
 	// ------------------------------------------------------------------------
 
+<<<<<<< HEAD
 	private Scheduler createSchedulerWithInstances(int num) {
+=======
+	private Scheduler createSchedulerWithInstances(int num, TaskManagerGateway taskManagerGateway) {
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		final Scheduler scheduler = new Scheduler(executor);
 		final Instance[] instances = new Instance[num];
 
 		for (int i = 0; i < instances.length; i++) {
+<<<<<<< HEAD
 			instances[i] = createInstance(55443 + i);
+=======
+			instances[i] = createInstance(taskManagerGateway, 55443 + i);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			scheduler.newInstanceAvailable(instances[i]);
 		}
 
 		return scheduler;
 	}
 
+<<<<<<< HEAD
 	private static Instance createInstance(int port) {
 		final HardwareDescription resources = new HardwareDescription(4, 1_000_000_000, 500_000_000, 400_000_000);
 		final TaskManagerGateway taskManager = new SimpleAckingTaskManagerGateway();
 		final TaskManagerLocation location = new TaskManagerLocation(
 				ResourceID.generate(), InetAddress.getLoopbackAddress(), port);
 		return new Instance(taskManager, location, new InstanceID(), resources, 1);
+=======
+	private static Instance createInstance(TaskManagerGateway taskManagerGateway, int port) {
+		final HardwareDescription resources = new HardwareDescription(4, 1_000_000_000, 500_000_000, 400_000_000);
+		final TaskManagerLocation location = new TaskManagerLocation(
+				ResourceID.generate(), InetAddress.getLoopbackAddress(), port);
+		return new Instance(taskManagerGateway, location, new InstanceID(), resources, 1);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	}
 
 	// ------------------------------------------------------------------------
@@ -992,4 +1123,36 @@ public class ExecutionGraphRestartTest extends TestLogger {
 			});
 		}
 	}
+<<<<<<< HEAD
+=======
+
+	/**
+	 * A consumer which counts the number of tasks for which it has been called and completes a future
+	 * upon reaching the number of tasks to wait for.
+	 */
+	public static class WaitForTasks implements Consumer<ExecutionAttemptID> {
+
+		private final int tasksToWaitFor;
+		private final CompletableFuture<Boolean> allTasksReceived;
+		private int counter;
+
+		public WaitForTasks(int tasksToWaitFor) {
+			this.tasksToWaitFor = tasksToWaitFor;
+			this.allTasksReceived = new CompletableFuture<>();
+		}
+
+		public CompletableFuture<Boolean> getFuture() {
+			return allTasksReceived;
+		}
+
+		@Override
+		public void accept(ExecutionAttemptID executionAttemptID) {
+			counter++;
+
+			if (counter >= tasksToWaitFor) {
+				allTasksReceived.complete(true);
+			}
+		}
+	}
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 }

@@ -178,7 +178,11 @@ case class BatchTableTestUtil() extends TableTestUtil {
   }
 
   def verifySql(query: String, expected: String): Unit = {
+<<<<<<< HEAD
     verifyTable(tableEnv.sql(query), expected)
+=======
+    verifyTable(tableEnv.sqlQuery(query), expected)
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
   }
 
   def verifyTable(resultTable: Table, expected: String): Unit = {
@@ -197,7 +201,11 @@ case class BatchTableTestUtil() extends TableTestUtil {
   }
 
   def printSql(query: String): Unit = {
+<<<<<<< HEAD
     printTable(tableEnv.sql(query))
+=======
+    printTable(tableEnv.sqlQuery(query))
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
   }
 
 }
@@ -256,7 +264,11 @@ case class StreamTableTestUtil() extends TableTestUtil {
   }
 
   def verifySql(query: String, expected: String): Unit = {
+<<<<<<< HEAD
     verifyTable(tableEnv.sql(query), expected)
+=======
+    verifyTable(tableEnv.sqlQuery(query), expected)
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
   }
 
   def verifyTable(resultTable: Table, expected: String): Unit = {
@@ -276,7 +288,11 @@ case class StreamTableTestUtil() extends TableTestUtil {
   }
 
   def printSql(query: String): Unit = {
+<<<<<<< HEAD
     printTable(tableEnv.sql(query))
+=======
+    printTable(tableEnv.sqlQuery(query))
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
   }
 
 }

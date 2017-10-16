@@ -20,11 +20,20 @@ package org.apache.flink.runtime.dispatcher;
 
 import org.apache.flink.api.common.JobExecutionResult;
 import org.apache.flink.api.common.JobID;
+<<<<<<< HEAD
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.blob.BlobServer;
 import org.apache.flink.runtime.blob.BlobService;
 import org.apache.flink.runtime.client.JobSubmissionException;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
+=======
+import org.apache.flink.api.common.time.Time;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.runtime.blob.BlobServer;
+import org.apache.flink.runtime.client.JobSubmissionException;
+import org.apache.flink.runtime.clusterframework.types.ResourceID;
+import org.apache.flink.runtime.concurrent.FutureUtils;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.runtime.heartbeat.HeartbeatServices;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.highavailability.RunningJobsRegistry;
@@ -33,20 +42,45 @@ import org.apache.flink.runtime.jobmanager.OnCompletionActions;
 import org.apache.flink.runtime.jobmanager.SubmittedJobGraph;
 import org.apache.flink.runtime.jobmanager.SubmittedJobGraphStore;
 import org.apache.flink.runtime.jobmaster.JobManagerRunner;
+<<<<<<< HEAD
 import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.metrics.MetricRegistry;
 import org.apache.flink.runtime.rpc.FatalErrorHandler;
 import org.apache.flink.runtime.rpc.RpcEndpoint;
 import org.apache.flink.runtime.rpc.RpcMethod;
 import org.apache.flink.runtime.rpc.RpcService;
+=======
+import org.apache.flink.runtime.jobmaster.JobManagerServices;
+import org.apache.flink.runtime.leaderelection.LeaderContender;
+import org.apache.flink.runtime.leaderelection.LeaderElectionService;
+import org.apache.flink.runtime.messages.Acknowledge;
+import org.apache.flink.runtime.messages.webmonitor.JobDetails;
+import org.apache.flink.runtime.messages.webmonitor.MultipleJobsDetails;
+import org.apache.flink.runtime.messages.webmonitor.StatusOverview;
+import org.apache.flink.runtime.metrics.MetricRegistry;
+import org.apache.flink.runtime.rpc.FatalErrorHandler;
+import org.apache.flink.runtime.rpc.FencedRpcEndpoint;
+import org.apache.flink.runtime.rpc.RpcService;
+import org.apache.flink.runtime.rpc.RpcUtils;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.FlinkException;
 import org.apache.flink.util.Preconditions;
 
 import java.io.IOException;
+<<<<<<< HEAD
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
+=======
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 /**
  * Base class for the Dispatcher component. The Dispatcher component is responsible
@@ -54,7 +88,11 @@ import java.util.Map;
  * the jobs and to recover them in case of a master failure. Furthermore, it knows
  * about the state of the Flink session cluster.
  */
+<<<<<<< HEAD
 public abstract class Dispatcher extends RpcEndpoint<DispatcherGateway> {
+=======
+public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> implements DispatcherGateway, LeaderContender {
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 	public static final String DISPATCHER_NAME = "dispatcher";
 
@@ -64,7 +102,11 @@ public abstract class Dispatcher extends RpcEndpoint<DispatcherGateway> {
 	private final RunningJobsRegistry runningJobsRegistry;
 
 	private final HighAvailabilityServices highAvailabilityServices;
+<<<<<<< HEAD
 	private final BlobServer blobServer;
+=======
+	private final JobManagerServices jobManagerServices;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	private final HeartbeatServices heartbeatServices;
 	private final MetricRegistry metricRegistry;
 
@@ -72,6 +114,13 @@ public abstract class Dispatcher extends RpcEndpoint<DispatcherGateway> {
 
 	private final Map<JobID, JobManagerRunner> jobManagerRunners;
 
+<<<<<<< HEAD
+=======
+	private final LeaderElectionService leaderElectionService;
+
+	private final CompletableFuture<String> restAddressFuture;
+
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	protected Dispatcher(
 			RpcService rpcService,
 			String endpointId,
@@ -80,12 +129,23 @@ public abstract class Dispatcher extends RpcEndpoint<DispatcherGateway> {
 			BlobServer blobServer,
 			HeartbeatServices heartbeatServices,
 			MetricRegistry metricRegistry,
+<<<<<<< HEAD
 			FatalErrorHandler fatalErrorHandler) throws Exception {
+=======
+			FatalErrorHandler fatalErrorHandler,
+			Optional<String> restAddress) throws Exception {
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		super(rpcService, endpointId);
 
 		this.configuration = Preconditions.checkNotNull(configuration);
 		this.highAvailabilityServices = Preconditions.checkNotNull(highAvailabilityServices);
+<<<<<<< HEAD
 		this.blobServer = Preconditions.checkNotNull(blobServer);
+=======
+		this.jobManagerServices = JobManagerServices.fromConfiguration(
+			configuration,
+			Preconditions.checkNotNull(blobServer));
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		this.heartbeatServices = Preconditions.checkNotNull(heartbeatServices);
 		this.metricRegistry = Preconditions.checkNotNull(metricRegistry);
 		this.fatalErrorHandler = Preconditions.checkNotNull(fatalErrorHandler);
@@ -94,6 +154,15 @@ public abstract class Dispatcher extends RpcEndpoint<DispatcherGateway> {
 		this.runningJobsRegistry = highAvailabilityServices.getRunningJobsRegistry();
 
 		jobManagerRunners = new HashMap<>(16);
+<<<<<<< HEAD
+=======
+
+		leaderElectionService = highAvailabilityServices.getDispatcherLeaderElectionService();
+		this.restAddressFuture = restAddress
+			.map(CompletableFuture::completedFuture)
+			.orElse(FutureUtils.completedExceptionally(new DispatcherException("The Dispatcher has not been started with a REST endpoint.")));
+
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	}
 
 	//------------------------------------------------------
@@ -102,6 +171,7 @@ public abstract class Dispatcher extends RpcEndpoint<DispatcherGateway> {
 
 	@Override
 	public void postStop() throws Exception {
+<<<<<<< HEAD
 		Exception exception = null;
 		// stop all currently running JobManagerRunners
 		for (JobManagerRunner jobManagerRunner : jobManagerRunners.values()) {
@@ -109,6 +179,17 @@ public abstract class Dispatcher extends RpcEndpoint<DispatcherGateway> {
 		}
 
 		jobManagerRunners.clear();
+=======
+		Throwable exception = null;
+
+		clearState();
+
+		try {
+			jobManagerServices.shutdown();
+		} catch (Throwable t) {
+			exception = ExceptionUtils.firstOrSuppressed(t, exception);
+		}
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 		try {
 			submittedJobGraphStore.stop();
@@ -117,6 +198,15 @@ public abstract class Dispatcher extends RpcEndpoint<DispatcherGateway> {
 		}
 
 		try {
+<<<<<<< HEAD
+=======
+			leaderElectionService.stop();
+		} catch (Exception e) {
+			exception = ExceptionUtils.firstOrSuppressed(e, exception);
+		}
+
+		try {
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			super.postStop();
 		} catch (Exception e) {
 			exception = ExceptionUtils.firstOrSuppressed(e, exception);
@@ -127,12 +217,28 @@ public abstract class Dispatcher extends RpcEndpoint<DispatcherGateway> {
 		}
 	}
 
+<<<<<<< HEAD
+=======
+	@Override
+	public void start() throws Exception {
+		super.start();
+
+		leaderElectionService.start(this);
+	}
+
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	//------------------------------------------------------
 	// RPCs
 	//------------------------------------------------------
 
+<<<<<<< HEAD
 	@RpcMethod
 	public Acknowledge submitJob(JobGraph jobGraph) throws JobSubmissionException {
+=======
+	@Override
+	public CompletableFuture<Acknowledge> submitJob(JobGraph jobGraph, Time timeout) {
+
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		final JobID jobId = jobGraph.getJobID();
 
 		log.info("Submitting job {} ({}).", jobGraph.getJobID(), jobGraph.getName());
@@ -143,7 +249,12 @@ public abstract class Dispatcher extends RpcEndpoint<DispatcherGateway> {
 			jobSchedulingStatus = runningJobsRegistry.getJobSchedulingStatus(jobId);
 		} catch (IOException e) {
 			log.warn("Cannot retrieve job status for {}.", jobId, e);
+<<<<<<< HEAD
 			throw new JobSubmissionException(jobId, "Could not retrieve the job status.", e);
+=======
+			return FutureUtils.completedExceptionally(
+				new JobSubmissionException(jobId, "Could not retrieve the job status.", e));
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		}
 
 		if (jobSchedulingStatus == RunningJobsRegistry.JobSchedulingStatus.PENDING) {
@@ -151,7 +262,12 @@ public abstract class Dispatcher extends RpcEndpoint<DispatcherGateway> {
 				submittedJobGraphStore.putJobGraph(new SubmittedJobGraph(jobGraph, null));
 			} catch (Exception e) {
 				log.warn("Cannot persist JobGraph.", e);
+<<<<<<< HEAD
 				throw new JobSubmissionException(jobId, "Could not persist JobGraph.", e);
+=======
+				return FutureUtils.completedExceptionally(
+					new JobSubmissionException(jobId, "Could not persist JobGraph.", e));
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			}
 
 			final JobManagerRunner jobManagerRunner;
@@ -163,8 +279,13 @@ public abstract class Dispatcher extends RpcEndpoint<DispatcherGateway> {
 					configuration,
 					getRpcService(),
 					highAvailabilityServices,
+<<<<<<< HEAD
 					blobServer,
 					heartbeatServices,
+=======
+					heartbeatServices,
+					jobManagerServices,
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 					metricRegistry,
 					new DispatcherOnCompleteActions(jobGraph.getJobID()),
 					fatalErrorHandler);
@@ -180,11 +301,17 @@ public abstract class Dispatcher extends RpcEndpoint<DispatcherGateway> {
 					e.addSuppressed(t);
 				}
 
+<<<<<<< HEAD
 				throw new JobSubmissionException(jobId, "Could not start JobManager.", e);
+=======
+				return FutureUtils.completedExceptionally(
+					new JobSubmissionException(jobId, "Could not start JobManager.", e));
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			}
 
 			jobManagerRunners.put(jobId, jobManagerRunner);
 
+<<<<<<< HEAD
 			return Acknowledge.get();
 		} else {
 			throw new JobSubmissionException(jobId, "Job has already been submitted and " +
@@ -196,6 +323,55 @@ public abstract class Dispatcher extends RpcEndpoint<DispatcherGateway> {
 	public Collection<JobID> listJobs() {
 		// TODO: return proper list of running jobs
 		return jobManagerRunners.keySet();
+=======
+			return CompletableFuture.completedFuture(Acknowledge.get());
+		} else {
+			return FutureUtils.completedExceptionally(
+				new JobSubmissionException(jobId, "Job has already been submitted and " +
+					"is currently in state " + jobSchedulingStatus + '.'));
+		}
+	}
+
+	@Override
+	public CompletableFuture<Collection<JobID>> listJobs(Time timeout) {
+		return CompletableFuture.completedFuture(jobManagerRunners.keySet());
+	}
+
+	@Override
+	public CompletableFuture<String> requestRestAddress(Time timeout) {
+		return restAddressFuture;
+	}
+
+	@Override
+	public CompletableFuture<StatusOverview> requestStatusOverview(Time timeout) {
+		// TODO: Implement proper cluster overview generation
+		return CompletableFuture.completedFuture(
+			new StatusOverview(
+				42,
+				1337,
+				1337,
+				5,
+				6,
+				7,
+				8));
+	}
+
+	@Override
+	public CompletableFuture<MultipleJobsDetails> requestJobDetails(Time timeout) {
+		final int numberJobsRunning = jobManagerRunners.size();
+
+		ArrayList<CompletableFuture<JobDetails>> individualJobDetails = new ArrayList<>(numberJobsRunning);
+
+		for (JobManagerRunner jobManagerRunner : jobManagerRunners.values()) {
+			individualJobDetails.add(jobManagerRunner.getJobManagerGateway().requestJobDetails(timeout));
+		}
+
+		CompletableFuture<Collection<JobDetails>> combinedJobDetails = FutureUtils.combineAll(individualJobDetails);
+
+		return combinedJobDetails.thenApply(
+			(Collection<JobDetails> jobDetails) ->
+				new MultipleJobsDetails(jobDetails, null));
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	}
 
 	/**
@@ -219,19 +395,153 @@ public abstract class Dispatcher extends RpcEndpoint<DispatcherGateway> {
 		// TODO: remove job related files from blob server
 	}
 
+<<<<<<< HEAD
+=======
+	/**
+	 * Clears the state of the dispatcher.
+	 *
+	 * <p>The state are all currently running jobs.
+	 */
+	private void clearState() throws Exception {
+		Exception exception = null;
+
+		// stop all currently running JobManager since they run in the same process
+		for (JobManagerRunner jobManagerRunner : jobManagerRunners.values()) {
+			try {
+				jobManagerRunner.shutdown();
+			} catch (Exception e) {
+				exception = ExceptionUtils.firstOrSuppressed(e, exception);
+			}
+		}
+
+		jobManagerRunners.clear();
+
+		if (exception != null) {
+			throw exception;
+		}
+	}
+
+	/**
+	 * Recovers all jobs persisted via the submitted job graph store.
+	 */
+	private void recoverJobs() {
+		log.info("Recovering all persisted jobs.");
+
+		getRpcService().execute(
+			() -> {
+				final Collection<JobID> jobIds;
+
+				try {
+					jobIds = submittedJobGraphStore.getJobIds();
+				} catch (Exception e) {
+					log.error("Could not recover job ids from the submitted job graph store. Aborting recovery.", e);
+					return;
+				}
+
+				for (JobID jobId : jobIds) {
+					try {
+						SubmittedJobGraph submittedJobGraph = submittedJobGraphStore.recoverJobGraph(jobId);
+
+						runAsync(() -> submitJob(submittedJobGraph.getJobGraph(), RpcUtils.INF_TIMEOUT));
+					} catch (Exception e) {
+						log.error("Could not recover the job graph for " + jobId + '.', e);
+					}
+				}
+			});
+	}
+
+	private void onFatalError(Throwable throwable) {
+		log.error("Fatal error occurred in dispatcher {}.", getAddress(), throwable);
+		fatalErrorHandler.onFatalError(throwable);
+	}
+
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	protected abstract JobManagerRunner createJobManagerRunner(
 		ResourceID resourceId,
 		JobGraph jobGraph,
 		Configuration configuration,
 		RpcService rpcService,
 		HighAvailabilityServices highAvailabilityServices,
+<<<<<<< HEAD
 		BlobService blobService,
 		HeartbeatServices heartbeatServices,
+=======
+		HeartbeatServices heartbeatServices,
+		JobManagerServices jobManagerServices,
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		MetricRegistry metricRegistry,
 		OnCompletionActions onCompleteActions,
 		FatalErrorHandler fatalErrorHandler) throws Exception;
 
 	//------------------------------------------------------
+<<<<<<< HEAD
+=======
+	// Leader contender
+	//------------------------------------------------------
+
+	/**
+	 * Callback method when current resourceManager is granted leadership.
+	 *
+	 * @param newLeaderSessionID unique leadershipID
+	 */
+	@Override
+	public void grantLeadership(final UUID newLeaderSessionID) {
+		runAsyncWithoutFencing(
+			() -> {
+				final DispatcherId dispatcherId = new DispatcherId(newLeaderSessionID);
+
+				log.info("Dispatcher {} was granted leadership with fencing token {}", getAddress(), dispatcherId);
+
+				// clear the state if we've been the leader before
+				if (getFencingToken() != null) {
+					try {
+						clearState();
+					} catch (Exception e) {
+						log.warn("Could not properly clear the Dispatcher state while granting leadership.", e);
+					}
+				}
+
+				setFencingToken(dispatcherId);
+
+				// confirming the leader session ID might be blocking,
+				getRpcService().execute(
+					() -> leaderElectionService.confirmLeaderSessionID(newLeaderSessionID));
+
+				recoverJobs();
+			});
+	}
+
+	/**
+	 * Callback method when current resourceManager loses leadership.
+	 */
+	@Override
+	public void revokeLeadership() {
+		runAsyncWithoutFencing(
+			() -> {
+				log.info("Dispatcher {} was revoked leadership.", getAddress());
+				try {
+					clearState();
+				} catch (Exception e) {
+					log.warn("Could not properly clear the Dispatcher state while revoking leadership.", e);
+				}
+
+				// clear the fencing token indicating that we don't have the leadership right now
+				setFencingToken(null);
+			});
+	}
+
+	/**
+	 * Handles error occurring in the leader election service.
+	 *
+	 * @param exception Exception being thrown in the leader election service
+	 */
+	@Override
+	public void handleError(final Exception exception) {
+		onFatalError(new DispatcherException("Received an error from the LeaderElectionService.", exception));
+	}
+
+	//------------------------------------------------------
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	// Utility classes
 	//------------------------------------------------------
 
@@ -247,48 +557,73 @@ public abstract class Dispatcher extends RpcEndpoint<DispatcherGateway> {
 		public void jobFinished(JobExecutionResult result) {
 			log.info("Job {} finished.", jobId);
 
+<<<<<<< HEAD
 			runAsync(new Runnable() {
 				@Override
 				public void run() {
+=======
+			runAsync(() -> {
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 					try {
 						removeJob(jobId, true);
 					} catch (Exception e) {
 						log.warn("Could not properly remove job {} from the dispatcher.", jobId, e);
 					}
+<<<<<<< HEAD
 				}
 			});
+=======
+				});
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		}
 
 		@Override
 		public void jobFailed(Throwable cause) {
 			log.info("Job {} failed.", jobId);
 
+<<<<<<< HEAD
 			runAsync(new Runnable() {
 				@Override
 				public void run() {
+=======
+			runAsync(() -> {
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 					try {
 						removeJob(jobId, true);
 					} catch (Exception e) {
 						log.warn("Could not properly remove job {} from the dispatcher.", jobId, e);
 					}
+<<<<<<< HEAD
 				}
 			});
+=======
+				});
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		}
 
 		@Override
 		public void jobFinishedByOther() {
 			log.info("Job {} was finished by other JobManager.", jobId);
 
+<<<<<<< HEAD
 			runAsync(new Runnable() {
 				@Override
 				public void run() {
+=======
+			runAsync(
+				() -> {
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 					try {
 						removeJob(jobId, false);
 					} catch (Exception e) {
 						log.warn("Could not properly remove job {} from the dispatcher.", jobId, e);
 					}
+<<<<<<< HEAD
 				}
 			});
+=======
+				});
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		}
 	}
 }

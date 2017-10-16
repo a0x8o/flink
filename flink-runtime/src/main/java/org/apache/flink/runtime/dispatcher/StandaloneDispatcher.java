@@ -20,18 +20,30 @@ package org.apache.flink.runtime.dispatcher;
 
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.blob.BlobServer;
+<<<<<<< HEAD
 import org.apache.flink.runtime.blob.BlobService;
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.heartbeat.HeartbeatServices;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.jobmanager.OnCompletionActions;
 import org.apache.flink.runtime.jobmaster.JobManagerRunner;
+<<<<<<< HEAD
+=======
+import org.apache.flink.runtime.jobmaster.JobManagerServices;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.runtime.jobmaster.JobMaster;
 import org.apache.flink.runtime.metrics.MetricRegistry;
 import org.apache.flink.runtime.rpc.FatalErrorHandler;
 import org.apache.flink.runtime.rpc.RpcService;
 
+<<<<<<< HEAD
+=======
+import java.util.Optional;
+
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 /**
  * Dispatcher implementation which spawns a {@link JobMaster} for each
  * submitted {@link JobGraph} within in the same process. This dispatcher
@@ -46,7 +58,12 @@ public class StandaloneDispatcher extends Dispatcher {
 			BlobServer blobServer,
 			HeartbeatServices heartbeatServices,
 			MetricRegistry metricRegistry,
+<<<<<<< HEAD
 			FatalErrorHandler fatalErrorHandler) throws Exception {
+=======
+			FatalErrorHandler fatalErrorHandler,
+			Optional<String> restAddress) throws Exception {
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		super(
 			rpcService,
 			endpointId,
@@ -55,7 +72,12 @@ public class StandaloneDispatcher extends Dispatcher {
 			blobServer,
 			heartbeatServices,
 			metricRegistry,
+<<<<<<< HEAD
 			fatalErrorHandler);
+=======
+			fatalErrorHandler,
+			restAddress);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	}
 
 	@Override
@@ -65,8 +87,13 @@ public class StandaloneDispatcher extends Dispatcher {
 			Configuration configuration,
 			RpcService rpcService,
 			HighAvailabilityServices highAvailabilityServices,
+<<<<<<< HEAD
 			BlobService blobService,
 			HeartbeatServices heartbeatServices,
+=======
+			HeartbeatServices heartbeatServices,
+			JobManagerServices jobManagerServices,
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			MetricRegistry metricRegistry,
 			OnCompletionActions onCompleteActions,
 			FatalErrorHandler fatalErrorHandler) throws Exception {
@@ -77,8 +104,13 @@ public class StandaloneDispatcher extends Dispatcher {
 			configuration,
 			rpcService,
 			highAvailabilityServices,
+<<<<<<< HEAD
 			blobService,
 			heartbeatServices,
+=======
+			heartbeatServices,
+			jobManagerServices,
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			metricRegistry,
 			onCompleteActions,
 			fatalErrorHandler);

@@ -18,7 +18,10 @@
 
 package org.apache.flink.streaming.api.operators.async.queue;
 
+<<<<<<< HEAD
 import org.apache.flink.runtime.concurrent.FlinkFutureException;
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.streaming.api.operators.async.OperatorActions;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
@@ -37,6 +40,10 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+<<<<<<< HEAD
+=======
+import java.util.concurrent.CompletionException;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -150,7 +157,7 @@ public class StreamElementQueueTest extends TestLogger {
 		Assert.assertEquals(watermarkQueueEntry, queue.poll());
 		Assert.assertEquals(1, queue.size());
 
-		streamRecordQueueEntry.collect(Collections.<Integer>emptyList());
+		streamRecordQueueEntry.complete(Collections.<Integer>emptyList());
 
 		Assert.assertEquals(streamRecordQueueEntry, queue.poll());
 
@@ -180,7 +187,11 @@ public class StreamElementQueueTest extends TestLogger {
 				try {
 					queue.put(streamRecordQueueEntry2);
 				} catch (InterruptedException e) {
+<<<<<<< HEAD
 					throw new FlinkFutureException(e);
+=======
+					throw new CompletionException(e);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 				}
 			},
 			executor);
@@ -191,7 +202,7 @@ public class StreamElementQueueTest extends TestLogger {
 		// but it shouldn't ;-)
 		Assert.assertFalse(putOperation.isDone());
 
-		streamRecordQueueEntry.collect(Collections.<Integer>emptyList());
+		streamRecordQueueEntry.complete(Collections.<Integer>emptyList());
 
 		// polling the completed head element frees the queue again
 		Assert.assertEquals(streamRecordQueueEntry, queue.poll());
@@ -220,7 +231,11 @@ public class StreamElementQueueTest extends TestLogger {
 				try {
 					return queue.peekBlockingly();
 				} catch (InterruptedException e) {
+<<<<<<< HEAD
 					throw new FlinkFutureException(e);
+=======
+					throw new CompletionException(e);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 				}
 			},
 			executor);
@@ -244,7 +259,11 @@ public class StreamElementQueueTest extends TestLogger {
 				try {
 					return queue.poll();
 				} catch (InterruptedException e) {
+<<<<<<< HEAD
 					throw new FlinkFutureException(e);
+=======
+					throw new CompletionException(e);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 				}
 			},
 			executor);
@@ -259,7 +278,7 @@ public class StreamElementQueueTest extends TestLogger {
 
 		Assert.assertFalse(pollOperation.isDone());
 
-		streamRecordQueueEntry.collect(Collections.<Integer>emptyList());
+		streamRecordQueueEntry.complete(Collections.<Integer>emptyList());
 
 		Assert.assertEquals(streamRecordQueueEntry, pollOperation.get());
 

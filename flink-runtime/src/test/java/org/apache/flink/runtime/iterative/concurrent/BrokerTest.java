@@ -20,9 +20,15 @@ package org.apache.flink.runtime.iterative.concurrent;
 
 import org.apache.flink.util.Preconditions;
 
+<<<<<<< HEAD
 import com.google.common.collect.Lists;
 import org.junit.Test;
 
+=======
+import org.junit.Test;
+
+import java.util.ArrayList;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import java.util.Collections;
 import java.util.List;
 import java.util.Random;
@@ -52,7 +58,7 @@ public class BrokerTest {
 		final ExecutorService executorService = Executors.newFixedThreadPool(subtasks * 2);
 
 		try {
-			List<Callable<StringPair>> tasks = Lists.newArrayList();
+			List<Callable<StringPair>> tasks = new ArrayList<>();
 			Broker<String> broker = new Broker<String>();
 
 			for (int subtask = 0; subtask < subtasks; subtask++) {

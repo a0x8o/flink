@@ -53,12 +53,15 @@ trait CommonCorrelate {
     functionClass: Class[T]):
   GeneratedFunction[T, Row] = {
 
+<<<<<<< HEAD
     val physicalRexCall = inputSchema.mapRexNode(rexCall)
 
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
     val functionGenerator = new FunctionCodeGenerator(
       config,
       false,
-      inputSchema.physicalTypeInfo,
+      inputSchema.typeInfo,
       Some(udtfTypeInfo),
       None,
       pojoFieldMapping)
@@ -69,7 +72,7 @@ trait CommonCorrelate {
       .addReusableConstructor(classOf[TableFunctionCollector[_]])
       .head
 
-    val call = functionGenerator.generateExpression(physicalRexCall)
+    val call = functionGenerator.generateExpression(rexCall)
     var body =
       s"""
          |${call.resultTerm}.setCollector($collectorTerm);
@@ -90,8 +93,8 @@ trait CommonCorrelate {
       }
       val outerResultExpr = functionGenerator.generateResultExpression(
         input1AccessExprs ++ input2NullExprs,
-        returnSchema.physicalTypeInfo,
-        returnSchema.physicalFieldNames)
+        returnSchema.typeInfo,
+        returnSchema.fieldNames)
       body +=
         s"""
            |boolean hasOutput = $collectorTerm.isCollected();
@@ -108,7 +111,7 @@ trait CommonCorrelate {
       ruleDescription,
       functionClass,
       body,
-      returnSchema.physicalTypeInfo)
+      returnSchema.typeInfo)
   }
 
   /**
@@ -126,7 +129,7 @@ trait CommonCorrelate {
     val generator = new CollectorCodeGenerator(
       config,
       false,
-      inputSchema.physicalTypeInfo,
+      inputSchema.typeInfo,
       Some(udtfTypeInfo),
       None,
       pojoFieldMapping)
@@ -135,8 +138,8 @@ trait CommonCorrelate {
 
     val crossResultExpr = generator.generateResultExpression(
       input1AccessExprs ++ input2AccessExprs,
-      returnSchema.physicalTypeInfo,
-      returnSchema.physicalFieldNames)
+      returnSchema.typeInfo,
+      returnSchema.fieldNames)
 
     val collectorCode = if (condition.isEmpty) {
       s"""
@@ -148,7 +151,7 @@ trait CommonCorrelate {
       // adjust indicies of InputRefs to adhere to schema expected by generator
       val changeInputRefIndexShuttle = new RexShuttle {
         override def visitInputRef(inputRef: RexInputRef): RexNode = {
-          new RexInputRef(inputSchema.physicalArity + inputRef.getIndex, inputRef.getType)
+          new RexInputRef(inputSchema.arity + inputRef.getIndex, inputRef.getType)
         }
       }
       // Run generateExpression to add init statements (ScalarFunctions) of condition to generator.

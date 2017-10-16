@@ -52,7 +52,11 @@ class AggregateITCase(
     val ds = CollectionDataSets.get3TupleDataSet(env)
     tEnv.registerDataSet("MyTable", ds)
 
+<<<<<<< HEAD
     val result = tEnv.sql(sqlQuery)
+=======
+    val result = tEnv.sqlQuery(sqlQuery)
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
     val expected = "231,1,21,21,11"
     val results = result.toDataSet[Row].collect()
@@ -70,7 +74,11 @@ class AggregateITCase(
     val ds = CollectionDataSets.get3TupleDataSet(env).toTable(tEnv)
     tEnv.registerTable("MyTable", ds)
 
+<<<<<<< HEAD
     val result = tEnv.sql(sqlQuery)
+=======
+    val result = tEnv.sqlQuery(sqlQuery)
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
     val expected = "231"
     val results = result.toDataSet[Row].collect()
@@ -88,7 +96,11 @@ class AggregateITCase(
     val ds = CollectionDataSets.get3TupleDataSet(env)
     tEnv.registerDataSet("MyTable", ds)
 
+<<<<<<< HEAD
     val result = tEnv.sql(sqlQuery)
+=======
+    val result = tEnv.sqlQuery(sqlQuery)
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
     val expected = "231"
     val results = result.toDataSet[Row].collect()
@@ -109,7 +121,11 @@ class AggregateITCase(
       (2: Byte, 2: Short, 2, 2L, 2.0f, 2.0d, "Ciao")).toTable(tEnv, 'a, 'b, 'c, 'd, 'e, 'f, 'g)
     tEnv.registerTable("MyTable", ds)
 
+<<<<<<< HEAD
     val result = tEnv.sql(sqlQuery)
+=======
+    val result = tEnv.sqlQuery(sqlQuery)
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
     val expected = "1,1,1,1,1.5,1.5,2,Ciao,Ciao,Hello,Ciao,3.0"
     val results = result.toDataSet[Row].collect()
@@ -128,7 +144,11 @@ class AggregateITCase(
     val ds = env.fromElements((1: Byte, 1: Short), (2: Byte, 2: Short)).toTable(tEnv, 'a, 'b)
     tEnv.registerTable("MyTable", ds)
 
+<<<<<<< HEAD
     val result = tEnv.sql(sqlQuery)
+=======
+    val result = tEnv.sqlQuery(sqlQuery)
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
     val expected = "1,3,2,1,3"
     val results = result.toDataSet[Row].collect()
@@ -147,7 +167,11 @@ class AggregateITCase(
     val ds = env.fromElements((1f, "Hello"), (2f, "Ciao")).toTable(tEnv, 'a, 'b)
     tEnv.registerTable("MyTable", ds)
 
+<<<<<<< HEAD
     val result = tEnv.sql(sqlQuery)
+=======
+    val result = tEnv.sqlQuery(sqlQuery)
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
     val expected = "5.5,7"
     val results = result.toDataSet[Row].collect()
@@ -165,7 +189,11 @@ class AggregateITCase(
     val ds = env.fromElements((1f, "Hello"), (2f, "Ciao")).toTable(tEnv)
     tEnv.registerTable("MyTable", ds)
 
+<<<<<<< HEAD
     val result = tEnv.sql(sqlQuery)
+=======
+    val result = tEnv.sqlQuery(sqlQuery)
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
     val expected = "2,2"
     val results = result.toDataSet[Row].collect()
@@ -187,7 +215,11 @@ class AggregateITCase(
       (2: Byte, 2: Short, 2, 2L, 2.0f, 2.0d, "Ciao")).toTable(tEnv)
     tEnv.registerTable("MyTable", ds)
 
+<<<<<<< HEAD
     val result = tEnv.sql(sqlQuery)
+=======
+    val result = tEnv.sqlQuery(sqlQuery)
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
     val expected = "1,3,2"
     val results = result.toDataSet[Row].collect()
@@ -205,7 +237,11 @@ class AggregateITCase(
     val ds = CollectionDataSets.get3TupleDataSet(env).toTable(tEnv)
     tEnv.registerTable("MyTable", ds)
 
+<<<<<<< HEAD
     val result = tEnv.sql(sqlQuery)
+=======
+    val result = tEnv.sqlQuery(sqlQuery)
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
     val expected = "231,21"
     val results = result.toDataSet[Row].collect()
@@ -223,7 +259,11 @@ class AggregateITCase(
     val ds = CollectionDataSets.get3TupleDataSet(env).toTable(tEnv)
     tEnv.registerTable("MyTable", ds)
 
+<<<<<<< HEAD
     val result = tEnv.sql(sqlQuery)
+=======
+    val result = tEnv.sqlQuery(sqlQuery)
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
     val expected =
       "6,18,6\n5,13,5\n4,8,4\n3,5,3\n2,2,2\n1,1,1"
@@ -243,7 +283,11 @@ class AggregateITCase(
     val ds = CollectionDataSets.get3TupleDataSet(env)
     tEnv.registerDataSet("MyTable", ds)
 
+<<<<<<< HEAD
     val result = tEnv.sql(sqlQuery).toDataSet[Row].collect()
+=======
+    val result = tEnv.sqlQuery(sqlQuery).toDataSet[Row].collect()
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
     val expected =
       "6,null,18,1\n5,null,13,1\n4,null,8,1\n3,null,5,1\n2,null,2,1\n1,null,1,1\n" +
@@ -280,9 +324,15 @@ class AggregateITCase(
 
     tEnv.registerTable("MyTable", ds)
 
+<<<<<<< HEAD
     val result = tEnv.sql(sqlQuery)
     val result2 = tEnv.sql(sqlQuery2)
     val result3 = tEnv.sql(sqlQuery3)
+=======
+    val result = tEnv.sqlQuery(sqlQuery)
+    val result2 = tEnv.sqlQuery(sqlQuery2)
+    val result3 = tEnv.sqlQuery(sqlQuery3)
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
     val results = result.toDataSet[Row].collect()
     val expected = Seq.empty
@@ -315,7 +365,11 @@ class AggregateITCase(
       .map(x => (x._1, x._2, x._3, new Timestamp(x._1 * 1000)))
     tEnv.registerDataSet("T", ds, 'a, 'b, 'c, 'ts)
 
+<<<<<<< HEAD
     val result = tEnv.sql(sqlQuery).toDataSet[Row].collect()
+=======
+    val result = tEnv.sqlQuery(sqlQuery).toDataSet[Row].collect()
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
     val expected = Seq(
       "1,1,1,1,1",
       "2,2,1,2,2", "2,3,1,2,3",
@@ -348,7 +402,11 @@ class AggregateITCase(
       .map(x => (x._1, x._2, x._3, new Timestamp(x._1 * 1000)))
     tEnv.registerDataSet("T", ds, 'a, 'b, 'c, 'ts)
 
+<<<<<<< HEAD
     val result = tEnv.sql(sqlQuery).toDataSet[Row].collect()
+=======
+    val result = tEnv.sqlQuery(sqlQuery).toDataSet[Row].collect()
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
     val expected = Seq(
       "1,1,1,1,1","1,1,1,1,1",
       "2,5,2,2,2","2,5,2,2,2",
@@ -383,7 +441,11 @@ class AggregateITCase(
       .map(x => (x._1, x._2, x._3, new Timestamp(x._1 * 1000)))
     tEnv.registerDataSet("T", ds, 'a, 'b, 'c, 'ts)
 
+<<<<<<< HEAD
     val result = tEnv.sql(sqlQuery).toDataSet[Row].collect()
+=======
+    val result = tEnv.sqlQuery(sqlQuery).toDataSet[Row].collect()
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
     val expected = Seq(
       "2,10,39,6,3,7",
       "16,21,111,6,6,18"

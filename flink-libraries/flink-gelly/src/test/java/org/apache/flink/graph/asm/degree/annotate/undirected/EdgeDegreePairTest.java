@@ -36,12 +36,10 @@ import static org.junit.Assert.assertEquals;
 /**
  * Tests for {@link EdgeDegreePair}.
  */
-public class EdgeDegreePairTest
-extends AsmTestBase {
+public class EdgeDegreePairTest extends AsmTestBase {
 
 	@Test
-	public void testWithSimpleGraph()
-			throws Exception {
+	public void testWithSimpleGraph() throws Exception {
 		String expectedResult =
 			"(0,1,((null),2,3))\n" +
 			"(0,2,((null),2,3))\n" +
@@ -59,7 +57,12 @@ extends AsmTestBase {
 			"(5,3,((null),1,4))";
 
 		DataSet<Edge<IntValue, Tuple3<NullValue, LongValue, LongValue>>> degreePairOnSourceId = undirectedSimpleGraph
+<<<<<<< HEAD
 			.run(new EdgeDegreePair<>());
+=======
+			.run(new EdgeDegreePair<IntValue, NullValue, NullValue>()
+				.setReduceOnTargetId(false));
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 		TestBaseUtils.compareResultAsText(degreePairOnSourceId.collect(), expectedResult);
 
@@ -71,10 +74,44 @@ extends AsmTestBase {
 	}
 
 	@Test
-	public void testWithRMatGraph()
-			throws Exception {
+	public void testWithEmptyGraphWithVertices() throws Exception {
+		DataSet<Edge<LongValue, Tuple3<NullValue, LongValue, LongValue>>> degreePairOnSourceId = emptyGraphWithVertices
+			.run(new EdgeDegreePair<LongValue, NullValue, NullValue>()
+				.setReduceOnTargetId(false));
+
+		assertEquals(0, degreePairOnSourceId.collect().size());
+
+		DataSet<Edge<LongValue, Tuple3<NullValue, LongValue, LongValue>>> degreePairOnTargetId = emptyGraphWithVertices
+			.run(new EdgeDegreePair<LongValue, NullValue, NullValue>()
+				.setReduceOnTargetId(true));
+
+		assertEquals(0, degreePairOnTargetId.collect().size());
+	}
+
+	@Test
+	public void testWithEmptyGraphWithoutVertices() throws Exception {
+		DataSet<Edge<LongValue, Tuple3<NullValue, LongValue, LongValue>>> degreePairOnSourceId = emptyGraphWithoutVertices
+			.run(new EdgeDegreePair<LongValue, NullValue, NullValue>()
+				.setReduceOnTargetId(false));
+
+		assertEquals(0, degreePairOnSourceId.collect().size());
+
+		DataSet<Edge<LongValue, Tuple3<NullValue, LongValue, LongValue>>> degreePairOnTargetId = emptyGraphWithoutVertices
+			.run(new EdgeDegreePair<LongValue, NullValue, NullValue>()
+				.setReduceOnTargetId(true));
+
+		assertEquals(0, degreePairOnTargetId.collect().size());
+	}
+
+	@Test
+	public void testWithRMatGraph() throws Exception {
 		DataSet<Edge<LongValue, Tuple3<NullValue, LongValue, LongValue>>> degreePairOnSourceId = undirectedRMatGraph(10, 16)
+<<<<<<< HEAD
 			.run(new EdgeDegreePair<>());
+=======
+			.run(new EdgeDegreePair<LongValue, NullValue, NullValue>()
+				.setReduceOnTargetId(false));
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 		Checksum checksumOnSourceId = new ChecksumHashCode<Edge<LongValue, Tuple3<NullValue, LongValue, LongValue>>>()
 			.run(degreePairOnSourceId)

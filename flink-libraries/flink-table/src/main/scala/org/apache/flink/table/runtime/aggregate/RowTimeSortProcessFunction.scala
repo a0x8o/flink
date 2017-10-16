@@ -17,29 +17,50 @@
  */
 package org.apache.flink.table.runtime.aggregate
 
+<<<<<<< HEAD
 import org.apache.flink.api.common.state.ValueState
 import org.apache.flink.api.common.state.ValueStateDescriptor
 import org.apache.flink.api.common.state.MapState
 import org.apache.flink.api.common.state.MapStateDescriptor
+=======
+import java.util.{Collections, ArrayList => JArrayList, List => JList}
+
+import org.apache.flink.api.common.state.{MapState, MapStateDescriptor, ValueState, ValueStateDescriptor}
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.api.common.typeinfo.{BasicTypeInfo, TypeInformation}
 import org.apache.flink.api.java.typeutils.ListTypeInfo
 import org.apache.flink.configuration.Configuration
 import org.apache.flink.streaming.api.functions.ProcessFunction
+<<<<<<< HEAD
+=======
+import org.apache.flink.streaming.api.operators.TimestampedCollector
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.table.runtime.types.{CRow, CRowTypeInfo}
 import org.apache.flink.types.Row
 import org.apache.flink.util.{Collector, Preconditions}
 
+<<<<<<< HEAD
 import java.util.Collections
 import java.util.{List => JList, ArrayList => JArrayList}
 
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 /**
  * ProcessFunction to sort on event-time and possibly addtional secondary sort attributes.
  *
   * @param inputRowType The data type of the input data.
+<<<<<<< HEAD
+=======
+  * @param rowtimeIdx The index of the rowtime field.
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
   * @param rowComparator A comparator to sort rows.
  */
 class RowTimeSortProcessFunction(
     private val inputRowType: CRowTypeInfo,
+<<<<<<< HEAD
+=======
+    private val rowtimeIdx: Int,
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
     private val rowComparator: Option[CollectionRowComparator])
   extends ProcessFunction[CRow, CRow] {
 
@@ -84,7 +105,11 @@ class RowTimeSortProcessFunction(
     val input = inputC.row
     
     // timestamp of the processed row
+<<<<<<< HEAD
     val rowtime = ctx.timestamp
+=======
+    val rowtime = input.getField(rowtimeIdx).asInstanceOf[Long]
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
     val lastTriggeringTs = lastTriggeringTsState.value
 
@@ -105,13 +130,24 @@ class RowTimeSortProcessFunction(
       }
     }
   }
+<<<<<<< HEAD
   
   
+=======
+
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
   override def onTimer(
     timestamp: Long,
     ctx: ProcessFunction[CRow, CRow]#OnTimerContext,
     out: Collector[CRow]): Unit = {
+<<<<<<< HEAD
     
+=======
+
+    // remove timestamp set outside of ProcessFunction.
+    out.asInstanceOf[TimestampedCollector[_]].eraseTimestamp()
+
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
     // gets all rows for the triggering timestamps
     val inputs: JList[Row] = dataState.get(timestamp)
 

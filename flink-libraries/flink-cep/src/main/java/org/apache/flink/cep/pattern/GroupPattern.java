@@ -18,6 +18,10 @@
 
 package org.apache.flink.cep.pattern;
 
+<<<<<<< HEAD
+=======
+import org.apache.flink.cep.nfa.AfterMatchSkipStrategy;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.cep.pattern.conditions.IterativeCondition;
 
 /**
@@ -31,6 +35,7 @@ public class GroupPattern<T, F extends T> extends Pattern<T, F> {
 	/** Group pattern representing the pattern definition of this group. */
 	private final Pattern<T, ? extends T> groupPattern;
 
+<<<<<<< HEAD
 	GroupPattern(final Pattern<T, ? extends T> previous, final Pattern<T, ? extends T> groupPattern) {
 		super("GroupPattern", previous);
 		this.groupPattern = groupPattern;
@@ -41,6 +46,14 @@ public class GroupPattern<T, F extends T> extends Pattern<T, F> {
 		final Pattern<T, ? extends T> groupPattern,
 		final Quantifier.ConsumingStrategy consumingStrategy) {
 		super("GroupPattern", previous, consumingStrategy);
+=======
+	GroupPattern(
+		final Pattern<T, ? extends T> previous,
+		final Pattern<T, ? extends T> groupPattern,
+		final Quantifier.ConsumingStrategy consumingStrategy,
+		final AfterMatchSkipStrategy afterMatchSkipStrategy) {
+		super("GroupPattern", previous, consumingStrategy, afterMatchSkipStrategy);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		this.groupPattern = groupPattern;
 	}
 

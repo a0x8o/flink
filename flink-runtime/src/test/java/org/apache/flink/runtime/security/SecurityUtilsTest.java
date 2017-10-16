@@ -21,6 +21,10 @@ package org.apache.flink.runtime.security;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.SecurityOptions;
 import org.apache.flink.runtime.security.modules.SecurityModule;
+<<<<<<< HEAD
+=======
+import org.apache.flink.runtime.security.modules.SecurityModuleFactory;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 import org.junit.AfterClass;
 import org.junit.Test;
@@ -43,13 +47,20 @@ public class SecurityUtilsTest {
 		boolean installed;
 
 		@Override
-		public void install(SecurityUtils.SecurityConfiguration configuration) throws SecurityInstallException {
+		public void install() throws SecurityInstallException {
 			installed = true;
 		}
 
 		@Override
 		public void uninstall() throws SecurityInstallException {
 			installed = false;
+		}
+
+		static class Factory implements SecurityModuleFactory {
+			@Override
+			public SecurityModule createModule(SecurityConfiguration securityConfig) {
+				return new TestSecurityModule();
+			}
 		}
 	}
 
@@ -60,9 +71,9 @@ public class SecurityUtilsTest {
 
 	@Test
 	public void testModuleInstall() throws Exception {
-		SecurityUtils.SecurityConfiguration sc = new SecurityUtils.SecurityConfiguration(
-			new Configuration(), new org.apache.hadoop.conf.Configuration(),
-			Collections.singletonList(TestSecurityModule.class));
+		SecurityConfiguration sc = new SecurityConfiguration(
+			new Configuration(),
+			Collections.singletonList(new TestSecurityModule.Factory()));
 
 		SecurityUtils.install(sc);
 		assertEquals(1, SecurityUtils.getInstalledModules().size());
@@ -76,9 +87,9 @@ public class SecurityUtilsTest {
 
 	@Test
 	public void testSecurityContext() throws Exception {
-		SecurityUtils.SecurityConfiguration sc = new SecurityUtils.SecurityConfiguration(
-			new Configuration(), new org.apache.hadoop.conf.Configuration(),
-			Collections.singletonList(TestSecurityModule.class));
+		SecurityConfiguration sc = new SecurityConfiguration(
+			new Configuration(),
+			Collections.singletonList(new TestSecurityModule.Factory()));
 
 		SecurityUtils.install(sc);
 		assertEquals(HadoopSecurityContext.class, SecurityUtils.getInstalledContext().getClass());
@@ -93,51 +104,51 @@ public class SecurityUtilsTest {
 		List<String> expectedLoginContexts = Arrays.asList("Foo bar", "Client");
 
 		Configuration testFlinkConf;
-		SecurityUtils.SecurityConfiguration testSecurityConf;
+		SecurityConfiguration testSecurityConf;
 
 		// ------- no whitespaces
 
 		testFlinkConf = new Configuration();
 		testFlinkConf.setString(SecurityOptions.KERBEROS_LOGIN_CONTEXTS, "Foo bar,Client");
-		testSecurityConf = new SecurityUtils.SecurityConfiguration(
-			testFlinkConf, new org.apache.hadoop.conf.Configuration(),
-			Collections.singletonList(TestSecurityModule.class));
+		testSecurityConf = new SecurityConfiguration(
+			testFlinkConf,
+			Collections.singletonList(new TestSecurityModule.Factory()));
 		assertEquals(expectedLoginContexts, testSecurityConf.getLoginContextNames());
 
 		// ------- with whitespaces surrounding comma
 
 		testFlinkConf = new Configuration();
 		testFlinkConf.setString(SecurityOptions.KERBEROS_LOGIN_CONTEXTS, "Foo bar , Client");
-		testSecurityConf = new SecurityUtils.SecurityConfiguration(
-			testFlinkConf, new org.apache.hadoop.conf.Configuration(),
-			Collections.singletonList(TestSecurityModule.class));
+		testSecurityConf = new SecurityConfiguration(
+			testFlinkConf,
+			Collections.singletonList(new TestSecurityModule.Factory()));
 		assertEquals(expectedLoginContexts, testSecurityConf.getLoginContextNames());
 
 		// ------- leading / trailing whitespaces at start and end of list
 
 		testFlinkConf = new Configuration();
 		testFlinkConf.setString(SecurityOptions.KERBEROS_LOGIN_CONTEXTS, " Foo bar , Client ");
-		testSecurityConf = new SecurityUtils.SecurityConfiguration(
-			testFlinkConf, new org.apache.hadoop.conf.Configuration(),
-			Collections.singletonList(TestSecurityModule.class));
+		testSecurityConf = new SecurityConfiguration(
+			testFlinkConf,
+			Collections.singletonList(new TestSecurityModule.Factory()));
 		assertEquals(expectedLoginContexts, testSecurityConf.getLoginContextNames());
 
 		// ------- empty entries
 
 		testFlinkConf = new Configuration();
 		testFlinkConf.setString(SecurityOptions.KERBEROS_LOGIN_CONTEXTS, "Foo bar,,Client");
-		testSecurityConf = new SecurityUtils.SecurityConfiguration(
-			testFlinkConf, new org.apache.hadoop.conf.Configuration(),
-			Collections.singletonList(TestSecurityModule.class));
+		testSecurityConf = new SecurityConfiguration(
+			testFlinkConf,
+			Collections.singletonList(new TestSecurityModule.Factory()));
 		assertEquals(expectedLoginContexts, testSecurityConf.getLoginContextNames());
 
 		// ------- empty trailing String entries with whitespaces
 
 		testFlinkConf = new Configuration();
 		testFlinkConf.setString(SecurityOptions.KERBEROS_LOGIN_CONTEXTS, "Foo bar, ,, Client,");
-		testSecurityConf = new SecurityUtils.SecurityConfiguration(
-			testFlinkConf, new org.apache.hadoop.conf.Configuration(),
-			Collections.singletonList(TestSecurityModule.class));
+		testSecurityConf = new SecurityConfiguration(
+			testFlinkConf,
+			Collections.singletonList(new TestSecurityModule.Factory()));
 		assertEquals(expectedLoginContexts, testSecurityConf.getLoginContextNames());
 	}
 }

@@ -18,10 +18,18 @@
 
 package org.apache.flink.runtime.security.modules;
 
+<<<<<<< HEAD
 import org.apache.flink.api.java.hadoop.mapred.utils.HadoopUtils;
 import org.apache.flink.runtime.security.SecurityUtils;
 
 import org.apache.commons.lang3.StringUtils;
+=======
+import org.apache.flink.runtime.security.SecurityConfiguration;
+import org.apache.flink.runtime.util.HadoopUtils;
+
+import org.apache.commons.lang3.StringUtils;
+import org.apache.hadoop.conf.Configuration;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.security.Credentials;
 import org.apache.hadoop.security.UserGroupInformation;
@@ -36,6 +44,11 @@ import java.io.File;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.Collection;
+<<<<<<< HEAD
+=======
+
+import static org.apache.flink.util.Preconditions.checkNotNull;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 /**
  * Responsible for installing a Hadoop login user.
@@ -44,12 +57,23 @@ public class HadoopModule implements SecurityModule {
 
 	private static final Logger LOG = LoggerFactory.getLogger(HadoopModule.class);
 
-	UserGroupInformation loginUser;
+	private final SecurityConfiguration securityConfig;
+
+	private final Configuration hadoopConfiguration;
+
+	public HadoopModule(
+		SecurityConfiguration securityConfiguration,
+		Configuration hadoopConfiguration) {
+		this.securityConfig = checkNotNull(securityConfiguration);
+		this.hadoopConfiguration = checkNotNull(hadoopConfiguration);
+	}
 
 	@Override
-	public void install(SecurityUtils.SecurityConfiguration securityConfig) throws SecurityInstallException {
+	public void install() throws SecurityInstallException {
 
-		UserGroupInformation.setConfiguration(securityConfig.getHadoopConfiguration());
+		UserGroupInformation.setConfiguration(hadoopConfiguration);
+
+		UserGroupInformation loginUser;
 
 		try {
 			if (UserGroupInformation.isSecurityEnabled() &&
@@ -70,8 +94,16 @@ public class HadoopModule implements SecurityModule {
 					try {
 						Method readTokenStorageFileMethod = Credentials.class.getMethod("readTokenStorageFile",
 							File.class, org.apache.hadoop.conf.Configuration.class);
+<<<<<<< HEAD
 						Credentials cred = (Credentials) readTokenStorageFileMethod.invoke(null, new File(fileLocation),
 							securityConfig.getHadoopConfiguration());
+=======
+						Credentials cred =
+							(Credentials) readTokenStorageFileMethod.invoke(
+								null,
+								new File(fileLocation),
+								hadoopConfiguration);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 						// if UGI uses Kerberos keytabs for login, do not load HDFS delegation token since
 						// the UGI would prefer the delegation token instead, which eventually expires

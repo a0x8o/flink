@@ -20,13 +20,17 @@ package org.apache.flink.graph.drivers;
 
 import org.apache.flink.api.java.DataSet;
 import org.apache.flink.graph.Graph;
+<<<<<<< HEAD
+=======
+import org.apache.flink.graph.drivers.parameter.BooleanParameter;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.graph.drivers.parameter.DoubleParameter;
 import org.apache.flink.graph.drivers.parameter.IterationConvergence;
 
 import org.apache.commons.lang3.text.StrBuilder;
 
 /**
- * @see org.apache.flink.graph.library.linkanalysis.PageRank
+ * Driver for {@link org.apache.flink.graph.library.linkanalysis.PageRank}.
  */
 public class PageRank<K, VV, EV>
 extends DriverBase<K, VV, EV> {
@@ -40,6 +44,11 @@ extends DriverBase<K, VV, EV> {
 
 	private IterationConvergence iterationConvergence = new IterationConvergence(this, DEFAULT_ITERATIONS);
 
+<<<<<<< HEAD
+=======
+	private BooleanParameter includeZeroDegreeVertices = new BooleanParameter(this, "__include_zero_degree_vertices");
+
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	@Override
 	public String getShortDescription() {
 		return "score vertices by the number and quality of incoming links";
@@ -63,6 +72,10 @@ extends DriverBase<K, VV, EV> {
 					dampingFactor.getValue(),
 					iterationConvergence.getValue().iterations,
 					iterationConvergence.getValue().convergenceThreshold)
+<<<<<<< HEAD
+=======
+				.setIncludeZeroDegreeVertices(includeZeroDegreeVertices.getValue())
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 				.setParallelism(parallelism.getValue().intValue()));
 	}
 }

@@ -18,9 +18,13 @@
 
 package org.apache.flink.yarn;
 
+<<<<<<< HEAD
 import org.apache.flink.client.deployment.ClusterSpecification;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.jobgraph.JobGraph;
+=======
+import org.apache.flink.configuration.Configuration;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.yarn.entrypoint.YarnJobClusterEntrypoint;
 import org.apache.flink.yarn.entrypoint.YarnSessionClusterEntrypoint;
 
@@ -36,6 +40,7 @@ public class YarnClusterDescriptorV2 extends AbstractYarnClusterDescriptor {
 		super(flinkConfiguration, configurationDirectory);
 	}
 
+<<<<<<< HEAD
 	@Override
 	protected String getYarnSessionClusterEntrypoint() {
 		return YarnSessionClusterEntrypoint.class.getName();
@@ -49,5 +54,15 @@ public class YarnClusterDescriptorV2 extends AbstractYarnClusterDescriptor {
 	@Override
 	public YarnClusterClient deployJobCluster(ClusterSpecification clusterSpecification, JobGraph jobGraph) {
 		throw new UnsupportedOperationException("Cannot yet deploy a per-job yarn cluster.");
+=======
+	@Override
+	protected String getYarnSessionClusterEntrypoint() {
+		return YarnSessionClusterEntrypoint.class.getName();
+	}
+
+	@Override
+	protected String getYarnJobClusterEntrypoint() {
+		return YarnJobClusterEntrypoint.class.getName();
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	}
 }

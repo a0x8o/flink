@@ -18,11 +18,11 @@
 
 package org.apache.flink.runtime.deployment;
 
+import org.apache.flink.runtime.checkpoint.TaskStateSnapshot;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.JobInformation;
 import org.apache.flink.runtime.executiongraph.TaskInformation;
-import org.apache.flink.runtime.state.TaskStateHandles;
 import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.SerializedValue;
 
@@ -64,7 +64,11 @@ public final class TaskDeploymentDescriptor implements Serializable {
 	private final int targetSlotNumber;
 
 	/** State handles for the sub task. */
+<<<<<<< HEAD
 	private final TaskStateHandles taskStateHandles;
+=======
+	private final TaskStateSnapshot taskStateHandles;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 	public TaskDeploymentDescriptor(
 			SerializedValue<JobInformation> serializedJobInformation,
@@ -74,7 +78,7 @@ public final class TaskDeploymentDescriptor implements Serializable {
 			int subtaskIndex,
 			int attemptNumber,
 			int targetSlotNumber,
-			TaskStateHandles taskStateHandles,
+			TaskStateSnapshot taskStateHandles,
 			Collection<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
 			Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors) {
 
@@ -153,7 +157,7 @@ public final class TaskDeploymentDescriptor implements Serializable {
 		return inputGates;
 	}
 
-	public TaskStateHandles getTaskStateHandles() {
+	public TaskStateSnapshot getTaskStateHandles() {
 		return taskStateHandles;
 	}
 

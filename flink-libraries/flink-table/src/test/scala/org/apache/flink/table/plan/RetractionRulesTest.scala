@@ -286,7 +286,11 @@ class RetractionRulesTest extends TableTestBase {
 class StreamTableTestForRetractionUtil extends StreamTableTestUtil {
 
   def verifySqlTrait(query: String, expected: String): Unit = {
+<<<<<<< HEAD
     verifyTableTrait(tableEnv.sql(query), expected)
+=======
+    verifyTableTrait(tableEnv.sqlQuery(query), expected)
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
   }
 
   def verifyTableTrait(resultTable: Table, expected: String): Unit = {

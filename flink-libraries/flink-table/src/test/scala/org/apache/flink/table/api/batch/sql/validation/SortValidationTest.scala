@@ -34,6 +34,10 @@ class SortValidationTest extends TableTestBase {
 
     val sqlQuery = "SELECT * FROM MyTable LIMIT 5"
 
+<<<<<<< HEAD
     util.tableEnv.sql(sqlQuery).toDataSet[Row]
+=======
+    util.tableEnv.sqlQuery(sqlQuery).toDataSet[Row]
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
   }
 }

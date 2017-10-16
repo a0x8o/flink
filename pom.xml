@@ -68,6 +68,7 @@ under the License.
 		<module>flink-examples</module>
 		<module>flink-clients</module>
 		<module>flink-tests</module>
+		<module>flink-end-to-end-tests</module>
 		<module>flink-test-utils-parent</module>
 		<module>flink-libraries</module>
 		<module>flink-scala-shell</module>
@@ -109,7 +110,10 @@ under the License.
 		<scala.version>2.11.11</scala.version>
 		<scala.binary.version>2.11</scala.binary.version>
 		<chill.version>0.7.4</chill.version>
+<<<<<<< HEAD
 		<asm.version>5.0.4</asm.version>
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		<zookeeper.version>3.4.10</zookeeper.version>
 		<curator.version>2.12.0</curator.version>
 		<jackson.version>2.7.4</jackson.version>
@@ -221,9 +225,14 @@ under the License.
 						netty
 					here. It will overwrite Hadoop's guava dependency (even though we handle it
 			separatly in the flink-shaded-hadoop module).
-			We can use all guava versions everywhere by adding it directly as a dependency to each project.
 		-->
 		<dependencies>
+
+			<dependency>
+				<groupId>org.apache.flink</groupId>
+				<artifactId>flink-shaded-guava</artifactId>
+				<version>18.0-1.0</version>
+			</dependency>
 
 			<!-- This manages the 'javax.annotation' annotations (JSR305) -->
 			<dependency>
@@ -254,6 +263,12 @@ under the License.
 				<groupId>org.apache.commons</groupId>
 				<artifactId>commons-lang3</artifactId>
 				<version>3.3.2</version>
+			</dependency>
+
+			<dependency>
+				<groupId>org.apache.flink</groupId>
+				<artifactId>flink-shaded-asm</artifactId>
+				<version>5.0.4-1.0</version>
 			</dependency>
 
 			<!-- Make sure we use a consistent avro version throughout the project -->
@@ -314,6 +329,12 @@ under the License.
 				<groupId>commons-configuration</groupId>
 				<artifactId>commons-configuration</artifactId>
 				<version>1.7</version>
+			</dependency>
+
+			<dependency>
+				<groupId>commons-codec</groupId>
+				<artifactId>commons-codec</artifactId>
+				<version>1.10</version>
 			</dependency>
 
 			<dependency>
@@ -457,6 +478,7 @@ under the License.
 
 				[1] https://github.com/netty/netty/issues/3704 -->
 				<version>4.0.27.Final-1.0</version>
+<<<<<<< HEAD
 			</dependency>
 
 			<!-- We have to define the versions for httpcore and httpclient here such that a consistent
@@ -467,10 +489,25 @@ under the License.
 				<groupId>org.apache.httpcomponents</groupId>
 				<artifactId>httpcore</artifactId>
 				<version>4.4.6</version>
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
+			</dependency>
+
+			<!-- We have to define the versions for httpcore and httpclient here such that a consistent
+			 version is used by the shaded hadoop jars and the flink-yarn-test project because of MNG-5899.
+
+			 See FLINK-6836 for more details -->
+			<dependency>
+				<groupId>org.apache.httpcomponents</groupId>
+<<<<<<< HEAD
+=======
+				<artifactId>httpcore</artifactId>
+				<version>4.4.6</version>
 			</dependency>
 
 			<dependency>
 				<groupId>org.apache.httpcomponents</groupId>
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 				<artifactId>httpclient</artifactId>
 				<version>4.5.3</version>
 			</dependency>
@@ -1254,24 +1291,8 @@ under the License.
 									shading, the root pom would have to be Scala suffixed and thereby all other modules.
 									-->
 									<include>org.apache.flink:force-shading</include>
-									<include>com.google.guava:*</include>
-									<include>org.ow2.asm:*</include>
 								</includes>
 							</artifactSet>
-							<relocations>
-								<relocation>
-									<pattern>com.google</pattern>
-									<shadedPattern>org.apache.flink.shaded.com.google</shadedPattern>
-									<excludes>
-										<exclude>com.google.protobuf.**</exclude>
-										<exclude>com.google.inject.**</exclude>
-									</excludes>
-								</relocation>
-								<relocation>
-									<pattern>org.objectweb.asm</pattern>
-									<shadedPattern>org.apache.flink.shaded.org.objectweb.asm</shadedPattern>
-								</relocation>
-							</relocations>
 							<transformers>
 								<!-- The service transformer is needed to merge META-INF/services files -->
 								<transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
@@ -1463,6 +1484,16 @@ under the License.
 							<excludes>
 								<exclude>@org.apache.flink.annotation.PublicEvolving</exclude>
 								<exclude>@org.apache.flink.annotation.Internal</exclude>
+								<exclude>org.apache.flink.streaming.api.functions.sink.RichSinkFunction#invoke(java.lang.Object)</exclude>
+								<exclude>org.apache.flink.streaming.api.functions.sink.SinkFunction</exclude>
+								<exclude>org.apache.flink.api.java.hadoop.mapred.HadoopInputFormat</exclude>
+								<exclude>org.apache.flink.api.java.hadoop.mapred.HadoopOutputFormat</exclude>
+								<exclude>org.apache.flink.api.java.hadoop.mapreduce.HadoopInputFormat</exclude>
+								<exclude>org.apache.flink.api.java.hadoop.mapreduce.HadoopOutputFormat</exclude>
+								<exclude>org.apache.flink.api.scala.hadoop.mapred.HadoopInputFormat</exclude>
+								<exclude>org.apache.flink.api.scala.hadoop.mapred.HadoopOutputFormat</exclude>
+								<exclude>org.apache.flink.api.scala.hadoop.mapreduce.HadoopInputFormat</exclude>
+								<exclude>org.apache.flink.api.scala.hadoop.mapreduce.HadoopOutputFormat</exclude>
 							</excludes>
 							<accessModifier>public</accessModifier>
 							<breakBuildOnModifications>false</breakBuildOnModifications>

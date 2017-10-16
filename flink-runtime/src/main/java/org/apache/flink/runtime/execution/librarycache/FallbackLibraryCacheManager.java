@@ -18,19 +18,17 @@
 
 package org.apache.flink.runtime.execution.librarycache;
 
+import org.apache.flink.api.common.JobID;
 import org.apache.flink.runtime.blob.BlobKey;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
-import org.apache.flink.api.common.JobID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.File;
-import java.io.IOException;
 import java.net.URL;
 import java.util.Collection;
 
 public class FallbackLibraryCacheManager implements LibraryCacheManager {
-	
+
 	private static Logger LOG = LoggerFactory.getLogger(FallbackLibraryCacheManager.class);
 
 	@Override
@@ -39,18 +37,13 @@ public class FallbackLibraryCacheManager implements LibraryCacheManager {
 	}
 
 	@Override
-	public File getFile(BlobKey blobKey) throws IOException {
-		throw new IOException("There is no file associated to the blob key " + blobKey);
-	}
-
-	@Override
 	public void registerJob(JobID id, Collection<BlobKey> requiredJarFiles, Collection<URL> requiredClasspaths) {
 		LOG.warn("FallbackLibraryCacheManager cannot download files associated with blob keys.");
 	}
-	
+
 	@Override
 	public void registerTask(JobID id, ExecutionAttemptID execution, Collection<BlobKey> requiredJarFiles,
-			Collection<URL> requiredClasspaths) {
+		Collection<URL> requiredClasspaths) {
 		LOG.warn("FallbackLibraryCacheManager cannot download files associated with blob keys.");
 	}
 
@@ -58,7 +51,7 @@ public class FallbackLibraryCacheManager implements LibraryCacheManager {
 	public void unregisterJob(JobID id) {
 		LOG.warn("FallbackLibraryCacheManager does not book keeping of job IDs.");
 	}
-	
+
 	@Override
 	public void unregisterTask(JobID id, ExecutionAttemptID execution) {
 		LOG.warn("FallbackLibraryCacheManager does not book keeping of job IDs.");
