@@ -566,7 +566,7 @@ public class ClientTest {
 	 * that all ongoing requests are failed.
 	 */
 	@Test
-	public void testClientServerIntegration() throws Exception {
+	public void testClientServerIntegration() throws Throwable {
 		// Config
 		final int numServers = 2;
 		final int numServerEventLoopThreads = 2;
@@ -622,7 +622,7 @@ public class ClientTest {
 				serverStats[i] = new AtomicKvStateRequestStats();
 				server[i] = new KvStateServerImpl(
 						InetAddress.getLocalHost(),
-						0,
+						Collections.singletonList(0).iterator(),
 						numServerEventLoopThreads,
 						numServerQueryThreads,
 						registry[i],

@@ -58,6 +58,7 @@ import org.junit.AfterClass;
 import org.junit.Test;
 
 import java.net.InetAddress;
+import java.util.Collections;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
@@ -86,14 +87,15 @@ public class KvStateServerTest {
 	 * Tests a simple successful query via a SocketChannel.
 	 */
 	@Test
-	public void testSimpleRequest() throws Exception {
+	public void testSimpleRequest() throws Throwable {
 		KvStateServerImpl server = null;
 		Bootstrap bootstrap = null;
 		try {
 			KvStateRegistry registry = new KvStateRegistry();
 			KvStateRequestStats stats = new AtomicKvStateRequestStats();
 
-			server = new KvStateServerImpl(InetAddress.getLocalHost(), 0, 1, 1, registry, stats);
+			server = new KvStateServerImpl(InetAddress.getLocalHost(),
+					Collections.singletonList(0).iterator(), 1, 1, registry, stats);
 			server.start();
 
 			KvStateServerAddress serverAddress = server.getServerAddress();
