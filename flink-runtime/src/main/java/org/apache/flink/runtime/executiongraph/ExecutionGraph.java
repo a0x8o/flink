@@ -31,7 +31,9 @@ import org.apache.flink.runtime.JobException;
 import org.apache.flink.runtime.StoppingException;
 import org.apache.flink.runtime.accumulators.AccumulatorSnapshot;
 import org.apache.flink.runtime.accumulators.StringifiedAccumulatorResult;
+import org.apache.flink.runtime.blob.BlobWriter;
 import org.apache.flink.runtime.blob.PermanentBlobKey;
+import org.apache.flink.runtime.blob.VoidBlobWriter;
 import org.apache.flink.runtime.checkpoint.CheckpointCoordinator;
 import org.apache.flink.runtime.checkpoint.CheckpointIDCounter;
 import org.apache.flink.runtime.checkpoint.CheckpointStatsSnapshot;
@@ -56,17 +58,17 @@ import org.apache.flink.runtime.jobgraph.JobStatus;
 import org.apache.flink.runtime.jobgraph.JobVertex;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobgraph.ScheduleMode;
-import org.apache.flink.runtime.jobgraph.tasks.ExternalizedCheckpointSettings;
 import org.apache.flink.runtime.jobgraph.tasks.CheckpointCoordinatorConfiguration;
+import org.apache.flink.runtime.jobgraph.tasks.ExternalizedCheckpointSettings;
 import org.apache.flink.runtime.jobmanager.scheduler.CoLocationGroup;
 import org.apache.flink.runtime.jobmanager.scheduler.NoResourceAvailableException;
 import org.apache.flink.runtime.query.KvStateLocationRegistry;
 import org.apache.flink.runtime.state.SharedStateRegistry;
 import org.apache.flink.runtime.state.StateBackend;
 import org.apache.flink.runtime.taskmanager.TaskExecutionState;
+import org.apache.flink.types.Either;
 import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.FlinkException;
-import org.apache.flink.util.FlinkRuntimeException;
 import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.SerializedThrowable;
 import org.apache.flink.util.SerializedValue;
@@ -124,20 +126,20 @@ import static org.apache.flink.util.Preconditions.checkState;
  *         about deployment of tasks and updates in the task status always use the ExecutionAttemptID to
  *         address the message receiver.</li>
  * </ul>
- * 
+ *
  * <h2>Global and local failover</h2>
- * 
+ *
  * The Execution Graph has two failover modes: <i>global failover</i> and <i>local failover</i>.
- * 
+ *
  * <p>A <b>global failover</b> aborts the task executions for all vertices and restarts whole
  * data flow graph from the last completed checkpoint. Global failover is considered the
  * "fallback strategy" that is used when a local failover is unsuccessful, or when a issue is
  * found in the state of the ExecutionGraph that could mark it as inconsistent (caused by a bug).
- * 
+ *
  * <p>A <b>local failover</b> is triggered when an individual vertex execution (a task) fails.
  * The local failover is coordinated by the {@link FailoverStrategy}. A local failover typically
  * attempts to restart as little as possible, but as much as necessary.
- * 
+ *
  * <p>Between local- and global failover, the global failover always takes precedence, because it
  * is the core mechanism that the ExecutionGraph relies on to bring back consistency. The
  * guard that, the ExecutionGraph maintains a <i>global modification version</i>, which is incremented
@@ -145,7 +147,7 @@ import static org.apache.flink.util.Preconditions.checkState;
  * failure). Local failover is always scoped by the modification version that the execution graph
  * had when the failover was triggered. If a new global modification version is reached during
  * local failover (meaning there is a concurrent global failover), the failover strategy has to
- * yield before the global failover.  
+ * yield before the global failover.
  */
 public class ExecutionGraph implements AccessExecutionGraph, Archiveable<ArchivedExecutionGraph> {
 
@@ -171,10 +173,8 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 	/** Job specific information like the job id, job name, job configuration, etc. */
 	private final JobInformation jobInformation;
 
-	/** Serialized version of the job specific information. This is done to avoid multiple
-	 * serializations of the same data when creating a TaskDeploymentDescriptor.
-	 */
-	private final SerializedValue<JobInformation> serializedJobInformation;
+	/** Serialized job information or a blob key pointing to the offloaded job information */
+	private final Either<SerializedValue<JobInformation>, PermanentBlobKey> jobInformationOrBlobKey;
 
 	/** The executor which is used to execute futures. */
 	private final ScheduledExecutorService futureExecutor;
@@ -231,6 +231,9 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 
 	/** Registered KvState instances reported by the TaskManagers. */
 	private final KvStateLocationRegistry kvStateLocationRegistry;
+
+	/** Blob writer used to offload RPC messages */
+	private final BlobWriter blobWriter;
 
 	/** The total number of vertices currently in the execution graph */
 	private int numVerticesTotal;
@@ -293,60 +296,83 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 			SerializedValue<ExecutionConfig> serializedConfig,
 			Time timeout,
 			RestartStrategy restartStrategy,
-			SlotProvider slotProvider) {
+			SlotProvider slotProvider) throws IOException {
+
 		this(
+			new JobInformation(
+				jobId,
+				jobName,
+				serializedConfig,
+				jobConfig,
+				Collections.emptyList(),
+				Collections.emptyList()),
 			futureExecutor,
 			ioExecutor,
-			jobId,
-			jobName,
-			jobConfig,
-			serializedConfig,
+			timeout,
+			restartStrategy,
+			slotProvider);
+	}
+
+	/**
+	 * This constructor is for tests only, because it does not include class loading information.
+	 */
+	@VisibleForTesting
+	ExecutionGraph(
+			JobInformation jobInformation,
+			ScheduledExecutorService futureExecutor,
+			Executor ioExecutor,
+			Time timeout,
+			RestartStrategy restartStrategy,
+			SlotProvider slotProvider) throws IOException {
+		this(
+			jobInformation,
+			futureExecutor,
+			ioExecutor,
 			timeout,
 			restartStrategy,
 			new RestartAllStrategy.Factory(),
-			Collections.emptyList(),
-			Collections.emptyList(),
+			slotProvider);
+	}
+
+	@VisibleForTesting
+	ExecutionGraph(
+			JobInformation jobInformation,
+			ScheduledExecutorService futureExecutor,
+			Executor ioExecutor,
+			Time timeout,
+			RestartStrategy restartStrategy,
+			FailoverStrategy.Factory failoverStrategy,
+			SlotProvider slotProvider) throws IOException {
+		this(
+			jobInformation,
+			futureExecutor,
+			ioExecutor,
+			timeout,
+			restartStrategy,
+			failoverStrategy,
 			slotProvider,
-			ExecutionGraph.class.getClassLoader());
+			ExecutionGraph.class.getClassLoader(),
+			VoidBlobWriter.getInstance());
 	}
 
 	public ExecutionGraph(
+			JobInformation jobInformation,
 			ScheduledExecutorService futureExecutor,
 			Executor ioExecutor,
-			JobID jobId,
-			String jobName,
-			Configuration jobConfig,
-			SerializedValue<ExecutionConfig> serializedConfig,
 			Time timeout,
 			RestartStrategy restartStrategy,
 			FailoverStrategy.Factory failoverStrategyFactory,
-			List<PermanentBlobKey> requiredJarFiles,
-			List<URL> requiredClasspaths,
 			SlotProvider slotProvider,
-			ClassLoader userClassLoader) {
+			ClassLoader userClassLoader,
+			BlobWriter blobWriter) throws IOException {
 
 		checkNotNull(futureExecutor);
-		checkNotNull(jobId);
-		checkNotNull(jobName);
-		checkNotNull(jobConfig);
 
-		this.jobInformation = new JobInformation(
-			jobId,
-			jobName,
-			serializedConfig,
-			jobConfig,
-			requiredJarFiles,
-			requiredClasspaths);
+		this.jobInformation = Preconditions.checkNotNull(jobInformation);
 
-		// serialize the job information to do the serialisation work only once
-		try {
-			this.serializedJobInformation = new SerializedValue<>(jobInformation);
-		}
-		catch (IOException e) {
-			// this cannot happen because 'JobInformation' is perfectly serializable
-			// rethrow unchecked, because this indicates a bug, not a recoverable situation
-			throw new FlinkRuntimeException("Bug: Cannot serialize JobInformation", e);
-		}
+		this.blobWriter = Preconditions.checkNotNull(blobWriter);
+
+		this.jobInformationOrBlobKey = BlobWriter.serializeAndTryOffload(jobInformation, jobInformation.getJobId(), blobWriter);
 
 		this.futureExecutor = Preconditions.checkNotNull(futureExecutor);
 		this.ioExecutor = Preconditions.checkNotNull(ioExecutor);
@@ -369,7 +395,7 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 		this.scheduleAllocationTimeout = checkNotNull(timeout);
 
 		this.restartStrategy = restartStrategy;
-		this.kvStateLocationRegistry = new KvStateLocationRegistry(jobId, getAllVertices());
+		this.kvStateLocationRegistry = new KvStateLocationRegistry(jobInformation.getJobId(), getAllVertices());
 
 		this.verticesFinished = new AtomicInteger();
 
@@ -563,8 +589,8 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 		return slotProvider;
 	}
 
-	public SerializedValue<JobInformation> getSerializedJobInformation() {
-		return serializedJobInformation;
+	public Either<SerializedValue<JobInformation>, PermanentBlobKey> getJobInformationOrBlobKey() {
+		return jobInformationOrBlobKey;
 	}
 
 	@Override
@@ -603,7 +629,7 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 	 * Gets the number of full restarts that the execution graph went through.
 	 * If a full restart recovery is currently pending, this recovery is included in the
 	 * count.
-	 * 
+	 *
 	 * @return The number of full restarts so far
 	 */
 	public long getNumberOfFullRestarts() {
@@ -677,6 +703,10 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 	@Override
 	public long getStatusTimestamp(JobStatus status) {
 		return this.stateTimestamps[status.ordinal()];
+	}
+
+	public final BlobWriter getBlobWriter() {
+		return blobWriter;
 	}
 
 	/**
@@ -769,8 +799,14 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 			}
 
 			// create the execution job vertex and attach it to the graph
-			ExecutionJobVertex ejv =
-					new ExecutionJobVertex(this, jobVertex, 1, rpcCallTimeout, globalModVersion, createTimestamp);
+			ExecutionJobVertex ejv = new ExecutionJobVertex(
+				this,
+				jobVertex,
+				1,
+				rpcCallTimeout,
+				globalModVersion,
+				createTimestamp);
+
 			ejv.connectToPredecessors(this.intermediateResults);
 
 			ExecutionJobVertex previousTask = this.tasks.putIfAbsent(jobVertex.getID(), ejv);
@@ -829,8 +865,8 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 	}
 
 	/**
-	 * 
-	 * 
+	 *
+	 *
 	 * @param slotProvider  The resource provider from which the slots are allocated
 	 * @param timeout       The maximum time that the deployment may take, before a
 	 *                      TimeoutException is thrown.
@@ -923,7 +959,7 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 						// we catch everything here to make sure cleanup happens and the
 						// ExecutionGraph notices the error
 
-						// we need to to release all slots before going into recovery! 
+						// we need to to release all slots before going into recovery!
 						try {
 							ExecutionGraphUtils.releaseAllSlotsSilently(resources);
 						}
@@ -934,7 +970,7 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 
 					// Wouldn't it be nice if we could return an actual Void object?
 					// return (Void) Unsafe.getUnsafe().allocateInstance(Void.class);
-					return null; 
+					return null;
 				},
 				futureExecutor);
 
@@ -1084,12 +1120,12 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 	/**
 	 * Fails the execution graph globally. This failure will not be recovered by a specific
 	 * failover strategy, but results in a full restart of all tasks.
-	 * 
+	 *
 	 * <p>This global failure is meant to be triggered in cases where the consistency of the
 	 * execution graph' state cannot be guaranteed any more (for example when catching unexpected
 	 * exceptions that indicate a bug or an unexpected call race), and where a full restart is the
 	 * safe way to get consistency back.
-	 * 
+	 *
 	 * @param errorInfo ErrorInfo containing the exception that caused the failure.
 	 */
 	public void failGlobal(ErrorInfo errorInfo) {
@@ -1427,7 +1463,7 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 					return true;
 				}
 				else if (!isRestartable && transitionState(currentState, JobStatus.FAILED, failureCause)) {
-					final String cause1 = isFailureCauseAllowingRestart ? null :  
+					final String cause1 = isFailureCauseAllowingRestart ? null :
 							"a type of SuppressRestartsException was thrown";
 					final String cause2 = isRestartStrategyAllowingRestart ? null :
 						"the restart strategy prevented it";
@@ -1485,25 +1521,25 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 				switch (state.getExecutionState()) {
 					case RUNNING:
 						return attempt.switchToRunning();
-	
+
 					case FINISHED:
 						// this deserialization is exception-free
 						accumulators = deserializeAccumulators(state);
 						attempt.markFinished(accumulators, state.getIOMetrics());
 						return true;
-	
+
 					case CANCELED:
 						// this deserialization is exception-free
 						accumulators = deserializeAccumulators(state);
 						attempt.cancelingComplete(accumulators, state.getIOMetrics());
 						return true;
-	
+
 					case FAILED:
 						// this deserialization is exception-free
 						accumulators = deserializeAccumulators(state);
 						attempt.markFailed(state.getError(userClassLoader), accumulators, state.getIOMetrics());
 						return true;
-	
+
 					default:
 						// we mark as failed and return false, which triggers the TaskManager
 						// to remove the task
@@ -1526,9 +1562,9 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 
 	/**
 	 * Deserializes accumulators from a task state update.
-	 * 
+	 *
 	 * <p>This method never throws an exception!
-	 * 
+	 *
 	 * @param state The task execution state from which to deserialize the accumulators.
 	 * @return The deserialized accumulators, of null, if there are no accumulators or an error occurred.
 	 */

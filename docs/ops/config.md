@@ -77,6 +77,13 @@ without explicit scheme definition, such as `/user/USERNAME/in.txt`, is going to
 - `classloader.resolve-order`: Whether Flink should use a child-first `ClassLoader` when loading
 user-code classes or a parent-first `ClassLoader`. Can be one of `parent-first` or `child-first`. (default: `child-first`)
 
+- `classloader.parent-first-patterns`: A (semicolon-separated) list of patterns that specifies which
+classes should always be resolved through the parent `ClassLoader` first. A pattern is a simple
+prefix that is checked against the fully qualified class name. By default, this is set to
+`java.;org.apache.flink.;javax.annotation;org.slf4j;org.apache.log4j;org.apache.logging.log4j;ch.qos.logback`.
+If you want to change this setting you have to make sure to also include the default patterns in
+your list of patterns if you want to keep that default behaviour.
+
 ## Advanced Options
 
 ### Compute
@@ -308,6 +315,8 @@ The following parameters configure Flink's JobManager and TaskManagers.
 - `task.cancellation-interval`: Time interval between two successive task cancellation attempts in milliseconds (DEFAULT: **30000**).
 
 - `taskmanager.exit-on-fatal-akka-error`: Whether the TaskManager shall be terminated in case of a fatal Akka error (quarantining event). (DEFAULT: **false**)
+
+- `jobmanager.tdd.offload.minsize`: Maximum size of of the `TaskDeploymentDescriptor`'s serialized task and job information to still transmit them via RPC. Larger blobs may be offloaded to the BLOB server. (DEFAULT: **1 KiB**).
 
 ### Distributed Coordination (via Akka)
 

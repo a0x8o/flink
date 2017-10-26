@@ -66,7 +66,7 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * spawning threads to handle these requests. Furthermore, it takes care of creating the directory structure to store
  * the BLOBs or temporarily cache them.
  */
-public class BlobServer extends Thread implements BlobService, PermanentBlobService, TransientBlobService {
+public class BlobServer extends Thread implements BlobService, BlobWriter, PermanentBlobService, TransientBlobService {
 
 	/** The log object used for debugging. */
 	private static final Logger LOG = LoggerFactory.getLogger(BlobServer.class);
@@ -78,7 +78,7 @@ public class BlobServer extends Thread implements BlobService, PermanentBlobServ
 	private final ServerSocket serverSocket;
 
 	/** The SSL server context if ssl is enabled for the connections */
-	private SSLContext serverSSLContext = null;
+	private final SSLContext serverSSLContext;
 
 	/** Blob Server configuration */
 	private final Configuration blobServiceConfiguration;
@@ -178,6 +178,8 @@ public class BlobServer extends Thread implements BlobService, PermanentBlobServ
 			} catch (Exception e) {
 				throw new IOException("Failed to initialize SSLContext for the blob server", e);
 			}
+		} else {
+			serverSSLContext = null;
 		}
 
 		//  ----------------------- start the server -------------------
@@ -561,41 +563,13 @@ public class BlobServer extends Thread implements BlobService, PermanentBlobServ
 		return (TransientBlobKey) putInputStream(jobId, inputStream, TRANSIENT_BLOB);
 	}
 
-	/**
-	 * Uploads the data of the given byte array for the given job to the BLOB server and makes it
-	 * a permanent BLOB.
-	 *
-	 * @param jobId
-	 * 		the ID of the job the BLOB belongs to
-	 * @param value
-	 * 		the buffer to upload
-	 *
-	 * @return the computed BLOB key identifying the BLOB on the server
-	 *
-	 * @throws IOException
-	 * 		thrown if an I/O error occurs while writing it to a local file, or uploading it to the HA
-	 * 		store
-	 */
+	@Override
 	public PermanentBlobKey putPermanent(JobID jobId, byte[] value) throws IOException {
 		checkNotNull(jobId);
 		return (PermanentBlobKey) putBuffer(jobId, value, PERMANENT_BLOB);
 	}
 
-	/**
-	 * Uploads the data from the given input stream for the given job to the BLOB server and makes it
-	 * a permanent BLOB.
-	 *
-	 * @param jobId
-	 * 		ID of the job this blob belongs to
-	 * @param inputStream
-	 * 		the input stream to read the data from
-	 *
-	 * @return the computed BLOB key identifying the BLOB on the server
-	 *
-	 * @throws IOException
-	 * 		thrown if an I/O error occurs while reading the data from the input stream, writing it to a
-	 * 		local file, or uploading it to the HA store
-	 */
+	@Override
 	public PermanentBlobKey putPermanent(JobID jobId, InputStream inputStream) throws IOException {
 		checkNotNull(jobId);
 		return (PermanentBlobKey) putInputStream(jobId, inputStream, PERMANENT_BLOB);
@@ -875,6 +849,16 @@ public class BlobServer extends Thread implements BlobService, PermanentBlobServ
 	@Override
 	public TransientBlobService getTransientBlobService() {
 		return this;
+	}
+
+	/**
+	 * Returns the configuration used by the BLOB server.
+	 *
+	 * @return configuration
+	 */
+	@Override
+	public final int getMinOffloadingSize() {
+		return blobServiceConfiguration.getInteger(BlobServerOptions.OFFLOAD_MINSIZE);
 	}
 
 	/**

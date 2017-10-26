@@ -15,6 +15,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package org.apache.flink.configuration;
 
 import org.apache.flink.annotation.PublicEvolving;
@@ -87,4 +88,10 @@ public class BlobServerOptions {
 		key("blob.service.cleanup.interval")
 			.defaultValue(3_600L) // once per hour
 			.withDeprecatedKeys("library-cache-manager.cleanup.interval");
+
+	/**
+	 * The minimum size for messages to be offloaded to the BlobServer.
+	 */
+	public static final ConfigOption<Integer> OFFLOAD_MINSIZE = key("blob.offload.minsize")
+		.defaultValue(1_024 * 1_024); // 1MiB by default
 }

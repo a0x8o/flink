@@ -400,15 +400,15 @@ FROM Orders LEFT JOIN Product ON Orders.productId = Product.id
       <td>
         <p><b>Note:</b> Time-windowed joins are a subset of regular joins that can be processed in a streaming fashion.</p>
 
-        <p>A time-windowed join requires a special join condition that bounds the time on both sides. This can be done by either two appropriate range predicates (<code> &lt;, &lt;=, &gt;=, &gt;</code>) or a <code>BETWEEN</code> predicate that compares the <a href="streaming.html#time-attributes">time attributes</a> of both input tables. The following rules apply for time predicates:
+        <p>A time-windowed join requires at least one equi-join predicate and a special join 
+        condition that bounds the time on both sides. Such a condition can be defined by two appropriate range predicates (<code>&lt;, &lt;=, &gt;=, &gt;</code>) or a <code>BETWEEN</code> predicate (which is not available in Table API yet) that compares the <a href="streaming.html#time-attributes">time attributes</a> of both input tables. The following rules apply for time predicates:
           <ul>
-            <li>Time predicates must compare time attributes of both input tables.</li>
-            <li>Time predicates must compare only time attributes of the same type, i.e., processing time with processing time or event time with event time.</li>
-            <li>Only range predicates are valid time predicates.</li>
+            <li>The time attribute of a table must be compared to a bounded interval on a time attribute of the opposite table.</li>
+            <li>The compared time attributes must be of the same type, i.e., both are processing time or event time.</li>
           </ul>
         </p>
 
-        <p><b>Note:</b> Currently, only <code>INNER</code> joins are supported.</p>
+        <p><b>Note:</b> Currently, only <code>INNER</code> time-windowed joins are supported.</p>
 
 {% highlight sql %}
 SELECT *
@@ -660,7 +660,7 @@ For SQL on batch tables, the `time_attr` argument of the group window function m
 
 #### Selecting Group Window Start and End Timestamps
 
-The start and end timestamps of group windows can be selected with the following auxiliary functions:
+The start and end timestamps of group windows as well as time attributes can be selected with the following auxiliary functions:
 
 <table class="table table-bordered">
   <thead>
@@ -677,7 +677,7 @@ The start and end timestamps of group windows can be selected with the following
         <code>HOP_START(time_attr, interval, interval)</code><br/>
         <code>SESSION_START(time_attr, interval)</code><br/>
       </td>
-      <td>Returns the start timestamp of the corresponding tumbling, hopping, and session window.</td>
+      <td><p>Returns the timestamp of the inclusive lower bound of the corresponding tumbling, hopping, or session window.</p></td>
     </tr>
     <tr>
       <td>
@@ -685,7 +685,25 @@ The start and end timestamps of group windows can be selected with the following
         <code>HOP_END(time_attr, interval, interval)</code><br/>
         <code>SESSION_END(time_attr, interval)</code><br/>
       </td>
-      <td>Returns the end timestamp of the corresponding tumbling, hopping, and session window.</td>
+      <td><p>Returns the timestamp of the <i>exclusive</i> upper bound of the corresponding tumbling, hopping, or session window.</p>
+        <p><b>Note:</b> The exclusive upper bound timestamp <i>cannot</i> be used as a <a href="streaming.html#time-attributes">rowtime attribute</a> in subsequent time-based operations, such as <a href="#joins">time-windowed joins</a> and <a href="#aggregations">group window or over window aggregations</a>.</p></td>
+    </tr>
+    <tr>
+      <td>
+        <code>TUMBLE_ROWTIME(time_attr, interval)</code><br/>
+        <code>HOP_ROWTIME(time_attr, interval, interval)</code><br/>
+        <code>SESSION_ROWTIME(time_attr, interval)</code><br/>
+      </td>
+      <td><p>Returns the timestamp of the <i>inclusive</i> upper bound of the corresponding tumbling, hopping, or session window.</p>
+      <p>The resulting attribute is a <a href="streaming.html#time-attributes">rowtime attribute</a> that can be used in subsequent time-based operations such as <a href="#joins">time-windowed joins</a> and <a href="#aggregations">group window or over window aggregations</a>.</p></td>
+    </tr>
+    <tr>
+      <td>
+        <code>TUMBLE_PROCTIME(time_attr, interval)</code><br/>
+        <code>HOP_PROCTIME(time_attr, interval, interval)</code><br/>
+        <code>SESSION_PROCTIME(time_attr, interval)</code><br/>
+      </td>
+      <td><p>Returns a <a href="streaming.html#time-attributes">proctime attribute</a> that can be used in subsequent time-based operations such as <a href="#joins">time-windowed joins</a> and <a href="#aggregations">group window or over window aggregations</a>.</p></td>
     </tr>
   </tbody>
 </table>
@@ -724,7 +742,7 @@ Table result3 = tableEnv.sqlQuery(
 Table result4 = tableEnv.sqlQuery(
   "SELECT user, " +
   "  SESSION_START(rowtime, INTERVAL '12' HOUR) AS sStart, " +
-  "  SESSION_END(rowtime, INTERVAL '12' HOUR) AS snd, " +
+  "  SESSION_ROWTIME(rowtime, INTERVAL '12' HOUR) AS snd, " +
   "  SUM(amount) " +
   "FROM Orders " +
   "GROUP BY SESSION(rowtime, INTERVAL '12' HOUR), user");

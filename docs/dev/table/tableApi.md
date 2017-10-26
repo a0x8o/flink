@@ -344,7 +344,7 @@ Table orders = tableEnv.scan("Orders");
 Table result = orders
     .window(Tumble.over("5.minutes").on("rowtime").as("w")) // define window
     .groupBy("a, w") // group by key and window
-    .select("a, w.start, w.end, b.sum as d"); // access window properties and aggregate
+    .select("a, w.start, w.end, w.rowtime, b.sum as d"); // access window properties and aggregate
 {% endhighlight %}
       </td>
     </tr>
@@ -427,7 +427,7 @@ val orders: Table = tableEnv.scan("Orders")
 val result: Table = orders
     .window(Tumble over 5.minutes on 'rowtime as 'w) // define window
     .groupBy('a, 'w) // group by key and window
-    .select('a, w.start, 'w.end, 'b.sum as 'd) // access window properties and aggregate
+    .select('a, w.start, 'w.end, 'w.rowtime, 'b.sum as 'd) // access window properties and aggregate
 {% endhighlight %}
       </td>
     </tr>
@@ -527,9 +527,9 @@ Table fullOuterResult = left.fullOuterJoin(right, "a = d").select("a, b, e");
       <td>
         <p><b>Note:</b> Time-windowed joins are a subset of regular joins that can be processed in a streaming fashion.</p>
 
-        <p>A time-windowed join requires an equi-join predicate and a special join condition that bounds the time on both sides. Such a condition can be defined by two appropriate range predicates (<code> &lt;, &lt;=, &gt;=, &gt;</code>) that compare the <a href="streaming.html#time-attributes">time attributes</a> of both input tables. The following rules apply for time predicates:
+        <p>A time-windowed join requires at least one equi-join predicate and a special join condition that bounds the time on both sides. Such a condition can be defined by two appropriate range predicates (<code>&lt;, &lt;=, &gt;=, &gt;</code>) or a <code>BETWEEN</code> predicate (which is not available in Table API yet) that compares the <a href="streaming.html#time-attributes">time attributes</a> of both input tables. The following rules apply for time predicates:
           <ul>
-            <li>The time attribute of a stream must be compared to a bounded interval on a time attribute of the opposite stream.</li>
+            <li>The time attribute of a table must be compared to a bounded interval on a time attribute of the opposite table.</li>
             <li>The compared time attributes must be of the same type, i.e., both are processing time or event time.</li>
           </ul>
         </p>
@@ -644,9 +644,9 @@ val fullOuterResult = left.fullOuterJoin(right, 'a === 'd).select('a, 'b, 'e)
       <td>
         <p><b>Note:</b> Time-windowed joins are a subset of regular joins that can be processed in a streaming fashion.</p>
 
-        <p>A time-windowed join requires an equi-join predicate and a special join condition that bounds the time on both sides. Such a condition can be defined by two appropriate range predicates (<code> &lt;, &lt;=, &gt;=, &gt;</code>) that compare the <a href="streaming.html#time-attributes">time attributes</a> of both input tables. The following rules apply for time predicates:
+        <p>A time-windowed join requires at least one equi-join predicate and a special join condition that bounds the time on both sides. Such a condition can be defined by two appropriate range predicates (<code>&lt;, &lt;=, &gt;=, &gt;</code>) or a <code>BETWEEN</code> predicate (which is not available in Table API yet) that compares the <a href="streaming.html#time-attributes">time attributes</a> of both input tables. The following rules apply for time predicates:
           <ul>
-            <li>The time attribute of a stream must be compared to a bounded interval on a time attribute of the opposite stream.</li>
+            <li>The time attribute of a table must be compared to a bounded interval on a time attribute of the opposite table.</li>
             <li>The compared time attributes must be of the same type, i.e., both are processing time or event time.</li>
           </ul>
         </p>
@@ -959,7 +959,7 @@ val result = left.select('a, 'b, 'c).where('a.in(right));
 
 {% top %}
 
-### OrderBy & Limit
+### OrderBy, Offset & Fetch
 
 <div class="codetabs" markdown="1">
 <div data-lang="java" markdown="1">
@@ -987,19 +987,22 @@ Table result = in.orderBy("a.asc");
 
     <tr>
       <td>
-        <strong>Limit</strong><br>
+        <strong>Offset &amp; Fetch</strong><br>
         <span class="label label-primary">Batch</span>
       </td>
       <td>
-        <p>Similar to a SQL LIMIT clause. Limits a sorted result to a specified number of records from an offset position. Limit is technically part of the Order By operator and thus must be preceded by it.</p>
+        <p>Similar to the SQL OFFSET and FETCH clauses. Offset and Fetch limit the number of records returned from a sorted result. Offset and Fetch are technically part of the Order By operator and thus must be preceded by it.</p>
 {% highlight java %}
 Table in = tableEnv.fromDataSet(ds, "a, b, c");
-Table result = in.orderBy("a.asc").limit(3); // returns unlimited number of records beginning with the 4th record
-{% endhighlight %}
-or
-{% highlight java %}
-Table in = tableEnv.fromDataSet(ds, "a, b, c");
-Table result = in.orderBy("a.asc").limit(3, 5); // returns 5 records beginning with the 4th record
+
+// returns the first 5 records from the sorted result
+Table result1 = in.orderBy("a.asc").fetch(5); 
+
+// skips the first 3 records and returns all following records from the sorted result
+Table result2 = in.orderBy("a.asc").offset(3);
+
+// skips the first 10 records and returns the next 5 records from the sorted result
+Table result3 = in.orderBy("a.asc").offset(10).fetch(5);
 {% endhighlight %}
       </td>
     </tr>
@@ -1033,19 +1036,22 @@ val result = in.orderBy('a.asc);
 
     <tr>
       <td>
-        <strong>Limit</strong><br>
+        <strong>Offset &amp; Fetch</strong><br>
         <span class="label label-primary">Batch</span>
       </td>
       <td>
-        <p>Similar to a SQL LIMIT clause. Limits a sorted result to a specified number of records from an offset position. Limit is technically part of the Order By operator and thus must be preceded by it.</p>
+        <p>Similar to the SQL OFFSET and FETCH clauses. Offset and Fetch limit the number of records returned from a sorted result. Offset and Fetch are technically part of the Order By operator and thus must be preceded by it.</p>
 {% highlight scala %}
-val in = ds.toTable(tableEnv, 'a, 'b, 'c);
-val result = in.orderBy('a.asc).limit(3); // returns unlimited number of records beginning with the 4th record
-{% endhighlight %}
-or
-{% highlight scala %}
-val in = ds.toTable(tableEnv, 'a, 'b, 'c);
-val result = in.orderBy('a.asc).limit(3, 5); // returns 5 records beginning with the 4th record
+val in = ds.toTable(tableEnv, 'a, 'b, 'c)
+
+// returns the first 5 records from the sorted result
+val result1: Table = in.orderBy('a.asc).fetch(5)
+
+// skips the first 3 records and returns all following records from the sorted result
+val result2: Table = in.orderBy('a.asc).offset(3)
+
+// skips the first 10 records and returns the next 5 records from the sorted result
+val result3: Table = in.orderBy('a.asc).offset(10).fetch(5)
 {% endhighlight %}
       </td>
     </tr>
@@ -1172,7 +1178,7 @@ val table = input
 </div>
 </div>
 
-Window properties such as the start and end timestamp of a time window can be added in the select statement as a property of the window alias as `w.start` and `w.end`, respectively.
+Window properties such as the start, end, or rowtime timestamp of a time window can be added in the select statement as a property of the window alias as `w.start`, `w.end`, and `w.rowtime`, respectively. The window start and rowtime timestamps are the inclusive lower and uppper window boundaries. In contrast, the window end timestamp is the exclusive upper window boundary. For example a tumbling window of 30 minutes that starts at 2pm would have `14:00:00.000` as start timestamp, `14:29:59.999` as rowtime timestamp, and `14:30:00.000` as end timestamp.
 
 <div class="codetabs" markdown="1">
 <div data-lang="java" markdown="1">
@@ -1180,7 +1186,7 @@ Window properties such as the start and end timestamp of a time window can be ad
 Table table = input
   .window([Window w].as("w"))  // define window with alias w
   .groupBy("w, a")  // group the table by attribute a and window w 
-  .select("a, w.start, w.end, b.count"); // aggregate and add window start and end timestamps
+  .select("a, w.start, w.end, w.rowtime, b.count"); // aggregate and add window start, end, and rowtime timestamps
 {% endhighlight %}
 </div>
 
@@ -1189,7 +1195,7 @@ Table table = input
 val table = input
   .window([w: Window] as 'w)  // define window with alias w
   .groupBy('w, 'a)  // group the table by attribute a and window w 
-  .select('a, 'w.start, 'w.end, 'b.count) // aggregate and add window start and end timestamps
+  .select('a, 'w.start, 'w.end, 'w.rowtime, 'b.count) // aggregate and add window start, end, and rowtime timestamps
 {% endhighlight %}
 </div>
 </div>
@@ -1221,7 +1227,7 @@ Tumbling windows are defined by using the `Tumble` class as follows:
     </tr>
     <tr>
       <td><code>as</code></td>
-      <td>Assigns an alias to the window. The alias is used to reference the window in the following <code>groupBy()</code> clause and optionally to select window properties such as window start or end time in the <code>select()</code> clause.</td>
+      <td>Assigns an alias to the window. The alias is used to reference the window in the following <code>groupBy()</code> clause and optionally to select window properties such as window start, end, or rowtime timestamps in the <code>select()</code> clause.</td>
     </tr>
   </tbody>
 </table>
@@ -1283,7 +1289,7 @@ Sliding windows are defined by using the `Slide` class as follows:
     </tr>
     <tr>
       <td><code>as</code></td>
-      <td>Assigns an alias to the window. The alias is used to reference the window in the following <code>groupBy()</code> clause and optionally to select window properties such as window start or end time in the <code>select()</code> clause.</td>
+      <td>Assigns an alias to the window. The alias is used to reference the window in the following <code>groupBy()</code> clause and optionally to select window properties such as window start, end, or rowtime timestamps in the <code>select()</code> clause.</td>
     </tr>
   </tbody>
 </table>
@@ -1341,7 +1347,7 @@ A session window is defined by using the `Session` class as follows:
     </tr>
     <tr>
       <td><code>as</code></td>
-      <td>Assigns an alias to the window. The alias is used to reference the window in the following <code>groupBy()</code> clause and optionally to select window properties such as window start or end time in the <code>select()</code> clause.</td>
+      <td>Assigns an alias to the window. The alias is used to reference the window in the following <code>groupBy()</code> clause and optionally to select window properties such as window start, end, or rowtime timestamps in the <code>select()</code> clause.</td>
     </tr>
   </tbody>
 </table>

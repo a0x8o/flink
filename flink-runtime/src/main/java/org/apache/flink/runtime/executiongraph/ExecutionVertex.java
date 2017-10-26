@@ -24,6 +24,7 @@ import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.configuration.JobManagerOptions;
 import org.apache.flink.runtime.JobException;
+import org.apache.flink.runtime.blob.PermanentBlobKey;
 import org.apache.flink.runtime.checkpoint.TaskStateSnapshot;
 import org.apache.flink.runtime.deployment.InputChannelDeploymentDescriptor;
 import org.apache.flink.runtime.deployment.InputGateDeploymentDescriptor;
@@ -45,6 +46,7 @@ import org.apache.flink.runtime.jobmanager.scheduler.CoLocationGroup;
 import org.apache.flink.runtime.state.KeyGroupRangeAssignment;
 import org.apache.flink.runtime.taskmanager.TaskManagerLocation;
 import org.apache.flink.runtime.util.EvictingBoundedList;
+import org.apache.flink.types.Either;
 import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.SerializedValue;
@@ -770,19 +772,38 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 			consumedPartitions.add(new InputGateDeploymentDescriptor(resultId, partitionType, queueToRequest, partitions));
 		}
 
-		SerializedValue<JobInformation> serializedJobInformation = getExecutionGraph().getSerializedJobInformation();
-		SerializedValue<TaskInformation> serializedJobVertexInformation = null;
+		final Either<SerializedValue<JobInformation>, PermanentBlobKey> jobInformationOrBlobKey = getExecutionGraph().getJobInformationOrBlobKey();
+
+		final TaskDeploymentDescriptor.MaybeOffloaded<JobInformation> serializedJobInformation;
+
+		if (jobInformationOrBlobKey.isLeft()) {
+			serializedJobInformation = new TaskDeploymentDescriptor.NonOffloaded<>(jobInformationOrBlobKey.left());
+		} else {
+			serializedJobInformation = new TaskDeploymentDescriptor.Offloaded<>(jobInformationOrBlobKey.right());
+		}
+
+		final Either<SerializedValue<TaskInformation>, PermanentBlobKey> taskInformationOrBlobKey;
 
 		try {
-			serializedJobVertexInformation = jobVertex.getSerializedTaskInformation();
+			taskInformationOrBlobKey = jobVertex.getTaskInformationOrBlobKey();
 		} catch (IOException e) {
 			throw new ExecutionGraphException(
-					"Could not create a serialized JobVertexInformation for " + jobVertex.getJobVertexId(), e);
+				"Could not create a serialized JobVertexInformation for " +
+					jobVertex.getJobVertexId(), e);
+		}
+
+		final TaskDeploymentDescriptor.MaybeOffloaded<TaskInformation> serializedTaskInformation;
+
+		if (taskInformationOrBlobKey.isLeft()) {
+			serializedTaskInformation = new TaskDeploymentDescriptor.NonOffloaded<>(taskInformationOrBlobKey.left());
+		} else {
+			serializedTaskInformation = new TaskDeploymentDescriptor.Offloaded<>(taskInformationOrBlobKey.right());
 		}
 
 		return new TaskDeploymentDescriptor(
+			getJobId(),
 			serializedJobInformation,
-			serializedJobVertexInformation,
+			serializedTaskInformation,
 			executionId,
 			targetSlot.getAllocatedSlot().getSlotAllocationId(),
 			subTaskIndex,

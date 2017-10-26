@@ -1332,6 +1332,7 @@ class JobManager(
           restartStrategy,
           jobMetrics,
           numSlots,
+          blobServer,
           log.logger)
         
         if (registerNewGraph) {
@@ -2482,6 +2483,9 @@ object JobManager {
     val timeout: FiniteDuration = AkkaUtils.getTimeout(configuration)
 
     val classLoaderResolveOrder = configuration.getString(CoreOptions.CLASSLOADER_RESOLVE_ORDER)
+    val alwaysParentFirstLoaderString =
+      configuration.getString(CoreOptions.ALWAYS_PARENT_FIRST_LOADER)
+    val alwaysParentFirstLoaderPatterns = alwaysParentFirstLoaderString.split(';')
 
     val restartStrategy = RestartStrategyFactory.createRestartStrategyFactory(configuration)
 
@@ -2515,7 +2519,10 @@ object JobManager {
       instanceManager = new InstanceManager()
       scheduler = new FlinkScheduler(ExecutionContext.fromExecutor(futureExecutor))
       libraryCacheManager =
-        new BlobLibraryCacheManager(blobServer, ResolveOrder.fromString(classLoaderResolveOrder))
+        new BlobLibraryCacheManager(
+          blobServer,
+          ResolveOrder.fromString(classLoaderResolveOrder),
+          alwaysParentFirstLoaderPatterns)
 
       instanceManager.addInstanceListener(scheduler)
     }

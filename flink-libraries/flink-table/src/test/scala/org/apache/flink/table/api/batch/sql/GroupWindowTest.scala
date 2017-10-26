@@ -62,6 +62,7 @@ class GroupWindowTest extends TableTestBase {
       "SELECT " +
         "  TUMBLE_START(ts, INTERVAL '4' MINUTE), " +
         "  TUMBLE_END(ts, INTERVAL '4' MINUTE), " +
+        "  TUMBLE_ROWTIME(ts, INTERVAL '4' MINUTE), " +
         "  c, " +
         "  SUM(a) AS sumA, " +
         "  MIN(b) AS minB " +
@@ -77,9 +78,10 @@ class GroupWindowTest extends TableTestBase {
           term("groupBy", "c"),
           term("window", TumblingGroupWindow('w$, 'ts, 240000.millis)),
           term("select", "c, SUM(a) AS sumA, MIN(b) AS minB, " +
-            "start('w$) AS w$start, end('w$) AS w$end")
+            "start('w$) AS w$start, end('w$) AS w$end, rowtime('w$) AS w$rowtime")
         ),
-        term("select", "CAST(w$start) AS w$start, CAST(w$end) AS w$end, c, sumA, minB")
+        term("select", "CAST(w$start) AS EXPR$0, CAST(w$end) AS EXPR$1, " +
+          "w$rowtime AS EXPR$2, c, sumA, minB")
       )
 
     util.verifySql(sqlQuery, expected)
@@ -148,6 +150,7 @@ class GroupWindowTest extends TableTestBase {
         "  c, " +
         "  HOP_END(ts, INTERVAL '1' HOUR, INTERVAL '3' HOUR), " +
         "  HOP_START(ts, INTERVAL '1' HOUR, INTERVAL '3' HOUR), " +
+        "  HOP_ROWTIME(ts, INTERVAL '1' HOUR, INTERVAL '3' HOUR), " +
         "  SUM(a) AS sumA, " +
         "  AVG(b) AS avgB " +
         "FROM T " +
@@ -163,9 +166,10 @@ class GroupWindowTest extends TableTestBase {
           term("window",
             SlidingGroupWindow('w$, 'ts, 10800000.millis, 3600000.millis)),
           term("select", "c, d, SUM(a) AS sumA, AVG(b) AS avgB, " +
-            "start('w$) AS w$start, end('w$) AS w$end")
+            "start('w$) AS w$start, end('w$) AS w$end, rowtime('w$) AS w$rowtime")
         ),
-        term("select", "c, CAST(w$end) AS w$end, CAST(w$start) AS w$start, sumA, avgB")
+        term("select", "c, CAST(w$end) AS EXPR$1, CAST(w$start) AS EXPR$2, " +
+          "w$rowtime AS EXPR$3, sumA, avgB")
       )
 
     util.verifySql(sqlQuery, expected)
@@ -204,6 +208,7 @@ class GroupWindowTest extends TableTestBase {
         "  c, d, " +
         "  SESSION_START(ts, INTERVAL '12' HOUR), " +
         "  SESSION_END(ts, INTERVAL '12' HOUR), " +
+        "  SESSION_ROWTIME(ts, INTERVAL '12' HOUR), " +
         "  SUM(a) AS sumA, " +
         "  MIN(b) AS minB " +
         "FROM T " +
@@ -218,9 +223,10 @@ class GroupWindowTest extends TableTestBase {
           term("groupBy", "c, d"),
           term("window", SessionGroupWindow('w$, 'ts, 43200000.millis)),
           term("select", "c, d, SUM(a) AS sumA, MIN(b) AS minB, " +
-            "start('w$) AS w$start, end('w$) AS w$end")
+            "start('w$) AS w$start, end('w$) AS w$end, rowtime('w$) AS w$rowtime")
         ),
-        term("select", "c, d, CAST(w$start) AS w$start, CAST(w$end) AS w$end, sumA, minB")
+        term("select", "c, d, CAST(w$start) AS EXPR$2, CAST(w$end) AS EXPR$3, " +
+          "w$rowtime AS EXPR$4, sumA, minB")
       )
 
     util.verifySql(sqlQuery, expected)
@@ -249,9 +255,9 @@ class GroupWindowTest extends TableTestBase {
           ),
           term("groupBy", "c"),
           term("window", TumblingGroupWindow('w$, 'ts, 240000.millis)),
-          term("select", "c, start('w$) AS w$start, end('w$) AS w$end")
+          term("select", "c, start('w$) AS w$start, end('w$) AS w$end, rowtime('w$) AS w$rowtime")
         ),
-        term("select", "CAST(w$end) AS w$end")
+        term("select", "CAST(w$end) AS EXPR$0")
       )
 
     util.verifySql(sqlQuery, expected)
@@ -287,9 +293,10 @@ class GroupWindowTest extends TableTestBase {
             "COUNT(*) AS EXPR$0",
             "SUM(a) AS $f1",
             "start('w$) AS w$start",
-            "end('w$) AS w$end")
+            "end('w$) AS w$end, " +
+            "rowtime('w$) AS w$rowtime")
         ),
-        term("select", "EXPR$0", "CAST(w$start) AS w$start"),
+        term("select", "EXPR$0", "CAST(w$start) AS EXPR$1"),
         term("where",
           "AND(>($f1, 0), " +
             "=(EXTRACT_DATE(FLAG(QUARTER), /INT(Reinterpret(CAST(w$start)), 86400000)), 1))")
