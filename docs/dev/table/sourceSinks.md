@@ -38,105 +38,393 @@ Currently, Flink provides the `CsvTableSource` to read CSV files and a few table
 A custom `TableSource` can be defined by implementing the `BatchTableSource` or `StreamTableSource` interface. See section on [defining a custom TableSource](#define-a-tablesource) for details.
 
 | **Class name** | **Maven dependency** | **Batch?** | **Streaming?** | **Description**
-| `CsvTableSource` | `flink-table` | Y | Y | A simple source for CSV files.
-| `Kafka08JsonTableSource` | `flink-connector-kafka-0.8` | N | Y | A Kafka 0.8 source for JSON data.
-| `Kafka08AvroTableSource` | `flink-connector-kafka-0.8` | N | Y | A Kafka 0.8 source for Avro data.
-| `Kafka09JsonTableSource` | `flink-connector-kafka-0.9` | N | Y | A Kafka 0.9 source for JSON data.
-| `Kafka09AvroTableSource` | `flink-connector-kafka-0.9` | N | Y | A Kafka 0.9 source for Avro data.
-| `Kafka010JsonTableSource` | `flink-connector-kafka-0.10` | N | Y | A Kafka 0.10 source for JSON data.
-| `Kafka010AvroTableSource` | `flink-connector-kafka-0.10` | N | Y | A Kafka 0.10 source for Avro data.
+| `Kafka011AvroTableSource` | `flink-connector-kafka-0.11` | N | Y | A `TableSource` for Avro-encoded Kafka 0.11 topics.
+| `Kafka011JsonTableSource` | `flink-connector-kafka-0.11` | N | Y | A `TableSource` for flat Json-encoded Kafka 0.11 topics.
+| `Kafka010AvroTableSource` | `flink-connector-kafka-0.10` | N | Y | A `TableSource` for Avro-encoded Kafka 0.10 topics.
+| `Kafka010JsonTableSource` | `flink-connector-kafka-0.10` | N | Y | A `TableSource` for flat Json-encoded Kafka 0.10 topics.
+| `Kafka09AvroTableSource` | `flink-connector-kafka-0.9` | N | Y | A `TableSource` for Avro-encoded Kafka 0.9 topics.
+| `Kafka09JsonTableSource` | `flink-connector-kafka-0.9` | N | Y | A `TableSource` for flat Json-encoded Kafka 0.9 topics.
+| `Kafka08AvroTableSource` | `flink-connector-kafka-0.8` | N | Y | A `TableSource` for Avro-encoded Kafka 0.8 topics.
+| `Kafka08JsonTableSource` | `flink-connector-kafka-0.8` | N | Y | A `TableSource` for flat Json-encoded Kafka 0.8 topics.
+| `CsvTableSource` | `flink-table` | Y | Y | A simple `TableSource` for CSV files.
 
-All sources that come with the `flink-table` dependency can be directly used by your Table programs. For all other table sources, you have to add the respective dependency in addition to the `flink-table` dependency.
+All sources that come with the `flink-table` dependency are directly available for Table API or SQL programs. For all other table sources, you have to add the respective dependency in addition to the `flink-table` dependency.
 
 {% top %}
 
 ### KafkaJsonTableSource
 
-To use the Kafka JSON source, you have to add the Kafka connector dependency to your project:
+A `KafkaJsonTableSource` ingests JSON-encoded messages from a Kafka topic. Currently, only JSON records with flat (non-nested) schema are supported.
 
-  - `flink-connector-kafka-0.8` for Kafka 0.8,
-  - `flink-connector-kafka-0.9` for Kafka 0.9, or
-  - `flink-connector-kafka-0.10` for Kafka 0.10, respectively.
+A `KafkaJsonTableSource` is created and configured using a builder. The following example shows how to create a `KafkaJsonTableSource` with basic properties:
 
-You can then create the source as follows (example for Kafka 0.8):
 <div class="codetabs" markdown="1">
 <div data-lang="java" markdown="1">
 {% highlight java %}
-// specify JSON field names and types
-TypeInformation<Row> typeInfo = Types.ROW(
-  new String[] { "id", "name", "score" },
-  new TypeInformation<?>[] { Types.INT(), Types.STRING(), Types.DOUBLE() }
-);
-
-KafkaJsonTableSource kafkaTableSource = new Kafka08JsonTableSource(
-    kafkaTopic,
-    kafkaProperties,
-    typeInfo);
+// create builder
+TableSource source = Kafka010JsonTableSource.builder()
+  // set Kafka topic
+  .forTopic("sensors")
+  // set Kafka consumer properties
+  .withKafkaProperties(kafkaProps)
+  // set Table schema
+  .withSchema(TableSchema.builder()
+    .field("sensorId", Types.LONG())  
+    .field("temp", Types.DOUBLE())
+    .field("time", Types.SQL_TIMESTAMP()).build())
+  .build();
 {% endhighlight %}
 </div>
 
 <div data-lang="scala" markdown="1">
 {% highlight scala %}
-// specify JSON field names and types
-val typeInfo = Types.ROW(
-  Array("id", "name", "score"),
-  Array(Types.INT, Types.STRING, Types.DOUBLE)
-)
-
-val kafkaTableSource = new Kafka08JsonTableSource(
-    kafkaTopic,
-    kafkaProperties,
-    typeInfo)
+// create builder
+val source: TableSource[_] = Kafka010JsonTableSource.builder()
+  // set Kafka topic
+  .forTopic("sensors")
+  // set Kafka consumer properties
+  .withKafkaProperties(kafkaProps)
+  // set Table schema
+  .withSchema(TableSchema.builder()
+    .field("sensorId", Types.LONG)
+    .field("temp", Types.DOUBLE)
+    .field("time", Types.SQL_TIMESTAMP).build())
+  .build()
 {% endhighlight %}
 </div>
 </div>
 
-By default, a missing JSON field does not fail the source. You can configure this via:
+#### Optional Configuration
 
-```java
-// Fail on missing JSON field
-tableSource.setFailOnMissingField(true);
-```
+* **Time Attributes:** Please see the sections on [configuring a rowtime attribute](#configure-a-rowtime-attribute) and [configuring a processing time attribute](#configure-a-processing-time-attribute).
+
+* **Explicit JSON parse schema:** By default, the JSON records are parsed with the table schema. You can configure an explicit JSON schema and provide a mapping from table schema fields to JSON fields as shown in the following example.
+
+<div class="codetabs" markdown="1">
+<div data-lang="java" markdown="1">
+{% highlight java %}
+Map<String, String> mapping = new HashMap<>();
+mapping.put("sensorId", "id");
+mapping.put("temperature", "temp");
+
+TableSource source = Kafka010JsonTableSource.builder()
+  // ...
+  // set Table schema
+  .withSchema(TableSchema.builder()
+    .field("sensorId", Types.LONG())
+    .field("temperature", Types.DOUBLE()).build())
+  // set JSON parsing schema
+  .forJsonSchema(TableSchema.builder()
+    .field("id", Types.LONG())
+    .field("temp", Types.DOUBLE()).build())
+  // set mapping from table fields to JSON fields
+  .withTableToJsonMapping(mapping)
+  .build();
+{% endhighlight %}
+</div>
+
+<div data-lang="scala" markdown="1">
+{% highlight scala %}
+val source: TableSource[_] = Kafka010JsonTableSource.builder()
+  // ...
+  // set Table schema
+  .withSchema(TableSchema.builder()
+    .field("sensorId", Types.LONG)
+    .field("temperature", Types.DOUBLE).build())
+  // set JSON parsing schema
+  .forJsonSchema(TableSchema.builder()
+    .field("id", Types.LONG)
+    .field("temp", Types.DOUBLE).build())
+  // set mapping from table fields to JSON fields
+  .withTableToJsonMapping(Map(
+    "sensorId" -> "id", 
+    "temperature" -> "temp").asJava)
+  .build()
+{% endhighlight %}
+</div>
+</div>
+
+* **Missing Field Handling** By default, a missing JSON field is set to `null`. You can enable strict JSON parsing that will cancel the source (and query) if a field is missing.
+
+<div class="codetabs" markdown="1">
+<div data-lang="java" markdown="1">
+{% highlight java %}
+TableSource source = Kafka010JsonTableSource.builder()
+  // ...
+  // configure missing field behavior
+  .failOnMissingField(true)
+  .build();
+{% endhighlight %}
+</div>
+
+<div data-lang="scala" markdown="1">
+{% highlight scala %}
+val source: TableSource[_] = Kafka010JsonTableSource.builder()
+  // ...
+  // configure missing field behavior
+  .failOnMissingField(true)
+  .build()
+{% endhighlight %}
+</div>
+</div>
 
 {% top %}
 
 ### KafkaAvroTableSource
 
-The `KafkaAvroTableSource` allows you to read Avro's `SpecificRecord` objects from Kafka.
+A `KafkaAvroTableSource` ingests Avro-encoded records from a Kafka topic.
 
-To use the Kafka Avro source, you have to add the Kafka connector dependency to your project:
-
-  - `flink-connector-kafka-0.8` for Kafka 0.8,
-  - `flink-connector-kafka-0.9` for Kafka 0.9, or
-  - `flink-connector-kafka-0.10` for Kafka 0.10, respectively.
-
-You can then create the source as follows (example for Kafka 0.8):
+A `KafkaAvroTableSource` is created and configured using a builder. The following example shows how to create a `KafkaAvroTableSource` with basic properties:
 
 <div class="codetabs" markdown="1">
 <div data-lang="java" markdown="1">
 {% highlight java %}
-// pass the generated Avro class to the TableSource
-Class<? extends SpecificRecord> clazz = MyAvroType.class; 
-
-KafkaAvroTableSource kafkaTableSource = new Kafka08AvroTableSource(
-    kafkaTopic,
-    kafkaProperties,
-    clazz);
+// create builder
+TableSource source = Kafka010AvroTableSource.builder()
+  // set Kafka topic
+  .forTopic("sensors")
+  // set Kafka consumer properties
+  .withKafkaProperties(kafkaProps)
+  // set Table schema
+  .withSchema(TableSchema.builder()
+    .field("sensorId", Types.LONG())
+    .field("temp", Types.DOUBLE())
+    .field("time", Types.SQL_TIMESTAMP()).build())
+  // set class of Avro record
+  .forAvroRecordClass(SensorReading.class)
+  .build();
 {% endhighlight %}
 </div>
 
 <div data-lang="scala" markdown="1">
 {% highlight scala %}
-// pass the generated Avro class to the TableSource
-val clazz = classOf[MyAvroType]
-
-val kafkaTableSource = new Kafka08AvroTableSource(
-    kafkaTopic,
-    kafkaProperties,
-    clazz)
+// create builder
+val source: TableSource[_] = Kafka010JsonTableSource.builder()
+  // set Kafka topic
+  .forTopic("sensors")
+  // set Kafka consumer properties
+  .withKafkaProperties(kafkaProps)
+  // set Table schema
+  .withSchema(TableSchema.builder()
+    .field("sensorId", Types.LONG)
+    .field("temp", Types.DOUBLE)
+    .field("time", Types.SQL_TIMESTAMP).build())
+  // set class of Avro record
+  .forAvroRecordClass(classOf[SensorReading])
+  .build()
 {% endhighlight %}
 </div>
 </div>
+
+**NOTE:** The specified Avro record class must provide all fields of the table schema with corresponding type.
+
+#### Optional Configuration
+
+* **Time Attributes:** Please see the sections on [configuring a rowtime attribute](#configure-a-rowtime-attribute) and [configuring a processing time attribute](#configure-a-processing-time-attribute).
+
+* **Explicit Schema Field to Avro Mapping:** By default, all fields of the table schema are mapped by name to fields of the Avro records. If the fields in the Avro records have different names, a mapping from table schema fields to Avro fields can be specified.
+
+<div class="codetabs" markdown="1">
+<div data-lang="java" markdown="1">
+{% highlight java %}
+Map<String, String> mapping = new HashMap<>();
+mapping.put("sensorId", "id");
+mapping.put("temperature", "temp");
+
+TableSource source = Kafka010AvroTableSource.builder()
+  // ...
+  // set Table schema
+  .withSchema(TableSchema.builder()
+    .field("sensorId", Types.LONG())
+    .field("temperature", Types.DOUBLE()).build())
+  // set class of Avro record with fields [id, temp]
+  .forAvroRecordClass(SensorReading.class)
+  // set mapping from table fields to JSON fields
+  .withTableToJsonMapping(mapping)
+  .build();
+{% endhighlight %}
+</div>
+
+<div data-lang="scala" markdown="1">
+{% highlight scala %}
+val source: TableSource[_] = Kafka010AvroTableSource.builder()
+  // ...
+  // set Table schema
+  .withSchema(TableSchema.builder()
+    .field("sensorId", Types.LONG)
+    .field("temperature", Types.DOUBLE).build())
+  // set class of Avro record with fields [id, temp]
+  .forAvroRecordClass(classOf[SensorReading])
+  // set mapping from table fields to JSON fields
+  .withTableToJsonMapping(Map(
+    "sensorId" -> "id", 
+    "temperature" -> "temp").asJava)
+  .build()
+{% endhighlight %}
+</div>
+</div>
+
+{% top %}
+
+### Configuring a Processing Time Attribute
+
+[Processing time attributes](streaming.html#processing-time) are commonly used in streaming queries. A processing time attribute returns the current wall-clock time of the operator that accesses it. 
+
+Batch queries support processing time attributes as well. However, processing time attributes are initialized with the wall-clock time of the table scan operator and keep this value throughout the query evaluation. 
+
+A table schema field of type `SQL_TIMESTAMP` can be declared as a processing time attribute as shown in the following example.
+
+<div class="codetabs" markdown="1">
+<div data-lang="java" markdown="1">
+{% highlight java %}
+TableSource source = Kafka010JsonTableSource.builder()
+  // ... 
+  .withSchema(TableSchema.builder()
+    .field("sensorId", Types.LONG())  
+    .field("temp", Types.DOUBLE())
+    // field "ptime" is of type SQL_TIMESTAMP
+    .field("ptime", Types.SQL_TIMESTAMP()).build())
+  // declare "ptime" as processing time attribute
+  .withProctimeAttribute("ptime")
+  .build();
+{% endhighlight %}
+</div>
+
+<div data-lang="scala" markdown="1">
+{% highlight scala %}
+val source: TableSource[_] = Kafka010JsonTableSource.builder()
+  // ...
+  .withSchema(TableSchema.builder()
+    .field("sensorId", Types.LONG)
+    .field("temp", Types.DOUBLE)
+    // field "ptime" is of type SQL_TIMESTAMP
+    .field("ptime", Types.SQL_TIMESTAMP).build())
+  // declare "ptime" as processing time attribute
+  .withProctimeAttribute("ptime")
+  .build()
+{% endhighlight %}
+</div>
+</div>
+
+{% top %}
+
+### Configuring a Rowtime Attribute
+
+[Rowtime attributes](streaming.html#event-time) are attributes of type `TIMESTAMP` and handled in a unified way in stream and batch queries.
+
+A table schema field of type `SQL_TIMESTAMP` can be declared as rowtime attribute by specifying 
+
+* the name of the field, 
+* a `TimestampExtractor` that computes the actual value for the attribute (usually from one or more other attributes), and
+* a `WatermarkStrategy` that specifies how watermarks are generated for the the rowtime attribute.
+
+The following example shows how to configure a rowtime attribute.
+
+<div class="codetabs" markdown="1">
+<div data-lang="java" markdown="1">
+{% highlight java %}
+TableSource source = Kafka010JsonTableSource.builder()
+  // ...
+  .withSchema(TableSchema.builder()
+    .field("sensorId", Types.LONG())
+    .field("temp", Types.DOUBLE())
+    // field "rtime" is of type SQL_TIMESTAMP
+    .field("rtime", Types.SQL_TIMESTAMP()).build())
+  .withRowtimeAttribute(
+    // "rtime" is rowtime attribute
+    "rtime",
+    // value of "rtime" is extracted from existing field with same name
+    new ExistingField("rtime"),
+    // values of "rtime" are at most out-of-order by 30 seconds
+    new BoundedOutOfOrderWatermarks(30000L))
+  .build();
+{% endhighlight %}
+</div>
+
+<div data-lang="scala" markdown="1">
+{% highlight scala %}
+val source: TableSource[_] = Kafka010JsonTableSource.builder()
+  // ...
+  .withSchema(TableSchema.builder()
+    .field("sensorId", Types.LONG)
+    .field("temp", Types.DOUBLE)
+    // field "rtime" is of type SQL_TIMESTAMP
+    .field("rtime", Types.SQL_TIMESTAMP).build())
+  .withRowtimeAttribute(
+    // "rtime" is rowtime attribute
+    "rtime",
+    // value of "rtime" is extracted from existing field with same name
+    new ExistingField("rtime"),
+    // values of "rtime" are at most out-of-order by 30 seconds
+    new BoundedOutOfOrderTimestamps(30000L))
+  .build()
+{% endhighlight %}
+</div>
+</div>
+
+#### Extracting Kafka 0.10+ Timestamps into Rowtime Attribute
+
+Since Kafka 0.10, Kafka messages have a timestamp as metadata that specifies when the record was written into the Kafka topic. `KafkaTableSources` can assign Kafka's message timestamp as rowtime attribute as follows: 
+
+<div class="codetabs" markdown="1">
+<div data-lang="java" markdown="1">
+{% highlight java %}
+TableSource source = Kafka010JsonTableSource.builder()
+  // ...
+  .withSchema(TableSchema.builder()
+    .field("sensorId", Types.LONG())
+    .field("temp", Types.DOUBLE())
+    // field "rtime" is of type SQL_TIMESTAMP
+    .field("rtime", Types.SQL_TIMESTAMP()).build())
+  // use Kafka timestamp as rowtime attribute
+  .withKafkaTimestampAsRowtimeAttribute()(
+    // "rtime" is rowtime attribute
+    "rtime",
+    // values of "rtime" are ascending
+    new AscendingTimestamps())
+  .build();
+{% endhighlight %}
+</div>
+
+<div data-lang="scala" markdown="1">
+{% highlight scala %}
+val source: TableSource[_] = Kafka010JsonTableSource.builder()
+  // ...
+  .withSchema(TableSchema.builder()
+    .field("sensorId", Types.LONG)
+    .field("temp", Types.DOUBLE)
+    // field "rtime" is of type SQL_TIMESTAMP
+    .field("rtime", Types.SQL_TIMESTAMP).build())
+  // use Kafka timestamp as rowtime attribute
+  .withKafkaTimestampAsRowtimeAttribute()(
+    // "rtime" is rowtime attribute
+    "rtime",
+    // values of "rtime" are ascending
+    new AscendingTimestamps())
+  .build()
+{% endhighlight %}
+</div>
+</div>
+
+#### Provided TimestampExtractors
+
+Flink provides `TimestampExtractor` implementations for common use cases.
+The following `TimestampExtractor` implementations are currently available:
+
+* `ExistingField(fieldName)`: Extracts the value of a rowtime attribute from an existing `LONG` or `SQL_TIMESTAMP` field.
+* `StreamRecordTimestamp()`: Extracts the value of a rowtime attribute from the timestamp of the `DataStream` `StreamRecord`. Note, this `TimestampExtractor` is not available for batch table sources.
+
+A custom `TimestampExtrator` can be defined by implementing the corresponding interface.
+
+#### Provided WatermarkStrategies
+
+Flink provides `WatermarkStrategy` implementations for common use cases.
+The following `WatermarkStrategy` implementations are currently available:
+
+* `AscendingTimestamps`: A watermark strategy for ascending timestamps. Records with timestamps that are out-of-order will be considered late.
+* `BoundedOutOfOrderTimestamps(delay)`: A watermark strategy for timestamps that are at most out-of-order by the specified delay.
+
+A custom `WatermarkStrategy` can be defined by implementing the corresponding interface.
 
 {% top %}
 
@@ -204,7 +492,8 @@ The following table lists the `TableSink`s which are provided with Flink.
 
 | **Class name** | **Maven dependency** | **Batch?** | **Streaming?** | **Description**
 | `CsvTableSink` | `flink-table` | Y | Append | A simple sink for CSV files.
-| `JDBCAppendTableSink` | `flink-jdbc` | Y | Append | Writes tables to a JDBC database.
+| `JDBCAppendTableSink` | `flink-jdbc` | Y | Append | Writes a Table to a JDBC table.
+| `CassandraAppendTableSink` | `flink-connector-cassandra` | N | Append | Writes a Table to a Cassandra table. 
 | `Kafka08JsonTableSink` | `flink-connector-kafka-0.8` | N | Append | A Kafka 0.8 sink with JSON encoding.
 | `Kafka09JsonTableSink` | `flink-connector-kafka-0.9` | N | Append | A Kafka 0.9 sink with JSON encoding.
 
@@ -295,19 +584,62 @@ Similar to using <code>JDBCOutputFormat</code>, you have to explicitly specify t
 
 {% top %}
 
+### CassandraAppendTableSink
+
+The `CassandraAppendTableSink` emits a `Table` to a Cassandra table. The sink only supports append-only streaming tables. It cannot be used to emit a `Table` that is continuously updated. See the [documentation on Table to Stream conversions](./streaming.html#table-to-stream-conversion) for details. 
+
+The `CassandraAppendTableSink` inserts all rows at least once into the Cassandra table if checkpointing is enabled. However, you can specify the query as upsert query.
+
+To use the `CassandraAppendTableSink`, you have to add the Cassandra connector dependency (<code>flink-connector-cassandra</code>) to your project. The example below shows how to use the `CassandraAppendTableSink`.
+
+<div class="codetabs" markdown="1">
+<div data-lang="java" markdown="1">
+{% highlight java %}
+
+ClusterBuilder builder = ... // configure Cassandra cluster connection
+
+CassandraAppendTableSink sink = new CassandraAppendTableSink(
+  builder, 
+  // the query must match the schema of the table
+  INSERT INTO flink.myTable (id, name, value) VALUES (?, ?, ?));
+
+Table table = ...
+table.writeToSink(sink);
+{% endhighlight %}
+</div>
+
+<div data-lang="scala" markdown="1">
+{% highlight scala %}
+val builder: ClusterBuilder = ... // configure Cassandra cluster connection
+
+val sink: CassandraAppendTableSink = new CassandraAppendTableSink(
+  builder, 
+  // the query must match the schema of the table
+  INSERT INTO flink.myTable (id, name, value) VALUES (?, ?, ?))
+
+val table: Table = ???
+table.writeToSink(sink)
+{% endhighlight %}
+</div>
+</div>
+
+{% top %}
+
 Define a TableSource
 --------------------
 
-A `TableSource` is a generic interface to access to data stored in an external system as a table. It produces a `DataSet` or `DataStream` and provides the type information to derive the schema of the generated table. There are different table sources for batch tables and streaming tables.
+A `TableSource` is a generic interface that gives Table API and SQL queries access to data stored in an external system. It provides the schema of the table and the records that are mapped to rows with the table's schema. Depending on whether the `TableSource` is used in a streaming or batch query, the records are produced as a `DataSet` or `DataStream`. 
 
-Schema information consists of a data type, field names, and corresponding indexes of these names in the data type.
+If a `TableSource` is used in a streaming query it must implement the `StreamTableSource` interface, if it is used in a batch query it must implement the `BatchTableSource` interface. A `TableSource` can also implement both interfaces and be used in streaming and batch queries. 
 
-The general interface looks as follows:
+`StreamTableSource` and `BatchTableSource` extend the base interface `TableSource` that defines the following methods:
 
 <div class="codetabs" markdown="1">
 <div data-lang="java" markdown="1">
 {% highlight java %}
 TableSource<T> {
+
+  public TableSchema getTableSchema();
 
   public TypeInformation<T> getReturnType();
 
@@ -320,6 +652,8 @@ TableSource<T> {
 {% highlight scala %}
 TableSource[T] {
 
+  def getTableSchema: TableSchema
+
   def getReturnType: TypeInformation[T]
 
   def explainSource: String
@@ -329,15 +663,19 @@ TableSource[T] {
 </div>
 </div>
 
-To define a `TableSource` one needs to implement `TableSource#getReturnType`. In this case field names and field indexes are derived from the returned type.
+* `getTableSchema()`: Returns the schema of the table, i.e., the names and types of the fields of the table. The field types are defined using Flink's `TypeInformation` (see [Table API types](tableApi.html#data-types) and [SQL types](sql.html#data-types)).
 
-If the `TypeInformation` returned by `getReturnType` does not allow to specify custom field names, it is possible to implement the `DefinedFieldNames` interface in addition.
+* `getReturnType()`: Returns the physical type of the `DataStream` (`StreamTableSource`) or `DataSet` (`BatchTableSource`) and the records that are produced by the `TableSource`.
 
-### BatchTableSource
+* `explainSource()`: Returns a String that describes the `TableSource`. This method is optional and used for display purposes only.
 
-Defines an external `TableSource` to create a batch table and provides access to its data.
+The `TableSource` interface separates the logical table schema from the physical type of the returned `DataStream` or `DataSet`. As a consequence, all fields of the table schema (`getTableSchema()`) must be mapped to a field with corresponding type of the physical return type (`getReturnType()`). By default, this mapping is done based on field names. For example, a `TableSource` that defines a table schema with two fields `[name: String, size: Integer]` requires a `TypeInformation` with at least two fields called `name` and `size` of type `String` and `Integer`, respectively. This could be a `PojoTypeInfo` or a `RowTypeInfo` that have two fields named `name` and `size` with matching types. 
 
-The interface looks as follows:
+However, some types, such as Tuple or CaseClass types, do support custom field names. If a `TableSource` returns a `DataStream` or `DataSet` of a type with fixed field names, it can implement the `DefinedFieldMapping` interface to map field names from the table schema to field names of the physical return type.
+
+### Defining a BatchTableSource
+
+The `BatchTableSource` interface extends the `TableSource` interface and defines one additional method:
 
 <div class="codetabs" markdown="1">
 <div data-lang="java" markdown="1">
@@ -359,20 +697,20 @@ BatchTableSource[T] extends TableSource[T] {
 </div>
 </div>
 
+* `getDataSet(execEnv)`: Returns a `DataSet` with the data of the table. The type of the `DataSet` must be identical to the return type defined by the `TableSource.getReturnType()` method. The `DataSet` can by created using a regular [data source]({{ site.baseurl }}/dev/batch/#data-sources) of the DataSet API. Commonly, a `BatchTableSource` is implemented by wrapping a `InputFormat` or [batch connector]({{ site.baseurl }}/dev/batch/connectors.html).
+
 {% top %}
 
-### StreamTableSource
+### Defining a StreamTableSource
 
-Defines an external `TableSource` to create a streaming table and provides access to its data.
-
-The interface looks as follows:
+The `StreamTableSource` interface extends the `TableSource` interface and defines one additional method: 
 
 <div class="codetabs" markdown="1">
 <div data-lang="java" markdown="1">
 {% highlight java %}
 StreamTableSource<T> extends TableSource<T> {
 
-  public DataSet<T> getDataStream(StreamExecutionEnvironment execEnv);
+  public DataStream<T> getDataStream(StreamExecutionEnvironment execEnv);
 }
 {% endhighlight %}
 </div>
@@ -381,52 +719,23 @@ StreamTableSource<T> extends TableSource<T> {
 {% highlight scala %}
 StreamTableSource[T] extends TableSource[T] {
 
-  def getDataStream(execEnv: StreamExecutionEnvironment): DataSet[T]
+  def getDataStream(execEnv: StreamExecutionEnvironment): DataStream[T]
 }
 {% endhighlight %}
 </div>
 </div>
 
-**IMPORTANT:** Time-based operations on streaming tables such as windows require explicitly specified [time attributes]({{ site.baseurl }}/dev/table/streaming.html#time-attributes) (both for the [Table API](tableApi.html#group-windows) and [SQL](sql.html#group-windows)). A `StreamTableSource` defines 
+* `getDataStream(execEnv)`: Returns a `DataStream` with the data of the table. The type of the `DataStream` must be identical to the return type defined by the `TableSource.getReturnType()` method. The `DataStream` can by created using a regular [data source]({{ site.baseurl }}/dev/datastream_api.html#data-sources) of the DataStream API. Commonly, a `StreamTableSource` is implemented by wrapping a `SourceFunction` or a [stream connector]({{ site.baseurl }}/dev/connectors/).
 
-- an *event-time attribute* by implementing the `DefinedRowtimeAttribute` interface and
-- a *processing-time attribute* by implementing the `DefinedProctimeAttribute` interface.
+### Defining a TableSource with Time Attributes
 
-Both are described in the following sections.
+Time-based operations of streaming [Table API](tableApi.html#group-windows) and [SQL](sql.html#group-windows) queries, such as windowed aggregations or joins, require explicitly specified [time attributes]({{ site.baseurl }}/dev/table/streaming.html#time-attributes). 
 
-#### DefinedRowtimeAttribute
+A `TableSource` defines a time attribute as a field of type `Types.SQL_TIMESTAMP` in its table schema. In contrast to all regular fields in the schema, a time attribute must not be matched to a physical field in the return type of the table source. Instead, a `TableSource` defines a time attribute by implementing a certain interface.
 
-The `DefinedRowtimeAttribute` interface provides a single method.
+#### Defining a Processing Time Attribute
 
-<div class="codetabs" markdown="1">
-<div data-lang="java" markdown="1">
-{% highlight java %}
-DefinedRowtimeAttribute {
-
-  public String getRowtimeAttribute();
-}
-{% endhighlight %}
-</div>
-
-<div data-lang="scala" markdown="1">
-{% highlight scala %}
-DefinedRowtimeAttribute {
-
-  def getRowtimeAttribute(): String
-}
-{% endhighlight %}
-</div>
-</div>
-
-The `getRowtimeAttribute()` method returns the name of the field that holds the event-time timestamps for the rows of the table. The field must exist in the schema of the `StreamTableSource` and be of type `LONG` or `TIMESTAMP`. Moreover, the `DataStream` returned by `StreamTableSource.getDataStream()` must have [watermarks]({{ site.baseurl }}/dev/event_timestamps_watermarks.html) assigned which are aligned with the values of the specified timestamp field. 
-
-Please see the documentation on [timestamp and watermark assignment]({{ site.baseurl }}/dev/event_timestamps_watermarks.html) for details on how to assign watermarks. Please note that the timestamps of a `DataStream` (the ones which are assigned by a `TimestampAssigner`) are ignored. Only the values of the `TableSource`'s rowtime field are relevant.
-
-**Note:** A `TableSource` that returns a rowtime attribute does not support projection pushdown.
-
-#### DefinedProctimeAttribute
-
-The `DefinedProctimeAttribute` interface provides a single method.
+A `TableSource` defines a [processing time attribute](streaming.html#processing-time) by implementing the `DefinedProctimeAttribute` interface. The interface looks as follows:
 
 <div class="codetabs" markdown="1">
 <div data-lang="java" markdown="1">
@@ -442,23 +751,53 @@ DefinedProctimeAttribute {
 {% highlight scala %}
 DefinedProctimeAttribute {
 
-  def getProctimeAttribute(): String
+  def getProctimeAttribute: String
 }
 {% endhighlight %}
 </div>
 </div>
 
-The `getProctimeAttribute()` method returns the name of a field that is appended to each row returned by the `StreamTableSource`. The appended field serves as a processing time timestamp and can be used in time-based operations.
+* `getProctimeAttribute()`: Returns the name of the processing time attribute. The specified attribute must be defined of type `Types.SQL_TIMESTAMP` in the table schema and can be used in time-based operations. A `DefinedProctimeAttribute` table source can define no processing time attribute by returning `null`.
 
-**Note:** A `TableSource` that returns a processing time attribute does not support projection pushdown.
+**Note** Both `StreamTableSource` and `BatchTableSource` can implement `DefinedProctimeAttribute` and define a processing time attribute. In case of a `BatchTableSource` the processing time field is initialized with the current timestamp during the table scan.
+
+#### Defining a Rowtime Attribute
+
+A `TableSource` defines a [rowtime attribute](streaming.html#event-time) by implementing the `DefinedRowtimeAttributes` interface. The interface looks as follows:
+
+<div class="codetabs" markdown="1">
+<div data-lang="java" markdown="1">
+{% highlight java %}
+DefinedRowtimeAttribute {
+
+  public List<RowtimeAttributeDescriptor> getRowtimeAttributeDescriptors();
+}
+{% endhighlight %}
+</div>
+
+<div data-lang="scala" markdown="1">
+{% highlight scala %}
+DefinedRowtimeAttributes {
+
+  def getRowtimeAttributeDescriptors: util.List[RowtimeAttributeDescriptor]
+}
+{% endhighlight %}
+</div>
+</div>
+
+* `getRowtimeAttributeDescriptors()`: Returns a list of `RowtimeAttributeDescriptor`. A `RowtimeAttributeDescriptor` describes a rowtime attribute with the following properties:
+  * `attributeName`: The name of the rowtime attribute in the table schema. The field must be defined with type `Types.SQL_TIMESTAMP`.
+  * `timestampExtractor`: The timestamp extractor extracts the timestamp from a record with the return type. For example, it can convert convert a Long field into a timestamp or parse a String-encoded timestamp. Flink comes with a set of built-in `TimestampExtractor` implementation for common use cases. It is also possible to provide a custom implementation.
+  * `watermarkStrategy`: The watermark strategy defines how watermarks are generated for the rowtime attribute. Flink comes with a set of built-in `WatermarkStrategy` implementations for common use cases. It is also possible to provide a custom implementation.
+* **Note** Although the `getRowtimeAttributeDescriptors()` method returns a list of descriptors, only a single rowtime attribute is support at the moment. We plan to remove this restriction in the future and support tables with more than one rowtime attribute.
+
+**IMPORTANT** Both, `StreamTableSource` and `BatchTableSource`, can implement `DefinedRowtimeAttributes` and define a rowtime attribute. In either case, the rowtime field is extracted using the `TimestampExtractor`. Hence, a `TableSource` that implements `StreamTableSource` and `BatchTableSource` and defines a rowtime attribute provides exactly the same data to streaming and batch queries.
 
 {% top %}
 
-### ProjectableTableSource
+### Defining a TableSource with Projection Push-Down
 
-The `ProjectableTableSource` interface adds support for projection push-down to a `TableSource`. A `TableSource` extending this interface is able to project the fields of the return table.
-
-The interface looks as follows:
+A `TableSource` supports projection push-down by implementing the `ProjectableTableSource` interface. The interface defines a single method:
 
 <div class="codetabs" markdown="1">
 <div data-lang="java" markdown="1">
@@ -474,21 +813,15 @@ ProjectableTableSource<T> {
 {% highlight scala %}
 ProjectableTableSource[T] {
 
-  def TableSource[T] projectFields(fields: Array[Int])
+  def projectFields(fields: Array[Int]): TableSource[T]
 }
 {% endhighlight %}
 </div>
 </div>
 
-The `projectFields()` is called with an array that holds the indexes of the required fields. The method returns a new `TableSource` object that returns rows with the requested schema.
+* `projectFields(fields)`: Returns a *copy* of the `TableSource` with adjusted physical return type. The `fields` parameter provides the indexes of the fields that must be provided by the `TableSource`. The indexes relate to the `TypeInformation` of the physical return type, *not* to the logical table schema. The copied `TableSource` must adjust its return type and the returned `DataStream` or `DataSet`. The `TableSchema` of the copied `TableSource` must not be changed, i.e, it must be the same as the original `TableSource`. If the `TableSource` implements the `DefinedFieldMapping` interface, the field mapping must be adjusted to the new return type.
 
-{% top %}
-
-### NestedFieldsProjectableTableSource
-
-The `NestedFieldsProjectableTableSource` interface adds support for projection push-down to a `TableSource` with nested fields. A `TableSource` extending this interface is able to project the nested fields of the returned table.
-
-The interface looks as follows:
+The `ProjectableTableSource` adds support to project flat fields. If the `TableSource` defines a table with nested schema, it can implement the `NestedFieldsProjectableTableSource` to extend the projection to nested fields. The `NestedFieldsProjectableTableSource` is defined as follows:
 
 <div class="codetabs" markdown="1">
 <div data-lang="java" markdown="1">
@@ -510,9 +843,13 @@ NestedFieldsProjectableTableSource[T] {
 </div>
 </div>
 
-### FilterableTableSource
+* `projectNestedField(fields, nestedFields)`: Returns a *copy* of the `TableSource` with adjusted physical return type. Fields of the physical return type may be removed or reordered but their type must not be changed. The contract of this method is essentially the same as for the `ProjectableTableSource.projectFields()` method. In addition, the `nestedFields` parameter contains for each field index in the `fields` list, a list of paths to all nested fields that are accessed by the query. All other nested fields do not need to be read, parsed, and set in the records that are produced by the `TableSource`. **IMPORTANT** the types of the projected fields must not be changed but unused fields may be set to null or to a default value.
 
-The `FilterableTableSource` interface adds support for filtering push-down to a `TableSource`. A `TableSource` extending this interface is able to filter records before returning.
+{% top %}
+
+### Defining a TableSource with Filter Push-Down
+
+The `FilterableTableSource` interface adds support for filter push-down to a `TableSource`. A `TableSource` extending this interface is able to filter records such that the returned `DataStream` or `DataSet` returns fewer records.
 
 The interface looks as follows:
 
@@ -540,9 +877,8 @@ FilterableTableSource[T] {
 </div>
 </div>
 
-The optimizer pushes predicates down by calling the `applyPredicate()` method. The `TableSource` can evaluate which predicates to evaluate by itself and which to leave for the framework. Predicates which are evaluated by the `TableSource` must be removed from the `List`. All predicates which remain in the `List` after the method call returns are evaluated by the framework. The `applyPredicate()` method returns a new `TableSource` that evaluates all selected predicates.
-
-The `isFilterPushedDown()` method tells the optimizer whether predicates have been pushed down or not.
+* `applyPredicate(predicates)`: Returns a *copy* of the `TableSource` with added predicates. The `predicates` parameter is a mutable list of conjunctive predicates that are "offered" to the `TableSource`. The `TableSource` accepts to evaluate a predicate by removing it from the list. Predicates that are left in the list will be evaluated by a subsequent filter operator. 
+* `isFilterPushedDown()`: Returns true if the `applyPredicate()` method was called before. Hence, `isFilterPushedDown()` must return true for all `TableSource` instances returned from a `applyPredicate()` call.
 
 {% top %}
 

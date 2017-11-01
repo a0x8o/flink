@@ -80,7 +80,6 @@ import org.apache.flink.shaded.guava18.com.google.common.collect.Multimap;
 import akka.actor.ActorRef;
 import akka.actor.ActorSystem;
 import akka.testkit.JavaTestKit;
-
 import org.junit.Assert;
 import org.junit.Rule;
 import org.junit.Test;
@@ -213,8 +212,8 @@ public class SavepointITCase extends TestLogger {
 
 			// Shut down the Flink cluster (thereby canceling the job)
 			LOG.info("Shutting down Flink cluster.");
-			flink.shutdown();
-			flink.awaitTermination();
+			flink.stop();
+			flink = null;
 
 			// - Verification START -------------------------------------------
 
@@ -251,6 +250,7 @@ public class SavepointITCase extends TestLogger {
 
 			// Restart the cluster
 			LOG.info("Restarting Flink cluster.");
+			flink = new TestingCluster(config);
 			flink.start();
 
 			// Retrieve the job manager
@@ -409,7 +409,7 @@ public class SavepointITCase extends TestLogger {
 			// - Verification END ---------------------------------------------
 		} finally {
 			if (flink != null) {
-				flink.shutdown();
+				flink.stop();
 			}
 		}
 	}
@@ -472,7 +472,7 @@ public class SavepointITCase extends TestLogger {
 			}
 		} finally {
 			if (flink != null) {
-				flink.shutdown();
+				flink.stop();
 			}
 		}
 	}
@@ -572,6 +572,8 @@ public class SavepointITCase extends TestLogger {
 		flink = new TestingCluster(config);
 		try {
 			LOG.info("Restarting Flink cluster.");
+			flink = new TestingCluster(config);
+
 			flink.start(true);
 
 			// Retrieve the job manager
@@ -838,7 +840,6 @@ public class SavepointITCase extends TestLogger {
 				cluster.disposeSavepoint(savepointPath);
 			}
 			cluster.stop();
-			cluster.awaitTermination();
 		}
 	}
 

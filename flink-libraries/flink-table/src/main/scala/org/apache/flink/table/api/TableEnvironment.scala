@@ -57,7 +57,7 @@ import org.apache.flink.table.plan.logical.{CatalogNode, LogicalRelNode}
 import org.apache.flink.table.plan.rules.FlinkRuleSets
 import org.apache.flink.table.plan.schema.{RelTable, RowSchema, TableSinkTable}
 import org.apache.flink.table.sinks.TableSink
-import org.apache.flink.table.sources.{DefinedFieldNames, TableSource}
+import org.apache.flink.table.sources.TableSource
 import org.apache.flink.table.typeutils.TimeIndicatorTypeInfo
 import org.apache.flink.table.validate.FunctionCatalog
 import org.apache.flink.types.Row
@@ -810,10 +810,13 @@ abstract class TableEnvironment(val config: TableConfig) {
             "Please specify the type of the input with a RowTypeInfo.")
       case a: AtomicType[_] =>
         exprs.zipWithIndex flatMap {
+          case (_: TimeAttribute, _) =>
+            None
+          case (UnresolvedFieldReference(name), idx) if idx > 0 =>
+            // only accept the first field for an atomic type
+            throw new TableException("Only the first field can reference an atomic type.")
           case (UnresolvedFieldReference(name), idx) =>
-            if (idx > 0) {
-              throw new TableException("Table of atomic type can only have a single field.")
-            }
+            // first field reference is mapped to atomic type
             Some((0, name))
           case _ => throw new TableException("Field reference expression requested.")
         }
@@ -1171,27 +1174,4 @@ object TableEnvironment {
     }
   }
 
-  /**
-    * Returns field names for a given [[TableSource]].
-    *
-    * @param tableSource The TableSource to extract field names from.
-    * @tparam A The type of the TableSource.
-    * @return An array holding the field names.
-    */
-  def getFieldNames[A](tableSource: TableSource[A]): Array[String] = tableSource match {
-      case d: DefinedFieldNames => d.getFieldNames
-      case _ => TableEnvironment.getFieldNames(tableSource.getReturnType)
-    }
-
-  /**
-    * Returns field indices for a given [[TableSource]].
-    *
-    * @param tableSource The TableSource to extract field indices from.
-    * @tparam A The type of the TableSource.
-    * @return An array holding the field indices.
-    */
-  def getFieldIndices[A](tableSource: TableSource[A]): Array[Int] = tableSource match {
-    case d: DefinedFieldNames => d.getFieldIndices
-    case _ => TableEnvironment.getFieldIndices(tableSource.getReturnType)
-  }
 }

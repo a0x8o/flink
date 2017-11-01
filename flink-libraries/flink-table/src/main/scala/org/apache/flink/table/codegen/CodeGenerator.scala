@@ -33,15 +33,14 @@ import org.apache.flink.api.common.typeutils.CompositeType
 import org.apache.flink.api.java.typeutils._
 import org.apache.flink.api.scala.typeutils.CaseClassTypeInfo
 import org.apache.flink.streaming.api.functions.ProcessFunction
-import org.apache.flink.table.api.TableConfig
+import org.apache.flink.table.api.{TableConfig, TableException}
 import org.apache.flink.table.calcite.FlinkTypeFactory
 import org.apache.flink.table.codegen.CodeGenUtils._
 import org.apache.flink.table.codegen.GeneratedExpression.{NEVER_NULL, NO_CODE}
-import org.apache.flink.table.codegen.calls.FunctionGenerator
+import org.apache.flink.table.codegen.calls.{CurrentTimePointCallGen, FunctionGenerator}
 import org.apache.flink.table.codegen.calls.ScalarOperators._
-import org.apache.flink.table.functions.sql.{ProctimeSqlFunction, ScalarSqlFunctions}
+import org.apache.flink.table.functions.sql.{ProctimeSqlFunction, ScalarSqlFunctions, StreamRecordTimestampSqlFunction}
 import org.apache.flink.table.functions.utils.UserDefinedFunctionUtils
-
 import org.apache.flink.table.typeutils.TimeIndicatorTypeInfo
 import org.apache.flink.table.functions.{FunctionContext, UserDefinedFunction}
 import org.apache.flink.table.typeutils.TypeCheckUtils._
@@ -242,44 +241,35 @@ abstract class CodeGenerator(
     *
     * @param returnType conversion target type. Inputs and output must have the same arity.
     * @param resultFieldNames result field names necessary for a mapping to POJO fields.
+    * @param rowtimeExpression an expression to extract the value of a rowtime field from
+    *                          the input data. Required if the field indicies include a rowtime
+    *                          marker.
     * @return instance of GeneratedExpression
     */
   def generateConverterResultExpression(
       returnType: TypeInformation[_ <: Any],
-      resultFieldNames: Seq[String])
+      resultFieldNames: Seq[String],
+      rowtimeExpression: Option[RexNode] = None)
     : GeneratedExpression = {
 
     val input1AccessExprs = input1Mapping.map {
-      case TimeIndicatorTypeInfo.ROWTIME_MARKER =>
-        // attribute is a rowtime indicator. Access event-time timestamp in StreamRecord.
-        generateRowtimeAccess()
-      case TimeIndicatorTypeInfo.PROCTIME_MARKER =>
+      case TimeIndicatorTypeInfo.ROWTIME_STREAM_MARKER |
+           TimeIndicatorTypeInfo.ROWTIME_BATCH_MARKER if rowtimeExpression.isDefined =>
+          // generate rowtime attribute from expression
+          generateExpression(rowtimeExpression.get)
+      case TimeIndicatorTypeInfo.ROWTIME_STREAM_MARKER |
+           TimeIndicatorTypeInfo.ROWTIME_BATCH_MARKER =>
+          throw TableException("Rowtime extraction expression missing. Please report a bug.")
+      case TimeIndicatorTypeInfo.PROCTIME_STREAM_MARKER =>
         // attribute is proctime indicator.
         // we use a null literal and generate a timestamp when we need it.
         generateNullLiteral(TimeIndicatorTypeInfo.PROCTIME_INDICATOR)
+      case TimeIndicatorTypeInfo.PROCTIME_BATCH_MARKER =>
+        // attribute is proctime field in a batch query.
+        // it is initialized with the current time.
+        generateCurrentTimestamp()
       case idx =>
-        // get type of result field
-        val outIdx = input1Mapping.indexOf(idx)
-        val outType = returnType match {
-          case pt: PojoTypeInfo[_] => pt.getTypeAt(resultFieldNames(outIdx))
-          case ct: CompositeType[_] => ct.getTypeAt(outIdx)
-          case t: TypeInformation[_] => t
-        }
-        val inputAccess = generateInputAccess(input1, input1Term, idx)
-        // Change output type to rowtime indicator
-        if (FlinkTypeFactory.isRowtimeIndicatorType(outType) &&
-          (inputAccess.resultType == Types.LONG || inputAccess.resultType == Types.SQL_TIMESTAMP)) {
-          // This case is required for TableSources that implement DefinedRowtimeAttribute.
-          // Hard cast possible because LONG, TIMESTAMP, and ROWTIME_INDICATOR are internally
-          // represented as Long.
-          GeneratedExpression(
-            inputAccess.resultTerm,
-            inputAccess.nullTerm,
-            inputAccess.code,
-            TimeIndicatorTypeInfo.ROWTIME_INDICATOR)
-        } else {
-          inputAccess
-        }
+        generateInputAccess(input1, input1Term, idx)
     }
 
     val input2AccessExprs = input2 match {
@@ -851,7 +841,7 @@ abstract class CodeGenerator(
         val operand = operands.head
         requireTimeInterval(operand)
         generateUnaryIntervalPlusMinus(plus = true, nullCheck, operand)
-        
+
       // comparison
       case EQUALS =>
         val left = operands.head
@@ -999,6 +989,9 @@ abstract class CodeGenerator(
 
       case ScalarSqlFunctions.CONCAT_WS =>
         generateConcatWs(operands)
+
+      case StreamRecordTimestampSqlFunction =>
+        generateStreamRecordRowtimeAccess()
 
       // advanced scalar functions
       case sqlOperator: SqlOperator =>
@@ -1304,7 +1297,7 @@ abstract class CodeGenerator(
     }
   }
 
-  private[flink] def generateRowtimeAccess(): GeneratedExpression = {
+  private[flink] def generateStreamRecordRowtimeAccess(): GeneratedExpression = {
     val resultTerm = newName("result")
     val nullTerm = newName("isNull")
 
@@ -1319,7 +1312,7 @@ abstract class CodeGenerator(
         |boolean $nullTerm = false;
        """.stripMargin
 
-    GeneratedExpression(resultTerm, nullTerm, accessCode, TimeIndicatorTypeInfo.ROWTIME_INDICATOR)
+    GeneratedExpression(resultTerm, nullTerm, accessCode, Types.LONG)
   }
 
   private[flink] def generateProctimeTimestamp(): GeneratedExpression = {
@@ -1330,6 +1323,10 @@ abstract class CodeGenerator(
         |long $resultTerm = $contextTerm.timerService().currentProcessingTime();
         |""".stripMargin
     GeneratedExpression(resultTerm, NEVER_NULL, resultCode, SqlTimeTypeInfo.TIMESTAMP)
+  }
+
+  private[flink] def generateCurrentTimestamp(): GeneratedExpression = {
+    new CurrentTimePointCallGen(Types.SQL_TIMESTAMP, false).generate(this, Seq())
   }
 
   // ----------------------------------------------------------------------------------------------
