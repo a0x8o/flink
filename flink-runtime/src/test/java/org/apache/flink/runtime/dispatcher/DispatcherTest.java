@@ -35,6 +35,7 @@ import org.apache.flink.runtime.jobmaster.JobManagerServices;
 import org.apache.flink.runtime.leaderelection.TestingLeaderElectionService;
 import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.metrics.MetricRegistry;
+import org.apache.flink.runtime.metrics.MetricRegistryImpl;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerGateway;
 import org.apache.flink.runtime.rpc.FatalErrorHandler;
 import org.apache.flink.runtime.rpc.RpcService;
@@ -114,7 +115,7 @@ public class DispatcherTest extends TestLogger {
 			mock(ResourceManagerGateway.class),
 			mock(BlobServer.class),
 			heartbeatServices,
-			mock(MetricRegistry.class),
+			mock(MetricRegistryImpl.class),
 			fatalErrorHandler,
 			jobManagerRunner,
 			jobId);
@@ -174,7 +175,7 @@ public class DispatcherTest extends TestLogger {
 			mock(ResourceManagerGateway.class),
 			mock(BlobServer.class),
 			heartbeatServices,
-			mock(MetricRegistry.class),
+			mock(MetricRegistryImpl.class),
 			fatalErrorHandler,
 			mock(JobManagerRunner.class),
 			jobId);

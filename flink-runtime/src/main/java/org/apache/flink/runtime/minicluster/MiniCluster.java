@@ -34,6 +34,7 @@ import org.apache.flink.runtime.leaderelection.LeaderAddressAndId;
 import org.apache.flink.runtime.leaderretrieval.LeaderRetrievalService;
 import org.apache.flink.runtime.metrics.MetricRegistry;
 import org.apache.flink.runtime.metrics.MetricRegistryConfiguration;
+import org.apache.flink.runtime.metrics.MetricRegistryImpl;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerGateway;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerId;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerRunner;
@@ -68,7 +69,7 @@ public class MiniCluster {
 	private final MiniClusterConfiguration miniClusterConfiguration;
 
 	@GuardedBy("lock") 
-	private MetricRegistry metricRegistry;
+	private MetricRegistryImpl metricRegistry;
 
 	@GuardedBy("lock")
 	private RpcService commonRpcService;
@@ -159,6 +160,10 @@ public class MiniCluster {
 
 				// we always need the 'commonRpcService' for auxiliary calls
 				commonRpcService = createRpcService(configuration, rpcTimeout, false, null);
+
+				// TODO: Temporary hack until the metric query service is ported to the RpcEndpoint
+				final ActorSystem actorSystem = ((AkkaRpcService) commonRpcService).getActorSystem();
+				metricRegistry.startQueryService(actorSystem, null);
 
 				if (useSingleRpcService) {
 					// set that same RPC service for all JobManagers and TaskManagers
@@ -326,6 +331,12 @@ public class MiniCluster {
 			taskManagers = null;
 		}
 
+		// metrics shutdown
+		if (metricRegistry != null) {
+			metricRegistry.shutdown();
+			metricRegistry = null;
+		}
+
 		// shut down the RpcServices
 		exception = shutDownRpc(commonRpcService, exception);
 		exception = shutDownRpcs(jobManagerRpcServices, exception);
@@ -354,12 +365,6 @@ public class MiniCluster {
 				exception = firstOrSuppressed(e, exception);
 			}
 			haServices = null;
-		}
-
-		// metrics shutdown
-		if (metricRegistry != null) {
-			metricRegistry.shutdown();
-			metricRegistry = null;
 		}
 
 		// if anything went wrong, throw the first error with all the additional suppressed exceptions
@@ -464,8 +469,8 @@ public class MiniCluster {
 	 * 
 	 * @param config The configuration of the mini cluster
 	 */
-	protected MetricRegistry createMetricRegistry(Configuration config) {
-		return new MetricRegistry(MetricRegistryConfiguration.fromConfiguration(config));
+	protected MetricRegistryImpl createMetricRegistry(Configuration config) {
+		return new MetricRegistryImpl(MetricRegistryConfiguration.fromConfiguration(config));
 	}
 
 	/**

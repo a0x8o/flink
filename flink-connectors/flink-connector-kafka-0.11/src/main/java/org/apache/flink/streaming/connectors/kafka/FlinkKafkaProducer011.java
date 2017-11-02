@@ -18,6 +18,7 @@
 package org.apache.flink.streaming.connectors.kafka;
 
 import org.apache.flink.annotation.Internal;
+import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.functions.RuntimeContext;
 import org.apache.flink.api.common.state.ListState;
@@ -44,11 +45,10 @@ import org.apache.flink.streaming.util.serialization.KeyedSerializationSchemaWra
 import org.apache.flink.streaming.util.serialization.SerializationSchema;
 import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.NetUtils;
-import org.apache.flink.util.Preconditions;
-import org.apache.flink.util.SerializableObject;
 
 import org.apache.flink.shaded.guava18.com.google.common.collect.Lists;
 
+import org.apache.commons.lang3.StringUtils;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerConfig;
@@ -91,6 +91,7 @@ import static org.apache.flink.util.Preconditions.checkState;
  * will use {@link Semantic#AT_LEAST_ONCE} semantic. Before using {@link Semantic#EXACTLY_ONCE} please refer to Flink's
  * Kafka connector documentation.
  */
+@PublicEvolving
 public class FlinkKafkaProducer011<IN>
 		extends TwoPhaseCommitSinkFunction<IN, FlinkKafkaProducer011.KafkaTransactionState, FlinkKafkaProducer011.KafkaTransactionContext> {
 
@@ -133,7 +134,7 @@ public class FlinkKafkaProducer011<IN>
 		NONE
 	}
 
-	private static final Logger LOG = LoggerFactory.getLogger(FlinkKafkaProducerBase.class);
+	private static final Logger LOG = LoggerFactory.getLogger(FlinkKafkaProducer011.class);
 
 	private static final long serialVersionUID = 1L;
 
@@ -224,7 +225,7 @@ public class FlinkKafkaProducer011<IN>
 	/**
 	 * Pool of KafkaProducers objects.
 	 */
-	private transient ProducersPool producersPool = new ProducersPool();
+	private transient Optional<ProducersPool> producersPool = Optional.empty();
 
 	/**
 	 * Flag controlling whether we are writing the Flink record's timestamp into Kafka.
@@ -250,9 +251,6 @@ public class FlinkKafkaProducer011<IN>
 	/** Errors encountered in the async producer are stored here. */
 	@Nullable
 	private transient volatile Exception asyncException;
-
-	/** Lock for accessing the pending records. */
-	private final SerializableObject pendingRecordsLock = new SerializableObject();
 
 	/** Number of unacknowledged records. */
 	private final AtomicLong pendingRecords = new AtomicLong();
@@ -446,11 +444,29 @@ public class FlinkKafkaProducer011<IN>
 			throw new IllegalArgumentException(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG + " must be supplied in the producer config properties.");
 		}
 
-		if (!producerConfig.contains(ProducerConfig.TRANSACTION_TIMEOUT_CONFIG)) {
+		if (!producerConfig.containsKey(ProducerConfig.TRANSACTION_TIMEOUT_CONFIG)) {
 			long timeout = DEFAULT_KAFKA_TRANSACTION_TIMEOUT.toMilliseconds();
 			checkState(timeout < Integer.MAX_VALUE && timeout > 0, "timeout does not fit into 32 bit integer");
 			this.producerConfig.put(ProducerConfig.TRANSACTION_TIMEOUT_CONFIG, (int) timeout);
 			LOG.warn("Property [%s] not specified. Setting it to %s", ProducerConfig.TRANSACTION_TIMEOUT_CONFIG, DEFAULT_KAFKA_TRANSACTION_TIMEOUT);
+		}
+
+		// Enable transactionTimeoutWarnings to avoid silent data loss
+		// See KAFKA-6119 (affects versions 0.11.0.0 and 0.11.0.1):
+		// The KafkaProducer may not throw an exception if the transaction failed to commit
+		if (semantic == Semantic.EXACTLY_ONCE) {
+			final Object object = this.producerConfig.get(ProducerConfig.TRANSACTION_TIMEOUT_CONFIG);
+			final long transactionTimeout;
+			if (object instanceof String && StringUtils.isNumeric((String) object)) {
+				transactionTimeout = Long.parseLong((String) object);
+			} else if (object instanceof Number) {
+				transactionTimeout = ((Number) object).longValue();
+			} else {
+				throw new IllegalArgumentException(ProducerConfig.TRANSACTION_TIMEOUT_CONFIG
+					+ " must be numeric, was " + object);
+			}
+			super.setTransactionTimeout(transactionTimeout);
+			super.enableTransactionTimeoutWarnings(0.8);
 		}
 
 		this.topicPartitionsMap = new HashMap<>();
@@ -480,6 +496,22 @@ public class FlinkKafkaProducer011<IN>
 		this.logFailuresOnly = logFailuresOnly;
 	}
 
+	/**
+	 * Disables the propagation of exceptions thrown when committing presumably timed out Kafka
+	 * transactions during recovery of the job. If a Kafka transaction is timed out, a commit will
+	 * never be successful. Hence, use this feature to avoid recovery loops of the Job. Exceptions
+	 * will still be logged to inform the user that data loss might have occurred.
+	 *
+	 * <p>Note that we use {@link System#currentTimeMillis()} to track the age of a transaction.
+	 * Moreover, only exceptions thrown during the recovery are caught, i.e., the producer will
+	 * attempt at least one commit of the transaction before giving up.</p>
+	 */
+	@Override
+	public FlinkKafkaProducer011<IN> ignoreFailuresAfterTransactionTimeout() {
+		super.ignoreFailuresAfterTransactionTimeout();
+		return this;
+	}
+
 	// ----------------------------------- Utilities --------------------------
 
 	/**
@@ -487,11 +519,6 @@ public class FlinkKafkaProducer011<IN>
 	 */
 	@Override
 	public void open(Configuration configuration) throws Exception {
-		if (semantic != Semantic.NONE && !((StreamingRuntimeContext) this.getRuntimeContext()).isCheckpointingEnabled()) {
-			LOG.warn("Using {} semantic, but checkpointing is not enabled. Switching to {} semantic.", semantic, Semantic.NONE);
-			semantic = Semantic.NONE;
-		}
-
 		if (logFailuresOnly) {
 			callback = new Callback() {
 				@Override
@@ -556,6 +583,7 @@ public class FlinkKafkaProducer011<IN>
 
 	@Override
 	public void close() throws Exception {
+		final KafkaTransactionState currentTransaction = currentTransaction();
 		if (currentTransaction != null) {
 			// to avoid exceptions on aborting transactions with some pending records
 			flush(currentTransaction);
@@ -567,7 +595,7 @@ public class FlinkKafkaProducer011<IN>
 			asyncException = ExceptionUtils.firstOrSuppressed(e, asyncException);
 		}
 		try {
-			producersPool.close();
+			producersPool.ifPresent(pool -> pool.close());
 		}
 		catch (Exception e) {
 			asyncException = ExceptionUtils.firstOrSuppressed(e, asyncException);
@@ -588,6 +616,7 @@ public class FlinkKafkaProducer011<IN>
 			case AT_LEAST_ONCE:
 			case NONE:
 				// Do not create new producer on each beginTransaction() if it is not necessary
+				final KafkaTransactionState currentTransaction = currentTransaction();
 				if (currentTransaction != null && currentTransaction.producer != null) {
 					return new KafkaTransactionState(currentTransaction.producer);
 				}
@@ -598,12 +627,12 @@ public class FlinkKafkaProducer011<IN>
 	}
 
 	private FlinkKafkaProducer<byte[], byte[]> createOrGetProducerFromPool() throws Exception {
-		FlinkKafkaProducer<byte[], byte[]> producer = producersPool.poll();
+		FlinkKafkaProducer<byte[], byte[]> producer = getProducersPool().poll();
 		if (producer == null) {
 			String transactionalId = availableTransactionalIds.poll();
 			if (transactionalId == null) {
 				throw new Exception(
-					"Too many ongoing snapshots. Increase kafka producers pool size or decrease number of concurrent checktpoins.");
+					"Too many ongoing snapshots. Increase kafka producers pool size or decrease number of concurrent checkpoints.");
 			}
 			producer = initTransactionalProducer(transactionalId, true);
 			producer.initTransactions();
@@ -631,7 +660,7 @@ public class FlinkKafkaProducer011<IN>
 		switch (semantic) {
 			case EXACTLY_ONCE:
 				transaction.producer.commitTransaction();
-				producersPool.add(transaction.producer);
+				getProducersPool().add(transaction.producer);
 				break;
 			case AT_LEAST_ONCE:
 			case NONE:
@@ -645,10 +674,9 @@ public class FlinkKafkaProducer011<IN>
 	protected void recoverAndCommit(KafkaTransactionState transaction) {
 		switch (semantic) {
 			case EXACTLY_ONCE:
-				KafkaTransactionState kafkaTransaction = transaction;
 				FlinkKafkaProducer<byte[], byte[]> producer =
-					initTransactionalProducer(kafkaTransaction.transactionalId, false);
-				producer.resumeTransaction(kafkaTransaction.producerId, kafkaTransaction.epoch);
+					initTransactionalProducer(transaction.transactionalId, false);
+				producer.resumeTransaction(transaction.producerId, transaction.epoch);
 				try {
 					producer.commitTransaction();
 					producer.close();
@@ -674,11 +702,10 @@ public class FlinkKafkaProducer011<IN>
 		switch (semantic) {
 			case EXACTLY_ONCE:
 				transaction.producer.abortTransaction();
-				producersPool.add(transaction.producer);
+				getProducersPool().add(transaction.producer);
 				break;
 			case AT_LEAST_ONCE:
 			case NONE:
-				producersPool.add(transaction.producer);
 				break;
 			default:
 				throw new UnsupportedOperationException("Not implemented semantic");
@@ -731,7 +758,8 @@ public class FlinkKafkaProducer011<IN>
 		nextTransactionalIdHintState.clear();
 		// To avoid duplication only first subtask keeps track of next transactional id hint. Otherwise all of the
 		// subtasks would write exactly same information.
-		if (getRuntimeContext().getIndexOfThisSubtask() == 0 && nextTransactionalIdHint != null) {
+		if (getRuntimeContext().getIndexOfThisSubtask() == 0 && semantic == Semantic.EXACTLY_ONCE) {
+			checkState(nextTransactionalIdHint != null, "nextTransactionalIdHint must be set for EXACTLY_ONCE");
 			long nextFreeTransactionalId = nextTransactionalIdHint.nextFreeTransactionalId;
 
 			// If we scaled up, some (unknown) subtask must have created new transactional ids from scratch. In that
@@ -749,12 +777,20 @@ public class FlinkKafkaProducer011<IN>
 
 	@Override
 	public void initializeState(FunctionInitializationContext context) throws Exception {
+		if (semantic != Semantic.NONE && !((StreamingRuntimeContext) this.getRuntimeContext()).isCheckpointingEnabled()) {
+			LOG.warn("Using {} semantic, but checkpointing is not enabled. Switching to {} semantic.", semantic, Semantic.NONE);
+			semantic = Semantic.NONE;
+		}
+
 		nextTransactionalIdHintState = context.getOperatorStateStore().getUnionListState(
 			NEXT_TRANSACTIONAL_ID_HINT_DESCRIPTOR);
 
 		if (semantic != Semantic.EXACTLY_ONCE) {
 			nextTransactionalIdHint = null;
+			producersPool = Optional.empty();
 		} else {
+			producersPool = Optional.of(new ProducersPool());
+
 			ArrayList<NextTransactionalIdHint> transactionalIdHints = Lists.newArrayList(nextTransactionalIdHintState.get());
 			if (transactionalIdHints.size() > 1) {
 				throw new IllegalStateException(
@@ -795,8 +831,7 @@ public class FlinkKafkaProducer011<IN>
 	}
 
 	private Set<String> generateNewTransactionalIds() {
-		Preconditions.checkState(nextTransactionalIdHint != null,
-			"nextTransactionalIdHint must be present for EXACTLY_ONCE");
+		checkState(nextTransactionalIdHint != null, "nextTransactionalIdHint must be present for EXACTLY_ONCE");
 
 		// range of available transactional ids is:
 		// [nextFreeTransactionalId, nextFreeTransactionalId + parallelism * kafkaProducersPoolSize)
@@ -857,6 +892,7 @@ public class FlinkKafkaProducer011<IN>
 	}
 
 	int getTransactionCoordinatorId() {
+		final KafkaTransactionState currentTransaction = currentTransaction();
 		if (currentTransaction == null || currentTransaction.producer == null) {
 			throw new IllegalArgumentException();
 		}
@@ -866,6 +902,11 @@ public class FlinkKafkaProducer011<IN>
 	private FlinkKafkaProducer<byte[], byte[]> initTransactionalProducer(String transactionalId, boolean registerMetrics) {
 		producerConfig.put("transactional.id", transactionalId);
 		return initProducer(registerMetrics);
+	}
+
+	private ProducersPool getProducersPool() {
+		checkState(producersPool.isPresent(), "Trying to access uninitialized producer pool");
+		return producersPool.get();
 	}
 
 	private FlinkKafkaProducer<byte[], byte[]> initProducer(boolean registerMetrics) {
@@ -923,7 +964,7 @@ public class FlinkKafkaProducer011<IN>
 
 	private void readObject(java.io.ObjectInputStream in) throws IOException, ClassNotFoundException {
 		in.defaultReadObject();
-		producersPool = new ProducersPool();
+		producersPool = Optional.empty();
 	}
 
 	private static Properties getPropertiesFromBrokerList(String brokerList) {
