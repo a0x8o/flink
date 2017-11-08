@@ -180,16 +180,16 @@ public abstract class AbstractServerBase<REQ extends MessageBody, RESP extends M
 	 */
 	public void start() throws Throwable {
 		Preconditions.checkState(serverAddress == null,
-				"Server " + serverName + " already running @ " + serverAddress + '.');
+				"The " + serverName + " already running @ " + serverAddress + '.');
 
 		Iterator<Integer> portIterator = bindPortRange.iterator();
 		while (portIterator.hasNext() && !attemptToBind(portIterator.next())) {}
 
 		if (serverAddress != null) {
-			LOG.info("Started server {} @ {}.", serverName, serverAddress);
+			LOG.info("Started the {} @ {}.", serverName, serverAddress);
 		} else {
-			LOG.info("Unable to start server {}. All ports in provided range are occupied.", serverName);
-			throw new FlinkRuntimeException("Unable to start server " + serverName + ". All ports in provided range are occupied.");
+			LOG.info("Unable to start the {}. All ports in provided range are occupied.", serverName);
+			throw new FlinkRuntimeException("Unable to start the " + serverName + ". All ports in provided range are occupied.");
 		}
 	}
 
@@ -223,9 +223,18 @@ public abstract class AbstractServerBase<REQ extends MessageBody, RESP extends M
 				.channel(NioServerSocketChannel.class)
 				.option(ChannelOption.ALLOCATOR, bufferPool)
 				.childOption(ChannelOption.ALLOCATOR, bufferPool)
-				.childOption(ChannelOption.WRITE_BUFFER_HIGH_WATER_MARK, HIGH_WATER_MARK)
-				.childOption(ChannelOption.WRITE_BUFFER_LOW_WATER_MARK, LOW_WATER_MARK)
 				.childHandler(new ServerChannelInitializer<>(handler));
+
+		final int defaultHighWaterMark = 64 * 1024; // from DefaultChannelConfig (not exposed)
+		//noinspection ConstantConditions
+		// (ignore warning here to make this flexible in case the configuration values change)
+		if (LOW_WATER_MARK > defaultHighWaterMark) {
+			bootstrap.childOption(ChannelOption.WRITE_BUFFER_HIGH_WATER_MARK, HIGH_WATER_MARK);
+			bootstrap.childOption(ChannelOption.WRITE_BUFFER_LOW_WATER_MARK, LOW_WATER_MARK);
+		} else { // including (newHighWaterMark < defaultLowWaterMark)
+			bootstrap.childOption(ChannelOption.WRITE_BUFFER_LOW_WATER_MARK, LOW_WATER_MARK);
+			bootstrap.childOption(ChannelOption.WRITE_BUFFER_HIGH_WATER_MARK, HIGH_WATER_MARK);
+		}
 
 		try {
 			final ChannelFuture future = bootstrap.bind().sync();

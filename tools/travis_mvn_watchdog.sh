@@ -77,7 +77,7 @@ flink-filesystems/flink-hadoop-fs,\
 flink-filesystems/flink-mapr-fs,\
 flink-filesystems/flink-s3-fs-hadoop,\
 flink-filesystems/flink-s3-fs-presto,\
-flink-connectors/flink-avro,\
+flink-formats/flink-avro,\
 flink-connectors/flink-hbase,\
 flink-connectors/flink-hcatalog,\
 flink-connectors/flink-hadoop-compatibility,\
@@ -321,6 +321,22 @@ check_shaded_artifacts() {
 	if [ "$ORG_NETTY" != "0" ]; then
 		echo "=============================================================================="
 		echo "Detected '$ORG_NETTY' unshaded org.jboss.netty classes in fat jar"
+		echo "=============================================================================="
+		return 1
+	fi
+
+	ZOOKEEPER=`cat allClasses | grep '^org/apache/zookeeper' | wc -l`
+	if [ "$ZOOKEEPER" != "0" ]; then
+		echo "=============================================================================="
+		echo "Detected '$ZOOKEEPER' unshaded org.apache.zookeeper classes in fat jar"
+		echo "=============================================================================="
+		return 1
+	fi
+
+	CURATOR=`cat allClasses | grep '^org/apache/curator' | wc -l`
+	if [ "$CURATOR" != "0" ]; then
+		echo "=============================================================================="
+		echo "Detected '$CURATOR' unshaded org.apache.curator classes in fat jar"
 		echo "=============================================================================="
 		return 1
 	fi

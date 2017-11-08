@@ -316,6 +316,13 @@ public class SlotPool extends RpcEndpoint implements SlotPoolGateway {
 
 		pendingRequests.put(allocationID, new PendingRequest(allocationID, future, resources));
 
+		future.whenComplete(
+			(value, throwable) -> {
+				if (throwable != null) {
+					resourceManagerGateway.cancelSlotRequest(allocationID);
+				}
+			});
+
 		CompletableFuture<Acknowledge> rmResponse = resourceManagerGateway.requestSlot(
 			jobMasterId,
 			new SlotRequest(jobId, allocationID, resources, jobManagerAddress),
@@ -1002,11 +1009,12 @@ public class SlotPool extends RpcEndpoint implements SlotPoolGateway {
 		}
 
 		@Override
-		public CompletableFuture<SimpleSlot> allocateSlot(ScheduledUnit task, boolean allowQueued) {
-			Iterable<TaskManagerLocation> locationPreferences = 
-					task.getTaskToExecute().getVertex().getPreferredLocations();
+		public CompletableFuture<SimpleSlot> allocateSlot(
+				ScheduledUnit task,
+				boolean allowQueued,
+				Collection<TaskManagerLocation> preferredLocations) {
 
-			return gateway.allocateSlot(task, ResourceProfile.UNKNOWN, locationPreferences, timeout);
+			return gateway.allocateSlot(task, ResourceProfile.UNKNOWN, preferredLocations, timeout);
 		}
 	}
 
