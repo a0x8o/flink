@@ -67,6 +67,25 @@ class CalcITCase(
   }
 
   @Test
+  def testSelectStarFromNestedTable(): Unit = {
+
+    val env = ExecutionEnvironment.getExecutionEnvironment
+    val tEnv = TableEnvironment.getTableEnvironment(env, config)
+
+    val sqlQuery = "SELECT * FROM MyTable"
+
+    val ds = CollectionDataSets.getSmallNestedTupleDataSet(env).toTable(tEnv).as('a, 'b)
+    tEnv.registerTable("MyTable", ds)
+
+    val result = tEnv.sqlQuery(sqlQuery)
+
+    val expected = "(1,1),one\n" + "(2,2),two\n" + "(3,3),three\n"
+
+    val results = result.toDataSet[Row].collect()
+    TestBaseUtils.compareResultAsText(results.asJava, expected)
+  }
+
+  @Test
   def testSelectStarFromDataSet(): Unit = {
 
     val env = ExecutionEnvironment.getExecutionEnvironment
@@ -120,7 +139,7 @@ class CalcITCase(
     val env = ExecutionEnvironment.getExecutionEnvironment
     val tEnv = TableEnvironment.getTableEnvironment(env, config)
 
-    val sqlQuery = "SELECT _1 as a, _2 as b FROM MyTable"
+    val sqlQuery = "SELECT `1-_./Ü`, b FROM (SELECT _1 as `1-_./Ü`, _2 as b FROM MyTable)"
 
     val ds = CollectionDataSets.get3TupleDataSet(env).toTable(tEnv)
     tEnv.registerTable("MyTable", ds)

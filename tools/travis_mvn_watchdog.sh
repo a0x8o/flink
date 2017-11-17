@@ -301,6 +301,22 @@ check_shaded_artifacts() {
 		return 1
 	fi
 
+	CODEHAUS_JACKSON=`cat allClasses | grep '^org/codehaus/jackson' | wc -l`
+	if [ "$CODEHAUS_JACKSON" != "0" ]; then
+		echo "=============================================================================="
+		echo "Detected '$CODEHAUS_JACKSON' unshaded org.codehaus.jackson classes in fat jar"
+		echo "=============================================================================="
+		return 1
+	fi
+
+	FASTERXML_JACKSON=`cat allClasses | grep '^com/fasterxml/jackson' | wc -l`
+	if [ "$FASTERXML_JACKSON" != "0" ]; then
+		echo "=============================================================================="
+		echo "Detected '$FASTERXML_JACKSON' unshaded com.fasterxml.jackson classes in fat jar"
+		echo "=============================================================================="
+		return 1
+	fi
+
 	SNAPPY=`cat allClasses | grep '^org/xerial/snappy' | wc -l`
 	if [ "$SNAPPY" == "0" ]; then
 		echo "=============================================================================="
@@ -361,6 +377,47 @@ check_shaded_artifacts() {
 	if [ "$MAPR" != "0" ]; then
 		echo "=============================================================================="
 		echo "Detected '$MAPR' MapR classes in the dist jar"
+		echo "=============================================================================="
+		return 1
+	fi
+
+	return 0
+}
+
+# Check the S3 fs implementations' fat jars for illegal or missing artifacts
+check_shaded_artifacts_s3_fs() {
+	VARIANT=$1
+	jar tf flink-filesystems/flink-s3-fs-${VARIANT}/target/flink-s3-fs-${VARIANT}*.jar > allClasses
+
+	UNSHADED_CLASSES=`cat allClasses | grep -v -e '^META-INF' -e '^assets' -e "^org/apache/flink/fs/s3${VARIANT}/" | grep '\.class$'`
+	if [ "$?" == "0" ]; then
+		echo "=============================================================================="
+		echo "Detected unshaded dependencies in fat jar:"
+		echo "${UNSHADED_CLASSES}"
+		echo "=============================================================================="
+		return 1
+	fi
+
+	if [ ! `cat allClasses | grep '^META-INF/services/org\.apache\.flink\.core\.fs\.FileSystemFactory$'` ]; then
+		echo "=============================================================================="
+		echo "File does not exist: services/org.apache.flink.core.fs.FileSystemFactory"
+		echo "=============================================================================="
+	fi
+
+	UNSHADED_SERVICES=`cat allClasses | grep '^META-INF/services/' | grep -v -e '^META-INF/services/org\.apache\.flink\.core\.fs\.FileSystemFactory$' -e "^META-INF/services/org\.apache\.flink\.fs\.s3${VARIANT}\.shaded" -e '^META-INF/services/'`
+	if [ "$?" == "0" ]; then
+		echo "=============================================================================="
+		echo "Detected unshaded service files in fat jar:"
+		echo "${UNSHADED_SERVICES}"
+		echo "=============================================================================="
+		return 1
+	fi
+
+	FS_SERVICE_FILE_CLASS=`unzip -q -c flink-filesystems/flink-s3-fs-${VARIANT}/target/flink-s3-fs-${VARIANT}*.jar META-INF/services/org.apache.flink.core.fs.FileSystemFactory | grep -v -e '^#' -e '^$'`
+	if [ "${FS_SERVICE_FILE_CLASS}" != "org.apache.flink.fs.s3${VARIANT}.S3FileSystemFactory" ]; then
+		echo "=============================================================================="
+		echo "Detected wrong content in services/org.apache.flink.core.fs.FileSystemFactory:"
+		echo "${FS_SERVICE_FILE_CLASS}"
 		echo "=============================================================================="
 		return 1
 	fi
@@ -458,7 +515,17 @@ case $TEST in
 			echo "Compilation/test failure detected, skipping shaded dependency check."
 			echo "=============================================================================="
 		fi
-
+	;;
+	(connectors)
+		if [ $EXIT_CODE == 0 ]; then
+			check_shaded_artifacts_s3_fs hadoop
+			check_shaded_artifacts_s3_fs presto
+			EXIT_CODE=$?
+		else
+			echo "=============================================================================="
+			echo "Compilation/test failure detected, skipping shaded dependency check."
+			echo "=============================================================================="
+		fi
 	;;
 esac
 
@@ -479,19 +546,31 @@ case $TEST in
 			printf "\n==============================================================================\n"
 			printf "Running Wordcount end-to-end test\n"
 			printf "==============================================================================\n"
-			test-infra/end-to-end-test/test_batch_wordcount.sh build-target cluster
+			FLINK_DIR=build-target CLUSTER_MODE=cluster test-infra/end-to-end-test/test_batch_wordcount.sh
 			EXIT_CODE=$(($EXIT_CODE+$?))
 
 			printf "\n==============================================================================\n"
 			printf "Running Kafka end-to-end test\n"
 			printf "==============================================================================\n"
-			test-infra/end-to-end-test/test_streaming_kafka010.sh build-target cluster
+			FLINK_DIR=build-target CLUSTER_MODE=cluster test-infra/end-to-end-test/test_streaming_kafka010.sh
 			EXIT_CODE=$(($EXIT_CODE+$?))
 
 			printf "\n==============================================================================\n"
 			printf "Running class loading end-to-end test\n"
 			printf "==============================================================================\n"
-			test-infra/end-to-end-test/test_streaming_classloader.sh build-target cluster
+			FLINK_DIR=build-target CLUSTER_MODE=cluster test-infra/end-to-end-test/test_streaming_classloader.sh
+			EXIT_CODE=$(($EXIT_CODE+$?))
+
+			printf "\n==============================================================================\n"
+			printf "Running Shaded Hadoop S3A end-to-end test\n"
+			printf "==============================================================================\n"
+			FLINK_DIR=build-target CLUSTER_MODE=cluster test-infra/end-to-end-test/test_shaded_hadoop_s3a.sh
+			EXIT_CODE=$(($EXIT_CODE+$?))
+
+			printf "\n==============================================================================\n"
+			printf "Running Shaded Presto S3 end-to-end test\n"
+			printf "==============================================================================\n"
+			FLINK_DIR=build-target CLUSTER_MODE=cluster test-infra/end-to-end-test/test_shaded_presto_s3.sh
 			EXIT_CODE=$(($EXIT_CODE+$?))
 		else
 			printf "\n==============================================================================\n"

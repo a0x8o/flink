@@ -34,26 +34,19 @@ public class Kafka09JsonTableSinkTest extends KafkaTableSinkTestBase {
 	protected KafkaTableSink createTableSink(
 			String topic,
 			Properties properties,
-			FlinkKafkaPartitioner<Row> partitioner,
-			final FlinkKafkaProducerBase<Row> kafkaProducer) {
+			FlinkKafkaPartitioner<Row> partitioner) {
 
-		return new Kafka09JsonTableSink(topic, properties, partitioner) {
-			@Override
-			protected FlinkKafkaProducerBase<Row> createKafkaProducer(
-					String topic,
-					Properties properties,
-					SerializationSchema<Row> serializationSchema,
-					FlinkKafkaPartitioner<Row> partitioner) {
-
-				return kafkaProducer;
-			}
-		};
+		return new Kafka09JsonTableSink(topic, properties, partitioner);
 	}
 
 	@Override
-	@SuppressWarnings("unchecked")
-	protected SerializationSchema<Row> getSerializationSchema() {
-		return new JsonRowSerializationSchema(FIELD_NAMES);
+	protected Class<? extends SerializationSchema<Row>> getSerializationSchemaClass() {
+		return JsonRowSerializationSchema.class;
+	}
+
+	@Override
+	protected Class<? extends FlinkKafkaProducerBase> getProducerClass() {
+		return FlinkKafkaProducer09.class;
 	}
 }
 

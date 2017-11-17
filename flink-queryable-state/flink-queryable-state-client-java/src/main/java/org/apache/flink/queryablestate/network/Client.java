@@ -19,6 +19,7 @@
 package org.apache.flink.queryablestate.network;
 
 import org.apache.flink.annotation.Internal;
+import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.queryablestate.FutureUtils;
 import org.apache.flink.queryablestate.network.messages.MessageBody;
 import org.apache.flink.queryablestate.network.messages.MessageSerializer;
@@ -133,7 +134,7 @@ public class Client<REQ extends MessageBody, RESP extends MessageBody> {
 
 	public CompletableFuture<RESP> sendRequest(final InetSocketAddress serverAddress, final REQ request) {
 		if (shutDown.get()) {
-			return FutureUtils.getFailedFuture(new IllegalStateException("Shut down"));
+			return FutureUtils.getFailedFuture(new IllegalStateException(clientName + " is already shut down."));
 		}
 
 		EstablishedConnection connection = establishedConnections.get(serverAddress);
@@ -282,12 +283,14 @@ public class Client<REQ extends MessageBody, RESP extends MessageBody> {
 					while (!queuedRequests.isEmpty()) {
 						final PendingRequest pending = queuedRequests.poll();
 
-						established.sendRequest(pending.request)
-								.thenAccept(resp -> pending.complete(resp))
-								.exceptionally(throwable -> {
-									pending.completeExceptionally(throwable);
-									return null;
-						});
+						established.sendRequest(pending.request).whenComplete(
+								(response, throwable) -> {
+									if (throwable != null) {
+										pending.completeExceptionally(throwable);
+									} else {
+										pending.complete(response);
+									}
+								});
 					}
 
 					// Publish the channel for the general public
@@ -532,5 +535,10 @@ public class Client<REQ extends MessageBody, RESP extends MessageBody> {
 				return timestampInNanos;
 			}
 		}
+	}
+
+	@VisibleForTesting
+	public boolean isEventGroupShutdown() {
+		return bootstrap == null || bootstrap.group().isTerminated();
 	}
 }

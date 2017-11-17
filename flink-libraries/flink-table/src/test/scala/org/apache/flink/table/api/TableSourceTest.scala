@@ -18,12 +18,17 @@
 
 package org.apache.flink.table.api
 
+import _root_.java.sql.{Date, Time, Timestamp}
+
+import org.apache.flink.api.common.typeinfo.{BasicTypeInfo, SqlTimeTypeInfo, TypeInformation}
+import org.apache.flink.api.java.typeutils.RowTypeInfo
 import org.apache.flink.table.api.scala._
 import org.apache.flink.table.expressions.utils._
 import org.apache.flink.table.runtime.utils.CommonTestData
 import org.apache.flink.table.sources.{CsvTableSource, TableSource}
 import org.apache.flink.table.utils.TableTestUtil._
 import org.apache.flink.table.utils.{TableTestBase, TestFilterableTableSource}
+import org.apache.flink.types.Row
 import org.junit.{Assert, Test}
 
 class TableSourceTest extends TableTestBase {
@@ -219,7 +224,8 @@ class TableSourceTest extends TableTestBase {
     val result = tableEnv
         .scan(tableName)
         .select('price, 'id, 'amount)
-        .where("amount > 2 && (amount < 32 || amount.cast(LONG) > 10)") // cast can not be converted
+        .where("amount > 2 && id < 1.2 && " +
+          "(amount < 32 || amount.cast(LONG) > 10)") // cast can not be converted
 
     val expected = unaryNode(
       "DataSetCalc",
@@ -228,7 +234,7 @@ class TableSourceTest extends TableTestBase {
         Array("price", "id", "amount"),
         "'amount > 2"),
       term("select", "price", "id", "amount"),
-      term("where", "OR(<(amount, 32), >(CAST(amount), 10))")
+      term("where", "AND(<(id, 1.2E0), OR(<(amount, 32), >(CAST(amount), 10)))")
     )
     util.verifyTable(result, expected)
   }
@@ -374,12 +380,65 @@ class TableSourceTest extends TableTestBase {
     Assert.assertEquals(source1, source2)
   }
 
+  @Test
+  def testTimeLiteralExpressionPushdown(): Unit = {
+    val (tableSource, tableName) = filterableTableSourceTimeTypes
+    val util = batchTestUtil()
+    val tableEnv = util.tableEnv
+
+    tableEnv.registerTableSource(tableName, tableSource)
+
+    val sqlQuery =
+      s"""
+        |SELECT id from $tableName
+        |WHERE
+        |  tv > TIME '14:25:02' AND
+        |  dv > DATE '2017-02-03' AND
+        |  tsv > TIMESTAMP '2017-02-03 14:25:02.000'
+      """.stripMargin
+
+    val result = tableEnv.sqlQuery(sqlQuery)
+
+    val expectedFilter =
+        "'tv > 14:25:02.toTime && " +
+        "'dv > 2017-02-03.toDate && " +
+        "'tsv > 2017-02-03 14:25:02.0.toTimestamp"
+    val expected = batchFilterableSourceTableNode(
+      tableName,
+      Array("id"),
+      expectedFilter
+    )
+    util.verifyTable(result, expected)
+  }
+
   // utils
 
   def filterableTableSource:(TableSource[_], String) = {
-    val tableSource = new TestFilterableTableSource
+    val tableSource = TestFilterableTableSource()
     (tableSource, "filterableTable")
   }
+
+  def filterableTableSourceTimeTypes:(TableSource[_], String) = {
+    val rowTypeInfo = new RowTypeInfo(
+      Array[TypeInformation[_]](
+        BasicTypeInfo.INT_TYPE_INFO,
+        SqlTimeTypeInfo.DATE,
+        SqlTimeTypeInfo.TIME,
+        SqlTimeTypeInfo.TIMESTAMP
+      ),
+      Array("id", "dv", "tv", "tsv")
+    )
+
+    val row = new Row(4)
+    row.setField(0, 1)
+    row.setField(1, Date.valueOf("2017-01-23"))
+    row.setField(2, Time.valueOf("14:23:02"))
+    row.setField(3, Timestamp.valueOf("2017-01-24 12:45:01.234"))
+
+    val tableSource = TestFilterableTableSource(rowTypeInfo, Seq(row), Set("dv", "tv", "tsv"))
+    (tableSource, "filterableTable")
+  }
+
 
   def csvTable: (CsvTableSource, String) = {
     val csvTable = CommonTestData.getCsvTableSource
@@ -414,4 +473,5 @@ class TableSourceTest extends TableTestBase {
     "StreamTableSourceScan(" +
       s"table=[[$sourceName]], fields=[${fields.mkString(", ")}], source=[filter=[$exp]])"
   }
+
 }

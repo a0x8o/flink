@@ -17,15 +17,27 @@
 # limitations under the License.
 ################################################################################
 
-set -e
 set -o pipefail
 
-export FLINK_DIR="$1"
-export CLUSTER_MODE="$2"
+if [[ -z $FLINK_DIR ]]; then
+    echo "FLINK_DIR needs to point to a Flink distribution directory"
+    exit 1
+fi
+if [[ -z $CLUSTER_MODE ]]; then
+    echo "CLUSTER_MODE needs to be one of local or cluster."
+    exit 1
+fi
 
 export PASS=1
 
 echo "Flink dist directory: $FLINK_DIR"
+
+TEST_ROOT=`pwd`
+TEST_INFRA_DIR="$0"
+TEST_INFRA_DIR=`dirname "$TEST_INFRA_DIR"`
+cd $TEST_INFRA_DIR
+TEST_INFRA_DIR=`pwd`
+cd $TEST_ROOT
 
 # used to randomize created directories
 export TEST_DATA_DIR=$TEST_INFRA_DIR/temp-test-directory-$(date +%S%N)
@@ -73,6 +85,8 @@ function stop_cluster {
       | grep -v "AskTimeoutException" \
       | grep -v "WARN  akka.remote.transport.netty.NettyTransport" \
       | grep -v  "WARN  org.apache.flink.shaded.akka.org.jboss.netty.channel.DefaultChannelPipeline" \
+      | grep -v "jvm-exit-on-fatal-error" \
+      | grep -v '^INFO:.*AWSErrorCode=\[400 Bad Request\].*ServiceEndpoint=\[https://.*\.s3\.amazonaws\.com\].*RequestType=\[HeadBucketRequest\]' \
       | grep -iq "error"; then
     echo "Found error in log files:"
     cat $FLINK_DIR/log/*
@@ -86,20 +100,18 @@ function stop_cluster {
       | grep -v "AskTimeoutException" \
       | grep -v "WARN  akka.remote.transport.netty.NettyTransport" \
       | grep -v  "WARN  org.apache.flink.shaded.akka.org.jboss.netty.channel.DefaultChannelPipeline" \
+      | grep -v '^INFO:.*AWSErrorCode=\[400 Bad Request\].*ServiceEndpoint=\[https://.*\.s3\.amazonaws\.com\].*RequestType=\[HeadBucketRequest\]' \
       | grep -iq "exception"; then
     echo "Found exception in log files:"
     cat $FLINK_DIR/log/*
     PASS=""
   fi
 
-  for f in `ls $FLINK_DIR/log/*.out`
-  do
-    if [[ -s $f ]]; then
-      echo "Found non-empty file $f"
-      cat $f
-      PASS=""
-    fi
-  done
+  if grep -ri "." $FLINK_DIR/log/*.out > /dev/null; then
+    echo "Found non-empty .out files:"
+    cat $FLINK_DIR/log/*.out
+    PASS=""
+  fi
 
   rm $FLINK_DIR/log/*
 }
@@ -132,6 +144,47 @@ function check_all_pass {
   echo "All tests PASS"
 }
 
-function clean_data_dir {
-  rm -r $TEST_DATA_DIR
+function s3_put {
+  local_file=$1
+  bucket=$2
+  s3_file=$3
+  resource="/${bucket}/${s3_file}"
+  contentType="application/octet-stream"
+  dateValue=`date -R`
+  stringToSign="PUT\n\n${contentType}\n${dateValue}\n${resource}"
+  s3Key=$ARTIFACTS_AWS_ACCESS_KEY
+  s3Secret=$ARTIFACTS_AWS_SECRET_KEY
+  signature=`echo -en ${stringToSign} | openssl sha1 -hmac ${s3Secret} -binary | base64`
+  curl -X PUT -T "${local_file}" \
+    -H "Host: ${bucket}.s3.amazonaws.com" \
+    -H "Date: ${dateValue}" \
+    -H "Content-Type: ${contentType}" \
+    -H "Authorization: AWS ${s3Key}:${signature}" \
+    https://${bucket}.s3.amazonaws.com/${s3_file}
 }
+
+function s3_delete {
+  bucket=$1
+  s3_file=$2
+  resource="/${bucket}/${s3_file}"
+  contentType="application/octet-stream"
+  dateValue=`date -R`
+  stringToSign="DELETE\n\n${contentType}\n${dateValue}\n${resource}"
+  s3Key=$ARTIFACTS_AWS_ACCESS_KEY
+  s3Secret=$ARTIFACTS_AWS_SECRET_KEY
+  signature=`echo -en ${stringToSign} | openssl sha1 -hmac ${s3Secret} -binary | base64`
+  curl -X DELETE \
+    -H "Host: ${bucket}.s3.amazonaws.com" \
+    -H "Date: ${dateValue}" \
+    -H "Content-Type: ${contentType}" \
+    -H "Authorization: AWS ${s3Key}:${signature}" \
+    https://${bucket}.s3.amazonaws.com/${s3_file}
+}
+
+# make sure to clean up even in case of failures
+function cleanup {
+  stop_cluster
+  rm -r $TEST_DATA_DIR
+  check_all_pass
+}
+trap cleanup EXIT
