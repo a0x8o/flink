@@ -50,6 +50,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.UUID;
@@ -91,14 +92,14 @@ public class PythonPlanBinder {
 	 * @throws Exception
 	 */
 	public static void main(String[] args) throws Exception {
-		if (args.length < 2) {
-			System.out.println("Usage: ./bin/pyflink<2/3>.[sh/bat] <pathToScript>[ <pathToPackage1>[ <pathToPackageX]][ - <parameter1>[ <parameterX>]]");
-			return;
-		}
-
 		Configuration globalConfig = GlobalConfiguration.loadConfiguration();
 		PythonPlanBinder binder = new PythonPlanBinder(globalConfig);
-		binder.runPlan(args);
+		try {
+			binder.runPlan(args);
+		} catch (Exception e) {
+			System.out.println("Failed to run plan: " + e.getMessage());
+			LOG.error("Failed to run plan.", e);
+		}
 	}
 
 	public PythonPlanBinder(Configuration globalConfig) {
@@ -126,6 +127,10 @@ public class PythonPlanBinder {
 	}
 
 	void runPlan(String[] args) throws Exception {
+		if (args.length < 1) {
+			throw new IllegalArgumentException("Missing script file argument. Usage: ./bin/pyflink.[sh/bat] <pathToScript>[ <pathToPackage1>[ <pathToPackageX]][ - <parameter1>[ <parameterX>]]");
+		}
+
 		int split = 0;
 		for (int x = 0; x < args.length; x++) {
 			if (args[x].equals("-")) {
@@ -147,11 +152,22 @@ public class PythonPlanBinder {
 
 			operatorConfig.setString(PLAN_ARGUMENTS_KEY, planArguments);
 
+			Path planPath = new Path(planFile);
+			if (!FileSystem.getUnguardedFileSystem(planPath.toUri()).exists(planPath)) {
+				throw new FileNotFoundException("Plan file " + planFile + " does not exist.");
+			}
+			for (String file : filesToCopy) {
+				Path filePath = new Path(file);
+				if (!FileSystem.getUnguardedFileSystem(filePath.toUri()).exists(filePath)) {
+					throw new FileNotFoundException("Additional file " + file + " does not exist.");
+				}
+			}
+
 			// copy flink library, plan file and additional files to temporary location
 			Path tmpPlanFilesPath = new Path(tmpPlanFilesDir);
 			deleteIfExists(tmpPlanFilesPath);
 			FileCache.copy(new Path(pythonLibraryPath), tmpPlanFilesPath, false);
-			copyFile(new Path(planFile), tmpPlanFilesPath, FLINK_PYTHON_PLAN_NAME);
+			copyFile(planPath, tmpPlanFilesPath, FLINK_PYTHON_PLAN_NAME);
 			for (String file : filesToCopy) {
 				Path source = new Path(file);
 				copyFile(source, tmpPlanFilesPath, source.getName());
