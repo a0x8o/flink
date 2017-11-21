@@ -17,16 +17,18 @@
  */
 package org.apache.flink.table.codegen
 
-import java.lang.reflect.{Modifier, ParameterizedType}
+import java.lang.reflect.Modifier
 import java.lang.{Iterable => JIterable}
 
+import org.apache.calcite.rex.RexLiteral
 import org.apache.commons.codec.binary.Base64
 import org.apache.flink.api.common.state.{State, StateDescriptor}
 import org.apache.flink.api.common.typeinfo.TypeInformation
+import org.apache.flink.api.java.typeutils.TypeExtractionUtils.{extractTypeArgument, getRawClass}
 import org.apache.flink.table.api.TableConfig
 import org.apache.flink.table.api.dataview._
-import org.apache.flink.table.codegen.Indenter.toISC
 import org.apache.flink.table.codegen.CodeGenUtils.{newName, reflectiveFieldWriteAccess}
+import org.apache.flink.table.codegen.Indenter.toISC
 import org.apache.flink.table.functions.AggregateFunction
 import org.apache.flink.table.functions.utils.UserDefinedFunctionUtils
 import org.apache.flink.table.functions.utils.UserDefinedFunctionUtils.{getUserDefinedMethod, signatureToString}
@@ -41,11 +43,13 @@ import scala.collection.mutable
   * @param config configuration that determines runtime behavior
   * @param nullableInput input(s) can be null.
   * @param input type information about the input of the Function
+  * @param constants constant expressions that act like a second input in the parameter indices.
   */
 class AggregationCodeGenerator(
     config: TableConfig,
     nullableInput: Boolean,
-    input: TypeInformation[_ <: Any])
+    input: TypeInformation[_ <: Any],
+    constants: Option[Seq[RexLiteral]])
   extends CodeGenerator(config, nullableInput, input) {
 
   // set of statements for cleanup dataview that will be added only once
@@ -75,31 +79,29 @@ class AggregationCodeGenerator(
     * @param fwdMapping  The mapping of input fields to output fields
     * @param mergeMapping An optional mapping to specify the accumulators to merge. If not set, we
     *                     assume that both rows have the accumulators at the same position.
-    * @param constantFlags An optional parameter to define where to set constant boolean flags in
-    *                      the output row.
     * @param outputArity The number of fields in the output row.
     * @param needRetract a flag to indicate if the aggregate needs the retract method
     * @param needMerge a flag to indicate if the aggregate needs the merge method
     * @param needReset a flag to indicate if the aggregate needs the resetAccumulator method
+    * @param accConfig Data view specification for accumulators
     *
     * @return A GeneratedAggregationsFunction
     */
   def generateAggregations(
-    name: String,
-    physicalInputTypes: Seq[TypeInformation[_]],
-    aggregates: Array[AggregateFunction[_ <: Any, _ <: Any]],
-    aggFields: Array[Array[Int]],
-    aggMapping: Array[Int],
-    partialResults: Boolean,
-    fwdMapping: Array[Int],
-    mergeMapping: Option[Array[Int]],
-    constantFlags: Option[Array[(Int, Boolean)]],
-    outputArity: Int,
-    needRetract: Boolean,
-    needMerge: Boolean,
-    needReset: Boolean,
-    accConfig: Option[Array[Seq[DataViewSpec[_]]]])
-  : GeneratedAggregationsFunction = {
+      name: String,
+      physicalInputTypes: Seq[TypeInformation[_]],
+      aggregates: Array[AggregateFunction[_ <: Any, _ <: Any]],
+      aggFields: Array[Array[Int]],
+      aggMapping: Array[Int],
+      partialResults: Boolean,
+      fwdMapping: Array[Int],
+      mergeMapping: Option[Array[Int]],
+      outputArity: Int,
+      needRetract: Boolean,
+      needMerge: Boolean,
+      needReset: Boolean,
+      accConfig: Option[Array[Seq[DataViewSpec[_]]]])
+    : GeneratedAggregationsFunction = {
 
     // get unique function name
     val funcName = newName(name)
@@ -112,17 +114,41 @@ class AggregationCodeGenerator(
     }
     val accTypes = accTypeClasses.map(_.getCanonicalName)
 
+    // create constants
+    val constantExprs = constants.map(_.map(generateExpression)).getOrElse(Seq())
+    val constantTypes = constantExprs.map(_.resultType)
+    val constantFields = constantExprs.map(addReusableBoxedConstant)
+
     // get parameter lists for aggregation functions
     val parametersCode = aggFields.map { inFields =>
-      val fields = for (f <- inFields) yield
-        s"(${CodeGenUtils.boxedTypeTermForTypeInfo(physicalInputTypes(f))}) input.getField($f)"
+      val fields = inFields.map { f =>
+        // index to constant
+        if (f >= physicalInputTypes.length) {
+          constantFields(f - physicalInputTypes.length)
+        }
+        // index to input field
+        else {
+          s"(${CodeGenUtils.boxedTypeTermForTypeInfo(physicalInputTypes(f))}) input.getField($f)"
+        }
+      }
+
       fields.mkString(", ")
     }
 
     // get method signatures
     val classes = UserDefinedFunctionUtils.typeInfoToClass(physicalInputTypes)
+    val constantClasses = UserDefinedFunctionUtils.typeInfoToClass(constantTypes)
     val methodSignaturesList = aggFields.map { inFields =>
-      inFields.map(classes(_))
+      inFields.map { f =>
+        // index to constant
+        if (f >= physicalInputTypes.length) {
+          constantClasses(f - physicalInputTypes.length)
+        }
+        // index to input field
+        else {
+          classes(f)
+        }
+      }
     }
 
     // initialize and create data views
@@ -150,7 +176,7 @@ class AggregationCodeGenerator(
         }
 
         if (needMerge) {
-          val methods =
+          val method =
             getUserDefinedMethod(a, "merge", Array(accTypeClasses(i), classOf[JIterable[Any]]))
             .getOrElse(
               throw new CodeGenException(
@@ -158,17 +184,14 @@ class AggregationCodeGenerator(
                   s"${a.getClass.getCanonicalName}'.")
             )
 
-          var iterableTypeClass = methods.getGenericParameterTypes.apply(1)
-                                  .asInstanceOf[ParameterizedType].getActualTypeArguments.apply(0)
-          // further extract iterableTypeClass if the accumulator has generic type
-          iterableTypeClass match {
-            case impl: ParameterizedType => iterableTypeClass = impl.getRawType
-            case _ =>
-          }
+          // use the TypeExtractionUtils here to support nested GenericArrayTypes and
+          // other complex types
+          val iterableGenericType = extractTypeArgument(method.getGenericParameterTypes()(1), 0)
+          val iterableTypeClass = getRawClass(iterableGenericType)
 
           if (iterableTypeClass != accTypeClasses(i)) {
             throw new CodeGenException(
-              s"merge method in AggregateFunction ${a.getClass.getCanonicalName} does not have " +
+              s"Merge method in AggregateFunction ${a.getClass.getCanonicalName} does not have " +
                 s"the correct Iterable type. Actually: ${iterableTypeClass.toString}. " +
                 s"Expected: ${accTypeClasses(i).toString}")
           }
@@ -219,7 +242,7 @@ class AggregationCodeGenerator(
             val dataViewFieldTerm = createDataViewTerm(i, dataViewField.getName)
             val field =
               s"""
-                 |    transient $dataViewTypeTerm $dataViewFieldTerm = null;
+                 |    final $dataViewTypeTerm $dataViewFieldTerm;
                  |""".stripMargin
             reusableMemberStatements.add(field)
 
@@ -440,30 +463,6 @@ class AggregationCodeGenerator(
          |  }""".stripMargin
     }
 
-    def genSetConstantFlags: String = {
-
-      val sig: String =
-        j"""
-           |  public final void setConstantFlags(org.apache.flink.types.Row output)
-           |    """.stripMargin
-
-      val setFlags: String = if (constantFlags.isDefined) {
-        {
-          for (cf <- constantFlags.get) yield {
-            j"""
-               |    output.setField(${cf._1}, ${if (cf._2) "true" else "false"});"""
-            .stripMargin
-          }
-        }.mkString("\n")
-      } else {
-        ""
-      }
-
-      j"""$sig {
-         |$setFlags
-         |  }""".stripMargin
-    }
-
     def genCreateOutputRow: String = {
       j"""
          |  public final org.apache.flink.types.Row createOutputRow() {
@@ -557,7 +556,6 @@ class AggregationCodeGenerator(
       genRetract,
       genCreateAccumulators,
       genSetForwardedFields,
-      genSetConstantFlags,
       genCreateOutputRow,
       genMergeAccumulatorsPair,
       genResetAccumulator).mkString("\n")

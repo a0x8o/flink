@@ -80,7 +80,7 @@ In order to start an HA-cluster add the following configuration keys to `conf/fl
 
 - **ZooKeeper cluster-id** (recommended): The *cluster-id ZooKeeper node*, under which all required coordination data for a cluster is placed.
 
-  <pre>high-availability.zookeeper.path.cluster-id: /default_ns # important: customize per cluster</pre>
+  <pre>high-availability.cluster-id: /default_ns # important: customize per cluster</pre>
 
   **Important**: You should not set this value manually when runnig a YARN
   cluster, a per-job YARN session, or on another cluster manager. In those
@@ -108,7 +108,7 @@ After configuring the masters and the ZooKeeper quorum, you can use the provided
 high-availability: zookeeper
 high-availability.zookeeper.quorum: localhost:2181
 high-availability.zookeeper.path.root: /flink
-high-availability.zookeeper.path.cluster-id: /cluster_one # important: customize per cluster
+high-availability.cluster-id: /cluster_one # important: customize per cluster
 high-availability.zookeeper.storageDir: hdfs:///flink/recovery</pre>
 
 2. **Configure masters** in `conf/masters`:
@@ -174,7 +174,7 @@ In addition to the HA configuration ([see above](#configuration)), you have to c
 
 <pre>yarn.application-attempts: 10</pre>
 
-This means that the application can be restarted 10 times before YARN fails the application. It's important to note that `yarn.resourcemanager.am.max-attempts` is an upper bound for the application restarts. Therfore, the number of application attempts set within Flink cannot exceed the YARN cluster setting with which YARN was started.
+This means that the application can be restarted 9 times for failed attempts before YARN fails the application (9 retries + 1 initial attempt). Additional restarts can be performed by YARN if required by YARN operations: Preemption, node hardware failures or reboots, or NodeManager resyncs. These restarts are not counted against `yarn.application-attempts`, see <a href="http://johnjianfang.blogspot.de/2015/04/the-number-of-maximum-attempts-of-yarn.html">Jian Fang's blog post</a>. It's important to note that `yarn.resourcemanager.am.max-attempts` is an upper bound for the application restarts. Therefore, the number of application attempts set within Flink cannot exceed the YARN cluster setting with which YARN was started.
 
 #### Container Shutdown Behaviour
 
@@ -237,3 +237,5 @@ server.Y=addressY:peerPort:leaderPort
 </pre>
 
 The script `bin/start-zookeeper-quorum.sh` will start a ZooKeeper server on each of the configured hosts. The started processes start ZooKeeper servers via a Flink wrapper, which reads the configuration from `conf/zoo.cfg` and makes sure to set some required configuration values for convenience. In production setups, it is recommended to manage your own ZooKeeper installation.
+
+{% top %}

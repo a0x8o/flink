@@ -30,7 +30,7 @@ import org.apache.flink.runtime.webmonitor.history.ArchivedJson;
 import org.apache.flink.runtime.webmonitor.history.JsonArchivist;
 import org.apache.flink.util.FlinkException;
 
-import com.fasterxml.jackson.core.JsonGenerator;
+import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.core.JsonGenerator;
 
 import javax.annotation.Nullable;
 
@@ -60,7 +60,7 @@ public class JobDetailsHandler extends AbstractExecutionGraphRequestHandler {
 
 	private final MetricFetcher fetcher;
 
-	public JobDetailsHandler(ExecutionGraphHolder executionGraphHolder, Executor executor, MetricFetcher fetcher) {
+	public JobDetailsHandler(ExecutionGraphCache executionGraphHolder, Executor executor, MetricFetcher fetcher) {
 		super(executionGraphHolder, executor);
 		this.fetcher = fetcher;
 	}

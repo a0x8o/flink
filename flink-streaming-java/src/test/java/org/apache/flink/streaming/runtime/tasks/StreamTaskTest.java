@@ -27,8 +27,9 @@ import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.CoreOptions;
 import org.apache.flink.core.fs.CloseableRegistry;
 import org.apache.flink.core.testutils.OneShotLatch;
-import org.apache.flink.runtime.blob.BlobCache;
-import org.apache.flink.runtime.blob.BlobKey;
+import org.apache.flink.runtime.blob.BlobCacheService;
+import org.apache.flink.runtime.blob.PermanentBlobCache;
+import org.apache.flink.runtime.blob.TransientBlobCache;
 import org.apache.flink.runtime.broadcast.BroadcastVariableManager;
 import org.apache.flink.runtime.checkpoint.CheckpointMetaData;
 import org.apache.flink.runtime.checkpoint.CheckpointMetrics;
@@ -108,7 +109,6 @@ import org.powermock.modules.junit4.PowerMockRunner;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.ObjectInputStream;
-import java.net.URL;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -344,10 +344,20 @@ public class StreamTaskTest extends TestLogger {
 		Whitebox.setInternalState(streamTask, "cancelables", new CloseableRegistry());
 		Whitebox.setInternalState(streamTask, "configuration", new StreamConfig(new Configuration()));
 
+		CheckpointExceptionHandlerFactory checkpointExceptionHandlerFactory = new CheckpointExceptionHandlerFactory();
+		CheckpointExceptionHandler checkpointExceptionHandler =
+			checkpointExceptionHandlerFactory.createCheckpointExceptionHandler(true, mockEnvironment);
+		Whitebox.setInternalState(streamTask, "synchronousCheckpointExceptionHandler", checkpointExceptionHandler);
+
+		StreamTask.AsyncCheckpointExceptionHandler asyncCheckpointExceptionHandler =
+			new StreamTask.AsyncCheckpointExceptionHandler(streamTask);
+		Whitebox.setInternalState(streamTask, "asynchronousCheckpointExceptionHandler", asyncCheckpointExceptionHandler);
+
 		try {
-			streamTask.triggerCheckpoint(checkpointMetaData, CheckpointOptions.forFullCheckpoint());
+			streamTask.triggerCheckpoint(checkpointMetaData, CheckpointOptions.forCheckpoint());
 			fail("Expected test exception here.");
 		} catch (Exception e) {
+			e.printStackTrace();
 			assertEquals(testException, e.getCause());
 		}
 
@@ -412,7 +422,16 @@ public class StreamTaskTest extends TestLogger {
 		Whitebox.setInternalState(streamTask, "asyncOperationsThreadPool", new DirectExecutorService());
 		Whitebox.setInternalState(streamTask, "configuration", new StreamConfig(new Configuration()));
 
-		streamTask.triggerCheckpoint(checkpointMetaData, CheckpointOptions.forFullCheckpoint());
+		CheckpointExceptionHandlerFactory checkpointExceptionHandlerFactory = new CheckpointExceptionHandlerFactory();
+		CheckpointExceptionHandler checkpointExceptionHandler =
+			checkpointExceptionHandlerFactory.createCheckpointExceptionHandler(true, mockEnvironment);
+		Whitebox.setInternalState(streamTask, "synchronousCheckpointExceptionHandler", checkpointExceptionHandler);
+
+		StreamTask.AsyncCheckpointExceptionHandler asyncCheckpointExceptionHandler =
+			new StreamTask.AsyncCheckpointExceptionHandler(streamTask);
+		Whitebox.setInternalState(streamTask, "asynchronousCheckpointExceptionHandler", asyncCheckpointExceptionHandler);
+
+		streamTask.triggerCheckpoint(checkpointMetaData, CheckpointOptions.forCheckpoint());
 
 		verify(streamTask).handleAsyncException(anyString(), any(Throwable.class));
 
@@ -498,7 +517,7 @@ public class StreamTaskTest extends TestLogger {
 		Whitebox.setInternalState(streamTask, "configuration", new StreamConfig(new Configuration()));
 		Whitebox.setInternalState(streamTask, "stateBackend", mockStateBackend);
 
-		streamTask.triggerCheckpoint(checkpointMetaData, CheckpointOptions.forFullCheckpoint());
+		streamTask.triggerCheckpoint(checkpointMetaData, CheckpointOptions.forCheckpoint());
 
 		acknowledgeCheckpointLatch.await();
 
@@ -625,7 +644,7 @@ public class StreamTaskTest extends TestLogger {
 		Whitebox.setInternalState(streamTask, "configuration", new StreamConfig(new Configuration()));
 		Whitebox.setInternalState(streamTask, "stateBackend", mockStateBackend);
 
-		streamTask.triggerCheckpoint(checkpointMetaData, CheckpointOptions.forFullCheckpoint());
+		streamTask.triggerCheckpoint(checkpointMetaData, CheckpointOptions.forCheckpoint());
 
 		createSubtask.await();
 
@@ -714,7 +733,7 @@ public class StreamTaskTest extends TestLogger {
 		Whitebox.setInternalState(streamTask, "configuration", new StreamConfig(new Configuration()));
 		Whitebox.setInternalState(streamTask, "asyncOperationsThreadPool", Executors.newCachedThreadPool());
 
-		streamTask.triggerCheckpoint(checkpointMetaData, CheckpointOptions.forFullCheckpoint());
+		streamTask.triggerCheckpoint(checkpointMetaData, CheckpointOptions.forCheckpoint());
 		checkpointCompletedLatch.await(30, TimeUnit.SECONDS);
 		streamTask.cancel();
 
@@ -858,7 +877,9 @@ public class StreamTaskTest extends TestLogger {
 			StreamConfig taskConfig,
 			Configuration taskManagerConfig) throws Exception {
 
-		BlobCache blobCache = mock(BlobCache.class);
+		BlobCacheService blobService =
+			new BlobCacheService(mock(PermanentBlobCache.class), mock(TransientBlobCache.class));
+
 		LibraryCacheManager libCache = mock(LibraryCacheManager.class);
 		when(libCache.getClassLoader(any(JobID.class))).thenReturn(StreamTaskTest.class.getClassLoader());
 
@@ -878,8 +899,8 @@ public class StreamTaskTest extends TestLogger {
 			"Job Name",
 			new SerializedValue<>(new ExecutionConfig()),
 			new Configuration(),
-			Collections.<BlobKey>emptyList(),
-			Collections.<URL>emptyList());
+			Collections.emptyList(),
+			Collections.emptyList());
 
 		TaskInformation taskInformation = new TaskInformation(
 			new JobVertexID(),
@@ -907,7 +928,7 @@ public class StreamTaskTest extends TestLogger {
 			mock(TaskManagerActions.class),
 			mock(InputSplitProvider.class),
 			mock(CheckpointResponder.class),
-			blobCache,
+			blobService,
 			libCache,
 			mock(FileCache.class),
 			new TestingTaskManagerRuntimeInfo(taskManagerConfig, new String[] {System.getProperty("java.io.tmpdir")}),

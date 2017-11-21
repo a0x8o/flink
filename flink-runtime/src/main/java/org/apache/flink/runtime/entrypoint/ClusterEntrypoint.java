@@ -32,6 +32,7 @@ import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServicesUtils;
 import org.apache.flink.runtime.metrics.MetricRegistry;
 import org.apache.flink.runtime.metrics.MetricRegistryConfiguration;
+import org.apache.flink.runtime.metrics.MetricRegistryImpl;
 import org.apache.flink.runtime.rpc.FatalErrorHandler;
 import org.apache.flink.runtime.rpc.RpcService;
 import org.apache.flink.runtime.rpc.akka.AkkaRpcService;
@@ -76,7 +77,7 @@ public abstract class ClusterEntrypoint implements FatalErrorHandler {
 	private final CompletableFuture<Boolean> terminationFuture;
 
 	@GuardedBy("lock")
-	private MetricRegistry metricRegistry = null;
+	private MetricRegistryImpl metricRegistry = null;
 
 	@GuardedBy("lock")
 	private HighAvailabilityServices haServices = null;
@@ -103,7 +104,7 @@ public abstract class ClusterEntrypoint implements FatalErrorHandler {
 		LOG.info("Starting {}.", getClass().getSimpleName());
 
 		try {
-			installDefaultFileSystem(configuration);
+			configureFileSystems(configuration);
 
 			SecurityContext securityContext = installSecurityContext(configuration);
 
@@ -128,11 +129,11 @@ public abstract class ClusterEntrypoint implements FatalErrorHandler {
 		}
 	}
 
-	protected void installDefaultFileSystem(Configuration configuration) throws Exception {
+	protected void configureFileSystems(Configuration configuration) throws Exception {
 		LOG.info("Install default filesystem.");
 
 		try {
-			FileSystem.setDefaultScheme(configuration);
+			FileSystem.initialize(configuration);
 		} catch (IOException e) {
 			throw new IOException("Error while setting the default " +
 				"filesystem scheme from configuration.", e);
@@ -177,8 +178,14 @@ public abstract class ClusterEntrypoint implements FatalErrorHandler {
 		commonRpcService = createRpcService(configuration, bindAddress, portRange);
 		haServices = createHaServices(configuration, commonRpcService.getExecutor());
 		blobServer = new BlobServer(configuration, haServices.createBlobStore());
+		blobServer.start();
 		heartbeatServices = createHeartbeatServices(configuration);
 		metricRegistry = createMetricRegistry(configuration);
+
+		// TODO: This is a temporary hack until we have ported the MetricQueryService to the new RpcEndpoint
+		// start the MetricQueryService
+		final ActorSystem actorSystem = ((AkkaRpcService) commonRpcService).getActorSystem();
+		metricRegistry.startQueryService(actorSystem, null);
 	}
 
 	protected RpcService createRpcService(
@@ -203,8 +210,8 @@ public abstract class ClusterEntrypoint implements FatalErrorHandler {
 		return HeartbeatServices.fromConfiguration(configuration);
 	}
 
-	protected MetricRegistry createMetricRegistry(Configuration configuration) {
-		return new MetricRegistry(MetricRegistryConfiguration.fromConfiguration(configuration));
+	protected MetricRegistryImpl createMetricRegistry(Configuration configuration) {
+		return new MetricRegistryImpl(MetricRegistryConfiguration.fromConfiguration(configuration));
 	}
 
 	protected void shutDown(boolean cleanupHaData) throws FlinkException {

@@ -17,24 +17,9 @@
 # limitations under the License.
 ################################################################################
 
-
-set -e
-set -o pipefail
-
-# Convert relative path to absolute path
-TEST_ROOT=`pwd`
-TEST_INFRA_DIR="$0"
-TEST_INFRA_DIR=`dirname "$TEST_INFRA_DIR"`
-cd $TEST_INFRA_DIR
-TEST_INFRA_DIR=`pwd`
-cd $TEST_ROOT
-
-. "$TEST_INFRA_DIR"/common.sh
+source "$(dirname "$0")"/common.sh
 
 TEST_PROGRAM_JAR=$TEST_INFRA_DIR/../../flink-end-to-end-tests/target/ClassLoaderTestProgram.jar
-
-# kill any remaining JobManagers/TaskManagers at the end
-trap 'pkill -f "JobManager|TaskManager"' EXIT
 
 echo "Testing parent-first class loading"
 
@@ -45,6 +30,7 @@ GIT_REMOTE_URL=`grep "git\.remote\.origin\.url" $TEST_INFRA_DIR/../../flink-runt
 
 # remove any leftover classloader settings
 sed -i -e 's/classloader.resolve-order: .*//' "$FLINK_DIR/conf/flink-conf.yaml"
+sed -i -e 's/classloader.parent-first-patterns: .*//' $FLINK_DIR/conf/flink-conf.yaml
 echo "classloader.resolve-order: parent-first" >> "$FLINK_DIR/conf/flink-conf.yaml"
 
 start_cluster
@@ -68,11 +54,42 @@ if [[ "$OUTPUT" != "$EXPECTED" ]]; then
   PASS=""
 fi
 
+# This verifies that Flink classes are still resolved from the parent because the default
+# "parent-first-pattern" is "org.apache.flink"
+echo "Testing child-first class loading with Flink classes loaded via parent"
+
+# remove any leftover classloader settings
+sed -i -e 's/classloader.resolve-order: .*//' "$FLINK_DIR/conf/flink-conf.yaml"
+sed -i -e 's/classloader.parent-first-patterns: .*//' $FLINK_DIR/conf/flink-conf.yaml
+echo "classloader.resolve-order: child-first" >> "$FLINK_DIR/conf/flink-conf.yaml"
+
+start_cluster
+
+$FLINK_DIR/bin/flink run -p 1 $TEST_PROGRAM_JAR --resolve-order parent-first --output $TEST_DATA_DIR/out/cl_out_cf_pf
+
+stop_cluster
+
+# remove classloader settings again
+sed -i -e 's/classloader.resolve-order: .*//' $FLINK_DIR/conf/flink-conf.yaml
+
+OUTPUT=`cat $TEST_DATA_DIR/out/cl_out_cf_pf`
+# first field: whether we found the method on TaskManager
+# result of getResource(".version.properties"), should be from the child
+# ordered result of getResources(".version.properties"), should be child first
+EXPECTED="NoSuchMethodError:hello-there-42:hello-there-42${GIT_REMOTE_URL}"
+if [[ "$OUTPUT" != "$EXPECTED" ]]; then
+  echo "Output from Flink program does not match expected output."
+  echo -e "EXPECTED: $EXPECTED"
+  echo -e "ACTUAL: $OUTPUT"
+  PASS=""
+fi
+
 echo "Testing child-first class loading"
 
 # remove any leftover classloader settings
 sed -i -e 's/classloader.resolve-order: .*//' "$FLINK_DIR/conf/flink-conf.yaml"
 echo "classloader.resolve-order: child-first" >> "$FLINK_DIR/conf/flink-conf.yaml"
+echo "classloader.parent-first-patterns: foo.bar" >> "$FLINK_DIR/conf/flink-conf.yaml"
 
 start_cluster
 
@@ -82,6 +99,7 @@ stop_cluster
 
 # remove classloader settings again
 sed -i -e 's/classloader.resolve-order: .*//' $FLINK_DIR/conf/flink-conf.yaml
+sed -i -e 's/classloader.parent-first-patterns: .*//' $FLINK_DIR/conf/flink-conf.yaml
 
 OUTPUT=`cat $TEST_DATA_DIR/out/cl_out_cf`
 # first field: whether we found the method on TaskManager
@@ -94,6 +112,3 @@ if [[ "$OUTPUT" != "$EXPECTED" ]]; then
   echo -e "ACTUAL: $OUTPUT"
   PASS=""
 fi
-
-clean_data_dir
-check_all_pass

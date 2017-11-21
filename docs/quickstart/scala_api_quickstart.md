@@ -41,7 +41,7 @@ These templates help you to set up the project structure and to create the initi
 
 ### Create Project
 
-You can scafold a new project via either of the following two methods:
+You can scaffold a new project via either of the following two methods:
 
 <ul class="nav nav-tabs" style="border-bottom: none;">
     <li class="active"><a href="#sbt_template" data-toggle="tab">Use the <strong>sbt template</strong></a></li>
@@ -53,7 +53,7 @@ You can scafold a new project via either of the following two methods:
     {% highlight bash %}
     $ sbt new tillrohrmann/flink-project.g8
     {% endhighlight %}
-    This will will prompt you for a couple of parameters (project name, flink version...) and then create a Flink project from the <a href="https://github.com/tillrohrmann/flink-project.g8">flink-project template</a>.
+    This will prompt you for a couple of parameters (project name, flink version...) and then create a Flink project from the <a href="https://github.com/tillrohrmann/flink-project.g8">flink-project template</a>.
     You need sbt >= 0.13.13 to execute this command. You can follow this <a href="http://www.scala-sbt.org/download.html">installation guide</a> to obtain it if necessary.
     </div>
     <div class="tab-pane" id="quickstart-script-sbt">
@@ -146,6 +146,11 @@ Use one of the following commands to __create a project__:
 {% endif %}
 {% endhighlight %}
     </div>
+    {% unless site.is_stable %}
+    <p style="border-radius: 5px; padding: 5px" class="bg-danger">
+        <b>Note</b>: For Maven 3.0 or higher, it is no longer possible to specify the repository (-DarchetypeCatalog) via the commandline. If you wish to use the snapshot repository, you need to add a repository entry to your settings.xml. For details about this change, please refer to <a href="http://maven.apache.org/archetype/maven-archetype-plugin/archetype-repository.html">Maven official document</a>
+    </p>
+    {% endunless %}
 </div>
 
 
@@ -258,5 +263,7 @@ For a complete overview over our API, have a look at the
 [DataSet API]({{ site.baseurl }}/dev/batch/index.html), and
 [Scala API Extensions]({{ site.baseurl }}/dev/scala_api_extensions.html)
 sections. If you have any trouble, ask on our
-[Mailing List](http://mail-archives.apache.org/mod_mbox/flink-dev/).
+[Mailing List](http://mail-archives.apache.org/mod_mbox/flink-user/).
 We are happy to provide help.
+
+{% top %}

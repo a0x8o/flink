@@ -48,10 +48,10 @@ class IncrementalAggregateTimeWindowFunction(
     numAggregates,
     finalRowArity) {
 
-  private var collector: CRowTimeWindowPropertyCollector = _
+  private var collector: DataStreamTimeWindowPropertyCollector = _
 
   override def open(parameters: Configuration): Unit = {
-    collector = new CRowTimeWindowPropertyCollector(
+    collector = new DataStreamTimeWindowPropertyCollector(
       windowStartOffset,
       windowEndOffset,
       windowRowtimeOffset)
@@ -59,7 +59,7 @@ class IncrementalAggregateTimeWindowFunction(
   }
 
   override def apply(
-      key: Tuple,
+      key: Row,
       window: TimeWindow,
       records: Iterable[Row],
       out: Collector[CRow]): Unit = {

@@ -48,7 +48,7 @@ under the License.
 		<flink.version>@project.version@</flink.version>
 		<slf4j.version>@slf4j.version@</slf4j.version>
 		<log4j.version>@log4j.version@</log4j.version>
-		<scala.binary.version>@scala.binary.version@</scala.binary.version>
+		<scala.binary.version>2.11</scala.binary.version>
 	</properties>
 
 	<!-- 
@@ -200,14 +200,14 @@ under the License.
 									-->
 									<exclude>org.apache.flink:flink-annotations</exclude>
 									<exclude>org.apache.flink:flink-shaded-hadoop2</exclude>
-									<exclude>org.apache.flink:flink-shaded-curator-recipes</exclude>
+									<exclude>org.apache.flink:flink-shaded-curator</exclude>
 									<exclude>org.apache.flink:flink-core</exclude>
 									<exclude>org.apache.flink:flink-java</exclude>
 									<exclude>org.apache.flink:flink-scala_${scala.binary.version}</exclude>
 									<exclude>org.apache.flink:flink-runtime_${scala.binary.version}</exclude>
 									<exclude>org.apache.flink:flink-optimizer_${scala.binary.version}</exclude>
 									<exclude>org.apache.flink:flink-clients_${scala.binary.version}</exclude>
-									<exclude>org.apache.flink:flink-avro_${scala.binary.version}</exclude>
+									<exclude>org.apache.flink:flink-avro</exclude>
 									<exclude>org.apache.flink:flink-examples-batch_${scala.binary.version}</exclude>
 									<exclude>org.apache.flink:flink-examples-streaming_${scala.binary.version}</exclude>
 									<exclude>org.apache.flink:flink-streaming-java_${scala.binary.version}</exclude>
@@ -217,6 +217,7 @@ under the License.
 									<exclude>org.apache.flink:flink-metrics-core</exclude>
 									<exclude>org.apache.flink:flink-metrics-jmx</exclude>
 									<exclude>org.apache.flink:flink-statebackend-rocksdb_${scala.binary.version}</exclude>
+									<exclude>org.apache.flink:flink-shaded-jackson</exclude>
 
 									<!-- Also exclude very big transitive dependencies of Flink
 
@@ -229,9 +230,9 @@ under the License.
 									<exclude>org.scala-lang:scala-library</exclude>
 									<exclude>org.scala-lang:scala-compiler</exclude>
 									<exclude>org.scala-lang:scala-reflect</exclude>
-									<exclude>com.data-artisans:flakka-actor_*</exclude>
-									<exclude>com.data-artisans:flakka-remote_*</exclude>
-									<exclude>com.data-artisans:flakka-slf4j_*</exclude>
+									<exclude>com.typesafe.akka:akka-actor_*</exclude>
+									<exclude>com.typesafe.akka:akka-remote_*</exclude>
+									<exclude>com.typesafe.akka:akka-slf4j_*</exclude>
 									<exclude>io.netty:netty-all</exclude>
 									<exclude>io.netty:netty</exclude>
 									<exclude>commons-fileupload:commons-fileupload</exclude>
@@ -256,9 +257,6 @@ under the License.
 									<exclude>org.apache.sling:org.apache.sling.commons.json</exclude>
 									<exclude>commons-logging:commons-logging</exclude>
 									<exclude>commons-codec:commons-codec</exclude>
-									<exclude>com.fasterxml.jackson.core:jackson-core</exclude>
-									<exclude>com.fasterxml.jackson.core:jackson-databind</exclude>
-									<exclude>com.fasterxml.jackson.core:jackson-annotations</exclude>
 									<exclude>stax:stax-api</exclude>
 									<exclude>com.typesafe:config</exclude>
 									<exclude>org.uncommons.maths:uncommons-maths</exclude>

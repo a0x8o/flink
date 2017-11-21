@@ -21,6 +21,7 @@ package org.apache.flink.runtime.taskexecutor;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.TaskManagerOptions;
 import org.apache.flink.core.memory.MemoryType;
+import org.apache.flink.queryablestate.network.stats.DisabledKvStateRequestStats;
 import org.apache.flink.runtime.broadcast.BroadcastVariableManager;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
@@ -36,18 +37,17 @@ import org.apache.flink.runtime.io.network.buffer.NetworkBufferPool;
 import org.apache.flink.runtime.io.network.netty.NettyConnectionManager;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionManager;
 import org.apache.flink.runtime.memory.MemoryManager;
-import org.apache.flink.runtime.metrics.MetricRegistry;
-import org.apache.flink.runtime.metrics.groups.TaskManagerMetricGroup;
+import org.apache.flink.runtime.query.KvStateClientProxy;
 import org.apache.flink.runtime.query.KvStateRegistry;
-import org.apache.flink.runtime.query.netty.DisabledKvStateRequestStats;
-import org.apache.flink.runtime.query.netty.KvStateServer;
+import org.apache.flink.runtime.query.KvStateServer;
+import org.apache.flink.runtime.query.QueryableStateUtils;
 import org.apache.flink.runtime.taskexecutor.slot.TaskSlotTable;
 import org.apache.flink.runtime.taskexecutor.slot.TimerService;
-import org.apache.flink.runtime.taskexecutor.utils.TaskExecutorMetricsInitializer;
 import org.apache.flink.runtime.taskmanager.NetworkEnvironmentConfiguration;
 import org.apache.flink.runtime.taskmanager.TaskManagerLocation;
 import org.apache.flink.runtime.util.EnvironmentInformation;
 import org.apache.flink.util.Preconditions;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -59,18 +59,16 @@ import java.util.concurrent.ScheduledThreadPoolExecutor;
 
 /**
  * Container for {@link TaskExecutor} services such as the {@link MemoryManager}, {@link IOManager},
- * {@link NetworkEnvironment} and the {@link MetricRegistry}.
+ * {@link NetworkEnvironment}.
  */
 public class TaskManagerServices {
 	private static final Logger LOG = LoggerFactory.getLogger(TaskManagerServices.class);
 
-	/** TaskManager services */
+	/** TaskManager services. */
 	private final TaskManagerLocation taskManagerLocation;
 	private final MemoryManager memoryManager;
 	private final IOManager ioManager;
 	private final NetworkEnvironment networkEnvironment;
-	private final MetricRegistry metricRegistry;
-	private final TaskManagerMetricGroup taskManagerMetricGroup;
 	private final BroadcastVariableManager broadcastVariableManager;
 	private final FileCache fileCache;
 	private final TaskSlotTable taskSlotTable;
@@ -82,8 +80,6 @@ public class TaskManagerServices {
 		MemoryManager memoryManager,
 		IOManager ioManager,
 		NetworkEnvironment networkEnvironment,
-		MetricRegistry metricRegistry,
-		TaskManagerMetricGroup taskManagerMetricGroup,
 		BroadcastVariableManager broadcastVariableManager,
 		FileCache fileCache,
 		TaskSlotTable taskSlotTable,
@@ -94,8 +90,6 @@ public class TaskManagerServices {
 		this.memoryManager = Preconditions.checkNotNull(memoryManager);
 		this.ioManager = Preconditions.checkNotNull(ioManager);
 		this.networkEnvironment = Preconditions.checkNotNull(networkEnvironment);
-		this.metricRegistry = Preconditions.checkNotNull(metricRegistry);
-		this.taskManagerMetricGroup = Preconditions.checkNotNull(taskManagerMetricGroup);
 		this.broadcastVariableManager = Preconditions.checkNotNull(broadcastVariableManager);
 		this.fileCache = Preconditions.checkNotNull(fileCache);
 		this.taskSlotTable = Preconditions.checkNotNull(taskSlotTable);
@@ -123,14 +117,6 @@ public class TaskManagerServices {
 		return taskManagerLocation;
 	}
 
-	public MetricRegistry getMetricRegistry() {
-		return metricRegistry;
-	}
-
-	public TaskManagerMetricGroup getTaskManagerMetricGroup() {
-		return taskManagerMetricGroup;
-	}
-
 	public BroadcastVariableManager getBroadcastVariableManager() {
 		return broadcastVariableManager;
 	}
@@ -138,7 +124,7 @@ public class TaskManagerServices {
 	public FileCache getFileCache() {
 		return fileCache;
 	}
-	
+
 	public TaskSlotTable getTaskSlotTable() {
 		return taskSlotTable;
 	}
@@ -184,17 +170,6 @@ public class TaskManagerServices {
 		// start the I/O manager, it will create some temp directories.
 		final IOManager ioManager = new IOManagerAsync(taskManagerServicesConfiguration.getTmpDirPaths());
 
-		final MetricRegistry metricRegistry = new MetricRegistry(
-				taskManagerServicesConfiguration.getMetricRegistryConfiguration());
-
-		final TaskManagerMetricGroup taskManagerMetricGroup = new TaskManagerMetricGroup(
-			metricRegistry,
-			taskManagerLocation.getHostname(),
-			taskManagerLocation.getResourceID().toString());
-
-		// Initialize the TM metrics
-		TaskExecutorMetricsInitializer.instantiateStatusMetrics(taskManagerMetricGroup, network);
-
 		final BroadcastVariableManager broadcastVariableManager = new BroadcastVariableManager();
 
 		final FileCache fileCache = new FileCache(taskManagerServicesConfiguration.getTmpDirPaths());
@@ -214,14 +189,12 @@ public class TaskManagerServices {
 		final JobManagerTable jobManagerTable = new JobManagerTable();
 
 		final JobLeaderService jobLeaderService = new JobLeaderService(taskManagerLocation);
-		
+
 		return new TaskManagerServices(
 			taskManagerLocation,
 			memoryManager,
 			ioManager,
 			network,
-			metricRegistry,
-			taskManagerMetricGroup,
 			broadcastVariableManager,
 			fileCache,
 			taskSlotTable,
@@ -354,27 +327,35 @@ public class TaskManagerServices {
 		TaskEventDispatcher taskEventDispatcher = new TaskEventDispatcher();
 
 		KvStateRegistry kvStateRegistry = new KvStateRegistry();
-		KvStateServer kvStateServer;
 
-		if (taskManagerServicesConfiguration.getQueryableStateConfig().enabled()) {
-			QueryableStateConfiguration qsConfig = taskManagerServicesConfiguration.getQueryableStateConfig();
+		QueryableStateConfiguration qsConfig = taskManagerServicesConfiguration.getQueryableStateConfig();
 
-			int numNetworkThreads = qsConfig.numServerThreads() == 0 ?
-					taskManagerServicesConfiguration.getNumberOfSlots() : qsConfig.numServerThreads();
+		int numProxyServerNetworkThreads = qsConfig.numProxyServerThreads() == 0 ?
+				taskManagerServicesConfiguration.getNumberOfSlots() : qsConfig.numProxyServerThreads();
 
-			int numQueryThreads = qsConfig.numQueryThreads() == 0 ?
-					taskManagerServicesConfiguration.getNumberOfSlots() : qsConfig.numQueryThreads();
+		int numProxyServerQueryThreads = qsConfig.numProxyQueryThreads() == 0 ?
+				taskManagerServicesConfiguration.getNumberOfSlots() : qsConfig.numProxyQueryThreads();
 
-			kvStateServer = new KvStateServer(
+		final KvStateClientProxy kvClientProxy = QueryableStateUtils.createKvStateClientProxy(
 				taskManagerServicesConfiguration.getTaskManagerAddress(),
-				qsConfig.port(),
-				numNetworkThreads,
-				numQueryThreads,
+				qsConfig.getProxyPortRange(),
+				numProxyServerNetworkThreads,
+				numProxyServerQueryThreads,
+				new DisabledKvStateRequestStats());
+
+		int numStateServerNetworkThreads = qsConfig.numStateServerThreads() == 0 ?
+				taskManagerServicesConfiguration.getNumberOfSlots() : qsConfig.numStateServerThreads();
+
+		int numStateServerQueryThreads = qsConfig.numStateQueryThreads() == 0 ?
+				taskManagerServicesConfiguration.getNumberOfSlots() : qsConfig.numStateQueryThreads();
+
+		final KvStateServer kvStateServer = QueryableStateUtils.createKvStateServer(
+				taskManagerServicesConfiguration.getTaskManagerAddress(),
+				qsConfig.getStateServerPortRange(),
+				numStateServerNetworkThreads,
+				numStateServerQueryThreads,
 				kvStateRegistry,
 				new DisabledKvStateRequestStats());
-		} else {
-			kvStateServer = null;
-		}
 
 		// we start the network first, to make sure it can allocate its buffers first
 		return new NetworkEnvironment(
@@ -384,6 +365,7 @@ public class TaskManagerServices {
 			taskEventDispatcher,
 			kvStateRegistry,
 			kvStateServer,
+			kvClientProxy,
 			networkEnvironmentConfiguration.ioMode(),
 			networkEnvironmentConfiguration.partitionRequestInitialBackoff(),
 			networkEnvironmentConfiguration.partitionRequestMaxBackoff(),
@@ -395,7 +377,7 @@ public class TaskManagerServices {
 	 * Calculates the amount of memory used for network buffers based on the total memory to use and
 	 * the according configuration parameters.
 	 *
-	 * The following configuration parameters are involved:
+	 * <p>The following configuration parameters are involved:
 	 * <ul>
 	 *  <li>{@link TaskManagerOptions#NETWORK_BUFFERS_MEMORY_FRACTION},</li>
 	 * 	<li>{@link TaskManagerOptions#NETWORK_BUFFERS_MEMORY_MIN},</li>
@@ -458,11 +440,11 @@ public class TaskManagerServices {
 	 * Calculates the amount of memory used for network buffers inside the current JVM instance
 	 * based on the available heap or the max heap size and the according configuration parameters.
 	 *
-	 * For containers or when started via scripts, if started with a memory limit and set to use
+	 * <p>For containers or when started via scripts, if started with a memory limit and set to use
 	 * off-heap memory, the maximum heap size for the JVM is adjusted accordingly and we are able
 	 * to extract the intended values from this.
 	 *
-	 * The following configuration parameters are involved:
+	 * <p>The following configuration parameters are involved:
 	 * <ul>
 	 *  <li>{@link TaskManagerOptions#MANAGED_MEMORY_FRACTION},</li>
 	 *  <li>{@link TaskManagerOptions#NETWORK_BUFFERS_MEMORY_FRACTION},</li>
@@ -629,7 +611,7 @@ public class TaskManagerServices {
 				if (LOG.isInfoEnabled()) {
 					long totalSpaceGb = file.getTotalSpace() >> 30;
 					long usableSpaceGb = file.getUsableSpace() >> 30;
-					double usablePercentage = (double)usableSpaceGb / totalSpaceGb * 100;
+					double usablePercentage = (double) usableSpaceGb / totalSpaceGb * 100;
 					String path = file.getAbsolutePath();
 					LOG.info(String.format("Temporary file directory '%s': total %d GB, " + "usable %d GB (%.2f%% usable)",
 						path, totalSpaceGb, usableSpaceGb, usablePercentage));

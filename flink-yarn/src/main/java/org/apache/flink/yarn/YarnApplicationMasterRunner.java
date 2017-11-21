@@ -30,11 +30,14 @@ import org.apache.flink.configuration.WebOptions;
 import org.apache.flink.runtime.akka.AkkaUtils;
 import org.apache.flink.runtime.clusterframework.BootstrapTools;
 import org.apache.flink.runtime.clusterframework.ContaineredTaskManagerParameters;
+import org.apache.flink.runtime.concurrent.ScheduledExecutorServiceAdapter;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServicesUtils;
 import org.apache.flink.runtime.jobmanager.JobManager;
 import org.apache.flink.runtime.jobmanager.MemoryArchivist;
 import org.apache.flink.runtime.jobmaster.JobMaster;
+import org.apache.flink.runtime.metrics.MetricRegistryConfiguration;
+import org.apache.flink.runtime.metrics.MetricRegistryImpl;
 import org.apache.flink.runtime.process.ProcessReaper;
 import org.apache.flink.runtime.security.SecurityConfiguration;
 import org.apache.flink.runtime.security.SecurityUtils;
@@ -218,6 +221,7 @@ public class YarnApplicationMasterRunner {
 		ActorSystem actorSystem = null;
 		WebMonitor webMonitor = null;
 		HighAvailabilityServices highAvailabilityServices = null;
+		MetricRegistryImpl metricRegistry = null;
 
 		int numberProcessors = Hardware.getNumberCPUCores();
 
@@ -353,8 +357,13 @@ public class YarnApplicationMasterRunner {
 				new AkkaJobManagerRetriever(actorSystem, webMonitorTimeout, 10, Time.milliseconds(50L)),
 				new AkkaQueryServiceRetriever(actorSystem, webMonitorTimeout),
 				webMonitorTimeout,
-				futureExecutor,
+				new ScheduledExecutorServiceAdapter(futureExecutor),
 				LOG);
+
+			metricRegistry = new MetricRegistryImpl(
+				MetricRegistryConfiguration.fromConfiguration(config));
+
+			metricRegistry.startQueryService(actorSystem, null);
 
 			// 2: the JobManager
 			LOG.debug("Starting JobManager actor");
@@ -366,6 +375,7 @@ public class YarnApplicationMasterRunner {
 				futureExecutor,
 				ioExecutor,
 				highAvailabilityServices,
+				metricRegistry,
 				webMonitor == null ? Option.empty() : Option.apply(webMonitor.getRestAddress()),
 				new Some<>(JobMaster.JOB_MANAGER_NAME),
 				Option.<String>empty(),
@@ -451,6 +461,14 @@ public class YarnApplicationMasterRunner {
 				highAvailabilityServices.close();
 			} catch (Throwable t) {
 				LOG.error("Failed to stop the high availability services.", t);
+			}
+		}
+
+		if (metricRegistry != null) {
+			try {
+				metricRegistry.shutdown();
+			} catch (Throwable t) {
+				LOG.error("Could not properly shut down the metric registry.", t);
 			}
 		}
 

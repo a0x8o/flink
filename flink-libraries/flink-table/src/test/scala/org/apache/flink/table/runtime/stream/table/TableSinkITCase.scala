@@ -51,6 +51,7 @@ class TableSinkITCase extends StreamingMultipleProgramsTestBase {
   @Test
   def testInsertIntoRegisteredTableSink(): Unit = {
     val env = StreamExecutionEnvironment.getExecutionEnvironment
+    env.getConfig.enableObjectReuse()
     env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime)
 
     val tEnv = TableEnvironment.getTableEnvironment(env)
@@ -86,13 +87,17 @@ class TableSinkITCase extends StreamingMultipleProgramsTestBase {
     val path = tmpFile.toURI.toString
 
     val env = StreamExecutionEnvironment.getExecutionEnvironment
+    env.getConfig.enableObjectReuse()
+    env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime)
+
     val tEnv = TableEnvironment.getTableEnvironment(env)
     env.setParallelism(4)
 
     val input = StreamTestData.get3TupleDataStream(env)
+      .assignAscendingTimestamps(_._2)
       .map(x => x).setParallelism(4) // increase DOP to 4
 
-    val results = input.toTable(tEnv, 'a, 'b, 'c)
+    val results = input.toTable(tEnv, 'a, 'b.rowtime, 'c)
       .where('a < 5 || 'a > 17)
       .select('c, 'b)
       .writeToSink(new CsvTableSink(path))
@@ -100,8 +105,14 @@ class TableSinkITCase extends StreamingMultipleProgramsTestBase {
     env.execute()
 
     val expected = Seq(
-      "Hi,1", "Hello,2", "Hello world,2", "Hello world, how are you?,3",
-      "Comment#12,6", "Comment#13,6", "Comment#14,6", "Comment#15,6").mkString("\n")
+      "Hi,1970-01-01 00:00:00.001",
+      "Hello,1970-01-01 00:00:00.002",
+      "Hello world,1970-01-01 00:00:00.002",
+      "Hello world, how are you?,1970-01-01 00:00:00.003",
+      "Comment#12,1970-01-01 00:00:00.006",
+      "Comment#13,1970-01-01 00:00:00.006",
+      "Comment#14,1970-01-01 00:00:00.006",
+      "Comment#15,1970-01-01 00:00:00.006").mkString("\n")
 
     TestBaseUtils.compareResultsByLinesInMemory(expected, path)
   }
@@ -109,6 +120,7 @@ class TableSinkITCase extends StreamingMultipleProgramsTestBase {
   @Test
   def testAppendSinkOnAppendTable(): Unit = {
     val env = StreamExecutionEnvironment.getExecutionEnvironment
+    env.getConfig.enableObjectReuse()
     env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime)
     val tEnv = TableEnvironment.getTableEnvironment(env)
 
@@ -137,6 +149,7 @@ class TableSinkITCase extends StreamingMultipleProgramsTestBase {
   @Test
   def testRetractSinkOnUpdatingTable(): Unit = {
     val env = StreamExecutionEnvironment.getExecutionEnvironment
+    env.getConfig.enableObjectReuse()
     env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime)
     val tEnv = TableEnvironment.getTableEnvironment(env)
 
@@ -168,6 +181,7 @@ class TableSinkITCase extends StreamingMultipleProgramsTestBase {
   @Test
   def testRetractSinkOnAppendTable(): Unit = {
     val env = StreamExecutionEnvironment.getExecutionEnvironment
+    env.getConfig.enableObjectReuse()
     env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime)
     val tEnv = TableEnvironment.getTableEnvironment(env)
 
@@ -202,6 +216,7 @@ class TableSinkITCase extends StreamingMultipleProgramsTestBase {
   @Test
   def testUpsertSinkOnUpdatingTableWithFullKey(): Unit = {
     val env = StreamExecutionEnvironment.getExecutionEnvironment
+    env.getConfig.enableObjectReuse()
     env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime)
     val tEnv = TableEnvironment.getTableEnvironment(env)
 
@@ -236,6 +251,7 @@ class TableSinkITCase extends StreamingMultipleProgramsTestBase {
   @Test
   def testUpsertSinkOnAppendingTableWithFullKey1(): Unit = {
     val env = StreamExecutionEnvironment.getExecutionEnvironment
+    env.getConfig.enableObjectReuse()
     env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime)
     val tEnv = TableEnvironment.getTableEnvironment(env)
 
@@ -273,6 +289,7 @@ class TableSinkITCase extends StreamingMultipleProgramsTestBase {
   @Test
   def testUpsertSinkOnAppendingTableWithFullKey2(): Unit = {
     val env = StreamExecutionEnvironment.getExecutionEnvironment
+    env.getConfig.enableObjectReuse()
     env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime)
     val tEnv = TableEnvironment.getTableEnvironment(env)
 
@@ -310,6 +327,7 @@ class TableSinkITCase extends StreamingMultipleProgramsTestBase {
   @Test
   def testUpsertSinkOnAppendingTableWithoutFullKey1(): Unit = {
     val env = StreamExecutionEnvironment.getExecutionEnvironment
+    env.getConfig.enableObjectReuse()
     env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime)
     val tEnv = TableEnvironment.getTableEnvironment(env)
 
@@ -347,6 +365,7 @@ class TableSinkITCase extends StreamingMultipleProgramsTestBase {
   @Test
   def testUpsertSinkOnAppendingTableWithoutFullKey2(): Unit = {
     val env = StreamExecutionEnvironment.getExecutionEnvironment
+    env.getConfig.enableObjectReuse()
     env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime)
     val tEnv = TableEnvironment.getTableEnvironment(env)
 
@@ -384,6 +403,7 @@ class TableSinkITCase extends StreamingMultipleProgramsTestBase {
   @Test
   def testToAppendStreamRowtime(): Unit = {
     val env = StreamExecutionEnvironment.getExecutionEnvironment
+    env.getConfig.enableObjectReuse()
     env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime)
     val tEnv = TableEnvironment.getTableEnvironment(env)
     StreamITCase.clear
@@ -478,6 +498,7 @@ class TableSinkITCase extends StreamingMultipleProgramsTestBase {
   @Test(expected = classOf[TableException])
   def testToAppendStreamMultiRowtime(): Unit = {
     val env = StreamExecutionEnvironment.getExecutionEnvironment
+    env.getConfig.enableObjectReuse()
     env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime)
     val tEnv = TableEnvironment.getTableEnvironment(env)
 
@@ -496,6 +517,7 @@ class TableSinkITCase extends StreamingMultipleProgramsTestBase {
   @Test(expected = classOf[TableException])
   def testToRetractStreamMultiRowtime(): Unit = {
     val env = StreamExecutionEnvironment.getExecutionEnvironment
+    env.getConfig.enableObjectReuse()
     env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime)
     val tEnv = TableEnvironment.getTableEnvironment(env)
 
@@ -658,8 +680,11 @@ object RowCollector {
     new mutable.ArrayBuffer[JTuple2[JBool, Row]]()
 
   def addValue(value: JTuple2[JBool, Row]): Unit = {
+
+    // make a copy
+    val copy = new JTuple2[JBool, Row](value.f0, Row.copy(value.f1))
     sink.synchronized {
-      sink += value
+      sink += copy
     }
   }
 

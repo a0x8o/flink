@@ -28,7 +28,7 @@ import org.apache.flink.runtime.webmonitor.history.JsonArchivist;
 import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.FlinkException;
 
-import com.fasterxml.jackson.core.JsonGenerator;
+import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.core.JsonGenerator;
 
 import java.io.IOException;
 import java.io.StringWriter;
@@ -48,7 +48,7 @@ public class JobExceptionsHandler extends AbstractExecutionGraphRequestHandler {
 
 	static final int MAX_NUMBER_EXCEPTION_TO_REPORT = 20;
 
-	public JobExceptionsHandler(ExecutionGraphHolder executionGraphHolder, Executor executor) {
+	public JobExceptionsHandler(ExecutionGraphCache executionGraphHolder, Executor executor) {
 		super(executionGraphHolder, executor);
 	}
 

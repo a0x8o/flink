@@ -67,11 +67,17 @@ flink-libraries/flink-gelly-scala,\
 flink-libraries/flink-gelly-examples,\
 flink-libraries/flink-ml,\
 flink-libraries/flink-python,\
-flink-libraries/flink-table"
+flink-libraries/flink-table,\
+flink-queryable-state/flink-queryable-state-runtime,\
+flink-queryable-state/flink-queryable-state-client-java"
 
 MODULES_CONNECTORS="\
 flink-contrib/flink-connector-wikiedits,\
-flink-connectors/flink-avro,\
+flink-filesystems/flink-hadoop-fs,\
+flink-filesystems/flink-mapr-fs,\
+flink-filesystems/flink-s3-fs-hadoop,\
+flink-filesystems/flink-s3-fs-presto,\
+flink-formats/flink-avro,\
 flink-connectors/flink-hbase,\
 flink-connectors/flink-hcatalog,\
 flink-connectors/flink-hadoop-compatibility,\
@@ -93,6 +99,10 @@ flink-connectors/flink-connector-twitter"
 MODULES_TESTS="\
 flink-tests"
 
+if [[ $PROFILE != *"scala-2.10"* ]]; then
+	MODULES_CONNECTORS="$MODULES_CONNECTORS,flink-connectors/flink-connector-kafka-0.11"
+fi
+
 if [[ $PROFILE == *"include-kinesis"* ]]; then
 	case $TEST in
 		(connectors)
@@ -104,26 +114,31 @@ fi
 MVN_COMPILE_MODULES=""
 MVN_COMPILE_OPTIONS=""
 MVN_TEST_MODULES=""
+MVN_TEST_OPTIONS=""
 case $TEST in
 	(core)
 		MVN_COMPILE_MODULES="-pl $MODULES_CORE -am"
 		MVN_TEST_MODULES="-pl $MODULES_CORE"
-		MVN_COMPILE_OPTIONS="-Dcheckstyle.skip=true -Djapicmp.skip=true"
+		MVN_COMPILE_OPTIONS="-Dcheckstyle.skip=true -Djapicmp.skip=true -Drat.skip=true"
+		MVN_TEST_OPTIONS="-Dcheckstyle.skip=true"
 	;;
 	(libraries)
 		MVN_COMPILE_MODULES="-pl $MODULES_LIBRARIES -am"
 		MVN_TEST_MODULES="-pl $MODULES_LIBRARIES"
-		MVN_COMPILE_OPTIONS="-Dcheckstyle.skip=true -Djapicmp.skip=true"
+		MVN_COMPILE_OPTIONS="-Dcheckstyle.skip=true -Djapicmp.skip=true -Drat.skip=true"
+		MVN_TEST_OPTIONS="-Dcheckstyle.skip=true"
 	;;
 	(connectors)
 		MVN_COMPILE_MODULES="-pl $MODULES_CONNECTORS -am"
 		MVN_TEST_MODULES="-pl $MODULES_CONNECTORS"
-		MVN_COMPILE_OPTIONS="-Dcheckstyle.skip=true -Djapicmp.skip=true"
+		MVN_COMPILE_OPTIONS="-Dcheckstyle.skip=true -Djapicmp.skip=true -Drat.skip=true"
+		MVN_TEST_OPTIONS="-Dcheckstyle.skip=true"
 	;;
 	(tests)
 		MVN_COMPILE_MODULES="-pl $MODULES_TESTS -am"
 		MVN_TEST_MODULES="-pl $MODULES_TESTS"
-		MVN_COMPILE_OPTIONS="-Dcheckstyle.skip=true -Djapicmp.skip=true"
+		MVN_COMPILE_OPTIONS="-Dcheckstyle.skip=true -Djapicmp.skip=true -Drat.skip=true"
+		MVN_TEST_OPTIONS="-Dcheckstyle.skip=true"
 	;;
 	(misc)
 		NEGATED_CORE=\!${MODULES_CORE//,/,\!}
@@ -134,6 +149,7 @@ case $TEST in
 		MVN_COMPILE_MODULES=""
 		MVN_TEST_MODULES="-pl $NEGATED_CORE,$NEGATED_LIBRARIES,$NEGATED_CONNECTORS,$NEGATED_TESTS"
 		MVN_COMPILE_OPTIONS="-Dspotbugs"
+		MVN_TEST_OPTIONS="-Dcheckstyle.skip=true"
 	;;
 esac
 
@@ -148,7 +164,7 @@ MVN_COMMON_OPTIONS="-nsu -Dflink.forkCount=2 -Dflink.forkCountTestPackage=2 -Dma
 MVN_COMPILE_OPTIONS="$MVN_COMPILE_OPTIONS -DskipTests"
 
 MVN_COMPILE="mvn $MVN_COMMON_OPTIONS $MVN_COMPILE_OPTIONS $PROFILE $MVN_COMPILE_MODULES clean install"
-MVN_TEST="mvn $MVN_COMMON_OPTIONS $PROFILE $MVN_TEST_MODULES verify"
+MVN_TEST="mvn $MVN_COMMON_OPTIONS $MVN_TEST_OPTIONS $PROFILE $MVN_TEST_MODULES verify"
 
 MVN_PID="${ARTIFACTS_DIR}/watchdog.mvn.pid"
 MVN_EXIT="${ARTIFACTS_DIR}/watchdog.mvn.exit"
@@ -285,6 +301,22 @@ check_shaded_artifacts() {
 		return 1
 	fi
 
+	CODEHAUS_JACKSON=`cat allClasses | grep '^org/codehaus/jackson' | wc -l`
+	if [ "$CODEHAUS_JACKSON" != "0" ]; then
+		echo "=============================================================================="
+		echo "Detected '$CODEHAUS_JACKSON' unshaded org.codehaus.jackson classes in fat jar"
+		echo "=============================================================================="
+		return 1
+	fi
+
+	FASTERXML_JACKSON=`cat allClasses | grep '^com/fasterxml/jackson' | wc -l`
+	if [ "$FASTERXML_JACKSON" != "0" ]; then
+		echo "=============================================================================="
+		echo "Detected '$FASTERXML_JACKSON' unshaded com.fasterxml.jackson classes in fat jar"
+		echo "=============================================================================="
+		return 1
+	fi
+
 	SNAPPY=`cat allClasses | grep '^org/xerial/snappy' | wc -l`
 	if [ "$SNAPPY" == "0" ]; then
 		echo "=============================================================================="
@@ -293,10 +325,99 @@ check_shaded_artifacts() {
 		return 1
 	fi
 
-	NETTY=`cat allClasses | grep '^io/netty' | wc -l`
-	if [ "$NETTY" != "0" ]; then
+	IO_NETTY=`cat allClasses | grep '^io/netty' | wc -l`
+	if [ "$IO_NETTY" != "0" ]; then
 		echo "=============================================================================="
-		echo "Detected '$NETTY' unshaded netty dependencies in fat jar"
+		echo "Detected '$IO_NETTY' unshaded io.netty classes in fat jar"
+		echo "=============================================================================="
+		return 1
+	fi
+
+	ORG_NETTY=`cat allClasses | grep '^org/jboss/netty' | wc -l`
+	if [ "$ORG_NETTY" != "0" ]; then
+		echo "=============================================================================="
+		echo "Detected '$ORG_NETTY' unshaded org.jboss.netty classes in fat jar"
+		echo "=============================================================================="
+		return 1
+	fi
+
+	ZOOKEEPER=`cat allClasses | grep '^org/apache/zookeeper' | wc -l`
+	if [ "$ZOOKEEPER" != "0" ]; then
+		echo "=============================================================================="
+		echo "Detected '$ZOOKEEPER' unshaded org.apache.zookeeper classes in fat jar"
+		echo "=============================================================================="
+		return 1
+	fi
+
+	CURATOR=`cat allClasses | grep '^org/apache/curator' | wc -l`
+	if [ "$CURATOR" != "0" ]; then
+		echo "=============================================================================="
+		echo "Detected '$CURATOR' unshaded org.apache.curator classes in fat jar"
+		echo "=============================================================================="
+		return 1
+	fi
+
+	FLINK_PYTHON=`cat allClasses | grep '^org/apache/flink/python' | wc -l`
+	if [ "$FLINK_PYTHON" != "0" ]; then
+		echo "=============================================================================="
+		echo "Detected that the Flink Python artifact is in the dist jar"
+		echo "=============================================================================="
+		return 1
+	fi
+
+	HADOOP=`cat allClasses | grep '^org/apache/hadoop' | wc -l`
+	if [ "$HADOOP" != "0" ]; then
+		echo "=============================================================================="
+		echo "Detected '$HADOOP' Hadoop classes in the dist jar"
+		echo "=============================================================================="
+		return 1
+	fi
+
+	MAPR=`cat allClasses | grep '^com/mapr' | wc -l`
+	if [ "$MAPR" != "0" ]; then
+		echo "=============================================================================="
+		echo "Detected '$MAPR' MapR classes in the dist jar"
+		echo "=============================================================================="
+		return 1
+	fi
+
+	return 0
+}
+
+# Check the S3 fs implementations' fat jars for illegal or missing artifacts
+check_shaded_artifacts_s3_fs() {
+	VARIANT=$1
+	jar tf flink-filesystems/flink-s3-fs-${VARIANT}/target/flink-s3-fs-${VARIANT}*.jar > allClasses
+
+	UNSHADED_CLASSES=`cat allClasses | grep -v -e '^META-INF' -e '^assets' -e "^org/apache/flink/fs/s3${VARIANT}/" | grep '\.class$'`
+	if [ "$?" == "0" ]; then
+		echo "=============================================================================="
+		echo "Detected unshaded dependencies in fat jar:"
+		echo "${UNSHADED_CLASSES}"
+		echo "=============================================================================="
+		return 1
+	fi
+
+	if [ ! `cat allClasses | grep '^META-INF/services/org\.apache\.flink\.core\.fs\.FileSystemFactory$'` ]; then
+		echo "=============================================================================="
+		echo "File does not exist: services/org.apache.flink.core.fs.FileSystemFactory"
+		echo "=============================================================================="
+	fi
+
+	UNSHADED_SERVICES=`cat allClasses | grep '^META-INF/services/' | grep -v -e '^META-INF/services/org\.apache\.flink\.core\.fs\.FileSystemFactory$' -e "^META-INF/services/org\.apache\.flink\.fs\.s3${VARIANT}\.shaded" -e '^META-INF/services/'`
+	if [ "$?" == "0" ]; then
+		echo "=============================================================================="
+		echo "Detected unshaded service files in fat jar:"
+		echo "${UNSHADED_SERVICES}"
+		echo "=============================================================================="
+		return 1
+	fi
+
+	FS_SERVICE_FILE_CLASS=`unzip -q -c flink-filesystems/flink-s3-fs-${VARIANT}/target/flink-s3-fs-${VARIANT}*.jar META-INF/services/org.apache.flink.core.fs.FileSystemFactory | grep -v -e '^#' -e '^$'`
+	if [ "${FS_SERVICE_FILE_CLASS}" != "org.apache.flink.fs.s3${VARIANT}.S3FileSystemFactory" ]; then
+		echo "=============================================================================="
+		echo "Detected wrong content in services/org.apache.flink.core.fs.FileSystemFactory:"
+		echo "${FS_SERVICE_FILE_CLASS}"
 		echo "=============================================================================="
 		return 1
 	fi
@@ -394,7 +515,17 @@ case $TEST in
 			echo "Compilation/test failure detected, skipping shaded dependency check."
 			echo "=============================================================================="
 		fi
-
+	;;
+	(connectors)
+		if [ $EXIT_CODE == 0 ]; then
+			check_shaded_artifacts_s3_fs hadoop
+			check_shaded_artifacts_s3_fs presto
+			EXIT_CODE=$?
+		else
+			echo "=============================================================================="
+			echo "Compilation/test failure detected, skipping shaded dependency check."
+			echo "=============================================================================="
+		fi
 	;;
 esac
 
@@ -415,19 +546,31 @@ case $TEST in
 			printf "\n==============================================================================\n"
 			printf "Running Wordcount end-to-end test\n"
 			printf "==============================================================================\n"
-			test-infra/end-to-end-test/test_batch_wordcount.sh build-target cluster
+			FLINK_DIR=build-target CLUSTER_MODE=cluster test-infra/end-to-end-test/test_batch_wordcount.sh
 			EXIT_CODE=$(($EXIT_CODE+$?))
 
 			printf "\n==============================================================================\n"
 			printf "Running Kafka end-to-end test\n"
 			printf "==============================================================================\n"
-			test-infra/end-to-end-test/test_streaming_kafka010.sh build-target cluster
+			FLINK_DIR=build-target CLUSTER_MODE=cluster test-infra/end-to-end-test/test_streaming_kafka010.sh
 			EXIT_CODE=$(($EXIT_CODE+$?))
 
 			printf "\n==============================================================================\n"
 			printf "Running class loading end-to-end test\n"
 			printf "==============================================================================\n"
-			test-infra/end-to-end-test/test_streaming_classloader.sh build-target cluster
+			FLINK_DIR=build-target CLUSTER_MODE=cluster test-infra/end-to-end-test/test_streaming_classloader.sh
+			EXIT_CODE=$(($EXIT_CODE+$?))
+
+			printf "\n==============================================================================\n"
+			printf "Running Shaded Hadoop S3A end-to-end test\n"
+			printf "==============================================================================\n"
+			FLINK_DIR=build-target CLUSTER_MODE=cluster test-infra/end-to-end-test/test_shaded_hadoop_s3a.sh
+			EXIT_CODE=$(($EXIT_CODE+$?))
+
+			printf "\n==============================================================================\n"
+			printf "Running Shaded Presto S3 end-to-end test\n"
+			printf "==============================================================================\n"
+			FLINK_DIR=build-target CLUSTER_MODE=cluster test-infra/end-to-end-test/test_shaded_presto_s3.sh
 			EXIT_CODE=$(($EXIT_CODE+$?))
 		else
 			printf "\n==============================================================================\n"

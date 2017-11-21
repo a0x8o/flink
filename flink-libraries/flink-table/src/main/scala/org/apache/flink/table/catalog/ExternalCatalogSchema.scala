@@ -30,7 +30,7 @@ import scala.collection.JavaConverters._
 /**
   * This class is responsible to connect an external catalog to Calcite's catalog.
   * This enables to look-up and access tables in SQL queries without registering tables in advance.
-  * The the external catalog and all included sub-catalogs and tables is registered as
+  * The external catalog and all included sub-catalogs and tables is registered as
   * sub-schemas and tables in Calcite.
   *
   * @param catalogIdentifier external catalog name
@@ -94,9 +94,7 @@ class ExternalCatalogSchema(
 
   override def getTableNames: JSet[String] = JCollections.emptySet[String]
 
-  override def contentsHaveChangedSince(lastCheck: Long, now: Long): Boolean = true
-
-  override def snapshot(l: Long): Schema = this
+  override def snapshot(v: SchemaVersion): Schema = this
 
   /**
     * Registers sub-Schemas to current schema plus

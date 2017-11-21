@@ -160,7 +160,8 @@ class TimeIndicatorConversionTest extends TableTestBase {
         streamTableNode(0),
         term("invocation",
           s"${func.functionIdentifier}(CAST($$0):TIMESTAMP(3) NOT NULL, PROCTIME($$3), '')"),
-        term("function", func),
+        term("correlate", s"table(TableFunc(CAST(rowtime), PROCTIME(proctime), ''))"),
+        term("select", "rowtime", "long", "int", "proctime", "s"),
         term("rowType", "RecordType(TIME ATTRIBUTE(ROWTIME) rowtime, BIGINT long, INTEGER int, " +
           "TIME ATTRIBUTE(PROCTIME) proctime, VARCHAR(65536) s)"),
         term("joinType", "INNER")
@@ -208,15 +209,19 @@ class TimeIndicatorConversionTest extends TableTestBase {
 
     val result = t.unionAll(t).select('rowtime)
 
-    val expected = unaryNode(
-      "DataStreamCalc",
-      binaryNode(
-        "DataStreamUnion",
+    val expected = binaryNode(
+      "DataStreamUnion",
+      unaryNode(
+        "DataStreamCalc",
         streamTableNode(0),
-        streamTableNode(0),
-        term("union all", "rowtime", "long", "int")
+        term("select", "rowtime")
       ),
-      term("select", "rowtime")
+      unaryNode(
+        "DataStreamCalc",
+        streamTableNode(0),
+        term("select", "rowtime")
+      ),
+      term("union all", "rowtime")
     )
 
     util.verifyTable(result, expected)
@@ -342,9 +347,15 @@ class TimeIndicatorConversionTest extends TableTestBase {
             WindowReference("w$"),
             'rowtime,
             100.millis)),
-        term("select", "long", "SUM(int) AS EXPR$2", "start('w$) AS w$start", "end('w$) AS w$end")
+        term("select",
+          "long",
+          "SUM(int) AS EXPR$2",
+          "start('w$) AS w$start",
+          "end('w$) AS w$end",
+          "rowtime('w$) AS w$rowtime",
+          "proctime('w$) AS w$proctime")
       ),
-      term("select", "w$end", "long", "EXPR$2")
+      term("select", "w$end AS rowtime", "long", "EXPR$2")
     )
 
     util.verifyTable(result, expected)

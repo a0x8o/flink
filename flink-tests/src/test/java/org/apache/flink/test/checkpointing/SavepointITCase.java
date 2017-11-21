@@ -213,8 +213,8 @@ public class SavepointITCase extends TestLogger {
 
 			// Shut down the Flink cluster (thereby canceling the job)
 			LOG.info("Shutting down Flink cluster.");
-			flink.shutdown();
-			flink.awaitTermination();
+			flink.stop();
+			flink = null;
 
 			// - Verification START -------------------------------------------
 
@@ -251,6 +251,7 @@ public class SavepointITCase extends TestLogger {
 
 			// Restart the cluster
 			LOG.info("Restarting Flink cluster.");
+			flink = new TestingCluster(config);
 			flink.start();
 
 			// Retrieve the job manager
@@ -409,7 +410,7 @@ public class SavepointITCase extends TestLogger {
 			// - Verification END ---------------------------------------------
 		} finally {
 			if (flink != null) {
-				flink.shutdown();
+				flink.stop();
 			}
 		}
 	}
@@ -472,7 +473,7 @@ public class SavepointITCase extends TestLogger {
 			}
 		} finally {
 			if (flink != null) {
-				flink.shutdown();
+				flink.stop();
 			}
 		}
 	}
@@ -497,20 +498,20 @@ public class SavepointITCase extends TestLogger {
 		final File tmpDir = folder.getRoot();
 		final File savepointDir = new File(tmpDir, "savepoints");
 
-		TestingCluster flink = null;
+		// Flink configuration
+		final Configuration config = new Configuration();
+		config.setInteger(ConfigConstants.LOCAL_NUMBER_TASK_MANAGER, numTaskManagers);
+		config.setInteger(ConfigConstants.TASK_MANAGER_NUM_TASK_SLOTS, numSlotsPerTaskManager);
+		config.setString(CoreOptions.SAVEPOINT_DIRECTORY,
+				savepointDir.toURI().toString());
+
 		String savepointPath;
+
+		LOG.info("Flink configuration: " + config + ".");
+
+		// Start Flink
+		TestingCluster flink = new TestingCluster(config);
 		try {
-			// Flink configuration
-			final Configuration config = new Configuration();
-			config.setInteger(ConfigConstants.LOCAL_NUMBER_TASK_MANAGER, numTaskManagers);
-			config.setInteger(ConfigConstants.TASK_MANAGER_NUM_TASK_SLOTS, numSlotsPerTaskManager);
-			config.setString(CoreOptions.SAVEPOINT_DIRECTORY,
-					savepointDir.toURI().toString());
-
-			LOG.info("Flink configuration: " + config + ".");
-
-			// Start Flink
-			flink = new TestingCluster(config);
 			LOG.info("Starting Flink cluster.");
 			flink.start(true);
 
@@ -561,19 +562,19 @@ public class SavepointITCase extends TestLogger {
 
 			((ResponseSavepoint) Await.result(savepointFuture, deadline.timeLeft())).savepoint();
 			LOG.info("Retrieved savepoint: " + savepointPath + ".");
-
+		} finally {
 			// Shut down the Flink cluster (thereby canceling the job)
 			LOG.info("Shutting down Flink cluster.");
-			flink.shutdown();
-			flink.awaitTermination();
-
-		} finally {
-			flink.shutdown();
-			flink.awaitTermination();
+			flink.stop();
 		}
 
+		// create a new TestingCluster to make sure we start with completely
+		// new resources
+		flink = new TestingCluster(config);
 		try {
 			LOG.info("Restarting Flink cluster.");
+			flink = new TestingCluster(config);
+
 			flink.start(true);
 
 			// Retrieve the job manager
@@ -618,8 +619,7 @@ public class SavepointITCase extends TestLogger {
 			// Await some progress after restore
 			StatefulCounter.getProgressLatch().await(deadline.timeLeft().toMillis(), TimeUnit.MILLISECONDS);
 		} finally {
-			flink.shutdown();
-			flink.awaitTermination();
+			flink.stop();
 		}
 	}
 
@@ -841,7 +841,6 @@ public class SavepointITCase extends TestLogger {
 				cluster.disposeSavepoint(savepointPath);
 			}
 			cluster.stop();
-			cluster.awaitTermination();
 		}
 	}
 

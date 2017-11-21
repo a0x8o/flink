@@ -20,9 +20,10 @@ package org.apache.flink.table.expressions
 import org.apache.calcite.rex.RexNode
 import org.apache.calcite.tools.RelBuilder
 import org.apache.flink.api.common.typeinfo.TypeInformation
-import org.apache.flink.table.api.{Table, UnresolvedException, ValidationException}
+import org.apache.flink.table.api._
 import org.apache.flink.table.calcite.FlinkRelBuilder.NamedWindowProperty
-import org.apache.flink.table.calcite.FlinkTypeFactory.{isRowtimeIndicatorType, isTimeIndicatorType}
+import org.apache.flink.table.calcite.FlinkTypeFactory._
+import org.apache.flink.table.functions.sql.StreamRecordTimestampSqlFunction
 import org.apache.flink.table.typeutils.TimeIndicatorTypeInfo
 import org.apache.flink.table.validate.{ValidationFailure, ValidationResult, ValidationSuccess}
 
@@ -163,9 +164,13 @@ case class RowtimeAttribute(expr: Expression) extends TimeAttribute(expr) {
 
   override private[flink] def validateInput(): ValidationResult = {
     child match {
-      case WindowReference(_, Some(tpe)) if !isRowtimeIndicatorType(tpe) =>
+      case WindowReference(_, Some(tpe: TypeInformation[_])) if isProctimeIndicatorType(tpe) =>
         ValidationFailure("A proctime window cannot provide a rowtime attribute.")
-      case WindowReference(_, Some(tpe)) if isRowtimeIndicatorType(tpe) =>
+      case WindowReference(_, Some(tpe: TypeInformation[_])) if isRowtimeIndicatorType(tpe) =>
+        // rowtime window
+        ValidationSuccess
+      case WindowReference(_, Some(tpe)) if tpe == Types.LONG || tpe == Types.SQL_TIMESTAMP =>
+        // batch time window
         ValidationSuccess
       case WindowReference(_, _) =>
         ValidationFailure("Reference to a rowtime or proctime window required.")
@@ -175,8 +180,19 @@ case class RowtimeAttribute(expr: Expression) extends TimeAttribute(expr) {
     }
   }
 
-  override def resultType: TypeInformation[_] =
-    TimeIndicatorTypeInfo.ROWTIME_INDICATOR
+  override def resultType: TypeInformation[_] = {
+    child match {
+      case WindowReference(_, Some(tpe: TypeInformation[_])) if isRowtimeIndicatorType(tpe) =>
+        // rowtime window
+        TimeIndicatorTypeInfo.ROWTIME_INDICATOR
+      case WindowReference(_, Some(tpe)) if tpe == Types.LONG || tpe == Types.SQL_TIMESTAMP =>
+        // batch time window
+        Types.SQL_TIMESTAMP
+      case _ =>
+        throw TableException("WindowReference of RowtimeAttribute has invalid type. " +
+          "Please report this bug.")
+    }
+  }
 
   override def toNamedWindowProperty(name: String): NamedWindowProperty =
     NamedWindowProperty(name, this)
@@ -188,7 +204,7 @@ case class ProctimeAttribute(expr: Expression) extends TimeAttribute(expr) {
 
   override private[flink] def validateInput(): ValidationResult = {
     child match {
-      case WindowReference(_, Some(tpe)) if isTimeIndicatorType(tpe) =>
+      case WindowReference(_, Some(tpe: TypeInformation[_])) if isTimeIndicatorType(tpe) =>
         ValidationSuccess
       case WindowReference(_, _) =>
         ValidationFailure("Reference to a rowtime or proctime window required.")
@@ -205,4 +221,14 @@ case class ProctimeAttribute(expr: Expression) extends TimeAttribute(expr) {
     NamedWindowProperty(name, this)
 
   override def toString: String = s"proctime($child)"
+}
+
+/** Expression to access the timestamp of a StreamRecord. */
+case class StreamRecordTimestamp() extends LeafExpression {
+
+  override private[flink] def resultType = Types.LONG
+
+  override private[flink] def toRexNode(implicit relBuilder: RelBuilder): RexNode = {
+    relBuilder.getRexBuilder.makeCall(StreamRecordTimestampSqlFunction)
+  }
 }

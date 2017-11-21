@@ -23,6 +23,7 @@ import org.apache.flink.api.common.ExecutionConfig
 import org.apache.flink.api.common.functions.{FilterFunction, FlatMapFunction, MapFunction, Partitioner}
 import org.apache.flink.api.common.io.OutputFormat
 import org.apache.flink.api.common.operators.ResourceSpec
+import org.apache.flink.api.common.serialization.SerializationSchema
 import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.api.java.functions.KeySelector
 import org.apache.flink.api.java.tuple.{Tuple => JavaTuple}
@@ -38,8 +39,7 @@ import org.apache.flink.streaming.api.operators.OneInputStreamOperator
 import org.apache.flink.streaming.api.windowing.assigners._
 import org.apache.flink.streaming.api.windowing.time.Time
 import org.apache.flink.streaming.api.windowing.windows.{GlobalWindow, TimeWindow, Window}
-import org.apache.flink.streaming.util.serialization.SerializationSchema
-import org.apache.flink.util.{Collector, OutputTag}
+import org.apache.flink.util.Collector
 
 import scala.collection.JavaConverters._
 
@@ -527,7 +527,7 @@ class DataStream[T](stream: JavaStream[T]) {
    * stream of the iterative part.
    *
    * The input stream of the iterate operator and the feedback stream will be treated
-   * as a ConnectedStreams where the the input is connected with the feedback stream.
+   * as a ConnectedStreams where the input is connected with the feedback stream.
    *
    * This allows the user to distinguish standard input from feedback inputs.
    *

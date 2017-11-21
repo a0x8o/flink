@@ -28,6 +28,8 @@ import org.apache.flink.core.io.InputSplit;
 import org.apache.flink.core.io.InputSplitAssigner;
 import org.apache.flink.metrics.MetricGroup;
 import org.apache.flink.metrics.groups.UnregisteredMetricsGroup;
+import org.apache.flink.queryablestate.KvStateID;
+import org.apache.flink.runtime.StoppingException;
 import org.apache.flink.runtime.blob.BlobServer;
 import org.apache.flink.runtime.checkpoint.CheckpointCoordinator;
 import org.apache.flink.runtime.checkpoint.CheckpointMetrics;
@@ -39,6 +41,7 @@ import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.execution.librarycache.BlobLibraryCacheManager;
+import org.apache.flink.runtime.executiongraph.AccessExecutionGraph;
 import org.apache.flink.runtime.executiongraph.Execution;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.ExecutionGraph;
@@ -72,10 +75,8 @@ import org.apache.flink.runtime.messages.checkpoint.AcknowledgeCheckpoint;
 import org.apache.flink.runtime.messages.checkpoint.DeclineCheckpoint;
 import org.apache.flink.runtime.messages.webmonitor.JobDetails;
 import org.apache.flink.runtime.metrics.groups.JobManagerMetricGroup;
-import org.apache.flink.runtime.query.KvStateID;
 import org.apache.flink.runtime.query.KvStateLocation;
 import org.apache.flink.runtime.query.KvStateLocationRegistry;
-import org.apache.flink.runtime.query.KvStateServerAddress;
 import org.apache.flink.runtime.query.UnknownKvStateLocation;
 import org.apache.flink.runtime.registration.RegisteredRpcConnection;
 import org.apache.flink.runtime.registration.RegistrationResponse;
@@ -102,6 +103,7 @@ import org.slf4j.Logger;
 import javax.annotation.Nullable;
 
 import java.io.IOException;
+import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -286,6 +288,7 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 			restartStrategy,
 			jobMetricGroup,
 			-1,
+			blobServer,
 			log);
 
 		// register self as job status change listener
@@ -356,6 +359,24 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 	//----------------------------------------------------------------------------------------------
 	// RPC methods
 	//----------------------------------------------------------------------------------------------
+
+	@Override
+	public CompletableFuture<Acknowledge> cancel(Time timeout) {
+		executionGraph.cancel();
+
+		return CompletableFuture.completedFuture(Acknowledge.get());
+	}
+
+	@Override
+	public CompletableFuture<Acknowledge> stop(Time timeout) {
+		try {
+			executionGraph.stop();
+		} catch (StoppingException e) {
+			return FutureUtils.completedExceptionally(e);
+		}
+
+		return CompletableFuture.completedFuture(Acknowledge.get());
+	}
 
 	/**
 	 * Updates the task execution state for a given task.
@@ -565,7 +586,7 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 			final KeyGroupRange keyGroupRange,
 			final String registrationName,
 			final KvStateID kvStateId,
-			final KvStateServerAddress kvStateServerAddress)
+			final InetSocketAddress kvStateServerAddress)
 	{
 		if (log.isDebugEnabled()) {
 			log.debug("Key value state registered for job {} under name {}.",
@@ -725,6 +746,16 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 		return CompletableFuture.supplyAsync(() -> WebMonitorUtils.createDetailsForJob(executionGraph), executor);
 	}
 
+	@Override
+	public CompletableFuture<AccessExecutionGraph> requestArchivedExecutionGraph(Time timeout) {
+		return CompletableFuture.completedFuture(executionGraph.archive());
+	}
+
+	@Override
+	public CompletableFuture<JobStatus> requestJobStatus(Time timeout) {
+		return CompletableFuture.completedFuture(executionGraph.getState());
+	}
+
 	//----------------------------------------------------------------------------------------------
 	// Internal methods
 	//----------------------------------------------------------------------------------------------
@@ -836,14 +867,15 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 		errorHandler.onFatalError(cause);
 	}
 
-	private void jobStatusChanged(final JobStatus newJobStatus, long timestamp, final Throwable error) {
+	private void jobStatusChanged(
+			final JobStatus newJobStatus,
+			long timestamp,
+			@Nullable final Throwable error) {
 		validateRunsInMainThread();
 
 		final JobID jobID = executionGraph.getJobID();
 		final String jobName = executionGraph.getJobName();
-
-		log.info("Status of job {} ({}) changed to {}.", jobID, jobName, newJobStatus, error);
-
+		
 		if (newJobStatus.isGloballyTerminalState()) {
 			switch (newJobStatus) {
 				case FINISHED:

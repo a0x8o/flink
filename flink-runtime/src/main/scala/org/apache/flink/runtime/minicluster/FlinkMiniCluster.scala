@@ -32,7 +32,7 @@ import org.apache.flink.configuration._
 import org.apache.flink.core.fs.Path
 import org.apache.flink.runtime.akka.{AkkaJobManagerGateway, AkkaUtils}
 import org.apache.flink.runtime.client.{JobClient, JobExecutionException}
-import org.apache.flink.runtime.concurrent.{FutureUtils, Executors => FlinkExecutors}
+import org.apache.flink.runtime.concurrent.{FutureUtils, ScheduledExecutorServiceAdapter, Executors => FlinkExecutors}
 import org.apache.flink.runtime.execution.librarycache.FlinkUserCodeClassLoaders
 import org.apache.flink.runtime.highavailability.{HighAvailabilityServices, HighAvailabilityServicesUtils}
 import org.apache.flink.runtime.instance.{ActorGateway, AkkaActorGateway}
@@ -40,6 +40,7 @@ import org.apache.flink.runtime.jobgraph.JobGraph
 import org.apache.flink.runtime.jobmanager.HighAvailabilityMode
 import org.apache.flink.runtime.leaderretrieval.{LeaderRetrievalListener, LeaderRetrievalService}
 import org.apache.flink.runtime.messages.TaskManagerMessages.NotifyWhenRegisteredAtJobManager
+import org.apache.flink.runtime.metrics.{MetricRegistryConfiguration, MetricRegistryImpl}
 import org.apache.flink.runtime.util.{ExecutorThreadFactory, Hardware}
 import org.apache.flink.runtime.webmonitor.retriever.impl.{AkkaJobManagerRetriever, AkkaQueryServiceRetriever}
 import org.apache.flink.runtime.webmonitor.{WebMonitor, WebMonitorUtils}
@@ -120,6 +121,8 @@ abstract class FlinkMiniCluster(
   val ioExecutor = Executors.newFixedThreadPool(
     Hardware.getNumberCPUCores(),
     new ExecutorThreadFactory("mini-cluster-io"))
+
+  protected var metricRegistryOpt: Option[MetricRegistryImpl] = None
 
   def this(configuration: Configuration, useSingleActorSystem: Boolean) {
     this(
@@ -325,6 +328,15 @@ abstract class FlinkMiniCluster(
 
     lazy val singleActorSystem = startJobManagerActorSystem(0)
 
+    val metricRegistry = new MetricRegistryImpl(
+      MetricRegistryConfiguration.fromConfiguration(originalConfiguration))
+
+    metricRegistryOpt = Some(metricRegistry)
+
+    if (originalConfiguration.getBoolean(ConfigConstants.LOCAL_START_WEBSERVER, false)) {
+      metricRegistry.startQueryService(singleActorSystem, null)
+    }
+
     val (jmActorSystems, jmActors) =
       (for(i <- 0 until numJobManagers) yield {
         val actorSystem = if(useSingleActorSystem) {
@@ -406,7 +418,7 @@ abstract class FlinkMiniCluster(
           new AkkaJobManagerRetriever(actorSystem, flinkTimeout, 10, Time.milliseconds(50L)),
           new AkkaQueryServiceRetriever(actorSystem, flinkTimeout),
           flinkTimeout,
-          actorSystem.dispatcher)
+          new ScheduledExecutorServiceAdapter(futureExecutor))
       )
 
       webServer.foreach(_.start())
@@ -419,7 +431,7 @@ abstract class FlinkMiniCluster(
 
   def stop(): Unit = {
     LOG.info("Stopping FlinkMiniCluster.")
-    shutdown()
+    startInternalShutdown()
     awaitTermination()
 
     jobManagerLeaderRetrievalService.foreach(_.stop())
@@ -435,7 +447,7 @@ abstract class FlinkMiniCluster(
       ioExecutor)
   }
 
-  protected def shutdown(): Unit = {
+  protected def startInternalShutdown(): Unit = {
     webMonitor foreach {
       _.stop()
     }
@@ -455,6 +467,8 @@ abstract class FlinkMiniCluster(
 
     Await.ready(Future.sequence(jmFutures ++ tmFutures ++ rmFutures), timeout)
 
+    metricRegistryOpt.foreach(_.shutdown())
+
     if (!useSingleActorSystem) {
       taskManagerActorSystems foreach {
         _ foreach(_.shutdown())
@@ -468,7 +482,6 @@ abstract class FlinkMiniCluster(
     jobManagerActorSystems foreach {
       _ foreach(_.shutdown())
     }
-
   }
 
   def awaitTermination(): Unit = {

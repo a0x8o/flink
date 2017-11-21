@@ -92,6 +92,86 @@ class SqlITCase extends StreamingWithStateTestBase {
     assertEquals(expected.sorted, StreamITCase.retractedResults.sorted)
   }
 
+  @Test
+  def testUnboundedGroupByCollect(): Unit = {
+
+    val env = StreamExecutionEnvironment.getExecutionEnvironment
+    val tEnv = TableEnvironment.getTableEnvironment(env)
+    env.setStateBackend(getStateBackend)
+    StreamITCase.clear
+
+    val sqlQuery = "SELECT b, COLLECT(a) FROM MyTable GROUP BY b"
+
+    val t = StreamTestData.get3TupleDataStream(env).toTable(tEnv).as('a, 'b, 'c)
+    tEnv.registerTable("MyTable", t)
+
+    val result = tEnv.sql(sqlQuery).toRetractStream[Row]
+    result.addSink(new StreamITCase.RetractingSink).setParallelism(1)
+    env.execute()
+
+    val expected = List(
+      "1,{1=1}",
+      "2,{2=1, 3=1}",
+      "3,{4=1, 5=1, 6=1}",
+      "4,{7=1, 8=1, 9=1, 10=1}",
+      "5,{11=1, 12=1, 13=1, 14=1, 15=1}",
+      "6,{16=1, 17=1, 18=1, 19=1, 20=1, 21=1}")
+    assertEquals(expected.sorted, StreamITCase.retractedResults.sorted)
+  }
+
+  @Test
+  def testUnboundedGroupByCollectWithObject(): Unit = {
+
+    val env = StreamExecutionEnvironment.getExecutionEnvironment
+    val tEnv = TableEnvironment.getTableEnvironment(env)
+    env.setStateBackend(getStateBackend)
+    StreamITCase.clear
+
+    val sqlQuery = "SELECT b, COLLECT(c) FROM MyTable GROUP BY b"
+
+    val data = List(
+      (1, 1, (12, "45.6")),
+      (2, 2, (12, "45.612")),
+      (3, 2, (13, "41.6")),
+      (4, 3, (14, "45.2136")),
+      (5, 3, (18, "42.6"))
+    )
+
+    tEnv.registerTable("MyTable",
+      env.fromCollection(data).toTable(tEnv).as('a, 'b, 'c))
+
+    val result = tEnv.sql(sqlQuery).toRetractStream[Row]
+    result.addSink(new StreamITCase.RetractingSink).setParallelism(1)
+    env.execute()
+
+    val expected = List(
+      "1,{(12,45.6)=1}",
+      "2,{(13,41.6)=1, (12,45.612)=1}",
+      "3,{(18,42.6)=1, (14,45.2136)=1}")
+    assertEquals(expected.sorted, StreamITCase.retractedResults.sorted)
+  }
+
+  /** test select star **/
+  @Test
+  def testSelectStar(): Unit = {
+
+    val env = StreamExecutionEnvironment.getExecutionEnvironment
+    val tEnv = TableEnvironment.getTableEnvironment(env)
+    StreamITCase.clear
+
+    val sqlQuery = "SELECT * FROM MyTable"
+
+    val t = StreamTestData.getSmallNestedTupleDataStream(env).toTable(tEnv).as('a, 'b)
+    tEnv.registerTable("MyTable", t)
+
+    val result = tEnv.sqlQuery(sqlQuery).toAppendStream[Row]
+    result.addSink(new StreamITCase.StringSink[Row])
+    env.execute()
+
+    val expected = List("(1,1),one", "(2,2),two", "(3,3),three")
+    assertEquals(expected.sorted, StreamITCase.testResults.sorted)
+  }
+
   /** test selection **/
   @Test
   def testSelectExpressionFromTable(): Unit = {
@@ -359,7 +439,9 @@ class SqlITCase extends StreamingWithStateTestBase {
 
     tEnv.registerTable("T1", t1)
 
-    val resultHopStartEndWithHaving = tEnv.sql(sqlQueryHopStartEndWithHaving).toAppendStream[Row]
+    val resultHopStartEndWithHaving = tEnv
+      .sqlQuery(sqlQueryHopStartEndWithHaving)
+      .toAppendStream[Row]
     resultHopStartEndWithHaving.addSink(new StreamITCase.StringSink[Row])
 
     env.execute()

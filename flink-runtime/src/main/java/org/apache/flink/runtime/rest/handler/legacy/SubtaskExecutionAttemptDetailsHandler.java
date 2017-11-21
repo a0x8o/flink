@@ -30,7 +30,7 @@ import org.apache.flink.runtime.webmonitor.history.ArchivedJson;
 import org.apache.flink.runtime.webmonitor.history.JsonArchivist;
 import org.apache.flink.util.FlinkException;
 
-import com.fasterxml.jackson.core.JsonGenerator;
+import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.core.JsonGenerator;
 
 import javax.annotation.Nullable;
 
@@ -51,11 +51,12 @@ import static org.apache.flink.runtime.rest.handler.legacy.SubtaskCurrentAttempt
  */
 public class SubtaskExecutionAttemptDetailsHandler extends AbstractSubtaskAttemptRequestHandler {
 
+	public static final String PARAMETER_SUBTASK_INDEX = "subtasknum";
 	private static final String SUBTASK_ATTEMPT_DETAILS_REST_PATH = "/jobs/:jobid/vertices/:vertexid/subtasks/:subtasknum/attempts/:attempt";
 
 	private final MetricFetcher fetcher;
 
-	public SubtaskExecutionAttemptDetailsHandler(ExecutionGraphHolder executionGraphHolder, Executor executor, MetricFetcher fetcher) {
+	public SubtaskExecutionAttemptDetailsHandler(ExecutionGraphCache executionGraphHolder, Executor executor, MetricFetcher fetcher) {
 		super(executionGraphHolder, executor);
 		this.fetcher = fetcher;
 	}

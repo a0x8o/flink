@@ -53,6 +53,7 @@ import org.apache.flink.runtime.jobgraph.JobVertex;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
+import org.apache.flink.runtime.jobgraph.tasks.CheckpointCoordinatorConfiguration;
 import org.apache.flink.runtime.jobgraph.tasks.ExternalizedCheckpointSettings;
 import org.apache.flink.runtime.jobgraph.tasks.JobCheckpointingSettings;
 import org.apache.flink.runtime.jobgraph.tasks.StatefulTask;
@@ -61,7 +62,8 @@ import org.apache.flink.runtime.leaderelection.LeaderElectionService;
 import org.apache.flink.runtime.leaderelection.TestingLeaderElectionService;
 import org.apache.flink.runtime.leaderelection.TestingLeaderRetrievalService;
 import org.apache.flink.runtime.messages.JobManagerMessages;
-import org.apache.flink.runtime.metrics.MetricRegistry;
+import org.apache.flink.runtime.metrics.NoOpMetricRegistry;
+import org.apache.flink.runtime.metrics.groups.JobManagerMetricGroup;
 import org.apache.flink.runtime.state.OperatorStateHandle;
 import org.apache.flink.runtime.state.memory.ByteStreamStateHandle;
 import org.apache.flink.runtime.taskmanager.TaskManager;
@@ -92,7 +94,6 @@ import org.junit.BeforeClass;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
-
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -188,6 +189,7 @@ public class JobManagerHARecoveryTest extends TestLogger {
 			BlobServer blobServer = new BlobServer(
 				flinkConfiguration,
 				testingHighAvailabilityServices.createBlobStore());
+			blobServer.start();
 			Props jobManagerProps = Props.create(
 				TestingJobManager.class,
 				flinkConfiguration,
@@ -196,7 +198,7 @@ public class JobManagerHARecoveryTest extends TestLogger {
 				instanceManager,
 				scheduler,
 				blobServer,
-				new BlobLibraryCacheManager(blobServer, FlinkUserCodeClassLoaders.ResolveOrder.CHILD_FIRST),
+				new BlobLibraryCacheManager(blobServer, FlinkUserCodeClassLoaders.ResolveOrder.CHILD_FIRST, new String[0]),
 				archive,
 				new FixedDelayRestartStrategy.FixedDelayRestartStrategyFactory(Int.MaxValue(), 100),
 				timeout,
@@ -204,7 +206,7 @@ public class JobManagerHARecoveryTest extends TestLogger {
 				mySubmittedJobGraphStore,
 				checkpointStateFactory,
 				jobRecoveryTimeout,
-				Option.<MetricRegistry>empty(),
+				new JobManagerMetricGroup(new NoOpMetricRegistry(), "localhost"),
 				Option.<String>empty());
 
 			jobManager = system.actorOf(jobManagerProps);
@@ -215,6 +217,7 @@ public class JobManagerHARecoveryTest extends TestLogger {
 				ResourceID.generate(),
 				system,
 				testingHighAvailabilityServices,
+				new NoOpMetricRegistry(),
 				"localhost",
 				Option.apply("taskmanager"),
 				true,
@@ -237,13 +240,14 @@ public class JobManagerHARecoveryTest extends TestLogger {
 					vertexId,
 					vertexId,
 					vertexId,
-					100L,
-					10L * 60L * 1000L,
-					0L,
-					1,
-					ExternalizedCheckpointSettings.none(),
-					null,
-					true));
+					new CheckpointCoordinatorConfiguration(
+						100L,
+						10L * 60L * 1000L,
+						0L,
+						1,
+						ExternalizedCheckpointSettings.none(),
+						true),
+					null));
 
 			BlockingStatefulInvokable.initializeStaticHelpers(slots);
 
@@ -369,7 +373,7 @@ public class JobManagerHARecoveryTest extends TestLogger {
 				mock(InstanceManager.class),
 				mock(Scheduler.class),
 				blobServer,
-				new BlobLibraryCacheManager(blobServer, FlinkUserCodeClassLoaders.ResolveOrder.CHILD_FIRST),
+				new BlobLibraryCacheManager(blobServer, FlinkUserCodeClassLoaders.ResolveOrder.CHILD_FIRST, new String[0]),
 				ActorRef.noSender(),
 				new FixedDelayRestartStrategy.FixedDelayRestartStrategyFactory(Int.MaxValue(), 100),
 				timeout,
@@ -377,7 +381,7 @@ public class JobManagerHARecoveryTest extends TestLogger {
 				submittedJobGraphStore,
 				mock(CheckpointRecoveryFactory.class),
 				jobRecoveryTimeout,
-				Option.<MetricRegistry>apply(null),
+				new JobManagerMetricGroup(new NoOpMetricRegistry(), "localhost"),
 				recoveredJobs).withDispatcher(CallingThreadDispatcher.Id());
 
 			jobManager = system.actorOf(jobManagerProps);
@@ -415,7 +419,7 @@ public class JobManagerHARecoveryTest extends TestLogger {
 			SubmittedJobGraphStore submittedJobGraphs,
 			CheckpointRecoveryFactory checkpointRecoveryFactory,
 			FiniteDuration jobRecoveryTimeout,
-			Option<MetricRegistry> metricsRegistry,
+			JobManagerMetricGroup jobManagerMetricGroup,
 			Collection<JobID> recoveredJobs) {
 			super(
 				flinkConfiguration,
@@ -432,7 +436,7 @@ public class JobManagerHARecoveryTest extends TestLogger {
 				submittedJobGraphs,
 				checkpointRecoveryFactory,
 				jobRecoveryTimeout,
-				metricsRegistry,
+				jobManagerMetricGroup,
 				Option.empty());
 
 			this.recoveredJobs = recoveredJobs;
@@ -464,14 +468,6 @@ public class JobManagerHARecoveryTest extends TestLogger {
 		public MyCheckpointRecoveryFactory(CompletedCheckpointStore store, CheckpointIDCounter counter) {
 			this.store = store;
 			this.counter = counter;
-		}
-
-		@Override
-		public void start() {
-		}
-
-		@Override
-		public void stop() {
 		}
 
 		@Override
@@ -619,16 +615,16 @@ public class JobManagerHARecoveryTest extends TestLogger {
 			}
 		}
 
-		public static void initializeStaticHelpers(int numSubtasks) {
+		static void initializeStaticHelpers(int numSubtasks) {
 			completedCheckpointsLatch = new CountDownLatch(numSubtasks);
 			recoveredStates = new long[numSubtasks];
 		}
 
-		public static void awaitCompletedCheckpoints() throws InterruptedException {
+		static void awaitCompletedCheckpoints() throws InterruptedException {
 			completedCheckpointsLatch.await();
 		}
 
-		public static long[] getRecoveredStates() {
+		static long[] getRecoveredStates() {
 			return recoveredStates;
 		}
 

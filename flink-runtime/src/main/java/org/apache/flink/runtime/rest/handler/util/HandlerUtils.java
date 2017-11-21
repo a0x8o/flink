@@ -23,6 +23,7 @@ import org.apache.flink.runtime.rest.messages.ErrorResponseBody;
 import org.apache.flink.runtime.rest.messages.ResponseBody;
 import org.apache.flink.runtime.rest.util.RestMapperUtils;
 
+import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
 import org.apache.flink.shaded.netty4.io.netty.buffer.Unpooled;
 import org.apache.flink.shaded.netty4.io.netty.channel.ChannelFuture;
@@ -35,12 +36,14 @@ import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpResponse;
 import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpResponseStatus;
 import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.LastHttpContent;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nonnull;
 
 import java.io.IOException;
 import java.io.StringWriter;
+import java.util.Map;
 
 import static org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpHeaders.Names.CONNECTION;
 import static org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpHeaders.Names.CONTENT_TYPE;
@@ -51,6 +54,8 @@ import static org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpVer
  */
 public class HandlerUtils {
 
+	private static final Logger LOG = LoggerFactory.getLogger(HandlerUtils.class);
+
 	private static final ObjectMapper mapper = RestMapperUtils.getStrictObjectMapper();
 
 	/**
@@ -60,21 +65,34 @@ public class HandlerUtils {
 	 * @param httpRequest originating http request
 	 * @param response which should be sent
 	 * @param statusCode of the message to send
+	 * @param headers additional header values
 	 * @param <P> type of the response
 	 */
 	public static <P extends ResponseBody> void sendResponse(
 			ChannelHandlerContext channelHandlerContext,
 			HttpRequest httpRequest,
 			P response,
-			HttpResponseStatus statusCode) {
+			HttpResponseStatus statusCode,
+			Map<String, String> headers) {
 		StringWriter sw = new StringWriter();
 		try {
 			mapper.writeValue(sw, response);
 		} catch (IOException ioe) {
-			sendErrorResponse(channelHandlerContext, httpRequest, new ErrorResponseBody("Internal server error. Could not map response to JSON."), HttpResponseStatus.INTERNAL_SERVER_ERROR);
+			LOG.error("Internal server error. Could not map response to JSON.", ioe);
+			sendErrorResponse(
+				channelHandlerContext,
+				httpRequest,
+				new ErrorResponseBody("Internal server error. Could not map response to JSON."),
+				HttpResponseStatus.INTERNAL_SERVER_ERROR,
+				headers);
 			return;
 		}
-		sendResponse(channelHandlerContext, httpRequest, sw.toString(), statusCode);
+		sendResponse(
+			channelHandlerContext,
+			httpRequest,
+			sw.toString(),
+			statusCode,
+			headers);
 	}
 
 	/**
@@ -84,21 +102,34 @@ public class HandlerUtils {
 	 * @param httpRequest originating http request
 	 * @param errorMessage which should be sent
 	 * @param statusCode of the message to send
+	 * @param headers additional header values
 	 */
 	public static void sendErrorResponse(
 			ChannelHandlerContext channelHandlerContext,
 			HttpRequest httpRequest,
 			ErrorResponseBody errorMessage,
-			HttpResponseStatus statusCode) {
+			HttpResponseStatus statusCode,
+			Map<String, String> headers) {
 
 		StringWriter sw = new StringWriter();
 		try {
 			mapper.writeValue(sw, errorMessage);
 		} catch (IOException e) {
 			// this should never happen
-			sendResponse(channelHandlerContext, httpRequest, "Internal server error. Could not map error response to JSON.", HttpResponseStatus.INTERNAL_SERVER_ERROR);
+			LOG.error("Internal server error. Could not map error response to JSON.", e);
+			sendResponse(
+				channelHandlerContext,
+				httpRequest,
+				"Internal server error. Could not map error response to JSON.",
+				HttpResponseStatus.INTERNAL_SERVER_ERROR,
+				headers);
 		}
-		sendResponse(channelHandlerContext, httpRequest, sw.toString(), statusCode);
+		sendResponse(
+			channelHandlerContext,
+			httpRequest,
+			sw.toString(),
+			statusCode,
+			headers);
 	}
 
 	/**
@@ -108,15 +139,21 @@ public class HandlerUtils {
 	 * @param httpRequest originating http request
 	 * @param message which should be sent
 	 * @param statusCode of the message to send
+	 * @param headers additional header values
 	 */
 	public static void sendResponse(
 			@Nonnull ChannelHandlerContext channelHandlerContext,
 			@Nonnull HttpRequest httpRequest,
 			@Nonnull String message,
-			@Nonnull HttpResponseStatus statusCode) {
+			@Nonnull HttpResponseStatus statusCode,
+			@Nonnull Map<String, String> headers) {
 		HttpResponse response = new DefaultHttpResponse(HTTP_1_1, statusCode);
 
 		response.headers().set(CONTENT_TYPE, "application/json");
+
+		for (Map.Entry<String, String> headerEntry : headers.entrySet()) {
+			response.headers().set(headerEntry.getKey(), headerEntry.getValue());
+		}
 
 		if (HttpHeaders.isKeepAlive(httpRequest)) {
 			response.headers().set(CONNECTION, HttpHeaders.Values.KEEP_ALIVE);

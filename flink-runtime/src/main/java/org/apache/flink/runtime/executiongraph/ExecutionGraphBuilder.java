@@ -27,6 +27,7 @@ import org.apache.flink.configuration.IllegalConfigurationException;
 import org.apache.flink.configuration.WebOptions;
 import org.apache.flink.metrics.MetricGroup;
 import org.apache.flink.runtime.JobException;
+import org.apache.flink.runtime.blob.BlobWriter;
 import org.apache.flink.runtime.checkpoint.CheckpointIDCounter;
 import org.apache.flink.runtime.checkpoint.CheckpointRecoveryFactory;
 import org.apache.flink.runtime.checkpoint.CheckpointStatsTracker;
@@ -47,6 +48,7 @@ import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.jobgraph.JobVertex;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobgraph.jsonplan.JsonPlanGenerator;
+import org.apache.flink.runtime.jobgraph.tasks.CheckpointCoordinatorConfiguration;
 import org.apache.flink.runtime.jobgraph.tasks.JobCheckpointingSettings;
 import org.apache.flink.runtime.state.AbstractStateBackend;
 import org.apache.flink.runtime.state.StateBackend;
@@ -89,6 +91,7 @@ public class ExecutionGraphBuilder {
 			RestartStrategy restartStrategy,
 			MetricGroup metrics,
 			int parallelismForAutoMax,
+			BlobWriter blobWriter,
 			Logger log)
 		throws JobExecutionException, JobException {
 
@@ -97,25 +100,34 @@ public class ExecutionGraphBuilder {
 		final String jobName = jobGraph.getName();
 		final JobID jobId = jobGraph.getJobID();
 
-		final FailoverStrategy.Factory failoverStrategy = 
+		final FailoverStrategy.Factory failoverStrategy =
 				FailoverStrategyLoader.loadFailoverStrategy(jobManagerConfig, log);
 
+		final JobInformation jobInformation = new JobInformation(
+			jobId,
+			jobName,
+			jobGraph.getSerializedExecutionConfig(),
+			jobGraph.getJobConfiguration(),
+			jobGraph.getUserJarBlobKeys(),
+			jobGraph.getClasspaths());
+
 		// create a new execution graph, if none exists so far
-		final ExecutionGraph executionGraph = (prior != null) ? prior :
-				new ExecutionGraph(
-						futureExecutor,
-						ioExecutor,
-						jobId,
-						jobName,
-						jobGraph.getJobConfiguration(),
-						jobGraph.getSerializedExecutionConfig(),
-						timeout,
-						restartStrategy,
-						failoverStrategy,
-						jobGraph.getUserJarBlobKeys(),
-						jobGraph.getClasspaths(),
-						slotProvider,
-						classLoader);
+		final ExecutionGraph executionGraph;
+		try {
+			executionGraph = (prior != null) ? prior :
+                new ExecutionGraph(
+                    jobInformation,
+                    futureExecutor,
+                    ioExecutor,
+                    timeout,
+                    restartStrategy,
+                    failoverStrategy,
+                    slotProvider,
+                    classLoader,
+                    blobWriter);
+		} catch (IOException e) {
+			throw new JobException("Could not create the ExecutionGraph.", e);
+		}
 
 		// set the basic properties
 
@@ -213,7 +225,7 @@ public class ExecutionGraphBuilder {
 			CheckpointStatsTracker checkpointStatsTracker = new CheckpointStatsTracker(
 					historySize,
 					ackVertices,
-					snapshotSettings,
+					snapshotSettings.getCheckpointCoordinatorConfiguration(),
 					metrics);
 
 			// The default directory for externalized checkpoints
@@ -274,21 +286,23 @@ public class ExecutionGraphBuilder {
 				}
 			}
 
+			final CheckpointCoordinatorConfiguration chkConfig = snapshotSettings.getCheckpointCoordinatorConfiguration();
+
 			executionGraph.enableCheckpointing(
-					snapshotSettings.getCheckpointInterval(),
-					snapshotSettings.getCheckpointTimeout(),
-					snapshotSettings.getMinPauseBetweenCheckpoints(),
-					snapshotSettings.getMaxConcurrentCheckpoints(),
-					snapshotSettings.getExternalizedCheckpointSettings(),
-					triggerVertices,
-					ackVertices,
-					confirmVertices,
-					hooks,
-					checkpointIdCounter,
-					completedCheckpoints,
-					externalizedCheckpointsDir,
-					metadataBackend,
-					checkpointStatsTracker);
+				chkConfig.getCheckpointInterval(),
+				chkConfig.getCheckpointTimeout(),
+				chkConfig.getMinPauseBetweenCheckpoints(),
+				chkConfig.getMaxConcurrentCheckpoints(),
+				chkConfig.getExternalizedCheckpointSettings(),
+				triggerVertices,
+				ackVertices,
+				confirmVertices,
+				hooks,
+				checkpointIdCounter,
+				completedCheckpoints,
+				externalizedCheckpointsDir,
+				metadataBackend,
+				checkpointStatsTracker);
 		}
 
 		// create all the metrics for the Execution Graph

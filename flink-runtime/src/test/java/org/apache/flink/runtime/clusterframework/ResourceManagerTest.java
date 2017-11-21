@@ -38,6 +38,7 @@ import org.apache.flink.runtime.heartbeat.TestingHeartbeatServices;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.highavailability.TestingHighAvailabilityServices;
 import org.apache.flink.runtime.instance.ActorGateway;
+import org.apache.flink.runtime.instance.HardwareDescription;
 import org.apache.flink.runtime.jobmaster.JobMasterGateway;
 import org.apache.flink.runtime.jobmaster.JobMasterId;
 import org.apache.flink.runtime.jobmaster.JobMasterRegistrationSuccess;
@@ -45,7 +46,7 @@ import org.apache.flink.runtime.leaderelection.TestingLeaderElectionService;
 import org.apache.flink.runtime.leaderelection.TestingLeaderRetrievalService;
 import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.messages.JobManagerMessages;
-import org.apache.flink.runtime.metrics.MetricRegistry;
+import org.apache.flink.runtime.metrics.MetricRegistryImpl;
 import org.apache.flink.runtime.registration.RegistrationResponse;
 import org.apache.flink.runtime.resourcemanager.JobLeaderIdService;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerConfiguration;
@@ -481,6 +482,8 @@ public class ResourceManagerTest extends TestLogger {
 
 	@Test
 	public void testHeartbeatTimeoutWithTaskExecutor() throws Exception {
+		final int dataPort = 1234;
+		final HardwareDescription hardwareDescription = new HardwareDescription(1, 2L, 3L, 4L);
 		final String taskManagerAddress = "tm";
 		final ResourceID taskManagerResourceID = new ResourceID(taskManagerAddress);
 		final ResourceID resourceManagerResourceID = ResourceID.generate();
@@ -502,7 +505,7 @@ public class ResourceManagerTest extends TestLogger {
 		final ScheduledExecutor scheduledExecutor = mock(ScheduledExecutor.class);
 		final HeartbeatServices heartbeatServices = new TestingHeartbeatServices(heartbeatInterval, heartbeatTimeout, scheduledExecutor);
 
-		final MetricRegistry metricRegistry = mock(MetricRegistry.class);
+		final MetricRegistryImpl metricRegistry = mock(MetricRegistryImpl.class);
 		final JobLeaderIdService jobLeaderIdService = mock(JobLeaderIdService.class);
 		final TestingFatalErrorHandler testingFatalErrorHandler = new TestingFatalErrorHandler();
 		final SlotManager slotManager = new SlotManager(
@@ -529,7 +532,7 @@ public class ResourceManagerTest extends TestLogger {
 			final ResourceManagerGateway rmGateway = resourceManager.getSelfGateway(ResourceManagerGateway.class);
 
 			final UUID rmLeaderSessionId = UUID.randomUUID();
-			rmLeaderElectionService.isLeader(rmLeaderSessionId);
+			rmLeaderElectionService.isLeader(rmLeaderSessionId).get(timeout.toMilliseconds(), TimeUnit.MILLISECONDS);
 
 			final SlotReport slotReport = new SlotReport();
 			// test registration response successful and it will trigger monitor heartbeat target, schedule heartbeat request at interval time
@@ -537,6 +540,8 @@ public class ResourceManagerTest extends TestLogger {
 				taskManagerAddress,
 				taskManagerResourceID,
 				slotReport,
+				dataPort,
+				hardwareDescription,
 				timeout);
 			RegistrationResponse response = successfulFuture.get(timeout.toMilliseconds(), TimeUnit.MILLISECONDS);
 			assertTrue(response instanceof TaskExecutorRegistrationSuccess);
@@ -601,7 +606,7 @@ public class ResourceManagerTest extends TestLogger {
 		final ScheduledExecutor scheduledExecutor = mock(ScheduledExecutor.class);
 		final HeartbeatServices heartbeatServices = new TestingHeartbeatServices(heartbeatInterval, heartbeatTimeout, scheduledExecutor);
 
-		final MetricRegistry metricRegistry = mock(MetricRegistry.class);
+		final MetricRegistryImpl metricRegistry = mock(MetricRegistryImpl.class);
 		final JobLeaderIdService jobLeaderIdService = new JobLeaderIdService(
 			highAvailabilityServices,
 			rpcService.getScheduledExecutor(),

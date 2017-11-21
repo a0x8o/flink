@@ -31,6 +31,7 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.util.Optional;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
@@ -301,6 +302,30 @@ public final class ExceptionUtils {
 	}
 
 	/**
+	 * Checks whether a throwable chain contains a specific error message and returns the corresponding throwable.
+	 *
+	 * @param throwable the throwable chain to check.
+	 * @param searchMessage the error message to search for in the chain.
+	 * @return Optional throwable containing the search message if available, otherwise empty
+	 */
+	public static Optional<Throwable> findThrowableWithMessage(Throwable throwable, String searchMessage) {
+		if (throwable == null || searchMessage == null) {
+			return Optional.empty();
+		}
+
+		Throwable t = throwable;
+		while (t != null) {
+			if (t.getMessage().contains(searchMessage)) {
+				return Optional.of(t);
+			} else {
+				t = t.getCause();
+			}
+		}
+
+		return Optional.empty();
+	}
+
+	/**
 	 * Unpacks an {@link ExecutionException} and returns its cause. Otherwise the given
 	 * Throwable is returned.
 	 *
@@ -309,6 +334,21 @@ public final class ExceptionUtils {
 	 */
 	public static Throwable stripExecutionException(Throwable throwable) {
 		while (throwable instanceof ExecutionException && throwable.getCause() != null) {
+			throwable = throwable.getCause();
+		}
+
+		return throwable;
+	}
+
+	/**
+	 * Unpacks an {@link CompletionException} and returns its cause. Otherwise the given
+	 * Throwable is returned.
+	 *
+	 * @param throwable to unpack if it is an CompletionException
+	 * @return Cause of CompletionException or given Throwable
+	 */
+	public static Throwable stripCompletionException(Throwable throwable) {
+		while (throwable instanceof CompletionException && throwable.getCause() != null) {
 			throwable = throwable.getCause();
 		}
 

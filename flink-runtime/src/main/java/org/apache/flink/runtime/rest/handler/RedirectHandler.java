@@ -41,6 +41,7 @@ import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nonnull;
 
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -58,19 +59,23 @@ public abstract class RedirectHandler<T extends RestfulGateway> extends SimpleCh
 
 	protected final CompletableFuture<String> localAddressFuture;
 
-	protected final GatewayRetriever<T> leaderRetriever;
+	protected final GatewayRetriever<? extends T> leaderRetriever;
 
 	protected final Time timeout;
+
+	protected final Map<String, String> responseHeaders;
 
 	private String localAddress;
 
 	protected RedirectHandler(
 			@Nonnull CompletableFuture<String> localAddressFuture,
-			@Nonnull GatewayRetriever<T> leaderRetriever,
-			@Nonnull Time timeout) {
+			@Nonnull GatewayRetriever<? extends T> leaderRetriever,
+			@Nonnull Time timeout,
+			@Nonnull Map<String, String> responseHeaders) {
 		this.localAddressFuture = Preconditions.checkNotNull(localAddressFuture);
 		this.leaderRetriever = Preconditions.checkNotNull(leaderRetriever);
 		this.timeout = Preconditions.checkNotNull(timeout);
+		this.responseHeaders = Preconditions.checkNotNull(responseHeaders);
 		localAddress = null;
 	}
 
@@ -90,17 +95,18 @@ public abstract class RedirectHandler<T extends RestfulGateway> extends SimpleCh
 						channelHandlerContext,
 						routed.request(),
 						new ErrorResponseBody("Fatal error. Could not obtain local address. Please try to refresh."),
-						HttpResponseStatus.INTERNAL_SERVER_ERROR);
+						HttpResponseStatus.INTERNAL_SERVER_ERROR,
+						responseHeaders);
 
 					return;
 				}
 			}
 
 			try {
-				OptionalConsumer<T> optLeaderConsumer = OptionalConsumer.of(leaderRetriever.getNow());
+				OptionalConsumer<? extends T> optLeaderConsumer = OptionalConsumer.of(leaderRetriever.getNow());
 
 				optLeaderConsumer.ifPresent(
-					(T gateway) -> {
+					gateway -> {
 						CompletableFuture<Optional<String>> optRedirectAddressFuture = HandlerRedirectUtils.getRedirectAddress(
 							localAddress,
 							gateway,
@@ -109,7 +115,7 @@ public abstract class RedirectHandler<T extends RestfulGateway> extends SimpleCh
 						// retain the message for the asynchronous handler
 						ReferenceCountUtil.retain(routed);
 
-						optRedirectAddressFuture.whenComplete(
+						optRedirectAddressFuture.whenCompleteAsync(
 							(Optional<String> optRedirectAddress, Throwable throwable) -> {
 								HttpResponse response;
 								try {
@@ -120,7 +126,8 @@ public abstract class RedirectHandler<T extends RestfulGateway> extends SimpleCh
 										channelHandlerContext,
 										routed.request(),
 										new ErrorResponseBody("Could not retrieve the redirect address of the current leader. Please try to refresh."),
-										HttpResponseStatus.INTERNAL_SERVER_ERROR);
+										HttpResponseStatus.INTERNAL_SERVER_ERROR,
+										responseHeaders);
 									} else if (optRedirectAddress.isPresent()) {
 										response = HandlerRedirectUtils.getRedirectResponse(
 											optRedirectAddress.get(),
@@ -136,7 +143,8 @@ public abstract class RedirectHandler<T extends RestfulGateway> extends SimpleCh
 												channelHandlerContext,
 												routed.request(),
 											new ErrorResponseBody("Error while responding to the request."),
-											HttpResponseStatus.INTERNAL_SERVER_ERROR);
+											HttpResponseStatus.INTERNAL_SERVER_ERROR,
+											responseHeaders);
 										}
 									}
 								} finally {
@@ -144,7 +152,7 @@ public abstract class RedirectHandler<T extends RestfulGateway> extends SimpleCh
 									ReferenceCountUtil.release(routed);
 								}
 							}
-						);
+						, channelHandlerContext.executor());
 					}
 				).ifNotPresent(
 					() ->
@@ -152,7 +160,8 @@ public abstract class RedirectHandler<T extends RestfulGateway> extends SimpleCh
 							channelHandlerContext,
 							routed.request(),
 							new ErrorResponseBody("Service temporarily unavailable due to an ongoing leader election. Please refresh."),
-							HttpResponseStatus.SERVICE_UNAVAILABLE));
+							HttpResponseStatus.SERVICE_UNAVAILABLE,
+							responseHeaders));
 
 			} catch (Throwable throwable) {
 				logger.warn("Error occurred while processing web request.", throwable);
@@ -161,14 +170,16 @@ public abstract class RedirectHandler<T extends RestfulGateway> extends SimpleCh
 					channelHandlerContext,
 					routed.request(),
 					new ErrorResponseBody("Error occurred in RedirectHandler: " + throwable.getMessage() + '.'),
-					HttpResponseStatus.INTERNAL_SERVER_ERROR);
+					HttpResponseStatus.INTERNAL_SERVER_ERROR,
+					responseHeaders);
 			}
 		} else {
 			HandlerUtils.sendErrorResponse(
 				channelHandlerContext,
 				routed.request(),
 				new ErrorResponseBody("Local address has not been resolved. This indicates an internal error."),
-				HttpResponseStatus.INTERNAL_SERVER_ERROR);
+				HttpResponseStatus.INTERNAL_SERVER_ERROR,
+				responseHeaders);
 		}
 	}
 

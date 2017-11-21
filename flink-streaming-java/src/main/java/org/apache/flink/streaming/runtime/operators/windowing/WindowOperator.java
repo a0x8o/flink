@@ -20,6 +20,8 @@ package org.apache.flink.streaming.runtime.operators.windowing;
 
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.annotation.VisibleForTesting;
+import org.apache.flink.api.common.state.AggregatingState;
+import org.apache.flink.api.common.state.AggregatingStateDescriptor;
 import org.apache.flink.api.common.state.AppendingState;
 import org.apache.flink.api.common.state.FoldingState;
 import org.apache.flink.api.common.state.FoldingStateDescriptor;
@@ -41,6 +43,7 @@ import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.typeutils.TypeExtractor;
 import org.apache.flink.api.java.typeutils.runtime.TupleSerializer;
+import org.apache.flink.metrics.Counter;
 import org.apache.flink.metrics.MetricGroup;
 import org.apache.flink.runtime.state.VoidNamespace;
 import org.apache.flink.runtime.state.VoidNamespaceSerializer;
@@ -132,6 +135,10 @@ public class WindowOperator<K, IN, ACC, OUT, W extends Window>
 	 */
 	protected final OutputTag<IN> lateDataOutputTag;
 
+	private static final  String LATE_ELEMENTS_DROPPED_METRIC_NAME = "numLateRecordsDropped";
+
+	protected transient Counter numLateRecordsDropped;
+
 	// ------------------------------------------------------------------------
 	// State that is not checkpointed
 	// ------------------------------------------------------------------------
@@ -208,6 +215,7 @@ public class WindowOperator<K, IN, ACC, OUT, W extends Window>
 	public void open() throws Exception {
 		super.open();
 
+		this.numLateRecordsDropped = metrics.counter(LATE_ELEMENTS_DROPPED_METRIC_NAME);
 		timestampedCollector = new TimestampedCollector<>(output);
 
 		internalTimerService =
@@ -403,8 +411,12 @@ public class WindowOperator<K, IN, ACC, OUT, W extends Window>
 		// element not handled by any window
 		// late arriving tag has been set
 		// windowAssigner is event time and current timestamp + allowed lateness no less than element timestamp
-		if (isSkippedElement && lateDataOutputTag != null && isElementLate(element)) {
-			sideOutput(element);
+		if (isSkippedElement && isElementLate(element)) {
+			if (lateDataOutputTag != null){
+				sideOutput(element);
+			} else {
+				this.numLateRecordsDropped.inc();
+			}
 		}
 	}
 
@@ -669,6 +681,11 @@ public class WindowOperator<K, IN, ACC, OUT, W extends Window>
 		}
 
 		@Override
+		public <IN, ACC, OUT> AggregatingState<IN, OUT> getAggregatingState(AggregatingStateDescriptor<IN, ACC, OUT> stateProperties) {
+			throw new UnsupportedOperationException("Per-window state is not allowed when using merging windows.");
+		}
+
+		@Override
 		public <T, A> FoldingState<T, A> getFoldingState(FoldingStateDescriptor<T, A> stateProperties) {
 			throw new UnsupportedOperationException("Per-window state is not allowed when using merging windows.");
 		}
@@ -704,6 +721,15 @@ public class WindowOperator<K, IN, ACC, OUT, W extends Window>
 
 		@Override
 		public <T> ReducingState<T> getReducingState(ReducingStateDescriptor<T> stateProperties) {
+			try {
+				return WindowOperator.this.getPartitionedState(window, windowSerializer, stateProperties);
+			} catch (Exception e) {
+				throw new RuntimeException("Could not retrieve state", e);
+			}
+		}
+
+		@Override
+		public <IN, ACC, OUT> AggregatingState<IN, OUT> getAggregatingState(AggregatingStateDescriptor<IN, ACC, OUT> stateProperties) {
 			try {
 				return WindowOperator.this.getPartitionedState(window, windowSerializer, stateProperties);
 			} catch (Exception e) {
@@ -775,6 +801,7 @@ public class WindowOperator<K, IN, ACC, OUT, W extends Window>
 			return WindowOperator.this.getKeyedStateStore();
 		}
 
+		@Override
 		public <X> void output(OutputTag<X> outputTag, X value) {
 			if (outputTag == null) {
 				throw new IllegalArgumentException("OutputTag must not be null.");

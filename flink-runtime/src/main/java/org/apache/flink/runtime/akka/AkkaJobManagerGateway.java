@@ -20,29 +20,34 @@ package org.apache.flink.runtime.akka;
 
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.time.Time;
+import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.executiongraph.AccessExecutionGraph;
 import org.apache.flink.runtime.instance.ActorGateway;
 import org.apache.flink.runtime.instance.Instance;
-import org.apache.flink.runtime.instance.InstanceID;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.jobmaster.JobManagerGateway;
 import org.apache.flink.runtime.messages.Acknowledge;
+import org.apache.flink.runtime.messages.FlinkJobNotFoundException;
 import org.apache.flink.runtime.messages.JobManagerMessages;
+import org.apache.flink.runtime.messages.webmonitor.ClusterOverview;
 import org.apache.flink.runtime.messages.webmonitor.JobsWithIDsOverview;
 import org.apache.flink.runtime.messages.webmonitor.MultipleJobsDetails;
 import org.apache.flink.runtime.messages.webmonitor.RequestJobDetails;
 import org.apache.flink.runtime.messages.webmonitor.RequestJobsWithIDsOverview;
 import org.apache.flink.runtime.messages.webmonitor.RequestStatusOverview;
-import org.apache.flink.runtime.messages.webmonitor.StatusOverview;
+import org.apache.flink.runtime.metrics.dump.MetricQueryService;
 import org.apache.flink.util.FlinkException;
 import org.apache.flink.util.Preconditions;
 
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.stream.Collectors;
 
 import scala.Option;
 import scala.reflect.ClassTag$;
@@ -172,10 +177,10 @@ public class AkkaJobManagerGateway implements JobManagerGateway {
 	//--------------------------------------------------------------------------------
 
 	@Override
-	public CompletableFuture<Optional<Instance>> requestTaskManagerInstance(InstanceID instanceId, Time timeout) {
+	public CompletableFuture<Optional<Instance>> requestTaskManagerInstance(ResourceID resourceId, Time timeout) {
 		return FutureUtils.toJava(
 			jobManagerGateway
-				.ask(new JobManagerMessages.RequestTaskManagerInstance(instanceId), FutureUtils.toFiniteDuration(timeout))
+				.ask(new JobManagerMessages.RequestTaskManagerInstance(resourceId), FutureUtils.toFiniteDuration(timeout))
 				.mapTo(ClassTag$.MODULE$.<JobManagerMessages.TaskManagerInstance>apply(JobManagerMessages.TaskManagerInstance.class)))
 			.thenApply(
 				(JobManagerMessages.TaskManagerInstance taskManagerResponse) -> {
@@ -218,7 +223,7 @@ public class AkkaJobManagerGateway implements JobManagerGateway {
 	}
 
 	@Override
-	public CompletableFuture<MultipleJobsDetails> requestJobDetails(boolean includeRunning, boolean includeFinished, Time timeout) {
+	public CompletableFuture<MultipleJobsDetails> requestJobDetails(Time timeout) {
 		return FutureUtils.toJava(
 			jobManagerGateway
 				.ask(new RequestJobDetails(true, true), FutureUtils.toFiniteDuration(timeout))
@@ -226,7 +231,7 @@ public class AkkaJobManagerGateway implements JobManagerGateway {
 	}
 
 	@Override
-	public CompletableFuture<Optional<AccessExecutionGraph>> requestJob(JobID jobId, Time timeout) {
+	public CompletableFuture<AccessExecutionGraph> requestJob(JobID jobId, Time timeout) {
 		CompletableFuture<JobManagerMessages.JobResponse> jobResponseFuture = FutureUtils.toJava(
 			jobManagerGateway
 				.ask(new JobManagerMessages.RequestJob(jobId), FutureUtils.toFiniteDuration(timeout))
@@ -235,19 +240,46 @@ public class AkkaJobManagerGateway implements JobManagerGateway {
 		return jobResponseFuture.thenApply(
 			(JobManagerMessages.JobResponse jobResponse) -> {
 				if (jobResponse instanceof JobManagerMessages.JobFound) {
-					return Optional.of(((JobManagerMessages.JobFound) jobResponse).executionGraph());
+					return ((JobManagerMessages.JobFound) jobResponse).executionGraph();
 				} else {
-					return Optional.empty();
+					throw new CompletionException(new FlinkJobNotFoundException(jobId));
 				}
 			});
 	}
 
 	@Override
-	public CompletableFuture<StatusOverview> requestStatusOverview(Time timeout) {
+	public CompletableFuture<ClusterOverview> requestClusterOverview(Time timeout) {
 		return FutureUtils.toJava(
 			jobManagerGateway
 				.ask(RequestStatusOverview.getInstance(), FutureUtils.toFiniteDuration(timeout))
-				.mapTo(ClassTag$.MODULE$.apply(StatusOverview.class)));
+				.mapTo(ClassTag$.MODULE$.apply(ClusterOverview.class)));
+	}
+
+	@Override
+	public CompletableFuture<Collection<String>> requestMetricQueryServicePaths(Time timeout) {
+		final String jobManagerPath = getAddress();
+		final String jobManagerMetricQueryServicePath = jobManagerPath.substring(0, jobManagerPath.lastIndexOf('/') + 1) + MetricQueryService.METRIC_QUERY_SERVICE_NAME;
+
+		return CompletableFuture.completedFuture(
+			Collections.singleton(jobManagerMetricQueryServicePath));
+	}
+
+	@Override
+	public CompletableFuture<Collection<Tuple2<ResourceID, String>>> requestTaskManagerMetricQueryServicePaths(Time timeout) {
+		return requestTaskManagerInstances(timeout)
+			.thenApply(
+				(Collection<Instance> instances) ->
+					instances
+						.stream()
+						.map(
+							(Instance instance) -> {
+								final String taskManagerAddress = instance.getTaskManagerGateway().getAddress();
+								final String taskManagerMetricQuerServicePath = taskManagerAddress.substring(0, taskManagerAddress.lastIndexOf('/') + 1) +
+									MetricQueryService.METRIC_QUERY_SERVICE_NAME + '_' + instance.getTaskManagerID().getResourceIdString();
+
+								return Tuple2.of(instance.getTaskManagerID(), taskManagerMetricQuerServicePath);
+							})
+						.collect(Collectors.toList()));
 	}
 
 	@Override

@@ -33,11 +33,14 @@ import org.apache.flink.mesos.util.MesosConfiguration;
 import org.apache.flink.runtime.akka.AkkaUtils;
 import org.apache.flink.runtime.clusterframework.BootstrapTools;
 import org.apache.flink.runtime.clusterframework.ContainerSpecification;
+import org.apache.flink.runtime.concurrent.ScheduledExecutorServiceAdapter;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServicesUtils;
 import org.apache.flink.runtime.jobmanager.JobManager;
 import org.apache.flink.runtime.jobmanager.MemoryArchivist;
 import org.apache.flink.runtime.jobmaster.JobMaster;
+import org.apache.flink.runtime.metrics.MetricRegistryConfiguration;
+import org.apache.flink.runtime.metrics.MetricRegistryImpl;
 import org.apache.flink.runtime.process.ProcessReaper;
 import org.apache.flink.runtime.security.SecurityConfiguration;
 import org.apache.flink.runtime.security.SecurityUtils;
@@ -155,12 +158,11 @@ public class MesosApplicationMasterRunner {
 			final Configuration dynamicProperties = BootstrapTools.parseDynamicProperties(cmd);
 			final Configuration config = GlobalConfiguration.loadConfigurationWithDynamicProperties(dynamicProperties);
 
-			// configure the default filesystem
+			// configure the filesystems
 			try {
-				FileSystem.setDefaultScheme(config);
+				FileSystem.initialize(config);
 			} catch (IOException e) {
-				throw new IOException("Error while setting the default " +
-					"filesystem scheme from configuration.", e);
+				throw new IOException("Error while configuring the filesystems.", e);
 			}
 
 			// configure security
@@ -200,6 +202,7 @@ public class MesosApplicationMasterRunner {
 		ExecutorService ioExecutor = null;
 		MesosServices mesosServices = null;
 		HighAvailabilityServices highAvailabilityServices = null;
+		MetricRegistryImpl metricRegistry = null;
 
 		try {
 			// ------- (1) load and parse / validate all configurations -------
@@ -294,7 +297,7 @@ public class MesosApplicationMasterRunner {
 				new AkkaJobManagerRetriever(actorSystem, webMonitorTimeout, 10, Time.milliseconds(50L)),
 				new AkkaQueryServiceRetriever(actorSystem, webMonitorTimeout),
 				webMonitorTimeout,
-				futureExecutor,
+				new ScheduledExecutorServiceAdapter(futureExecutor),
 				LOG);
 			if (webMonitor != null) {
 				final URL webMonitorURL = new URL(webMonitor.getRestAddress());
@@ -304,6 +307,11 @@ public class MesosApplicationMasterRunner {
 			// 2: the JobManager
 			LOG.debug("Starting JobManager actor");
 
+			metricRegistry = new MetricRegistryImpl(
+				MetricRegistryConfiguration.fromConfiguration(config));
+
+			metricRegistry.startQueryService(actorSystem, null);
+
 			// we start the JobManager with its standard name
 			ActorRef jobManager = JobManager.startJobManagerActors(
 				config,
@@ -311,6 +319,7 @@ public class MesosApplicationMasterRunner {
 				futureExecutor,
 				ioExecutor,
 				highAvailabilityServices,
+				metricRegistry,
 				webMonitor != null ? Option.apply(webMonitor.getRestAddress()) : Option.empty(),
 				Option.apply(JobMaster.JOB_MANAGER_NAME),
 				Option.apply(JobMaster.ARCHIVE_NAME),
@@ -419,6 +428,14 @@ public class MesosApplicationMasterRunner {
 				highAvailabilityServices.close();
 			} catch (Throwable t) {
 				LOG.error("Could not properly stop the high availability services.");
+			}
+		}
+
+		if (metricRegistry != null) {
+			try {
+				metricRegistry.shutdown();
+			} catch (Throwable t) {
+				LOG.error("Could not shut down metric registry.", t);
 			}
 		}
 

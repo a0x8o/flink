@@ -17,19 +17,7 @@
 # limitations under the License.
 ################################################################################
 
-set -e
-set -o pipefail
-
-# Convert relative path to absolute path
-TEST_ROOT=`pwd`
-TEST_INFRA_DIR="$0"
-TEST_INFRA_DIR=`dirname "$TEST_INFRA_DIR"`
-cd $TEST_INFRA_DIR
-TEST_INFRA_DIR=`pwd`
-cd $TEST_ROOT
-
-. "$TEST_INFRA_DIR"/common.sh
-
+source "$(dirname "$0")"/common.sh
 
 start_cluster
 
@@ -37,7 +25,7 @@ start_cluster
 mkdir -p $TEST_DATA_DIR
 if [ -z "$3" ]; then
   # need to download Kafka because no Kafka was specified on the invocation
-  KAFKA_URL="http://mirror.netcologne.de/apache.org/kafka/0.10.2.0/kafka_2.11-0.10.2.0.tgz"
+  KAFKA_URL="https://archive.apache.org/dist/kafka/0.10.2.0/kafka_2.11-0.10.2.0.tgz"
   echo "Downloading Kafka from $KAFKA_URL"
   curl "$KAFKA_URL" > $TEST_DATA_DIR/kafka.tgz
 else
@@ -53,6 +41,17 @@ sed -i -e "s+^\(dataDir\s*=\s*\).*$+\1$TEST_DATA_DIR/zookeeper+" $KAFKA_DIR/conf
 sed -i -e "s+^\(log\.dirs\s*=\s*\).*$+\1$TEST_DATA_DIR/kafka+" $KAFKA_DIR/config/server.properties
 $KAFKA_DIR/bin/zookeeper-server-start.sh -daemon $KAFKA_DIR/config/zookeeper.properties
 $KAFKA_DIR/bin/kafka-server-start.sh -daemon $KAFKA_DIR/config/server.properties
+
+# make sure to stop Kafka and ZooKeeper at the end
+
+function kafka_cleanup {
+  $KAFKA_DIR/bin/kafka-server-stop.sh
+  $KAFKA_DIR/bin/zookeeper-server-stop.sh
+
+  # make sure to run regular cleanup as well
+  cleanup
+}
+trap kafka_cleanup EXIT
 
 # zookeeper outputs the "Node does not exist" bit to stderr
 while [[ $($KAFKA_DIR/bin/zookeeper-shell.sh localhost:2181 get /brokers/ids/0 2>&1) =~ .*Node\ does\ not\ exist.* ]]; do
@@ -83,10 +82,3 @@ if [[ "$DATA_FROM_KAFKA" != "$EXPECTED" ]]; then
   echo -e "ACTUAL: --$DATA_FROM_KAFKA--"
   PASS=""
 fi
-
-$KAFKA_DIR/bin/kafka-server-stop.sh
-$KAFKA_DIR/bin/zookeeper-server-stop.sh
-
-stop_cluster
-clean_data_dir
-check_all_pass

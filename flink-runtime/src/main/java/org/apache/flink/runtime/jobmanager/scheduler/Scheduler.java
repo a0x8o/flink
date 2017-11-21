@@ -18,8 +18,29 @@
 
 package org.apache.flink.runtime.jobmanager.scheduler;
 
+import org.apache.flink.runtime.clusterframework.types.ResourceID;
+import org.apache.flink.runtime.concurrent.FutureUtils;
+import org.apache.flink.runtime.executiongraph.ExecutionVertex;
+import org.apache.flink.runtime.instance.Instance;
+import org.apache.flink.runtime.instance.InstanceDiedException;
+import org.apache.flink.runtime.instance.InstanceListener;
+import org.apache.flink.runtime.instance.SharedSlot;
+import org.apache.flink.runtime.instance.SimpleSlot;
+import org.apache.flink.runtime.instance.SlotProvider;
+import org.apache.flink.runtime.instance.SlotSharingGroupAssignment;
+import org.apache.flink.runtime.jobgraph.JobVertexID;
+import org.apache.flink.runtime.taskmanager.TaskManagerLocation;
+import org.apache.flink.util.ExceptionUtils;
+import org.apache.flink.util.Preconditions;
+
+import org.apache.commons.lang3.tuple.ImmutablePair;
+import org.apache.commons.lang3.tuple.Pair;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -33,27 +54,6 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.LinkedBlockingQueue;
-
-import org.apache.commons.lang3.tuple.ImmutablePair;
-import org.apache.commons.lang3.tuple.Pair;
-
-import org.apache.flink.runtime.clusterframework.types.ResourceID;
-import org.apache.flink.runtime.concurrent.FutureUtils;
-import org.apache.flink.runtime.instance.SlotProvider;
-import org.apache.flink.runtime.instance.SlotSharingGroupAssignment;
-import org.apache.flink.runtime.jobgraph.JobVertexID;
-import org.apache.flink.runtime.instance.SharedSlot;
-import org.apache.flink.runtime.instance.SimpleSlot;
-import org.apache.flink.runtime.executiongraph.ExecutionVertex;
-import org.apache.flink.runtime.instance.Instance;
-import org.apache.flink.runtime.instance.InstanceDiedException;
-import org.apache.flink.runtime.instance.InstanceListener;
-import org.apache.flink.runtime.taskmanager.TaskManagerLocation;
-import org.apache.flink.util.ExceptionUtils;
-
-import org.apache.flink.util.Preconditions;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * The scheduler is responsible for distributing the ready-to-run tasks among instances and slots.
@@ -133,9 +133,13 @@ public class Scheduler implements InstanceListener, SlotAvailabilityListener, Sl
 
 
 	@Override
-	public CompletableFuture<SimpleSlot> allocateSlot(ScheduledUnit task, boolean allowQueued) {
+	public CompletableFuture<SimpleSlot> allocateSlot(
+			ScheduledUnit task,
+			boolean allowQueued,
+			Collection<TaskManagerLocation> preferredLocations) {
+
 		try {
-			final Object ret = scheduleTask(task, allowQueued);
+			final Object ret = scheduleTask(task, allowQueued, preferredLocations);
 
 			if (ret instanceof SimpleSlot) {
 				return CompletableFuture.completedFuture((SimpleSlot) ret);
@@ -149,8 +153,7 @@ public class Scheduler implements InstanceListener, SlotAvailabilityListener, Sl
 				// this should never happen, simply guard this case with an exception
 				throw new RuntimeException();
 			}
-		}
-		catch (NoResourceAvailableException e) {
+		} catch (NoResourceAvailableException e) {
 			return FutureUtils.completedExceptionally(e);
 		}
 	}
@@ -158,7 +161,7 @@ public class Scheduler implements InstanceListener, SlotAvailabilityListener, Sl
 	/**
 	 * Returns either a {@link SimpleSlot}, or a {@link CompletableFuture}.
 	 */
-	private Object scheduleTask(ScheduledUnit task, boolean queueIfNoResource) throws NoResourceAvailableException {
+	private Object scheduleTask(ScheduledUnit task, boolean queueIfNoResource, Iterable<TaskManagerLocation> preferredLocations) throws NoResourceAvailableException {
 		if (task == null) {
 			throw new NullPointerException();
 		}
@@ -168,7 +171,6 @@ public class Scheduler implements InstanceListener, SlotAvailabilityListener, Sl
 
 		final ExecutionVertex vertex = task.getTaskToExecute().getVertex();
 		
-		final Iterable<TaskManagerLocation> preferredLocations = vertex.getPreferredLocationsBasedOnInputs();
 		final boolean forceExternalLocation = false &&
 									preferredLocations != null && preferredLocations.iterator().hasNext();
 	
@@ -197,10 +199,10 @@ public class Scheduler implements InstanceListener, SlotAvailabilityListener, Sl
 				// get a slot from the group, if the group has one for us (and can fulfill the constraint)
 				final SimpleSlot slotFromGroup;
 				if (constraint == null) {
-					slotFromGroup = assignment.getSlotForTask(vertex);
+					slotFromGroup = assignment.getSlotForTask(vertex.getJobvertexId(), preferredLocations);
 				}
 				else {
-					slotFromGroup = assignment.getSlotForTask(vertex, constraint);
+					slotFromGroup = assignment.getSlotForTask(constraint, preferredLocations);
 				}
 
 				SimpleSlot newSlot = null;
@@ -234,7 +236,7 @@ public class Scheduler implements InstanceListener, SlotAvailabilityListener, Sl
 						localOnly = true;
 					}
 					else {
-						locations = vertex.getPreferredLocationsBasedOnInputs();
+						locations = preferredLocations;
 						localOnly = forceExternalLocation;
 					}
 					

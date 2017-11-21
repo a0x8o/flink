@@ -29,13 +29,16 @@ import org.apache.flink.runtime.io.network.partition.ResultPartition;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionManager;
 import org.apache.flink.runtime.io.network.partition.consumer.SingleInputGate;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
+import org.apache.flink.runtime.query.KvStateClientProxy;
 import org.apache.flink.runtime.query.KvStateRegistry;
+import org.apache.flink.runtime.query.KvStateServer;
 import org.apache.flink.runtime.query.TaskKvStateRegistry;
-import org.apache.flink.runtime.query.netty.KvStateServer;
 import org.apache.flink.runtime.state.internal.InternalKvState;
 import org.apache.flink.runtime.taskmanager.Task;
 import org.apache.flink.runtime.taskmanager.TaskManager;
+import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.Preconditions;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -62,7 +65,10 @@ public class NetworkEnvironment {
 	private final TaskEventDispatcher taskEventDispatcher;
 
 	/** Server for {@link InternalKvState} requests. */
-	private final KvStateServer kvStateServer;
+	private KvStateServer kvStateServer;
+
+	/** Proxy for the queryable state client. */
+	private KvStateClientProxy kvStateProxy;
 
 	/** Registry for {@link InternalKvState} instances. */
 	private final KvStateRegistry kvStateRegistry;
@@ -75,6 +81,7 @@ public class NetworkEnvironment {
 
 	/** Number of network buffers to use for each outgoing/incoming channel (subpartition/input channel). */
 	private final int networkBuffersPerChannel;
+
 	/** Number of extra network buffers to use for each outgoing/incoming gate (result partition/input gate). */
 	private final int extraNetworkBuffersPerGate;
 
@@ -87,6 +94,7 @@ public class NetworkEnvironment {
 			TaskEventDispatcher taskEventDispatcher,
 			KvStateRegistry kvStateRegistry,
 			KvStateServer kvStateServer,
+			KvStateClientProxy kvStateClientProxy,
 			IOMode defaultIOMode,
 			int partitionRequestInitialBackoff,
 			int partitionRequestMaxBackoff,
@@ -100,6 +108,7 @@ public class NetworkEnvironment {
 		this.kvStateRegistry = checkNotNull(kvStateRegistry);
 
 		this.kvStateServer = kvStateServer;
+		this.kvStateProxy = kvStateClientProxy;
 
 		this.defaultIOMode = defaultIOMode;
 
@@ -151,6 +160,10 @@ public class NetworkEnvironment {
 		return kvStateServer;
 	}
 
+	public KvStateClientProxy getKvStateProxy() {
+		return kvStateProxy;
+	}
+
 	public TaskKvStateRegistry createKvStateTaskRegistry(JobID jobId, JobVertexID jobVertexId) {
 		return kvStateRegistry.createTaskRegistry(jobId, jobVertexId);
 	}
@@ -184,7 +197,7 @@ public class NetworkEnvironment {
 						partition.getNumberOfSubpartitions() * networkBuffersPerChannel +
 							extraNetworkBuffersPerGate : Integer.MAX_VALUE;
 					bufferPool = networkBufferPool.createBufferPool(partition.getNumberOfSubpartitions(),
-							maxNumberOfMemorySegments);
+						maxNumberOfMemorySegments);
 					partition.registerBufferPool(bufferPool);
 
 					resultPartitionManager.registerResultPartition(partition);
@@ -211,22 +224,24 @@ public class NetworkEnvironment {
 				BufferPool bufferPool = null;
 
 				try {
-					int maxNumberOfMemorySegments = gate.getConsumedPartitionType().isBounded() ?
-						gate.getNumberOfInputChannels() * networkBuffersPerChannel +
-							extraNetworkBuffersPerGate : Integer.MAX_VALUE;
-					bufferPool = networkBufferPool.createBufferPool(gate.getNumberOfInputChannels(),
-						maxNumberOfMemorySegments);
+					if (gate.getConsumedPartitionType().isCreditBased()) {
+						// Create a fixed-size buffer pool for floating buffers and assign exclusive buffers to input channels directly
+						bufferPool = networkBufferPool.createBufferPool(extraNetworkBuffersPerGate, extraNetworkBuffersPerGate);
+						gate.assignExclusiveSegments(networkBufferPool, networkBuffersPerChannel);
+					} else {
+						int maxNumberOfMemorySegments = gate.getConsumedPartitionType().isBounded() ?
+							gate.getNumberOfInputChannels() * networkBuffersPerChannel +
+								extraNetworkBuffersPerGate : Integer.MAX_VALUE;
+						bufferPool = networkBufferPool.createBufferPool(gate.getNumberOfInputChannels(),
+							maxNumberOfMemorySegments);
+					}
 					gate.setBufferPool(bufferPool);
 				} catch (Throwable t) {
 					if (bufferPool != null) {
 						bufferPool.lazyDestroy();
 					}
 
-					if (t instanceof IOException) {
-						throw (IOException) t;
-					} else {
-						throw new IOException(t.getMessage(), t);
-					}
+					ExceptionUtils.rethrowIOException(t);
 				}
 			}
 		}
@@ -288,17 +303,27 @@ public class NetworkEnvironment {
 			try {
 				LOG.debug("Starting network connection manager");
 				connectionManager.start(resultPartitionManager, taskEventDispatcher);
-			}
-			catch (IOException t) {
+			} catch (IOException t) {
 				throw new IOException("Failed to instantiate network connection manager.", t);
 			}
 
 			if (kvStateServer != null) {
 				try {
-					LOG.debug("Starting the KvState server.");
 					kvStateServer.start();
-				} catch (InterruptedException ie) {
-					throw new IOException("Failed to start the KvState server.", ie);
+				} catch (Throwable ie) {
+					kvStateServer.shutdown();
+					kvStateServer = null;
+					throw new IOException("Failed to start the Queryable State Data Server.", ie);
+				}
+			}
+
+			if (kvStateProxy != null) {
+				try {
+					kvStateProxy.start();
+				} catch (Throwable ie) {
+					kvStateProxy.shutdown();
+					kvStateProxy = null;
+					throw new IOException("Failed to start the Queryable State Client Proxy.", ie);
 				}
 			}
 		}
@@ -315,11 +340,21 @@ public class NetworkEnvironment {
 
 			LOG.info("Shutting down the network environment and its components.");
 
+			if (kvStateProxy != null) {
+				try {
+					LOG.debug("Shutting down Queryable State Client Proxy.");
+					kvStateProxy.shutdown();
+				} catch (Throwable t) {
+					LOG.warn("Cannot shut down Queryable State Client Proxy.", t);
+				}
+			}
+
 			if (kvStateServer != null) {
 				try {
-					kvStateServer.shutDown();
+					LOG.debug("Shutting down Queryable State Data Server.");
+					kvStateServer.shutdown();
 				} catch (Throwable t) {
-					LOG.warn("Cannot shut down KvState server.", t);
+					LOG.warn("Cannot shut down Queryable State Data Server.", t);
 				}
 			}
 

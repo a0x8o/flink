@@ -34,7 +34,6 @@ import org.apache.flink.api.common.time.Time
 import org.apache.flink.configuration._
 import org.apache.flink.core.fs.{FileSystem, Path}
 import org.apache.flink.core.io.InputSplitAssigner
-import org.apache.flink.metrics.groups.UnregisteredMetricsGroup
 import org.apache.flink.metrics.{Gauge, MetricGroup}
 import org.apache.flink.runtime.accumulators.AccumulatorSnapshot
 import org.apache.flink.runtime.akka.{AkkaUtils, ListeningBehaviour}
@@ -42,18 +41,18 @@ import org.apache.flink.runtime.blob.{BlobServer, BlobStore}
 import org.apache.flink.runtime.checkpoint._
 import org.apache.flink.runtime.checkpoint.savepoint.SavepointStore
 import org.apache.flink.runtime.client._
-import org.apache.flink.runtime.clusterframework.FlinkResourceManager
+import org.apache.flink.runtime.clusterframework.{BootstrapTools, FlinkResourceManager}
 import org.apache.flink.runtime.clusterframework.messages._
 import org.apache.flink.runtime.clusterframework.standalone.StandaloneResourceManager
 import org.apache.flink.runtime.clusterframework.types.ResourceID
-import org.apache.flink.runtime.concurrent.{FutureUtils, Executors => FlinkExecutors}
+import org.apache.flink.runtime.concurrent.{FutureUtils, ScheduledExecutorServiceAdapter, Executors => FlinkExecutors}
 import org.apache.flink.runtime.execution.SuppressRestartsException
 import org.apache.flink.runtime.execution.librarycache.FlinkUserCodeClassLoaders.ResolveOrder
 import org.apache.flink.runtime.execution.librarycache.{BlobLibraryCacheManager, LibraryCacheManager}
-import org.apache.flink.runtime.executiongraph.restart.RestartStrategyFactory
 import org.apache.flink.runtime.executiongraph._
-import org.apache.flink.runtime.highavailability.{HighAvailabilityServices, HighAvailabilityServicesUtils}
+import org.apache.flink.runtime.executiongraph.restart.RestartStrategyFactory
 import org.apache.flink.runtime.highavailability.HighAvailabilityServicesUtils.AddressResolution
+import org.apache.flink.runtime.highavailability.{HighAvailabilityServices, HighAvailabilityServicesUtils}
 import org.apache.flink.runtime.instance.{AkkaActorGateway, InstanceID, InstanceManager}
 import org.apache.flink.runtime.jobgraph.{JobGraph, JobStatus}
 import org.apache.flink.runtime.jobmanager.SubmittedJobGraphStore.SubmittedJobGraphListener
@@ -66,20 +65,18 @@ import org.apache.flink.runtime.messages.ExecutionGraphMessages.JobStatusChanged
 import org.apache.flink.runtime.messages.JobManagerMessages._
 import org.apache.flink.runtime.messages.Messages.Disconnect
 import org.apache.flink.runtime.messages.RegistrationMessages._
-import org.apache.flink.runtime.messages.{Acknowledge, StackTrace}
 import org.apache.flink.runtime.messages.TaskManagerMessages.Heartbeat
 import org.apache.flink.runtime.messages.TaskMessages.UpdateTaskExecutionState
 import org.apache.flink.runtime.messages.accumulators._
 import org.apache.flink.runtime.messages.checkpoint.{AbstractCheckpointMessage, AcknowledgeCheckpoint, DeclineCheckpoint}
 import org.apache.flink.runtime.messages.webmonitor.{InfoMessage, _}
+import org.apache.flink.runtime.messages.{Acknowledge, FlinkJobNotFoundException, StackTrace}
 import org.apache.flink.runtime.metrics.groups.JobManagerMetricGroup
-import org.apache.flink.runtime.metrics.{MetricRegistryConfiguration, MetricRegistry => FlinkMetricRegistry}
 import org.apache.flink.runtime.metrics.util.MetricUtils
-import org.apache.flink.runtime.net.SSLUtils
+import org.apache.flink.runtime.metrics.{MetricRegistryConfiguration, MetricRegistryImpl, MetricRegistry => FlinkMetricRegistry}
 import org.apache.flink.runtime.process.ProcessReaper
 import org.apache.flink.runtime.query.KvStateMessage.{LookupKvStateLocation, NotifyKvStateRegistered, NotifyKvStateUnregistered}
 import org.apache.flink.runtime.query.{KvStateMessage, UnknownKvStateLocation}
-import org.apache.flink.runtime.rpc.akka.AkkaRpcServiceUtils
 import org.apache.flink.runtime.security.{SecurityConfiguration, SecurityUtils}
 import org.apache.flink.runtime.taskexecutor.TaskExecutor
 import org.apache.flink.runtime.taskmanager.TaskManager
@@ -137,7 +134,7 @@ class JobManager(
     protected val submittedJobGraphs : SubmittedJobGraphStore,
     protected val checkpointRecoveryFactory : CheckpointRecoveryFactory,
     protected val jobRecoveryTimeout: FiniteDuration,
-    protected val metricsRegistry: Option[FlinkMetricRegistry],
+    protected val jobManagerMetricGroup: JobManagerMetricGroup,
     protected val optRestAddress: Option[String])
   extends FlinkActor
   with LeaderSessionMessageFilter // mixin oder is important, we want filtering after logging
@@ -153,16 +150,6 @@ class JobManager(
   protected val haMode = HighAvailabilityMode.fromConfig(flinkConfiguration)
 
   var leaderSessionID: Option[UUID] = None
-
-  protected val jobManagerMetricGroup : Option[JobManagerMetricGroup] = metricsRegistry match {
-    case Some(registry) =>
-      val host = flinkConfiguration.getString(JobManagerOptions.ADDRESS)
-      Option(new JobManagerMetricGroup(
-        registry, NetUtils.unresolvedHostToNormalizedString(host)))
-    case None =>
-      log.warn("Could not instantiate JobManager metrics.")
-      None
-  }
 
   /** Futures which have to be completed before terminating the job manager */
   var futuresToComplete: Option[Seq[Future[Unit]]] = None
@@ -205,20 +192,7 @@ class JobManager(
         throw new RuntimeException("Could not start the submitted job graphs service.", e)
     }
 
-    try {
-      checkpointRecoveryFactory.start()
-    } catch {
-      case e: Exception =>
-        log.error("Could not start the checkpoint recovery service.", e)
-        throw new RuntimeException("Could not start the checkpoint recovery service.", e)
-    }
-
-    jobManagerMetricGroup match {
-      case Some(group) =>
-        instantiateMetrics(group)
-      case None =>
-        log.warn("Could not instantiate JobManager metric group.")
-    }
+    instantiateMetrics(jobManagerMetricGroup)
   }
 
   override def postStop(): Unit = {
@@ -254,15 +228,11 @@ class JobManager(
       case e: Exception => log.error("Could not properly stop the submitted job graphs service.")
     }
 
-    try {
-      checkpointRecoveryFactory.stop()
-    } catch {
-      case e: Exception => log.error("Could not properly stop the checkpoint recovery service.")
-    }
-
     if (archive != ActorRef.noSender) {
       archive ! decorateMessage(PoisonPill)
     }
+
+    jobManagerMetricGroup.close()
 
     instanceManager.shutdown()
     scheduler.shutdown()
@@ -272,13 +242,6 @@ class JobManager(
       blobServer.close()
     } catch {
       case e: IOException => log.error("Could not properly shutdown the blob server.", e)
-    }
-
-    // failsafe shutdown of the metrics registry
-    try {
-      metricsRegistry.foreach(_.shutdown())
-    } catch {
-      case t: Exception => log.error("MetricRegistry did not shutdown properly.", t)
     }
 
     log.debug(s"Job manager ${self.path} is completely stopped.")
@@ -623,6 +586,17 @@ class JobManager(
                       executionGraph.cancel()
                       senderRef ! decorateMessage(CancellationSuccess(jobId, path))
                     } else {
+                      // Restart checkpoint scheduler iff periodic checkpoints are configured.
+                      // Otherwise we have unintended side effects on the job.
+                      if (coord.isPeriodicCheckpointingConfigured) {
+                        try {
+                          coord.startCheckpointScheduler()
+                        } catch {
+                          case ignored: IllegalStateException =>
+                            // Concurrent shut down of the coordinator
+                        }
+                      }
+
                       val msg = CancellationFailure(
                         jobId,
                         new Exception("Failed to trigger savepoint.", cause))
@@ -1076,9 +1050,9 @@ class JobManager(
         )
       )
 
-    case RequestTaskManagerInstance(instanceID) =>
+    case RequestTaskManagerInstance(resourceId) =>
       sender ! decorateMessage(
-        TaskManagerInstance(Option(instanceManager.getRegisteredInstanceById(instanceID)))
+        TaskManagerInstance(Option(instanceManager.getRegisteredInstance(resourceId)))
       )
 
     case Heartbeat(instanceID, accumulators) =>
@@ -1286,15 +1260,7 @@ class JobManager(
 
         log.info(s"Using restart strategy $restartStrategy for $jobId.")
 
-        val jobMetrics = jobManagerMetricGroup match {
-          case Some(group) =>
-            group.addJob(jobGraph) match {
-              case (jobGroup:Any) => jobGroup
-              case null => new UnregisteredMetricsGroup()
-            }
-          case None =>
-            new UnregisteredMetricsGroup()
-        }
+        val jobMetrics = jobManagerMetricGroup.addJob(jobGraph)
 
         val numSlots = scheduler.getTotalNumberOfSlots()
 
@@ -1321,6 +1287,7 @@ class JobManager(
           restartStrategy,
           jobMetrics,
           numSlots,
+          blobServer,
           log.logger)
         
         if (registerNewGraph) {
@@ -1536,7 +1503,7 @@ class JobManager(
             }
 
           case None =>
-            sender() ! Status.Failure(new IllegalStateException(s"Job ${msg.getJobId} not found"))
+            sender() ! Status.Failure(new FlinkJobNotFoundException(msg.getJobId))
         }
 
       // TaskManager KvState registration
@@ -1676,16 +1643,16 @@ class JobManager(
           val future = (archive ? RequestJobsOverview.getInstance())(timeout)
           future.onSuccess {
             case archiveOverview: JobsOverview =>
-              theSender ! new StatusOverview(numTMs, numSlotsTotal, numSlotsAvailable,
+              theSender ! new ClusterOverview(numTMs, numSlotsTotal, numSlotsAvailable,
                 ourJobs, archiveOverview)
           }(context.dispatcher)
 
         case msg : RequestJobDetails => 
           
-          val ourDetails: Array[JobDetails] = if (msg.shouldIncludeRunning()) {
+          val ourDetails: List[JobDetails] = if (msg.shouldIncludeRunning()) {
             currentJobs.values.map {
               v => WebMonitorUtils.createDetailsForJob(v._1)
-            }.toArray[JobDetails]
+            }.toList
           } else {
             null
           }
@@ -1695,11 +1662,10 @@ class JobManager(
             future.onSuccess {
               case archiveDetails: MultipleJobsDetails =>
                 theSender ! new MultipleJobsDetails(
-                  util.Arrays.asList(ourDetails: _*),
-                  archiveDetails.getFinished())
+                  (ourDetails ++ archiveDetails.getJobs.asScala).asJavaCollection)
             }(context.dispatcher)
           } else {
-            theSender ! new MultipleJobsDetails(util.Arrays.asList(ourDetails: _*), null)
+            theSender ! new MultipleJobsDetails(util.Arrays.asList(ourDetails: _*))
           }
           
         case _ => log.error("Unrecognized info message " + actorMessage)
@@ -1793,7 +1759,7 @@ class JobManager(
     libraryCacheManager.unregisterJob(jobID)
     blobServer.cleanupJob(jobID)
 
-    jobManagerMetricGroup.foreach(_.removeJob(jobID))
+    jobManagerMetricGroup.removeJob(jobID)
 
     futureOption
   }
@@ -1911,7 +1877,6 @@ class JobManager(
     jobManagerMetricGroup.gauge[Long, Gauge[Long]]("numRunningJobs", new Gauge[Long] {
       override def getValue: Long = JobManager.this.currentJobs.size
     })
-    MetricUtils.instantiateStatusMetrics(jobManagerMetricGroup)
   }
 }
 
@@ -2044,7 +2009,12 @@ object JobManager {
     val highAvailabilityServices = HighAvailabilityServicesUtils.createHighAvailabilityServices(
       configuration,
       ioExecutor,
-      AddressResolution.NO_ADDRESS_RESOLUTION);
+      AddressResolution.NO_ADDRESS_RESOLUTION)
+
+    val metricRegistry = new MetricRegistryImpl(
+      MetricRegistryConfiguration.fromConfiguration(configuration))
+
+    metricRegistry.startQueryService(jobManagerSystem, null)
 
     val (_, _, webMonitorOption, _) = try {
       startJobManagerActors(
@@ -2055,6 +2025,7 @@ object JobManager {
         futureExecutor,
         ioExecutor,
         highAvailabilityServices,
+        metricRegistry,
         classOf[JobManager],
         classOf[MemoryArchivist],
         Option(classOf[StandaloneResourceManager])
@@ -2085,6 +2056,13 @@ object JobManager {
     } catch {
       case t: Throwable =>
         LOG.warn("Could not properly stop the high availability services.", t)
+    }
+
+    try {
+      metricRegistry.shutdown()
+    } catch {
+      case t: Throwable =>
+        LOG.warn("Could not properly shut down the metric registry.", t)
     }
 
     FlinkExecutors.gracefulShutdown(
@@ -2155,32 +2133,12 @@ object JobManager {
       externalHostname: String,
       port: Int): ActorSystem = {
 
-    val hostPort = NetUtils.unresolvedHostAndPortToNormalizedString(externalHostname, port)
-
     // Bring up the job manager actor system first, bind it to the given address.
-    LOG.info(s"Starting JobManager actor system reachable at $hostPort")
-
-    val jobManagerSystem = try {
-      val akkaConfig = AkkaUtils.getAkkaConfig(
-        configuration,
-        Some((externalHostname, port))
-      )
-      if (LOG.isDebugEnabled) {
-        LOG.debug("Using akka configuration\n " + akkaConfig)
-      }
-      AkkaUtils.createActorSystem(akkaConfig)
-    }
-    catch {
-      case t: Throwable =>
-        if (t.isInstanceOf[org.jboss.netty.channel.ChannelException]) {
-          val cause = t.getCause()
-          if (cause != null && t.getCause().isInstanceOf[java.net.BindException]) {
-            throw new Exception("Unable to create JobManager at address " + hostPort +
-                                  " - " + cause.getMessage(), t)
-          }
-        }
-        throw new Exception("Could not create JobManager actor system", t)
-    }
+    val jobManagerSystem = BootstrapTools.startActorSystem(
+      configuration,
+      externalHostname,
+      port,
+      LOG.logger)
 
     val address = AkkaUtils.getAddress(jobManagerSystem)
 
@@ -2213,6 +2171,7 @@ object JobManager {
       futureExecutor: ScheduledExecutorService,
       ioExecutor: Executor,
       highAvailabilityServices: HighAvailabilityServices,
+      metricRegistry: FlinkMetricRegistry,
       jobManagerClass: Class[_ <: JobManager],
       archiveClass: Class[_ <: MemoryArchivist],
       resourceManagerClass: Option[Class[_ <: FlinkResourceManager[_]]])
@@ -2232,7 +2191,7 @@ object JobManager {
           new AkkaJobManagerRetriever(jobManagerSystem, timeout, 10, Time.milliseconds(50L)),
           new AkkaQueryServiceRetriever(jobManagerSystem, timeout),
           timeout,
-          futureExecutor)
+          new ScheduledExecutorServiceAdapter(futureExecutor))
 
         Option(webServer)
       }
@@ -2253,6 +2212,7 @@ object JobManager {
         futureExecutor,
         ioExecutor,
         highAvailabilityServices,
+        metricRegistry,
         webMonitor.map(_.getRestAddress),
         jobManagerClass,
         archiveClass)
@@ -2272,11 +2232,14 @@ object JobManager {
       if (executionMode == JobManagerMode.LOCAL) {
         LOG.info("Starting embedded TaskManager for JobManager's LOCAL execution mode")
 
+        val resourceId = ResourceID.generate()
+
         val taskManagerActor = TaskManager.startTaskManagerComponentsAndActor(
           configuration,
-          ResourceID.generate(),
+          resourceId,
           jobManagerSystem,
           highAvailabilityServices,
+          metricRegistry,
           externalHostname,
           Some(TaskExecutor.TASK_MANAGER_NAME),
           localTaskManagerCommunication = true,
@@ -2386,7 +2349,7 @@ object JobManager {
     val configuration = GlobalConfiguration.loadConfiguration(configDir)
 
     try {
-      FileSystem.setDefaultScheme(configuration)
+      FileSystem.initialize(configuration)
     }
     catch {
       case e: IOException => {
@@ -2455,7 +2418,8 @@ object JobManager {
       configuration: Configuration,
       futureExecutor: ScheduledExecutorService,
       ioExecutor: Executor,
-      blobStore: BlobStore) :
+      blobStore: BlobStore,
+      metricRegistry: FlinkMetricRegistry) :
     (InstanceManager,
     FlinkScheduler,
     BlobServer,
@@ -2465,12 +2429,15 @@ object JobManager {
     Int, // number of archived jobs
     Option[Path], // archive path
     FiniteDuration, // timeout for job recovery
-    Option[FlinkMetricRegistry]
+    JobManagerMetricGroup
    ) = {
 
     val timeout: FiniteDuration = AkkaUtils.getTimeout(configuration)
 
     val classLoaderResolveOrder = configuration.getString(CoreOptions.CLASSLOADER_RESOLVE_ORDER)
+    val alwaysParentFirstLoaderString =
+      configuration.getString(CoreOptions.ALWAYS_PARENT_FIRST_LOADER)
+    val alwaysParentFirstLoaderPatterns = alwaysParentFirstLoaderString.split(';')
 
     val restartStrategy = RestartStrategyFactory.createRestartStrategyFactory(configuration)
 
@@ -2500,10 +2467,14 @@ object JobManager {
 
     try {
       blobServer = new BlobServer(configuration, blobStore)
+      blobServer.start()
       instanceManager = new InstanceManager()
       scheduler = new FlinkScheduler(ExecutionContext.fromExecutor(futureExecutor))
       libraryCacheManager =
-        new BlobLibraryCacheManager(blobServer, ResolveOrder.fromString(classLoaderResolveOrder))
+        new BlobLibraryCacheManager(
+          blobServer,
+          ResolveOrder.fromString(classLoaderResolveOrder),
+          alwaysParentFirstLoaderPatterns)
 
       instanceManager.addInstanceListener(scheduler)
     }
@@ -2540,12 +2511,9 @@ object JobManager {
       }
     }
 
-    val metricRegistry = try {
-      Option(new FlinkMetricRegistry(MetricRegistryConfiguration.fromConfiguration(configuration)))
-    } catch {
-      case _: Exception =>
-        None
-    }
+    val jobManagerMetricGroup = MetricUtils.instantiateJobManagerMetricGroup(
+      metricRegistry,
+      configuration.getString(JobManagerOptions.ADDRESS))
 
     (instanceManager,
       scheduler,
@@ -2556,7 +2524,7 @@ object JobManager {
       archiveCount,
       archivePath,
       jobRecoveryTimeout,
-      metricRegistry)
+      jobManagerMetricGroup)
   }
 
   /**
@@ -2579,6 +2547,7 @@ object JobManager {
       futureExecutor: ScheduledExecutorService,
       ioExecutor: Executor,
       highAvailabilityServices: HighAvailabilityServices,
+      metricRegistry: FlinkMetricRegistry,
       optRestAddress: Option[String],
       jobManagerClass: Class[_ <: JobManager],
       archiveClass: Class[_ <: MemoryArchivist])
@@ -2590,6 +2559,7 @@ object JobManager {
       futureExecutor,
       ioExecutor,
       highAvailabilityServices,
+      metricRegistry,
       optRestAddress,
       Some(JobMaster.JOB_MANAGER_NAME),
       Some(JobMaster.ARCHIVE_NAME),
@@ -2621,6 +2591,7 @@ object JobManager {
       futureExecutor: ScheduledExecutorService,
       ioExecutor: Executor,
       highAvailabilityServices: HighAvailabilityServices,
+      metricRegistry: FlinkMetricRegistry,
       optRestAddress: Option[String],
       jobManagerActorName: Option[String],
       archiveActorName: Option[String],
@@ -2637,11 +2608,12 @@ object JobManager {
     archiveCount,
     archivePath,
     jobRecoveryTimeout,
-    metricsRegistry) = createJobManagerComponents(
+    jobManagerMetricGroup) = createJobManagerComponents(
       configuration,
       futureExecutor,
       ioExecutor,
-      highAvailabilityServices.createBlobStore())
+      highAvailabilityServices.createBlobStore(),
+      metricRegistry)
 
     val archiveProps = getArchiveProps(archiveClass, archiveCount, archivePath)
 
@@ -2668,18 +2640,12 @@ object JobManager {
       highAvailabilityServices.getSubmittedJobGraphStore(),
       highAvailabilityServices.getCheckpointRecoveryFactory(),
       jobRecoveryTimeout,
-      metricsRegistry,
+      jobManagerMetricGroup,
       optRestAddress)
 
     val jobManager: ActorRef = jobManagerActorName match {
       case Some(actorName) => actorSystem.actorOf(jobManagerProps, actorName)
       case None => actorSystem.actorOf(jobManagerProps)
-    }
-
-    metricsRegistry match {
-      case Some(registry) =>
-        registry.startQueryService(actorSystem, null)
-      case None =>
     }
 
     (jobManager, archive)
@@ -2708,7 +2674,7 @@ object JobManager {
     submittedJobGraphStore: SubmittedJobGraphStore,
     checkpointRecoveryFactory: CheckpointRecoveryFactory,
     jobRecoveryTimeout: FiniteDuration,
-    metricsRegistry: Option[FlinkMetricRegistry],
+    jobManagerMetricGroup: JobManagerMetricGroup,
     optRestAddress: Option[String]): Props = {
 
     Props(
@@ -2727,7 +2693,7 @@ object JobManager {
       submittedJobGraphStore,
       checkpointRecoveryFactory,
       jobRecoveryTimeout,
-      metricsRegistry,
+      jobManagerMetricGroup,
       optRestAddress)
   }
 }

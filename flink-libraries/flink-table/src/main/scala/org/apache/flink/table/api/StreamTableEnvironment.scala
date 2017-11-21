@@ -48,7 +48,7 @@ import org.apache.flink.table.plan.schema.{DataStreamTable, RowSchema, StreamTab
 import org.apache.flink.table.runtime.types.{CRow, CRowTypeInfo}
 import org.apache.flink.table.runtime.{CRowMapRunner, OutputRowtimeProcessFunction}
 import org.apache.flink.table.sinks._
-import org.apache.flink.table.sources.{DefinedRowtimeAttribute, StreamTableSource, TableSource}
+import org.apache.flink.table.sources.{StreamTableSource, TableSource, TableSourceUtil}
 import org.apache.flink.table.typeutils.{TimeIndicatorTypeInfo, TypeCheckUtils}
 
 import _root_.scala.collection.JavaConverters._
@@ -109,23 +109,19 @@ abstract class StreamTableEnvironment(
   override def registerTableSource(name: String, tableSource: TableSource[_]): Unit = {
     checkValidTableName(name)
 
-    // check if event-time is enabled
-    tableSource match {
-      case dra: DefinedRowtimeAttribute if
-          execEnv.getStreamTimeCharacteristic != TimeCharacteristic.EventTime =>
-
-        throw TableException(
-          s"A rowtime attribute requires an EventTime time characteristic in stream environment. " +
-            s"But is: ${execEnv.getStreamTimeCharacteristic}")
-      case _ => // ok
-    }
-
     tableSource match {
       case streamTableSource: StreamTableSource[_] =>
+        // check that event-time is enabled if table source includes rowtime attributes
+        if (TableSourceUtil.hasRowtimeAttribute(streamTableSource) &&
+          execEnv.getStreamTimeCharacteristic != TimeCharacteristic.EventTime) {
+            throw TableException(
+              s"A rowtime attribute requires an EventTime time characteristic in stream " +
+                s"environment. But is: ${execEnv.getStreamTimeCharacteristic}")
+        }
         registerTableInternal(name, new StreamTableSourceTable(streamTableSource))
       case _ =>
         throw new TableException("Only StreamTableSource can be registered in " +
-            "StreamTableEnvironment")
+          "StreamTableEnvironment")
     }
   }
 
@@ -238,11 +234,12 @@ abstract class StreamTableEnvironment(
             "UpsertStreamTableSink requires that Table has a full primary keys if it is updated.")
         }
         val outputType = sink.getOutputType
+        val resultType = getResultType(table.getRelNode, optimizedPlan)
         // translate the Table into a DataStream and provide the type that the TableSink expects.
         val result: DataStream[T] =
           translate(
             optimizedPlan,
-            table.getRelNode.getRowType,
+            resultType,
             streamQueryConfig,
             withChangeFlag = true)(outputType)
         // Give the DataStream to the TableSink to emit it.
@@ -258,11 +255,12 @@ abstract class StreamTableEnvironment(
             "AppendStreamTableSink requires that Table has only insert changes.")
         }
         val outputType = sink.getOutputType
+        val resultType = getResultType(table.getRelNode, optimizedPlan)
         // translate the Table into a DataStream and provide the type that the TableSink expects.
         val result: DataStream[T] =
           translate(
             optimizedPlan,
-            table.getRelNode.getRowType,
+            resultType,
             streamQueryConfig,
             withChangeFlag = false)(outputType)
         // Give the DataStream to the TableSink to emit it.
@@ -554,14 +552,18 @@ abstract class StreamTableEnvironment(
 
     // inject rowtime field
     val withRowtime = rowtime match {
-      case Some(rt) => fieldIndexes.patch(rt._1, Seq(TimeIndicatorTypeInfo.ROWTIME_MARKER), 0)
-      case _ => fieldIndexes
+      case Some(rt) =>
+        fieldIndexes.patch(rt._1, Seq(TimeIndicatorTypeInfo.ROWTIME_STREAM_MARKER), 0)
+      case _ =>
+        fieldIndexes
     }
 
     // inject proctime field
     val withProctime = proctime match {
-      case Some(pt) => withRowtime.patch(pt._1, Seq(TimeIndicatorTypeInfo.PROCTIME_MARKER), 0)
-      case _ => withRowtime
+      case Some(pt) =>
+        withRowtime.patch(pt._1, Seq(TimeIndicatorTypeInfo.PROCTIME_STREAM_MARKER), 0)
+      case _ =>
+        withRowtime
     }
 
     withProctime
@@ -727,19 +729,7 @@ abstract class StreamTableEnvironment(
     val relNode = table.getRelNode
     val dataStreamPlan = optimize(relNode, updatesAsRetraction)
 
-    // zip original field names with optimized field types
-    val fieldTypes = relNode.getRowType.getFieldList.asScala
-      .zip(dataStreamPlan.getRowType.getFieldList.asScala)
-      // get name of original plan and type of optimized plan
-      .map(x => (x._1.getName, x._2.getType))
-      // add field indexes
-      .zipWithIndex
-      // build new field types
-      .map(x => new RelDataTypeFieldImpl(x._1._1, x._2, x._1._2))
-
-    // build a record type from list of field types
-    val rowType = new RelRecordType(
-      fieldTypes.toList.asInstanceOf[List[RelDataTypeField]].asJava)
+    val rowType = getResultType(relNode, dataStreamPlan)
 
     translate(dataStreamPlan, rowType, queryConfig, withChangeFlag)
   }
@@ -849,6 +839,25 @@ abstract class StreamTableEnvironment(
         throw TableException("Cannot generate DataStream due to an invalid logical plan. " +
           "This is a bug and should not happen. Please file an issue.")
     }
+  }
+
+  /**
+    * Returns the record type of the optimized plan with field names of the logical plan.
+    */
+  private def getResultType(originRelNode: RelNode, optimizedPlan: RelNode): RelRecordType = {
+    // zip original field names with optimized field types
+    val fieldTypes = originRelNode.getRowType.getFieldList.asScala
+      .zip(optimizedPlan.getRowType.getFieldList.asScala)
+      // get name of original plan and type of optimized plan
+      .map(x => (x._1.getName, x._2.getType))
+      // add field indexes
+      .zipWithIndex
+      // build new field types
+      .map(x => new RelDataTypeFieldImpl(x._1._1, x._2, x._1._2))
+
+    // build a record type from list of field types
+    new RelRecordType(
+      fieldTypes.toList.asInstanceOf[List[RelDataTypeField]].asJava)
   }
 
   /**

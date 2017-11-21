@@ -33,15 +33,14 @@ import org.apache.flink.api.common.typeutils.CompositeType
 import org.apache.flink.api.java.typeutils._
 import org.apache.flink.api.scala.typeutils.CaseClassTypeInfo
 import org.apache.flink.streaming.api.functions.ProcessFunction
-import org.apache.flink.table.api.TableConfig
+import org.apache.flink.table.api.{TableConfig, TableException}
 import org.apache.flink.table.calcite.FlinkTypeFactory
 import org.apache.flink.table.codegen.CodeGenUtils._
 import org.apache.flink.table.codegen.GeneratedExpression.{NEVER_NULL, NO_CODE}
-import org.apache.flink.table.codegen.calls.FunctionGenerator
+import org.apache.flink.table.codegen.calls.{CurrentTimePointCallGen, FunctionGenerator}
 import org.apache.flink.table.codegen.calls.ScalarOperators._
-import org.apache.flink.table.functions.sql.{ProctimeSqlFunction, ScalarSqlFunctions}
+import org.apache.flink.table.functions.sql.{ProctimeSqlFunction, ScalarSqlFunctions, StreamRecordTimestampSqlFunction}
 import org.apache.flink.table.functions.utils.UserDefinedFunctionUtils
-
 import org.apache.flink.table.typeutils.TimeIndicatorTypeInfo
 import org.apache.flink.table.functions.{FunctionContext, UserDefinedFunction}
 import org.apache.flink.table.typeutils.TypeCheckUtils._
@@ -242,23 +241,34 @@ abstract class CodeGenerator(
     *
     * @param returnType conversion target type. Inputs and output must have the same arity.
     * @param resultFieldNames result field names necessary for a mapping to POJO fields.
+    * @param rowtimeExpression an expression to extract the value of a rowtime field from
+    *                          the input data. Required if the field indicies include a rowtime
+    *                          marker.
     * @return instance of GeneratedExpression
     */
   def generateConverterResultExpression(
       returnType: TypeInformation[_ <: Any],
-      resultFieldNames: Seq[String])
+      resultFieldNames: Seq[String],
+      rowtimeExpression: Option[RexNode] = None)
     : GeneratedExpression = {
 
     val input1AccessExprs = input1Mapping.map {
-      case TimeIndicatorTypeInfo.ROWTIME_MARKER =>
-        // attribute is a rowtime indicator. Access event-time timestamp in StreamRecord.
-        generateRowtimeAccess()
-      case TimeIndicatorTypeInfo.PROCTIME_MARKER =>
+      case TimeIndicatorTypeInfo.ROWTIME_STREAM_MARKER |
+           TimeIndicatorTypeInfo.ROWTIME_BATCH_MARKER if rowtimeExpression.isDefined =>
+          // generate rowtime attribute from expression
+          generateExpression(rowtimeExpression.get)
+      case TimeIndicatorTypeInfo.ROWTIME_STREAM_MARKER |
+           TimeIndicatorTypeInfo.ROWTIME_BATCH_MARKER =>
+          throw TableException("Rowtime extraction expression missing. Please report a bug.")
+      case TimeIndicatorTypeInfo.PROCTIME_STREAM_MARKER =>
         // attribute is proctime indicator.
-        // We use a null literal and generate a timestamp when we need it.
+        // we use a null literal and generate a timestamp when we need it.
         generateNullLiteral(TimeIndicatorTypeInfo.PROCTIME_INDICATOR)
+      case TimeIndicatorTypeInfo.PROCTIME_BATCH_MARKER =>
+        // attribute is proctime field in a batch query.
+        // it is initialized with the current time.
+        generateCurrentTimestamp()
       case idx =>
-        // regular attribute. Access attribute in input data type.
         generateInputAccess(input1, input1Term, idx)
     }
 
@@ -831,7 +841,7 @@ abstract class CodeGenerator(
         val operand = operands.head
         requireTimeInterval(operand)
         generateUnaryIntervalPlusMinus(plus = true, nullCheck, operand)
-        
+
       // comparison
       case EQUALS =>
         val left = operands.head
@@ -979,6 +989,9 @@ abstract class CodeGenerator(
 
       case ScalarSqlFunctions.CONCAT_WS =>
         generateConcatWs(operands)
+
+      case StreamRecordTimestampSqlFunction =>
+        generateStreamRecordRowtimeAccess()
 
       // advanced scalar functions
       case sqlOperator: SqlOperator =>
@@ -1284,7 +1297,7 @@ abstract class CodeGenerator(
     }
   }
 
-  private[flink] def generateRowtimeAccess(): GeneratedExpression = {
+  private[flink] def generateStreamRecordRowtimeAccess(): GeneratedExpression = {
     val resultTerm = newName("result")
     val nullTerm = newName("isNull")
 
@@ -1299,7 +1312,7 @@ abstract class CodeGenerator(
         |boolean $nullTerm = false;
        """.stripMargin
 
-    GeneratedExpression(resultTerm, nullTerm, accessCode, TimeIndicatorTypeInfo.ROWTIME_INDICATOR)
+    GeneratedExpression(resultTerm, nullTerm, accessCode, Types.LONG)
   }
 
   private[flink] def generateProctimeTimestamp(): GeneratedExpression = {
@@ -1310,6 +1323,10 @@ abstract class CodeGenerator(
         |long $resultTerm = $contextTerm.timerService().currentProcessingTime();
         |""".stripMargin
     GeneratedExpression(resultTerm, NEVER_NULL, resultCode, SqlTimeTypeInfo.TIMESTAMP)
+  }
+
+  private[flink] def generateCurrentTimestamp(): GeneratedExpression = {
+    new CurrentTimePointCallGen(Types.SQL_TIMESTAMP, false).generate(this, Seq())
   }
 
   // ----------------------------------------------------------------------------------------------
@@ -1327,12 +1344,12 @@ abstract class CodeGenerator(
     val statement = ti match {
       case rt: RowTypeInfo =>
         s"""
-          |transient ${ti.getTypeClass.getCanonicalName} $outRecordTerm =
+          |final ${ti.getTypeClass.getCanonicalName} $outRecordTerm =
           |    new ${ti.getTypeClass.getCanonicalName}(${rt.getArity});
           |""".stripMargin
       case _ =>
         s"""
-          |${ti.getTypeClass.getCanonicalName} $outRecordTerm =
+          |final ${ti.getTypeClass.getCanonicalName} $outRecordTerm =
           |    new ${ti.getTypeClass.getCanonicalName}();
           |""".stripMargin
     }
@@ -1352,7 +1369,7 @@ abstract class CodeGenerator(
     val fieldTerm = s"field_${clazz.getCanonicalName.replace('.', '$')}_$fieldName"
     val fieldExtraction =
       s"""
-        |transient java.lang.reflect.Field $fieldTerm =
+        |final java.lang.reflect.Field $fieldTerm =
         |    org.apache.flink.api.java.typeutils.TypeExtractor.getDeclaredField(
         |      ${clazz.getCanonicalName}.class, "$fieldName");
         |""".stripMargin
@@ -1381,7 +1398,7 @@ abstract class CodeGenerator(
       val fieldTerm = newName("decimal")
       val fieldDecimal =
         s"""
-          |transient java.math.BigDecimal $fieldTerm =
+          |final java.math.BigDecimal $fieldTerm =
           |    new java.math.BigDecimal("${decimal.toString}");
           |""".stripMargin
       reusableMemberStatements.add(fieldDecimal)
@@ -1400,7 +1417,7 @@ abstract class CodeGenerator(
 
     val field =
       s"""
-         |transient java.util.Random $fieldTerm;
+         |final java.util.Random $fieldTerm;
          |""".stripMargin
     reusableMemberStatements.add(field)
 
@@ -1440,7 +1457,7 @@ abstract class CodeGenerator(
 
     val field =
       s"""
-         |transient org.joda.time.format.DateTimeFormatter $fieldTerm;
+         |final org.joda.time.format.DateTimeFormatter $fieldTerm;
          |""".stripMargin
     reusableMemberStatements.add(field)
 
@@ -1469,7 +1486,7 @@ abstract class CodeGenerator(
 
     val fieldFunction =
       s"""
-        |transient $classQualifier $fieldTerm = null;
+        |final $classQualifier $fieldTerm;
         |""".stripMargin
     reusableMemberStatements.add(fieldFunction)
 
@@ -1516,7 +1533,7 @@ abstract class CodeGenerator(
     parameterTypes.zipWithIndex.foreach { case (t, index) =>
       val classQualifier = t.getCanonicalName
       val fieldTerm = newName(s"instance_${classQualifier.replace('.', '$')}")
-      val field = s"transient $classQualifier $fieldTerm = null;"
+      val field = s"final $classQualifier $fieldTerm;"
       reusableMemberStatements.add(field)
       fieldTerms += fieldTerm
       parameters += s"$classQualifier arg$index"
@@ -1537,7 +1554,7 @@ abstract class CodeGenerator(
     val initArray = classQualifier.replaceFirst("\\[", s"[$size")
     val fieldArray =
       s"""
-        |transient $classQualifier $fieldTerm =
+        |final $classQualifier $fieldTerm =
         |    new $initArray;
         |""".stripMargin
     reusableMemberStatements.add(fieldArray)
@@ -1644,7 +1661,7 @@ abstract class CodeGenerator(
 
     val field =
       s"""
-        |transient java.util.Set $fieldTerm = null;
+        |final java.util.Set $fieldTerm;
         |""".stripMargin
     reusableMemberStatements.add(field)
 
@@ -1667,6 +1684,36 @@ abstract class CodeGenerator(
 
       reusableInitStatements.add(content)
     }
+
+    fieldTerm
+  }
+
+  /**
+    * Adds a reusable constant to the member area of the generated [[Function]].
+    *
+    * @param constant constant expression
+    * @return member variable term
+    */
+  def addReusableBoxedConstant(constant: GeneratedExpression): String = {
+    require(constant.literal, "Literal expected")
+
+    val fieldTerm = newName("constant")
+
+    val boxed = generateOutputFieldBoxing(constant)
+    val boxedType = boxedTypeTermForTypeInfo(boxed.resultType)
+
+    val field =
+      s"""
+        |final $boxedType $fieldTerm;
+        |""".stripMargin
+    reusableMemberStatements.add(field)
+
+    val init =
+      s"""
+        |${boxed.code}
+        |$fieldTerm = ${boxed.resultTerm};
+        |""".stripMargin
+    reusableInitStatements.add(init)
 
     fieldTerm
   }

@@ -22,7 +22,7 @@ import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.runtime.accumulators.AccumulatorSnapshot;
-import org.apache.flink.runtime.blob.BlobCache;
+import org.apache.flink.runtime.blob.BlobCacheService;
 import org.apache.flink.runtime.broadcast.BroadcastVariableManager;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
@@ -42,6 +42,7 @@ import org.apache.flink.runtime.heartbeat.HeartbeatManager;
 import org.apache.flink.runtime.heartbeat.HeartbeatServices;
 import org.apache.flink.runtime.heartbeat.HeartbeatTarget;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
+import org.apache.flink.runtime.instance.HardwareDescription;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.network.NetworkEnvironment;
 import org.apache.flink.runtime.io.network.netty.PartitionProducerStateChecker;
@@ -55,7 +56,6 @@ import org.apache.flink.runtime.jobmaster.JobMasterId;
 import org.apache.flink.runtime.leaderretrieval.LeaderRetrievalListener;
 import org.apache.flink.runtime.memory.MemoryManager;
 import org.apache.flink.runtime.messages.Acknowledge;
-import org.apache.flink.runtime.metrics.MetricRegistry;
 import org.apache.flink.runtime.metrics.groups.TaskManagerMetricGroup;
 import org.apache.flink.runtime.metrics.groups.TaskMetricGroup;
 import org.apache.flink.runtime.registration.RegistrationConnectionListener;
@@ -134,9 +134,6 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 	/** The network component in the task manager */
 	private final NetworkEnvironment networkEnvironment;
 
-	/** The metric registry in the task manager */
-	private final MetricRegistry metricRegistry;
-
 	/** The heartbeat manager for job manager in the task manager */
 	private final HeartbeatManager<Void, Void> jobManagerHeartbeatManager;
 
@@ -170,6 +167,8 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 
 	// ------------------------------------------------------------------------
 
+	private final HardwareDescription hardwareDescription;
+
 	public TaskExecutor(
 			RpcService rpcService,
 			TaskManagerConfiguration taskManagerConfiguration,
@@ -179,7 +178,6 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 			NetworkEnvironment networkEnvironment,
 			HighAvailabilityServices haServices,
 			HeartbeatServices heartbeatServices,
-			MetricRegistry metricRegistry,
 			TaskManagerMetricGroup taskManagerMetricGroup,
 			BroadcastVariableManager broadcastVariableManager,
 			FileCache fileCache,
@@ -198,7 +196,6 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 		this.ioManager = checkNotNull(ioManager);
 		this.networkEnvironment = checkNotNull(networkEnvironment);
 		this.haServices = checkNotNull(haServices);
-		this.metricRegistry = checkNotNull(metricRegistry);
 		this.taskSlotTable = checkNotNull(taskSlotTable);
 		this.fatalErrorHandler = checkNotNull(fatalErrorHandler);
 		this.taskManagerMetricGroup = checkNotNull(taskManagerMetricGroup);
@@ -220,6 +217,8 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 			new ResourceManagerHeartbeatListener(),
 			rpcService.getScheduledExecutor(),
 			log);
+
+		hardwareDescription = HardwareDescription.extractFromSystem(memoryManager.getMemorySize());
 	}
 
 	// ------------------------------------------------------------------------
@@ -307,17 +306,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 			Time timeout) {
 
 		try {
-			// first, deserialize the pre-serialized information
-			final JobInformation jobInformation;
-			final TaskInformation taskInformation;
-			try {
-				jobInformation = tdd.getSerializedJobInformation().deserializeValue(getClass().getClassLoader());
-				taskInformation = tdd.getSerializedTaskInformation().deserializeValue(getClass().getClassLoader());
-			} catch (IOException | ClassNotFoundException e) {
-				throw new TaskSubmissionException("Could not deserialize the job or task information.", e);
-			}
-
-			final JobID jobId = jobInformation.getJobId();
+			final JobID jobId = tdd.getJobId();
 			final JobManagerConnection jobManagerConnection = jobManagerTable.get(jobId);
 
 			if (jobManagerConnection == null) {
@@ -344,6 +333,30 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 				throw new TaskSubmissionException(message);
 			}
 
+			// re-integrate offloaded data:
+			BlobCacheService blobCache = jobManagerConnection.getBlobService();
+			try {
+				tdd.loadBigData(blobCache.getPermanentBlobService());
+			} catch (IOException | ClassNotFoundException e) {
+				throw new TaskSubmissionException("Could not re-integrate offloaded TaskDeploymentDescriptor data.", e);
+			}
+
+			// deserialize the pre-serialized information
+			final JobInformation jobInformation;
+			final TaskInformation taskInformation;
+			try {
+				jobInformation = tdd.getSerializedJobInformation().deserializeValue(getClass().getClassLoader());
+				taskInformation = tdd.getSerializedTaskInformation().deserializeValue(getClass().getClassLoader());
+			} catch (IOException | ClassNotFoundException e) {
+				throw new TaskSubmissionException("Could not deserialize the job or task information.", e);
+			}
+
+			if (!jobId.equals(jobInformation.getJobId())) {
+				throw new TaskSubmissionException(
+					"Inconsistent job ID information inside TaskDeploymentDescriptor (" +
+						tdd.getJobId() + " vs. " + jobInformation.getJobId() + ")");
+			}
+
 			TaskMetricGroup taskMetricGroup = taskManagerMetricGroup.addTaskForJob(
 				jobInformation.getJobId(),
 				jobInformation.getJobName(),
@@ -361,7 +374,8 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 
 			TaskManagerActions taskManagerActions = jobManagerConnection.getTaskManagerActions();
 			CheckpointResponder checkpointResponder = jobManagerConnection.getCheckpointResponder();
-			BlobCache blobCache = jobManagerConnection.getBlobCache();
+
+			BlobCacheService blobService = jobManagerConnection.getBlobService();
 			LibraryCacheManager libraryCache = jobManagerConnection.getLibraryCacheManager();
 			ResultPartitionConsumableNotifier resultPartitionConsumableNotifier = jobManagerConnection.getResultPartitionConsumableNotifier();
 			PartitionProducerStateChecker partitionStateChecker = jobManagerConnection.getPartitionStateChecker();
@@ -384,7 +398,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 				taskManagerActions,
 				inputSplitProvider,
 				checkpointResponder,
-				blobCache,
+				blobService,
 				libraryCache,
 				fileCache,
 				taskManagerConfiguration,
@@ -711,6 +725,8 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 					getAddress(),
 					getResourceID(),
 					taskSlotTable.createSlotReport(getResourceID()),
+					taskManagerLocation.dataPort(),
+					hardwareDescription,
 					newLeaderAddress,
 					newResourceManagerId,
 					getMainThreadExecutor(),
@@ -935,14 +951,16 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 		InetSocketAddress blobServerAddress = new InetSocketAddress(jobMasterGateway.getHostname(), blobPort);
 
 		final LibraryCacheManager libraryCacheManager;
-		final BlobCache blobCache;
+		final BlobCacheService blobService;
 		try {
-			blobCache = new BlobCache(
+			blobService = new BlobCacheService(
 				blobServerAddress,
 				taskManagerConfiguration.getConfiguration(),
 				haServices.createBlobStore());
-			libraryCacheManager =
-				new BlobLibraryCacheManager(blobCache, taskManagerConfiguration.getClassLoaderResolveOrder());
+			libraryCacheManager = new BlobLibraryCacheManager(
+				blobService.getPermanentBlobService(),
+				taskManagerConfiguration.getClassLoaderResolveOrder(),
+				taskManagerConfiguration.getAlwaysParentFirstLoaderPatterns());
 		} catch (IOException e) {
 			// Can't pass the IOException up - we need a RuntimeException anyway
 			// two levels up where this is run asynchronously. Also, we don't
@@ -965,7 +983,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 			jobMasterGateway,
 			taskManagerActions,
 			checkpointResponder,
-			blobCache,
+			blobService,
 			libraryCacheManager,
 			resultPartitionConsumableNotifier,
 			partitionStateChecker);
@@ -976,7 +994,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 		JobMasterGateway jobManagerGateway = jobManagerConnection.getJobManagerGateway();
 		jobManagerGateway.disconnectTaskManager(getResourceID(), cause);
 		jobManagerConnection.getLibraryCacheManager().shutdown();
-		jobManagerConnection.getBlobCache().close();
+		jobManagerConnection.getBlobService().close();
 	}
 
 	// ------------------------------------------------------------------------

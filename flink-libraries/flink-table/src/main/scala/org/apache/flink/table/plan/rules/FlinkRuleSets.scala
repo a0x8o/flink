@@ -52,6 +52,10 @@ object FlinkRuleSets {
     FilterJoinRule.JOIN,
     // push filter through an aggregation
     FilterAggregateTransposeRule.INSTANCE,
+    // push filter through set operation
+    FilterSetOpTransposeRule.INSTANCE,
+    // push project through set operation
+    ProjectSetOpTransposeRule.INSTANCE,
 
     // aggregation and projection rules
     AggregateProjectMergeRule.INSTANCE,
@@ -145,10 +149,12 @@ object FlinkRuleSets {
     ReduceExpressionsRule.JOIN_INSTANCE,
     ProjectToWindowRule.PROJECT,
 
+    // Transform grouping sets
+    DecomposeGroupingSetRule.INSTANCE,
     // Transform window to LogicalWindowAggregate
     DataSetLogicalWindowAggregateRule.INSTANCE,
-    WindowStartEndPropertiesRule.INSTANCE,
-    WindowStartEndPropertiesHavingRule.INSTANCE
+    WindowPropertiesRule.INSTANCE,
+    WindowPropertiesHavingRule.INSTANCE
   )
 
   /**
@@ -179,8 +185,8 @@ object FlinkRuleSets {
   val DATASTREAM_NORM_RULES: RuleSet = RuleSets.ofList(
     // Transform window to LogicalWindowAggregate
     DataStreamLogicalWindowAggregateRule.INSTANCE,
-    WindowStartEndPropertiesRule.INSTANCE,
-    WindowStartEndPropertiesHavingRule.INSTANCE,
+    WindowPropertiesRule.INSTANCE,
+    WindowPropertiesHavingRule.INSTANCE,
 
     // simplify expressions rules
     ReduceExpressionsRule.FILTER_INSTANCE,

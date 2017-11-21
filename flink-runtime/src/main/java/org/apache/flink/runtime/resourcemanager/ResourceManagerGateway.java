@@ -20,20 +20,25 @@ package org.apache.flink.runtime.resourcemanager;
 
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.time.Time;
+import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.runtime.clusterframework.ApplicationStatus;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.clusterframework.types.SlotID;
+import org.apache.flink.runtime.instance.HardwareDescription;
 import org.apache.flink.runtime.instance.InstanceID;
+import org.apache.flink.runtime.jobmaster.JobMaster;
 import org.apache.flink.runtime.jobmaster.JobMasterId;
 import org.apache.flink.runtime.messages.Acknowledge;
+import org.apache.flink.runtime.registration.RegistrationResponse;
+import org.apache.flink.runtime.metrics.dump.MetricQueryService;
+import org.apache.flink.runtime.rest.messages.taskmanager.TaskManagerInfo;
 import org.apache.flink.runtime.rpc.FencedRpcGateway;
 import org.apache.flink.runtime.rpc.RpcTimeout;
-import org.apache.flink.runtime.jobmaster.JobMaster;
-import org.apache.flink.runtime.registration.RegistrationResponse;
 import org.apache.flink.runtime.taskexecutor.SlotReport;
 import org.apache.flink.runtime.taskexecutor.TaskExecutor;
 
+import java.util.Collection;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -71,11 +76,20 @@ public interface ResourceManagerGateway extends FencedRpcGateway<ResourceManager
 		@RpcTimeout Time timeout);
 
 	/**
+	 * Cancel the slot allocation requests from the resource manager.
+	 *
+	 * @param allocationID The slot to request
+	 */
+	void cancelSlotRequest(AllocationID allocationID);
+
+	/**
 	 * Register a {@link TaskExecutor} at the resource manager.
 	 *
 	 * @param taskExecutorAddress The address of the TaskExecutor that registers
 	 * @param resourceId The resource ID of the TaskExecutor that registers
 	 * @param slotReport The slot report containing free and allocated task slots
+	 * @param dataPort port used for data communication between TaskExecutors
+	 * @param hardwareDescription of the registering TaskExecutor
 	 * @param timeout The timeout for the response.
 	 *
 	 * @return The future to the response by the ResourceManager.
@@ -84,6 +98,8 @@ public interface ResourceManagerGateway extends FencedRpcGateway<ResourceManager
 		String taskExecutorAddress,
 		ResourceID resourceId,
 		SlotReport slotReport,
+		int dataPort,
+		HardwareDescription hardwareDescription,
 		@RpcTimeout Time timeout);
 
 	/**
@@ -157,4 +173,38 @@ public interface ResourceManagerGateway extends FencedRpcGateway<ResourceManager
 	 * @param cause for the disconnection of the JobManager
 	 */
 	void disconnectJobManager(JobID jobId, Exception cause);
+
+	/**
+	 * Requests information about the registered {@link TaskExecutor}.
+	 *
+	 * @param timeout of the request
+	 * @return Future collection of TaskManager information
+	 */
+	CompletableFuture<Collection<TaskManagerInfo>> requestTaskManagerInfo(@RpcTimeout Time timeout);
+
+	/**
+	 * Requests information about the given {@link TaskExecutor}.
+	 *
+	 * @param instanceId identifying the TaskExecutor for which to return information
+	 * @param timeout of the request
+	 * @return Future TaskManager information
+	 */
+	CompletableFuture<TaskManagerInfo> requestTaskManagerInfo(InstanceID instanceId, @RpcTimeout Time timeout);
+	 
+	/**
+	 * Requests the resource overview. The resource overview provides information about the
+	 * connected TaskManagers, the total number of slots and the number of available slots.
+	 *
+	 * @param timeout of the request
+	 * @return Future containing the resource overview
+	 */
+	CompletableFuture<ResourceOverview> requestResourceOverview(@RpcTimeout Time timeout);
+
+	/**
+	 * Requests the paths for the TaskManager's {@link MetricQueryService} to query.
+	 *
+	 * @param timeout for the asynchronous operation
+	 * @return Future containing the collection of resource ids and the corresponding metric query service path
+	 */
+	CompletableFuture<Collection<Tuple2<ResourceID, String>>> requestTaskManagerMetricQueryServicePaths(@RpcTimeout Time timeout);
 }

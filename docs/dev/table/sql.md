@@ -400,16 +400,16 @@ FROM Orders LEFT JOIN Product ON Orders.productId = Product.id
       <td>
         <p><b>Note:</b> Time-windowed joins are a subset of regular joins that can be processed in a streaming fashion.</p>
 
-        <p>A time-windowed join requires a special join condition that bounds the time on both sides. This can be done by either two appropriate range predicates (<code> &lt;, &lt;=, &gt;=, &gt;</code>) or a <code>BETWEEN</code> predicate that compares the <a href="streaming.html#time-attributes">time attributes</a> of both input tables. The following rules apply for time predicates:
-          <ul>
-            <li>Time predicates must compare time attributes of both input tables.</li>
-            <li>Time predicates must compare only time attributes of the same type, i.e., processing time with processing time or event time with event time.</li>
-            <li>Only range predicates are valid time predicates.</li>
-            <li>Non-time predicates must not access a time attribute.</li>
-          </ul>
-        </p>
-
-        <p><b>Note:</b> Currently, only processing time window joins and <code>INNER</code> joins are supported.</p>
+        <p>A time-windowed join requires at least one equi-join predicate and a join condition that bounds the time on both sides. Such a condition can be defined by two appropriate range predicates (<code>&lt;, &lt;=, &gt;=, &gt;</code>), a <code>BETWEEN</code> predicate, or a single equality predicate that compares <a href="streaming.html#time-attributes">time attributes</a> of the same type (i.e., processing time or event time) of both input tables.</p> 
+        <p>For example, the following predicates are valid window join conditions:</p>
+          
+        <ul>
+          <li><code>ltime = rtime</code></li>
+          <li><code>ltime &gt;= rtime AND ltime &lt; rtime + INTERVAL '10' MINUTE</code></li>
+          <li><code>ltime BETWEEN rtime - INTERVAL '10' SECOND AND rtime + INTERVAL '5' SECOND</code></li>
+        </ul>
+                
+        <p><b>Note:</b> Currently, only <code>INNER</code> time-windowed joins are supported.</p>
 
 {% highlight sql %}
 SELECT *
@@ -436,15 +436,23 @@ FROM Orders CROSS JOIN UNNEST(tags) AS t (tag)
     </tr>
     <tr>
     	<td>
-        <strong>User Defined Table Functions (UDTF)</strong><br>
+        <strong>Join with User Defined Table Functions (UDTF)</strong><br>
         <span class="label label-primary">Batch</span> <span class="label label-primary">Streaming</span>
       </td>
     	<td>
       <p>UDTFs must be registered in the TableEnvironment. See the <a href="udfs.html">UDF documentation</a> for details on how to specify and register UDTFs. </p>
+      <p>Inner Join</p>
 {% highlight sql %}
 SELECT users, tag
-FROM Orders LATERAL VIEW UNNEST_UDTF(tags) t AS tag
+FROM Orders, LATERAL TABLE(unnest_udtf(tags)) t AS tag
 {% endhighlight %}
+      <p>Left Outer Join</p>
+{% highlight sql %}
+SELECT users, tag
+FROM Orders LEFT JOIN LATERAL TABLE(unnest_udtf(tags)) t AS tag ON TRUE
+{% endhighlight %}
+
+<p><b>Note:</b> Currently, only literal <code>TRUE</code> is supported as predicate for a left outer join against a lateral table.</p>
       </td>
     </tr>
   </tbody>
@@ -660,7 +668,7 @@ For SQL on batch tables, the `time_attr` argument of the group window function m
 
 #### Selecting Group Window Start and End Timestamps
 
-The start and end timestamps of group windows can be selected with the following auxiliary functions:
+The start and end timestamps of group windows as well as time attributes can be selected with the following auxiliary functions:
 
 <table class="table table-bordered">
   <thead>
@@ -677,7 +685,7 @@ The start and end timestamps of group windows can be selected with the following
         <code>HOP_START(time_attr, interval, interval)</code><br/>
         <code>SESSION_START(time_attr, interval)</code><br/>
       </td>
-      <td>Returns the start timestamp of the corresponding tumbling, hopping, and session window.</td>
+      <td><p>Returns the timestamp of the inclusive lower bound of the corresponding tumbling, hopping, or session window.</p></td>
     </tr>
     <tr>
       <td>
@@ -685,7 +693,25 @@ The start and end timestamps of group windows can be selected with the following
         <code>HOP_END(time_attr, interval, interval)</code><br/>
         <code>SESSION_END(time_attr, interval)</code><br/>
       </td>
-      <td>Returns the end timestamp of the corresponding tumbling, hopping, and session window.</td>
+      <td><p>Returns the timestamp of the <i>exclusive</i> upper bound of the corresponding tumbling, hopping, or session window.</p>
+        <p><b>Note:</b> The exclusive upper bound timestamp <i>cannot</i> be used as a <a href="streaming.html#time-attributes">rowtime attribute</a> in subsequent time-based operations, such as <a href="#joins">time-windowed joins</a> and <a href="#aggregations">group window or over window aggregations</a>.</p></td>
+    </tr>
+    <tr>
+      <td>
+        <code>TUMBLE_ROWTIME(time_attr, interval)</code><br/>
+        <code>HOP_ROWTIME(time_attr, interval, interval)</code><br/>
+        <code>SESSION_ROWTIME(time_attr, interval)</code><br/>
+      </td>
+      <td><p>Returns the timestamp of the <i>inclusive</i> upper bound of the corresponding tumbling, hopping, or session window.</p>
+      <p>The resulting attribute is a <a href="streaming.html#time-attributes">rowtime attribute</a> that can be used in subsequent time-based operations such as <a href="#joins">time-windowed joins</a> and <a href="#aggregations">group window or over window aggregations</a>.</p></td>
+    </tr>
+    <tr>
+      <td>
+        <code>TUMBLE_PROCTIME(time_attr, interval)</code><br/>
+        <code>HOP_PROCTIME(time_attr, interval, interval)</code><br/>
+        <code>SESSION_PROCTIME(time_attr, interval)</code><br/>
+      </td>
+      <td><p>Returns a <a href="streaming.html#time-attributes">proctime attribute</a> that can be used in subsequent time-based operations such as <a href="#joins">time-windowed joins</a> and <a href="#aggregations">group window or over window aggregations</a>.</p></td>
     </tr>
   </tbody>
 </table>
@@ -724,7 +750,7 @@ Table result3 = tableEnv.sqlQuery(
 Table result4 = tableEnv.sqlQuery(
   "SELECT user, " +
   "  SESSION_START(rowtime, INTERVAL '12' HOUR) AS sStart, " +
-  "  SESSION_END(rowtime, INTERVAL '12' HOUR) AS snd, " +
+  "  SESSION_ROWTIME(rowtime, INTERVAL '12' HOUR) AS snd, " +
   "  SUM(amount) " +
   "FROM Orders " +
   "GROUP BY SESSION(rowtime, INTERVAL '12' HOUR), user");
@@ -782,7 +808,7 @@ val result4 = tableEnv.sqlQuery(
 Data Types
 ----------
 
-The SQL runtime is built on top of Flink's DataSet and DataStream APIs. Internally, it also uses Flink's `TypeInformation` to distinguish between types. The SQL support does not include all Flink types so far. All supported simple types are listed in `org.apache.flink.table.api.Types`. The following table summarizes the relation between SQL Types, Table API types, and the resulting Java class.
+The SQL runtime is built on top of Flink's DataSet and DataStream APIs. Internally, it also uses Flink's `TypeInformation` to define data types. Fully supported types are listed in `org.apache.flink.table.api.Types`. The following table summarizes the relation between SQL Types, Table API types, and the resulting Java class.
 
 | Table API              | SQL                         | Java type              |
 | :--------------------- | :-------------------------- | :--------------------- |
@@ -803,22 +829,16 @@ The SQL runtime is built on top of Flink's DataSet and DataStream APIs. Internal
 | `Types.PRIMITIVE_ARRAY`| `ARRAY`                     | e.g. `int[]`           |
 | `Types.OBJECT_ARRAY`   | `ARRAY`                     | e.g. `java.lang.Byte[]`|
 | `Types.MAP`            | `MAP`                       | `java.util.HashMap`    |
+| `Types.MULTISET`       | `MULTISET`                  | e.g. `java.util.HashMap<String, Integer>` for a multiset of `String` |
 
-
-Advanced types such as generic types, composite types (e.g. POJOs or Tuples), and array types (object or primitive arrays) can be fields of a row.
-
-Generic types are treated as a black box within Table API and SQL yet.
-
-Composite types, however, are fully supported types where fields of a composite type can be accessed using the `.get()` operator in Table API and dot operator (e.g. `MyTable.pojoColumn.myField`) in SQL. Composite types can also be flattened using `.flatten()` in Table API or `MyTable.pojoColumn.*` in SQL.
-
-Array types can be accessed using the `myArray.at(1)` operator in Table API and `myArray[1]` operator in SQL. Array literals can be created using `array(1, 2, 3)` in Table API and `ARRAY[1, 2, 3]` in SQL.
+Generic types and composite types (e.g., POJOs or Tuples) can be fields of a row as well. Generic types are treated as a black box and can be passed on or processed by [user-defined functions](udfs.html). Composite types can be accessed with [built-in functions](#built-in-functions) (see *Value access functions* section).
 
 {% top %}
 
 Built-In Functions
 ------------------
 
-Both the Table API and SQL come with a set of built-in functions for data transformations. This section gives a brief overview of the available functions so far.
+Flink's SQL support comes with a set of built-in functions for data transformations. This section gives a brief overview of the available functions.
 
 <!--
 This list of SQL functions should be kept in sync with SqlExpressionTest to reduce confusion due to the large amount of SQL functions.
@@ -1800,6 +1820,7 @@ CAST(value AS type)
   </tbody>
 </table>
 
+<!-- Disabled temporarily in favor of composite type support
 <table class="table table-bordered">
   <thead>
     <tr>
@@ -1809,7 +1830,7 @@ CAST(value AS type)
   </thead>
 
   <tbody>
-  <!-- Disabled temporarily in favor of composite type support
+  
     <tr>
       <td>
         {% highlight text %}
@@ -1831,32 +1852,10 @@ ROW (value [, value]* )
         <p>Creates a row from a list of values.</p>
       </td>
     </tr>
--->
-
-    <tr>
-      <td>
-        {% highlight text %}
-array ‘[’ index ‘]’
-{% endhighlight %}
-      </td>
-      <td>
-        <p>Returns the element at a particular position in an array. The index starts at 1.</p>
-      </td>
-    </tr>
-
-    <tr>
-      <td>
-        {% highlight text %}
-ARRAY ‘[’ value [, value ]* ‘]’
-{% endhighlight %}
-      </td>
-      <td>
-        <p>Creates an array from a list of values.</p>
-      </td>
-    </tr>
 
   </tbody>
 </table>
+-->
 
 <table class="table table-bordered">
   <thead>
@@ -2164,6 +2163,17 @@ VAR_SAMP(value)
         <p>Returns the sample variance (square of the sample standard deviation) of the numeric field across all input values.</p>
       </td>
     </tr>
+
+    <tr>
+      <td>
+          {% highlight text %}
+          COLLECT(value)
+          {% endhighlight %}
+      </td>
+      <td>
+          <p>Returns a multiset of the <i>value</i>s. null input <i>value</i> will be ignored. Return an empty multiset if only null values are added. </p>
+      </td>
+    </tr>
   </tbody>
 </table>
 
@@ -2253,6 +2263,18 @@ tableName.compositeType.*
   </thead>
 
   <tbody>
+
+    <tr>
+      <td>
+        {% highlight text %}
+ARRAY ‘[’ value [, value ]* ‘]’
+{% endhighlight %}
+      </td>
+      <td>
+        <p>Creates an array from a list of values.</p>
+      </td>
+    </tr>
+
     <tr>
       <td>
         {% highlight text %}
@@ -2261,6 +2283,17 @@ CARDINALITY(ARRAY)
       </td>
       <td>
         <p>Returns the number of elements of an array.</p>
+      </td>
+    </tr>
+
+    <tr>
+      <td>
+        {% highlight text %}
+array ‘[’ index ‘]’
+{% endhighlight %}
+      </td>
+      <td>
+        <p>Returns the element at a particular position in an array. The index starts at 1.</p>
       </td>
     </tr>
 
@@ -2283,7 +2316,6 @@ The following functions are not supported yet:
 
 - Binary string operators and functions
 - System functions
-- Collection functions
 - Distinct aggregate functions like COUNT DISTINCT
 
 {% top %}

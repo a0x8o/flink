@@ -77,6 +77,13 @@ without explicit scheme definition, such as `/user/USERNAME/in.txt`, is going to
 - `classloader.resolve-order`: Whether Flink should use a child-first `ClassLoader` when loading
 user-code classes or a parent-first `ClassLoader`. Can be one of `parent-first` or `child-first`. (default: `child-first`)
 
+- `classloader.parent-first-patterns`: A (semicolon-separated) list of patterns that specifies which
+classes should always be resolved through the parent `ClassLoader` first. A pattern is a simple
+prefix that is checked against the fully qualified class name. By default, this is set to
+`java.;org.apache.flink.;javax.annotation;org.slf4j;org.apache.log4j;org.apache.logging.log4j;ch.qos.logback`.
+If you want to change this setting you have to make sure to also include the default patterns in
+your list of patterns if you want to keep that default behaviour.
+
 ## Advanced Options
 
 ### Compute
@@ -199,12 +206,14 @@ will be used under the directory specified by jobmanager.web.tmpdir.
 
 - `blob.storage.directory`: Directory for storing blobs (such as user JARs) on the TaskManagers.
 
-- `blob.service.cleanup.interval`: Cleanup interval (in seconds) of the blob caches (DEFAULT: 1 hour).
-Whenever a job is not referenced at the cache anymore, we set a TTL and let the periodic cleanup task
-(executed every `blob.service.cleanup.interval` seconds) remove its blob files after this TTL has passed.
+- `blob.service.cleanup.interval`: Cleanup interval (in seconds) of transient blobs at server and caches as well as permanent blobs at the caches (DEFAULT: 1 hour).
+Whenever a job is not referenced at the cache anymore, we set a TTL for its permanent blob files and
+let the periodic cleanup task (executed every `blob.service.cleanup.interval` seconds) remove them
+after this TTL has passed. We do the same for transient blob files at both server and caches but
+immediately after accessing them, i.e. an put or get operation.
 This means that a blob will be retained at most <tt>2 * `blob.service.cleanup.interval`</tt> seconds after
-not being referenced anymore. Therefore, a recovery still has the chance to use existing files rather
-than to download them again.
+not being referenced anymore (permanent blobs) or their last access (transient blobs). For permanent blobs,
+this means that a recovery still has the chance to use existing files rather downloading them again.
 
 - `blob.server.port`: Port definition for the blob server (serving user JARs) on the TaskManagers. By default the port is set to 0, which means that the operating system is picking an ephemeral port. Flink also accepts a list of ports ("50100,50101"), ranges ("50100-50200") or a combination of both. It is recommended to set a range of ports to avoid collisions when multiple JobManagers are running on the same machine.
 
@@ -222,9 +231,7 @@ The options are:
 - `restart-strategy.fixed-delay.attempts`: Number of restart attempts, used if the default restart strategy is set to "fixed-delay".
 Default value is 1, unless "fixed-delay" was activated by enabling checkpoints, in which case the default is `Integer.MAX_VALUE`.
 
-- `restart-strategy.fixed-delay.delay`: Delay between restart attempts, used if the default restart strategy is set to "fixed-delay".
-Default value is the `akka.ask.timeout`, unless "fixed-delay" was activated by enabling checkpoints, in which case
-the default is 10s.
+- `restart-strategy.fixed-delay.delay`: Delay between restart attempts, used if the default restart strategy is set to "fixed-delay". (default: `1 s`)
 
 - `restart-strategy.failure-rate.max-failures-per-interval`: Maximum number of restarts in given time interval before failing a job in "failure-rate" strategy.
 Default value is 1.
@@ -307,6 +314,8 @@ The following parameters configure Flink's JobManager and TaskManagers.
 
 - `taskmanager.exit-on-fatal-akka-error`: Whether the TaskManager shall be terminated in case of a fatal Akka error (quarantining event). (DEFAULT: **false**)
 
+- `jobmanager.tdd.offload.minsize`: Maximum size of the `TaskDeploymentDescriptor`'s serialized task and job information to still transmit them via RPC. Larger blobs may be offloaded to the BLOB server. (DEFAULT: **1 KiB**).
+
 ### Distributed Coordination (via Akka)
 
 - `akka.ask.timeout`: Timeout used for all futures and blocking Akka calls. If Flink fails due to timeouts then you should try to increase this value. Timeouts can be caused by slow machines or a congested network. The timeout value requires a time-unit specifier (ms/s/min/h/d) (DEFAULT: **10 s**).
@@ -317,9 +326,9 @@ The following parameters configure Flink's JobManager and TaskManagers.
 
 - `akka.framesize`: Maximum size of messages which are sent between the JobManager and the TaskManagers. If Flink fails because messages exceed this limit, then you should increase it. The message size requires a size-unit specifier (DEFAULT: **10485760b**).
 
-- `akka.watch.heartbeat.interval`: Heartbeat interval for Akka's DeathWatch mechanism to detect dead TaskManagers. If TaskManagers are wrongly marked dead because of lost or delayed heartbeat messages, then you should increase this value. A thorough description of Akka's DeathWatch can be found [here](http://doc.akka.io/docs/akka/snapshot/scala/remoting.html#failure-detector) (DEFAULT: **10 s**).
+- `akka.watch.heartbeat.interval`: Heartbeat interval for Akka's DeathWatch mechanism to detect dead TaskManagers. If TaskManagers are wrongly marked dead because of lost or delayed heartbeat messages, then you should decrease this value or increase `akka.watch.heartbeat.pause`. A thorough description of Akka's DeathWatch can be found [here](http://doc.akka.io/docs/akka/snapshot/scala/remoting.html#failure-detector) (DEFAULT: **10 s**).
 
-- `akka.watch.heartbeat.pause`: Acceptable heartbeat pause for Akka's DeathWatch mechanism. A low value does not allow a irregular heartbeat. A thorough description of Akka's DeathWatch can be found [here](http://doc.akka.io/docs/akka/snapshot/scala/remoting.html#failure-detector) (DEFAULT: **60 s**).
+- `akka.watch.heartbeat.pause`: Acceptable heartbeat pause for Akka's DeathWatch mechanism. A low value does not allow an irregular heartbeat. If TaskManagers are wrongly marked dead because of lost or delayed heartbeat messages, then you should increase this value or decrease `akka.watch.heartbeat.interval`. Higher value increases the time to detect a dead TaskManager. A thorough description of Akka's DeathWatch can be found [here](http://doc.akka.io/docs/akka/snapshot/scala/remoting.html#failure-detector) (DEFAULT: **60 s**).
 
 - `akka.watch.threshold`: Threshold for the DeathWatch failure detector. A low value is prone to false positives whereas a high value increases the time to detect a dead TaskManager. A thorough description of Akka's DeathWatch can be found [here](http://doc.akka.io/docs/akka/snapshot/scala/remoting.html#failure-detector) (DEFAULT: **12**).
 
@@ -440,7 +449,7 @@ of the JobManager, because the same ActorSystem is used. Its not possible to use
 
 ### YARN
 
-- `containerized.heap-cutoff-ratio`: (Default 0.25) Percentage of heap space to remove from containers started by YARN. When a user requests a certain amount of memory for each TaskManager container (for example 4 GB), we can not pass this amount as the maximum heap space for the JVM (`-Xmx` argument) because the JVM is also allocating memory outside the heap. YARN is very strict with killing containers which are using more memory than requested. Therefore, we remove a 15% of the memory from the requested heap as a safety margin.
+- `containerized.heap-cutoff-ratio`: (Default 0.25) Percentage of heap space to remove from containers started by YARN. When a user requests a certain amount of memory for each TaskManager container (for example 4 GB), we can not pass this amount as the maximum heap space for the JVM (`-Xmx` argument) because the JVM is also allocating memory outside the heap. YARN is very strict with killing containers which are using more memory than requested. Therefore, we remove this fraction of the memory from the requested heap as a safety margin and add it to the memory used off-heap.
 
 - `containerized.heap-cutoff-min`: (Default 600 MB) Minimum amount of memory to cut off the requested heap size.
 
@@ -514,7 +523,7 @@ May be set to -1 to disable this feature.
 
 - `mesos.resourcemanager.tasks.container.image.name`: Image name to use for the container (**NO DEFAULT**)
 
-- `mesos.resourcemanager.tasks.container.volumes`: A comma seperated list of [host_path:]container_path[:RO|RW]. This allows for mounting additional volumes into your container. (**NO DEFAULT**)
+- `mesos.resourcemanager.tasks.container.volumes`: A comma separated list of `[host_path:]`container_path`[:RO|RW]`. This allows for mounting additional volumes into your container. (**NO DEFAULT**)
 
 - `high-availability.zookeeper.path.mesos-workers`: The ZooKeeper root path for persisting the Mesos worker information.
 
@@ -550,7 +559,7 @@ Previously this key was named `recovery.mode` and the default value was `standal
 
 - `high-availability.job.delay`: (Default `akka.ask.timeout`) Defines the delay before persisted jobs are recovered in case of a master recovery situation. Previously this key was named `recovery.job.delay`.
 
-- `high-availability.zookeeper.client.acl`: (Default `open`) Defines the ACL (open|creator) to be configured on ZK node. The configuration value can be set to "creator" if the ZooKeeper server configuration has the "authProvider" property mapped to use SASLAuthenticationProvider and the cluster is configured to run in secure mode (Kerberos). The ACL options are based on https://zookeeper.apache.org/doc/r3.1.2/zookeeperProgrammers.html#sc_BuiltinACLSchemes
+- `high-availability.zookeeper.client.acl`: (Default `open`) Defines the ACL (open\|creator) to be configured on ZK node. The configuration value can be set to "creator" if the ZooKeeper server configuration has the "authProvider" property mapped to use SASLAuthenticationProvider and the cluster is configured to run in secure mode (Kerberos). The ACL options are based on https://zookeeper.apache.org/doc/r3.1.2/zookeeperProgrammers.html#sc_BuiltinACLSchemes
 
 #### ZooKeeper Security
 
@@ -723,3 +732,5 @@ Each Flink TaskManager provides processing slots in the cluster. The number of s
 When starting a Flink application, users can supply the default number of slots to use for that job. The command line value therefore is called `-p` (for parallelism). In addition, it is possible to [set the number of slots in the programming APIs]({{site.baseurl}}/dev/parallel.html) for the whole application and for individual operators.
 
 <img src="{{ site.baseurl }}/fig/slots_parallelism.svg" class="img-responsive" />
+
+{% top %}

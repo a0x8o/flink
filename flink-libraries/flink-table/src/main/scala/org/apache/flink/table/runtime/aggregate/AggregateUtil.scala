@@ -27,7 +27,6 @@ import org.apache.calcite.sql.fun._
 import org.apache.calcite.sql.{SqlAggFunction, SqlKind}
 import org.apache.flink.api.common.functions.{MapFunction, RichGroupReduceFunction, AggregateFunction => DataStreamAggFunction, _}
 import org.apache.flink.api.common.typeinfo.{BasicTypeInfo, TypeInformation}
-import org.apache.flink.api.java.tuple.Tuple
 import org.apache.flink.api.java.typeutils.RowTypeInfo
 import org.apache.flink.streaming.api.functions.ProcessFunction
 import org.apache.flink.streaming.api.functions.windowing.{AllWindowFunction, WindowFunction}
@@ -51,7 +50,6 @@ import org.apache.flink.types.Row
 
 import scala.collection.JavaConversions._
 import scala.collection.JavaConverters._
-import scala.collection.mutable.ArrayBuffer
 
 object AggregateUtil {
 
@@ -104,7 +102,6 @@ object AggregateUtil {
       aggMapping,
       partialResults = false,
       forwardMapping,
-      None,
       None,
       outputArity,
       needRetract = false,
@@ -185,7 +182,6 @@ object AggregateUtil {
       partialResults = false,
       groupings,
       None,
-      None,
       outputArity,
       consumeRetraction,
       needMerge = false,
@@ -250,7 +246,6 @@ object AggregateUtil {
       aggMapping,
       partialResults = false,
       forwardMapping,
-      None,
       None,
       outputArity,
       needRetract,
@@ -359,7 +354,7 @@ object AggregateUtil {
       case SlidingGroupWindow(_, time, size, slide) =>
         val timeFieldPos = getTimeFieldPosition(time, inputType, isParserCaseSensitive)
         size match {
-          case Literal(value: Long, TimeIntervalTypeInfo.INTERVAL_MILLIS) =>
+          case Literal(_: Long, TimeIntervalTypeInfo.INTERVAL_MILLIS) =>
             // pre-tumble incremental aggregates on time-windows
             val timeFieldPos = getTimeFieldPosition(time, inputType, isParserCaseSensitive)
             val preTumblingSize = determineLargestTumblingSize(asLong(size), asLong(slide))
@@ -382,7 +377,6 @@ object AggregateUtil {
       aggMapping,
       partialResults = true,
       groupings,
-      None,
       None,
       outputArity,
       needRetract,
@@ -462,7 +456,6 @@ object AggregateUtil {
           partialResults = true,
           groupings.indices.toArray,
           Some(aggregates.indices.map(_ + groupings.length).toArray),
-          None,
           keysAndAggregatesArity + 1,
           needRetract,
           needMerge = true,
@@ -566,7 +559,6 @@ object AggregateUtil {
       partialResults = true,
       groupings,
       Some(aggregates.indices.map(_ + groupings.length).toArray),
-      None,
       outputType.getFieldCount,
       needRetract,
       needMerge = true,
@@ -583,7 +575,6 @@ object AggregateUtil {
       partialResults = false,
       groupings.indices.toArray,
       Some(aggregates.indices.map(_ + groupings.length).toArray),
-      None,
       outputType.getFieldCount,
       needRetract,
       needMerge = true,
@@ -596,7 +587,7 @@ object AggregateUtil {
     window match {
       case TumblingGroupWindow(_, _, size) if isTimeInterval(size.resultType) =>
         // tumbling time window
-        val (startPos, endPos, _) = computeWindowPropertyPos(properties)
+        val (startPos, endPos, timePos) = computeWindowPropertyPos(properties)
         if (doAllSupportPartialMerge(aggregates)) {
           // for incremental aggregations
           new DataSetTumbleTimeWindowAggReduceCombineFunction(
@@ -605,6 +596,7 @@ object AggregateUtil {
             asLong(size),
             startPos,
             endPos,
+            timePos,
             keysAndAggregatesArity)
         }
         else {
@@ -614,6 +606,7 @@ object AggregateUtil {
             asLong(size),
             startPos,
             endPos,
+            timePos,
             outputType.getFieldCount)
         }
       case TumblingGroupWindow(_, _, size) =>
@@ -623,17 +616,18 @@ object AggregateUtil {
           asLong(size))
 
       case SessionGroupWindow(_, _, gap) =>
-        val (startPos, endPos, _) = computeWindowPropertyPos(properties)
+        val (startPos, endPos, timePos) = computeWindowPropertyPos(properties)
         new DataSetSessionWindowAggReduceGroupFunction(
           genFinalAggFunction,
           keysAndAggregatesArity,
           startPos,
           endPos,
+          timePos,
           asLong(gap),
           isInputCombined)
 
       case SlidingGroupWindow(_, _, size, _) if isTimeInterval(size.resultType) =>
-        val (startPos, endPos, _) = computeWindowPropertyPos(properties)
+        val (startPos, endPos, timePos) = computeWindowPropertyPos(properties)
         if (doAllSupportPartialMerge(aggregates)) {
           // for partial aggregations
           new DataSetSlideWindowAggReduceCombineFunction(
@@ -642,6 +636,7 @@ object AggregateUtil {
             keysAndAggregatesArity,
             startPos,
             endPos,
+            timePos,
             asLong(size))
         }
         else {
@@ -651,6 +646,7 @@ object AggregateUtil {
             keysAndAggregatesArity,
             startPos,
             endPos,
+            timePos,
             asLong(size))
         }
 
@@ -658,6 +654,7 @@ object AggregateUtil {
         new DataSetSlideWindowAggReduceGroupFunction(
             genFinalAggFunction,
             keysAndAggregatesArity,
+            None,
             None,
             None,
             asLong(size))
@@ -725,7 +722,6 @@ object AggregateUtil {
           partialResults = true,
           groupings.indices.toArray,
           Some(aggregates.indices.map(_ + groupings.length).toArray),
-          None,
           groupings.length + aggregates.length + 2,
           needRetract,
           needMerge = true,
@@ -800,7 +796,6 @@ object AggregateUtil {
           partialResults = true,
           groupings.indices.toArray,
           Some(aggregates.indices.map(_ + groupings.length).toArray),
-          None,
           groupings.length + aggregates.length + 2,
           needRetract,
           needMerge = true,
@@ -832,8 +827,7 @@ object AggregateUtil {
       inputType: RelDataType,
       inputFieldTypeInfo: Seq[TypeInformation[_]],
       outputType: RelDataType,
-      groupings: Array[Int],
-      inGroupingSet: Boolean): (Option[DataSetPreAggFunction],
+      groupings: Array[Int]): (Option[DataSetPreAggFunction],
         Option[TypeInformation[Row]],
         RichGroupReduceFunction[Row, Row]) = {
 
@@ -849,18 +843,6 @@ object AggregateUtil {
       inputType,
       outputType
     )
-
-    val constantFlags: Option[Array[(Int, Boolean)]] =
-    if (inGroupingSet) {
-
-      val groupingSetsMapping = getGroupingSetsIndicatorMapping(inputType, outputType)
-      val nonNullKeysFields = gkeyOutMapping.map(_._1)
-      val flags = for ((in, out) <- groupingSetsMapping) yield
-        (out, !nonNullKeysFields.contains(in))
-      Some(flags)
-    } else {
-      None
-    }
 
     val aggOutFields = aggOutMapping.map(_._1)
 
@@ -880,7 +862,6 @@ object AggregateUtil {
         aggregates.indices.map(_ + groupings.length).toArray,
         partialResults = true,
         groupings,
-        None,
         None,
         groupings.length + aggregates.length,
         needRetract,
@@ -908,7 +889,6 @@ object AggregateUtil {
         partialResults = false,
         gkeyMapping,
         Some(aggregates.indices.map(_ + groupings.length).toArray),
-        constantFlags,
         outputType.getFieldCount,
         needRetract,
         needMerge = true,
@@ -932,7 +912,6 @@ object AggregateUtil {
         partialResults = false,
         groupings,
         None,
-        constantFlags,
         outputType.getFieldCount,
         needRetract,
         needMerge = false,
@@ -981,7 +960,7 @@ object AggregateUtil {
       numAggregates: Int,
       finalRowArity: Int,
       properties: Seq[NamedWindowProperty]):
-    WindowFunction[Row, CRow, Tuple, DataStreamWindow] = {
+    WindowFunction[Row, CRow, Row, DataStreamWindow] = {
 
     if (isTimeWindow(window)) {
       val (startPos, endPos, timePos) = computeWindowPropertyPos(properties)
@@ -992,7 +971,7 @@ object AggregateUtil {
         endPos,
         timePos,
         finalRowArity)
-        .asInstanceOf[WindowFunction[Row, CRow, Tuple, DataStreamWindow]]
+        .asInstanceOf[WindowFunction[Row, CRow, Row, DataStreamWindow]]
     } else {
       new IncrementalAggregateWindowFunction(
         numGroupingKeys,
@@ -1029,7 +1008,6 @@ object AggregateUtil {
       aggMapping,
       partialResults = false,
       groupingKeys,
-      None,
       None,
       outputArity,
       needRetract,
@@ -1094,50 +1072,6 @@ object AggregateUtil {
     (groupOutMapping, aggOutMapping)
   }
 
-  /**
-    * Determines the mapping of grouping keys to boolean indicators that describe the
-    * current grouping set.
-    *
-    * E.g.: Given we group on f1 and f2 of the input type, the output type contains two
-    * boolean indicator fields i$f1 and i$f2.
-    */
-  private def getGroupingSetsIndicatorMapping(
-    inputType: RelDataType,
-    outputType: RelDataType): Array[(Int, Int)] = {
-
-    val inputFields = inputType.getFieldList.map(_.getName)
-
-    // map from field -> i$field or field -> i$field_0
-    val groupingFields = inputFields.map(inputFieldName => {
-      val base = "i$" + inputFieldName
-      var name = base
-      var i = 0
-      while (inputFields.contains(name)) {
-          name = base + "_" + i // if i$XXX is already a field it will be suffixed by _NUMBER
-          i = i + 1
-        }
-        inputFieldName -> name
-      }).toMap
-
-    val outputFields = outputType.getFieldList
-
-    var mappingsBuffer = ArrayBuffer[(Int, Int)]()
-    for (i <- outputFields.indices) {
-      for (j <- outputFields.indices) {
-        val possibleKey = outputFields(i).getName
-        val possibleIndicator1 = outputFields(j).getName
-        // get indicator for output field
-        val possibleIndicator2 = groupingFields.getOrElse(possibleKey, null)
-
-        // check if indicator names match
-        if (possibleIndicator1 == possibleIndicator2) {
-          mappingsBuffer += ((i, j))
-        }
-      }
-    }
-    mappingsBuffer.toArray
-  }
-
   private def isTimeWindow(window: LogicalWindow) = {
     window match {
       case TumblingGroupWindow(_, _, size) => isTimeIntervalLiteral(size)
@@ -1146,27 +1080,32 @@ object AggregateUtil {
     }
   }
 
+  /**
+    * Computes the positions of (window start, window end, rowtime).
+    */
   private[flink] def computeWindowPropertyPos(
       properties: Seq[NamedWindowProperty]): (Option[Int], Option[Int], Option[Int]) = {
 
     val propPos = properties.foldRight(
       (None: Option[Int], None: Option[Int], None: Option[Int], 0)) {
-      case (p, (s, e, t, i)) => p match {
+      case (p, (s, e, rt, i)) => p match {
         case NamedWindowProperty(_, prop) =>
           prop match {
             case WindowStart(_) if s.isDefined =>
-              throw new TableException("Duplicate WindowStart property encountered. This is a bug.")
+              throw TableException("Duplicate window start property encountered. This is a bug.")
             case WindowStart(_) =>
-              (Some(i), e, t, i - 1)
+              (Some(i), e, rt, i - 1)
             case WindowEnd(_) if e.isDefined =>
-              throw new TableException("Duplicate WindowEnd property encountered. This is a bug.")
+              throw TableException("Duplicate window end property encountered. This is a bug.")
             case WindowEnd(_) =>
-              (s, Some(i), t, i - 1)
-            case RowtimeAttribute(_) if t.isDefined =>
-              throw new TableException(
-                "Duplicate Window rowtime property encountered. This is a bug.")
+              (s, Some(i), rt, i - 1)
+            case RowtimeAttribute(_) if rt.isDefined =>
+              throw TableException("Duplicate window rowtime property encountered. This is a bug.")
             case RowtimeAttribute(_) =>
               (s, e, Some(i), i - 1)
+            case ProctimeAttribute(_) =>
+              // ignore this property, it will be null at the position later
+              (s, e, rt, i - 1)
           }
       }
     }
@@ -1200,8 +1139,8 @@ object AggregateUtil {
       } else {
         aggFieldIndexes(index) = argList.asScala.map(i => i.intValue).toArray
       }
-      val sqlTypeName = inputType.getFieldList.get(aggFieldIndexes(index)(0)).getType
-        .getSqlTypeName
+      val relDataType = inputType.getFieldList.get(aggFieldIndexes(index)(0)).getType
+      val sqlTypeName = relDataType.getSqlTypeName
       aggregateCall.getAggregation match {
 
         case _: SqlSumAggFunction =>
@@ -1328,6 +1267,8 @@ object AggregateUtil {
                   new BooleanMinWithRetractAggFunction
                 case VARCHAR | CHAR =>
                   new StringMinWithRetractAggFunction
+                case TIMESTAMP =>
+                  new TimestampMinWithRetractAggFunction
                 case sqlType: SqlTypeName =>
                   throw new TableException(
                     s"Min with retract aggregate does no support type: '$sqlType'")
@@ -1352,6 +1293,8 @@ object AggregateUtil {
                   new BooleanMinAggFunction
                 case VARCHAR | CHAR =>
                   new StringMinAggFunction
+                case TIMESTAMP =>
+                  new TimestampMinAggFunction
                 case sqlType: SqlTypeName =>
                   throw new TableException(s"Min aggregate does no support type: '$sqlType'")
               }
@@ -1377,6 +1320,8 @@ object AggregateUtil {
                   new BooleanMaxWithRetractAggFunction
                 case VARCHAR | CHAR =>
                   new StringMaxWithRetractAggFunction
+                case TIMESTAMP =>
+                  new TimestampMaxWithRetractAggFunction
                 case sqlType: SqlTypeName =>
                   throw new TableException(
                     s"Max with retract aggregate does no support type: '$sqlType'")
@@ -1401,6 +1346,8 @@ object AggregateUtil {
                   new BooleanMaxAggFunction
                 case VARCHAR | CHAR =>
                   new StringMaxAggFunction
+                case TIMESTAMP =>
+                  new TimestampMaxAggFunction
                 case sqlType: SqlTypeName =>
                   throw new TableException(s"Max aggregate does no support type: '$sqlType'")
               }
@@ -1409,6 +1356,10 @@ object AggregateUtil {
 
         case _: SqlCountAggFunction =>
           aggregates(index) = new CountAggFunction
+
+        case collect: SqlAggFunction if collect.getKind == SqlKind.COLLECT =>
+          aggregates(index) = new CollectAggFunction(FlinkTypeFactory.toTypeInfo(relDataType))
+          accTypes(index) = aggregates(index).getAccumulatorType
 
         case udagg: AggSqlFunction =>
           aggregates(index) = udagg.getFunction

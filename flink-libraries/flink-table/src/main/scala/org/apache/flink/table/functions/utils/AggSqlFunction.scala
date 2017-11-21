@@ -18,7 +18,11 @@
 
 package org.apache.flink.table.functions.utils
 
+import java.util
+import java.util.Collections
+
 import org.apache.calcite.rel.`type`.RelDataType
+import org.apache.calcite.sql
 import org.apache.calcite.sql._
 import org.apache.calcite.sql.`type`._
 import org.apache.calcite.sql.`type`.SqlOperandTypeChecker.Consistency
@@ -35,6 +39,7 @@ import org.apache.flink.table.functions.utils.UserDefinedFunctionUtils._
   * Calcite wrapper for user-defined aggregate functions.
   *
   * @param name function name (used by SQL parser)
+  * @param displayName name to be displayed in operator name
   * @param aggregateFunction aggregate function to be called
   * @param returnType the type information of returned value
   * @param accType the type information of the accumulator
@@ -42,6 +47,7 @@ import org.apache.flink.table.functions.utils.UserDefinedFunctionUtils._
   */
 class AggSqlFunction(
     name: String,
+    displayName: String,
     aggregateFunction: AggregateFunction[_, _],
     val returnType: TypeInformation[_],
     val accType: TypeInformation[_],
@@ -56,25 +62,38 @@ class AggSqlFunction(
     // will be generated when translating the calcite relnode to flink runtime execution plan
     null,
     false,
-    requiresOver
+    requiresOver,
+    typeFactory
   ) {
 
   def getFunction: AggregateFunction[_, _] = aggregateFunction
 
   override def isDeterministic: Boolean = aggregateFunction.isDeterministic
+
+  override def toString: String = displayName
+
+  override def getParamTypes: util.List[RelDataType] = null
 }
 
 object AggSqlFunction {
 
   def apply(
       name: String,
+      displayName: String,
       aggregateFunction: AggregateFunction[_, _],
       returnType: TypeInformation[_],
       accType: TypeInformation[_],
       typeFactory: FlinkTypeFactory,
       requiresOver: Boolean): AggSqlFunction = {
 
-    new AggSqlFunction(name, aggregateFunction, returnType, accType, typeFactory, requiresOver)
+    new AggSqlFunction(
+      name,
+      displayName,
+      aggregateFunction,
+      returnType,
+      accType,
+      typeFactory,
+      requiresOver)
   }
 
   private[flink] def createOperandTypeInference(

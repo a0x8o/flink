@@ -24,7 +24,7 @@ import org.apache.flink.runtime.rest.handler.legacy.JsonFactory;
 import org.apache.flink.util.FlinkException;
 import org.apache.flink.util.Preconditions;
 
-import com.fasterxml.jackson.core.JsonGenerator;
+import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.core.JsonGenerator;
 
 import java.io.IOException;
 import java.io.StringWriter;
@@ -39,12 +39,15 @@ import java.util.concurrent.Executor;
  * <p>If the query parameters do not contain a "get" parameter the list of all metrics is returned.
  * {@code [ { "id" : "X" } ] }
  *
- * <p>If the query parameters do contain a "get" parameter a comma-separate list of metric names is expected as a value.
- * {@code /get?X,Y}
+ * <p>If the query parameters do contain a "get" parameter, a comma-separated list of metric names is expected as a value.
+ * {@code /metrics?get=X,Y}
  * The handler will then return a list containing the values of the requested metrics.
  * {@code [ { "id" : "X", "value" : "S" }, { "id" : "Y", "value" : "T" } ] }
  */
 public abstract class AbstractMetricsHandler extends AbstractJsonRequestHandler {
+
+	public static final String PARAMETER_METRICS = "get";
+
 	private final MetricFetcher fetcher;
 
 	public AbstractMetricsHandler(Executor executor, MetricFetcher fetcher) {
@@ -57,7 +60,7 @@ public abstract class AbstractMetricsHandler extends AbstractJsonRequestHandler 
 		return CompletableFuture.supplyAsync(
 			() -> {
 				fetcher.update();
-				String requestedMetricsList = queryParams.get("get");
+				String requestedMetricsList = queryParams.get(PARAMETER_METRICS);
 				try {
 					return requestedMetricsList != null
 						? getMetricsValues(pathParams, requestedMetricsList)
@@ -87,54 +90,48 @@ public abstract class AbstractMetricsHandler extends AbstractJsonRequestHandler 
 			 */
 			return "";
 		}
-		MetricStore metricStore = fetcher.getMetricStore();
-		synchronized (metricStore) {
-			Map<String, String> metrics = getMapFor(pathParams, metricStore);
-			if (metrics == null) {
-				return "";
-			}
-			String[] requestedMetrics = requestedMetricsList.split(",");
-
-			StringWriter writer = new StringWriter();
-			JsonGenerator gen = JsonFactory.JACKSON_FACTORY.createGenerator(writer);
-
-			gen.writeStartArray();
-			for (String requestedMetric : requestedMetrics) {
-				Object metricValue = metrics.get(requestedMetric);
-				if (metricValue != null) {
-					gen.writeStartObject();
-					gen.writeStringField("id", requestedMetric);
-					gen.writeStringField("value", metricValue.toString());
-					gen.writeEndObject();
-				}
-			}
-			gen.writeEndArray();
-
-			gen.close();
-			return writer.toString();
+		Map<String, String> metrics = getMapFor(pathParams, fetcher.getMetricStore());
+		if (metrics == null) {
+			return "";
 		}
+		String[] requestedMetrics = requestedMetricsList.split(",");
+
+		StringWriter writer = new StringWriter();
+		JsonGenerator gen = JsonFactory.JACKSON_FACTORY.createGenerator(writer);
+
+		gen.writeStartArray();
+		for (String requestedMetric : requestedMetrics) {
+			Object metricValue = metrics.get(requestedMetric);
+			if (metricValue != null) {
+				gen.writeStartObject();
+				gen.writeStringField("id", requestedMetric);
+				gen.writeStringField("value", metricValue.toString());
+				gen.writeEndObject();
+			}
+		}
+		gen.writeEndArray();
+
+		gen.close();
+		return writer.toString();
 	}
 
 	private String getAvailableMetricsList(Map<String, String> pathParams) throws IOException {
-		MetricStore metricStore = fetcher.getMetricStore();
-		synchronized (metricStore) {
-			Map<String, String> metrics = getMapFor(pathParams, metricStore);
-			if (metrics == null) {
-				return "";
-			}
-			StringWriter writer = new StringWriter();
-			JsonGenerator gen = JsonFactory.JACKSON_FACTORY.createGenerator(writer);
-
-			gen.writeStartArray();
-			for (String m : metrics.keySet()) {
-				gen.writeStartObject();
-				gen.writeStringField("id", m);
-				gen.writeEndObject();
-			}
-			gen.writeEndArray();
-
-			gen.close();
-			return writer.toString();
+		Map<String, String> metrics = getMapFor(pathParams, fetcher.getMetricStore());
+		if (metrics == null) {
+			return "";
 		}
+		StringWriter writer = new StringWriter();
+		JsonGenerator gen = JsonFactory.JACKSON_FACTORY.createGenerator(writer);
+
+		gen.writeStartArray();
+		for (String m : metrics.keySet()) {
+			gen.writeStartObject();
+			gen.writeStringField("id", m);
+			gen.writeEndObject();
+		}
+		gen.writeEndArray();
+
+		gen.close();
+		return writer.toString();
 	}
 }

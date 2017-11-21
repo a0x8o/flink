@@ -31,7 +31,9 @@ import org.apache.flink.runtime.JobException;
 import org.apache.flink.runtime.StoppingException;
 import org.apache.flink.runtime.accumulators.AccumulatorSnapshot;
 import org.apache.flink.runtime.accumulators.StringifiedAccumulatorResult;
-import org.apache.flink.runtime.blob.BlobKey;
+import org.apache.flink.runtime.blob.BlobWriter;
+import org.apache.flink.runtime.blob.PermanentBlobKey;
+import org.apache.flink.runtime.blob.VoidBlobWriter;
 import org.apache.flink.runtime.checkpoint.CheckpointCoordinator;
 import org.apache.flink.runtime.checkpoint.CheckpointIDCounter;
 import org.apache.flink.runtime.checkpoint.CheckpointStatsSnapshot;
@@ -48,7 +50,6 @@ import org.apache.flink.runtime.executiongraph.failover.RestartAllStrategy;
 import org.apache.flink.runtime.executiongraph.restart.ExecutionGraphRestartCallback;
 import org.apache.flink.runtime.executiongraph.restart.RestartCallback;
 import org.apache.flink.runtime.executiongraph.restart.RestartStrategy;
-import org.apache.flink.runtime.instance.SimpleSlot;
 import org.apache.flink.runtime.instance.SlotProvider;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
@@ -56,19 +57,20 @@ import org.apache.flink.runtime.jobgraph.JobStatus;
 import org.apache.flink.runtime.jobgraph.JobVertex;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobgraph.ScheduleMode;
+import org.apache.flink.runtime.jobgraph.tasks.CheckpointCoordinatorConfiguration;
 import org.apache.flink.runtime.jobgraph.tasks.ExternalizedCheckpointSettings;
-import org.apache.flink.runtime.jobgraph.tasks.JobCheckpointingSettings;
 import org.apache.flink.runtime.jobmanager.scheduler.CoLocationGroup;
+import org.apache.flink.runtime.jobmanager.scheduler.LocationPreferenceConstraint;
 import org.apache.flink.runtime.jobmanager.scheduler.NoResourceAvailableException;
 import org.apache.flink.runtime.query.KvStateLocationRegistry;
 import org.apache.flink.runtime.state.SharedStateRegistry;
 import org.apache.flink.runtime.state.StateBackend;
 import org.apache.flink.runtime.taskmanager.TaskExecutionState;
-import org.apache.flink.util.SerializedThrowable;
+import org.apache.flink.types.Either;
 import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.FlinkException;
-import org.apache.flink.util.FlinkRuntimeException;
 import org.apache.flink.util.Preconditions;
+import org.apache.flink.util.SerializedThrowable;
 import org.apache.flink.util.SerializedValue;
 import org.apache.flink.util.StringUtils;
 
@@ -88,7 +90,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
@@ -124,20 +125,20 @@ import static org.apache.flink.util.Preconditions.checkState;
  *         about deployment of tasks and updates in the task status always use the ExecutionAttemptID to
  *         address the message receiver.</li>
  * </ul>
- * 
+ *
  * <h2>Global and local failover</h2>
- * 
+ *
  * The Execution Graph has two failover modes: <i>global failover</i> and <i>local failover</i>.
- * 
+ *
  * <p>A <b>global failover</b> aborts the task executions for all vertices and restarts whole
  * data flow graph from the last completed checkpoint. Global failover is considered the
  * "fallback strategy" that is used when a local failover is unsuccessful, or when a issue is
  * found in the state of the ExecutionGraph that could mark it as inconsistent (caused by a bug).
- * 
+ *
  * <p>A <b>local failover</b> is triggered when an individual vertex execution (a task) fails.
  * The local failover is coordinated by the {@link FailoverStrategy}. A local failover typically
  * attempts to restart as little as possible, but as much as necessary.
- * 
+ *
  * <p>Between local- and global failover, the global failover always takes precedence, because it
  * is the core mechanism that the ExecutionGraph relies on to bring back consistency. The
  * guard that, the ExecutionGraph maintains a <i>global modification version</i>, which is incremented
@@ -145,7 +146,7 @@ import static org.apache.flink.util.Preconditions.checkState;
  * failure). Local failover is always scoped by the modification version that the execution graph
  * had when the failover was triggered. If a new global modification version is reached during
  * local failover (meaning there is a concurrent global failover), the failover strategy has to
- * yield before the global failover.  
+ * yield before the global failover.
  */
 public class ExecutionGraph implements AccessExecutionGraph, Archiveable<ArchivedExecutionGraph> {
 
@@ -171,10 +172,8 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 	/** Job specific information like the job id, job name, job configuration, etc. */
 	private final JobInformation jobInformation;
 
-	/** Serialized version of the job specific information. This is done to avoid multiple
-	 * serializations of the same data when creating a TaskDeploymentDescriptor.
-	 */
-	private final SerializedValue<JobInformation> serializedJobInformation;
+	/** Serialized job information or a blob key pointing to the offloaded job information */
+	private final Either<SerializedValue<JobInformation>, PermanentBlobKey> jobInformationOrBlobKey;
 
 	/** The executor which is used to execute futures. */
 	private final ScheduledExecutorService futureExecutor;
@@ -231,6 +230,9 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 
 	/** Registered KvState instances reported by the TaskManagers. */
 	private final KvStateLocationRegistry kvStateLocationRegistry;
+
+	/** Blob writer used to offload RPC messages */
+	private final BlobWriter blobWriter;
 
 	/** The total number of vertices currently in the execution graph */
 	private int numVerticesTotal;
@@ -293,60 +295,83 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 			SerializedValue<ExecutionConfig> serializedConfig,
 			Time timeout,
 			RestartStrategy restartStrategy,
-			SlotProvider slotProvider) {
+			SlotProvider slotProvider) throws IOException {
+
 		this(
+			new JobInformation(
+				jobId,
+				jobName,
+				serializedConfig,
+				jobConfig,
+				Collections.emptyList(),
+				Collections.emptyList()),
 			futureExecutor,
 			ioExecutor,
-			jobId,
-			jobName,
-			jobConfig,
-			serializedConfig,
+			timeout,
+			restartStrategy,
+			slotProvider);
+	}
+
+	/**
+	 * This constructor is for tests only, because it does not include class loading information.
+	 */
+	@VisibleForTesting
+	ExecutionGraph(
+			JobInformation jobInformation,
+			ScheduledExecutorService futureExecutor,
+			Executor ioExecutor,
+			Time timeout,
+			RestartStrategy restartStrategy,
+			SlotProvider slotProvider) throws IOException {
+		this(
+			jobInformation,
+			futureExecutor,
+			ioExecutor,
 			timeout,
 			restartStrategy,
 			new RestartAllStrategy.Factory(),
-			Collections.<BlobKey>emptyList(),
-			Collections.<URL>emptyList(),
+			slotProvider);
+	}
+
+	@VisibleForTesting
+	ExecutionGraph(
+			JobInformation jobInformation,
+			ScheduledExecutorService futureExecutor,
+			Executor ioExecutor,
+			Time timeout,
+			RestartStrategy restartStrategy,
+			FailoverStrategy.Factory failoverStrategy,
+			SlotProvider slotProvider) throws IOException {
+		this(
+			jobInformation,
+			futureExecutor,
+			ioExecutor,
+			timeout,
+			restartStrategy,
+			failoverStrategy,
 			slotProvider,
-			ExecutionGraph.class.getClassLoader());
+			ExecutionGraph.class.getClassLoader(),
+			VoidBlobWriter.getInstance());
 	}
 
 	public ExecutionGraph(
+			JobInformation jobInformation,
 			ScheduledExecutorService futureExecutor,
 			Executor ioExecutor,
-			JobID jobId,
-			String jobName,
-			Configuration jobConfig,
-			SerializedValue<ExecutionConfig> serializedConfig,
 			Time timeout,
 			RestartStrategy restartStrategy,
 			FailoverStrategy.Factory failoverStrategyFactory,
-			List<BlobKey> requiredJarFiles,
-			List<URL> requiredClasspaths,
 			SlotProvider slotProvider,
-			ClassLoader userClassLoader) {
+			ClassLoader userClassLoader,
+			BlobWriter blobWriter) throws IOException {
 
 		checkNotNull(futureExecutor);
-		checkNotNull(jobId);
-		checkNotNull(jobName);
-		checkNotNull(jobConfig);
 
-		this.jobInformation = new JobInformation(
-			jobId,
-			jobName,
-			serializedConfig,
-			jobConfig,
-			requiredJarFiles,
-			requiredClasspaths);
+		this.jobInformation = Preconditions.checkNotNull(jobInformation);
 
-		// serialize the job information to do the serialisation work only once
-		try {
-			this.serializedJobInformation = new SerializedValue<>(jobInformation);
-		}
-		catch (IOException e) {
-			// this cannot happen because 'JobInformation' is perfectly serializable
-			// rethrow unchecked, because this indicates a bug, not a recoverable situation
-			throw new FlinkRuntimeException("Bug: Cannot serialize JobInformation", e);
-		}
+		this.blobWriter = Preconditions.checkNotNull(blobWriter);
+
+		this.jobInformationOrBlobKey = BlobWriter.serializeAndTryOffload(jobInformation, jobInformation.getJobId(), blobWriter);
 
 		this.futureExecutor = Preconditions.checkNotNull(futureExecutor);
 		this.ioExecutor = Preconditions.checkNotNull(ioExecutor);
@@ -369,7 +394,7 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 		this.scheduleAllocationTimeout = checkNotNull(timeout);
 
 		this.restartStrategy = restartStrategy;
-		this.kvStateLocationRegistry = new KvStateLocationRegistry(jobId, getAllVertices());
+		this.kvStateLocationRegistry = new KvStateLocationRegistry(jobInformation.getJobId(), getAllVertices());
 
 		this.verticesFinished = new AtomicInteger();
 
@@ -478,7 +503,6 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 		}
 	}
 
-	@Override
 	public CheckpointCoordinator getCheckpointCoordinator() {
 		return checkpointCoordinator;
 	}
@@ -491,9 +515,10 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 		return restartStrategy;
 	}
 
-	public JobCheckpointingSettings getJobCheckpointingSettings() {
+	@Override
+	public CheckpointCoordinatorConfiguration getCheckpointCoordinatorConfiguration() {
 		if (checkpointStatsTracker != null) {
-			return checkpointStatsTracker.getSnapshottingSettings();
+			return checkpointStatsTracker.getJobCheckpointingConfiguration();
 		} else {
 			return null;
 		}
@@ -536,7 +561,7 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 	 * Returns a list of BLOB keys referring to the JAR files required to run this job
 	 * @return list of BLOB keys referring to the JAR files required to run this job
 	 */
-	public Collection<BlobKey> getRequiredJarFiles() {
+	public Collection<PermanentBlobKey> getRequiredJarFiles() {
 		return jobInformation.getRequiredJarFileBlobKeys();
 	}
 
@@ -563,8 +588,8 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 		return slotProvider;
 	}
 
-	public SerializedValue<JobInformation> getSerializedJobInformation() {
-		return serializedJobInformation;
+	public Either<SerializedValue<JobInformation>, PermanentBlobKey> getJobInformationOrBlobKey() {
+		return jobInformationOrBlobKey;
 	}
 
 	@Override
@@ -603,7 +628,7 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 	 * Gets the number of full restarts that the execution graph went through.
 	 * If a full restart recovery is currently pending, this recovery is included in the
 	 * count.
-	 * 
+	 *
 	 * @return The number of full restarts so far
 	 */
 	public long getNumberOfFullRestarts() {
@@ -679,6 +704,10 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 		return this.stateTimestamps[status.ordinal()];
 	}
 
+	public final BlobWriter getBlobWriter() {
+		return blobWriter;
+	}
+
 	/**
 	 * Returns the ExecutionContext associated with this ExecutionGraph.
 	 *
@@ -731,9 +760,9 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 
 		Map<String, Accumulator<?, ?>> accumulatorMap = aggregateUserAccumulators();
 
-		Map<String, SerializedValue<Object>> result = new HashMap<>();
+		Map<String, SerializedValue<Object>> result = new HashMap<>(accumulatorMap.size());
 		for (Map.Entry<String, Accumulator<?, ?>> entry : accumulatorMap.entrySet()) {
-			result.put(entry.getKey(), new SerializedValue<Object>(entry.getValue().getLocalValue()));
+			result.put(entry.getKey(), new SerializedValue<>(entry.getValue().getLocalValue()));
 		}
 
 		return result;
@@ -769,8 +798,14 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 			}
 
 			// create the execution job vertex and attach it to the graph
-			ExecutionJobVertex ejv =
-					new ExecutionJobVertex(this, jobVertex, 1, rpcCallTimeout, globalModVersion, createTimestamp);
+			ExecutionJobVertex ejv = new ExecutionJobVertex(
+				this,
+				jobVertex,
+				1,
+				rpcCallTimeout,
+				globalModVersion,
+				createTimestamp);
+
 			ejv.connectToPredecessors(this.intermediateResults);
 
 			ExecutionJobVertex previousTask = this.tasks.putIfAbsent(jobVertex.getID(), ejv);
@@ -819,18 +854,21 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 		}
 	}
 
-	private void scheduleLazy(SlotProvider slotProvider) throws NoResourceAvailableException {
+	private void scheduleLazy(SlotProvider slotProvider) {
 		// simply take the vertices without inputs.
 		for (ExecutionJobVertex ejv : verticesInCreationOrder) {
 			if (ejv.getJobVertex().isInputVertex()) {
-				ejv.scheduleAll(slotProvider, allowQueuedScheduling);
+				ejv.scheduleAll(
+					slotProvider,
+					allowQueuedScheduling,
+					LocationPreferenceConstraint.ALL); // since it is an input vertex, the input based location preferences should be empty
 			}
 		}
 	}
 
 	/**
-	 * 
-	 * 
+	 *
+	 *
 	 * @param slotProvider  The resource provider from which the slots are allocated
 	 * @param timeout       The maximum time that the deployment may take, before a
 	 *                      TimeoutException is thrown.
@@ -842,113 +880,70 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 		// that way we do not have any operation that can fail between allocating the slots
 		// and adding them to the list. If we had a failure in between there, that would
 		// cause the slots to get lost
-		final ArrayList<ExecutionAndSlot[]> resources = new ArrayList<>(getNumberOfExecutionJobVertices());
 		final boolean queued = allowQueuedScheduling;
 
-		// we use this flag to handle failures in a 'finally' clause
-		// that allows us to not go through clumsy cast-and-rethrow logic
-		boolean successful = false;
+		// collecting all the slots may resize and fail in that operation without slots getting lost
+		final ArrayList<CompletableFuture<Execution>> allAllocationFutures = new ArrayList<>(getNumberOfExecutionJobVertices());
 
-		try {
-			// collecting all the slots may resize and fail in that operation without slots getting lost
-			final ArrayList<CompletableFuture<SimpleSlot>> slotFutures = new ArrayList<>(getNumberOfExecutionJobVertices());
+		// allocate the slots (obtain all their futures
+		for (ExecutionJobVertex ejv : getVerticesTopologically()) {
+			// these calls are not blocking, they only return futures
+			Collection<CompletableFuture<Execution>> allocationFutures = ejv.allocateResourcesForAll(
+				slotProvider,
+				queued,
+				LocationPreferenceConstraint.ALL);
 
-			// allocate the slots (obtain all their futures
-			for (ExecutionJobVertex ejv : getVerticesTopologically()) {
-				// these calls are not blocking, they only return futures
-				ExecutionAndSlot[] slots = ejv.allocateResourcesForAll(slotProvider, queued);
+			allAllocationFutures.addAll(allocationFutures);
+		}
 
-				// we need to first add the slots to this list, to be safe on release
-				resources.add(slots);
+		// this future is complete once all slot futures are complete.
+		// the future fails once one slot future fails.
+		final ConjunctFuture<Collection<Execution>> allAllocationsComplete = FutureUtils.combineAll(allAllocationFutures);
 
-				for (ExecutionAndSlot ens : slots) {
-					slotFutures.add(ens.slotFuture);
-				}
+		// make sure that we fail if the allocation timeout was exceeded
+		final ScheduledFuture<?> timeoutCancelHandle = futureExecutor.schedule(new Runnable() {
+			@Override
+			public void run() {
+				// When the timeout triggers, we try to complete the conjunct future with an exception.
+				// Note that this is a no-op if the future is already completed
+				int numTotal = allAllocationsComplete.getNumFuturesTotal();
+				int numComplete = allAllocationsComplete.getNumFuturesCompleted();
+				String message = "Could not allocate all requires slots within timeout of " +
+						timeout + ". Slots required: " + numTotal + ", slots allocated: " + numComplete;
+
+				allAllocationsComplete.completeExceptionally(new NoResourceAvailableException(message));
 			}
-
-			// this future is complete once all slot futures are complete.
-			// the future fails once one slot future fails.
-			final ConjunctFuture<Void> allAllocationsComplete = FutureUtils.waitForAll(slotFutures);
-
-			// make sure that we fail if the allocation timeout was exceeded
-			final ScheduledFuture<?> timeoutCancelHandle = futureExecutor.schedule(new Runnable() {
-				@Override
-				public void run() {
-					// When the timeout triggers, we try to complete the conjunct future with an exception.
-					// Note that this is a no-op if the future is already completed
-					int numTotal = allAllocationsComplete.getNumFuturesTotal();
-					int numComplete = allAllocationsComplete.getNumFuturesCompleted();
-					String message = "Could not allocate all requires slots within timeout of " +
-							timeout + ". Slots required: " + numTotal + ", slots allocated: " + numComplete;
-
-					allAllocationsComplete.completeExceptionally(new NoResourceAvailableException(message));
-				}
-			}, timeout.getSize(), timeout.getUnit());
+		}, timeout.getSize(), timeout.getUnit());
 
 
-			allAllocationsComplete.handleAsync(
-				(Void slots, Throwable throwable) -> {
-					try {
-						// we do not need the cancellation timeout any more
-						timeoutCancelHandle.cancel(false);
+		allAllocationsComplete.handleAsync(
+			(Collection<Execution> executions, Throwable throwable) -> {
+				try {
+					// we do not need the cancellation timeout any more
+					timeoutCancelHandle.cancel(false);
 
-						if (throwable == null) {
-							// successfully obtained all slots, now deploy
-
-							for (ExecutionAndSlot[] jobVertexTasks : resources) {
-								for (ExecutionAndSlot execAndSlot : jobVertexTasks) {
-
-									// the futures must all be ready - this is simply a sanity check
-									final SimpleSlot slot;
-									try {
-										slot = execAndSlot.slotFuture.getNow(null);
-										checkNotNull(slot);
-									}
-									catch (CompletionException | NullPointerException e) {
-										throw new IllegalStateException("SlotFuture is incomplete " +
-												"or erroneous even though all futures completed", e);
-									}
-
-									// actual deployment
-									execAndSlot.executionAttempt.deployToSlot(slot);
-								}
-							}
-						}
-						else {
-							// let the exception handler deal with this
-							throw throwable;
+					if (throwable == null) {
+						// successfully obtained all slots, now deploy
+						for (Execution execution : executions) {
+							execution.deploy();
 						}
 					}
-					catch (Throwable t) {
-						// we catch everything here to make sure cleanup happens and the
-						// ExecutionGraph notices the error
-
-						// we need to to release all slots before going into recovery! 
-						try {
-							ExecutionGraphUtils.releaseAllSlotsSilently(resources);
-						}
-						finally {
-							failGlobal(t);
-						}
+					else {
+						// let the exception handler deal with this
+						throw throwable;
 					}
+				}
+				catch (Throwable t) {
+					// we catch everything here to make sure cleanup happens and the
+					// ExecutionGraph notices the error
+					failGlobal(ExceptionUtils.stripCompletionException(t));
+				}
 
-					// Wouldn't it be nice if we could return an actual Void object?
-					// return (Void) Unsafe.getUnsafe().allocateInstance(Void.class);
-					return null; 
-				},
-				futureExecutor);
-
-			// from now on, slots will be rescued by the the futures and their completion, or by the timeout
-			successful = true;
-		}
-		finally {
-			if (!successful) {
-				// we come here only if the 'try' block finished with an exception
-				// we release the slots (possibly failing some executions on the way) and
-				// let the exception bubble up
-				ExecutionGraphUtils.releaseAllSlotsSilently(resources);
-			}
-		}
+				// Wouldn't it be nice if we could return an actual Void object?
+				// return (Void) Unsafe.getUnsafe().allocateInstance(Void.class);
+				return null;
+			},
+			futureExecutor);
 	}
 
 	public void cancel() {
@@ -1084,12 +1079,12 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 	/**
 	 * Fails the execution graph globally. This failure will not be recovered by a specific
 	 * failover strategy, but results in a full restart of all tasks.
-	 * 
+	 *
 	 * <p>This global failure is meant to be triggered in cases where the consistency of the
 	 * execution graph' state cannot be guaranteed any more (for example when catching unexpected
 	 * exceptions that indicate a bug or an unexpected call race), and where a full restart is the
 	 * safe way to get consistency back.
-	 * 
+	 *
 	 * @param errorInfo ErrorInfo containing the exception that caused the failure.
 	 */
 	public void failGlobal(ErrorInfo errorInfo) {
@@ -1211,7 +1206,7 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 	 *
 	 * @param errorIfNoCheckpoint Fail if there is no checkpoint available
 	 * @param allowNonRestoredState Allow to skip checkpoint state that cannot be mapped
-	 * to the the ExecutionGraph vertices (if the checkpoint contains state for a
+	 * to the ExecutionGraph vertices (if the checkpoint contains state for a
 	 * job vertex that is not part of this ExecutionGraph).
 	 */
 	public void restoreLatestCheckpointedState(boolean errorIfNoCheckpoint, boolean allowNonRestoredState) throws Exception {
@@ -1223,7 +1218,8 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 	}
 
 	/**
-	 * Returns the serializable ArchivedExecutionConfig
+	 * Returns the serializable {@link ArchivedExecutionConfig}.
+	 *
 	 * @return ArchivedExecutionConfig which may be null in case of errors
 	 */
 	@Override
@@ -1426,7 +1422,7 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 					return true;
 				}
 				else if (!isRestartable && transitionState(currentState, JobStatus.FAILED, failureCause)) {
-					final String cause1 = isFailureCauseAllowingRestart ? null :  
+					final String cause1 = isFailureCauseAllowingRestart ? null :
 							"a type of SuppressRestartsException was thrown";
 					final String cause2 = isRestartStrategyAllowingRestart ? null :
 						"the restart strategy prevented it";
@@ -1484,25 +1480,25 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 				switch (state.getExecutionState()) {
 					case RUNNING:
 						return attempt.switchToRunning();
-	
+
 					case FINISHED:
 						// this deserialization is exception-free
 						accumulators = deserializeAccumulators(state);
 						attempt.markFinished(accumulators, state.getIOMetrics());
 						return true;
-	
+
 					case CANCELED:
 						// this deserialization is exception-free
 						accumulators = deserializeAccumulators(state);
 						attempt.cancelingComplete(accumulators, state.getIOMetrics());
 						return true;
-	
+
 					case FAILED:
 						// this deserialization is exception-free
 						accumulators = deserializeAccumulators(state);
 						attempt.markFailed(state.getError(userClassLoader), accumulators, state.getIOMetrics());
 						return true;
-	
+
 					default:
 						// we mark as failed and return false, which triggers the TaskManager
 						// to remove the task
@@ -1525,9 +1521,9 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 
 	/**
 	 * Deserializes accumulators from a task state update.
-	 * 
+	 *
 	 * <p>This method never throws an exception!
-	 * 
+	 *
 	 * @param state The task execution state from which to deserialize the accumulators.
 	 * @return The deserialized accumulators, of null, if there are no accumulators or an error occurred.
 	 */
@@ -1673,6 +1669,11 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 			if (execution.getGlobalModVersion() == globalModVersion) {
 				try {
 					failoverStrategy.onTaskFailure(execution, ex);
+
+					// fail all checkpoints which the failed task has not yet acknowledged
+					if (checkpointCoordinator != null) {
+						checkpointCoordinator.failUnacknowledgedPendingCheckpointsFor(execution.getAttemptId(), ex);
+					}
 				}
 				catch (Throwable t) {
 					// bug in the failover strategy - fall back to global failover
@@ -1685,8 +1686,9 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 
 	@Override
 	public ArchivedExecutionGraph archive() {
-		Map<JobVertexID, ArchivedExecutionJobVertex> archivedTasks = new HashMap<>();
-		List<ArchivedExecutionJobVertex> archivedVerticesInCreationOrder = new ArrayList<>();
+		Map<JobVertexID, ArchivedExecutionJobVertex> archivedTasks = new HashMap<>(verticesInCreationOrder.size());
+		List<ArchivedExecutionJobVertex> archivedVerticesInCreationOrder = new ArrayList<>(verticesInCreationOrder.size());
+
 		for (ExecutionJobVertex task : verticesInCreationOrder) {
 			ArchivedExecutionJobVertex archivedTask = task.archive();
 			archivedVerticesInCreationOrder.add(archivedTask);
@@ -1714,7 +1716,7 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 			serializedUserAccumulators,
 			getArchivedExecutionConfig(),
 			isStoppable(),
-			getJobCheckpointingSettings(),
+			getCheckpointCoordinatorConfiguration(),
 			getCheckpointStatsSnapshot());
 	}
 }

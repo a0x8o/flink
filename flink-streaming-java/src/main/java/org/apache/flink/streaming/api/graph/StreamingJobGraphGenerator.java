@@ -18,6 +18,7 @@
 package org.apache.flink.streaming.api.graph;
 
 import org.apache.flink.annotation.Internal;
+import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.cache.DistributedCache;
 import org.apache.flink.api.common.functions.Function;
 import org.apache.flink.api.common.operators.ResourceSpec;
@@ -37,6 +38,7 @@ import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.jobgraph.ScheduleMode;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
+import org.apache.flink.runtime.jobgraph.tasks.CheckpointCoordinatorConfiguration;
 import org.apache.flink.runtime.jobgraph.tasks.ExternalizedCheckpointSettings;
 import org.apache.flink.runtime.jobgraph.tasks.JobCheckpointingSettings;
 import org.apache.flink.runtime.jobmanager.scheduler.CoLocationGroup;
@@ -573,10 +575,15 @@ public class StreamingJobGraphGenerator {
 
 		long interval = cfg.getCheckpointInterval();
 		if (interval > 0) {
+
+			ExecutionConfig executionConfig = streamGraph.getExecutionConfig();
+			// propagate the expected behaviour for checkpoint errors to task.
+			executionConfig.setFailTaskOnCheckpointError(cfg.isFailOnCheckpointingErrors());
+
 			// check if a restart strategy has been set, if not then set the FixedDelayRestartStrategy
-			if (streamGraph.getExecutionConfig().getRestartStrategy() == null) {
+			if (executionConfig.getRestartStrategy() == null) {
 				// if the user enabled checkpointing, the default number of exec retries is infinite.
-				streamGraph.getExecutionConfig().setRestartStrategy(
+				executionConfig.setRestartStrategy(
 					RestartStrategies.fixedDelayRestart(Integer.MAX_VALUE, DEFAULT_RESTART_DELAY));
 			}
 		} else {
@@ -682,13 +689,18 @@ public class StreamingJobGraphGenerator {
 		//  --- done, put it all together ---
 
 		JobCheckpointingSettings settings = new JobCheckpointingSettings(
-				triggerVertices, ackVertices, commitVertices, interval,
-				cfg.getCheckpointTimeout(), cfg.getMinPauseBetweenCheckpoints(),
+			triggerVertices,
+			ackVertices,
+			commitVertices,
+			new CheckpointCoordinatorConfiguration(
+				interval,
+				cfg.getCheckpointTimeout(),
+				cfg.getMinPauseBetweenCheckpoints(),
 				cfg.getMaxConcurrentCheckpoints(),
 				externalizedCheckpointSettings,
-				serializedStateBackend,
-				serializedHooks,
-				isExactlyOnce);
+				isExactlyOnce),
+			serializedStateBackend,
+			serializedHooks);
 
 		jobGraph.setSnapshotSettings(settings);
 	}

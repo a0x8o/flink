@@ -25,7 +25,8 @@ import org.apache.flink.runtime.rest.handler.legacy.utils.ArchivedJobGenerationU
 import org.apache.flink.runtime.webmonitor.history.ArchivedJson;
 import org.apache.flink.runtime.webmonitor.history.JsonArchivist;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.databind.JsonNode;
+
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -55,7 +56,7 @@ public class JobConfigHandlerTest {
 
 	@Test
 	public void testGetPaths() {
-		JobConfigHandler handler = new JobConfigHandler(mock(ExecutionGraphHolder.class), Executors.directExecutor());
+		JobConfigHandler handler = new JobConfigHandler(mock(ExecutionGraphCache.class), Executors.directExecutor());
 		String[] paths = handler.getPaths();
 		Assert.assertEquals(1, paths.length);
 		Assert.assertEquals("/jobs/:jobid/config", paths[0]);

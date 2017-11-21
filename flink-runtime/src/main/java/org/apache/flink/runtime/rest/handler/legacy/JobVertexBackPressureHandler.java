@@ -25,7 +25,7 @@ import org.apache.flink.runtime.executiongraph.ExecutionJobVertex;
 import org.apache.flink.runtime.rest.handler.legacy.backpressure.BackPressureStatsTracker;
 import org.apache.flink.runtime.rest.handler.legacy.backpressure.OperatorBackPressureStats;
 
-import com.fasterxml.jackson.core.JsonGenerator;
+import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.core.JsonGenerator;
 
 import java.io.IOException;
 import java.io.StringWriter;
@@ -52,7 +52,7 @@ public class JobVertexBackPressureHandler extends AbstractJobVertexRequestHandle
 	private final int refreshInterval;
 
 	public JobVertexBackPressureHandler(
-			ExecutionGraphHolder executionGraphHolder,
+			ExecutionGraphCache executionGraphHolder,
 			Executor executor,
 			BackPressureStatsTracker backPressureStatsTracker,
 			int refreshInterval) {

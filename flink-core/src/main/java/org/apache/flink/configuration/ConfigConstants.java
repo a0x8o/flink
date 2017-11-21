@@ -67,7 +67,8 @@ public final class ConfigConstants {
 	 * FiniteDuration notation: "1 min", "20 s"
 	 */
 	@PublicEvolving
-	public static final String RESTART_STRATEGY_FIXED_DELAY_DELAY = "restart-strategy.fixed-delay.delay";
+	public static final ConfigOption<String> RESTART_STRATEGY_FIXED_DELAY_DELAY =
+		key("restart-strategy.fixed-delay.delay").defaultValue("1 s");
 
 	/**
 	 * Maximum number of restarts in given time interval {@link #RESTART_STRATEGY_FAILURE_RATE_FAILURE_RATE_INTERVAL} before failing a job
@@ -420,7 +421,7 @@ public final class ConfigConstants {
 	 * The maximum number of failed YARN containers before entirely stopping
 	 * the YARN session / job on YARN.
 	 *
-	 * By default, we take the number of of initially requested containers.
+	 * By default, we take the number of initially requested containers.
 	 * @deprecated in favor of {@code YarnConfigOptions#MAX_FAILED_CONTAINERS}.
 	 */
 	@Deprecated
@@ -523,7 +524,7 @@ public final class ConfigConstants {
 	 * The maximum number of failed Mesos tasks before entirely stopping
 	 * the Mesos session / job on Mesos.
 	 *
-	 * By default, we take the number of of initially requested tasks.
+	 * By default, we take the number of initially requested tasks.
 	 * @deprecated in favor of {@code MesosOptions#MAX_FAILED_TASKS}.
 	 */
 	@Deprecated

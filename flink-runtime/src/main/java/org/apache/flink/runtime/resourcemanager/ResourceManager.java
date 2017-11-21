@@ -21,10 +21,12 @@ package org.apache.flink.runtime.resourcemanager;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.time.Time;
+import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.runtime.clusterframework.ApplicationStatus;
 import org.apache.flink.runtime.clusterframework.messages.InfoMessage;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
+import org.apache.flink.runtime.clusterframework.types.ResourceIDRetrievable;
 import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
 import org.apache.flink.runtime.clusterframework.types.SlotID;
 import org.apache.flink.runtime.concurrent.FutureUtils;
@@ -33,6 +35,7 @@ import org.apache.flink.runtime.heartbeat.HeartbeatManager;
 import org.apache.flink.runtime.heartbeat.HeartbeatServices;
 import org.apache.flink.runtime.heartbeat.HeartbeatTarget;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
+import org.apache.flink.runtime.instance.HardwareDescription;
 import org.apache.flink.runtime.instance.InstanceID;
 import org.apache.flink.runtime.jobmaster.JobMaster;
 import org.apache.flink.runtime.jobmaster.JobMasterGateway;
@@ -42,13 +45,15 @@ import org.apache.flink.runtime.leaderelection.LeaderContender;
 import org.apache.flink.runtime.leaderelection.LeaderElectionService;
 import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.metrics.MetricRegistry;
+import org.apache.flink.runtime.metrics.dump.MetricQueryService;
 import org.apache.flink.runtime.registration.RegistrationResponse;
 import org.apache.flink.runtime.resourcemanager.exceptions.ResourceManagerException;
 import org.apache.flink.runtime.resourcemanager.registration.JobManagerRegistration;
 import org.apache.flink.runtime.resourcemanager.registration.WorkerRegistration;
-import org.apache.flink.runtime.resourcemanager.slotmanager.ResourceManagerActions;
+import org.apache.flink.runtime.resourcemanager.slotmanager.ResourceActions;
 import org.apache.flink.runtime.resourcemanager.slotmanager.SlotManager;
 import org.apache.flink.runtime.resourcemanager.slotmanager.SlotManagerException;
+import org.apache.flink.runtime.rest.messages.taskmanager.TaskManagerInfo;
 import org.apache.flink.runtime.rpc.FatalErrorHandler;
 import org.apache.flink.runtime.rpc.FencedRpcEndpoint;
 import org.apache.flink.runtime.rpc.RpcService;
@@ -56,8 +61,10 @@ import org.apache.flink.runtime.taskexecutor.SlotReport;
 import org.apache.flink.runtime.taskexecutor.TaskExecutorGateway;
 import org.apache.flink.runtime.taskexecutor.TaskExecutorRegistrationSuccess;
 import org.apache.flink.util.ExceptionUtils;
+import org.apache.flink.util.FlinkException;
 
-import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -79,7 +86,7 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  *     <li>{@link #requestSlot(JobMasterId, SlotRequest, Time)} requests a slot from the resource manager</li>
  * </ul>
  */
-public abstract class ResourceManager<WorkerType extends Serializable>
+public abstract class ResourceManager<WorkerType extends ResourceIDRetrievable>
 		extends FencedRpcEndpoint<ResourceManagerId>
 		implements ResourceManagerGateway, LeaderContender {
 
@@ -325,6 +332,8 @@ public abstract class ResourceManager<WorkerType extends Serializable>
 			final String taskExecutorAddress,
 			final ResourceID taskExecutorResourceId,
 			final SlotReport slotReport,
+			final int dataPort,
+			final HardwareDescription hardwareDescription,
 			final Time timeout) {
 
 		CompletableFuture<TaskExecutorGateway> taskExecutorGatewayFuture = getRpcService().connect(taskExecutorAddress, TaskExecutorGateway.class);
@@ -338,7 +347,9 @@ public abstract class ResourceManager<WorkerType extends Serializable>
 						taskExecutorGateway,
 						taskExecutorAddress,
 						taskExecutorResourceId,
-						slotReport);
+						slotReport,
+						dataPort,
+						hardwareDescription);
 				}
 			},
 			getMainThreadExecutor());
@@ -395,6 +406,12 @@ public abstract class ResourceManager<WorkerType extends Serializable>
 		} else {
 			return FutureUtils.completedExceptionally(new ResourceManagerException("Could not find registered job manager for job " + jobId + '.'));
 		}
+	}
+
+	@Override
+	public void cancelSlotRequest(AllocationID allocationID) {
+		// As the slot allocations are async, it can not avoid all redundant slots, but should best effort.
+		slotManager.unregisterSlotRequest(allocationID);
 	}
 
 	@Override
@@ -480,6 +497,87 @@ public abstract class ResourceManager<WorkerType extends Serializable>
 		return CompletableFuture.completedFuture(taskExecutors.size());
 	}
 
+	@Override
+	public CompletableFuture<Collection<TaskManagerInfo>> requestTaskManagerInfo(Time timeout) {
+
+		ArrayList<TaskManagerInfo> taskManagerInfos = new ArrayList<>(taskExecutors.size());
+
+		for (Map.Entry<ResourceID, WorkerRegistration<WorkerType>> taskExecutorEntry : taskExecutors.entrySet()) {
+			final WorkerRegistration<WorkerType> taskExecutor = taskExecutorEntry.getValue();
+
+			taskManagerInfos.add(
+				new TaskManagerInfo(
+					taskExecutor.getInstanceID(),
+					taskExecutor.getTaskExecutorGateway().getAddress(),
+					taskExecutor.getDataPort(),
+					taskManagerHeartbeatManager.getLastHeartbeatFrom(taskExecutorEntry.getKey()),
+					slotManager.getNumberRegisteredSlotsOf(taskExecutor.getInstanceID()),
+					slotManager.getNumberFreeSlotsOf(taskExecutor.getInstanceID()),
+					taskExecutor.getHardwareDescription()));
+		}
+
+		return CompletableFuture.completedFuture(taskManagerInfos);
+	}
+
+	@Override
+	public CompletableFuture<TaskManagerInfo> requestTaskManagerInfo(InstanceID instanceId, Time timeout) {
+
+		Map.Entry<ResourceID, WorkerRegistration<WorkerType>> taskExecutorEntry = null;
+
+		// TODO: Implement more efficiently
+		for (Map.Entry<ResourceID, WorkerRegistration<WorkerType>> workerEntry : taskExecutors.entrySet()) {
+			if (Objects.equals(workerEntry.getValue().getInstanceID(), instanceId)) {
+				taskExecutorEntry = workerEntry;
+				break;
+			}
+		}
+
+		if (taskExecutorEntry == null) {
+			return FutureUtils.completedExceptionally(new FlinkException("Requested TaskManager " + instanceId + " is not registered."));
+		} else {
+			WorkerRegistration<?> taskExecutor = taskExecutorEntry.getValue();
+			final TaskManagerInfo taskManagerInfo = new TaskManagerInfo(
+				taskExecutor.getInstanceID(),
+				taskExecutor.getTaskExecutorGateway().getAddress(),
+				taskExecutor.getDataPort(),
+				taskManagerHeartbeatManager.getLastHeartbeatFrom(taskExecutorEntry.getKey()),
+				slotManager.getNumberRegisteredSlotsOf(instanceId),
+				slotManager.getNumberFreeSlotsOf(instanceId),
+				taskExecutor.getHardwareDescription());
+
+			return CompletableFuture.completedFuture(taskManagerInfo);
+		}
+	}
+
+	@Override
+	public CompletableFuture<ResourceOverview> requestResourceOverview(Time timeout) {
+		final int numberSlots = slotManager.getNumberRegisteredSlots();
+		final int numberFreeSlots = slotManager.getNumberFreeSlots();
+
+		return CompletableFuture.completedFuture(
+			new ResourceOverview(
+				taskExecutors.size(),
+				numberSlots,
+				numberFreeSlots));
+	}
+
+	@Override
+	public CompletableFuture<Collection<Tuple2<ResourceID, String>>> requestTaskManagerMetricQueryServicePaths(Time timeout) {
+		final ArrayList<Tuple2<ResourceID, String>> metricQueryServicePaths = new ArrayList<>(taskExecutors.size());
+
+		for (Map.Entry<ResourceID, WorkerRegistration<WorkerType>> workerRegistrationEntry : taskExecutors.entrySet()) {
+			final ResourceID tmResourceId = workerRegistrationEntry.getKey();
+			final WorkerRegistration<WorkerType> workerRegistration = workerRegistrationEntry.getValue();
+			final String taskManagerAddress = workerRegistration.getTaskExecutorGateway().getAddress();
+			final String tmMetricQueryServicePath = taskManagerAddress.substring(0, taskManagerAddress.lastIndexOf('/') + 1) +
+				MetricQueryService.METRIC_QUERY_SERVICE_NAME + '_' + tmResourceId.getResourceIdString();
+
+			metricQueryServicePaths.add(Tuple2.of(tmResourceId, tmMetricQueryServicePath));
+		}
+
+		return CompletableFuture.completedFuture(metricQueryServicePaths);
+	}
+
 	// ------------------------------------------------------------------------
 	//  Internal methods
 	// ------------------------------------------------------------------------
@@ -554,13 +652,17 @@ public abstract class ResourceManager<WorkerType extends Serializable>
 	 * @param taskExecutorAddress address of the TaskExecutor
 	 * @param taskExecutorResourceId ResourceID of the TaskExecutor
 	 * @param slotReport initial slot report from the TaskExecutor
+	 * @param dataPort port used for data transfer
+	 * @param hardwareDescription of the registering TaskExecutor
 	 * @return RegistrationResponse
 	 */
 	private RegistrationResponse registerTaskExecutorInternal(
-		TaskExecutorGateway taskExecutorGateway,
-		String taskExecutorAddress,
-		ResourceID taskExecutorResourceId,
-		SlotReport slotReport) {
+			TaskExecutorGateway taskExecutorGateway,
+			String taskExecutorAddress,
+			ResourceID taskExecutorResourceId,
+			SlotReport slotReport,
+			int dataPort,
+			HardwareDescription hardwareDescription) {
 		WorkerRegistration<WorkerType> oldRegistration = taskExecutors.remove(taskExecutorResourceId);
 		if (oldRegistration != null) {
 			// TODO :: suggest old taskExecutor to stop itself
@@ -578,7 +680,7 @@ public abstract class ResourceManager<WorkerType extends Serializable>
 			return new RegistrationResponse.Decline("unrecognized TaskExecutor");
 		} else {
 			WorkerRegistration<WorkerType> registration =
-				new WorkerRegistration<>(taskExecutorGateway, newWorker);
+				new WorkerRegistration<>(taskExecutorGateway, newWorker, dataPort, hardwareDescription);
 
 			taskExecutors.put(taskExecutorResourceId, registration);
 
@@ -660,7 +762,7 @@ public abstract class ResourceManager<WorkerType extends Serializable>
 		WorkerRegistration<WorkerType> workerRegistration = taskExecutors.remove(resourceID);
 
 		if (workerRegistration != null) {
-			log.info("Task manager {} failed because {}.", resourceID, cause);
+			log.info("Task manager {} failed because {}.", resourceID, cause.getMessage());
 
 			// TODO :: suggest failed task executor to stop itself
 			slotManager.unregisterTaskManager(workerRegistration.getInstanceID());
@@ -694,6 +796,30 @@ public abstract class ResourceManager<WorkerType extends Serializable>
 			}
 		} else {
 			log.debug("Discard job leader lost leadership for outdated leader {} for job {}.", oldJobMasterId, jobId);
+		}
+	}
+
+	protected void releaseResource(InstanceID instanceId) {
+		WorkerType worker = null;
+
+		// TODO: Improve performance by having an index on the instanceId
+		for (Map.Entry<ResourceID, WorkerRegistration<WorkerType>> entry : taskExecutors.entrySet()) {
+			if (entry.getValue().getInstanceID().equals(instanceId)) {
+				worker = entry.getValue().getWorker();
+				break;
+			}
+		}
+
+		if (worker != null) {
+			if (stopWorker(worker)) {
+				closeTaskManagerConnection(worker.getResourceID(),
+						new FlinkException("Worker was stopped."));
+			} else {
+				log.debug("Worker {} was not stopped.", worker.getResourceID());
+			}
+		} else {
+			// unregister in order to clean up potential left over state
+			slotManager.unregisterTaskManager(instanceId);
 		}
 	}
 
@@ -756,7 +882,7 @@ public abstract class ResourceManager<WorkerType extends Serializable>
 
 				setFencingToken(newResourceManagerId);
 
-				slotManager.start(getFencingToken(), getMainThreadExecutor(), new ResourceManagerActionsImpl());
+				slotManager.start(getFencingToken(), getMainThreadExecutor(), new ResourceActionsImpl());
 
 				getRpcService().execute(
 					() ->
@@ -825,60 +951,41 @@ public abstract class ResourceManager<WorkerType extends Serializable>
 	public abstract void startNewWorker(ResourceProfile resourceProfile);
 
 	/**
-	 * Deallocates a resource.
-	 *
-	 * @param resourceID The resource ID
-	 */
-	public abstract void stopWorker(ResourceID resourceID);
-
-	/**
 	 * Callback when a worker was started.
 	 * @param resourceID The worker resource id
 	 */
 	protected abstract WorkerType workerStarted(ResourceID resourceID);
 
+	/**
+	 * Stops the given worker.
+	 *
+	 * @param worker The worker.
+	 * @return True if the worker was stopped, otherwise false
+	 */
+	public abstract boolean stopWorker(WorkerType worker);
+
 	// ------------------------------------------------------------------------
 	//  Static utility classes
 	// ------------------------------------------------------------------------
 
-	private class ResourceManagerActionsImpl implements ResourceManagerActions {
+	private class ResourceActionsImpl implements ResourceActions {
 
 		@Override
 		public void releaseResource(InstanceID instanceId) {
-			runAsync(new Runnable() {
-				@Override
-				public void run() {
-					ResourceID resourceID = null;
+			validateRunsInMainThread();
 
-					for (Map.Entry<ResourceID, WorkerRegistration<WorkerType>> entry : taskExecutors.entrySet()) {
-						if (entry.getValue().getInstanceID().equals(instanceId)) {
-							resourceID = entry.getKey();
-							break;
-						}
-					}
-
-					if (resourceID != null) {
-						stopWorker(resourceID);
-					}
-					else {
-						log.warn("Ignoring request to release TaskManager with instance ID {} (not found).", instanceId);
-					}
-				}
-			});
+			ResourceManager.this.releaseResource(instanceId);
 		}
 
 		@Override
 		public void allocateResource(ResourceProfile resourceProfile) throws ResourceManagerException {
-			runAsync(new Runnable() {
-				@Override
-				public void run() {
-					startNewWorker(resourceProfile);
-				}
-			});
+			validateRunsInMainThread();
+			startNewWorker(resourceProfile);
 		}
 
 		@Override
 		public void notifyAllocationFailure(JobID jobId, AllocationID allocationId, Exception cause) {
+			validateRunsInMainThread();
 			log.info("Slot request with allocation id {} for job {} failed.", allocationId, jobId, cause);
 		}
 	}

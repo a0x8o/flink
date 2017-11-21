@@ -20,7 +20,7 @@ package org.apache.flink.runtime.executiongraph.utils;
 
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.time.Time;
-import org.apache.flink.runtime.blob.BlobKey;
+import org.apache.flink.runtime.blob.TransientBlobKey;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.clusterframework.ApplicationStatus;
 import org.apache.flink.runtime.concurrent.FutureUtils;
@@ -48,12 +48,19 @@ public class SimpleAckingTaskManagerGateway implements TaskManagerGateway {
 
 	private Optional<Consumer<ExecutionAttemptID>> optSubmitCondition;
 
+	private Optional<Consumer<ExecutionAttemptID>> optCancelCondition;
+
 	public SimpleAckingTaskManagerGateway() {
 		optSubmitCondition = Optional.empty();
+		optCancelCondition = Optional.empty();
 	}
 
 	public void setCondition(Consumer<ExecutionAttemptID> predicate) {
 		optSubmitCondition = Optional.of(predicate);
+	}
+
+	public void setCancelCondition(Consumer<ExecutionAttemptID> predicate) {
+		optCancelCondition = Optional.of(predicate);
 	}
 
 	@Override
@@ -96,6 +103,7 @@ public class SimpleAckingTaskManagerGateway implements TaskManagerGateway {
 
 	@Override
 	public CompletableFuture<Acknowledge> cancelTask(ExecutionAttemptID executionAttemptID, Time timeout) {
+		optCancelCondition.ifPresent(condition -> condition.accept(executionAttemptID));
 		return CompletableFuture.completedFuture(Acknowledge.get());
 	}
 
@@ -123,12 +131,12 @@ public class SimpleAckingTaskManagerGateway implements TaskManagerGateway {
 			CheckpointOptions checkpointOptions) {}
 
 	@Override
-	public CompletableFuture<BlobKey> requestTaskManagerLog(Time timeout) {
+	public CompletableFuture<TransientBlobKey> requestTaskManagerLog(Time timeout) {
 		return FutureUtils.completedExceptionally(new UnsupportedOperationException());
 	}
 
 	@Override
-	public CompletableFuture<BlobKey> requestTaskManagerStdout(Time timeout) {
+	public CompletableFuture<TransientBlobKey> requestTaskManagerStdout(Time timeout) {
 		return FutureUtils.completedExceptionally(new UnsupportedOperationException());
 	}
 }

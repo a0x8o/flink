@@ -37,6 +37,8 @@ import akka.actor.ActorSystem;
 import akka.actor.PoisonPill;
 import akka.actor.Props;
 import akka.testkit.JavaTestKit;
+import org.apache.hadoop.yarn.api.records.ApplicationAttemptId;
+import org.apache.hadoop.yarn.api.records.ApplicationId;
 import org.apache.hadoop.yarn.api.records.Container;
 import org.apache.hadoop.yarn.api.records.ContainerId;
 import org.apache.hadoop.yarn.api.records.ContainerLaunchContext;
@@ -60,6 +62,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
 import scala.Option;
@@ -71,7 +74,6 @@ import scala.concurrent.duration.FiniteDuration;
 import static org.junit.Assert.assertEquals;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 /**
  * Tests for {@link Utils}.
@@ -117,7 +119,7 @@ public class UtilsTest extends TestLogger {
 			final List<Container> containerList = new ArrayList<>();
 
 			for (int i = 0; i < numInitialTaskManagers; i++) {
-				containerList.add(new TestingContainer("container_" + i, "localhost"));
+				containerList.add(new TestingContainer("container", 1234, i));
 			}
 
 			doAnswer(new Answer() {
@@ -133,6 +135,26 @@ public class UtilsTest extends TestLogger {
 					return null;
 				}
 			}).when(resourceManagerClient).addContainerRequest(Matchers.any(AMRMClient.ContainerRequest.class));
+
+			final CompletableFuture<AkkaActorGateway> resourceManagerFuture = new CompletableFuture<>();
+			final CompletableFuture<AkkaActorGateway> leaderGatewayFuture = new CompletableFuture<>();
+
+			doAnswer(
+				(InvocationOnMock invocation) -> {
+					Container container = (Container) invocation.getArguments()[0];
+					resourceManagerFuture.thenCombine(leaderGatewayFuture,
+						(resourceManagerGateway, leaderGateway) -> {
+						resourceManagerGateway.tell(
+							new NotifyResourceStarted(YarnFlinkResourceManager.extractResourceID(container)),
+							leaderGateway);
+						return null;
+						});
+					return null;
+				})
+				.when(nodeManagerClient)
+				.startContainer(
+					Matchers.any(Container.class),
+					Matchers.any(ContainerLaunchContext.class));
 
 			ActorRef resourceManager = null;
 			ActorRef leader1;
@@ -168,15 +190,8 @@ public class UtilsTest extends TestLogger {
 				final AkkaActorGateway leader1Gateway = new AkkaActorGateway(leader1, leaderSessionID);
 				final AkkaActorGateway resourceManagerGateway = new AkkaActorGateway(resourceManager, leaderSessionID);
 
-				doAnswer(new Answer() {
-					@Override
-					public Object answer(InvocationOnMock invocation) throws Throwable {
-						Container container = (Container) invocation.getArguments()[0];
-						resourceManagerGateway.tell(new NotifyResourceStarted(YarnFlinkResourceManager.extractResourceID(container)),
-							leader1Gateway);
-						return null;
-					}
-				}).when(nodeManagerClient).startContainer(Matchers.any(Container.class), Matchers.any(ContainerLaunchContext.class));
+				leaderGatewayFuture.complete(leader1Gateway);
+				resourceManagerFuture.complete(resourceManagerGateway);
 
 				expectMsgClass(deadline.timeLeft(), RegisterResourceManager.class);
 
@@ -223,19 +238,22 @@ public class UtilsTest extends TestLogger {
 
 	static class TestingContainer extends Container {
 
-		private final String id;
-		private final String host;
+		private final NodeId nodeId;
+		private final ContainerId containerId;
 
-		TestingContainer(String id, String host) {
-			this.id = id;
-			this.host = host;
+		TestingContainer(String host, int port, int containerId) {
+			this.nodeId = NodeId.newInstance(host, port);
+			this.containerId = ContainerId.newInstance(
+				ApplicationAttemptId.newInstance(
+					ApplicationId.newInstance(
+						System.currentTimeMillis(),
+						1),
+					1),
+				containerId);
 		}
 
 		@Override
 		public ContainerId getId() {
-			ContainerId containerId = mock(ContainerId.class);
-			when(containerId.toString()).thenReturn(id);
-
 			return containerId;
 		}
 
@@ -246,9 +264,6 @@ public class UtilsTest extends TestLogger {
 
 		@Override
 		public NodeId getNodeId() {
-			NodeId nodeId = mock(NodeId.class);
-			when(nodeId.getHost()).thenReturn(host);
-
 			return nodeId;
 		}
 

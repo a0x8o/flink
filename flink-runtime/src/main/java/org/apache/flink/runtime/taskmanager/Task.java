@@ -30,8 +30,8 @@ import org.apache.flink.core.fs.Path;
 import org.apache.flink.core.fs.SafetyNetCloseableRegistry;
 import org.apache.flink.metrics.MetricGroup;
 import org.apache.flink.runtime.accumulators.AccumulatorRegistry;
-import org.apache.flink.runtime.blob.BlobCache;
-import org.apache.flink.runtime.blob.BlobKey;
+import org.apache.flink.runtime.blob.BlobCacheService;
+import org.apache.flink.runtime.blob.PermanentBlobKey;
 import org.apache.flink.runtime.broadcast.BroadcastVariableManager;
 import org.apache.flink.runtime.checkpoint.CheckpointMetaData;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
@@ -99,6 +99,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
+import static org.apache.flink.util.Preconditions.checkState;
 
 /**
  * The Task represents one execution of a parallel subtask on a TaskManager.
@@ -161,7 +162,7 @@ public class Task implements Runnable, TaskActions {
 	private final Configuration taskConfiguration;
 
 	/** The jar files used by this task */
-	private final Collection<BlobKey> requiredJarFiles;
+	private final Collection<PermanentBlobKey> requiredJarFiles;
 
 	/** The classpaths used by this task */
 	private final Collection<URL> requiredClasspaths;
@@ -205,7 +206,7 @@ public class Task implements Runnable, TaskActions {
 	private final List<TaskExecutionStateListener> taskExecutionStateListeners;
 
 	/** The BLOB cache, from which the task can request BLOB files */
-	private final BlobCache blobCache;
+	private final BlobCacheService blobService;
 
 	/** The library cache, from which the task can request its class loader */
 	private final LibraryCacheManager libraryCache;
@@ -265,6 +266,12 @@ public class Task implements Runnable, TaskActions {
 	private long taskCancellationTimeout;
 
 	/**
+	 * This class loader should be set as the context class loader of the threads in
+	 * {@link #asyncCallDispatcher} because user code may dynamically load classes in all callbacks.
+	 */
+	private ClassLoader userCodeClassLoader;
+
+	/**
 	 * <p><b>IMPORTANT:</b> This constructor may not start any work that would need to
 	 * be undone in the case of a failing task deployment.</p>
 	 */
@@ -286,7 +293,7 @@ public class Task implements Runnable, TaskActions {
 		TaskManagerActions taskManagerActions,
 		InputSplitProvider inputSplitProvider,
 		CheckpointResponder checkpointResponder,
-		BlobCache blobCache,
+		BlobCacheService blobService,
 		LibraryCacheManager libraryCache,
 		FileCache fileCache,
 		TaskManagerRuntimeInfo taskManagerConfig,
@@ -335,7 +342,7 @@ public class Task implements Runnable, TaskActions {
 		this.checkpointResponder = Preconditions.checkNotNull(checkpointResponder);
 		this.taskManagerActions = checkNotNull(taskManagerActions);
 
-		this.blobCache = Preconditions.checkNotNull(blobCache);
+		this.blobService = Preconditions.checkNotNull(blobService);
 		this.libraryCache = Preconditions.checkNotNull(libraryCache);
 		this.fileCache = Preconditions.checkNotNull(fileCache);
 		this.network = Preconditions.checkNotNull(networkEnvironment);
@@ -563,7 +570,6 @@ public class Task implements Runnable, TaskActions {
 		Map<String, Future<Path>> distributedCacheEntries = new HashMap<String, Future<Path>>();
 		AbstractInvokable invokable = null;
 
-		ClassLoader userCodeClassLoader;
 		try {
 			// ----------------------------
 			//  Task Bootstrap - We periodically
@@ -574,13 +580,13 @@ public class Task implements Runnable, TaskActions {
 			LOG.info("Creating FileSystem stream leak safety net for task {}", this);
 			FileSystemSafetyNet.initializeSafetyNetForThread();
 
-			blobCache.registerJob(jobId);
+			blobService.getPermanentBlobService().registerJob(jobId);
 
 			// first of all, get a user-code classloader
 			// this may involve downloading the job's JAR files and/or classes
 			LOG.info("Loading JAR files for task {}.", this);
 
-			userCodeClassLoader = createUserCodeClassloader(libraryCache);
+			userCodeClassLoader = createUserCodeClassloader();
 			final ExecutionConfig executionConfig = serializedExecutionConfig.deserializeValue(userCodeClassLoader);
 
 			if (executionConfig.getTaskCancellationInterval() >= 0) {
@@ -835,7 +841,7 @@ public class Task implements Runnable, TaskActions {
 
 				// remove all of the tasks library resources
 				libraryCache.unregisterTask(jobId, executionId);
-				blobCache.releaseJob(jobId);
+				blobService.getPermanentBlobService().releaseJob(jobId);
 
 				// remove all files in the distributed cache
 				removeCachedFiles(distributedCacheEntries, fileCache);
@@ -865,7 +871,7 @@ public class Task implements Runnable, TaskActions {
 		}
 	}
 
-	private ClassLoader createUserCodeClassloader(LibraryCacheManager libraryCache) throws Exception {
+	private ClassLoader createUserCodeClassloader() throws Exception {
 		long startDownloadTime = System.currentTimeMillis();
 
 		// triggers the download of all missing jar files from the job manager
@@ -1342,15 +1348,19 @@ public class Task implements Runnable, TaskActions {
 			if (executionState != ExecutionState.RUNNING) {
 				return;
 			}
-			
+
 			// get ourselves a reference on the stack that cannot be concurrently modified
 			ExecutorService executor = this.asyncCallDispatcher;
 			if (executor == null) {
 				// first time use, initialize
+				checkState(userCodeClassLoader != null, "userCodeClassLoader must not be null");
 				executor = Executors.newSingleThreadExecutor(
-						new DispatcherThreadFactory(TASK_THREADS_GROUP, "Async calls on " + taskNameWithSubtask));
+						new DispatcherThreadFactory(
+							TASK_THREADS_GROUP,
+							"Async calls on " + taskNameWithSubtask,
+							userCodeClassLoader));
 				this.asyncCallDispatcher = executor;
-				
+
 				// double-check for execution state, and make sure we clean up after ourselves
 				// if we created the dispatcher while the task was concurrently canceled
 				if (executionState != ExecutionState.RUNNING) {

@@ -55,6 +55,22 @@ class CalcITCase extends StreamingMultipleProgramsTestBase {
   }
 
   @Test
+  def testSelectStar(): Unit = {
+
+    val env = StreamExecutionEnvironment.getExecutionEnvironment
+    val tEnv = TableEnvironment.getTableEnvironment(env)
+    StreamITCase.testResults = mutable.MutableList()
+    val ds = StreamTestData.getSmallNestedTupleDataStream(env).toTable(tEnv).select('*)
+
+    val results = ds.toAppendStream[Row]
+    results.addSink(new StreamITCase.StringSink[Row])
+    env.execute()
+
+    val expected = mutable.MutableList("(1,1),one", "(2,2),two", "(3,3),three")
+    assertEquals(expected.sorted, StreamITCase.testResults.sorted)
+  }
+
+  @Test
   def testSelectFirst(): Unit = {
 
     val env = StreamExecutionEnvironment.getExecutionEnvironment
@@ -284,7 +300,7 @@ class CalcITCase extends StreamingMultipleProgramsTestBase {
     val func1 = new Func13("Sunny")
     val func2 = new Func13("kevin2")
 
-    val result = t.select(func0('c), func1('c),func2('c))
+    val result = t.select(func0('c), func1('c), func2('c))
 
     result.addSink(new StreamITCase.StringSink[Row])
     env.execute()

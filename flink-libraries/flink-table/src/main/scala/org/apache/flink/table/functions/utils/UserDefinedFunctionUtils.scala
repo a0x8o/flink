@@ -251,10 +251,11 @@ object UserDefinedFunctionUtils {
     */
   def createScalarSqlFunction(
       name: String,
+      displayName: String,
       function: ScalarFunction,
       typeFactory: FlinkTypeFactory)
     : SqlFunction = {
-    new ScalarSqlFunction(name, function, typeFactory)
+    new ScalarSqlFunction(name, displayName, function, typeFactory)
   }
 
   /**
@@ -268,13 +269,14 @@ object UserDefinedFunctionUtils {
     */
   def createTableSqlFunction(
       name: String,
+      displayName: String,
       tableFunction: TableFunction[_],
       resultType: TypeInformation[_],
       typeFactory: FlinkTypeFactory)
     : SqlFunction = {
     val (fieldNames, fieldIndexes, _) = UserDefinedFunctionUtils.getFieldInfo(resultType)
     val function = new FlinkTableFunctionImpl(resultType, fieldIndexes, fieldNames)
-    new TableSqlFunction(name, tableFunction, resultType, typeFactory, function)
+    new TableSqlFunction(name, displayName, tableFunction, resultType, typeFactory, function)
   }
 
   /**
@@ -287,6 +289,7 @@ object UserDefinedFunctionUtils {
     */
   def createAggregateSqlFunction(
       name: String,
+      displayName: String,
       aggFunction: AggregateFunction[_, _],
       resultType: TypeInformation[_],
       accTypeInfo: TypeInformation[_],
@@ -297,6 +300,7 @@ object UserDefinedFunctionUtils {
 
     AggSqlFunction(
       name,
+      displayName,
       aggFunction,
       resultType,
       accTypeInfo,
@@ -603,13 +607,14 @@ object UserDefinedFunctionUtils {
     candidate == expected ||
     expected == classOf[Object] ||
     expected.isPrimitive && Primitives.wrap(expected) == candidate ||
+    // time types
     candidate == classOf[Date] && (expected == classOf[Int] || expected == classOf[JInt])  ||
     candidate == classOf[Time] && (expected == classOf[Int] || expected == classOf[JInt]) ||
     candidate == classOf[Timestamp] && (expected == classOf[Long] || expected == classOf[JLong]) ||
-    (candidate.isArray &&
-      expected.isArray &&
-      candidate.getComponentType.isInstanceOf[Object] &&
-      expected.getComponentType == classOf[Object])
+    // arrays
+    (candidate.isArray && expected.isArray &&
+      (candidate.getComponentType == expected.getComponentType ||
+        expected.getComponentType == classOf[Object]))
 
   @throws[Exception]
   def serialize(function: UserDefinedFunction): String = {

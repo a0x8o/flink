@@ -20,6 +20,7 @@ package org.apache.flink.runtime.entrypoint;
 
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.WebOptions;
 import org.apache.flink.runtime.blob.BlobServer;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.dispatcher.Dispatcher;
@@ -32,14 +33,21 @@ import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.leaderretrieval.LeaderRetrievalService;
 import org.apache.flink.runtime.metrics.MetricRegistry;
 import org.apache.flink.runtime.resourcemanager.ResourceManager;
+import org.apache.flink.runtime.resourcemanager.ResourceManagerGateway;
+import org.apache.flink.runtime.resourcemanager.ResourceManagerId;
 import org.apache.flink.runtime.rest.RestServerEndpointConfiguration;
 import org.apache.flink.runtime.rest.handler.RestHandlerConfiguration;
 import org.apache.flink.runtime.rpc.FatalErrorHandler;
 import org.apache.flink.runtime.rpc.RpcService;
+import org.apache.flink.runtime.rpc.akka.AkkaRpcService;
 import org.apache.flink.runtime.webmonitor.retriever.LeaderGatewayRetriever;
+import org.apache.flink.runtime.webmonitor.retriever.MetricQueryServiceRetriever;
+import org.apache.flink.runtime.webmonitor.retriever.impl.AkkaQueryServiceRetriever;
 import org.apache.flink.runtime.webmonitor.retriever.impl.RpcGatewayRetriever;
 import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.FlinkException;
+
+import akka.actor.ActorSystem;
 
 import java.util.Optional;
 import java.util.concurrent.Executor;
@@ -54,6 +62,8 @@ public abstract class SessionClusterEntrypoint extends ClusterEntrypoint {
 	private Dispatcher dispatcher;
 
 	private LeaderRetrievalService dispatcherLeaderRetrievalService;
+
+	private LeaderRetrievalService resourceManagerRetrievalService;
 
 	private DispatcherRestEndpoint dispatcherRestEndpoint;
 
@@ -72,6 +82,8 @@ public abstract class SessionClusterEntrypoint extends ClusterEntrypoint {
 
 		dispatcherLeaderRetrievalService = highAvailabilityServices.getDispatcherLeaderRetriever();
 
+		resourceManagerRetrievalService = highAvailabilityServices.getResourceManagerLeaderRetriever();
+
 		LeaderGatewayRetriever<DispatcherGateway> dispatcherGatewayRetriever = new RpcGatewayRetriever<>(
 			rpcService,
 			DispatcherGateway.class,
@@ -79,10 +91,23 @@ public abstract class SessionClusterEntrypoint extends ClusterEntrypoint {
 			10,
 			Time.milliseconds(50L));
 
+		LeaderGatewayRetriever<ResourceManagerGateway> resourceManagerGatewayRetriever = new RpcGatewayRetriever<>(
+			rpcService,
+			ResourceManagerGateway.class,
+			ResourceManagerId::new,
+			10,
+			Time.milliseconds(50L));
+
+		// TODO: Remove once we have ported the MetricFetcher to the RpcEndpoint
+		final ActorSystem actorSystem = ((AkkaRpcService) rpcService).getActorSystem();
+		final Time timeout = Time.milliseconds(configuration.getLong(WebOptions.TIMEOUT));
+
 		dispatcherRestEndpoint = createDispatcherRestEndpoint(
 			configuration,
 			dispatcherGatewayRetriever,
-			rpcService.getExecutor());
+			resourceManagerGatewayRetriever,
+			rpcService.getExecutor(),
+			new AkkaQueryServiceRetriever(actorSystem, timeout));
 
 		LOG.debug("Starting Dispatcher REST endpoint.");
 		dispatcherRestEndpoint.start();
@@ -100,6 +125,7 @@ public abstract class SessionClusterEntrypoint extends ClusterEntrypoint {
 			configuration,
 			rpcService,
 			highAvailabilityServices,
+			resourceManager.getSelfGateway(ResourceManagerGateway.class),
 			blobServer,
 			heartbeatServices,
 			metricRegistry,
@@ -108,6 +134,7 @@ public abstract class SessionClusterEntrypoint extends ClusterEntrypoint {
 
 		LOG.debug("Starting ResourceManager.");
 		resourceManager.start();
+		resourceManagerRetrievalService.start(resourceManagerGatewayRetriever);
 
 		LOG.debug("Starting Dispatcher.");
 		dispatcher.start();
@@ -138,6 +165,14 @@ public abstract class SessionClusterEntrypoint extends ClusterEntrypoint {
 			}
 		}
 
+		if (resourceManagerRetrievalService != null) {
+			try {
+				resourceManagerRetrievalService.stop();
+			} catch (Throwable t) {
+				exception = ExceptionUtils.firstOrSuppressed(t, exception);
+			}
+		}
+
 		if (resourceManager != null) {
 			try {
 				resourceManager.shutDown();
@@ -154,20 +189,27 @@ public abstract class SessionClusterEntrypoint extends ClusterEntrypoint {
 	protected DispatcherRestEndpoint createDispatcherRestEndpoint(
 			Configuration configuration,
 			LeaderGatewayRetriever<DispatcherGateway> dispatcherGatewayRetriever,
-			Executor executor) throws Exception {
+			LeaderGatewayRetriever<ResourceManagerGateway> resourceManagerGatewayRetriever,
+			Executor executor,
+			MetricQueryServiceRetriever metricQueryServiceRetriever) throws Exception {
+
+		final RestHandlerConfiguration restHandlerConfiguration = RestHandlerConfiguration.fromConfiguration(configuration);
 
 		return new DispatcherRestEndpoint(
 			RestServerEndpointConfiguration.fromConfiguration(configuration),
 			dispatcherGatewayRetriever,
 			configuration,
-			RestHandlerConfiguration.fromConfiguration(configuration),
-			executor);
+			restHandlerConfiguration,
+			resourceManagerGatewayRetriever,
+			executor,
+			metricQueryServiceRetriever);
 	}
 
 	protected Dispatcher createDispatcher(
 		Configuration configuration,
 		RpcService rpcService,
 		HighAvailabilityServices highAvailabilityServices,
+		ResourceManagerGateway resourceManagerGateway,
 		BlobServer blobServer,
 		HeartbeatServices heartbeatServices,
 		MetricRegistry metricRegistry,
@@ -180,6 +222,7 @@ public abstract class SessionClusterEntrypoint extends ClusterEntrypoint {
 			Dispatcher.DISPATCHER_NAME,
 			configuration,
 			highAvailabilityServices,
+			resourceManagerGateway,
 			blobServer,
 			heartbeatServices,
 			metricRegistry,

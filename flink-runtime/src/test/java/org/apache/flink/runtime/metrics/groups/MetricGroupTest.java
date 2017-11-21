@@ -23,8 +23,10 @@ import org.apache.flink.metrics.CharacterFilter;
 import org.apache.flink.metrics.Gauge;
 import org.apache.flink.metrics.Metric;
 import org.apache.flink.metrics.MetricGroup;
+import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.metrics.MetricRegistry;
 import org.apache.flink.runtime.metrics.MetricRegistryConfiguration;
+import org.apache.flink.runtime.metrics.MetricRegistryImpl;
 import org.apache.flink.runtime.metrics.dump.QueryScopeInfo;
 import org.apache.flink.runtime.metrics.util.DummyCharacterFilter;
 import org.apache.flink.util.AbstractID;
@@ -47,13 +49,13 @@ public class MetricGroupTest extends TestLogger {
 
 	private static final MetricRegistryConfiguration defaultMetricRegistryConfiguration = MetricRegistryConfiguration.defaultMetricRegistryConfiguration();
 
-	private MetricRegistry registry;
+	private MetricRegistryImpl registry;
 
-	private final MetricRegistry exceptionOnRegister = new ExceptionOnRegisterRegistry();
+	private final MetricRegistryImpl exceptionOnRegister = new ExceptionOnRegisterRegistry();
 
 	@Before
 	public void createRegistry() {
-		this.registry = new MetricRegistry(defaultMetricRegistryConfiguration);
+		this.registry = new MetricRegistryImpl(defaultMetricRegistryConfiguration);
 	}
 
 	@After
@@ -131,9 +133,9 @@ public class MetricGroupTest extends TestLogger {
 	@Test
 	public void testCreateQueryServiceMetricInfo() {
 		JobID jid = new JobID();
-		AbstractID vid = new AbstractID();
+		JobVertexID vid = new JobVertexID();
 		AbstractID eid = new AbstractID();
-		MetricRegistry registry = new MetricRegistry(defaultMetricRegistryConfiguration);
+		MetricRegistryImpl registry = new MetricRegistryImpl(defaultMetricRegistryConfiguration);
 		TaskManagerMetricGroup tm = new TaskManagerMetricGroup(registry, "host", "id");
 		TaskManagerJobMetricGroup job = new TaskManagerJobMetricGroup(registry, tm, jid, "jobname");
 		TaskMetricGroup task = new TaskMetricGroup(registry, job, vid, eid, "taskName", 4, 5);
@@ -155,7 +157,7 @@ public class MetricGroupTest extends TestLogger {
 
 	// ------------------------------------------------------------------------
 
-	private static class ExceptionOnRegisterRegistry extends MetricRegistry {
+	private static class ExceptionOnRegisterRegistry extends MetricRegistryImpl {
 
 		public ExceptionOnRegisterRegistry() {
 			super(defaultMetricRegistryConfiguration);
