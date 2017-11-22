@@ -957,17 +957,19 @@ abstract class CodeGenerator(
       case ARRAY_VALUE_CONSTRUCTOR =>
         generateArray(this, resultType, operands)
 
+      // maps
+      case MAP_VALUE_CONSTRUCTOR =>
+        generateMap(this, resultType, operands)
+
       case ITEM =>
         operands.head.resultType match {
-          case _: ObjectArrayTypeInfo[_, _] |
-               _: BasicArrayTypeInfo[_, _] |
-               _: PrimitiveArrayTypeInfo[_] =>
+          case t: TypeInformation[_] if isArray(t) =>
             val array = operands.head
             val index = operands(1)
             requireInteger(index)
             generateArrayElementAt(this, array, index)
 
-          case _: MapTypeInfo[_, _] =>
+          case t: TypeInformation[_] if isMap(t) =>
             val key = operands(1)
             generateMapGet(this, operands.head, key)
 
@@ -975,9 +977,17 @@ abstract class CodeGenerator(
         }
 
       case CARDINALITY =>
-        val array = operands.head
-        requireArray(array)
-        generateArrayCardinality(nullCheck, array)
+        operands.head.resultType match {
+          case t: TypeInformation[_] if isArray(t) =>
+            val array = operands.head
+            generateArrayCardinality(nullCheck, array)
+
+          case t: TypeInformation[_] if isMap(t) =>
+            val map = operands.head
+            generateMapCardinality(nullCheck, map)
+
+          case _ => throw new CodeGenException("Expect an array or a map.")
+        }
 
       case ELEMENT =>
         val array = operands.head
@@ -1558,6 +1568,22 @@ abstract class CodeGenerator(
         |    new $initArray;
         |""".stripMargin
     reusableMemberStatements.add(fieldArray)
+    fieldTerm
+  }
+
+  /**
+    * Adds a reusable hash map to the member area of the generated [[Function]].
+    */
+  def addReusableMap(): String = {
+    val fieldTerm = newName("map")
+    val classQualifier = "java.util.Map"
+    val initMap = "java.util.HashMap()"
+    val fieldMap =
+      s"""
+         |final $classQualifier $fieldTerm =
+         |    new $initMap;
+         |""".stripMargin
+    reusableMemberStatements.add(fieldMap)
     fieldTerm
   }
 
