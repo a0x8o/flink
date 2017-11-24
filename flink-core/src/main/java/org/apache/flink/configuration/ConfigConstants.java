@@ -67,7 +67,8 @@ public final class ConfigConstants {
 	 * FiniteDuration notation: "1 min", "20 s"
 	 */
 	@PublicEvolving
-	public static final String RESTART_STRATEGY_FIXED_DELAY_DELAY = "restart-strategy.fixed-delay.delay";
+	public static final ConfigOption<String> RESTART_STRATEGY_FIXED_DELAY_DELAY =
+		key("restart-strategy.fixed-delay.delay").defaultValue("1 s");
 
 	/**
 	 * Maximum number of restarts in given time interval {@link #RESTART_STRATEGY_FAILURE_RATE_FAILURE_RATE_INTERVAL} before failing a job
@@ -613,7 +614,10 @@ public final class ConfigConstants {
 	 * Key to specify the default filesystem to be used by a job. In the case of
 	 * <code>file:///</code>, which is the default (see {@link ConfigConstants#DEFAULT_FILESYSTEM_SCHEME}),
 	 * the local filesystem is going to be used to resolve URIs without an explicit scheme.
-	 * */
+	 *
+	 * @deprecated Use {@link CoreOptions#DEFAULT_FILESYSTEM_SCHEME} instead.
+	 */
+	@Deprecated
 	public static final String FILESYSTEM_SCHEME = "fs.default-scheme";
 
 	/**

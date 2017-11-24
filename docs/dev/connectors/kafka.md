@@ -537,8 +537,11 @@ chosen by passing appropriate `semantic` parameter to the `FlinkKafkaProducer011
  * `Semantic.NONE`: Flink will not guarantee anything. Produced records can be lost or they can
  be duplicated.
  * `Semantic.AT_LEAST_ONCE` (default setting): similar to `setFlushOnCheckpoint(true)` in
- `FlinkKafkaProducer010`. his guarantees that no records will be lost (although they can be duplicated).
- * `Semantic.EXACTLY_ONCE`: uses Kafka transactions to provide exactly-once semantic.
+ `FlinkKafkaProducer010`. This guarantees that no records will be lost (although they can be duplicated).
+ * `Semantic.EXACTLY_ONCE`: uses Kafka transactions to provide exactly-once semantic. Whenever you write
+ to Kafka using transactions, do not forget about setting desired `isolation.level` (`read_committed`
+ or `read_uncommitted` - the latter one is the default value) for any application consuming records
+ from Kafka.
 
 <div class="alert alert-warning">
   <strong>Attention:</strong> Depending on your Kafka configuration, even after Kafka acknowledges
@@ -579,7 +582,7 @@ un-finished transaction. In other words after following sequence of events:
 3. User committed `transaction2`
 
 Even if records from `transaction2` are already committed, they will not be visible to
-the consumers until `transaction1` is committed or aborted. This hastwo implications:
+the consumers until `transaction1` is committed or aborted. This has two implications:
 
  * First of all, during normal working of Flink applications, user can expect a delay in visibility
  of the records produced into Kafka topics, equal to average time between completed checkpoints.

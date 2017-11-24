@@ -47,6 +47,7 @@ A custom `TableSource` can be defined by implementing the `BatchTableSource` or 
 | `Kafka08AvroTableSource` | `flink-connector-kafka-0.8` | N | Y | A `TableSource` for Avro-encoded Kafka 0.8 topics.
 | `Kafka08JsonTableSource` | `flink-connector-kafka-0.8` | N | Y | A `TableSource` for flat Json-encoded Kafka 0.8 topics.
 | `CsvTableSource` | `flink-table` | Y | Y | A simple `TableSource` for CSV files.
+| `OrcTableSource` | `flink-orc` | Y | N | A `TableSource` for ORC files.
 
 All sources that come with the `flink-table` dependency are directly available for Table API or SQL programs. For all other table sources, you have to add the respective dependency in addition to the `flink-table` dependency.
 
@@ -62,7 +63,7 @@ A `KafkaJsonTableSource` is created and configured using a builder. The followin
 <div data-lang="java" markdown="1">
 {% highlight java %}
 // create builder
-TableSource source = Kafka010JsonTableSource.builder()
+KafkaTableSource source = Kafka010JsonTableSource.builder()
   // set Kafka topic
   .forTopic("sensors")
   // set Kafka consumer properties
@@ -79,7 +80,7 @@ TableSource source = Kafka010JsonTableSource.builder()
 <div data-lang="scala" markdown="1">
 {% highlight scala %}
 // create builder
-val source: TableSource[_] = Kafka010JsonTableSource.builder()
+val source: KafkaTableSource = Kafka010JsonTableSource.builder()
   // set Kafka topic
   .forTopic("sensors")
   // set Kafka consumer properties
@@ -107,7 +108,7 @@ Map<String, String> mapping = new HashMap<>();
 mapping.put("sensorId", "id");
 mapping.put("temperature", "temp");
 
-TableSource source = Kafka010JsonTableSource.builder()
+KafkaTableSource source = Kafka010JsonTableSource.builder()
   // ...
   // set Table schema
   .withSchema(TableSchema.builder()
@@ -125,7 +126,7 @@ TableSource source = Kafka010JsonTableSource.builder()
 
 <div data-lang="scala" markdown="1">
 {% highlight scala %}
-val source: TableSource[_] = Kafka010JsonTableSource.builder()
+val source: KafkaTableSource = Kafka010JsonTableSource.builder()
   // ...
   // set Table schema
   .withSchema(TableSchema.builder()
@@ -144,12 +145,12 @@ val source: TableSource[_] = Kafka010JsonTableSource.builder()
 </div>
 </div>
 
-* **Missing Field Handling** By default, a missing JSON field is set to `null`. You can enable strict JSON parsing that will cancel the source (and query) if a field is missing.
+* **Missing Field Handling:** By default, a missing JSON field is set to `null`. You can enable strict JSON parsing that will cancel the source (and query) if a field is missing.
 
 <div class="codetabs" markdown="1">
 <div data-lang="java" markdown="1">
 {% highlight java %}
-TableSource source = Kafka010JsonTableSource.builder()
+KafkaTableSource source = Kafka010JsonTableSource.builder()
   // ...
   // configure missing field behavior
   .failOnMissingField(true)
@@ -159,10 +160,34 @@ TableSource source = Kafka010JsonTableSource.builder()
 
 <div data-lang="scala" markdown="1">
 {% highlight scala %}
-val source: TableSource[_] = Kafka010JsonTableSource.builder()
+val source: KafkaTableSource = Kafka010JsonTableSource.builder()
   // ...
   // configure missing field behavior
   .failOnMissingField(true)
+  .build()
+{% endhighlight %}
+</div>
+</div>
+
+* **Specify the start reading position:** By default, the table source will start reading data from the committed group offsets in Zookeeper or Kafka brokers. You can specify other start positions via the builder's methods, which correspond to the configurations in section [Kafka Consumers Start Position Configuration](../connectors/kafka.html#kafka-consumers-start-position-configuration).
+
+<div class="codetabs" markdown="1">
+<div data-lang="java" markdown="1">
+{% highlight java %}
+KafkaTableSource source = Kafka010JsonTableSource.builder()
+  // ...
+  // start reading from the earliest offset
+  .fromEarliest()
+  .build();
+{% endhighlight %}
+</div>
+
+<div data-lang="scala" markdown="1">
+{% highlight scala %}
+val source: KafkaTableSource = Kafka010JsonTableSource.builder()
+  // ...
+  // start reading from the earliest offset
+  .fromEarliest()
   .build()
 {% endhighlight %}
 </div>
@@ -180,7 +205,7 @@ A `KafkaAvroTableSource` is created and configured using a builder. The followin
 <div data-lang="java" markdown="1">
 {% highlight java %}
 // create builder
-TableSource source = Kafka010AvroTableSource.builder()
+KafkaTableSource source = Kafka010AvroTableSource.builder()
   // set Kafka topic
   .forTopic("sensors")
   // set Kafka consumer properties
@@ -199,7 +224,7 @@ TableSource source = Kafka010AvroTableSource.builder()
 <div data-lang="scala" markdown="1">
 {% highlight scala %}
 // create builder
-val source: TableSource[_] = Kafka010JsonTableSource.builder()
+val source: KafkaTableSource = Kafka010JsonTableSource.builder()
   // set Kafka topic
   .forTopic("sensors")
   // set Kafka consumer properties
@@ -231,7 +256,7 @@ Map<String, String> mapping = new HashMap<>();
 mapping.put("sensorId", "id");
 mapping.put("temperature", "temp");
 
-TableSource source = Kafka010AvroTableSource.builder()
+KafkaTableSource source = Kafka010AvroTableSource.builder()
   // ...
   // set Table schema
   .withSchema(TableSchema.builder()
@@ -239,15 +264,15 @@ TableSource source = Kafka010AvroTableSource.builder()
     .field("temperature", Types.DOUBLE()).build())
   // set class of Avro record with fields [id, temp]
   .forAvroRecordClass(SensorReading.class)
-  // set mapping from table fields to JSON fields
-  .withTableToJsonMapping(mapping)
+  // set mapping from table fields to Avro fields
+  .withTableToAvroMapping(mapping)
   .build();
 {% endhighlight %}
 </div>
 
 <div data-lang="scala" markdown="1">
 {% highlight scala %}
-val source: TableSource[_] = Kafka010AvroTableSource.builder()
+val source: KafkaTableSource = Kafka010AvroTableSource.builder()
   // ...
   // set Table schema
   .withSchema(TableSchema.builder()
@@ -255,10 +280,34 @@ val source: TableSource[_] = Kafka010AvroTableSource.builder()
     .field("temperature", Types.DOUBLE).build())
   // set class of Avro record with fields [id, temp]
   .forAvroRecordClass(classOf[SensorReading])
-  // set mapping from table fields to JSON fields
-  .withTableToJsonMapping(Map(
+  // set mapping from table fields to Avro fields
+  .withTableToAvroMapping(Map(
     "sensorId" -> "id", 
     "temperature" -> "temp").asJava)
+  .build()
+{% endhighlight %}
+</div>
+</div>
+
+* **Specify the start reading position:** By default, the table source will start reading data from the committed group offsets in Zookeeper or Kafka brokers. You can specify other start positions via the builder's methods, which correspond to the configurations in section [Kafka Consumers Start Position Configuration](../connectors/kafka.html#kafka-consumers-start-position-configuration).
+
+<div class="codetabs" markdown="1">
+<div data-lang="java" markdown="1">
+{% highlight java %}
+KafkaTableSource source = Kafka010AvroTableSource.builder()
+  // ...
+  // start reading from the earliest offset
+  .fromEarliest()
+  .build();
+{% endhighlight %}
+</div>
+
+<div data-lang="scala" markdown="1">
+{% highlight scala %}
+val source: KafkaTableSource = Kafka010AvroTableSource.builder()
+  // ...
+  // start reading from the earliest offset
+  .fromEarliest()
   .build()
 {% endhighlight %}
 </div>
@@ -277,7 +326,7 @@ A table schema field of type `SQL_TIMESTAMP` can be declared as a processing tim
 <div class="codetabs" markdown="1">
 <div data-lang="java" markdown="1">
 {% highlight java %}
-TableSource source = Kafka010JsonTableSource.builder()
+KafkaTableSource source = Kafka010JsonTableSource.builder()
   // ... 
   .withSchema(TableSchema.builder()
     .field("sensorId", Types.LONG())  
@@ -292,7 +341,7 @@ TableSource source = Kafka010JsonTableSource.builder()
 
 <div data-lang="scala" markdown="1">
 {% highlight scala %}
-val source: TableSource[_] = Kafka010JsonTableSource.builder()
+val source: KafkaTableSource = Kafka010JsonTableSource.builder()
   // ...
   .withSchema(TableSchema.builder()
     .field("sensorId", Types.LONG)
@@ -323,7 +372,7 @@ The following example shows how to configure a rowtime attribute.
 <div class="codetabs" markdown="1">
 <div data-lang="java" markdown="1">
 {% highlight java %}
-TableSource source = Kafka010JsonTableSource.builder()
+KafkaTableSource source = Kafka010JsonTableSource.builder()
   // ...
   .withSchema(TableSchema.builder()
     .field("sensorId", Types.LONG())
@@ -343,7 +392,7 @@ TableSource source = Kafka010JsonTableSource.builder()
 
 <div data-lang="scala" markdown="1">
 {% highlight scala %}
-val source: TableSource[_] = Kafka010JsonTableSource.builder()
+val source: KafkaTableSource = Kafka010JsonTableSource.builder()
   // ...
   .withSchema(TableSchema.builder()
     .field("sensorId", Types.LONG)
@@ -369,7 +418,7 @@ Since Kafka 0.10, Kafka messages have a timestamp as metadata that specifies whe
 <div class="codetabs" markdown="1">
 <div data-lang="java" markdown="1">
 {% highlight java %}
-TableSource source = Kafka010JsonTableSource.builder()
+KafkaTableSource source = Kafka010JsonTableSource.builder()
   // ...
   .withSchema(TableSchema.builder()
     .field("sensorId", Types.LONG())
@@ -388,7 +437,7 @@ TableSource source = Kafka010JsonTableSource.builder()
 
 <div data-lang="scala" markdown="1">
 {% highlight scala %}
-val source: TableSource[_] = Kafka010JsonTableSource.builder()
+val source: KafkaTableSource = Kafka010JsonTableSource.builder()
   // ...
   .withSchema(TableSchema.builder()
     .field("sensorId", Types.LONG)
@@ -482,6 +531,54 @@ val csvTableSource = CsvTableSource
 {% endhighlight %}
 </div>
 </div>
+
+{% top %}
+
+### OrcTableSource
+
+The `OrcTableSource` reads [ORC files](https://orc.apache.org). ORC is a file format for structured data and stores the data in a compressed, columnar representation. ORC is very storage efficient and supports projection and filter push-down.
+
+An `OrcTableSource` is created as shown below:
+
+<div class="codetabs" markdown="1">
+<div data-lang="java" markdown="1">
+{% highlight java %}
+
+// create Hadoop Configuration
+Configuration config = new Configuration();
+
+OrcTableSource orcTableSource = OrcTableSource.builder()
+  // path to ORC file(s)
+  .path("file:///path/to/data")
+  // schema of ORC files
+  .forOrcSchema("struct<name:string,addresses:array<struct<street:string,zip:smallint>>>")
+  // Hadoop configuration
+  .withConfiguration(config)
+  // build OrcTableSource
+  .build();
+{% endhighlight %}
+</div>
+
+<div data-lang="scala" markdown="1">
+{% highlight scala %}
+
+// create Hadoop Configuration
+val config = new Configuration()
+
+val orcTableSource = OrcTableSource.builder()
+  // path to ORC file(s)
+  .path("file:///path/to/data")
+  // schema of ORC files
+  .forOrcSchema("struct<name:string,addresses:array<struct<street:string,zip:smallint>>>")
+  // Hadoop configuration
+  .withConfiguration(config)
+  // build OrcTableSource
+  .build()
+{% endhighlight %}
+</div>
+</div>
+
+**Note:** The `OrcTableSource` does not support ORC's `Union` type yet.
 
 {% top %}
 

@@ -51,6 +51,7 @@ import org.apache.flink.streaming.api.graph.StreamConfig;
 import org.apache.flink.streaming.api.operators.OperatorSnapshotResult;
 import org.apache.flink.streaming.api.operators.Output;
 import org.apache.flink.streaming.api.operators.StreamOperator;
+import org.apache.flink.streaming.configuration.TimerServiceOptions;
 import org.apache.flink.streaming.runtime.io.RecordWriterOutput;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.runtime.streamstatus.StreamStatusMaintainer;
@@ -69,6 +70,7 @@ import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -172,6 +174,12 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 	/** Thread pool for async snapshot workers. */
 	private ExecutorService asyncOperationsThreadPool;
 
+	/** Handler for exceptions during checkpointing in the stream task. Used in synchronous part of the checkpoint. */
+	private CheckpointExceptionHandler synchronousCheckpointExceptionHandler;
+
+	/** Wrapper for synchronousCheckpointExceptionHandler to deal with rethrown exceptions. Used in the async part. */
+	private AsyncCheckpointExceptionHandler asynchronousCheckpointExceptionHandler;
+
 	// ------------------------------------------------------------------------
 	//  Life cycle methods for specific implementations
 	// ------------------------------------------------------------------------
@@ -212,8 +220,15 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			LOG.debug("Initializing {}.", getName());
 
 			asyncOperationsThreadPool = Executors.newCachedThreadPool();
-
 			configuration = new StreamConfig(getTaskConfiguration());
+
+			CheckpointExceptionHandlerFactory cpExceptionHandlerFactory = createCheckpointExceptionHandlerFactory();
+
+			synchronousCheckpointExceptionHandler = cpExceptionHandlerFactory.createCheckpointExceptionHandler(
+				getExecutionConfig().isFailTaskOnCheckpointError(),
+				getEnvironment());
+
+			asynchronousCheckpointExceptionHandler = new AsyncCheckpointExceptionHandler(this);
 
 			stateBackend = createStateBackend();
 
@@ -305,9 +320,20 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			isRunning = false;
 
 			// stop all timers and threads
-			if (timerService != null) {
+			if (timerService != null && !timerService.isTerminated()) {
 				try {
-					timerService.shutdownService();
+
+					final long timeoutMs = getEnvironment().getTaskManagerInfo().getConfiguration().
+						getLong(TimerServiceOptions.TIMER_SERVICE_TERMINATION_AWAIT_MS);
+
+					// wait for a reasonable time for all pending timer threads to finish
+					boolean timerShutdownComplete =
+						timerService.shutdownAndAwaitPending(timeoutMs, TimeUnit.MILLISECONDS);
+
+					if (!timerShutdownComplete) {
+						LOG.warn("Timer service shutdown exceeded time limit of {} ms while waiting for pending " +
+							"timers. Will continue with shutdown procedure.", timeoutMs);
+					}
 				}
 				catch (Throwable t) {
 					// catch and log the exception to not replace the original exception
@@ -784,6 +810,10 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			targetLocation);
 	}
 
+	protected CheckpointExceptionHandlerFactory createCheckpointExceptionHandlerFactory() {
+		return new CheckpointExceptionHandlerFactory();
+	}
+
 	private String createOperatorIdentifier(StreamOperator<?> operator, int vertexId) {
 
 		TaskInfo taskInfo = getEnvironment().getTaskInfo();
@@ -850,11 +880,11 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			CheckpointingOperation.AsynCheckpointState.RUNNING);
 
 		AsyncCheckpointRunnable(
-				StreamTask<?, ?> owner,
-				Map<OperatorID, OperatorSnapshotResult> operatorSnapshotsInProgress,
-				CheckpointMetaData checkpointMetaData,
-				CheckpointMetrics checkpointMetrics,
-				long asyncStartNanos) {
+			StreamTask<?, ?> owner,
+			Map<OperatorID, OperatorSnapshotResult> operatorSnapshotsInProgress,
+			CheckpointMetaData checkpointMetaData,
+			CheckpointMetrics checkpointMetrics,
+			long asyncStartNanos) {
 
 			this.owner = Preconditions.checkNotNull(owner);
 			this.operatorSnapshotsInProgress = Preconditions.checkNotNull(operatorSnapshotsInProgress);
@@ -929,14 +959,14 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 					e.addSuppressed(cleanupException);
 				}
 
-				// registers the exception and tries to fail the whole task
-				AsynchronousException asyncException = new AsynchronousException(
-					new Exception(
-						"Could not materialize checkpoint " + checkpointMetaData.getCheckpointId() +
-							" for operator " + owner.getName() + '.',
-						e));
+				Exception checkpointException = new Exception(
+					"Could not materialize checkpoint " + checkpointMetaData.getCheckpointId() + " for operator " +
+						owner.getName() + '.',
+					e);
 
-				owner.handleAsyncException("Failure in asynchronous checkpoint materialization", asyncException);
+				owner.asynchronousCheckpointExceptionHandler.tryHandleCheckpointException(
+					checkpointMetaData,
+					checkpointException);
 			} finally {
 				owner.cancelables.unregisterCloseable(this);
 				FileSystemSafetyNet.closeSafetyNetAndGuardedResourcesForThread();
@@ -1020,7 +1050,6 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		public void executeCheckpointing() throws Exception {
 			startSyncPartNano = System.nanoTime();
 
-			boolean failed = true;
 			try {
 				for (StreamOperator<?> op : allOperators) {
 					checkpointStreamOperator(op);
@@ -1028,16 +1057,23 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 				if (LOG.isDebugEnabled()) {
 					LOG.debug("Finished synchronous checkpoints for checkpoint {} on task {}",
-							checkpointMetaData.getCheckpointId(), owner.getName());
+						checkpointMetaData.getCheckpointId(), owner.getName());
 				}
 
 				startAsyncPartNano = System.nanoTime();
 
 				checkpointMetrics.setSyncDurationMillis((startAsyncPartNano - startSyncPartNano) / 1_000_000);
 
-				// at this point we are transferring ownership over snapshotInProgressList for cleanup to the thread
-				runAsyncCheckpointingAndAcknowledge();
-				failed = false;
+				// we are transferring ownership over snapshotInProgressList for cleanup to the thread, active on submit
+				AsyncCheckpointRunnable asyncCheckpointRunnable = new AsyncCheckpointRunnable(
+					owner,
+					operatorSnapshotsInProgress,
+					checkpointMetaData,
+					checkpointMetrics,
+					startAsyncPartNano);
+
+				owner.cancelables.registerCloseable(asyncCheckpointRunnable);
+				owner.asyncOperationsThreadPool.submit(asyncCheckpointRunnable);
 
 				if (LOG.isDebugEnabled()) {
 					LOG.debug("{} - finished synchronous part of checkpoint {}." +
@@ -1046,27 +1082,27 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 						checkpointMetrics.getAlignmentDurationNanos() / 1_000_000,
 						checkpointMetrics.getSyncDurationMillis());
 				}
-			} finally {
-				if (failed) {
-					// Cleanup to release resources
-					for (OperatorSnapshotResult operatorSnapshotResult : operatorSnapshotsInProgress.values()) {
-						if (null != operatorSnapshotResult) {
-							try {
-								operatorSnapshotResult.cancel();
-							} catch (Exception e) {
-								LOG.warn("Could not properly cancel an operator snapshot result.", e);
-							}
+			} catch (Exception ex) {
+				// Cleanup to release resources
+				for (OperatorSnapshotResult operatorSnapshotResult : operatorSnapshotsInProgress.values()) {
+					if (null != operatorSnapshotResult) {
+						try {
+							operatorSnapshotResult.cancel();
+						} catch (Exception e) {
+							LOG.warn("Could not properly cancel an operator snapshot result.", e);
 						}
 					}
-
-					if (LOG.isDebugEnabled()) {
-						LOG.debug("{} - did NOT finish synchronous part of checkpoint {}." +
-								"Alignment duration: {} ms, snapshot duration {} ms",
-							owner.getName(), checkpointMetaData.getCheckpointId(),
-							checkpointMetrics.getAlignmentDurationNanos() / 1_000_000,
-							checkpointMetrics.getSyncDurationMillis());
-					}
 				}
+
+				if (LOG.isDebugEnabled()) {
+					LOG.debug("{} - did NOT finish synchronous part of checkpoint {}." +
+							"Alignment duration: {} ms, snapshot duration {} ms",
+						owner.getName(), checkpointMetaData.getCheckpointId(),
+						checkpointMetrics.getAlignmentDurationNanos() / 1_000_000,
+						checkpointMetrics.getSyncDurationMillis());
+				}
+
+				owner.synchronousCheckpointExceptionHandler.tryHandleCheckpointException(checkpointMetaData, ex);
 			}
 		}
 
@@ -1082,23 +1118,40 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			}
 		}
 
-		public void runAsyncCheckpointingAndAcknowledge() throws IOException {
-
-			AsyncCheckpointRunnable asyncCheckpointRunnable = new AsyncCheckpointRunnable(
-					owner,
-					operatorSnapshotsInProgress,
-					checkpointMetaData,
-					checkpointMetrics,
-					startAsyncPartNano);
-
-			owner.cancelables.registerCloseable(asyncCheckpointRunnable);
-			owner.asyncOperationsThreadPool.submit(asyncCheckpointRunnable);
-		}
-
 		private enum AsynCheckpointState {
 			RUNNING,
 			DISCARDED,
 			COMPLETED
+		}
+	}
+
+	/**
+	 * Wrapper for synchronous {@link CheckpointExceptionHandler}. This implementation catches unhandled, rethrown
+	 * exceptions and reports them through {@link #handleAsyncException(String, Throwable)}. As this implementation
+	 * always handles the exception in some way, it never rethrows.
+	 */
+	static final class AsyncCheckpointExceptionHandler implements CheckpointExceptionHandler {
+
+		/** Owning stream task to which we report async exceptions. */
+		final StreamTask<?, ?> owner;
+
+		/** Synchronous exception handler to which we delegate. */
+		final CheckpointExceptionHandler synchronousCheckpointExceptionHandler;
+
+		AsyncCheckpointExceptionHandler(StreamTask<?, ?> owner) {
+			this.owner = Preconditions.checkNotNull(owner);
+			this.synchronousCheckpointExceptionHandler =
+				Preconditions.checkNotNull(owner.synchronousCheckpointExceptionHandler);
+		}
+
+		@Override
+		public void tryHandleCheckpointException(CheckpointMetaData checkpointMetaData, Exception exception) {
+			try {
+				synchronousCheckpointExceptionHandler.tryHandleCheckpointException(checkpointMetaData, exception);
+			} catch (Exception unhandled) {
+				AsynchronousException asyncException = new AsynchronousException(unhandled);
+				owner.handleAsyncException("Failure in asynchronous checkpoint materialization", asyncException);
+			}
 		}
 	}
 }
