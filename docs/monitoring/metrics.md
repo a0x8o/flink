@@ -41,10 +41,12 @@ Flink supports `Counters`, `Gauges`, `Histograms` and `Meters`.
 A `Counter` is used to count something. The current value can be in- or decremented using `inc()/inc(long n)` or `dec()/dec(long n)`.
 You can create and register a `Counter` by calling `counter(String name)` on a `MetricGroup`.
 
+<div class="codetabs" markdown="1">
+<div data-lang="java" markdown="1">
 {% highlight java %}
 
 public class MyMapper extends RichMapFunction<String, String> {
-  private Counter counter;
+  private transient Counter counter;
 
   @Override
   public void open(Configuration config) {
@@ -61,13 +63,39 @@ public class MyMapper extends RichMapFunction<String, String> {
 }
 
 {% endhighlight %}
+</div>
+
+<div data-lang="scala" markdown="1">
+{% highlight scala %}
+
+class MyMapper extends RichMapFunction[String,String] {
+  @transient private var counter: Counter
+
+  override def open(parameters: Configuration): Unit = {
+    counter = getRuntimeContext()
+      .getMetricGroup()
+      .counter("myCounter")
+  }
+
+  override def map(value: String): String = {
+    counter.inc()
+    value
+  }
+}
+
+{% endhighlight %}
+</div>
+
+</div>
 
 Alternatively you can also use your own `Counter` implementation:
 
+<div class="codetabs" markdown="1">
+<div data-lang="java" markdown="1">
 {% highlight java %}
 
 public class MyMapper extends RichMapFunction<String, String> {
-  private Counter counter;
+  private transient Counter counter;
 
   @Override
   public void open(Configuration config) {
@@ -83,7 +111,32 @@ public class MyMapper extends RichMapFunction<String, String> {
   }
 }
 
+
 {% endhighlight %}
+</div>
+
+<div data-lang="scala" markdown="1">
+{% highlight scala %}
+
+class MyMapper extends RichMapFunction[String,String] {
+  @transient private var counter: Counter
+
+  override def open(parameters: Configuration): Unit = {
+    counter = getRuntimeContext()
+      .getMetricGroup()
+      .counter("myCustomCounter", new CustomCounter())
+  }
+
+  override def map(value: String): String = {
+    counter.inc()
+    value
+  }
+}
+
+{% endhighlight %}
+</div>
+
+</div>
 
 #### Gauge
 
@@ -96,7 +149,7 @@ You can register a gauge by calling `gauge(String name, Gauge gauge)` on a `Metr
 {% highlight java %}
 
 public class MyMapper extends RichMapFunction<String, String> {
-  private int valueToExpose = 0;
+  private transient int valueToExpose = 0;
 
   @Override
   public void open(Configuration config) {
@@ -123,8 +176,8 @@ public class MyMapper extends RichMapFunction<String, String> {
 <div data-lang="scala" markdown="1">
 {% highlight scala %}
 
-public class MyMapper extends RichMapFunction[String,String] {
-  val valueToExpose = 0
+new class MyMapper extends RichMapFunction[String,String] {
+  @transient private var valueToExpose = 0
 
   override def open(parameters: Configuration): Unit = {
     getRuntimeContext()
@@ -150,9 +203,11 @@ Note that reporters will turn the exposed object into a `String`, which means th
 A `Histogram` measures the distribution of long values.
 You can register one by calling `histogram(String name, Histogram histogram)` on a `MetricGroup`.
 
+<div class="codetabs" markdown="1">
+<div data-lang="java" markdown="1">
 {% highlight java %}
 public class MyMapper extends RichMapFunction<Long, Long> {
-  private Histogram histogram;
+  private transient Histogram histogram;
 
   @Override
   public void open(Configuration config) {
@@ -168,6 +223,30 @@ public class MyMapper extends RichMapFunction<Long, Long> {
   }
 }
 {% endhighlight %}
+</div>
+
+<div data-lang="scala" markdown="1">
+{% highlight scala %}
+
+class MyMapper extends RichMapFunction[Long,Long] {
+  @transient private var histogram: Histogram
+
+  override def open(parameters: Configuration): Unit = {
+    histogram = getRuntimeContext()
+      .getMetricGroup()
+      .histogram("myHistogram", new MyHistogram())
+  }
+
+  override def map(value: Long): Long = {
+    histogram.update(value)
+    value
+  }
+}
+
+{% endhighlight %}
+</div>
+
+</div>
 
 Flink does not provide a default implementation for `Histogram`, but offers a {% gh_link flink-metrics/flink-metrics-dropwizard/src/main/java/org/apache/flink/dropwizard/metrics/DropwizardHistogramWrapper.java "Wrapper" %} that allows usage of Codahale/DropWizard histograms.
 To use this wrapper add the following dependency in your `pom.xml`:
@@ -181,30 +260,67 @@ To use this wrapper add the following dependency in your `pom.xml`:
 
 You can then register a Codahale/DropWizard histogram like this:
 
+<div class="codetabs" markdown="1">
+<div data-lang="java" markdown="1">
 {% highlight java %}
-public class MyMapper extends RichMapFunction<Long, Integer> {
-  private Histogram histogram;
+public class MyMapper extends RichMapFunction<Long, Long> {
+  private transient Histogram histogram;
 
   @Override
   public void open(Configuration config) {
-    com.codahale.metrics.Histogram histogram =
+    com.codahale.metrics.Histogram dropwizardHistogram =
       new com.codahale.metrics.Histogram(new SlidingWindowReservoir(500));
 
     this.histogram = getRuntimeContext()
       .getMetricGroup()
-      .histogram("myHistogram", new DropwizardHistogramWrapper(histogram));
+      .histogram("myHistogram", new DropwizardHistogramWrapper(dropwizardHistogram));
+  }
+  
+  @Override
+  public Long map(Long value) throws Exception {
+    this.histogram.update(value);
+    return value;
   }
 }
 {% endhighlight %}
+</div>
+
+<div data-lang="scala" markdown="1">
+{% highlight scala %}
+
+class MyMapper extends RichMapFunction[Long, Long] {
+  @transient private var histogram: Histogram
+
+  override def open(config: Configuration): Unit = {
+    com.codahale.metrics.Histogram dropwizardHistogram =
+      new com.codahale.metrics.Histogram(new SlidingWindowReservoir(500))
+        
+    histogram = getRuntimeContext()
+      .getMetricGroup()
+      .histogram("myHistogram", new DropwizardHistogramWrapper(dropwizardHistogram))
+  }
+  
+  override def map(value: Long): Long = {
+    histogram.update(value)
+    value
+  }
+}
+
+{% endhighlight %}
+</div>
+
+</div>
 
 #### Meter
 
 A `Meter` measures an average throughput. An occurrence of an event can be registered with the `markEvent()` method. Occurrence of multiple events at the same time can be registered with `markEvent(long n)` method.
 You can register a meter by calling `meter(String name, Meter meter)` on a `MetricGroup`.
 
+<div class="codetabs" markdown="1">
+<div data-lang="java" markdown="1">
 {% highlight java %}
 public class MyMapper extends RichMapFunction<Long, Long> {
-  private Meter meter;
+  private transient Meter meter;
 
   @Override
   public void open(Configuration config) {
@@ -220,6 +336,30 @@ public class MyMapper extends RichMapFunction<Long, Long> {
   }
 }
 {% endhighlight %}
+</div>
+
+<div data-lang="scala" markdown="1">
+{% highlight scala %}
+
+class MyMapper extends RichMapFunction[Long,Long] {
+  @transient private var meter: Meter
+
+  override def open(config: Configuration): Unit = {
+    meter = getRuntimeContext()
+      .getMetricGroup()
+      .meter("myMeter", new MyMeter())
+  }
+
+  override def map(value: Long): Long = {
+    meter.markEvent()
+    value
+  }
+}
+
+{% endhighlight %}
+</div>
+
+</div>
 
 Flink offers a {% gh_link flink-metrics/flink-metrics-dropwizard/src/main/java/org/apache/flink/dropwizard/metrics/DropwizardMeterWrapper.java "Wrapper" %} that allows usage of Codahale/DropWizard meters.
 To use this wrapper add the following dependency in your `pom.xml`:
@@ -233,17 +373,19 @@ To use this wrapper add the following dependency in your `pom.xml`:
 
 You can then register a Codahale/DropWizard meter like this:
 
+<div class="codetabs" markdown="1">
+<div data-lang="java" markdown="1">
 {% highlight java %}
 public class MyMapper extends RichMapFunction<Long, Long> {
-  private Meter meter;
+  private transient Meter meter;
 
   @Override
   public void open(Configuration config) {
-    com.codahale.metrics.Meter meter = new com.codahale.metrics.Meter();
+    com.codahale.metrics.Meter dropwizardMeter = new com.codahale.metrics.Meter();
 
     this.meter = getRuntimeContext()
       .getMetricGroup()
-      .meter("myMeter", new DropwizardMeterWrapper(meter));
+      .meter("myMeter", new DropwizardMeterWrapper(dropwizardMeter));
   }
 
   @Override
@@ -253,18 +395,49 @@ public class MyMapper extends RichMapFunction<Long, Long> {
   }
 }
 {% endhighlight %}
+</div>
+
+<div data-lang="scala" markdown="1">
+{% highlight scala %}
+
+class MyMapper extends RichMapFunction[Long,Long] {
+  @transient private var meter: Meter
+
+  override def open(config: Configuration): Unit = {
+    com.codahale.metrics.Meter dropwizardMeter = new com.codahale.metrics.Meter()
+  
+    meter = getRuntimeContext()
+      .getMetricGroup()
+      .meter("myMeter", new DropwizardMeterWrapper(dropwizardMeter))
+  }
+
+  override def map(value: Long): Long = {
+    meter.markEvent()
+    value
+  }
+}
+
+{% endhighlight %}
+</div>
+
+</div>
 
 ## Scope
 
-Every metric is assigned an identifier under which it will be reported that is based on 3 components: the user-provided name when registering the metric, an optional user-defined scope and a system-provided scope.
+Every metric is assigned an identifier and a set of key-value pairs under which the metric will be reported.
+
+THe identifier is based on 3 components: the user-defined name when registering the metric, an optional user-defined scope and a system-provided scope.
 For example, if `A.B` is the system scope, `C.D` the user scope and `E` the name, then the identifier for the metric will be `A.B.C.D.E`.
 
 You can configure which delimiter to use for the identifier (default: `.`) by setting the `metrics.scope.delimiter` key in `conf/flink-conf.yaml`.
 
 ### User Scope
 
-You can define a user scope by calling either `MetricGroup#addGroup(String name)` or `MetricGroup#addGroup(int name)`.
+You can define a user scope by calling `MetricGroup#addGroup(String name)`, `MetricGroup#addGroup(int name)` or `Metric#addGroup(String key, String value)`.
+These methods affect what `MetricGroup#getMetricIdentifier` and `MetricGroup#getScopeComponents` return.
 
+<div class="codetabs" markdown="1">
+<div data-lang="java" markdown="1">
 {% highlight java %}
 
 counter = getRuntimeContext()
@@ -272,7 +445,31 @@ counter = getRuntimeContext()
   .addGroup("MyMetrics")
   .counter("myCounter");
 
+counter = getRuntimeContext()
+  .getMetricGroup()
+  .addGroup("MyMetricsKey", "MyMetricsValue")
+  .counter("myCounter");
+
 {% endhighlight %}
+</div>
+
+<div data-lang="scala" markdown="1">
+{% highlight scala %}
+
+counter = getRuntimeContext()
+  .getMetricGroup()
+  .addGroup("MyMetrics")
+  .counter("myCounter")
+
+counter = getRuntimeContext()
+  .getMetricGroup()
+  .addGroup("MyMetricsKey", "MyMetricsValue")
+  .counter("myCounter")
+
+{% endhighlight %}
+</div>
+
+</div>
 
 ### System Scope
 
@@ -324,16 +521,50 @@ or by assigning unique names to jobs and operators.
 
 **Important:** For the Batch API, &lt;operator_id&gt; is always equal to &lt;task_id&gt;.
 
+### User Variables
+
+You can define a user variable by calling `MetricGroup#addGroup(String key, String value)`.
+This method affects what `MetricGroup#getMetricIdentifier`, `MetricGroup#getScopeComponents` and `MetricGroup#getAllVariables()` returns.
+
+**Important:** User variables cannot be used in scope formats.
+
+{% highlight java %}
+
+<div class="codetabs" markdown="1">
+<div data-lang="java" markdown="1">
+{% highlight java %}
+
+counter = getRuntimeContext()
+  .getMetricGroup()
+  .addGroup("MyMetricsKey", "MyMetricsValue")
+  .counter("myCounter");
+
+{% endhighlight %}
+</div>
+
+<div data-lang="scala" markdown="1">
+{% highlight scala %}
+
+counter = getRuntimeContext()
+  .getMetricGroup()
+  .addGroup("MyMetricsKey", "MyMetricsValue")
+  .counter("myCounter")
+
+{% endhighlight %}
+</div>
+
+</div>
+
 ## Reporter
 
 Metrics can be exposed to an external system by configuring one or several reporters in `conf/flink-conf.yaml`. These
 reporters will be instantiated on each job and task manager when they are started.
 
-- `metrics.reporters`: The list of named reporters.
 - `metrics.reporter.<name>.<config>`: Generic setting `<config>` for the reporter named `<name>`.
 - `metrics.reporter.<name>.class`: The reporter class to use for the reporter named `<name>`.
 - `metrics.reporter.<name>.interval`: The reporter interval to use for the reporter named `<name>`.
 - `metrics.reporter.<name>.scope.delimiter`: The delimiter to use for the identifier (default value use `metrics.scope.delimiter`) for the reporter named `<name>`.
+- `metrics.reporters`: (optional) A comma-separated include list of reporter names. By default all configured reporters will be used.
 
 All reporters must at least have the `class` property, some allow specifying a reporting `interval`. Below,
 we will list more settings specific to each reporter.
@@ -375,7 +606,6 @@ Example configuration:
 
 {% highlight yaml %}
 
-metrics.reporters: jmx
 metrics.reporter.jmx.class: org.apache.flink.metrics.jmx.JMXReporter
 metrics.reporter.jmx.port: 8789
 
@@ -411,7 +641,6 @@ Example configuration:
 
 {% highlight yaml %}
 
-metrics.reporters: gang
 metrics.reporter.gang.class: org.apache.flink.metrics.ganglia.GangliaReporter
 metrics.reporter.gang.host: localhost
 metrics.reporter.gang.port: 8649
@@ -437,7 +666,6 @@ Example configuration:
 
 {% highlight yaml %}
 
-metrics.reporters: grph
 metrics.reporter.grph.class: org.apache.flink.metrics.graphite.GraphiteReporter
 metrics.reporter.grph.host: localhost
 metrics.reporter.grph.port: 2003
@@ -458,7 +686,6 @@ Example configuration:
 
 {% highlight yaml %}
 
-metrics.reporters: prom
 metrics.reporter.prom.class: org.apache.flink.metrics.prometheus.PrometheusReporter
 
 {% endhighlight %}
@@ -488,7 +715,6 @@ Example configuration:
 
 {% highlight yaml %}
 
-metrics.reporters: stsd
 metrics.reporter.stsd.class: org.apache.flink.metrics.statsd.StatsDReporter
 metrics.reporter.stsd.host: localhost
 metrics.reporter.stsd.port: 8125
@@ -512,7 +738,6 @@ Example configuration:
 
 {% highlight yaml %}
 
-metrics.reporters: dghttp
 metrics.reporter.dghttp.class: org.apache.flink.metrics.datadog.DatadogHttpReporter
 metrics.reporter.dghttp.apikey: xxx
 metrics.reporter.dghttp.tags: myflinkapp,prod
@@ -529,7 +754,6 @@ Example configuration:
 
 {% highlight yaml %}
 
-metrics.reporters: slf4j
 metrics.reporter.slf4j.class: org.apache.flink.metrics.slf4j.Slf4jReporter
 metrics.reporter.slf4j.interval: 60 SECONDS
 
