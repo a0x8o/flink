@@ -18,12 +18,11 @@
 
 package org.apache.flink.runtime.instance;
 
-import org.apache.flink.api.common.JobID;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobmanager.scheduler.Locality;
-import org.apache.flink.runtime.jobmanager.slots.SlotOwner;
 import org.apache.flink.runtime.jobmanager.slots.TaskManagerGateway;
+import org.apache.flink.runtime.jobmaster.SlotOwner;
 import org.apache.flink.runtime.taskmanager.TaskManagerLocation;
 import org.apache.flink.util.TestLogger;
 
@@ -49,14 +48,12 @@ public class SlotSharingGroupAssignmentTest extends TestLogger {
 		final int numberSlots = 2;
 		final JobVertexID sourceId = new JobVertexID();
 		final JobVertexID sinkId = new JobVertexID();
-		final JobID jobId = new JobID();
 
 		for (int i = 0; i < numberTaskManagers; i++) {
 			final TaskManagerLocation taskManagerLocation = new TaskManagerLocation(ResourceID.generate(), InetAddress.getLocalHost(), i + 1000);
 
 			for (int j = 0; j < numberSlots; j++) {
 				final SharedSlot slot = new SharedSlot(
-					jobId,
 					mock(SlotOwner.class),
 					taskManagerLocation,
 					j,

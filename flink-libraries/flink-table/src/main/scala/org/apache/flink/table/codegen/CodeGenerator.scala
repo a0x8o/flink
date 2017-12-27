@@ -692,7 +692,9 @@ abstract class CodeGenerator(
         generateNonNullLiteral(resultType, decimalField)
 
       case VARCHAR | CHAR =>
-        val escapedValue = StringEscapeUtils.ESCAPE_JAVA.translate(value.toString)
+        val escapedValue = StringEscapeUtils.escapeJava(
+          StringEscapeUtils.unescapeJava(value.toString)
+        )
         generateNonNullLiteral(resultType, "\"" + escapedValue + "\"")
 
       case SYMBOL =>
@@ -1312,10 +1314,10 @@ abstract class CodeGenerator(
   }
 
   private[flink] def generateNullableOutputBoxing(
-      element: GeneratedExpression,
+      expr: GeneratedExpression,
       typeInfo: TypeInformation[_])
     : GeneratedExpression = {
-    val boxedExpr = generateOutputFieldBoxing(element)
+    val boxedExpr = generateOutputFieldBoxing(generateCast(nullCheck, expr, typeInfo))
     val boxedTypeTerm = boxedTypeTermForTypeInfo(typeInfo)
     val exprOrNull: String = if (nullCheck) {
       s"${boxedExpr.nullTerm} ? null : ($boxedTypeTerm) ${boxedExpr.resultTerm}"

@@ -36,7 +36,7 @@ import org.apache.flink.runtime.executiongraph.restart.FixedDelayRestartStrategy
 import org.apache.flink.runtime.executiongraph.restart.NoRestartStrategy;
 import org.apache.flink.runtime.executiongraph.restart.RestartStrategy;
 import org.apache.flink.runtime.executiongraph.utils.SimpleSlotProvider;
-import org.apache.flink.runtime.instance.SlotProvider;
+import org.apache.flink.runtime.jobmaster.slotpool.SlotProvider;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.jobgraph.JobStatus;
 import org.apache.flink.runtime.jobgraph.JobVertex;
@@ -139,7 +139,7 @@ public class IndividualRestartsConcurrencyTest extends TestLogger {
 		// now report that cancelling is complete for the other vertex
 		vertex2.getCurrentExecutionAttempt().cancelingComplete();
 
-		assertEquals(JobStatus.CANCELED, graph.getState());
+		assertEquals(JobStatus.CANCELED, graph.getTerminationFuture().get());
 		assertTrue(vertex1.getCurrentExecutionAttempt().getState().isTerminal());
 		assertTrue(vertex2.getCurrentExecutionAttempt().getState().isTerminal());
 
@@ -305,8 +305,7 @@ public class IndividualRestartsConcurrencyTest extends TestLogger {
 		when(taskManagerGateway.cancelTask(any(ExecutionAttemptID.class), any(Time.class))).thenReturn(CompletableFuture.completedFuture(Acknowledge.get()));
 
 		final SimpleSlotProvider slotProvider = new SimpleSlotProvider(jid, parallelism, taskManagerGateway);
-		final Executor executor = TestingUtils.defaultExecutor();
-
+		final ManuallyTriggeredDirectExecutor executor = new ManuallyTriggeredDirectExecutor();
 
 		final CheckpointCoordinatorConfiguration checkpointCoordinatorConfiguration = new CheckpointCoordinatorConfiguration(
 			10L,

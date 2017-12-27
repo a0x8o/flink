@@ -65,6 +65,7 @@ import org.apache.hadoop.yarn.api.records.Resource;
 import org.apache.hadoop.yarn.client.api.AMRMClient;
 import org.apache.hadoop.yarn.client.api.NMClient;
 import org.apache.hadoop.yarn.client.api.async.AMRMClientAsync;
+import org.apache.hadoop.yarn.conf.YarnConfiguration;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
@@ -73,7 +74,10 @@ import org.junit.rules.TemporaryFolder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.annotation.Nullable;
+
 import java.io.File;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -149,11 +153,23 @@ public class YarnResourceManagerTest extends TestLogger {
 				MetricRegistry metricRegistry,
 				JobLeaderIdService jobLeaderIdService,
 				FatalErrorHandler fatalErrorHandler,
+				@Nullable String webInterfaceUrl,
 				AMRMClientAsync<AMRMClient.ContainerRequest> mockResourceManagerClient,
 				NMClient mockNMClient) {
-			super(rpcService, resourceManagerEndpointId, resourceId, flinkConfig, env,
-					resourceManagerConfiguration, highAvailabilityServices, heartbeatServices,
-					slotManager, metricRegistry, jobLeaderIdService, fatalErrorHandler);
+			super(
+				rpcService,
+				resourceManagerEndpointId,
+				resourceId,
+				flinkConfig,
+				env,
+				resourceManagerConfiguration,
+				highAvailabilityServices,
+				heartbeatServices,
+				slotManager,
+				metricRegistry,
+				jobLeaderIdService,
+				fatalErrorHandler,
+				webInterfaceUrl);
 			this.mockNMClient = mockNMClient;
 			this.mockResourceManagerClient = mockResourceManagerClient;
 		}
@@ -167,12 +183,15 @@ public class YarnResourceManagerTest extends TestLogger {
 		}
 
 		@Override
-		protected AMRMClientAsync<AMRMClient.ContainerRequest> createAndStartResourceManagerClient() {
+		protected AMRMClientAsync<AMRMClient.ContainerRequest> createAndStartResourceManagerClient(
+				YarnConfiguration yarnConfiguration,
+				int yarnHeartbeatIntervalMillis,
+				@Nullable String webInteraceUrl) {
 			return mockResourceManagerClient;
 		}
 
 		@Override
-		protected NMClient createAndStartNodeManagerClient() {
+		protected NMClient createAndStartNodeManagerClient(YarnConfiguration yarnConfiguration) {
 			return mockNMClient;
 		}
 	}
@@ -231,9 +250,9 @@ public class YarnResourceManagerTest extends TestLogger {
 							rmServices.metricRegistry,
 							rmServices.jobLeaderIdService,
 							fatalErrorHandler,
+							null,
 							mockResourceManagerClient,
-							mockNMClient
-					);
+							mockNMClient);
 		}
 
 		/**
@@ -328,7 +347,7 @@ public class YarnResourceManagerTest extends TestLogger {
 			final SlotReport slotReport = new SlotReport(
 				new SlotStatus(
 					new SlotID(taskManagerResourceId, 1),
-					new ResourceProfile(10, 1, 1, 1)));
+					new ResourceProfile(10, 1, 1, 1, Collections.emptyMap())));
 
 			CompletableFuture<Integer> numberRegisteredSlotsFuture = rmGateway
 				.registerTaskExecutor(
