@@ -174,9 +174,6 @@ public abstract class StreamExecutionEnvironment {
 	 * @param parallelism The parallelism
 	 */
 	public StreamExecutionEnvironment setParallelism(int parallelism) {
-		if (parallelism < 1) {
-			throw new IllegalArgumentException("parallelism must be at least one.");
-		}
 		config.setParallelism(parallelism);
 		return this;
 	}
@@ -439,7 +436,7 @@ public abstract class StreamExecutionEnvironment {
 	 * from operations on {@link org.apache.flink.streaming.api.datastream.KeyedStream}) is maintained
 	 * (heap, managed memory, externally), and where state snapshots/checkpoints are stored, both for
 	 * the key/value state, and for checkpointed functions (implementing the interface
-	 * {@link org.apache.flink.streaming.api.checkpoint.Checkpointed}).
+	 * {@link org.apache.flink.streaming.api.checkpoint.CheckpointedFunction}).
 	 *
 	 * <p>The {@link org.apache.flink.runtime.state.memory.MemoryStateBackend} for example
 	 * maintains the state in heap memory, as objects. It is lightweight without extra dependencies,

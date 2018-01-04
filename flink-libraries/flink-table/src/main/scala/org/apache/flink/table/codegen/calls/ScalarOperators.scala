@@ -22,7 +22,8 @@ import org.apache.calcite.avatica.util.{DateTimeUtils, TimeUnitRange}
 import org.apache.calcite.util.BuiltInMethod
 import org.apache.flink.api.common.typeinfo.BasicTypeInfo._
 import org.apache.flink.api.common.typeinfo._
-import org.apache.flink.api.java.typeutils.{MapTypeInfo, ObjectArrayTypeInfo}
+import org.apache.flink.api.common.typeutils.CompositeType
+import org.apache.flink.api.java.typeutils.{MapTypeInfo, ObjectArrayTypeInfo, RowTypeInfo}
 import org.apache.flink.table.codegen.CodeGenUtils._
 import org.apache.flink.table.codegen.calls.CallGenerator.generateCallIfArgsNotNull
 import org.apache.flink.table.codegen.{CodeGenException, CodeGenerator, GeneratedExpression}
@@ -46,9 +47,22 @@ object ScalarOperators {
       nullCheck: Boolean,
       resultType: TypeInformation[_],
       left: GeneratedExpression,
-      right: GeneratedExpression)
-    : GeneratedExpression = {
-    val leftCasting = numericCasting(left.resultType, resultType)
+      right: GeneratedExpression): GeneratedExpression = {
+
+    val leftCasting = operator match {
+      case "%" =>
+        if (left.resultType == right.resultType) {
+          numericCasting(left.resultType, resultType)
+        } else {
+          val castedType = if (isDecimal(left.resultType)) {
+            Types.LONG
+          } else {
+            left.resultType
+          }
+          numericCasting(left.resultType, castedType)
+        }
+      case _ => numericCasting(left.resultType, resultType)
+    }
     val rightCasting = numericCasting(right.resultType, resultType)
     val resultTypeTerm = primitiveTypeTermForTypeInfo(resultType)
 
@@ -192,7 +206,7 @@ object ScalarOperators {
     else if (isMap(left.resultType) &&
       left.resultType.getTypeClass == right.resultType.getTypeClass) {
       generateOperatorIfNotNull(nullCheck, BOOLEAN_TYPE_INFO, left, right) {
-        (leftTerm, rightTerm) => s"java.util.Map.equals($leftTerm, $rightTerm)"
+        (leftTerm, rightTerm) => s"$leftTerm.equals($rightTerm)"
       }
     }
     // comparable types of same type
@@ -240,7 +254,7 @@ object ScalarOperators {
     else if (isMap(left.resultType) &&
       left.resultType.getTypeClass == right.resultType.getTypeClass) {
       generateOperatorIfNotNull(nullCheck, BOOLEAN_TYPE_INFO, left, right) {
-        (leftTerm, rightTerm) => s"!java.util.Map.equals($leftTerm, $rightTerm)"
+        (leftTerm, rightTerm) => s"!($leftTerm.equals($rightTerm))"
       }
     }
     // comparable types
@@ -849,6 +863,41 @@ object ScalarOperators {
     generateUnaryArithmeticOperator(operator, nullCheck, operand.resultType, operand)
   }
 
+  def generateRow(
+      codeGenerator: CodeGenerator,
+      resultType: TypeInformation[_],
+      elements: Seq[GeneratedExpression])
+  : GeneratedExpression = {
+    val rowTerm = codeGenerator.addReusableRow(resultType.getArity)
+
+    val boxedElements: Seq[GeneratedExpression] = resultType match {
+      case ct: RowTypeInfo => // should always be RowTypeInfo
+        if (resultType.getArity == elements.size) {
+          elements.zipWithIndex.map {
+            case (e, idx) => codeGenerator.generateNullableOutputBoxing(e,
+              ct.getTypeAt(idx))
+          }
+        } else {
+          throw new CodeGenException(s"Illegal row generation operation. " +
+            s"Expected row arity ${resultType.getArity} but was ${elements.size}.")
+        }
+      case _ => throw new CodeGenException(s"Unsupported row generation operation. " +
+        s"Expected RowTypeInfo but was $resultType.")
+    }
+
+    val code = boxedElements
+      .zipWithIndex
+      .map { case (element, idx) =>
+        s"""
+           |${element.code}
+           |$rowTerm.setField($idx, ${element.resultTerm});
+           |""".stripMargin
+      }
+      .mkString("\n")
+
+    GeneratedExpression(rowTerm, GeneratedExpression.NEVER_NULL, code, resultType)
+  }
+
   def generateArray(
       codeGenerator: CodeGenerator,
       resultType: TypeInformation[_],
@@ -857,21 +906,11 @@ object ScalarOperators {
     val arrayTerm = codeGenerator.addReusableArray(resultType.getTypeClass, elements.size)
 
     val boxedElements: Seq[GeneratedExpression] = resultType match {
-
+      // we box the elements to also represent null values
       case oati: ObjectArrayTypeInfo[_, _] =>
-        // we box the elements to also represent null values
-        val boxedTypeTerm = boxedTypeTermForTypeInfo(oati.getComponentInfo)
-
         elements.map { e =>
-          val boxedExpr = codeGenerator.generateOutputFieldBoxing(e)
-          val exprOrNull: String = if (codeGenerator.nullCheck) {
-            s"${boxedExpr.nullTerm} ? null : ($boxedTypeTerm) ${boxedExpr.resultTerm}"
-          } else {
-            boxedExpr.resultTerm
-          }
-          boxedExpr.copy(resultTerm = exprOrNull)
+          codeGenerator.generateNullableOutputBoxing(e, oati.getComponentInfo)
         }
-
       // no boxing necessary
       case _: PrimitiveArrayTypeInfo[_] => elements
     }
@@ -1085,22 +1124,9 @@ object ScalarOperators {
 
     val boxedElements: Seq[GeneratedExpression] = resultType match {
       case mti: MapTypeInfo[_, _] =>
-        // we box the elements to also represent null values
-        val boxedKeyTypeTerm = boxedTypeTermForTypeInfo(mti.getKeyTypeInfo)
-        val boxedValueTypeTerm = boxedTypeTermForTypeInfo(mti.getValueTypeInfo)
-
-        elements.zipWithIndex.map { case (element, idx) =>
-          val boxedExpr = codeGenerator.generateOutputFieldBoxing(element)
-          val exprOrNull: String = if (codeGenerator.nullCheck) {
-            if (idx % 2 == 0) {
-              s"${boxedExpr.nullTerm} ? null : ($boxedKeyTypeTerm) ${boxedExpr.resultTerm}"
-            } else {
-              s"${boxedExpr.nullTerm} ? null : ($boxedValueTypeTerm) ${boxedExpr.resultTerm}"
-            }
-          } else {
-            boxedExpr.resultTerm
-          }
-          boxedExpr.copy(resultTerm = exprOrNull)
+        elements.zipWithIndex.map { case (e, idx) =>
+          codeGenerator.generateNullableOutputBoxing(e,
+            if (idx % 2 == 0) mti.getKeyTypeInfo else mti.getValueTypeInfo)
         }
     }
 

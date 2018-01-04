@@ -30,6 +30,7 @@ import org.apache.flink.runtime.filecache.FileCache;
 import org.apache.flink.runtime.heartbeat.HeartbeatServices;
 import org.apache.flink.runtime.highavailability.TestingHighAvailabilityServices;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
+import org.apache.flink.runtime.io.network.MockNetworkEnvironment;
 import org.apache.flink.runtime.io.network.NetworkEnvironment;
 import org.apache.flink.runtime.jobmaster.JMTMRegistrationSuccess;
 import org.apache.flink.runtime.jobmaster.JobMasterGateway;
@@ -57,12 +58,14 @@ import org.apache.flink.runtime.taskmanager.TaskManagerLocation;
 import org.apache.flink.runtime.testingUtils.TestingUtils;
 import org.apache.flink.runtime.util.TestingFatalErrorHandler;
 import org.apache.flink.util.TestLogger;
+
 import org.hamcrest.Matchers;
 import org.junit.Test;
 import org.mockito.Mockito;
 
 import java.net.InetAddress;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ScheduledExecutorService;
@@ -119,7 +122,7 @@ public class TaskExecutorITCase extends TestLogger {
 		final TaskManagerLocation taskManagerLocation = new TaskManagerLocation(taskManagerResourceId, InetAddress.getLocalHost(), 1234);
 		final MemoryManager memoryManager = mock(MemoryManager.class);
 		final IOManager ioManager = mock(IOManager.class);
-		final NetworkEnvironment networkEnvironment = mock(NetworkEnvironment.class);
+		final NetworkEnvironment networkEnvironment = MockNetworkEnvironment.getMock();
 		final TaskManagerMetricGroup taskManagerMetricGroup = mock(TaskManagerMetricGroup.class);
 		final BroadcastVariableManager broadcastVariableManager = mock(BroadcastVariableManager.class);
 		final FileCache fileCache = mock(FileCache.class);
@@ -168,7 +171,7 @@ public class TaskExecutorITCase extends TestLogger {
 		when(jmGateway.getHostname()).thenReturn(jmAddress);
 		when(jmGateway.offerSlots(
 			eq(taskManagerResourceId),
-			any(Iterable.class),
+			any(Collection.class),
 			any(Time.class))).thenReturn(mock(CompletableFuture.class, RETURNS_MOCKS));
 		when(jmGateway.getFencingToken()).thenReturn(jobMasterId);
 
@@ -213,7 +216,7 @@ public class TaskExecutorITCase extends TestLogger {
 
 			verify(jmGateway, Mockito.timeout(timeout.toMilliseconds())).offerSlots(
 				eq(taskManagerResourceId),
-				(Iterable<SlotOffer>)argThat(Matchers.contains(slotOffer)),
+				(Collection<SlotOffer>)argThat(Matchers.contains(slotOffer)),
 				any(Time.class));
 		} finally {
 			if (testingFatalErrorHandler.hasExceptionOccurred()) {

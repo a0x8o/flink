@@ -64,6 +64,7 @@ import org.apache.flink.runtime.leaderelection.TestingLeaderRetrievalService;
 import org.apache.flink.runtime.messages.JobManagerMessages;
 import org.apache.flink.runtime.metrics.NoOpMetricRegistry;
 import org.apache.flink.runtime.metrics.groups.JobManagerMetricGroup;
+import org.apache.flink.runtime.metrics.groups.UnregisteredMetricGroups;
 import org.apache.flink.runtime.state.OperatorStateHandle;
 import org.apache.flink.runtime.state.memory.ByteStreamStateHandle;
 import org.apache.flink.runtime.taskmanager.TaskManager;
@@ -73,6 +74,7 @@ import org.apache.flink.runtime.testingUtils.TestingMessages;
 import org.apache.flink.runtime.testingUtils.TestingTaskManager;
 import org.apache.flink.runtime.testingUtils.TestingTaskManagerMessages;
 import org.apache.flink.runtime.testingUtils.TestingUtils;
+import org.apache.flink.runtime.testutils.InMemorySubmittedJobGraphStore;
 import org.apache.flink.runtime.testutils.RecoverableCompletedCheckpointStore;
 import org.apache.flink.runtime.util.TestByteStreamStateHandleDeepCompare;
 import org.apache.flink.util.InstantiationUtil;
@@ -169,7 +171,8 @@ public class JobManagerHARecoveryTest extends TestLogger {
 		try {
 			Scheduler scheduler = new Scheduler(TestingUtils.defaultExecutionContext());
 
-			MySubmittedJobGraphStore mySubmittedJobGraphStore = new MySubmittedJobGraphStore();
+			InMemorySubmittedJobGraphStore submittedJobGraphStore = new InMemorySubmittedJobGraphStore();
+			submittedJobGraphStore.start(null);
 			CompletedCheckpointStore checkpointStore = new RecoverableCompletedCheckpointStore();
 			CheckpointIDCounter checkpointCounter = new StandaloneCheckpointIDCounter();
 			CheckpointRecoveryFactory checkpointStateFactory = new MyCheckpointRecoveryFactory(checkpointStore, checkpointCounter);
@@ -203,10 +206,10 @@ public class JobManagerHARecoveryTest extends TestLogger {
 				new FixedDelayRestartStrategy.FixedDelayRestartStrategyFactory(Int.MaxValue(), 100),
 				timeout,
 				myLeaderElectionService,
-				mySubmittedJobGraphStore,
+				submittedJobGraphStore,
 				checkpointStateFactory,
 				jobRecoveryTimeout,
-				new JobManagerMetricGroup(new NoOpMetricRegistry(), "localhost"),
+				UnregisteredMetricGroups.createUnregisteredJobManagerMetricGroup(),
 				Option.<String>empty());
 
 			jobManager = system.actorOf(jobManagerProps);
@@ -217,7 +220,7 @@ public class JobManagerHARecoveryTest extends TestLogger {
 				ResourceID.generate(),
 				system,
 				testingHighAvailabilityServices,
-				new NoOpMetricRegistry(),
+				NoOpMetricRegistry.INSTANCE,
 				"localhost",
 				Option.apply("taskmanager"),
 				true,
@@ -285,7 +288,7 @@ public class JobManagerHARecoveryTest extends TestLogger {
 			// check that the job gets removed from the JobManager
 			Await.ready(jobRemoved, deadline.timeLeft());
 			// but stays in the submitted job graph store
-			assertTrue(mySubmittedJobGraphStore.contains(jobGraph.getJobID()));
+			assertTrue(submittedJobGraphStore.contains(jobGraph.getJobID()));
 
 			Future<Object> jobRunning = gateway.ask(new TestingJobManagerMessages.NotifyWhenJobStatus(jobGraph.getJobID(), JobStatus.RUNNING), deadline.timeLeft());
 
@@ -305,7 +308,7 @@ public class JobManagerHARecoveryTest extends TestLogger {
 			Await.ready(jobFinished, deadline.timeLeft());
 
 			// check that the job has been removed from the submitted job graph store
-			assertFalse(mySubmittedJobGraphStore.contains(jobGraph.getJobID()));
+			assertFalse(submittedJobGraphStore.contains(jobGraph.getJobID()));
 
 			// Check that state has been recovered
 			long[] recoveredStates = BlockingStatefulInvokable.getRecoveredStates();
@@ -381,7 +384,7 @@ public class JobManagerHARecoveryTest extends TestLogger {
 				submittedJobGraphStore,
 				mock(CheckpointRecoveryFactory.class),
 				jobRecoveryTimeout,
-				new JobManagerMetricGroup(new NoOpMetricRegistry(), "localhost"),
+				UnregisteredMetricGroups.createUnregisteredJobManagerMetricGroup(),
 				recoveredJobs).withDispatcher(CallingThreadDispatcher.Id());
 
 			jobManager = system.actorOf(jobManagerProps);
@@ -478,49 +481,6 @@ public class JobManagerHARecoveryTest extends TestLogger {
 		@Override
 		public CheckpointIDCounter createCheckpointIDCounter(JobID jobId) throws Exception {
 			return counter;
-		}
-	}
-
-	static class MySubmittedJobGraphStore implements SubmittedJobGraphStore {
-
-		Map<JobID, SubmittedJobGraph> storedJobs = new HashMap<>();
-
-		@Override
-		public void start(SubmittedJobGraphListener jobGraphListener) throws Exception {
-
-		}
-
-		@Override
-		public void stop() throws Exception {
-
-		}
-
-		@Override
-		public SubmittedJobGraph recoverJobGraph(JobID jobId) throws Exception {
-			if (storedJobs.containsKey(jobId)) {
-				return storedJobs.get(jobId);
-			} else {
-				return null;
-			}
-		}
-
-		@Override
-		public void putJobGraph(SubmittedJobGraph jobGraph) throws Exception {
-			storedJobs.put(jobGraph.getJobId(), jobGraph);
-		}
-
-		@Override
-		public void removeJobGraph(JobID jobId) throws Exception {
-			storedJobs.remove(jobId);
-		}
-
-		@Override
-		public Collection<JobID> getJobIds() throws Exception {
-			return storedJobs.keySet();
-		}
-
-		boolean contains(JobID jobId) {
-			return storedJobs.containsKey(jobId);
 		}
 	}
 

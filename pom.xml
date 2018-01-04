@@ -83,6 +83,7 @@ under the License.
 		<module>flink-yarn</module>
 		<module>flink-yarn-tests</module>
 		<module>flink-fs-tests</module>
+		<module>flink-docs</module>
 	</modules>
 
 	<properties>
@@ -111,7 +112,7 @@ under the License.
 		<maven.compiler.target>${java.version}</maven.compiler.target>
 		<scala.macros.version>2.1.0</scala.macros.version>
 		<!-- Default scala versions, may be overwritten by build profiles -->
-		<scala.version>2.11.11</scala.version>
+		<scala.version>2.11.12</scala.version>
 		<scala.binary.version>2.11</scala.binary.version>
 		<chill.version>0.7.4</chill.version>
 		<zookeeper.version>3.4.10</zookeeper.version>
@@ -615,7 +616,7 @@ under the License.
 							<threshold>Low</threshold>
 							<effort>default</effort>
 							<findbugsXmlOutputDirectory>${project.build.directory}/spotbugs</findbugsXmlOutputDirectory>
-							<excludeFilterFile>tools/maven/spotbugs-exclude.xml</excludeFilterFile>
+							<excludeFilterFile>${rootDir}/tools/maven/spotbugs-exclude.xml</excludeFilterFile>
 							<failOnError>true</failOnError>
 						</configuration>
 					</plugin>
@@ -1061,6 +1062,7 @@ under the License.
 					<dependency>
 						<groupId>com.puppycrawl.tools</groupId>
 						<artifactId>checkstyle</artifactId>
+						<!-- Note: match version with docs/internals/ide_setup.md -->
 						<version>8.4</version>
 					</dependency>
 				</dependencies>
@@ -1108,7 +1110,7 @@ under the License.
 						<forkNumber>0${surefire.forkNumber}</forkNumber>
 						<log4j.configuration>${log4j.configuration}</log4j.configuration>
 					</systemPropertyVariables>
-					<argLine>-Xms256m -Xmx2048m -Dmvn.forkNumber=${surefire.forkNumber} -XX:+UseSerialGC</argLine>
+					<argLine>-Xms256m -Xmx2048m -Dmvn.forkNumber=${surefire.forkNumber} -XX:+UseG1GC</argLine>
 				</configuration>
 				<executions>
 					<!--execute all the unit tests-->
@@ -1276,16 +1278,6 @@ under the License.
 					</execution>
 				</executions>
 			</plugin>
-			<plugin>
-				<artifactId>maven-clean-plugin</artifactId>
-				<configuration>
-					<filesets>
-						<fileset>
-							<directory>${generated.docs.dir}</directory>
-						</fileset>
-					</filesets>
-				</configuration>
-			</plugin>
 		</plugins>
 
 		<!-- Plugin configurations for plugins activated in sub-projects -->
@@ -1307,7 +1299,7 @@ under the License.
 				<plugin>
 					<groupId>org.apache.maven.plugins</groupId>
 					<artifactId>maven-enforcer-plugin</artifactId>
-					<version>1.4.1</version>
+					<version>3.0.0-M1</version>
 				</plugin>
 
 				<!-- Pin the version of the maven shade plugin -->

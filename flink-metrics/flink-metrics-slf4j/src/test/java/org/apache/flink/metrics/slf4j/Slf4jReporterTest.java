@@ -27,13 +27,13 @@ import org.apache.flink.metrics.Histogram;
 import org.apache.flink.metrics.Meter;
 import org.apache.flink.metrics.MeterView;
 import org.apache.flink.metrics.SimpleCounter;
+import org.apache.flink.metrics.util.TestHistogram;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.metrics.MetricRegistryConfiguration;
 import org.apache.flink.runtime.metrics.MetricRegistryImpl;
 import org.apache.flink.runtime.metrics.groups.TaskManagerMetricGroup;
 import org.apache.flink.runtime.metrics.groups.TaskMetricGroup;
-import org.apache.flink.runtime.metrics.util.TestingHistogram;
 import org.apache.flink.util.TestLogger;
 
 import org.junit.AfterClass;
@@ -63,7 +63,6 @@ public class Slf4jReporterTest extends TestLogger {
 		TestUtils.addTestAppenderForRootLogger();
 
 		Configuration configuration = new Configuration();
-		configuration.setString(MetricOptions.REPORTERS_LIST, "slf4j");
 		configuration.setString(ConfigConstants.METRICS_REPORTER_PREFIX + "slf4j." +
 			ConfigConstants.METRICS_REPORTER_CLASS_SUFFIX, Slf4jReporter.class.getName());
 		configuration.setString(MetricOptions.SCOPE_NAMING_TASK, "<host>.<tm_id>.<job_name>");
@@ -136,7 +135,7 @@ public class Slf4jReporterTest extends TestLogger {
 	public void testAddHistogram() throws Exception {
 		String histogramName = "histogram";
 
-		Histogram histogram = taskMetricGroup.histogram(histogramName, new TestingHistogram());
+		Histogram histogram = taskMetricGroup.histogram(histogramName, new TestHistogram());
 		assertTrue(reporter.getHistograms().containsKey(histogram));
 
 		String expectedHistogramName = reporter.filterCharacters(HOST_NAME) + delimiter

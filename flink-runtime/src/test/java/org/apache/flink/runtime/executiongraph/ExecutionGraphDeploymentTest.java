@@ -40,6 +40,7 @@ import org.apache.flink.runtime.executiongraph.failover.RestartAllStrategy;
 import org.apache.flink.runtime.executiongraph.restart.NoRestartStrategy;
 import org.apache.flink.runtime.executiongraph.utils.SimpleAckingTaskManagerGateway;
 import org.apache.flink.runtime.instance.Instance;
+import org.apache.flink.runtime.jobmaster.LogicalSlot;
 import org.apache.flink.runtime.instance.SimpleSlot;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionType;
 import org.apache.flink.runtime.jobgraph.DistributionPattern;
@@ -53,7 +54,7 @@ import org.apache.flink.runtime.jobgraph.tasks.ExternalizedCheckpointSettings;
 import org.apache.flink.runtime.jobgraph.tasks.JobCheckpointingSettings;
 import org.apache.flink.runtime.jobmanager.scheduler.Scheduler;
 import org.apache.flink.runtime.jobmanager.slots.ActorTaskManagerGateway;
-import org.apache.flink.runtime.jobmanager.slots.SlotOwner;
+import org.apache.flink.runtime.jobmaster.SlotOwner;
 import org.apache.flink.runtime.operators.BatchTask;
 import org.apache.flink.runtime.taskmanager.LocalTaskManagerLocation;
 import org.apache.flink.runtime.taskmanager.TaskExecutionState;
@@ -183,7 +184,7 @@ public class ExecutionGraphDeploymentTest extends TestLogger {
 
 			final Instance instance = getInstance(new ActorTaskManagerGateway(instanceGateway));
 
-			final SimpleSlot slot = instance.allocateSimpleSlot(jobId);
+			final SimpleSlot slot = instance.allocateSimpleSlot();
 
 			assertEquals(ExecutionState.CREATED, vertex.getExecutionState());
 
@@ -587,10 +588,10 @@ public class ExecutionGraphDeploymentTest extends TestLogger {
 
 		sinkVertex.connectNewDataSetAsInput(sourceVertex, DistributionPattern.ALL_TO_ALL, ResultPartitionType.PIPELINED);
 
-		final Map<JobVertexID, CompletableFuture<SimpleSlot>[]> slotFutures = new HashMap<>(2);
+		final Map<JobVertexID, CompletableFuture<LogicalSlot>[]> slotFutures = new HashMap<>(2);
 
 		for (JobVertexID jobVertexID : Arrays.asList(sourceVertexId, sinkVertexId)) {
-			CompletableFuture<SimpleSlot>[] slotFutureArray = new CompletableFuture[parallelism];
+			CompletableFuture<LogicalSlot>[] slotFutureArray = new CompletableFuture[parallelism];
 
 			for (int i = 0; i < parallelism; i++) {
 				slotFutureArray[i] = new CompletableFuture<>();
@@ -630,13 +631,13 @@ public class ExecutionGraphDeploymentTest extends TestLogger {
 
 		final TaskManagerLocation localTaskManagerLocation = new LocalTaskManagerLocation();
 
-		final SimpleSlot sourceSlot1 = createSlot(executionGraph.getJobID(), localTaskManagerLocation, 0);
+		final SimpleSlot sourceSlot1 = createSlot(localTaskManagerLocation, 0);
 
-		final SimpleSlot sourceSlot2 = createSlot(executionGraph.getJobID(), localTaskManagerLocation, 1);
+		final SimpleSlot sourceSlot2 = createSlot(localTaskManagerLocation, 1);
 
-		final SimpleSlot sinkSlot1 = createSlot(executionGraph.getJobID(), localTaskManagerLocation, 0);
+		final SimpleSlot sinkSlot1 = createSlot(localTaskManagerLocation, 0);
 
-		final SimpleSlot sinkSlot2 = createSlot(executionGraph.getJobID(), localTaskManagerLocation, 1);
+		final SimpleSlot sinkSlot2 = createSlot(localTaskManagerLocation, 1);
 
 		slotFutures.get(sourceVertexId)[0].complete(sourceSlot1);
 		slotFutures.get(sourceVertexId)[1].complete(sourceSlot2);
@@ -653,9 +654,8 @@ public class ExecutionGraphDeploymentTest extends TestLogger {
 		}
 	}
 
-	private SimpleSlot createSlot(JobID jobId, TaskManagerLocation taskManagerLocation, int index) {
+	private SimpleSlot createSlot(TaskManagerLocation taskManagerLocation, int index) {
 		return new SimpleSlot(
-			jobId,
 			mock(SlotOwner.class),
 			taskManagerLocation,
 			index,

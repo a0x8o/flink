@@ -20,19 +20,18 @@ package org.apache.flink.metrics.prometheus;
 
 import org.apache.flink.configuration.ConfigConstants;
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.configuration.MetricOptions;
 import org.apache.flink.metrics.Counter;
 import org.apache.flink.metrics.Gauge;
 import org.apache.flink.metrics.Histogram;
 import org.apache.flink.metrics.Meter;
 import org.apache.flink.metrics.Metric;
 import org.apache.flink.metrics.SimpleCounter;
+import org.apache.flink.metrics.util.TestHistogram;
 import org.apache.flink.metrics.util.TestMeter;
 import org.apache.flink.runtime.metrics.MetricRegistryConfiguration;
 import org.apache.flink.runtime.metrics.MetricRegistryImpl;
 import org.apache.flink.runtime.metrics.groups.FrontMetricGroup;
 import org.apache.flink.runtime.metrics.groups.TaskManagerMetricGroup;
-import org.apache.flink.runtime.metrics.util.TestingHistogram;
 import org.apache.flink.util.TestLogger;
 
 import com.mashape.unirest.http.HttpResponse;
@@ -141,7 +140,7 @@ public class PrometheusReporterTest extends TestLogger {
 
 	@Test
 	public void histogramIsReportedAsPrometheusSummary() throws UnirestException {
-		Histogram testHistogram = new TestingHistogram();
+		Histogram testHistogram = new TestHistogram();
 
 		String histogramName = "testHistogram";
 		String summaryName = SCOPE_PREFIX + histogramName;
@@ -279,7 +278,6 @@ public class PrometheusReporterTest extends TestLogger {
 
 	static Configuration createConfigWithOneReporter(String reporterName, String portString) {
 		Configuration cfg = new Configuration();
-		cfg.setString(MetricOptions.REPORTERS_LIST, reporterName);
 		cfg.setString(ConfigConstants.METRICS_REPORTER_PREFIX + reporterName + "." + ConfigConstants.METRICS_REPORTER_CLASS_SUFFIX, PrometheusReporter.class.getName());
 		cfg.setString(ConfigConstants.METRICS_REPORTER_PREFIX + reporterName + "." + ARG_PORT, portString);
 		return cfg;

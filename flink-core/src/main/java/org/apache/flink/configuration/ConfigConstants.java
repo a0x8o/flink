@@ -595,19 +595,28 @@ public final class ConfigConstants {
 
 	/**
 	 * Path to hdfs-defaul.xml file
+	 *
+	 * @deprecated Use environment variable HADOOP_CONF_DIR instead.
 	 */
+	@Deprecated
 	public static final String HDFS_DEFAULT_CONFIG = "fs.hdfs.hdfsdefault";
 	
 	/**
 	 * Path to hdfs-site.xml file
+	 *
+	 * @deprecated Use environment variable HADOOP_CONF_DIR instead.
 	 */
+	@Deprecated
 	public static final String HDFS_SITE_CONFIG = "fs.hdfs.hdfssite";
 	
 	/**
 	 * Path to Hadoop configuration
+	 *
+	 * @deprecated Use environment variable HADOOP_CONF_DIR instead.
 	 */
+	@Deprecated
 	public static final String PATH_HADOOP_CONFIG = "fs.hdfs.hadoopconf";
-	
+
 	// ------------------------ File System Behavior ------------------------
 
 	/**
@@ -1022,7 +1031,7 @@ public final class ConfigConstants {
 	@Deprecated
 	public static final String HA_ZOOKEEPER_DIR_KEY = "high-availability.zookeeper.path.root";
 
-	/** @deprecated in favor of {@link HighAvailabilityOptions#HA_ZOOKEEPER_NAMESPACE}. */
+	/** @deprecated in favor of {@link HighAvailabilityOptions#HA_CLUSTER_ID}. */
 	@PublicEvolving
 	@Deprecated
 	public static final String HA_ZOOKEEPER_NAMESPACE_KEY = "high-availability.zookeeper.path.namespace";
@@ -1779,7 +1788,7 @@ public final class ConfigConstants {
 	@Deprecated
 	public static final String DEFAULT_ZOOKEEPER_DIR_KEY = "/flink";
 
-	/** @deprecated in favor of {@link HighAvailabilityOptions#HA_ZOOKEEPER_NAMESPACE}. */
+	/** @deprecated in favor of {@link HighAvailabilityOptions#HA_CLUSTER_ID}. */
 	@Deprecated
 	public static final String DEFAULT_ZOOKEEPER_NAMESPACE_KEY = "/default";
 

@@ -77,6 +77,9 @@ class MapTypeTest extends MapTypeTestBase {
       "map(2.0002p, 2.0003p)",
       "MAP[CAST(2.0002 AS DECIMAL), CAST(2.0003 AS DECIMAL)]",
       "{2.0002=2.0003}")
+
+    // implicit conversion
+    testSqlApi("MAP['k1', CAST(1 AS DOUBLE), 'k2', CAST(2 AS FLOAT)]", "{k1=1.0, k2=2.0}")
   }
 
   @Test
@@ -141,12 +144,17 @@ class MapTypeTest extends MapTypeTestBase {
 
     // comparison
     testAllApis(
-      'f5 === 'f2.at("a"),
-      "f5 === f2.at('a')",
-      "f5 = f2['a']",
+      'f1 === 'f2,
+      "f1 === f2",
+      "f1 = f2",
+      "false")
+
+    testAllApis(
+      'f3 === 'f7,
+      "f3 === f7",
+      "f3 = f7",
       "true")
 
-    // comparison
     testAllApis(
       'f5 === 'f2.at("a"),
       "f5 === f2.at('a')",
