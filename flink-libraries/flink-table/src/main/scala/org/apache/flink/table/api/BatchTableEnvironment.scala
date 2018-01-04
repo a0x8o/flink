@@ -68,6 +68,8 @@ abstract class BatchTableEnvironment(
   // the naming pattern for internally registered tables.
   private val internalNamePattern = "^_DataSetTable_[0-9]+$".r
 
+  override def queryConfig: BatchQueryConfig = new BatchQueryConfig
+
   /**
     * Checks if the chosen table name is valid.
     *
@@ -169,9 +171,9 @@ abstract class BatchTableEnvironment(
       sink: TableSink[T],
       queryConfig: QueryConfig): Unit = {
 
-    // We do not pass the configuration on, because there is nothing to configure for batch queries.
-    queryConfig match {
-      case _: BatchQueryConfig =>
+    // Check the query configuration to be a batch one.
+    val batchQueryConfig = queryConfig match {
+      case batchConfig: BatchQueryConfig => batchConfig
       case _ =>
         throw new TableException("BatchQueryConfig required to configure batch query.")
     }
@@ -180,7 +182,7 @@ abstract class BatchTableEnvironment(
       case batchSink: BatchTableSink[T] =>
         val outputType = sink.getOutputType
         // translate the Table into a DataSet and provide the type that the TableSink expects.
-        val result: DataSet[T] = translate(table)(outputType)
+        val result: DataSet[T] = translate(table, batchQueryConfig)(outputType)
         // Give the DataSet to the TableSink to emit it.
         batchSink.emitDataSet(result)
       case _ =>
@@ -230,7 +232,8 @@ abstract class BatchTableEnvironment(
   private[flink] def explain(table: Table, extended: Boolean): String = {
     val ast = table.getRelNode
     val optimizedPlan = optimize(ast)
-    val dataSet = translate[Row](optimizedPlan, ast.getRowType) (new GenericTypeInfo(classOf[Row]))
+    val dataSet = translate[Row](optimizedPlan, ast.getRowType, queryConfig) (
+      new GenericTypeInfo (classOf[Row]))
     dataSet.output(new DiscardingOutputFormat[Row])
     val env = dataSet.getExecutionEnvironment
     val jasonSqlPlan = env.getExecutionPlan
@@ -368,14 +371,17 @@ abstract class BatchTableEnvironment(
     * Table API calls and / or SQL queries and generating corresponding [[DataSet]] operators.
     *
     * @param table The root node of the relational expression tree.
+    * @param queryConfig The configuration for the query to generate.
     * @param tpe   The [[TypeInformation]] of the resulting [[DataSet]].
     * @tparam A The type of the resulting [[DataSet]].
     * @return The [[DataSet]] that corresponds to the translated [[Table]].
     */
-  protected def translate[A](table: Table)(implicit tpe: TypeInformation[A]): DataSet[A] = {
+  protected def translate[A](
+      table: Table,
+      queryConfig: BatchQueryConfig)(implicit tpe: TypeInformation[A]): DataSet[A] = {
     val relNode = table.getRelNode
     val dataSetPlan = optimize(relNode)
-    translate(dataSetPlan, relNode.getRowType)
+    translate(dataSetPlan, relNode.getRowType, queryConfig)
   }
 
   /**
@@ -384,19 +390,20 @@ abstract class BatchTableEnvironment(
     * @param logicalPlan The root node of the relational expression tree.
     * @param logicalType The row type of the result. Since the logicalPlan can lose the
     *                    field naming during optimization we pass the row type separately.
+    * @param queryConfig The configuration for the query to generate.
     * @param tpe         The [[TypeInformation]] of the resulting [[DataSet]].
     * @tparam A The type of the resulting [[DataSet]].
     * @return The [[DataSet]] that corresponds to the translated [[Table]].
     */
   protected def translate[A](
       logicalPlan: RelNode,
-      logicalType: RelDataType)
-      (implicit tpe: TypeInformation[A]): DataSet[A] = {
+      logicalType: RelDataType,
+      queryConfig: BatchQueryConfig)(implicit tpe: TypeInformation[A]): DataSet[A] = {
     TableEnvironment.validateType(tpe)
 
     logicalPlan match {
       case node: DataSetRel =>
-        val plan = node.translateToPlan(this)
+        val plan = node.translateToPlan(this, queryConfig)
         val conversion =
           getConversionMapper(
             plan.getType,
