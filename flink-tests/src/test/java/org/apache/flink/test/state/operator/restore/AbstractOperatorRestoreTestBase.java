@@ -89,6 +89,15 @@ public abstract class AbstractOperatorRestoreTestBase extends TestLogger {
 	private static ActorGateway taskManager = null;
 
 	private static final FiniteDuration timeout = new FiniteDuration(30L, TimeUnit.SECONDS);
+	private final boolean allowNonRestoredState;
+
+	protected AbstractOperatorRestoreTestBase() {
+		this(true);
+	}
+
+	protected AbstractOperatorRestoreTestBase(boolean allowNonRestoredState) {
+		this.allowNonRestoredState = allowNonRestoredState;
+	}
 
 	@BeforeClass
 	public static void beforeClass() {
@@ -113,7 +122,7 @@ public abstract class AbstractOperatorRestoreTestBase extends TestLogger {
 			TestingUtils.defaultExecutor(),
 			TestingUtils.defaultExecutor(),
 			highAvailabilityServices,
-			new NoOpMetricRegistry(),
+			NoOpMetricRegistry.INSTANCE,
 			Option.empty(),
 			Option.apply("jm"),
 			Option.apply("arch"),
@@ -135,7 +144,7 @@ public abstract class AbstractOperatorRestoreTestBase extends TestLogger {
 			ResourceID.generate(),
 			actorSystem,
 			highAvailabilityServices,
-			new NoOpMetricRegistry(),
+			NoOpMetricRegistry.INSTANCE,
 			"localhost",
 			Option.apply("tm"),
 			true,
@@ -238,7 +247,7 @@ public abstract class AbstractOperatorRestoreTestBase extends TestLogger {
 
 	private void restoreJob(String savepointPath) throws Exception {
 		JobGraph jobToRestore = createJobGraph(ExecutionMode.RESTORE);
-		jobToRestore.setSavepointRestoreSettings(SavepointRestoreSettings.forPath(savepointPath, true));
+		jobToRestore.setSavepointRestoreSettings(SavepointRestoreSettings.forPath(savepointPath, allowNonRestoredState));
 
 		Object msg;
 		Object result;

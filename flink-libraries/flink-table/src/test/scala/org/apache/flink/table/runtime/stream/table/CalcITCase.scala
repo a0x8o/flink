@@ -24,7 +24,7 @@ import org.apache.flink.streaming.util.StreamingMultipleProgramsTestBase
 import org.apache.flink.table.api.scala._
 import org.apache.flink.table.api.TableEnvironment
 import org.apache.flink.table.expressions.Literal
-import org.apache.flink.table.expressions.utils.{Func13, RichFunc1, RichFunc2}
+import org.apache.flink.table.expressions.utils.{Func13, RichFunc1, RichFunc2, SplitUDF}
 import org.apache.flink.table.runtime.utils.{StreamITCase, StreamTestData}
 import org.apache.flink.table.runtime.utils.UserDefinedFunctionTestUtils
 import org.apache.flink.types.Row
@@ -310,6 +310,73 @@ class CalcITCase extends StreamingMultipleProgramsTestBase {
       "default-Jack#22,Sunny-Jack#22,kevin2-Jack#22",
       "default-John#19,Sunny-John#19,kevin2-John#19",
       "default-nosharp,Sunny-nosharp,kevin2-nosharp"
+    )
+    assertEquals(expected.sorted, StreamITCase.testResults.sorted)
+  }
+
+  @Test
+  def testMapType(): Unit = {
+
+    val env = StreamExecutionEnvironment.getExecutionEnvironment
+    val tEnv = TableEnvironment.getTableEnvironment(env)
+    StreamITCase.testResults = mutable.MutableList()
+    val ds = StreamTestData.get3TupleDataStream(env)
+      .toTable(tEnv)
+      .select(map('_1, '_3))
+
+    val results = ds.toAppendStream[Row]
+    results.addSink(new StreamITCase.StringSink[Row])
+    env.execute()
+
+    val expected = mutable.MutableList(
+      "{10=Comment#4}",
+      "{11=Comment#5}",
+      "{12=Comment#6}",
+      "{13=Comment#7}",
+      "{14=Comment#8}",
+      "{15=Comment#9}",
+      "{16=Comment#10}",
+      "{17=Comment#11}",
+      "{18=Comment#12}",
+      "{19=Comment#13}",
+      "{1=Hi}",
+      "{20=Comment#14}",
+      "{21=Comment#15}",
+      "{2=Hello}",
+      "{3=Hello world}",
+      "{4=Hello world, how are you?}",
+      "{5=I am fine.}",
+      "{6=Luke Skywalker}",
+      "{7=Comment#1}",
+      "{8=Comment#2}",
+      "{9=Comment#3}")
+    assertEquals(expected.sorted, StreamITCase.testResults.sorted)
+  }
+
+  @Test
+  def testUDFWithUnicodeParameter(): Unit = {
+    val data = List(
+      ("a\u0001b", "c\"d", "e\\\"\u0004f"),
+      ("x\u0001y", "y\"z", "z\\\"\u0004z")
+    )
+    val env = StreamExecutionEnvironment.getExecutionEnvironment
+    val tEnv = TableEnvironment.getTableEnvironment(env)
+    StreamITCase.testResults = mutable.MutableList()
+    val splitUDF0 = new SplitUDF(deterministic = true)
+    val splitUDF1 = new SplitUDF(deterministic = false)
+    val ds = env.fromCollection(data).toTable(tEnv, 'a, 'b, 'c)
+      .select(splitUDF0('a, "\u0001", 0) as 'a0,
+              splitUDF1('a, "\u0001", 0) as 'a1,
+              splitUDF0('b, "\"", 1) as 'b0,
+              splitUDF1('b, "\"", 1) as 'b1,
+              splitUDF0('c, "\\\"\u0004", 0) as 'c0,
+              splitUDF1('c, "\\\"\u0004", 0) as 'c1
+      )
+    val results = ds.toAppendStream[Row]
+    results.addSink(new StreamITCase.StringSink[Row])
+    env.execute()
+    val expected = mutable.MutableList(
+      "a,a,d,d,e,e", "x,x,z,z,z,z"
     )
     assertEquals(expected.sorted, StreamITCase.testResults.sorted)
   }

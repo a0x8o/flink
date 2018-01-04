@@ -18,7 +18,10 @@
 
 package org.apache.flink.runtime.webmonitor.metrics;
 
+<<<<<<< HEAD
+=======
 import org.apache.flink.runtime.concurrent.FlinkFutureException;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.runtime.jobmaster.JobManagerGateway;
 import org.apache.flink.runtime.webmonitor.handlers.AbstractJsonRequestHandler;
 import org.apache.flink.runtime.webmonitor.handlers.JsonFactory;
@@ -52,6 +55,14 @@ public abstract class AbstractMetricsHandler extends AbstractJsonRequestHandler 
 	}
 
 	@Override
+<<<<<<< HEAD
+	public String handleJsonRequest(Map<String, String> pathParams, Map<String, String> queryParams, JobManagerGateway jobManagerGateway) throws Exception {
+		fetcher.update();
+		String requestedMetricsList = queryParams.get("get");
+		return requestedMetricsList != null
+			? getMetricsValues(pathParams, requestedMetricsList)
+			: getAvailableMetricsList(pathParams);
+=======
 	public CompletableFuture<String> handleJsonRequest(Map<String, String> pathParams, Map<String, String> queryParams, JobManagerGateway jobManagerGateway) {
 		return CompletableFuture.supplyAsync(
 			() -> {
@@ -67,6 +78,7 @@ public abstract class AbstractMetricsHandler extends AbstractJsonRequestHandler 
 			},
 			executor);
 
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	}
 
 	/**

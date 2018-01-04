@@ -27,15 +27,15 @@ import org.apache.flink.table.api.TableEnvironment
 import org.apache.flink.table.api.Types._
 import org.apache.flink.table.api.scala._
 import org.apache.flink.table.expressions.Literal
-import org.apache.flink.table.expressions.utils.{Func13, RichFunc1, RichFunc2, RichFunc3}
+import org.apache.flink.table.expressions.utils._
 import org.apache.flink.table.functions.ScalarFunction
-import org.apache.flink.table.runtime.utils.{TableProgramsCollectionTestBase, TableProgramsTestBase}
+import org.apache.flink.table.runtime.utils.{TableProgramsCollectionTestBase, TableProgramsTestBase, UserDefinedFunctionTestUtils}
 import org.apache.flink.table.runtime.utils.TableProgramsTestBase.TableConfigMode
-import org.apache.flink.table.runtime.utils.UserDefinedFunctionTestUtils
 import org.apache.flink.test.util.TestBaseUtils
 import org.apache.flink.test.util.TestBaseUtils.compareResultAsText
 import org.apache.flink.types.Row
 import org.junit._
+import org.junit.Assert.assertEquals
 import org.junit.runner.RunWith
 import org.junit.runners.Parameterized
 
@@ -471,6 +471,29 @@ class CalcITCase(
   }
 
   @Test
+  def testValueConstructor(): Unit = {
+    val env = ExecutionEnvironment.getExecutionEnvironment
+    val tEnv = TableEnvironment.getTableEnvironment(env, config)
+
+    val rowValue = ("foo", 12, Timestamp.valueOf("1984-07-12 14:34:24"))
+
+    val table = env.fromElements(rowValue).toTable(tEnv, 'a, 'b, 'c)
+
+    val result = table.select(row('a, 'b, 'c), array(12, 'b), map('a, 'c))
+
+    val expected = "foo,12,1984-07-12 14:34:24.0,[12, 12],{foo=1984-07-12 14:34:24.0}"
+    val results = result.toDataSet[Row].collect()
+    TestBaseUtils.compareResultAsText(results.asJava, expected)
+
+    // Compare actual object to avoid undetected Calcite flattening
+    val resultRow = results.asJava.get(0)
+    assertEquals(rowValue._1, resultRow.getField(0).asInstanceOf[Row].getField(0))
+    assertEquals(rowValue._2, resultRow.getField(1).asInstanceOf[Array[Integer]](1))
+    assertEquals(rowValue._3,
+      resultRow.getField(2).asInstanceOf[util.Map[String, Timestamp]].get(rowValue._1))
+  }
+
+  @Test
   def testMultipleUserDefinedScalarFunctions(): Unit = {
     val env = ExecutionEnvironment.getExecutionEnvironment
     val tEnv = TableEnvironment.getTableEnvironment(env)
@@ -517,6 +540,32 @@ class CalcITCase(
       "default-nosharp,Sunny-nosharp,kevin2-nosharp"
     TestBaseUtils.compareResultAsText(results.asJava, expected)
   }
+
+  @Test
+  def testUDFWithUnicodeParameter(): Unit = {
+    val data = List(
+      ("a\u0001b", "c\"d", "e\\\"\u0004f"),
+      ("x\u0001y", "y\"z", "z\\\"\u0004z")
+    )
+    val env = ExecutionEnvironment.getExecutionEnvironment
+    val tEnv = TableEnvironment.getTableEnvironment(env)
+    val splitUDF0 = new SplitUDF(deterministic = true)
+    val splitUDF1 = new SplitUDF(deterministic = false)
+    val ds = env.fromCollection(data).toTable(tEnv, 'a, 'b, 'c)
+             .select(splitUDF0('a, "\u0001", 0) as 'a0,
+                     splitUDF1('a, "\u0001", 0) as 'a1,
+                     splitUDF0('b, "\"", 1) as 'b0,
+                     splitUDF1('b, "\"", 1) as 'b1,
+                     splitUDF0('c, "\\\"\u0004", 0) as 'c0,
+                     splitUDF1('c, "\\\"\u0004", 0) as 'c1
+             )
+    val results = ds.collect()
+    val expected = List(
+      "a,a,d,d,e,e", "x,x,z,z,z,z"
+    ).mkString("\n")
+    TestBaseUtils.compareResultAsText(results.asJava, expected)
+  }
+
 }
 
 object CalcITCase {

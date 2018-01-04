@@ -69,6 +69,7 @@ import java.io.FilenameFilter;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.io.PrintWriter;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -108,13 +109,14 @@ public abstract class YarnTestBase extends TestLogger {
 
 	/** These strings are white-listed, overriding teh prohibited strings. */
 	protected static final String[] WHITELISTED_STRINGS = {
-			"akka.remote.RemoteTransportExceptionNoStackTrace",
-			// workaround for annoying InterruptedException logging:
-			// https://issues.apache.org/jira/browse/YARN-1022
-			"java.lang.InterruptedException",
-			// very specific on purpose
-			"Remote connection to [null] failed with java.net.ConnectException: Connection refused",
-			"java.io.IOException: Connection reset by peer"
+		"akka.remote.RemoteTransportExceptionNoStackTrace",
+		// workaround for annoying InterruptedException logging:
+		// https://issues.apache.org/jira/browse/YARN-1022
+		"java.lang.InterruptedException",
+		// very specific on purpose
+		"Remote connection to [null] failed with java.net.ConnectException: Connection refused",
+		"Remote connection to [null] failed with java.nio.channels.NotYetConnectedException",
+		"java.io.IOException: Connection reset by peer"
 	};
 
 	// Temp directory which is deleted after the unit test.
@@ -307,6 +309,7 @@ public abstract class YarnTestBase extends TestLogger {
 		Assert.assertTrue("Expecting directory " + cwd.getAbsolutePath() + " to exist", cwd.exists());
 		Assert.assertTrue("Expecting directory " + cwd.getAbsolutePath() + " to be a directory", cwd.isDirectory());
 
+		List<String> prohibitedExcerpts = new ArrayList<>();
 		File foundFile = findFile(cwd.getAbsolutePath(), new FilenameFilter() {
 			@Override
 			public boolean accept(File dir, String name) {
@@ -331,6 +334,24 @@ public abstract class YarnTestBase extends TestLogger {
 								// logging in FATAL to see the actual message in TRAVIS tests.
 								Marker fatal = MarkerFactory.getMarker("FATAL");
 								LOG.error(fatal, "Prohibited String '{}' in line '{}'", aProhibited, lineFromFile);
+
+								StringBuilder logExcerpt = new StringBuilder();
+
+								logExcerpt.append(System.lineSeparator());
+								logExcerpt.append(lineFromFile);
+								logExcerpt.append(System.lineSeparator());
+								// extract potential stack trace from log
+								while (scanner.hasNextLine()) {
+									String line = scanner.nextLine();
+									if (!line.isEmpty() && (Character.isWhitespace(line.charAt(0)) || line.startsWith("Caused by"))) {
+										logExcerpt.append(line);
+										logExcerpt.append(System.lineSeparator());
+									} else {
+										break;
+									}
+								}
+								prohibitedExcerpts.add(logExcerpt.toString());
+
 								return true;
 							}
 						}
@@ -355,7 +376,9 @@ public abstract class YarnTestBase extends TestLogger {
 			while (scanner.hasNextLine()) {
 				LOG.warn("LINE: " + scanner.nextLine());
 			}
-			Assert.fail("Found a file " + foundFile + " with a prohibited string: " + Arrays.toString(prohibited));
+			Assert.fail(
+				"Found a file " + foundFile + " with a prohibited string (one of " + Arrays.toString(prohibited) + "). " +
+				"Excerpts:" + System.lineSeparator() + prohibitedExcerpts);
 		}
 	}
 

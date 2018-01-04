@@ -34,7 +34,7 @@ import org.apache.flink.runtime.webmonitor.history.ArchivedJson;
 import org.apache.flink.runtime.webmonitor.history.JsonArchivist;
 import org.apache.flink.util.FlinkException;
 
-import com.fasterxml.jackson.core.JsonGenerator;
+import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.core.JsonGenerator;
 
 import java.io.IOException;
 import java.io.StringWriter;
@@ -75,7 +75,7 @@ public class CurrentJobsOverviewHandler extends AbstractJsonRequestHandler imple
 
 	@Override
 	public CompletableFuture<MultipleJobsDetails> handleRequest(HandlerRequest<EmptyRequestBody, EmptyMessageParameters> request, DispatcherGateway gateway) {
-		return gateway.requestJobDetails(timeout);
+		return gateway.requestJobDetails(true, true, timeout);
 	}
 
 	@Override

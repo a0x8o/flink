@@ -60,7 +60,11 @@ public class JobVertexDetailsHandlerTest {
 
 	@Test
 	public void testGetPaths() {
+<<<<<<< HEAD
+		JobVertexDetailsHandler handler = new JobVertexDetailsHandler(mock(ExecutionGraphHolder.class), null);
+=======
 		JobVertexDetailsHandler handler = new JobVertexDetailsHandler(mock(ExecutionGraphHolder.class), Executors.directExecutor(), null);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		String[] paths = handler.getPaths();
 		Assert.assertEquals(1, paths.length);
 		Assert.assertEquals("/jobs/:jobid/vertices/:vertexid", paths[0]);

@@ -111,6 +111,11 @@ public class QueryableStateClient {
 
 	private ExecutionConfig executionConfig;
 
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+=======
+>>>>>>> axbaretto
 	/**
 	 * Creates a client from the given configuration.
 	 *
@@ -125,6 +130,10 @@ public class QueryableStateClient {
 				config, Executors.directExecutor(), HighAvailabilityServicesUtils.AddressResolution.TRY_ADDRESS_RESOLUTION));
 	}
 
+<<<<<<< HEAD
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
+>>>>>>> axbaretto
 	/**
 	 * Creates a client from the given configuration.
 	 *

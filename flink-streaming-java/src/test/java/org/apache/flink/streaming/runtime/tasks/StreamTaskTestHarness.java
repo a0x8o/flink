@@ -36,9 +36,11 @@ import org.apache.flink.streaming.api.graph.StreamNode;
 import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.streaming.api.operators.StreamOperator;
+import org.apache.flink.streaming.api.operators.TwoInputStreamOperator;
 import org.apache.flink.streaming.runtime.partitioner.BroadcastPartitioner;
 import org.apache.flink.streaming.runtime.streamrecord.StreamElement;
 import org.apache.flink.streaming.runtime.streamrecord.StreamElementSerializer;
+import org.apache.flink.util.Preconditions;
 
 import org.junit.Assert;
 
@@ -58,9 +60,6 @@ import java.util.concurrent.LinkedBlockingQueue;
  * <p>After setting up everything the Task can be invoked using {@link #invoke()}. This will start
  * a new Thread to execute the Task. Use {@link #waitForTaskCompletion()} to wait for the Task
  * thread to finish.
- *
- * <p>When using this you need to add the following line to your test class to setup Powermock:
- * {@code {@literal @}PrepareForTest({ResultPartitionWriter.class})}
  */
 public class StreamTaskTestHarness<OUT> {
 
@@ -91,6 +90,8 @@ public class StreamTaskTestHarness<OUT> {
 	// input related methods only need to be implemented once, in generic form
 	protected int numInputGates;
 	protected int numInputChannelsPerGate;
+
+	private boolean setupCalled = false;
 
 	@SuppressWarnings("rawtypes")
 	protected StreamTestSingleInputGate[] inputGates;
@@ -137,6 +138,8 @@ public class StreamTaskTestHarness<OUT> {
 	 * please manually configure the stream config.
 	 */
 	public void setupOutputForSingletonOperatorChain() {
+		Preconditions.checkState(!setupCalled, "This harness was already setup.");
+		setupCalled = true;
 		streamConfig.setChainStart();
 		streamConfig.setBufferTimeout(0);
 		streamConfig.setTimeCharacteristic(TimeCharacteristic.EventTime);
@@ -372,6 +375,14 @@ public class StreamTaskTestHarness<OUT> {
 	}
 
 	public StreamConfigChainer setupOperatorChain(OperatorID headOperatorId, OneInputStreamOperator<?, ?> headOperator) {
+		Preconditions.checkState(!setupCalled, "This harness was already setup.");
+		setupCalled = true;
+		return new StreamConfigChainer(headOperatorId, headOperator, getStreamConfig());
+	}
+
+	public StreamConfigChainer setupOperatorChain(OperatorID headOperatorId, TwoInputStreamOperator<?, ?, ?> headOperator) {
+		Preconditions.checkState(!setupCalled, "This harness was already setup.");
+		setupCalled = true;
 		return new StreamConfigChainer(headOperatorId, headOperator, getStreamConfig());
 	}
 

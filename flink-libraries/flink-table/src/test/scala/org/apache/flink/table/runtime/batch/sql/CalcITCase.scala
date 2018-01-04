@@ -25,6 +25,7 @@ import org.apache.flink.api.scala._
 import org.apache.flink.api.scala.util.CollectionDataSets
 import org.apache.flink.table.api.scala._
 import org.apache.flink.table.api.{TableEnvironment, ValidationException}
+import org.apache.flink.table.expressions.utils.SplitUDF
 import org.apache.flink.table.functions.ScalarFunction
 import org.apache.flink.table.runtime.batch.table.OldHashCode
 import org.apache.flink.table.runtime.utils.TableProgramsTestBase.TableConfigMode
@@ -32,6 +33,7 @@ import org.apache.flink.table.runtime.utils.{TableProgramsCollectionTestBase, Ta
 import org.apache.flink.test.util.TestBaseUtils
 import org.apache.flink.types.Row
 import org.junit._
+import org.junit.Assert.assertEquals
 import org.junit.runner.RunWith
 import org.junit.runners.Parameterized
 
@@ -309,6 +311,32 @@ class CalcITCase(
   }
 
   @Test
+  def testValueConstructor(): Unit = {
+    val env = ExecutionEnvironment.getExecutionEnvironment
+    val tEnv = TableEnvironment.getTableEnvironment(env, config)
+
+    val sqlQuery = "SELECT (a, b, c), ARRAY[12, b], MAP[a, c] FROM MyTable " +
+      "WHERE (a, b, c) = ('foo', 12, TIMESTAMP '1984-07-12 14:34:24')"
+    val rowValue = ("foo", 12, Timestamp.valueOf("1984-07-12 14:34:24"))
+
+    val ds = env.fromElements(rowValue)
+    tEnv.registerDataSet("MyTable", ds, 'a, 'b, 'c)
+
+    val result = tEnv.sqlQuery(sqlQuery)
+
+    val expected = "foo,12,1984-07-12 14:34:24.0,[12, 12],{foo=1984-07-12 14:34:24.0}"
+    val results = result.toDataSet[Row].collect()
+    TestBaseUtils.compareResultAsText(results.asJava, expected)
+
+    // Compare actual object to avoid undetected Calcite flattening
+    val resultRow = results.asJava.get(0)
+    assertEquals(rowValue._1, resultRow.getField(0).asInstanceOf[Row].getField(0))
+    assertEquals(rowValue._2, resultRow.getField(1).asInstanceOf[Array[Integer]](1))
+    assertEquals(rowValue._3,
+      resultRow.getField(2).asInstanceOf[util.Map[String, Timestamp]].get(rowValue._1))
+  }
+
+  @Test
   def testUserDefinedScalarFunction(): Unit = {
     val env = ExecutionEnvironment.getExecutionEnvironment
     val tEnv = TableEnvironment.getTableEnvironment(env, config)
@@ -323,6 +351,42 @@ class CalcITCase(
 
     val expected = "97\n98\n99"
     val results = result.toDataSet[Row].collect()
+    TestBaseUtils.compareResultAsText(results.asJava, expected)
+  }
+
+  @Test
+  def testUdfWithUnicodeParameter(): Unit = {
+    val data = List(
+      ("a\u0001b", "c\"d", "e\\\"\u0004f"),
+      ("x\u0001y", "y\"z", "z\\\"\u0004z")
+    )
+
+    val env = ExecutionEnvironment.getExecutionEnvironment
+
+    val tEnv = TableEnvironment.getTableEnvironment(env)
+
+    val splitUDF0 = new SplitUDF(deterministic = true)
+    val splitUDF1 = new SplitUDF(deterministic = false)
+
+    tEnv.registerFunction("splitUDF0", splitUDF0)
+    tEnv.registerFunction("splitUDF1", splitUDF1)
+
+    // user have to specify '\' with '\\' in SQL
+    val sqlQuery = "SELECT " +
+      "splitUDF0(a, '\u0001', 0) as a0, " +
+      "splitUDF1(a, '\u0001', 0) as a1, " +
+      "splitUDF0(b, '\"', 1) as b0, " +
+      "splitUDF1(b, '\"', 1) as b1, " +
+      "splitUDF0(c, '\\\\\"\u0004', 0) as c0, " +
+      "splitUDF1(c, '\\\\\"\u0004', 0) as c1 from T1"
+
+    val t1 = env.fromCollection(data).toTable(tEnv, 'a, 'b, 'c)
+
+    tEnv.registerTable("T1", t1)
+
+    val results = tEnv.sql(sqlQuery).toDataSet[Row].collect()
+
+    val expected = List("a,a,d,d,e,e", "x,x,z,z,z,z").mkString("\n")
     TestBaseUtils.compareResultAsText(results.asJava, expected)
   }
 }

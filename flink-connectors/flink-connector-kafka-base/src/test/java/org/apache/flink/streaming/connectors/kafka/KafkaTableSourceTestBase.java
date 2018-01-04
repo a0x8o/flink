@@ -20,7 +20,9 @@ package org.apache.flink.streaming.connectors.kafka;
 
 import org.apache.flink.api.common.serialization.DeserializationSchema;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.streaming.api.datastream.DataStreamSource;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.api.functions.source.SourceFunction;
 import org.apache.flink.table.api.TableSchema;
 import org.apache.flink.table.api.Types;
 import org.apache.flink.table.sources.RowtimeAttributeDescriptor;
@@ -32,6 +34,7 @@ import org.apache.flink.types.Row;
 import org.junit.Test;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 
 import static org.junit.Assert.assertEquals;
@@ -44,6 +47,7 @@ import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 /**
  * Abstract test base for all Kafka table sources.
@@ -60,6 +64,7 @@ public abstract class KafkaTableSourceTestBase {
 	private static final Properties PROPS = createSourceProperties();
 
 	@Test
+	@SuppressWarnings("unchecked")
 	public void testKafkaConsumer() {
 		KafkaTableSource.Builder b = getBuilder();
 		configureBuilder(b);
@@ -67,6 +72,7 @@ public abstract class KafkaTableSourceTestBase {
 		// assert that correct
 		KafkaTableSource observed = spy(b.build());
 		StreamExecutionEnvironment env = mock(StreamExecutionEnvironment.class);
+		when(env.addSource(any(SourceFunction.class))).thenReturn(mock(DataStreamSource.class));
 		observed.getDataStream(env);
 
 		verify(env).addSource(any(getFlinkKafkaConsumer()));
@@ -157,7 +163,7 @@ public abstract class KafkaTableSourceTestBase {
 	}
 
 	@Test
-	public void testKafkaTSRowtimeAttribute() {
+	public void testRowtimeAttribute2() {
 		KafkaTableSource.Builder b = getBuilder();
 		configureBuilder(b);
 
@@ -186,6 +192,49 @@ public abstract class KafkaTableSourceTestBase {
 				fail();
 			}
 		}
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	public void testConsumerOffsets() {
+		KafkaTableSource.Builder b = getBuilder();
+		configureBuilder(b);
+
+		// test the default behavior
+		KafkaTableSource source = spy(b.build());
+		when(source.createKafkaConsumer(TOPIC, PROPS, null))
+				.thenReturn(mock(getFlinkKafkaConsumer()));
+
+		verify(source.getKafkaConsumer(TOPIC, PROPS, null)).setStartFromGroupOffsets();
+
+		// test reading from earliest
+		b.fromEarliest();
+		source = spy(b.build());
+		when(source.createKafkaConsumer(TOPIC, PROPS, null))
+				.thenReturn(mock(getFlinkKafkaConsumer()));
+
+		verify(source.getKafkaConsumer(TOPIC, PROPS, null)).setStartFromEarliest();
+
+		// test reading from latest
+		b.fromLatest();
+		source = spy(b.build());
+		when(source.createKafkaConsumer(TOPIC, PROPS, null))
+				.thenReturn(mock(getFlinkKafkaConsumer()));
+		verify(source.getKafkaConsumer(TOPIC, PROPS, null)).setStartFromLatest();
+
+		// test reading from group offsets
+		b.fromGroupOffsets();
+		source = spy(b.build());
+		when(source.createKafkaConsumer(TOPIC, PROPS, null))
+				.thenReturn(mock(getFlinkKafkaConsumer()));
+		verify(source.getKafkaConsumer(TOPIC, PROPS, null)).setStartFromGroupOffsets();
+
+		// test reading from given offsets
+		b.fromSpecificOffsets(mock(Map.class));
+		source = spy(b.build());
+		when(source.createKafkaConsumer(TOPIC, PROPS, null))
+				.thenReturn(mock(getFlinkKafkaConsumer()));
+		verify(source.getKafkaConsumer(TOPIC, PROPS, null)).setStartFromSpecificOffsets(any(Map.class));
 	}
 
 	protected abstract KafkaTableSource.Builder getBuilder();

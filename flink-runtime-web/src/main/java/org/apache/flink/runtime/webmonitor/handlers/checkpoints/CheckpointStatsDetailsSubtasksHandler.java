@@ -71,10 +71,17 @@ public class CheckpointStatsDetailsSubtasksHandler extends AbstractExecutionGrap
 	}
 
 	@Override
+<<<<<<< HEAD
+	public String handleJsonRequest(
+		Map<String, String> pathParams,
+		Map<String, String> queryParams,
+		JobManagerGateway jobManagerGateway) throws Exception {
+=======
 	public CompletableFuture<String> handleJsonRequest(
 			Map<String, String> pathParams,
 			Map<String, String> queryParams,
 			JobManagerGateway jobManagerGateway) {
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		return super.handleJsonRequest(pathParams, queryParams, jobManagerGateway);
 	}
 

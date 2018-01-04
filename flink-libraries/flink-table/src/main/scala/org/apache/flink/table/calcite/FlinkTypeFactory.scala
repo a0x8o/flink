@@ -222,6 +222,17 @@ class FlinkTypeFactory(typeSystem: RelDataTypeSystem) extends JavaTypeFactoryImp
     canonize(relType)
   }
 
+  override def createMapType(keyType: RelDataType, valueType: RelDataType): RelDataType = {
+    val relType = new MapRelDataType(
+      new MapTypeInfo(
+        FlinkTypeFactory.toTypeInfo(keyType),
+        FlinkTypeFactory.toTypeInfo(valueType)),
+      keyType,
+      valueType,
+      isNullable = false)
+    this.canonize(relType)
+  }
+
   override def createMultisetType(elementType: RelDataType, maxCardinality: Long): RelDataType = {
     val relType = new MultisetRelDataType(
       MultisetTypeInfo.getInfoFor(FlinkTypeFactory.toTypeInfo(elementType)),
@@ -423,8 +434,12 @@ object FlinkTypeFactory {
       val compositeRelDataType = relDataType.asInstanceOf[CompositeRelDataType]
       compositeRelDataType.compositeType
 
-    // ROW and CURSOR for UDTF case, whose type info will never be used, just a placeholder
-    case ROW | CURSOR => new NothingTypeInfo
+    case ROW if relDataType.isInstanceOf[RelRecordType] =>
+      val relRecordType = relDataType.asInstanceOf[RelRecordType]
+      new RowSchema(relRecordType).typeInfo
+
+    // CURSOR for UDTF case, whose type info will never be used, just a placeholder
+    case CURSOR => new NothingTypeInfo
 
     case ARRAY if relDataType.isInstanceOf[ArrayRelDataType] =>
       val arrayRelDataType = relDataType.asInstanceOf[ArrayRelDataType]

@@ -58,8 +58,13 @@ public class DashboardConfigHandler extends AbstractJsonRequestHandler {
 	}
 
 	@Override
+<<<<<<< HEAD
+	public String handleJsonRequest(Map<String, String> pathParams, Map<String, String> queryParams, JobManagerGateway jobManagerGateway) throws Exception {
+		return this.configString;
+=======
 	public CompletableFuture<String> handleJsonRequest(Map<String, String> pathParams, Map<String, String> queryParams, JobManagerGateway jobManagerGateway) {
 		return CompletableFuture.completedFuture(configString);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	}
 
 	public static String createConfigJson(long refreshInterval) throws IOException {

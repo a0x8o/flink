@@ -18,6 +18,7 @@
 
 package org.apache.flink.runtime.dispatcher;
 
+import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.JobExecutionResult;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.time.Time;
@@ -56,13 +57,15 @@ import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.FlinkException;
 import org.apache.flink.util.Preconditions;
 
+import javax.annotation.Nullable;
+
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
@@ -72,7 +75,8 @@ import java.util.concurrent.CompletableFuture;
  * the jobs and to recover them in case of a master failure. Furthermore, it knows
  * about the state of the Flink session cluster.
  */
-public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> implements DispatcherGateway, LeaderContender {
+public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> implements
+	DispatcherGateway, LeaderContender, SubmittedJobGraphStore.SubmittedJobGraphListener {
 
 	public static final String DISPATCHER_NAME = "dispatcher";
 
@@ -93,7 +97,8 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> impleme
 
 	private final LeaderElectionService leaderElectionService;
 
-	private final CompletableFuture<String> restAddressFuture;
+	@Nullable
+	protected final String restAddress;
 
 	protected Dispatcher(
 			RpcService rpcService,
@@ -105,7 +110,7 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> impleme
 			HeartbeatServices heartbeatServices,
 			MetricRegistry metricRegistry,
 			FatalErrorHandler fatalErrorHandler,
-			Optional<String> restAddress) throws Exception {
+			@Nullable String restAddress) throws Exception {
 		super(rpcService, endpointId);
 
 		this.configuration = Preconditions.checkNotNull(configuration);
@@ -124,10 +129,8 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> impleme
 		jobManagerRunners = new HashMap<>(16);
 
 		leaderElectionService = highAvailabilityServices.getDispatcherLeaderElectionService();
-		this.restAddressFuture = restAddress
-			.map(CompletableFuture::completedFuture)
-			.orElse(FutureUtils.completedExceptionally(new DispatcherException("The Dispatcher has not been started with a REST endpoint.")));
 
+		this.restAddress = restAddress;
 	}
 
 	//------------------------------------------------------
@@ -173,6 +176,7 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> impleme
 	public void start() throws Exception {
 		super.start();
 
+		submittedJobGraphStore.start(this);
 		leaderElectionService.start(this);
 	}
 
@@ -197,7 +201,8 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> impleme
 				new JobSubmissionException(jobId, "Could not retrieve the job status.", e));
 		}
 
-		if (jobSchedulingStatus == RunningJobsRegistry.JobSchedulingStatus.PENDING) {
+		if (jobSchedulingStatus == RunningJobsRegistry.JobSchedulingStatus.PENDING &&
+			!jobManagerRunners.containsKey(jobId)) {
 			try {
 				submittedJobGraphStore.putJobGraph(new SubmittedJobGraph(jobGraph, null));
 			} catch (Exception e) {
@@ -248,7 +253,8 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> impleme
 
 	@Override
 	public CompletableFuture<Collection<JobID>> listJobs(Time timeout) {
-		return CompletableFuture.completedFuture(jobManagerRunners.keySet());
+		return CompletableFuture.completedFuture(
+			Collections.unmodifiableSet(new HashSet<>(jobManagerRunners.keySet())));
 	}
 
 	@Override
@@ -275,7 +281,11 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> impleme
 
 	@Override
 	public CompletableFuture<String> requestRestAddress(Time timeout) {
-		return restAddressFuture;
+		if (restAddress != null) {
+			return CompletableFuture.completedFuture(restAddress);
+		} else {
+			return FutureUtils.completedExceptionally(new DispatcherException("The Dispatcher has not been started with a REST endpoint."));
+		}
 	}
 
 	@Override
@@ -294,43 +304,12 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> impleme
 
 		return allJobsFuture.thenCombine(
 			taskManagerOverviewFuture,
-			(Collection<JobStatus> allJobsStatus, ResourceOverview resourceOverview) -> {
-
-				int numberRunningOrPendingJobs = 0;
-				int numberFinishedJobs = 0;
-				int numberCancelledJobs = 0;
-				int numberFailedJobs = 0;
-
-				for (JobStatus status : allJobsStatus) {
-					switch (status) {
-						case FINISHED:
-							numberFinishedJobs++;
-							break;
-						case FAILED:
-							numberFailedJobs++;
-							break;
-						case CANCELED:
-							numberCancelledJobs++;
-							break;
-						default:
-							numberRunningOrPendingJobs++;
-							break;
-					}
-				}
-
-				return new ClusterOverview(
-					resourceOverview.getNumberTaskManagers(),
-					resourceOverview.getNumberRegisteredSlots(),
-					resourceOverview.getNumberFreeSlots(),
-					numberRunningOrPendingJobs,
-					numberFinishedJobs,
-					numberCancelledJobs,
-					numberFailedJobs);
-			});
+			(Collection<JobStatus> allJobsStatus, ResourceOverview resourceOverview) ->
+				ClusterOverview.create(resourceOverview, allJobsStatus));
 	}
 
 	@Override
-	public CompletableFuture<MultipleJobsDetails> requestJobDetails(Time timeout) {
+	public CompletableFuture<MultipleJobsDetails> requestMultipleJobDetails(Time timeout) {
 		final int numberJobsRunning = jobManagerRunners.size();
 
 		ArrayList<CompletableFuture<JobDetails>> individualJobDetails = new ArrayList<>(numberJobsRunning);
@@ -426,7 +405,8 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> impleme
 	/**
 	 * Recovers all jobs persisted via the submitted job graph store.
 	 */
-	private void recoverJobs() {
+	@VisibleForTesting
+	void recoverJobs() {
 		log.info("Recovering all persisted jobs.");
 
 		getRpcService().execute(
@@ -532,6 +512,37 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> impleme
 	@Override
 	public void handleError(final Exception exception) {
 		onFatalError(new DispatcherException("Received an error from the LeaderElectionService.", exception));
+	}
+
+	//------------------------------------------------------
+	// SubmittedJobGraphListener
+	//------------------------------------------------------
+
+	@Override
+	public void onAddedJobGraph(final JobID jobId) {
+		getRpcService().execute(() -> {
+			final SubmittedJobGraph submittedJobGraph;
+			try {
+				submittedJobGraph = submittedJobGraphStore.recoverJobGraph(jobId);
+			} catch (final Exception e) {
+				log.error("Could not recover job graph for job {}.", jobId, e);
+				return;
+			}
+			runAsync(() -> {
+				submitJob(submittedJobGraph.getJobGraph(), RpcUtils.INF_TIMEOUT);
+			});
+		});
+	}
+
+	@Override
+	public void onRemovedJobGraph(final JobID jobId) {
+		runAsync(() -> {
+			try {
+				removeJob(jobId, false);
+			} catch (final Exception e) {
+				log.error("Could not remove job {}.", jobId, e);
+			}
+		});
 	}
 
 	//------------------------------------------------------

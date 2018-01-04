@@ -39,6 +39,7 @@ import org.apache.flink.runtime.leaderretrieval.LeaderRetrievalService;
 import org.apache.flink.runtime.messages.JobManagerMessages;
 import org.apache.flink.runtime.messages.JobManagerMessages.LeaderSessionMessage;
 import org.apache.flink.runtime.messages.JobManagerMessages.SubmitJob;
+import org.apache.flink.runtime.metrics.NoOpMetricRegistry;
 import org.apache.flink.runtime.taskmanager.TaskManager;
 import org.apache.flink.runtime.testingUtils.TestingCluster;
 import org.apache.flink.runtime.testingUtils.TestingUtils;
@@ -145,7 +146,7 @@ public class JobManagerHAJobGraphRecoveryITCase extends TestLogger {
 					jobManager, deadline.timeLeft());
 		}
 		finally {
-			flink.shutdown();
+			flink.stop();
 		}
 
 		// verify that the persisted job data has not been removed from ZooKeeper when the JM has
@@ -203,6 +204,7 @@ public class JobManagerHAJobGraphRecoveryITCase extends TestLogger {
 				ResourceID.generate(),
 				taskManagerSystem,
 				highAvailabilityServices,
+				new NoOpMetricRegistry(),
 				"localhost",
 				Option.<String>empty(),
 				false,

@@ -23,7 +23,6 @@ import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataOutputView;
 import org.apache.flink.core.memory.MemorySegment;
 import org.apache.flink.core.memory.MemorySegmentFactory;
-import org.apache.flink.core.memory.MemoryType;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.event.AbstractEvent;
 import org.apache.flink.runtime.io.network.api.CheckpointBarrier;
@@ -42,6 +41,7 @@ import org.apache.flink.runtime.io.network.util.TestTaskEvent;
 import org.apache.flink.runtime.testutils.DiscardingRecycler;
 import org.apache.flink.types.IntValue;
 import org.apache.flink.util.XORShiftRandom;
+
 import org.junit.Assert;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -74,7 +74,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-@PrepareForTest({ResultPartitionWriter.class, EventSerializer.class})
+@PrepareForTest({EventSerializer.class})
 @RunWith(PowerMockRunner.class)
 public class RecordWriterTest {
 
@@ -176,12 +176,12 @@ public class RecordWriterTest {
 		BufferPool bufferPool = null;
 
 		try {
-			buffers = new NetworkBufferPool(1, 1024, MemoryType.HEAP);
+			buffers = new NetworkBufferPool(1, 1024);
 			bufferPool = spy(buffers.createBufferPool(1, Integer.MAX_VALUE));
 
 			ResultPartitionWriter partitionWriter = mock(ResultPartitionWriter.class);
 			when(partitionWriter.getBufferProvider()).thenReturn(checkNotNull(bufferPool));
-			when(partitionWriter.getNumberOfOutputChannels()).thenReturn(1);
+			when(partitionWriter.getNumberOfSubpartitions()).thenReturn(1);
 
 			// Recycle buffer and throw Exception
 			doAnswer(new Answer<Void>() {
@@ -454,7 +454,7 @@ public class RecordWriterTest {
 
 		ResultPartitionWriter partitionWriter = mock(ResultPartitionWriter.class);
 		when(partitionWriter.getBufferProvider()).thenReturn(checkNotNull(bufferProvider));
-		when(partitionWriter.getNumberOfOutputChannels()).thenReturn(numChannels);
+		when(partitionWriter.getNumberOfSubpartitions()).thenReturn(numChannels);
 
 		doAnswer(new Answer<Void>() {
 			@Override
@@ -512,7 +512,7 @@ public class RecordWriterTest {
 
 		ResultPartitionWriter partitionWriter = mock(ResultPartitionWriter.class);
 		when(partitionWriter.getBufferProvider()).thenReturn(checkNotNull(bufferProvider));
-		when(partitionWriter.getNumberOfOutputChannels()).thenReturn(1);
+		when(partitionWriter.getNumberOfSubpartitions()).thenReturn(1);
 
 		// Recycle each written buffer.
 		doAnswer(new Answer<Void>() {

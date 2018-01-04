@@ -24,8 +24,9 @@ import org.apache.flink.api.common.functions.FilterFunction;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.core.testutils.OneShotLatch;
-import org.apache.flink.runtime.blob.BlobCache;
-import org.apache.flink.runtime.blob.BlobKey;
+import org.apache.flink.runtime.blob.BlobCacheService;
+import org.apache.flink.runtime.blob.PermanentBlobCache;
+import org.apache.flink.runtime.blob.TransientBlobCache;
 import org.apache.flink.runtime.broadcast.BroadcastVariableManager;
 import org.apache.flink.runtime.checkpoint.CheckpointMetaData;
 import org.apache.flink.runtime.checkpoint.CheckpointMetrics;
@@ -36,7 +37,8 @@ import org.apache.flink.runtime.deployment.InputGateDeploymentDescriptor;
 import org.apache.flink.runtime.deployment.ResultPartitionDeploymentDescriptor;
 import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.execution.ExecutionState;
-import org.apache.flink.runtime.execution.librarycache.FallbackLibraryCacheManager;
+import org.apache.flink.runtime.execution.librarycache.BlobLibraryCacheManager;
+import org.apache.flink.runtime.execution.librarycache.FlinkUserCodeClassLoaders;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.JobInformation;
 import org.apache.flink.runtime.executiongraph.TaskInformation;
@@ -73,7 +75,6 @@ import org.apache.flink.util.SerializedValue;
 import org.junit.Test;
 
 import java.io.IOException;
-import java.net.URL;
 import java.util.Collections;
 
 import static org.junit.Assert.assertEquals;
@@ -124,8 +125,8 @@ public class BlockingCheckpointsTest {
 				"test job name",
 				new SerializedValue<>(new ExecutionConfig()),
 				new Configuration(),
-				Collections.<BlobKey>emptyList(),
-				Collections.<URL>emptyList());
+				Collections.emptyList(),
+				Collections.emptyList());
 
 		TaskInformation taskInformation = new TaskInformation(
 				new JobVertexID(),
@@ -138,6 +139,9 @@ public class BlockingCheckpointsTest {
 		TaskKvStateRegistry mockKvRegistry = mock(TaskKvStateRegistry.class);
 		NetworkEnvironment network = mock(NetworkEnvironment.class);
 		when(network.createKvStateTaskRegistry(any(JobID.class), any(JobVertexID.class))).thenReturn(mockKvRegistry);
+
+		BlobCacheService blobService =
+			new BlobCacheService(mock(PermanentBlobCache.class), mock(TransientBlobCache.class));
 
 		return new Task(
 				jobInformation,
@@ -157,8 +161,11 @@ public class BlockingCheckpointsTest {
 				mock(TaskManagerActions.class),
 				mock(InputSplitProvider.class),
 				mock(CheckpointResponder.class),
-				mock(BlobCache.class),
-				new FallbackLibraryCacheManager(),
+				blobService,
+				new BlobLibraryCacheManager(
+					blobService.getPermanentBlobService(),
+					FlinkUserCodeClassLoaders.ResolveOrder.CHILD_FIRST,
+					new String[0]),
 				new FileCache(new String[] { EnvironmentInformation.getTemporaryFileDirectory() }),
 				new TestingTaskManagerRuntimeInfo(),
 				new UnregisteredTaskMetricsGroup(),
@@ -295,7 +302,7 @@ public class BlockingCheckpointsTest {
 
 		@Override
 		protected void run() throws Exception {
-			triggerCheckpointOnBarrier(new CheckpointMetaData(11L, System.currentTimeMillis()), CheckpointOptions.forFullCheckpoint(), new CheckpointMetrics());
+			triggerCheckpointOnBarrier(new CheckpointMetaData(11L, System.currentTimeMillis()), CheckpointOptions.forCheckpoint(), new CheckpointMetrics());
 		}
 
 		@Override

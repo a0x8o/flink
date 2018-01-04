@@ -19,7 +19,10 @@
 package org.apache.flink.runtime.webmonitor.handlers;
 
 import org.apache.flink.api.common.time.Time;
+<<<<<<< HEAD
+=======
 import org.apache.flink.runtime.concurrent.Executors;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.executiongraph.AccessExecutionGraph;
 import org.apache.flink.runtime.messages.webmonitor.JobDetails;
@@ -67,17 +70,29 @@ public class CurrentJobsOverviewHandlerTest {
 
 	@Test
 	public void testGetPaths() {
+<<<<<<< HEAD
+		CurrentJobsOverviewHandler handlerAll = new CurrentJobsOverviewHandler(Time.seconds(0L), true, true);
+=======
 		CurrentJobsOverviewHandler handlerAll = new CurrentJobsOverviewHandler(Executors.directExecutor(), Time.seconds(0L), true, true);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		String[] pathsAll = handlerAll.getPaths();
 		Assert.assertEquals(1, pathsAll.length);
 		Assert.assertEquals("/joboverview", pathsAll[0]);
 
+<<<<<<< HEAD
+		CurrentJobsOverviewHandler handlerRunning = new CurrentJobsOverviewHandler(Time.seconds(0L), true, false);
+=======
 		CurrentJobsOverviewHandler handlerRunning = new CurrentJobsOverviewHandler(Executors.directExecutor(), Time.seconds(0L), true, false);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		String[] pathsRunning = handlerRunning.getPaths();
 		Assert.assertEquals(1, pathsRunning.length);
 		Assert.assertEquals("/joboverview/running", pathsRunning[0]);
 
+<<<<<<< HEAD
+		CurrentJobsOverviewHandler handlerCompleted = new CurrentJobsOverviewHandler(Time.seconds(0L), false, true);
+=======
 		CurrentJobsOverviewHandler handlerCompleted = new CurrentJobsOverviewHandler(Executors.directExecutor(), Time.seconds(0L), false, true);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		String[] pathsCompleted = handlerCompleted.getPaths();
 		Assert.assertEquals(1, pathsCompleted.length);
 		Assert.assertEquals("/joboverview/completed", pathsCompleted[0]);

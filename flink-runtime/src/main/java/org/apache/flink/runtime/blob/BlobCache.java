@@ -274,14 +274,30 @@ public class BlobCache extends TimerTask implements BlobService {
 
 		// fallback: download from the BlobServer
 		final byte[] buf = new byte[BlobServerProtocol.BUFFER_SIZE];
+<<<<<<< HEAD
 		LOG.info("Downloading {}/{} from {}", jobId, requiredBlob, serverAddress);
+=======
+<<<<<<< HEAD
+		LOG.info("Downloading {} from {}", requiredBlob, serverAddress);
+=======
+		LOG.info("Downloading {}/{} from {}", jobId, requiredBlob, serverAddress);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
+>>>>>>> axbaretto
 
 		// loop over retries
 		int attempt = 0;
 		while (true) {
 			try (
 				final BlobClient bc = new BlobClient(serverAddress, blobClientConfig);
+<<<<<<< HEAD
 				final InputStream is = bc.getInternal(jobId, requiredBlob);
+=======
+<<<<<<< HEAD
+				final InputStream is = bc.get(requiredBlob);
+=======
+				final InputStream is = bc.getInternal(jobId, requiredBlob);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
+>>>>>>> axbaretto
 				final OutputStream os = new FileOutputStream(localJarFile)
 			) {
 				while (true) {
@@ -293,10 +309,23 @@ public class BlobCache extends TimerTask implements BlobService {
 				}
 
 				// success, we finished
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+				return localJarFile.toURI().toURL();
+			}
+			catch (Throwable t) {
+				String message = "Failed to fetch BLOB " + requiredBlob + " from " + serverAddress +
+=======
+>>>>>>> axbaretto
 				return localJarFile;
 			}
 			catch (Throwable t) {
 				String message = "Failed to fetch BLOB " + jobId + "/" + requiredBlob + " from " + serverAddress +
+<<<<<<< HEAD
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
+>>>>>>> axbaretto
 					" and store it under " + localJarFile.getAbsolutePath();
 				if (attempt < numFetchRetries) {
 					if (LOG.isDebugEnabled()) {
@@ -312,7 +341,15 @@ public class BlobCache extends TimerTask implements BlobService {
 
 				// retry
 				++attempt;
+<<<<<<< HEAD
 				LOG.info("Downloading {}/{} from {} (retry {})", jobId, requiredBlob, serverAddress, attempt);
+=======
+<<<<<<< HEAD
+				LOG.info("Downloading {} from {} (retry {})", requiredBlob, serverAddress, attempt);
+=======
+				LOG.info("Downloading {}/{} from {} (retry {})", jobId, requiredBlob, serverAddress, attempt);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
+>>>>>>> axbaretto
 			}
 		} // end loop over retries
 	}
@@ -346,6 +383,11 @@ public class BlobCache extends TimerTask implements BlobService {
 		deleteInternal(jobId, key);
 	}
 
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+=======
+>>>>>>> axbaretto
 	/**
 	 * Deletes the file associated with the blob key in this BLOB cache.
 	 *
@@ -358,6 +400,10 @@ public class BlobCache extends TimerTask implements BlobService {
 	 */
 	private void deleteInternal(@Nullable JobID jobId, BlobKey key) throws IOException{
 		final File localFile = BlobUtils.getStorageLocation(storageDir, jobId, key);
+<<<<<<< HEAD
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
+>>>>>>> axbaretto
 		if (!localFile.delete() && localFile.exists()) {
 			LOG.warn("Failed to delete locally cached BLOB {} at {}", key, localFile.getAbsolutePath());
 		}

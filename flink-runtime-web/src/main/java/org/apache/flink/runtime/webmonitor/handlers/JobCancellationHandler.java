@@ -20,7 +20,10 @@ package org.apache.flink.runtime.webmonitor.handlers;
 
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.time.Time;
+<<<<<<< HEAD
+=======
 import org.apache.flink.runtime.concurrent.FlinkFutureException;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.runtime.jobmaster.JobManagerGateway;
 import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.StringUtils;
@@ -39,8 +42,12 @@ public class JobCancellationHandler extends AbstractJsonRequestHandler {
 
 	private final Time timeout;
 
+<<<<<<< HEAD
+	public JobCancellationHandler(Time timeout) {
+=======
 	public JobCancellationHandler(Executor executor, Time timeout) {
 		super(executor);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		this.timeout = Preconditions.checkNotNull(timeout);
 	}
 
@@ -50,6 +57,22 @@ public class JobCancellationHandler extends AbstractJsonRequestHandler {
 	}
 
 	@Override
+<<<<<<< HEAD
+	public String handleJsonRequest(Map<String, String> pathParams, Map<String, String> queryParams, JobManagerGateway jobManagerGateway) throws Exception {
+		try {
+			JobID jobId = new JobID(StringUtils.hexStringToByte(pathParams.get("jobid")));
+			if (jobManagerGateway != null) {
+				jobManagerGateway.cancelJob(jobId, timeout);
+				return "{}";
+			}
+			else {
+				throw new Exception("No connection to the leading JobManager.");
+			}
+		}
+		catch (Exception e) {
+			throw new Exception("Failed to cancel the job with id: "  + pathParams.get("jobid") + e.getMessage(), e);
+		}
+=======
 	public CompletableFuture<String> handleJsonRequest(Map<String, String> pathParams, Map<String, String> queryParams, JobManagerGateway jobManagerGateway) {
 		return CompletableFuture.supplyAsync(
 			() -> {
@@ -68,5 +91,6 @@ public class JobCancellationHandler extends AbstractJsonRequestHandler {
 				}
 			},
 			executor);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 	}
 }

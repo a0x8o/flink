@@ -31,6 +31,10 @@ import org.apache.flink.runtime.jobmaster.JobManagerGateway;
 import org.apache.flink.runtime.messages.JobManagerMessages.CancelJobWithSavepoint;
 import org.apache.flink.runtime.webmonitor.ExecutionGraphHolder;
 import org.apache.flink.runtime.webmonitor.NotFoundException;
+<<<<<<< HEAD
+import org.apache.flink.util.FlinkException;
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 import org.apache.flink.shaded.netty4.io.netty.buffer.Unpooled;
 import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.DefaultFullHttpResponse;
@@ -39,6 +43,20 @@ import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpHeaders;
 import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpResponseStatus;
 import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpVersion;
 
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+import org.apache.flink.shaded.netty4.io.netty.buffer.Unpooled;
+import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.DefaultFullHttpResponse;
+import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.FullHttpResponse;
+import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpHeaders;
+import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpResponseStatus;
+import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpVersion;
+
+import akka.dispatch.OnComplete;
+=======
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
+>>>>>>> axbaretto
 import com.fasterxml.jackson.core.JsonGenerator;
 
 import javax.annotation.Nullable;
@@ -144,6 +162,47 @@ public class JobCancellationWithSavepointHandlers {
 		public CompletableFuture<FullHttpResponse> handleRequest(
 				Map<String, String> pathParams,
 				Map<String, String> queryParams,
+<<<<<<< HEAD
+				JobManagerGateway jobManagerGateway) throws Exception {
+
+			try {
+				if (jobManagerGateway != null) {
+					JobID jobId = JobID.fromHexString(pathParams.get("jobid"));
+					final Optional<AccessExecutionGraph> optGraph;
+
+					try {
+						optGraph = currentGraphs.getExecutionGraph(jobId, jobManagerGateway);
+					} catch (Exception e) {
+						throw new FlinkException("Could not retrieve the execution with jobId " + jobId + " from the JobManager.", e);
+					}
+
+					final AccessExecutionGraph graph = optGraph.orElseThrow(
+						() -> new NotFoundException("Could not find ExecutionGraph with jobId " + jobId + '.'));
+
+					CheckpointCoordinator coord = graph.getCheckpointCoordinator();
+					if (coord == null) {
+						throw new Exception("Cannot find CheckpointCoordinator for job.");
+					}
+
+					String targetDirectory = pathParams.get("targetDirectory");
+					if (targetDirectory == null) {
+						if (defaultSavepointDirectory == null) {
+							throw new IllegalStateException("No savepoint directory configured. " +
+									"You can either specify a directory when triggering this savepoint or " +
+									"configure a cluster-wide default via key '" +
+									CoreOptions.SAVEPOINT_DIRECTORY.key() + "'.");
+						} else {
+							targetDirectory = defaultSavepointDirectory;
+						}
+					}
+
+					return handleNewRequest(jobManagerGateway, jobId, targetDirectory, coord.getCheckpointTimeout());
+				} else {
+					throw new Exception("No connection to the leading JobManager.");
+				}
+			} catch (Exception e) {
+				throw new Exception("Failed to cancel the job: " + e.getMessage(), e);
+=======
 				JobManagerGateway jobManagerGateway) {
 
 			if (jobManagerGateway != null) {
@@ -167,9 +226,21 @@ public class JobCancellationWithSavepointHandlers {
 						if (targetDirectory == null) {
 							if (defaultSavepointDirectory == null) {
 								throw new IllegalStateException("No savepoint directory configured. " +
+<<<<<<< HEAD
 									"You can either specify a directory when triggering this savepoint or " +
 									"configure a cluster-wide default via key '" +
 									CoreOptions.SAVEPOINT_DIRECTORY.key() + "'.");
+=======
+<<<<<<< HEAD
+										"You can either specify a directory when triggering this savepoint or " +
+										"configure a cluster-wide default via key '" +
+										CoreOptions.SAVEPOINT_DIRECTORY.key() + "'.");
+=======
+									"You can either specify a directory when triggering this savepoint or " +
+									"configure a cluster-wide default via key '" +
+									CoreOptions.SAVEPOINT_DIRECTORY.key() + "'.");
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
+>>>>>>> axbaretto
 							} else {
 								targetDirectory = defaultSavepointDirectory;
 							}
@@ -183,6 +254,7 @@ public class JobCancellationWithSavepointHandlers {
 					}, executor);
 			} else {
 				return FutureUtils.completedExceptionally(new Exception("No connection to the leading JobManager."));
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 			}
 		}
 
@@ -289,6 +361,23 @@ public class JobCancellationWithSavepointHandlers {
 
 		@Override
 		@SuppressWarnings("unchecked")
+<<<<<<< HEAD
+		public FullHttpResponse handleRequest(Map<String, String> pathParams, Map<String, String> queryParams, JobManagerGateway jobManagerGateway) throws Exception {
+			try {
+				if (jobManagerGateway != null) {
+					JobID jobId = JobID.fromHexString(pathParams.get("jobid"));
+					long requestId = Long.parseLong(pathParams.get("requestId"));
+
+					synchronized (lock) {
+						Object result = completed.remove(requestId);
+
+						if (result != null) {
+							// Add to recent history
+							recentlyCompleted.add(new Tuple2<>(requestId, result));
+							if (recentlyCompleted.size() > NUM_GHOST_REQUEST_IDS) {
+								recentlyCompleted.remove();
+							}
+=======
 		public CompletableFuture<FullHttpResponse> handleRequest(Map<String, String> pathParams, Map<String, String> queryParams, JobManagerGateway jobManagerGateway) {
 			JobID jobId = JobID.fromHexString(pathParams.get("jobid"));
 			long requestId = Long.parseLong(pathParams.get("requestId"));
@@ -305,6 +394,7 @@ public class JobCancellationWithSavepointHandlers {
 								if (recentlyCompleted.size() > NUM_GHOST_REQUEST_IDS) {
 									recentlyCompleted.remove();
 								}
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 								if (result.getClass() == String.class) {
 									String savepointPath = (String) result;

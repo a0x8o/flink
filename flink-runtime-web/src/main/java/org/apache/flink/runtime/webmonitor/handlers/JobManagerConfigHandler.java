@@ -19,7 +19,10 @@
 package org.apache.flink.runtime.webmonitor.handlers;
 
 import org.apache.flink.configuration.Configuration;
+<<<<<<< HEAD
+=======
 import org.apache.flink.runtime.concurrent.FlinkFutureException;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.runtime.jobmaster.JobManagerGateway;
 
 import com.fasterxml.jackson.core.JsonGenerator;
@@ -50,12 +53,18 @@ public class JobManagerConfigHandler extends AbstractJsonRequestHandler {
 	}
 
 	@Override
+<<<<<<< HEAD
+	public String handleJsonRequest(Map<String, String> pathParams, Map<String, String> queryParams, JobManagerGateway jobManagerGateway) throws Exception {
+		StringWriter writer = new StringWriter();
+		JsonGenerator gen = JsonFactory.JACKSON_FACTORY.createGenerator(writer);
+=======
 	public CompletableFuture<String> handleJsonRequest(Map<String, String> pathParams, Map<String, String> queryParams, JobManagerGateway jobManagerGateway) {
 		return CompletableFuture.supplyAsync(
 			() -> {
 				try {
 					StringWriter writer = new StringWriter();
 					JsonGenerator gen = JsonFactory.JACKSON_FACTORY.createGenerator(writer);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 					gen.writeStartArray();
 					for (String key : config.keySet()) {

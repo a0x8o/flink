@@ -174,9 +174,6 @@ public abstract class StreamExecutionEnvironment {
 	 * @param parallelism The parallelism
 	 */
 	public StreamExecutionEnvironment setParallelism(int parallelism) {
-		if (parallelism < 1) {
-			throw new IllegalArgumentException("parallelism must be at least one.");
-		}
 		config.setParallelism(parallelism);
 		return this;
 	}
@@ -439,7 +436,7 @@ public abstract class StreamExecutionEnvironment {
 	 * from operations on {@link org.apache.flink.streaming.api.datastream.KeyedStream}) is maintained
 	 * (heap, managed memory, externally), and where state snapshots/checkpoints are stored, both for
 	 * the key/value state, and for checkpointed functions (implementing the interface
-	 * {@link org.apache.flink.streaming.api.checkpoint.Checkpointed}).
+	 * {@link org.apache.flink.streaming.api.checkpoint.CheckpointedFunction}).
 	 *
 	 * <p>The {@link org.apache.flink.runtime.state.memory.MemoryStateBackend} for example
 	 * maintains the state in heap memory, as objects. It is lightweight without extra dependencies,
@@ -747,7 +744,7 @@ public abstract class StreamExecutionEnvironment {
 	 * elements, it may be necessary to manually supply the type information via
 	 * {@link #fromCollection(java.util.Collection, org.apache.flink.api.common.typeinfo.TypeInformation)}.
 	 *
-	 * <p>Note that this operation will result in a non-parallel data stream source, i.e. a data stream source with a
+	 * <p>Note that this operation will result in a non-parallel data stream source, i.e. a data stream source with
 	 * parallelism one.
 	 *
 	 * @param data
@@ -784,7 +781,7 @@ public abstract class StreamExecutionEnvironment {
 	 * Creates a data stream from the given non-empty collection.
 	 *
 	 * <p>Note that this operation will result in a non-parallel data stream source,
-	 * i.e., a data stream source with a parallelism one.
+	 * i.e., a data stream source with parallelism one.
 	 *
 	 * @param data
 	 * 		The collection of elements to create the data stream from
@@ -843,7 +840,7 @@ public abstract class StreamExecutionEnvironment {
 	 * {@link #fromCollection(java.util.Iterator, Class)} does not supply all type information.
 	 *
 	 * <p>Note that this operation will result in a non-parallel data stream source, i.e.,
-	 * a data stream source with a parallelism one.
+	 * a data stream source with parallelism one.
 	 *
 	 * @param data
 	 * 		The iterator of elements to create the data stream from

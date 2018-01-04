@@ -19,8 +19,11 @@
 package org.apache.flink.runtime.webmonitor.handlers;
 
 import org.apache.flink.api.common.time.Time;
+<<<<<<< HEAD
+=======
 import org.apache.flink.runtime.concurrent.FlinkFutureException;
 import org.apache.flink.runtime.concurrent.FutureUtils;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 import org.apache.flink.runtime.instance.Instance;
 import org.apache.flink.runtime.instance.InstanceID;
 import org.apache.flink.runtime.jobmaster.JobManagerGateway;
@@ -32,12 +35,22 @@ import com.fasterxml.jackson.core.JsonGenerator;
 
 import java.io.IOException;
 import java.io.StringWriter;
+<<<<<<< HEAD
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+=======
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 import static java.util.Objects.requireNonNull;
 
@@ -55,8 +68,12 @@ public class TaskManagersHandler extends AbstractJsonRequestHandler  {
 
 	private final MetricFetcher fetcher;
 
+<<<<<<< HEAD
+	public TaskManagersHandler(Time timeout, MetricFetcher fetcher) {
+=======
 	public TaskManagersHandler(Executor executor, Time timeout, MetricFetcher fetcher) {
 		super(executor);
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		this.timeout = requireNonNull(timeout);
 		this.fetcher = fetcher;
 	}
@@ -67,6 +84,34 @@ public class TaskManagersHandler extends AbstractJsonRequestHandler  {
 	}
 
 	@Override
+<<<<<<< HEAD
+	public String handleJsonRequest(Map<String, String> pathParams, Map<String, String> queryParams, JobManagerGateway jobManagerGateway) throws Exception {
+		try {
+			if (jobManagerGateway != null) {
+				// whether one task manager's metrics are requested, or all task manager, we
+				// return them in an array. This avoids unnecessary code complexity.
+				// If only one task manager is requested, we only fetch one task manager metrics.
+				final List<Instance> instances = new ArrayList<>();
+				if (pathParams.containsKey(TASK_MANAGER_ID_KEY)) {
+					try {
+						InstanceID instanceID = new InstanceID(StringUtils.hexStringToByte(pathParams.get(TASK_MANAGER_ID_KEY)));
+						CompletableFuture<Optional<Instance>> tmInstanceFuture = jobManagerGateway.requestTaskManagerInstance(instanceID, timeout);
+
+						Optional<Instance> instance = tmInstanceFuture.get(timeout.toMilliseconds(), TimeUnit.MILLISECONDS);
+
+						instance.ifPresent(instances::add);
+					}
+					// this means the id string was invalid. Keep the list empty.
+					catch (IllegalArgumentException e){
+						// do nothing.
+					}
+				} else {
+					CompletableFuture<Collection<Instance>> tmInstancesFuture = jobManagerGateway.requestTaskManagerInstances(timeout);
+
+					Collection<Instance> tmInstances = tmInstancesFuture.get(timeout.toMilliseconds(), TimeUnit.MILLISECONDS);
+					instances.addAll(tmInstances);
+				}
+=======
 	public CompletableFuture<String> handleJsonRequest(Map<String, String> pathParams, Map<String, String> queryParams, JobManagerGateway jobManagerGateway) {
 		if (jobManagerGateway != null) {
 			// whether one task manager's metrics are requested, or all task manager, we
@@ -105,6 +150,7 @@ public class TaskManagersHandler extends AbstractJsonRequestHandler  {
 			return FutureUtils.completedExceptionally(new Exception("No connection to the leading JobManager."));
 		}
 	}
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 
 	private String writeTaskManagersJson(Collection<Instance> instances, Map<String, String> pathParams) throws IOException {
 		StringWriter writer = new StringWriter();

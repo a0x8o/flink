@@ -50,7 +50,7 @@ import org.apache.flink.runtime.executiongraph.failover.RestartAllStrategy;
 import org.apache.flink.runtime.executiongraph.restart.ExecutionGraphRestartCallback;
 import org.apache.flink.runtime.executiongraph.restart.RestartCallback;
 import org.apache.flink.runtime.executiongraph.restart.RestartStrategy;
-import org.apache.flink.runtime.instance.SlotProvider;
+import org.apache.flink.runtime.jobmaster.slotpool.SlotProvider;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 import org.apache.flink.runtime.jobgraph.JobStatus;
@@ -965,11 +965,20 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 
 					// we build a future that is complete once all vertices have reached a terminal state
 					final ConjunctFuture<Void> allTerminal = FutureUtils.waitForAll(futures);
-					allTerminal.thenAccept(
-						(Void value) -> {
-							// cancellations may currently be overridden by failures which trigger
-							// restarts, so we need to pass a proper restart global version here
-							allVerticesInTerminalState(globalVersionForRestart);
+					allTerminal.whenComplete(
+						(Void value, Throwable throwable) -> {
+							if (throwable != null) {
+								transitionState(
+									JobStatus.CANCELLING,
+									JobStatus.FAILED,
+									new FlinkException(
+										"Could not cancel job " + getJobName() + " because not all execution job vertices could be cancelled.",
+										throwable));
+							} else {
+								// cancellations may currently be overridden by failures which trigger
+								// restarts, so we need to pass a proper restart global version here
+								allVerticesInTerminalState(globalVersionForRestart);
+							}
 						}
 					);
 
@@ -1125,7 +1134,17 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 				}
 
 				final ConjunctFuture<Void> allTerminal = FutureUtils.waitForAll(futures);
-				allTerminal.thenAccept((Void value) -> allVerticesInTerminalState(globalVersionForRestart));
+				allTerminal.whenComplete(
+					(Void ignored, Throwable throwable) -> {
+						if (throwable != null) {
+							transitionState(
+								JobStatus.FAILING,
+								JobStatus.FAILED,
+								new FlinkException("Could not cancel all execution job vertices properly.", throwable));
+						} else {
+							allVerticesInTerminalState(globalVersionForRestart);
+						}
+					});
 
 				return;
 			}
@@ -1668,12 +1687,12 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 			// avoiding redundant local failover
 			if (execution.getGlobalModVersion() == globalModVersion) {
 				try {
-					failoverStrategy.onTaskFailure(execution, ex);
-
 					// fail all checkpoints which the failed task has not yet acknowledged
 					if (checkpointCoordinator != null) {
 						checkpointCoordinator.failUnacknowledgedPendingCheckpointsFor(execution.getAttemptId(), ex);
 					}
+
+					failoverStrategy.onTaskFailure(execution, ex);
 				}
 				catch (Throwable t) {
 					// bug in the failover strategy - fall back to global failover

@@ -56,7 +56,11 @@ public class JobConfigHandlerTest {
 
 	@Test
 	public void testGetPaths() {
+<<<<<<< HEAD
+		JobConfigHandler handler = new JobConfigHandler(mock(ExecutionGraphHolder.class));
+=======
 		JobConfigHandler handler = new JobConfigHandler(mock(ExecutionGraphHolder.class), Executors.directExecutor());
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		String[] paths = handler.getPaths();
 		Assert.assertEquals(1, paths.length);
 		Assert.assertEquals("/jobs/:jobid/config", paths[0]);

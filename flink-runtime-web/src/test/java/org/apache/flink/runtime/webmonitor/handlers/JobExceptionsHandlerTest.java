@@ -18,7 +18,14 @@
 
 package org.apache.flink.runtime.webmonitor.handlers;
 
+<<<<<<< HEAD
 import org.apache.flink.runtime.concurrent.Executors;
+=======
+<<<<<<< HEAD
+=======
+import org.apache.flink.runtime.concurrent.Executors;
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
+>>>>>>> axbaretto
 import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.executiongraph.AccessExecutionGraph;
 import org.apache.flink.runtime.executiongraph.AccessExecutionVertex;
@@ -59,7 +66,11 @@ public class JobExceptionsHandlerTest {
 
 	@Test
 	public void testGetPaths() {
+<<<<<<< HEAD
+		JobExceptionsHandler handler = new JobExceptionsHandler(mock(ExecutionGraphHolder.class));
+=======
 		JobExceptionsHandler handler = new JobExceptionsHandler(mock(ExecutionGraphHolder.class), Executors.directExecutor());
+>>>>>>> ebaa7b5725a273a7f8726663dbdf235c58ff761d
 		String[] paths = handler.getPaths();
 		Assert.assertEquals(1, paths.length);
 		Assert.assertEquals("/jobs/:jobid/exceptions", paths[0]);
