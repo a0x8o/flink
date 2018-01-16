@@ -100,6 +100,10 @@ public abstract class InputChannel {
 		return channelIndex;
 	}
 
+	public ResultPartitionID getPartitionId() {
+		return partitionId;
+	}
+
 	/**
 	 * Notifies the owning {@link SingleInputGate} that this channel became non-empty.
 	 * 
@@ -238,16 +242,20 @@ public abstract class InputChannel {
 	// ------------------------------------------------------------------------
 
 	/**
-	 * A combination of a {@link Buffer} and a flag indicating availability of further buffers.
+	 * A combination of a {@link Buffer} and a flag indicating availability of further buffers,
+	 * and the backlog length indicating how many non-event buffers are available in the
+	 * subpartition.
 	 */
 	public static final class BufferAndAvailability {
 
 		private final Buffer buffer;
 		private final boolean moreAvailable;
+		private final int buffersInBacklog;
 
-		public BufferAndAvailability(Buffer buffer, boolean moreAvailable) {
+		public BufferAndAvailability(Buffer buffer, boolean moreAvailable, int buffersInBacklog) {
 			this.buffer = checkNotNull(buffer);
 			this.moreAvailable = moreAvailable;
+			this.buffersInBacklog = buffersInBacklog;
 		}
 
 		public Buffer buffer() {
@@ -256,6 +264,10 @@ public abstract class InputChannel {
 
 		public boolean moreAvailable() {
 			return moreAvailable;
+		}
+
+		public int buffersInBacklog() {
+			return buffersInBacklog;
 		}
 	}
 }

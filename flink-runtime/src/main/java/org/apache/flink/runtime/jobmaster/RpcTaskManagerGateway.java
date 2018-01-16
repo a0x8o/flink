@@ -15,6 +15,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package org.apache.flink.runtime.jobmaster;
 
 import org.apache.flink.api.common.JobID;
@@ -22,6 +23,7 @@ import org.apache.flink.api.common.time.Time;
 import org.apache.flink.runtime.blob.TransientBlobKey;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.clusterframework.ApplicationStatus;
+import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.deployment.TaskDeploymentDescriptor;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.PartitionInfo;
@@ -36,7 +38,7 @@ import org.apache.flink.util.Preconditions;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * Implementation of the {@link TaskManagerGateway} for Flink's RPC system
+ * Implementation of the {@link TaskManagerGateway} for Flink's RPC system.
  */
 public class RpcTaskManagerGateway implements TaskManagerGateway {
 
@@ -111,14 +113,16 @@ public class RpcTaskManagerGateway implements TaskManagerGateway {
 
 	@Override
 	public void notifyCheckpointComplete(ExecutionAttemptID executionAttemptID, JobID jobId, long checkpointId, long timestamp) {
-//		taskExecutorGateway.notifyCheckpointComplete(executionAttemptID, jobId, checkpointId, timestamp);
-		throw new UnsupportedOperationException("Operation is not yet supported.");
+		taskExecutorGateway.confirmCheckpoint(executionAttemptID, checkpointId, timestamp);
 	}
 
 	@Override
 	public void triggerCheckpoint(ExecutionAttemptID executionAttemptID, JobID jobId, long checkpointId, long timestamp, CheckpointOptions checkpointOptions) {
-//		taskExecutorGateway.triggerCheckpoint(executionAttemptID, jobId, checkpointId, timestamp);
-		throw new UnsupportedOperationException("Operation is not yet supported.");
+		taskExecutorGateway.triggerCheckpoint(
+			executionAttemptID,
+			checkpointId,
+			timestamp,
+			checkpointOptions);
 	}
 
 	@Override
@@ -131,5 +135,13 @@ public class RpcTaskManagerGateway implements TaskManagerGateway {
 	public CompletableFuture<TransientBlobKey> requestTaskManagerStdout(Time timeout) {
 //		return taskExecutorGateway.requestTaskManagerStdout(timeout);
 		throw new UnsupportedOperationException("Operation is not yet supported.");
+	}
+
+	@Override
+	public CompletableFuture<Acknowledge> freeSlot(AllocationID allocationId, Throwable cause, Time timeout) {
+		return taskExecutorGateway.freeSlot(
+			allocationId,
+			cause,
+			timeout);
 	}
 }

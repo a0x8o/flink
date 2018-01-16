@@ -352,6 +352,64 @@ class ScalarFunctionsTest extends ScalarTypesTestBase {
       "Flink~~~~xx")
   }
 
+  @Test
+  def testBin(): Unit = {
+
+    testAllApis(
+      Null(Types.BYTE).bin(),
+      "bin(Null(BYTE))",
+      "BIN((CAST(NULL AS TINYINT)))",
+      "null")
+
+    testAllApis(
+      'f2.bin(),
+      "f2.bin()",
+      "BIN(f2)",
+      "101010")
+
+    testAllApis(
+      'f3.bin(),
+      "f3.bin()",
+      "BIN(f3)",
+      "101011")
+
+    testAllApis(
+      'f4.bin(),
+      "f4.bin()",
+      "BIN(f4)",
+      "101100")
+
+    testAllApis(
+      'f7.bin(),
+      "f7.bin()",
+      "BIN(f7)",
+      "11")
+
+    testAllApis(
+      12.bin(),
+      "12.bin()",
+      "BIN(12)",
+      "1100")
+
+    testAllApis(
+      10.bin(),
+      "10.bin()",
+      "BIN(10)",
+      "1010")
+
+    testAllApis(
+      0.bin(),
+      "0.bin()",
+      "BIN(0)",
+      "0")
+
+    testAllApis(
+      'f32.bin(),
+      "f32.bin()",
+      "BIN(f32)",
+      "1111111111111111111111111111111111111111111111111111111111111111")
+  }
+
   // ----------------------------------------------------------------------------------------------
   // Math functions
   // ----------------------------------------------------------------------------------------------
@@ -1672,6 +1730,53 @@ class ScalarFunctionsTest extends ScalarTypesTestBase {
 
     testSqlApi("TIMESTAMPADD(MONTH, 3, CAST(NULL AS TIMESTAMP))", "null")
 
+  }
+
+  // ----------------------------------------------------------------------------------------------
+  // Hash functions
+  // ----------------------------------------------------------------------------------------------
+
+  @Test
+  def testHashFunctions(): Unit = {
+    val expectedMd5 = "098f6bcd4621d373cade4e832627b4f6"
+    val expectedSha1 = "a94a8fe5ccb19ba61c4c0873d391e987982fbbd3"
+    val expectedSha256 = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+
+    testAllApis(
+      "test".md5(),
+      "md5('test')",
+      "MD5('test')",
+      expectedMd5)
+
+    testAllApis(
+      "test".sha1(),
+      "sha1('test')",
+      "SHA1('test')",
+      expectedSha1)
+
+    testAllApis(
+      "test".sha256(),
+      "sha256('test')",
+      "SHA256('test')",
+      expectedSha256)
+
+    testAllApis(
+      'f33.md5(),
+      "sha256(f33)",
+      "SHA256(f33)",
+      "null")
+
+    testAllApis(
+      'f33.sha256(),
+      "sha256(f33)",
+      "SHA256(f33)",
+      "null")
+
+    testAllApis(
+      'f33.sha256(),
+      "sha256(f33)",
+      "SHA256(f33)",
+      "null")
   }
 
   // ----------------------------------------------------------------------------------------------

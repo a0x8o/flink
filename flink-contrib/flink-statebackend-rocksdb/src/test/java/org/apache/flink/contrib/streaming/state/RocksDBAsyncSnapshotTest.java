@@ -25,7 +25,6 @@ import org.apache.flink.api.common.typeinfo.BasicTypeInfo;
 import org.apache.flink.api.common.typeutils.base.StringSerializer;
 import org.apache.flink.api.common.typeutils.base.VoidSerializer;
 import org.apache.flink.api.java.functions.KeySelector;
-import org.apache.flink.configuration.ConfigConstants;
 import org.apache.flink.core.testutils.OneShotLatch;
 import org.apache.flink.runtime.checkpoint.CheckpointMetaData;
 import org.apache.flink.runtime.checkpoint.CheckpointMetrics;
@@ -60,7 +59,9 @@ import org.apache.flink.util.IOUtils;
 import org.apache.flink.util.TestLogger;
 
 import org.junit.Assert;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
 import org.junit.runner.RunWith;
 import org.powermock.core.classloader.annotations.PowerMockIgnore;
 import org.powermock.modules.junit4.PowerMockRunner;
@@ -70,7 +71,6 @@ import java.io.IOException;
 import java.lang.reflect.Field;
 import java.util.Arrays;
 import java.util.Map;
-import java.util.UUID;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RunnableFuture;
@@ -96,6 +96,12 @@ import static org.mockito.Mockito.verify;
 public class RocksDBAsyncSnapshotTest extends TestLogger {
 
 	/**
+	 * Temporary fold for test.
+	 */
+	@Rule
+	public TemporaryFolder temporaryFolder = new TemporaryFolder();
+
+	/**
 	 * This ensures that asynchronous state handles are actually materialized asynchronously.
 	 *
 	 * <p>We use latches to block at various stages and see if the code still continues through
@@ -105,9 +111,9 @@ public class RocksDBAsyncSnapshotTest extends TestLogger {
 	@Test
 	public void testFullyAsyncSnapshot() throws Exception {
 
-		final OneInputStreamTask<String, String> task = new OneInputStreamTask<>();
-
-		final OneInputStreamTaskTestHarness<String, String> testHarness = new OneInputStreamTaskTestHarness<>(task, BasicTypeInfo.STRING_TYPE_INFO, BasicTypeInfo.STRING_TYPE_INFO);
+		final OneInputStreamTaskTestHarness<String, String> testHarness = new OneInputStreamTaskTestHarness<>(
+				OneInputStreamTask::new,
+				BasicTypeInfo.STRING_TYPE_INFO, BasicTypeInfo.STRING_TYPE_INFO);
 		testHarness.setupOutputForSingletonOperatorChain();
 
 		testHarness.configureForKeyedStream(new KeySelector<String, String>() {
@@ -119,7 +125,7 @@ public class RocksDBAsyncSnapshotTest extends TestLogger {
 
 		StreamConfig streamConfig = testHarness.getStreamConfig();
 
-		File dbDir = new File(new File(ConfigConstants.DEFAULT_TASK_MANAGER_TMP_PATH, UUID.randomUUID().toString()), "state");
+		File dbDir = temporaryFolder.newFolder();
 
 		RocksDBStateBackend backend = new RocksDBStateBackend(new MemoryStateBackend());
 		backend.setDbStoragePath(dbDir.getAbsolutePath());
@@ -173,6 +179,8 @@ public class RocksDBAsyncSnapshotTest extends TestLogger {
 
 		testHarness.invoke(mockEnv);
 
+		final OneInputStreamTask<String, String> task = testHarness.getTask();
+
 		// wait for the task to be running
 		for (Field field: StreamTask.class.getDeclaredFields()) {
 			if (field.getName().equals("isRunning")) {
@@ -207,13 +215,13 @@ public class RocksDBAsyncSnapshotTest extends TestLogger {
 
 	/**
 	 * This tests ensures that canceling of asynchronous snapshots works as expected and does not block.
-	 * @throws Exception
 	 */
 	@Test
 	public void testCancelFullyAsyncCheckpoints() throws Exception {
-		final OneInputStreamTask<String, String> task = new OneInputStreamTask<>();
+		final OneInputStreamTaskTestHarness<String, String> testHarness = new OneInputStreamTaskTestHarness<>(
+				OneInputStreamTask::new,
+				BasicTypeInfo.STRING_TYPE_INFO, BasicTypeInfo.STRING_TYPE_INFO);
 
-		final OneInputStreamTaskTestHarness<String, String> testHarness = new OneInputStreamTaskTestHarness<>(task, BasicTypeInfo.STRING_TYPE_INFO, BasicTypeInfo.STRING_TYPE_INFO);
 		testHarness.setupOutputForSingletonOperatorChain();
 
 		testHarness.configureForKeyedStream(new KeySelector<String, String>() {
@@ -225,7 +233,7 @@ public class RocksDBAsyncSnapshotTest extends TestLogger {
 
 		StreamConfig streamConfig = testHarness.getStreamConfig();
 
-		File dbDir = new File(new File(ConfigConstants.DEFAULT_TASK_MANAGER_TMP_PATH, UUID.randomUUID().toString()), "state");
+		File dbDir = temporaryFolder.newFolder();
 
 		BlockingStreamMemoryStateBackend memoryStateBackend = new BlockingStreamMemoryStateBackend();
 
@@ -271,6 +279,8 @@ public class RocksDBAsyncSnapshotTest extends TestLogger {
 		blockerCheckpointStreamFactory.setWaiterLatch(new OneShotLatch());
 
 		testHarness.invoke(mockEnv);
+
+		final OneInputStreamTask<String, String> task = testHarness.getTask();
 
 		// wait for the task to be running
 		for (Field field: StreamTask.class.getDeclaredFields()) {
@@ -333,7 +343,7 @@ public class RocksDBAsyncSnapshotTest extends TestLogger {
 
 		RocksDBStateBackend backend = new RocksDBStateBackend(stateBackend);
 
-		backend.setDbStoragePath("file:///tmp/foobar");
+		backend.setDbStoragePath(temporaryFolder.newFolder().toURI().toString());
 
 		AbstractKeyedStateBackend<Void> keyedStateBackend = backend.createKeyedStateBackend(
 			env,

@@ -23,11 +23,13 @@ import org.apache.flink.core.testutils.OneShotLatch;
 import org.apache.flink.runtime.akka.AkkaUtils;
 import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.concurrent.ScheduledExecutor;
+import org.apache.flink.testutils.category.Flip6;
 import org.apache.flink.util.TestLogger;
 
 import akka.actor.ActorSystem;
 import org.junit.AfterClass;
 import org.junit.Test;
+import org.junit.experimental.categories.Category;
 
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
@@ -42,6 +44,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
+@Category(Flip6.class)
 public class AkkaRpcServiceTest extends TestLogger {
 
 	// ------------------------------------------------------------------------
@@ -134,12 +137,9 @@ public class AkkaRpcServiceTest extends TestLogger {
 
 	/**
 	 * Tests that we can wait for the termination of the rpc service
-	 *
-	 * @throws ExecutionException
-	 * @throws InterruptedException
 	 */
 	@Test(timeout = 60000)
-	public void testTerminationFuture() throws ExecutionException, InterruptedException {
+	public void testTerminationFuture() throws Exception {
 		final ActorSystem actorSystem = AkkaUtils.createDefaultActorSystem();
 		final AkkaRpcService rpcService = new AkkaRpcService(actorSystem, Time.milliseconds(1000));
 
@@ -147,7 +147,7 @@ public class AkkaRpcServiceTest extends TestLogger {
 
 		assertFalse(terminationFuture.isDone());
 
-		CompletableFuture.runAsync(() -> rpcService.stopService(), actorSystem.dispatcher());
+		CompletableFuture.runAsync(rpcService::stopService, actorSystem.dispatcher());
 
 		terminationFuture.get();
 	}

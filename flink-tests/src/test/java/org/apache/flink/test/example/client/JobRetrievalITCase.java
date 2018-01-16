@@ -20,10 +20,12 @@
 package org.apache.flink.test.example.client;
 
 import org.apache.flink.api.common.JobID;
+import org.apache.flink.client.deployment.StandaloneClusterId;
 import org.apache.flink.client.program.ClusterClient;
 import org.apache.flink.client.program.StandaloneClusterClient;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.client.JobRetrievalException;
+import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.jobgraph.JobVertex;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
@@ -77,7 +79,7 @@ public class JobRetrievalITCase extends TestLogger {
 
 		final JobGraph jobGraph = new JobGraph(jobID, "testjob", imalock);
 
-		final ClusterClient client = new StandaloneClusterClient(cluster.configuration(), cluster.highAvailabilityServices());
+		final ClusterClient<StandaloneClusterId> client = new StandaloneClusterClient(cluster.configuration(), cluster.highAvailabilityServices());
 
 		// acquire the lock to make sure that the job cannot complete until the job client
 		// has been attached in resumingThread
@@ -122,7 +124,7 @@ public class JobRetrievalITCase extends TestLogger {
 	@Test
 	public void testNonExistingJobRetrieval() throws Exception {
 		final JobID jobID = new JobID();
-		ClusterClient client = new StandaloneClusterClient(cluster.configuration());
+		ClusterClient<StandaloneClusterId> client = new StandaloneClusterClient(cluster.configuration());
 
 		try {
 			client.retrieveJob(jobID);
@@ -138,6 +140,10 @@ public class JobRetrievalITCase extends TestLogger {
 	 * <p>NOTE: needs to be <tt>public</tt> so that a task can be run with this!
 	 */
 	public static class SemaphoreInvokable extends AbstractInvokable {
+
+		public SemaphoreInvokable(Environment environment) {
+			super(environment);
+		}
 
 		@Override
 		public void invoke() throws Exception {

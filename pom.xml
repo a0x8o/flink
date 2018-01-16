@@ -126,6 +126,10 @@ under the License.
 		<powermock.version>1.6.5</powermock.version>
 		<hamcrest.version>1.3</hamcrest.version>
 		<japicmp.skip>false</japicmp.skip>
+		<!-- run all groups except flip6 by default -->
+		<test.groups></test.groups>
+		<test.excludedGroups>org.apache.flink.testutils.category.Flip6</test.excludedGroups>
+		<codebase>old</codebase>
 		<!--
 			Keeping the MiniKDC version fixed instead of taking hadoop version dependency
 			to support testing Kafka, ZK etc., modules that does not have Hadoop dependency
@@ -582,10 +586,28 @@ under the License.
 				<version>0.9.10</version>
 				<scope>test</scope>
 			</dependency>
+
+			<!-- Testing dependency which should be included by all projects because of the Category definitions -->
+			<dependency>
+				<groupId>org.apache.flink</groupId>
+				<artifactId>flink-test-utils-junit</artifactId>
+				<version>${project.version}</version>
+				<scope>test</scope>
+			</dependency>
 		</dependencies>
 	</dependencyManagement>
 
 	<profiles>
+
+		<profile>
+			<id>flip6</id>
+			<properties>
+				<test.groups>org.apache.flink.testutils.category.Flip6, org.apache.flink.testutils.category.OldAndFlip6</test.groups>
+				<!-- clear the excluded groups list -->
+				<test.excludedGroups></test.excludedGroups>
+				<codebase>flip6</codebase>
+			</properties>
+		</profile>
 
 		<profile>
 			<id>spotbugs</id>
@@ -744,22 +766,6 @@ under the License.
 			<id>aggregate-scaladoc</id>
 		</profile>
 
-		<profile>
-			<!--japicmp 0.7 does not support deactivation from the command
-				line, so we have to use a workaround with profiles instead.
-				This can be removed when upgrading japicmp to 0.10+.
-				-->
-			<id>skip-japicmp</id>
-			<activation>
-				<property>
-					<name>japicmp.skip</name>
-					<value>true</value>
-				</property>
-			</activation>
-			<properties>
-				<japicmp.skip>true</japicmp.skip>
-			</properties>
-		</profile>
 
 		<profile>
 			<!-- used for SNAPSHOT and regular releases -->
@@ -1104,11 +1110,14 @@ under the License.
 				<!-- Do NOT use a version >=2.19.X, as test cases may get stuck before execution. See SUREFIRE-1255 -->
 				<version>2.18.1</version>
 				<configuration>
+					<groups>${test.groups}</groups>
+					<excludedGroups>${test.excludedGroups}</excludedGroups>
 					<forkCount>${flink.forkCount}</forkCount>
 					<reuseForks>${flink.reuseForks}</reuseForks>
 					<systemPropertyVariables>
 						<forkNumber>0${surefire.forkNumber}</forkNumber>
 						<log4j.configuration>${log4j.configuration}</log4j.configuration>
+						<codebase>${codebase}</codebase>
 					</systemPropertyVariables>
 					<argLine>-Xms256m -Xmx2048m -Dmvn.forkNumber=${surefire.forkNumber} -XX:+UseG1GC</argLine>
 				</configuration>
@@ -1410,13 +1419,13 @@ under the License.
 				<plugin>
 					<groupId>com.github.siom79.japicmp</groupId>
 					<artifactId>japicmp-maven-plugin</artifactId>
-					<version>0.7.0</version>
+					<version>0.11.0</version>
 					<configuration>
 						<oldVersion>
 							<dependency>
 								<groupId>org.apache.flink</groupId>
 								<artifactId>${project.artifactId}</artifactId>
-								<version>1.1.4</version>
+								<version>1.4.0</version>
 								<type>${project.packaging}</type>
 							</dependency>
 						</oldVersion>
@@ -1455,7 +1464,6 @@ under the License.
 							<!-- Don't break build on newly added maven modules -->
 							<ignoreNonResolvableArtifacts>true</ignoreNonResolvableArtifacts>
 						</parameter>
-						<skip>${japicmp.skip}</skip>
 						<dependencies>
 							<dependency>
 								<groupId>org.apache.flink</groupId>

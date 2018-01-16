@@ -26,6 +26,7 @@ import org.apache.flink.runtime.blob.BlobServer;
 import org.apache.flink.runtime.client.JobExecutionException;
 import org.apache.flink.runtime.clusterframework.FlinkResourceManager;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
+import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.heartbeat.HeartbeatServices;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServicesUtils;
@@ -58,7 +59,7 @@ import static org.apache.flink.util.ExceptionUtils.firstOrSuppressed;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.apache.flink.util.Preconditions.checkState;
 
-public class MiniCluster {
+public class MiniCluster implements JobExecutorService {
 
 	private static final Logger LOG = LoggerFactory.getLogger(MiniCluster.class);
 
@@ -448,7 +449,8 @@ public class MiniCluster {
 	 * @throws JobExecutionException Thrown if anything went amiss during initial job launch,
 	 *         or if the job terminally failed.
 	 */
-	public JobExecutionResult runJobBlocking(JobGraph job) throws JobExecutionException, InterruptedException {
+	@Override
+	public JobExecutionResult executeJobBlocking(JobGraph job) throws JobExecutionException, InterruptedException {
 		checkNotNull(job, "job is null");
 
 		MiniClusterJobDispatcher dispatcher;
@@ -456,6 +458,10 @@ public class MiniCluster {
 			checkState(running, "mini cluster is not running");
 			dispatcher = this.jobDispatcher;
 		}
+
+		// we have to allow queued scheduling in Flip-6 mode because we need to request slots
+		// from the ResourceManager
+		job.setAllowQueuedScheduling(true);
 
 		return dispatcher.runJobBlocking(job);
 	}
@@ -590,6 +596,16 @@ public class MiniCluster {
 			}
 		}
 		return priorException;
+	}
+
+	@Override
+	public CompletableFuture<?> terminate() {
+		try {
+			shutdown();
+			return CompletableFuture.completedFuture(null);
+		} catch (Exception e) {
+			return FutureUtils.completedExceptionally(e);
+		}
 	}
 
 	private class TerminatingFatalErrorHandler implements FatalErrorHandler {

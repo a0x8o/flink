@@ -113,34 +113,34 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 
 	public static final String TASK_MANAGER_NAME = "taskmanager";
 
-	/** The connection information of this task manager */
+	/** The connection information of this task manager. */
 	private final TaskManagerLocation taskManagerLocation;
 
-	/** Max blob port which is accepted */
+	/** Max blob port which is accepted. */
 	public static final int MAX_BLOB_PORT = 65536;
 
-	/** The access to the leader election and retrieval services */
+	/** The access to the leader election and retrieval services. */
 	private final HighAvailabilityServices haServices;
 
-	/** The task manager configuration */
+	/** The task manager configuration. */
 	private final TaskManagerConfiguration taskManagerConfiguration;
 
-	/** The I/O manager component in the task manager */
+	/** The I/O manager component in the task manager. */
 	private final IOManager ioManager;
 
-	/** The memory manager component in the task manager */
+	/** The memory manager component in the task manager. */
 	private final MemoryManager memoryManager;
 
-	/** The network component in the task manager */
+	/** The network component in the task manager. */
 	private final NetworkEnvironment networkEnvironment;
 
-	/** The heartbeat manager for job manager in the task manager */
+	/** The heartbeat manager for job manager in the task manager. */
 	private final HeartbeatManager<Void, Void> jobManagerHeartbeatManager;
 
-	/** The heartbeat manager for resource manager in the task manager */
+	/** The heartbeat manager for resource manager in the task manager. */
 	private final HeartbeatManager<Void, SlotReport> resourceManagerHeartbeatManager;
 
-	/** The fatal error handler to use in case of a fatal error */
+	/** The fatal error handler to use in case of a fatal error. */
 	private final FatalErrorHandler fatalErrorHandler;
 
 	private final TaskManagerMetricGroup taskManagerMetricGroup;
@@ -673,6 +673,13 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 		return CompletableFuture.completedFuture(Acknowledge.get());
 	}
 
+	@Override
+	public CompletableFuture<Acknowledge> freeSlot(AllocationID allocationId, Throwable cause, Time timeout) {
+		freeSlotInternal(allocationId, cause);
+
+		return CompletableFuture.completedFuture(Acknowledge.get());
+	}
+
 	// ----------------------------------------------------------------------
 	// Disconnection RPCs
 	// ----------------------------------------------------------------------
@@ -680,6 +687,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 	@Override
 	public void disconnectJobManager(JobID jobId, Exception cause) {
 		closeJobManagerConnection(jobId, cause);
+		jobLeaderService.reconnect(jobId);
 	}
 
 	@Override
@@ -820,7 +828,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 
 								// We encountered an exception. Free the slots and return them to the RM.
 								for (SlotOffer reservedSlot: reservedSlots) {
-									freeSlot(reservedSlot.getAllocationId(), throwable);
+									freeSlotInternal(reservedSlot.getAllocationId(), throwable);
 								}
 							}
 						} else {
@@ -834,7 +842,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 								final Exception e = new Exception("The slot was rejected by the JobManager.");
 
 								for (SlotOffer rejectedSlot : reservedSlots) {
-									freeSlot(rejectedSlot.getAllocationId(), e);
+									freeSlotInternal(rejectedSlot.getAllocationId(), e);
 								}
 							} else {
 								// discard the response since there is a new leader for the job
@@ -898,20 +906,24 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 		// 1. fail tasks running under this JobID
 		Iterator<Task> tasks = taskSlotTable.getTasks(jobId);
 
+		final FlinkException failureCause = new FlinkException("JobManager responsible for " + jobId +
+			" lost the leadership.", cause);
+
 		while (tasks.hasNext()) {
-			tasks.next().failExternally(new Exception("JobManager responsible for " + jobId +
-				" lost the leadership."));
+			tasks.next().failExternally(failureCause);
 		}
 
 		// 2. Move the active slots to state allocated (possible to time out again)
 		Iterator<AllocationID> activeSlots = taskSlotTable.getActiveSlots(jobId);
+
+		final FlinkException freeingCause = new FlinkException("Slot could not be marked inactive.");
 
 		while (activeSlots.hasNext()) {
 			AllocationID activeSlot = activeSlots.next();
 
 			try {
 				if (!taskSlotTable.markSlotInactive(activeSlot, taskManagerConfiguration.getTimeout())) {
-					freeSlot(activeSlot, new Exception("Slot could not be marked inactive."));
+					freeSlotInternal(activeSlot, freeingCause);
 				}
 			} catch (SlotNotFoundException e) {
 				log.debug("Could not mark the slot {} inactive.", jobId, e);
@@ -1017,8 +1029,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 
 	private void updateTaskExecutionState(
 			final JobMasterGateway jobMasterGateway,
-			final TaskExecutionState taskExecutionState)
-	{
+			final TaskExecutionState taskExecutionState) {
 		final ExecutionAttemptID executionAttemptID = taskExecutionState.getID();
 
 		CompletableFuture<Acknowledge> futureAcknowledge = jobMasterGateway.updateTaskExecutionState(taskExecutionState);
@@ -1065,28 +1076,46 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 		}
 	}
 
-	private void freeSlot(AllocationID allocationId, Throwable cause) {
+	private void freeSlotInternal(AllocationID allocationId, Throwable cause) {
 		Preconditions.checkNotNull(allocationId);
 
 		try {
-			int freedSlotIndex = taskSlotTable.freeSlot(allocationId, cause);
+			TaskSlot taskSlot = taskSlotTable.freeSlot(allocationId, cause);
 
-			if (freedSlotIndex != -1 && isConnectedToResourceManager()) {
+			if (taskSlot != null && isConnectedToResourceManager()) {
 				// the slot was freed. Tell the RM about it
 				ResourceManagerGateway resourceManagerGateway = resourceManagerConnection.getTargetGateway();
 
 				resourceManagerGateway.notifySlotAvailable(
 					resourceManagerConnection.getRegistrationId(),
-					new SlotID(getResourceID(), freedSlotIndex),
+					new SlotID(getResourceID(), taskSlot.getIndex()),
 					allocationId);
+
+				// check whether we still have allocated slots for the same job
+				final JobID jobId = taskSlot.getJobId();
+				final Iterator<Task> tasks = taskSlotTable.getTasks(jobId);
+
+				if (!tasks.hasNext()) {
+					// we can remove the job from the job leader service
+					try {
+						jobLeaderService.removeJob(jobId);
+					} catch (Exception e) {
+						log.info("Could not remove job {} from JobLeaderService.", jobId, e);
+					}
+
+					closeJobManagerConnection(
+						jobId,
+						new FlinkException("TaskExecutor " + getAddress() +
+							" has no more allocated slots for job " + jobId + '.'));
+				}
 			}
 		} catch (SlotNotFoundException e) {
 			log.debug("Could not free slot for allocation id {}.", allocationId, e);
 		}
 	}
 
-	private void freeSlot(AllocationID allocationId) {
-		freeSlot(allocationId, new Exception("The slot " + allocationId + " is beeing freed."));
+	private void freeSlotInternal(AllocationID allocationId) {
+		freeSlotInternal(allocationId, new Exception("The slot " + allocationId + " is being freed."));
 	}
 
 	private void timeoutSlot(AllocationID allocationId, UUID ticket) {
@@ -1094,7 +1123,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 		Preconditions.checkNotNull(ticket);
 
 		if (taskSlotTable.isValidTimeout(allocationId, ticket)) {
-			freeSlot(allocationId, new Exception("The slot " + allocationId + " has timed out."));
+			freeSlotInternal(allocationId, new Exception("The slot " + allocationId + " has timed out."));
 		} else {
 			log.debug("Received an invalid timeout for allocation id {} with ticket {}.", allocationId, ticket);
 		}
@@ -1196,14 +1225,10 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 		public void jobManagerLostLeadership(final JobID jobId, final JobMasterId jobMasterId) {
 			log.info("JobManager for job {} with leader id {} lost leadership.", jobId, jobMasterId);
 
-			runAsync(new Runnable() {
-				@Override
-				public void run() {
-					closeJobManagerConnection(
-						jobId,
-						new Exception("Job leader for job id " + jobId + " lost leadership."));
-				}
-			});
+			runAsync(() ->
+				closeJobManagerConnection(
+					jobId,
+					new Exception("Job leader for job id " + jobId + " lost leadership.")));
 		}
 
 		@Override
@@ -1219,12 +1244,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 			final ResourceID resourceManagerId = success.getResourceManagerId();
 
 			runAsync(
-				new Runnable() {
-					@Override
-					public void run() {
-						establishResourceManagerConnection(resourceManagerId);
-					}
-				}
+				() -> establishResourceManagerConnection(resourceManagerId)
 			);
 		}
 
@@ -1243,12 +1263,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 
 		@Override
 		public void notifyFinalState(final ExecutionAttemptID executionAttemptID) {
-			runAsync(new Runnable() {
-				@Override
-				public void run() {
-					unregisterTaskAndNotifyFinalState(jobMasterGateway, executionAttemptID);
-				}
-			});
+			runAsync(() -> unregisterTaskAndNotifyFinalState(jobMasterGateway, executionAttemptID));
 		}
 
 		@Override
@@ -1263,12 +1278,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 
 		@Override
 		public void failTask(final ExecutionAttemptID executionAttemptID, final Throwable cause) {
-			runAsync(new Runnable() {
-				@Override
-				public void run() {
-					TaskExecutor.this.failTask(executionAttemptID, cause);
-				}
-			});
+			runAsync(() -> TaskExecutor.this.failTask(executionAttemptID, cause));
 		}
 
 		@Override
@@ -1281,22 +1291,12 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 
 		@Override
 		public void freeSlot(final AllocationID allocationId) {
-			runAsync(new Runnable() {
-				@Override
-				public void run() {
-					TaskExecutor.this.freeSlot(allocationId);
-				}
-			});
+			runAsync(() -> TaskExecutor.this.freeSlotInternal(allocationId));
 		}
 
 		@Override
 		public void timeoutSlot(final AllocationID allocationId, final UUID ticket) {
-			runAsync(new Runnable() {
-				@Override
-				public void run() {
-					TaskExecutor.this.timeoutSlot(allocationId, ticket);
-				}
-			});
+			runAsync(() -> TaskExecutor.this.timeoutSlot(allocationId, ticket));
 		}
 	}
 
@@ -1304,19 +1304,18 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 
 		@Override
 		public void notifyHeartbeatTimeout(final ResourceID resourceID) {
-			runAsync(new Runnable() {
-				@Override
-				public void run() {
-					log.info("The heartbeat of JobManager with id {} timed out.", resourceID);
+			runAsync(() -> {
+				log.info("The heartbeat of JobManager with id {} timed out.", resourceID);
 
-					if (jobManagerConnections.containsKey(resourceID)) {
-						JobManagerConnection jobManagerConnection = jobManagerConnections.get(resourceID);
+				if (jobManagerConnections.containsKey(resourceID)) {
+					JobManagerConnection jobManagerConnection = jobManagerConnections.get(resourceID);
 
-						if (jobManagerConnection != null) {
-							closeJobManagerConnection(
-								jobManagerConnection.getJobID(),
-								new TimeoutException("The heartbeat of JobManager with id " + resourceID + " timed out."));
-						}
+					if (jobManagerConnection != null) {
+						closeJobManagerConnection(
+							jobManagerConnection.getJobID(),
+							new TimeoutException("The heartbeat of JobManager with id " + resourceID + " timed out."));
+
+						jobLeaderService.reconnect(jobManagerConnection.getJobID());
 					}
 				}
 			});
@@ -1337,15 +1336,12 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 
 		@Override
 		public void notifyHeartbeatTimeout(final ResourceID resourceId) {
-			runAsync(new Runnable() {
-				@Override
-				public void run() {
-					log.info("The heartbeat of ResourceManager with id {} timed out.", resourceId);
+			runAsync(() -> {
+				log.info("The heartbeat of ResourceManager with id {} timed out.", resourceId);
 
-					closeResourceManagerConnection(
-						new TimeoutException(
-							"The heartbeat of ResourceManager with id " + resourceId + " timed out."));
-				}
+				closeResourceManagerConnection(
+					new TimeoutException(
+						"The heartbeat of ResourceManager with id " + resourceId + " timed out."));
 			});
 		}
 

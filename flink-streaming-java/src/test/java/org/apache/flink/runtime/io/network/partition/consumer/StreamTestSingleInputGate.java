@@ -21,14 +21,11 @@
 package org.apache.flink.runtime.io.network.partition.consumer;
 
 import org.apache.flink.api.common.typeutils.TypeSerializer;
-import org.apache.flink.core.memory.MemorySegmentFactory;
 import org.apache.flink.runtime.event.AbstractEvent;
 import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
 import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
 import org.apache.flink.runtime.io.network.api.serialization.RecordSerializer;
 import org.apache.flink.runtime.io.network.api.serialization.SpanningRecordSerializer;
-import org.apache.flink.runtime.io.network.buffer.Buffer;
-import org.apache.flink.runtime.io.network.buffer.BufferRecycler;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannel.BufferAndAvailability;
 import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
 import org.apache.flink.runtime.plugable.SerializationDelegate;
@@ -41,8 +38,8 @@ import org.mockito.stubbing.Answer;
 import java.io.IOException;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
+import static org.apache.flink.runtime.io.network.buffer.BufferBuilderTestUtils.createBufferBuilder;
 import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /**
@@ -101,22 +98,19 @@ public class StreamTestSingleInputGate<T> extends TestSingleInputGate {
 					if (input != null && input.isStreamEnd()) {
 						when(inputChannels[channelIndex].getInputChannel().isReleased()).thenReturn(
 							true);
-						return new BufferAndAvailability(EventSerializer.toBuffer(EndOfPartitionEvent.INSTANCE), false);
+						return new BufferAndAvailability(EventSerializer.toBuffer(EndOfPartitionEvent.INSTANCE), false, 0);
 					} else if (input != null && input.isStreamRecord()) {
 						Object inputElement = input.getStreamRecord();
-						final Buffer buffer = new Buffer(
-							MemorySegmentFactory.allocateUnpooledSegment(bufferSize),
-							mock(BufferRecycler.class));
 
-						recordSerializer.setNextBuffer(buffer);
+						recordSerializer.setNextBufferBuilder(createBufferBuilder(bufferSize));
 						delegate.setInstance(inputElement);
 						recordSerializer.addRecord(delegate);
 
 						// Call getCurrentBuffer to ensure size is set
-						return new BufferAndAvailability(recordSerializer.getCurrentBuffer(), false);
+						return new BufferAndAvailability(recordSerializer.getCurrentBuffer(), false, 0);
 					} else if (input != null && input.isEvent()) {
 						AbstractEvent event = input.getEvent();
-						return new BufferAndAvailability(EventSerializer.toBuffer(event), false);
+						return new BufferAndAvailability(EventSerializer.toBuffer(event), false, 0);
 					} else {
 						synchronized (inputQueues[channelIndex]) {
 							inputQueues[channelIndex].wait();

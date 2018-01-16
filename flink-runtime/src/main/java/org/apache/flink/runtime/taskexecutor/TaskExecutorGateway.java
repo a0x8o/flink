@@ -37,12 +37,12 @@ import org.apache.flink.runtime.taskmanager.Task;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * {@link TaskExecutor} RPC gateway interface
+ * {@link TaskExecutor} RPC gateway interface.
  */
 public interface TaskExecutorGateway extends RpcGateway {
 
 	/**
-	 * Requests a slot from the TaskManager
+	 * Requests a slot from the TaskManager.
 	 *
 	 * @param slotId slot id for the request
 	 * @param jobId for which to request a slot
@@ -162,4 +162,17 @@ public interface TaskExecutorGateway extends RpcGateway {
 	 * @param cause for the disconnection from the ResourceManager
 	 */
 	void disconnectResourceManager(Exception cause);
+
+	/**
+	 * Frees the slot with the given allocation ID.
+	 *
+	 * @param allocationId identifying the slot to free
+	 * @param cause of the freeing operation
+	 * @param timeout for the operation
+	 * @return Future acknowledge which is returned once the slot has been freed
+	 */
+	CompletableFuture<Acknowledge> freeSlot(
+		final AllocationID allocationId,
+		final Throwable cause,
+		@RpcTimeout final Time timeout);
 }
