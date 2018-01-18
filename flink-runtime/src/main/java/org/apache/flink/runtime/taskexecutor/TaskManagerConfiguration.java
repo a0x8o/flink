@@ -23,6 +23,7 @@ import org.apache.flink.configuration.AkkaOptions;
 import org.apache.flink.configuration.BlobServerOptions;
 import org.apache.flink.configuration.ConfigConstants;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.ConfigurationUtils;
 import org.apache.flink.configuration.CoreOptions;
 import org.apache.flink.configuration.TaskManagerOptions;
 import org.apache.flink.configuration.UnmodifiableConfiguration;
@@ -35,8 +36,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import scala.concurrent.duration.Duration;
-
-import java.io.File;
 
 /**
  * Configuration object for {@link TaskExecutor}.
@@ -149,9 +148,7 @@ public class TaskManagerConfiguration implements TaskManagerRuntimeInfo {
 			numberSlots = 1;
 		}
 
-		final String[] tmpDirPaths = configuration.getString(
-			ConfigConstants.TASK_MANAGER_TMP_DIR_KEY,
-			ConfigConstants.DEFAULT_TASK_MANAGER_TMP_PATH).split(",|" + File.pathSeparator);
+		final String[] tmpDirPaths = ConfigurationUtils.parseTempDirectories(configuration);
 
 		final Time timeout;
 

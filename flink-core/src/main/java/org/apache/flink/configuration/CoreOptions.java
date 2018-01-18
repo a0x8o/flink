@@ -20,6 +20,8 @@ package org.apache.flink.configuration;
 
 import org.apache.flink.annotation.PublicEvolving;
 
+import static org.apache.flink.configuration.ConfigOptions.key;
+
 /**
  * The set of configuration options for core parameters.
  */
@@ -79,7 +81,6 @@ public class CoreOptions {
 		.key("classloader.parent-first-patterns")
 		.defaultValue("java.;scala.;org.apache.flink.;javax.annotation;org.slf4j;org.apache.log4j;org.apache.logging.log4j;ch.qos.logback");
 
-
 	// ------------------------------------------------------------------------
 	//  process parameters
 	// ------------------------------------------------------------------------
@@ -97,36 +98,25 @@ public class CoreOptions {
 		.defaultValue("");
 
 	// ------------------------------------------------------------------------
+	//  generic io
+	// ------------------------------------------------------------------------
+
+	/**
+	 * The config parameter defining the directories for temporary files, separated by
+	 * ",", "|", or the system's {@link java.io.File#pathSeparator}.
+	 */
+	public static final ConfigOption<String> TMP_DIRS =
+		key("io.tmp.dirs")
+			.defaultValue(System.getProperty("java.io.tmpdir"))
+			.withDeprecatedKeys("taskmanager.tmp.dirs");
+
+	// ------------------------------------------------------------------------
 	//  program
 	// ------------------------------------------------------------------------
 
 	public static final ConfigOption<Integer> DEFAULT_PARALLELISM_KEY = ConfigOptions
 		.key("parallelism.default")
 		.defaultValue(-1);
-
-	// ------------------------------------------------------------------------
-	//  checkpoints / fault tolerance
-	// ------------------------------------------------------------------------
-
-	public static final ConfigOption<String> STATE_BACKEND = ConfigOptions
-		.key("state.backend")
-		.noDefaultValue();
-
-	/** The maximum number of completed checkpoint instances to retain.*/
-	public static final ConfigOption<Integer> MAX_RETAINED_CHECKPOINTS = ConfigOptions
-		.key("state.checkpoints.num-retained")
-		.defaultValue(1);
-
-	/** The default directory for savepoints. */
-	public static final ConfigOption<String> SAVEPOINT_DIRECTORY = ConfigOptions
-		.key("state.savepoints.dir")
-		.noDefaultValue()
-		.withDeprecatedKeys("savepoints.state.backend.fs.dir");
-
-	/** The default directory used for persistent checkpoints. */
-	public static final ConfigOption<String> CHECKPOINTS_DIRECTORY = ConfigOptions
-		.key("state.checkpoints.dir")
-		.noDefaultValue();
 
 	// ------------------------------------------------------------------------
 	//  file systems
