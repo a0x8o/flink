@@ -193,6 +193,8 @@ object FunctionCatalog {
     "overlay" -> classOf[Overlay],
     "concat" -> classOf[Concat],
     "concat_ws" -> classOf[ConcatWs],
+    "lpad" -> classOf[Lpad],
+    "rpad" -> classOf[Rpad],
 
     // math functions
     "plus" -> classOf[Plus],
@@ -420,9 +422,12 @@ class BasicOperatorTable extends ReflectiveSqlOperatorTable {
     ScalarSqlFunctions.BIN,
     SqlStdOperatorTable.TIMESTAMP_ADD,
     ScalarSqlFunctions.LOG,
+    ScalarSqlFunctions.LPAD,
+    ScalarSqlFunctions.RPAD,
     ScalarSqlFunctions.MD5,
     ScalarSqlFunctions.SHA1,
     ScalarSqlFunctions.SHA256,
+
     // EXTENSIONS
     BasicOperatorTable.TUMBLE,
     BasicOperatorTable.HOP,

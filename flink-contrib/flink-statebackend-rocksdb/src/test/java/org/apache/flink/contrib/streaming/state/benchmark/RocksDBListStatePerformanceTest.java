@@ -19,7 +19,6 @@
 package org.apache.flink.contrib.streaming.state.benchmark;
 
 import org.apache.flink.contrib.streaming.state.RocksDBKeyedStateBackend;
-import org.apache.flink.contrib.streaming.state.util.MergeUtils;
 import org.apache.flink.testutils.junit.RetryOnFailure;
 import org.apache.flink.testutils.junit.RetryRule;
 import org.apache.flink.util.TestLogger;
@@ -45,6 +44,9 @@ import java.util.List;
  *
  * <p>Computer: MacbookPro (Mid 2015), Flash Storage, Processor 2.5GHz Intel Core i7, Memory 16GB 1600MHz DDR3
  * Number of values added | time for add()   |  time for update() | perf improvement of update() over add()
+ * 10						236875 ns			17048 ns			13.90x
+ * 50						312332 ns			14281 ns			21.87x
+ * 100						393791 ns			18360 ns			21.45x
  * 500						978703 ns			55397 ns			17.66x
  * 1000						3044179 ns			89474 ns			34.02x
  * 5000						9247395 ns			305580 ns			30.26x
@@ -59,6 +61,8 @@ import java.util.List;
  *
  */
 public class RocksDBListStatePerformanceTest extends TestLogger {
+
+	private static final byte DELIMITER = ',';
 
 	@Rule
 	public final TemporaryFolder tmp = new TemporaryFolder();
@@ -83,7 +87,7 @@ public class RocksDBListStatePerformanceTest extends TestLogger {
 		final byte[] valueBytes = value.getBytes(StandardCharsets.UTF_8);
 
 		// The number of values added to ListState. Can be changed for benchmarking
-		final int num = 1000;
+		final int num = 10;
 
 		try (
 			final Options options = new Options()
@@ -103,7 +107,6 @@ public class RocksDBListStatePerformanceTest extends TestLogger {
 
 			// ----- add() API -----
 			log.info("begin add");
-			System.out.println("begin add");
 
 			final long beginInsert1 = System.nanoTime();
 			for (int i = 0; i < num; i++) {
@@ -119,7 +122,7 @@ public class RocksDBListStatePerformanceTest extends TestLogger {
 			for (int i = 0; i < num; i++) {
 				list.add(valueBytes);
 			}
-			byte[] premerged = MergeUtils.merge(list);
+			byte[] premerged = merge(list);
 
 			log.info("begin update");
 
@@ -129,5 +132,37 @@ public class RocksDBListStatePerformanceTest extends TestLogger {
 
 			log.info("end update - duration: {} ns", (endInsert2 - beginInsert2));
 		}
+	}
+
+	/**
+	 * Merge operands into a single value that can be put directly into RocksDB.
+	 */
+	public static byte[] merge(List<byte[]> operands) {
+		if (operands == null || operands.size() == 0) {
+			return null;
+		}
+
+		if (operands.size() == 1) {
+			return operands.get(0);
+		}
+
+		int numBytes = 0;
+		for (byte[] arr : operands) {
+			numBytes += arr.length + 1;
+		}
+		numBytes--;
+
+		byte[] result = new byte[numBytes];
+
+		System.arraycopy(operands.get(0), 0, result, 0, operands.get(0).length);
+
+		for (int i = 1, arrIndex = operands.get(0).length; i < operands.size(); i++) {
+			result[arrIndex] = DELIMITER;
+			arrIndex += 1;
+			System.arraycopy(operands.get(i), 0, result, arrIndex, operands.get(i).length);
+			arrIndex += operands.get(i).length;
+		}
+
+		return result;
 	}
 }

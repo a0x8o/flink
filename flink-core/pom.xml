@@ -80,12 +80,6 @@ under the License.
 			<!-- managed version -->
 		</dependency>
 
-		<!-- We explicitly depend on snappy since connectors that require it load it through the system class loader -->
-		<dependency>
-			<groupId>org.xerial.snappy</groupId>
-			<artifactId>snappy-java</artifactId>
-		</dependency>
-
 		<!-- ================== test dependencies ================== -->
 
 		<dependency>
@@ -121,40 +115,6 @@ under the License.
 		</dependency>
 
 	</dependencies>
-
-	<profiles>
-		<profile>
-			<id>generate-config-docs</id>
-
-			<build>
-				<plugins>
-					<plugin>
-						<artifactId>maven-antrun-plugin</artifactId>
-						<version>1.7</version>
-						<executions>
-							<execution>
-								<phase>package</phase>
-								<goals>
-									<goal>run</goal>
-								</goals>
-							</execution>
-						</executions>
-						<configuration>
-							<target>
-								<mkdir dir="${rootDir}/${generated.docs.dir}"/>
-								<java classname="org.apache.flink.configuration.ConfigOptionsDocGenerator" fork="true">
-									<classpath refid="maven.compile.classpath" />
-									<arg value="${rootDir}/${generated.docs.dir}/" />
-									<!--package with configuration classes-->
-									<arg value="org.apache.flink.configuration" />
-								</java>
-							</target>
-						</configuration>
-					</plugin>
-				</plugins>
-			</build>
-		</profile>
-	</profiles>
 
 	<build>
 		<plugins>

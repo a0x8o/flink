@@ -33,6 +33,7 @@ import org.apache.flink.runtime.memory.MemoryManager;
 import org.apache.flink.runtime.operators.testutils.MockEnvironment;
 import org.apache.flink.runtime.state.FunctionInitializationContext;
 import org.apache.flink.runtime.state.StateSnapshotContextSynchronousImpl;
+import org.apache.flink.runtime.state.TestTaskStateManager;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.functions.AssignerWithPeriodicWatermarks;
 import org.apache.flink.streaming.api.functions.AssignerWithPunctuatedWatermarks;
@@ -705,7 +706,12 @@ public class FlinkKafkaConsumerBaseTest {
 		public void update(List<T> values) throws Exception {
 			clear();
 
-			if (values != null && !values.isEmpty()) {
+			addAll(values);
+		}
+
+		@Override
+		public void addAll(List<T> values) throws Exception {
+			if (values != null) {
 				list.addAll(values);
 			}
 		}
@@ -811,7 +817,12 @@ public class FlinkKafkaConsumerBaseTest {
 
 			super(
 				new MockStreamOperator(),
-				new MockEnvironment("mockTask", 4 * MemoryManager.DEFAULT_PAGE_SIZE, null, 16),
+				new MockEnvironment(
+					"mockTask",
+					4 * MemoryManager.DEFAULT_PAGE_SIZE,
+					null,
+					16,
+					new TestTaskStateManager()),
 				Collections.emptyMap());
 
 			this.isCheckpointingEnabled = isCheckpointingEnabled;
