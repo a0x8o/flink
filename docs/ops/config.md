@@ -242,6 +242,10 @@ Default value is `1 minute`.
 - `restart-strategy.failure-rate.delay`: Delay between restart attempts, used if the default restart strategy is set to "failure-rate".
 Default value is the `akka.ask.timeout`.
 
+- `jobstore.cache-size`: The job store cache size in bytes which is used to keep completed jobs in memory (DEFAULT: `52428800` (`50` MB)).
+
+- `jobstore.expiration-time`: The time in seconds after which a completed job expires and is purged from the job store (DEFAULT: `3600`).
+
 ## Full Reference
 
 ### HDFS
@@ -507,6 +511,8 @@ May be set to -1 to disable this feature.
 - `mesos.resourcemanager.tasks.container.image.name`: Image name to use for the container (**NO DEFAULT**)
 
 - `mesos.resourcemanager.tasks.container.volumes`: A comma separated list of `[host_path:]`container_path`[:RO|RW]`. This allows for mounting additional volumes into your container. (**NO DEFAULT**)
+
+- `mesos.resourcemanager.tasks.container.docker.parameters`: Custom parameters to be passed into docker run command when using the docker containerizer. Comma separated list of `key=value` pairs. `value` may contain '=' (**NO DEFAULT**)
 
 - `high-availability.zookeeper.path.mesos-workers`: The ZooKeeper root path for persisting the Mesos worker information.
 
