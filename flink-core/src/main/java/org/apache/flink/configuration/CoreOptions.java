@@ -114,9 +114,9 @@ public class CoreOptions {
 	//  program
 	// ------------------------------------------------------------------------
 
-	public static final ConfigOption<Integer> DEFAULT_PARALLELISM_KEY = ConfigOptions
+	public static final ConfigOption<Integer> DEFAULT_PARALLELISM = ConfigOptions
 		.key("parallelism.default")
-		.defaultValue(-1);
+		.defaultValue(1);
 
 	// ------------------------------------------------------------------------
 	//  file systems
@@ -171,4 +171,21 @@ public class CoreOptions {
 	public static ConfigOption<Long> fileSystemConnectionLimitStreamInactivityTimeout(String scheme) {
 		return ConfigOptions.key("fs." + scheme + ".limit.stream-timeout").defaultValue(0L);
 	}
+
+	// ------------------------------------------------------------------------
+	//  Distributed architecture
+	// ------------------------------------------------------------------------
+
+	/**
+	 * Switch to select the execution mode. Possible values are 'flip6' and 'old'.
+	 */
+	public static final ConfigOption<String> MODE = ConfigOptions
+		.key("mode")
+		.defaultValue("old")
+		.withDescription("Switch to select the execution mode. Possible values are 'flip6' and 'old'.");
+
+	/**
+	 * Constant value for the Flip-6 execution mode.
+	 */
+	public static final String FLIP6_MODE = "flip6";
 }

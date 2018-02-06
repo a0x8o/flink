@@ -33,6 +33,7 @@ import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.highavailability.RunningJobsRegistry;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.jobgraph.JobStatus;
+import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobmanager.OnCompletionActions;
 import org.apache.flink.runtime.jobmanager.SubmittedJobGraph;
 import org.apache.flink.runtime.jobmanager.SubmittedJobGraphStore;
@@ -49,6 +50,7 @@ import org.apache.flink.runtime.messages.webmonitor.MultipleJobsDetails;
 import org.apache.flink.runtime.metrics.MetricRegistry;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerGateway;
 import org.apache.flink.runtime.resourcemanager.ResourceOverview;
+import org.apache.flink.runtime.rest.handler.legacy.backpressure.OperatorBackPressureStatsResponse;
 import org.apache.flink.runtime.rpc.FatalErrorHandler;
 import org.apache.flink.runtime.rpc.FencedRpcEndpoint;
 import org.apache.flink.runtime.rpc.RpcService;
@@ -89,6 +91,7 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> impleme
 	private final ResourceManagerGateway resourceManagerGateway;
 	private final JobManagerServices jobManagerServices;
 	private final HeartbeatServices heartbeatServices;
+	private final BlobServer blobServer;
 	private final MetricRegistry metricRegistry;
 
 	private final FatalErrorHandler fatalErrorHandler;
@@ -119,12 +122,14 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> impleme
 		this.configuration = Preconditions.checkNotNull(configuration);
 		this.highAvailabilityServices = Preconditions.checkNotNull(highAvailabilityServices);
 		this.resourceManagerGateway = Preconditions.checkNotNull(resourceManagerGateway);
-		this.jobManagerServices = JobManagerServices.fromConfiguration(
-			configuration,
-			Preconditions.checkNotNull(blobServer));
 		this.heartbeatServices = Preconditions.checkNotNull(heartbeatServices);
+		this.blobServer = Preconditions.checkNotNull(blobServer);
 		this.metricRegistry = Preconditions.checkNotNull(metricRegistry);
 		this.fatalErrorHandler = Preconditions.checkNotNull(fatalErrorHandler);
+
+		this.jobManagerServices = JobManagerServices.fromConfiguration(
+			configuration,
+			this.blobServer);
 
 		this.submittedJobGraphStore = highAvailabilityServices.getSubmittedJobGraphStore();
 		this.runningJobsRegistry = highAvailabilityServices.getRunningJobsRegistry();
@@ -144,6 +149,7 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> impleme
 
 	@Override
 	public void postStop() throws Exception {
+		log.info("Stopping dispatcher {}.", getAddress());
 		Throwable exception = null;
 
 		clearState();
@@ -175,6 +181,7 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> impleme
 		if (exception != null) {
 			throw new FlinkException("Could not properly terminate the Dispatcher.", exception);
 		}
+		log.info("Stopped dispatcher {}.", getAddress());
 	}
 
 	@Override
@@ -206,7 +213,7 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> impleme
 				new JobSubmissionException(jobId, "Could not retrieve the job status.", e));
 		}
 
-		if (jobSchedulingStatus == RunningJobsRegistry.JobSchedulingStatus.PENDING &&
+		if (jobSchedulingStatus != RunningJobsRegistry.JobSchedulingStatus.DONE &&
 			!jobManagerRunners.containsKey(jobId)) {
 			try {
 				submittedJobGraphStore.putJobGraph(new SubmittedJobGraph(jobGraph, null));
@@ -226,6 +233,7 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> impleme
 					getRpcService(),
 					highAvailabilityServices,
 					heartbeatServices,
+					blobServer,
 					jobManagerServices,
 					metricRegistry,
 					new DispatcherOnCompleteActions(jobGraph.getJobID()),
@@ -359,6 +367,18 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> impleme
 	}
 
 	@Override
+	public CompletableFuture<OperatorBackPressureStatsResponse> requestOperatorBackPressureStats(
+			final JobID jobId, final JobVertexID jobVertexId) {
+			final JobManagerRunner jobManagerRunner = jobManagerRunners.get(jobId);
+		if (jobManagerRunner == null) {
+			return FutureUtils.completedExceptionally(new FlinkJobNotFoundException(jobId));
+		} else {
+			return jobManagerRunner.getJobManagerGateway()
+				.requestOperatorBackPressureStats(jobId, jobVertexId);
+		}
+	}
+
+	@Override
 	public CompletableFuture<ArchivedExecutionGraph> requestJob(JobID jobId, Time timeout) {
 		final JobManagerRunner jobManagerRunner = jobManagerRunners.get(jobId);
 
@@ -394,7 +414,7 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> impleme
 
 	@Override
 	public CompletableFuture<Integer> getBlobServerPort(Time timeout) {
-		return CompletableFuture.completedFuture(jobManagerServices.blobServer.getPort());
+		return CompletableFuture.completedFuture(blobServer.getPort());
 	}
 
 	@Override
@@ -440,6 +460,7 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> impleme
 	private void clearState() throws Exception {
 		Exception exception = null;
 
+		log.info("Stopping all currently running jobs of dispatcher {}.", getAddress());
 		// stop all currently running JobManager since they run in the same process
 		for (JobManagerRunner jobManagerRunner : jobManagerRunners.values()) {
 			try {
@@ -523,6 +544,7 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> impleme
 		RpcService rpcService,
 		HighAvailabilityServices highAvailabilityServices,
 		HeartbeatServices heartbeatServices,
+		BlobServer blobServer,
 		JobManagerServices jobManagerServices,
 		MetricRegistry metricRegistry,
 		OnCompletionActions onCompleteActions,

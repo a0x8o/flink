@@ -47,6 +47,7 @@ import org.apache.flink.runtime.clusterframework.ContaineredTaskManagerParameter
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
 import org.apache.flink.runtime.concurrent.FutureUtils;
+import org.apache.flink.runtime.entrypoint.ClusterInformation;
 import org.apache.flink.runtime.heartbeat.HeartbeatServices;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.metrics.MetricRegistry;
@@ -149,6 +150,7 @@ public class MesosResourceManager extends ResourceManager<RegisteredMesosWorkerN
 			SlotManager slotManager,
 			MetricRegistry metricRegistry,
 			JobLeaderIdService jobLeaderIdService,
+			ClusterInformation clusterInformation,
 			FatalErrorHandler fatalErrorHandler,
 			// Mesos specifics
 			Configuration flinkConfig,
@@ -166,6 +168,7 @@ public class MesosResourceManager extends ResourceManager<RegisteredMesosWorkerN
 			slotManager,
 			metricRegistry,
 			jobLeaderIdService,
+			clusterInformation,
 			fatalErrorHandler);
 
 		this.mesosServices = Preconditions.checkNotNull(mesosServices);
@@ -663,6 +666,7 @@ public class MesosResourceManager extends ResourceManager<RegisteredMesosWorkerN
 		// create the specific TM parameters from the resource profile and some defaults
 		MesosTaskManagerParameters params = new MesosTaskManagerParameters(
 			resourceProfile.getCpuCores() < 1.0 ? taskManagerParameters.cpus() : resourceProfile.getCpuCores(),
+			taskManagerParameters.gpus(),
 			taskManagerParameters.containerType(),
 			taskManagerParameters.containerImageName(),
 			new ContaineredTaskManagerParameters(

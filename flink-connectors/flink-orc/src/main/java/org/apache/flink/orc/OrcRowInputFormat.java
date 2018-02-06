@@ -55,7 +55,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-import static org.apache.flink.orc.OrcUtils.fillRows;
+import static org.apache.flink.orc.OrcBatchReader.fillRows;
 
 /**
  * InputFormat to read ORC files.
@@ -128,7 +128,7 @@ public class OrcRowInputFormat extends FileInputFormat<Row> implements ResultTyp
 
 		// configure OrcRowInputFormat
 		this.schema = orcSchema;
-		this.rowType = (RowTypeInfo) OrcUtils.schemaToTypeInfo(schema);
+		this.rowType = (RowTypeInfo) OrcBatchReader.schemaToTypeInfo(schema);
 		this.conf = orcConfig;
 		this.batchSize = batchSize;
 
@@ -391,6 +391,25 @@ public class OrcRowInputFormat extends FileInputFormat<Row> implements ResultTyp
 		for (int i = 0; i < numPreds; i++) {
 			conjunctPredicates.add((Predicate) in.readObject());
 		}
+	}
+
+	// --------------------------------------------------------------------------------------------
+	//  Getter methods for tests
+	// --------------------------------------------------------------------------------------------
+
+	@VisibleForTesting
+	Configuration getConfiguration() {
+		return conf;
+	}
+
+	@VisibleForTesting
+	int getBatchSize() {
+		return batchSize;
+	}
+
+	@VisibleForTesting
+	String getSchema() {
+		return schema.toString();
 	}
 
 	// --------------------------------------------------------------------------------------------

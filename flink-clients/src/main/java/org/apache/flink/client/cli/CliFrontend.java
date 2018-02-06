@@ -33,6 +33,7 @@ import org.apache.flink.client.program.ProgramMissingJobException;
 import org.apache.flink.client.program.ProgramParametrizationException;
 import org.apache.flink.configuration.ConfigConstants;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.CoreOptions;
 import org.apache.flink.configuration.GlobalConfiguration;
 import org.apache.flink.configuration.JobManagerOptions;
 import org.apache.flink.core.fs.FileSystem;
@@ -133,9 +134,7 @@ public class CliFrontend {
 		}
 
 		this.clientTimeout = AkkaUtils.getClientTimeout(this.configuration);
-		this.defaultParallelism = configuration.getInteger(
-			ConfigConstants.DEFAULT_PARALLELISM_KEY,
-			ConfigConstants.DEFAULT_PARALLELISM);
+		this.defaultParallelism = configuration.getInteger(CoreOptions.DEFAULT_PARALLELISM);
 	}
 
 	// --------------------------------------------------------------------------------------------
@@ -1073,8 +1072,11 @@ public class CliFrontend {
 			LOG.warn("Could not load CLI class {}.", flinkYarnSessionCLI, e);
 		}
 
-		customCommandLines.add(new Flip6DefaultCLI(configuration));
-		customCommandLines.add(new DefaultCLI(configuration));
+		if (configuration.getString(CoreOptions.MODE).equalsIgnoreCase(CoreOptions.FLIP6_MODE)) {
+			customCommandLines.add(new Flip6DefaultCLI(configuration));
+		} else {
+			customCommandLines.add(new DefaultCLI(configuration));
+		}
 
 		return customCommandLines;
 	}
