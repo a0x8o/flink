@@ -18,7 +18,6 @@
 
 package org.apache.flink.runtime.rest.handler.legacy.backpressure;
 
-import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.ExecutionJobVertex;
@@ -155,11 +154,13 @@ public class BackPressureStatsTracker {
 	 * @return Back pressure statistics for an operator
 	 */
 	public Optional<OperatorBackPressureStats> getOperatorBackPressureStats(ExecutionJobVertex vertex) {
-		final OperatorBackPressureStats stats = operatorStatsCache.getIfPresent(vertex);
-		if (stats == null || backPressureStatsRefreshInterval <= System.currentTimeMillis() - stats.getEndTimestamp()) {
-			triggerStackTraceSampleInternal(vertex);
+		synchronized (lock) {
+			final OperatorBackPressureStats stats = operatorStatsCache.getIfPresent(vertex);
+			if (stats == null || backPressureStatsRefreshInterval <= System.currentTimeMillis() - stats.getEndTimestamp()) {
+				triggerStackTraceSampleInternal(vertex);
+			}
+			return Optional.ofNullable(stats);
 		}
-		return Optional.ofNullable(stats);
 	}
 
 	/**
@@ -170,40 +171,39 @@ public class BackPressureStatsTracker {
 	 * @param vertex Operator to get the stats for.
 	 * @return Flag indicating whether a sample with triggered.
 	 */
-	@VisibleForTesting
-	boolean triggerStackTraceSampleInternal(final ExecutionJobVertex vertex) {
-		synchronized (lock) {
-			if (shutDown) {
-				return false;
-			}
+	private boolean triggerStackTraceSampleInternal(final ExecutionJobVertex vertex) {
+		assert(Thread.holdsLock(lock));
 
-			if (!pendingStats.contains(vertex) &&
-				!vertex.getGraph().getState().isGloballyTerminalState()) {
-
-				Executor executor = vertex.getGraph().getFutureExecutor();
-
-				// Only trigger if still active job
-				if (executor != null) {
-					pendingStats.add(vertex);
-
-					if (LOG.isDebugEnabled()) {
-						LOG.debug("Triggering stack trace sample for tasks: " + Arrays.toString(vertex.getTaskVertices()));
-					}
-
-					CompletableFuture<StackTraceSample> sample = coordinator.triggerStackTraceSample(
-						vertex.getTaskVertices(),
-						numSamples,
-						delayBetweenSamples,
-						MAX_STACK_TRACE_DEPTH);
-
-					sample.handleAsync(new StackTraceSampleCompletionCallback(vertex), executor);
-
-					return true;
-				}
-			}
-
+		if (shutDown) {
 			return false;
 		}
+
+		if (!pendingStats.contains(vertex) &&
+			!vertex.getGraph().getState().isGloballyTerminalState()) {
+
+			Executor executor = vertex.getGraph().getFutureExecutor();
+
+			// Only trigger if still active job
+			if (executor != null) {
+				pendingStats.add(vertex);
+
+				if (LOG.isDebugEnabled()) {
+					LOG.debug("Triggering stack trace sample for tasks: " + Arrays.toString(vertex.getTaskVertices()));
+				}
+
+				CompletableFuture<StackTraceSample> sample = coordinator.triggerStackTraceSample(
+					vertex.getTaskVertices(),
+					numSamples,
+					delayBetweenSamples,
+					MAX_STACK_TRACE_DEPTH);
+
+				sample.handleAsync(new StackTraceSampleCompletionCallback(vertex), executor);
+
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	/**
@@ -218,7 +218,9 @@ public class BackPressureStatsTracker {
 	 */
 	@Deprecated
 	public boolean triggerStackTraceSample(ExecutionJobVertex vertex) {
-		return triggerStackTraceSampleInternal(vertex);
+		synchronized (lock) {
+			return triggerStackTraceSampleInternal(vertex);
+		}
 	}
 
 	/**

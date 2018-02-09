@@ -18,6 +18,7 @@
 package org.apache.flink.streaming.connectors.kinesis.internals;
 
 import org.apache.flink.annotation.Internal;
+import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.functions.RuntimeContext;
 import org.apache.flink.metrics.MetricGroup;
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
@@ -42,6 +43,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
@@ -189,13 +191,13 @@ public class KinesisDataFetcher<T> {
 			runtimeContext,
 			configProps,
 			deserializationSchema,
-			new AtomicReference<Throwable>(),
-			new LinkedList<KinesisStreamShardState>(),
+			new AtomicReference<>(),
+			new ArrayList<>(),
 			createInitialSubscribedStreamsToLastDiscoveredShardsState(streams),
 			KinesisProxy.create(configProps));
 	}
 
-	/** This constructor is exposed for testing purposes. */
+	@VisibleForTesting
 	protected KinesisDataFetcher(List<String> streams,
 								SourceFunction.SourceContext<T> sourceContext,
 								Object checkpointLock,
@@ -203,7 +205,7 @@ public class KinesisDataFetcher<T> {
 								Properties configProps,
 								KinesisDeserializationSchema<T> deserializationSchema,
 								AtomicReference<Throwable> error,
-								LinkedList<KinesisStreamShardState> subscribedShardsState,
+								List<KinesisStreamShardState> subscribedShardsState,
 								HashMap<String, String> subscribedStreamsToLastDiscoveredShardIds,
 								KinesisProxyInterface kinesis) {
 		this.streams = checkNotNull(streams);
@@ -498,9 +500,16 @@ public class KinesisDataFetcher<T> {
 	 *                        when the shard state was registered.
 	 * @param lastSequenceNumber the last sequence number value to update
 	 */
-	protected void emitRecordAndUpdateState(T record, long recordTimestamp, int shardStateIndex, SequenceNumber lastSequenceNumber) {
+	protected final void emitRecordAndUpdateState(T record, long recordTimestamp, int shardStateIndex, SequenceNumber lastSequenceNumber) {
 		synchronized (checkpointLock) {
-			sourceContext.collectWithTimestamp(record, recordTimestamp);
+			if (record != null) {
+				sourceContext.collectWithTimestamp(record, recordTimestamp);
+			} else {
+				LOG.warn("Skipping non-deserializable record at sequence number {} of shard {}.",
+					lastSequenceNumber,
+					subscribedShardsState.get(shardStateIndex).getStreamShardHandle());
+			}
+
 			updateState(shardStateIndex, lastSequenceNumber);
 		}
 	}
@@ -515,7 +524,7 @@ public class KinesisDataFetcher<T> {
 	 *                        when the shard state was registered.
 	 * @param lastSequenceNumber the last sequence number value to update
 	 */
-	protected void updateState(int shardStateIndex, SequenceNumber lastSequenceNumber) {
+	protected final void updateState(int shardStateIndex, SequenceNumber lastSequenceNumber) {
 		synchronized (checkpointLock) {
 			subscribedShardsState.get(shardStateIndex).setLastProcessedSequenceNum(lastSequenceNumber);
 
@@ -597,7 +606,8 @@ public class KinesisDataFetcher<T> {
 		return (Math.abs(shard.hashCode() % totalNumberOfConsumerSubtasks)) == indexOfThisConsumerSubtask;
 	}
 
-	private static ExecutorService createShardConsumersThreadPool(final String subtaskName) {
+	@VisibleForTesting
+	protected ExecutorService createShardConsumersThreadPool(final String subtaskName) {
 		return Executors.newCachedThreadPool(new ThreadFactory() {
 			@Override
 			public Thread newThread(Runnable runnable) {
@@ -608,6 +618,11 @@ public class KinesisDataFetcher<T> {
 				return thread;
 			}
 		});
+	}
+
+	@VisibleForTesting
+	public List<KinesisStreamShardState> getSubscribedShardsState() {
+		return subscribedShardsState;
 	}
 
 	/**
