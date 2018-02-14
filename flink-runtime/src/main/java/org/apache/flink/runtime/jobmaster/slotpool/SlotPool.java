@@ -21,6 +21,7 @@ package org.apache.flink.runtime.jobmaster.slotpool;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.time.Time;
+import org.apache.flink.configuration.JobManagerOptions;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
@@ -53,6 +54,7 @@ import org.apache.flink.util.Preconditions;
 
 import javax.annotation.Nullable;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -86,16 +88,6 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  */
 public class SlotPool extends RpcEndpoint implements SlotPoolGateway, AllocatedSlotActions {
 
-	// ------------------------------------------------------------------------
-
-	private static final Time DEFAULT_SLOT_REQUEST_TIMEOUT = Time.minutes(5);
-
-	private static final Time DEFAULT_RM_ALLOCATION_TIMEOUT = Time.minutes(10);
-
-	private static final Time DEFAULT_TIMEOUT = Time.seconds(10);
-
-	// ------------------------------------------------------------------------
-
 	private final JobID jobId;
 
 	private final ProviderAndOwner providerAndOwner;
@@ -121,6 +113,9 @@ public class SlotPool extends RpcEndpoint implements SlotPoolGateway, AllocatedS
 	/** Timeout for allocation round trips (RM -> launch TM -> offer slot). */
 	private final Time resourceManagerAllocationTimeout;
 
+	/** Timeout for releasing idle slots. */
+	private final Time idleSlotTimeout;
+
 	private final Clock clock;
 
 	/** Managers for the different slot sharing groups. */
@@ -136,14 +131,16 @@ public class SlotPool extends RpcEndpoint implements SlotPoolGateway, AllocatedS
 
 	// ------------------------------------------------------------------------
 
-	public SlotPool(RpcService rpcService, JobID jobId) {
+	@VisibleForTesting
+	protected SlotPool(RpcService rpcService, JobID jobId) {
 		this(
 			rpcService,
 			jobId,
 			SystemClock.getInstance(),
-			DEFAULT_SLOT_REQUEST_TIMEOUT,
-			DEFAULT_RM_ALLOCATION_TIMEOUT,
-			DEFAULT_TIMEOUT);
+			Time.milliseconds(JobManagerOptions.SLOT_REQUEST_TIMEOUT.defaultValue()),
+			Time.milliseconds(JobManagerOptions.SLOT_ALLOCATION_RM_TIMEOUT.defaultValue()),
+			Time.milliseconds(JobManagerOptions.SLOT_REQUEST_RM_TIMEOUT.defaultValue()),
+			Time.milliseconds(JobManagerOptions.SLOT_IDLE_TIMEOUT.defaultValue()));
 	}
 
 	public SlotPool(
@@ -152,13 +149,15 @@ public class SlotPool extends RpcEndpoint implements SlotPoolGateway, AllocatedS
 			Clock clock,
 			Time slotRequestTimeout,
 			Time resourceManagerAllocationTimeout,
-			Time resourceManagerRequestTimeout) {
+			Time resourceManagerRequestTimeout,
+			Time idleSlotTimeout) {
 
 		super(rpcService);
 
 		this.jobId = checkNotNull(jobId);
 		this.clock = checkNotNull(clock);
 		this.timeout = checkNotNull(resourceManagerRequestTimeout);
+		this.idleSlotTimeout = checkNotNull(idleSlotTimeout);
 		this.resourceManagerAllocationTimeout = checkNotNull(resourceManagerAllocationTimeout);
 
 		this.registeredTaskManagers = new HashSet<>(16);
@@ -201,6 +200,8 @@ public class SlotPool extends RpcEndpoint implements SlotPoolGateway, AllocatedS
 		} catch (Exception e) {
 			throw new RuntimeException("This should never happen", e);
 		}
+
+		scheduleRunAsync(this::checkIdleSlot, idleSlotTimeout);
 	}
 
 	@Override
@@ -657,8 +658,8 @@ public class SlotPool extends RpcEndpoint implements SlotPoolGateway, AllocatedS
 			final ResourceManagerGateway resourceManagerGateway,
 			final PendingRequest pendingRequest) {
 
-		Preconditions.checkNotNull(resourceManagerGateway);
-		Preconditions.checkNotNull(pendingRequest);
+		checkNotNull(resourceManagerGateway);
+		checkNotNull(pendingRequest);
 
 		log.info("Requesting slot with profile {} from resource manager (request = {}).", pendingRequest.getResourceProfile(), pendingRequest.getSlotRequestId());
 
@@ -697,12 +698,7 @@ public class SlotPool extends RpcEndpoint implements SlotPoolGateway, AllocatedS
 	private void slotRequestToResourceManagerSuccess(final SlotRequestId requestId) {
 		// a request is pending from the ResourceManager to a (future) TaskManager
 		// we only add the watcher here in case that request times out
-		scheduleRunAsync(new Runnable() {
-			@Override
-			public void run() {
-				checkTimeoutSlotAllocation(requestId);
-			}
-		}, resourceManagerAllocationTimeout);
+		scheduleRunAsync(() -> checkTimeoutSlotAllocation(requestId), resourceManagerAllocationTimeout);
 	}
 
 	private void slotRequestToResourceManagerFailed(SlotRequestId slotRequestID, Throwable failure) {
@@ -1090,6 +1086,48 @@ public class SlotPool extends RpcEndpoint implements SlotPoolGateway, AllocatedS
 	}
 
 	/**
+	 * Check the available slots, release the slot that is idle for a long time.
+	 */
+	private void checkIdleSlot() {
+
+		// The timestamp in SlotAndTimestamp is relative
+		final long currentRelativeTimeMillis = clock.relativeTimeMillis();
+
+		final List<AllocatedSlot> expiredSlots = new ArrayList<>(availableSlots.size());
+
+		for (SlotAndTimestamp slotAndTimestamp : availableSlots.availableSlots.values()) {
+			if (currentRelativeTimeMillis - slotAndTimestamp.timestamp > idleSlotTimeout.toMilliseconds()) {
+				expiredSlots.add(slotAndTimestamp.slot);
+			}
+		}
+
+		final FlinkException cause = new FlinkException("Releasing idle slot.");
+
+		for (AllocatedSlot expiredSlot : expiredSlots) {
+			final AllocationID allocationID = expiredSlot.getAllocationId();
+			if (availableSlots.tryRemove(allocationID)) {
+
+				log.info("Releasing idle slot {}.", allocationID);
+				final CompletableFuture<Acknowledge> freeSlotFuture = expiredSlot.getTaskManagerGateway().freeSlot(
+					allocationID,
+					cause,
+					timeout);
+
+				freeSlotFuture.whenCompleteAsync(
+					(Acknowledge ignored, Throwable throwable) -> {
+						if (throwable != null) {
+							log.info("Releasing idle slot {} failed.", allocationID, throwable);
+							tryFulfillSlotRequestOrMakeAvailable(expiredSlot);
+						}
+					},
+					getMainThreadExecutor());
+			}
+		}
+
+		scheduleRunAsync(this::checkIdleSlot, idleSlotTimeout);
+	}
+
+	/**
 	 * Clear the internal state of the SlotPool.
 	 */
 	private void clear() {
@@ -1123,6 +1161,11 @@ public class SlotPool extends RpcEndpoint implements SlotPoolGateway, AllocatedS
 	@VisibleForTesting
 	Map<SlotRequestId, PendingRequest> getWaitingForResourceManager() {
 		return waitingForResourceManager;
+	}
+
+	@VisibleForTesting
+	void triggerCheckIdleSlot() {
+		runAsync(this::checkIdleSlot);
 	}
 
 	// ------------------------------------------------------------------------

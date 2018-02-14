@@ -23,6 +23,7 @@ import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.JobManagerOptions;
 import org.apache.flink.core.io.InputSplit;
 import org.apache.flink.core.io.InputSplitAssigner;
 import org.apache.flink.metrics.MetricGroup;
@@ -97,6 +98,7 @@ import org.apache.flink.runtime.taskexecutor.TaskExecutorGateway;
 import org.apache.flink.runtime.taskexecutor.slot.SlotOffer;
 import org.apache.flink.runtime.taskmanager.TaskExecutionState;
 import org.apache.flink.runtime.taskmanager.TaskManagerLocation;
+import org.apache.flink.runtime.util.clock.SystemClock;
 import org.apache.flink.runtime.webmonitor.WebMonitorUtils;
 import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.FlinkException;
@@ -169,7 +171,7 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 	private final HeartbeatManager<Void, Void> resourceManagerHeartbeatManager;
 
 	/** The execution context which is used to execute futures. */
-	private final Executor executor;
+	private final ScheduledExecutorService scheduledExecutorService;
 
 	private final OnCompletionActions jobCompletionActions;
 
@@ -212,18 +214,15 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 			JobGraph jobGraph,
 			Configuration configuration,
 			HighAvailabilityServices highAvailabilityService,
+			JobManagerSharedServices jobManagerSharedServices,
 			HeartbeatServices heartbeatServices,
-			ScheduledExecutorService executor,
 			BlobServer blobServer,
-			RestartStrategyFactory restartStrategyFactory,
-			Time rpcAskTimeout,
 			@Nullable JobManagerMetricGroup jobManagerMetricGroup,
 			OnCompletionActions jobCompletionActions,
 			FatalErrorHandler errorHandler,
 			ClassLoader userCodeLoader,
 			@Nullable String restAddress,
-			@Nullable String metricQueryServicePath,
-			BackPressureStatsTracker backPressureStatsTracker) throws Exception {
+			@Nullable String metricQueryServicePath) throws Exception {
 
 		super(rpcService, AkkaRpcServiceUtils.createRandomName(JOB_MANAGER_NAME));
 
@@ -231,10 +230,10 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 
 		this.resourceId = checkNotNull(resourceId);
 		this.jobGraph = checkNotNull(jobGraph);
-		this.rpcTimeout = rpcAskTimeout;
+		this.rpcTimeout = jobManagerSharedServices.getTimeout();
 		this.highAvailabilityServices = checkNotNull(highAvailabilityService);
 		this.blobServer = checkNotNull(blobServer);
-		this.executor = checkNotNull(executor);
+		this.scheduledExecutorService = jobManagerSharedServices.getScheduledExecutorService();
 		this.jobCompletionActions = checkNotNull(jobCompletionActions);
 		this.errorHandler = checkNotNull(errorHandler);
 		this.userCodeLoader = checkNotNull(userCodeLoader);
@@ -269,7 +268,7 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 
 		final RestartStrategy restartStrategy = (restartStrategyConfiguration != null) ?
 				RestartStrategyFactory.createRestartStrategy(restartStrategyConfiguration) :
-				restartStrategyFactory.createRestartStrategy();
+				jobManagerSharedServices.getRestartStrategyFactory().createRestartStrategy();
 
 		log.info("Using restart strategy {} for {} ({}).", restartStrategy, jobName, jid);
 
@@ -277,19 +276,27 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 
 		resourceManagerLeaderRetriever = highAvailabilityServices.getResourceManagerLeaderRetriever();
 
-		this.slotPool = new SlotPool(rpcService, jobGraph.getJobID());
+		this.slotPool = new SlotPool(
+			rpcService,
+			jobGraph.getJobID(),
+			SystemClock.getInstance(),
+			Time.milliseconds(configuration.getLong(JobManagerOptions.SLOT_REQUEST_TIMEOUT)),
+			Time.milliseconds(configuration.getLong(JobManagerOptions.SLOT_ALLOCATION_RM_TIMEOUT)),
+			Time.milliseconds(configuration.getLong(JobManagerOptions.SLOT_REQUEST_RM_TIMEOUT)),
+			Time.milliseconds(configuration.getLong(JobManagerOptions.SLOT_IDLE_TIMEOUT)));
+
 		this.slotPoolGateway = slotPool.getSelfGateway(SlotPoolGateway.class);
 
 		this.executionGraph = ExecutionGraphBuilder.buildGraph(
 			null,
 			jobGraph,
 			configuration,
-			executor,
-			executor,
+			scheduledExecutorService,
+			scheduledExecutorService,
 			slotPool.getSlotProvider(),
 			userCodeLoader,
 			checkpointRecoveryFactory,
-			rpcAskTimeout,
+			rpcTimeout,
 			restartStrategy,
 			jobMetricGroup,
 			-1,
@@ -306,7 +313,7 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 			.orElse(FutureUtils.completedExceptionally(new JobMasterException("The JobMaster has not been started with a REST endpoint.")));
 
 		this.metricQueryServicePath = metricQueryServicePath;
-		this.backPressureStatsTracker = checkNotNull(backPressureStatsTracker);
+		this.backPressureStatsTracker = checkNotNull(jobManagerSharedServices.getBackPressureStatsTracker());
 	}
 
 	//----------------------------------------------------------------------------------------------
@@ -803,7 +810,7 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 
 	@Override
 	public CompletableFuture<JobDetails> requestJobDetails(@RpcTimeout Time timeout) {
-		return CompletableFuture.supplyAsync(() -> WebMonitorUtils.createDetailsForJob(executionGraph), executor);
+		return CompletableFuture.supplyAsync(() -> WebMonitorUtils.createDetailsForJob(executionGraph), scheduledExecutorService);
 	}
 
 	@Override
@@ -953,7 +960,7 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 		}
 
 		// start scheduling job in another thread
-		executor.execute(
+		scheduledExecutorService.execute(
 			() -> {
 				try {
 					executionGraph.scheduleForExecution();
@@ -1024,7 +1031,7 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 
 		if (newJobStatus.isGloballyTerminalState()) {
 			final ArchivedExecutionGraph archivedExecutionGraph = ArchivedExecutionGraph.createFrom(executionGraph);
-			executor.execute(() -> jobCompletionActions.jobReachedGloballyTerminalState(archivedExecutionGraph));
+			scheduledExecutorService.execute(() -> jobCompletionActions.jobReachedGloballyTerminalState(archivedExecutionGraph));
 		}
 	}
 
@@ -1059,7 +1066,7 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 				getFencingToken(),
 				resourceManagerAddress,
 				resourceManagerId,
-				executor);
+				scheduledExecutorService);
 
 			resourceManagerConnection.start();
 		}
