@@ -19,10 +19,8 @@
 package org.apache.flink.client.program.rest;
 
 import org.apache.flink.annotation.VisibleForTesting;
-import org.apache.flink.api.common.JobExecutionResult;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.JobSubmissionResult;
-import org.apache.flink.api.common.accumulators.AccumulatorHelper;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.client.program.ClusterClient;
 import org.apache.flink.client.program.ProgramInvocationException;
@@ -41,6 +39,7 @@ import org.apache.flink.runtime.jobmaster.JobResult;
 import org.apache.flink.runtime.leaderretrieval.LeaderRetrievalException;
 import org.apache.flink.runtime.leaderretrieval.LeaderRetrievalService;
 import org.apache.flink.runtime.rest.RestClient;
+import org.apache.flink.runtime.rest.handler.async.TriggerResponse;
 import org.apache.flink.runtime.rest.messages.BlobServerPortHeaders;
 import org.apache.flink.runtime.rest.messages.BlobServerPortResponseBody;
 import org.apache.flink.runtime.rest.messages.EmptyMessageParameters;
@@ -55,6 +54,7 @@ import org.apache.flink.runtime.rest.messages.MessageParameters;
 import org.apache.flink.runtime.rest.messages.RequestBody;
 import org.apache.flink.runtime.rest.messages.ResponseBody;
 import org.apache.flink.runtime.rest.messages.TerminationModeQueryParameter;
+import org.apache.flink.runtime.rest.messages.TriggerId;
 import org.apache.flink.runtime.rest.messages.job.JobExecutionResultHeaders;
 import org.apache.flink.runtime.rest.messages.job.JobSubmitHeaders;
 import org.apache.flink.runtime.rest.messages.job.JobSubmitRequestBody;
@@ -63,10 +63,8 @@ import org.apache.flink.runtime.rest.messages.job.savepoints.SavepointInfo;
 import org.apache.flink.runtime.rest.messages.job.savepoints.SavepointStatusHeaders;
 import org.apache.flink.runtime.rest.messages.job.savepoints.SavepointStatusMessageParameters;
 import org.apache.flink.runtime.rest.messages.job.savepoints.SavepointTriggerHeaders;
-import org.apache.flink.runtime.rest.messages.job.savepoints.SavepointTriggerId;
 import org.apache.flink.runtime.rest.messages.job.savepoints.SavepointTriggerMessageParameters;
 import org.apache.flink.runtime.rest.messages.job.savepoints.SavepointTriggerRequestBody;
-import org.apache.flink.runtime.rest.messages.job.savepoints.SavepointTriggerResponseBody;
 import org.apache.flink.runtime.rest.messages.queue.AsynchronouslyCreatedResource;
 import org.apache.flink.runtime.rest.messages.queue.QueueStatus;
 import org.apache.flink.runtime.rest.util.RestClientException;
@@ -78,7 +76,6 @@ import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.ExecutorUtils;
 import org.apache.flink.util.FlinkException;
 import org.apache.flink.util.Preconditions;
-import org.apache.flink.util.SerializedThrowable;
 import org.apache.flink.util.function.CheckedSupplier;
 
 import org.apache.flink.shaded.netty4.io.netty.channel.ConnectTimeoutException;
@@ -196,83 +193,112 @@ public class RestClusterClient<T> extends ClusterClient<T> {
 
 	@Override
 	protected JobSubmissionResult submitJob(JobGraph jobGraph, ClassLoader classLoader) throws ProgramInvocationException {
-		log.info("Submitting job.");
-		try {
-			// we have to enable queued scheduling because slot will be allocated lazily
-			jobGraph.setAllowQueuedScheduling(true);
-			submitJob(jobGraph);
-		} catch (JobSubmissionException e) {
-			throw new ProgramInvocationException(e);
-		}
+		log.info("Submitting job {}.", jobGraph.getJobID());
 
-		final JobResult jobExecutionResult;
-		try {
-			jobExecutionResult = pollResourceAsync(
-				() -> {
-					final JobMessageParameters messageParameters = new JobMessageParameters();
-					messageParameters.jobPathParameter.resolve(jobGraph.getJobID());
-					return sendRetryableRequest(
-						JobExecutionResultHeaders.getInstance(),
-						messageParameters,
-						EmptyRequestBody.getInstance(),
-						isConnectionProblemException().or(isHttpStatusUnsuccessfulException()));
-				}).get();
-		} catch (final Exception e) {
-			throw new ProgramInvocationException(e);
-		}
+		final CompletableFuture<JobSubmitResponseBody> jobSubmissionFuture = submitJob(jobGraph);
 
-		if (jobExecutionResult.getSerializedThrowable().isPresent()) {
-			final SerializedThrowable serializedThrowable = jobExecutionResult.getSerializedThrowable().get();
-			final Throwable throwable = serializedThrowable.deserializeError(classLoader);
-			throw new ProgramInvocationException(throwable);
-		}
+		if (isDetached()) {
+			try {
+				jobSubmissionFuture.get();
+			} catch (Exception e) {
+				throw new ProgramInvocationException("Could not submit job " + jobGraph.getJobID() + '.', ExceptionUtils.stripExecutionException(e));
+			}
 
-		try {
-			// don't return just a JobSubmissionResult here, the signature is lying
-			// The CliFrontend expects this to be a JobExecutionResult
-			this.lastJobExecutionResult = new JobExecutionResult(
-				jobExecutionResult.getJobId(),
-				jobExecutionResult.getNetRuntime(),
-				AccumulatorHelper.deserializeAccumulators(
-					jobExecutionResult.getAccumulatorResults(),
-					classLoader));
-			return lastJobExecutionResult;
-		} catch (IOException | ClassNotFoundException e) {
-			throw new ProgramInvocationException(e);
+			return new JobSubmissionResult(jobGraph.getJobID());
+		} else {
+			final CompletableFuture<JobResult> jobResultFuture = jobSubmissionFuture.thenCompose(
+				ignored -> requestJobResult(jobGraph.getJobID()));
+
+			final JobResult jobResult;
+			try {
+				jobResult = jobResultFuture.get();
+			} catch (Exception e) {
+				throw new ProgramInvocationException("Could not retrieve the execution result.", ExceptionUtils.stripExecutionException(e));
+			}
+
+			try {
+				this.lastJobExecutionResult = jobResult.toJobExecutionResult(classLoader);
+				return lastJobExecutionResult;
+			} catch (JobResult.WrappedJobException we) {
+				throw new ProgramInvocationException(we.getCause());
+			} catch (IOException | ClassNotFoundException e) {
+				throw new ProgramInvocationException(e);
+			}
 		}
 	}
 
-	private void submitJob(JobGraph jobGraph) throws JobSubmissionException {
+	/**
+	 * Requests the {@link JobResult} for the given {@link JobID}. The method retries multiple
+	 * times to poll the {@link JobResult} before giving up.
+	 *
+	 * @param jobId specifying the job for which to retrieve the {@link JobResult}
+	 * @return Future which is completed with the {@link JobResult} once the job has completed or
+	 * with a failure if the {@link JobResult} could not be retrieved.
+	 */
+	public CompletableFuture<JobResult> requestJobResult(JobID jobId) {
+		return pollResourceAsync(
+			() -> {
+				final JobMessageParameters messageParameters = new JobMessageParameters();
+				messageParameters.jobPathParameter.resolve(jobId);
+				return sendRetryableRequest(
+					JobExecutionResultHeaders.getInstance(),
+					messageParameters,
+					EmptyRequestBody.getInstance(),
+					isConnectionProblemException().or(isHttpStatusUnsuccessfulException()));
+			});
+	}
+
+	/**
+	 * Submits the given {@link JobGraph} to the dispatcher.
+	 *
+	 * @param jobGraph to submit
+	 * @return Future which is completed with the submission response
+	 */
+	public CompletableFuture<JobSubmitResponseBody> submitJob(JobGraph jobGraph) {
+		// we have to enable queued scheduling because slot will be allocated lazily
+		jobGraph.setAllowQueuedScheduling(true);
+
 		log.info("Requesting blob server port.");
-		int blobServerPort;
-		try {
-			CompletableFuture<BlobServerPortResponseBody> portFuture = sendRequest(
-				BlobServerPortHeaders.getInstance());
-			blobServerPort = portFuture.get(timeout.toMillis(), TimeUnit.MILLISECONDS).port;
-		} catch (Exception e) {
-			throw new JobSubmissionException(jobGraph.getJobID(), "Failed to retrieve blob server port.", e);
-		}
+		CompletableFuture<BlobServerPortResponseBody> portFuture = sendRequest(
+			BlobServerPortHeaders.getInstance());
 
-		log.info("Uploading jar files.");
-		try {
-			InetSocketAddress address = new InetSocketAddress(getDispatcherAddress().get(), blobServerPort);
-			List<PermanentBlobKey> keys = BlobClient.uploadJarFiles(address, this.flinkConfig, jobGraph.getJobID(), jobGraph.getUserJars());
-			for (PermanentBlobKey key : keys) {
-				jobGraph.addBlob(key);
-			}
-		} catch (Exception e) {
-			throw new JobSubmissionException(jobGraph.getJobID(), "Failed to upload user jars to blob server.", e);
-		}
+		CompletableFuture<JobGraph> jobUploadFuture = portFuture.thenCombine(
+			getDispatcherAddress(),
+			(BlobServerPortResponseBody response, String dispatcherAddress) -> {
+				log.info("Uploading jar files.");
+				final int blobServerPort = response.port;
+				final InetSocketAddress address = new InetSocketAddress(dispatcherAddress, blobServerPort);
+				final List<PermanentBlobKey> keys;
+				try {
+					keys = BlobClient.uploadJarFiles(address, flinkConfig, jobGraph.getJobID(), jobGraph.getUserJars());
+				} catch (IOException ioe) {
+					throw new CompletionException(new FlinkException("Could not upload job jar files.", ioe));
+				}
 
-		log.info("Submitting job graph.");
-		try {
-			CompletableFuture<JobSubmitResponseBody> responseFuture = sendRequest(
-				JobSubmitHeaders.getInstance(),
-				new JobSubmitRequestBody(jobGraph));
-			responseFuture.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
-		} catch (Exception e) {
-			throw new JobSubmissionException(jobGraph.getJobID(), "Failed to submit JobGraph.", e);
-		}
+				for (PermanentBlobKey key : keys) {
+					jobGraph.addBlob(key);
+				}
+
+				return jobGraph;
+			});
+
+		CompletableFuture<JobSubmitResponseBody> submissionFuture = jobUploadFuture.thenCompose(
+			(JobGraph jobGraphToSubmit) -> {
+				log.info("Submitting job graph.");
+
+				try {
+					return sendRequest(
+						JobSubmitHeaders.getInstance(),
+						new JobSubmitRequestBody(jobGraph));
+				} catch (IOException ioe) {
+					throw new CompletionException(new FlinkException("Could not create JobSubmitRequestBody.", ioe));
+				}
+			});
+
+		return submissionFuture.exceptionally(
+			(Throwable throwable) -> {
+				throw new CompletionException(new JobSubmissionException(jobGraph.getJobID(), "Failed to submit JobGraph.", throwable));
+			});
 	}
 
 	@Override
@@ -313,7 +339,7 @@ public class RestClusterClient<T> extends ClusterClient<T> {
 			savepointTriggerHeaders.getUnresolvedMessageParameters();
 		savepointTriggerMessageParameters.jobID.resolve(jobId);
 
-		final CompletableFuture<SavepointTriggerResponseBody> responseFuture;
+		final CompletableFuture<TriggerResponse> responseFuture;
 
 		responseFuture = sendRequest(
 			savepointTriggerHeaders,
@@ -321,7 +347,7 @@ public class RestClusterClient<T> extends ClusterClient<T> {
 			new SavepointTriggerRequestBody(savepointDirectory));
 
 		return responseFuture.thenCompose(savepointTriggerResponseBody -> {
-			final SavepointTriggerId savepointTriggerId = savepointTriggerResponseBody.getSavepointTriggerId();
+			final TriggerId savepointTriggerId = savepointTriggerResponseBody.getTriggerId();
 			return pollSavepointAsync(jobId, savepointTriggerId);
 		}).thenApply(savepointInfo -> {
 			if (savepointInfo.getFailureCause() != null) {
@@ -333,13 +359,13 @@ public class RestClusterClient<T> extends ClusterClient<T> {
 
 	private CompletableFuture<SavepointInfo> pollSavepointAsync(
 			final JobID jobId,
-			final SavepointTriggerId savepointTriggerId) {
+			final TriggerId triggerID) {
 		return pollResourceAsync(() -> {
 			final SavepointStatusHeaders savepointStatusHeaders = SavepointStatusHeaders.getInstance();
 			final SavepointStatusMessageParameters savepointStatusMessageParameters =
 				savepointStatusHeaders.getUnresolvedMessageParameters();
 			savepointStatusMessageParameters.jobIdPathParameter.resolve(jobId);
-			savepointStatusMessageParameters.savepointTriggerIdPathParameter.resolve(savepointTriggerId);
+			savepointStatusMessageParameters.triggerIdPathParameter.resolve(triggerID);
 			return sendRetryableRequest(
 				savepointStatusHeaders,
 				savepointStatusMessageParameters,

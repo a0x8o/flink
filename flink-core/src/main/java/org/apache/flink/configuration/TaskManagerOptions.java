@@ -81,7 +81,7 @@ public class TaskManagerOptions {
 	public static final ConfigOption<String> RPC_PORT =
 		key("taskmanager.rpc.port")
 			.defaultValue("0")
-			.withDescription(" The task manager’s IPC port. Accepts a list of ports (“50100,50101”), ranges" +
+			.withDescription("The task manager’s IPC port. Accepts a list of ports (“50100,50101”), ranges" +
 				" (“50100-50200”) or a combination of both. It is recommended to set a range of ports to avoid" +
 				" collisions when multiple TaskManagers are running on the same machine.");
 
@@ -306,6 +306,17 @@ public class TaskManagerOptions {
 			.defaultValue(false)
 			.withDescription("Boolean flag to enable/disable more detailed metrics about inbound/outbound network queue lengths.");
 
+	/**
+	 * Config parameter defining whether to enable credit-based flow control or not.
+	 *
+	 * @deprecated Will be removed for Flink 1.6 when the old code will be dropped in favour of
+	 * credit-based flow control.
+	 */
+	@Deprecated
+	public static final ConfigOption<Boolean> NETWORK_CREDIT_BASED_FLOW_CONTROL_ENABLED =
+			key("taskmanager.network.credit-based-flow-control.enabled")
+			.defaultValue(true);
+
 	// ------------------------------------------------------------------------
 	//  Task Options
 	// ------------------------------------------------------------------------
@@ -331,6 +342,15 @@ public class TaskManagerOptions {
 			.withDescription("Timeout in milliseconds after which a task cancellation times out and" +
 				" leads to a fatal TaskManager error. A value of 0 deactivates" +
 				" the watch dog.");
+	/**
+	 * This configures how long we wait for the timers to finish all pending timer threads
+	 * when the stream task is cancelled .
+	 */
+	public static final ConfigOption<Long> TASK_CANCELLATION_TIMEOUT_TIMERS = ConfigOptions
+			.key("task.cancellation.timers.timeout")
+			.defaultValue(7500L)
+			.withDeprecatedKeys("timerservice.exceptional.shutdown.timeout");
+
 	/**
 	 * The maximum number of bytes that a checkpoint alignment may buffer.
 	 * If the checkpoint alignment buffers more than the configured amount of

@@ -556,7 +556,7 @@ class TaskManager(
               "TaskManager was triggered to register at JobManager, but is already registered")
           } else if (deadline.exists(_.isOverdue())) {
             // we failed to register in time. that means we should quit
-            log.error("Failed to register at the JobManager withing the defined maximum " +
+            log.error("Failed to register at the JobManager within the defined maximum " +
                         "connect time. Shutting down ...")
 
             // terminate ourselves (hasta la vista)
@@ -2012,7 +2012,9 @@ object TaskManager {
 
     val taskManagerServices = TaskManagerServices.fromConfiguration(
       taskManagerServicesConfiguration,
-      resourceID)
+      resourceID,
+      EnvironmentInformation.getSizeOfFreeHeapMemoryWithDefrag,
+      EnvironmentInformation.getMaxJvmHeapMemory)
 
     val taskManagerMetricGroup = MetricUtils.instantiateTaskManagerMetricGroup(
       metricRegistry,

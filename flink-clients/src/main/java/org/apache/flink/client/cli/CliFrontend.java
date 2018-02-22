@@ -28,6 +28,7 @@ import org.apache.flink.client.deployment.ClusterDescriptor;
 import org.apache.flink.client.deployment.ClusterSpecification;
 import org.apache.flink.client.program.ClusterClient;
 import org.apache.flink.client.program.PackagedProgram;
+import org.apache.flink.client.program.PackagedProgramUtils;
 import org.apache.flink.client.program.ProgramInvocationException;
 import org.apache.flink.client.program.ProgramMissingJobException;
 import org.apache.flink.client.program.ProgramParametrizationException;
@@ -47,6 +48,7 @@ import org.apache.flink.optimizer.plandump.PlanJSONDumpGenerator;
 import org.apache.flink.runtime.akka.AkkaUtils;
 import org.apache.flink.runtime.client.JobStatusMessage;
 import org.apache.flink.runtime.concurrent.FutureUtils;
+import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.jobgraph.JobStatus;
 import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.messages.JobManagerMessages;
@@ -113,6 +115,8 @@ public class CliFrontend {
 
 	private final int defaultParallelism;
 
+	private final boolean flip6;
+
 	public CliFrontend(
 			Configuration configuration,
 			List<CustomCommandLine<?>> customCommandLines) throws Exception {
@@ -135,6 +139,8 @@ public class CliFrontend {
 
 		this.clientTimeout = AkkaUtils.getClientTimeout(this.configuration);
 		this.defaultParallelism = configuration.getInteger(CoreOptions.DEFAULT_PARALLELISM);
+
+		this.flip6 = CoreOptions.FLIP6_MODE.equalsIgnoreCase(configuration.getString(CoreOptions.MODE));
 	}
 
 	// --------------------------------------------------------------------------------------------
@@ -195,7 +201,11 @@ public class CliFrontend {
 
 		final CustomCommandLine<?> customCommandLine = getActiveCustomCommandLine(commandLine);
 
-		runProgram(customCommandLine, commandLine, runOptions, program);
+		try {
+			runProgram(customCommandLine, commandLine, runOptions, program);
+		} finally {
+			program.deleteExtractedLibraries();
+		}
 	}
 
 	private <T> void runProgram(
@@ -210,51 +220,72 @@ public class CliFrontend {
 
 			final ClusterClient<T> client;
 
-			if (clusterId != null) {
-				client = clusterDescriptor.retrieve(clusterId);
-			} else {
+			// directly deploy the job if the cluster is started in job mode and detached
+			if (flip6 && clusterId == null && runOptions.getDetachedMode()) {
+				int parallelism = runOptions.getParallelism() == -1 ? defaultParallelism : runOptions.getParallelism();
+
+				final JobGraph jobGraph = PackagedProgramUtils.createJobGraph(program, configuration, parallelism);
+
 				final ClusterSpecification clusterSpecification = customCommandLine.getClusterSpecification(commandLine);
-				client = clusterDescriptor.deploySessionCluster(clusterSpecification);
-			}
+				client = clusterDescriptor.deployJobCluster(
+					clusterSpecification,
+					jobGraph,
+					runOptions.getDetachedMode());
 
-			try {
-				client.setPrintStatusDuringExecution(runOptions.getStdoutLogging());
-				client.setDetached(runOptions.getDetachedMode());
-				LOG.debug("Client slots is set to {}", client.getMaxSlots());
-
-				LOG.debug(runOptions.getSavepointRestoreSettings().toString());
-
-				int userParallelism = runOptions.getParallelism();
-				LOG.debug("User parallelism is set to {}", userParallelism);
-				if (client.getMaxSlots() != -1 && userParallelism == -1) {
-					logAndSysout("Using the parallelism provided by the remote cluster ("
-						+ client.getMaxSlots() + "). "
-						+ "To use another parallelism, set it at the ./bin/flink client.");
-					userParallelism = client.getMaxSlots();
-				} else if (ExecutionConfig.PARALLELISM_DEFAULT == userParallelism) {
-					userParallelism = defaultParallelism;
-				}
-
-				executeProgram(program, client, userParallelism);
-			} finally {
-				if (clusterId == null && !client.isDetached()) {
-					// terminate the cluster only if we have started it before and if it's not detached
-					try {
-						clusterDescriptor.terminateCluster(client.getClusterId());
-					} catch (FlinkException e) {
-						LOG.info("Could not properly terminate the Flink cluster.", e);
-					}
-				}
+				logAndSysout("Job has been submitted with JobID " + jobGraph.getJobID());
 
 				try {
 					client.shutdown();
 				} catch (Exception e) {
 					LOG.info("Could not properly shut down the client.", e);
 				}
+			} else {
+				if (clusterId != null) {
+					client = clusterDescriptor.retrieve(clusterId);
+				} else {
+					// also in job mode we have to deploy a session cluster because the job
+					// might consist of multiple parts (e.g. when using collect)
+					final ClusterSpecification clusterSpecification = customCommandLine.getClusterSpecification(commandLine);
+					client = clusterDescriptor.deploySessionCluster(clusterSpecification);
+				}
+
+				try {
+					client.setPrintStatusDuringExecution(runOptions.getStdoutLogging());
+					client.setDetached(runOptions.getDetachedMode());
+					LOG.debug("Client slots is set to {}", client.getMaxSlots());
+
+					LOG.debug("{}", runOptions.getSavepointRestoreSettings());
+
+					int userParallelism = runOptions.getParallelism();
+					LOG.debug("User parallelism is set to {}", userParallelism);
+					if (client.getMaxSlots() != -1 && userParallelism == -1) {
+						logAndSysout("Using the parallelism provided by the remote cluster ("
+							+ client.getMaxSlots() + "). "
+							+ "To use another parallelism, set it at the ./bin/flink client.");
+						userParallelism = client.getMaxSlots();
+					} else if (ExecutionConfig.PARALLELISM_DEFAULT == userParallelism) {
+						userParallelism = defaultParallelism;
+					}
+
+					executeProgram(program, client, userParallelism);
+				} finally {
+					if (clusterId == null && !client.isDetached()) {
+						// terminate the cluster only if we have started it before and if it's not detached
+						try {
+							clusterDescriptor.terminateCluster(client.getClusterId());
+						} catch (FlinkException e) {
+							LOG.info("Could not properly terminate the Flink cluster.", e);
+						}
+					}
+
+					try {
+						client.shutdown();
+					} catch (Exception e) {
+						LOG.info("Could not properly shut down the client.", e);
+					}
+				}
 			}
 		} finally {
-			program.deleteExtractedLibraries();
-
 			try {
 				clusterDescriptor.close();
 			} catch (Exception e) {

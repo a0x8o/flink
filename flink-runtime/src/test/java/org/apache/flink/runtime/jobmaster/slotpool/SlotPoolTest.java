@@ -587,8 +587,6 @@ public class SlotPoolTest extends TestLogger {
 			jobId,
 			clock,
 			TestingUtils.infiniteTime(),
-			TestingUtils.infiniteTime(),
-			TestingUtils.infiniteTime(),
 			timeout);
 
 		try {

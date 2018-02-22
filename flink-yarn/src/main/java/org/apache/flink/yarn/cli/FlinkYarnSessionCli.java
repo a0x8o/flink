@@ -365,7 +365,7 @@ public class FlinkYarnSessionCli extends AbstractCustomCommandLine<ApplicationId
 	}
 
 	private ClusterSpecification createClusterSpecification(Configuration configuration, CommandLine cmd) {
-		if (!cmd.hasOption(container.getOpt())) { // number of containers is required option!
+		if (!flip6 && !cmd.hasOption(container.getOpt())) { // number of containers is required option!
 			LOG.error("Missing required argument {}", container.getOpt());
 			printUsage();
 			throw new IllegalArgumentException("Missing required argument " + container.getOpt());
@@ -380,19 +380,6 @@ public class FlinkYarnSessionCli extends AbstractCustomCommandLine<ApplicationId
 		final int taskManagerMemoryMB = configuration.getInteger(TaskManagerOptions.TASK_MANAGER_HEAP_MEMORY);
 
 		int slotsPerTaskManager = configuration.getInteger(ConfigConstants.TASK_MANAGER_NUM_TASK_SLOTS, 1);
-
-		// convenience
-		int userParallelism = Integer.valueOf(cmd.getOptionValue(CliFrontendParser.PARALLELISM_OPTION.getOpt(), "-1"));
-		int maxSlots = slotsPerTaskManager * numberTaskManagers;
-		if (userParallelism != -1) {
-			int slotsPerTM = (int) Math.ceil((double) userParallelism / numberTaskManagers);
-			String message = "The YARN cluster has " + maxSlots + " slots available, " +
-				"but the user requested a parallelism of " + userParallelism + " on YARN. " +
-				"Each of the " + numberTaskManagers + " TaskManagers " +
-				"will get " + slotsPerTM + " slots.";
-			logAndSysout(message);
-			slotsPerTaskManager = slotsPerTM;
-		}
 
 		return new ClusterSpecification.ClusterSpecificationBuilder()
 			.setMasterMemoryMB(jobManagerMemoryMB)

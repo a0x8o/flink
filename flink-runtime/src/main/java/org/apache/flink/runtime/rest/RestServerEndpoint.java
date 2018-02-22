@@ -18,11 +18,14 @@
 
 package org.apache.flink.runtime.rest;
 
+import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.rest.handler.PipelineErrorHandler;
 import org.apache.flink.runtime.rest.handler.RestHandlerSpecification;
 import org.apache.flink.runtime.rest.handler.RouterHandler;
+import org.apache.flink.util.FileUtils;
 import org.apache.flink.util.Preconditions;
 
 import org.apache.flink.shaded.netty4.io.netty.bootstrap.ServerBootstrap;
@@ -43,10 +46,15 @@ import org.apache.flink.shaded.netty4.io.netty.util.concurrent.DefaultThreadFact
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.annotation.Nullable;
 import javax.net.ssl.SSLEngine;
 
+import java.io.IOException;
 import java.io.Serializable;
 import java.net.InetSocketAddress;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
@@ -66,22 +74,28 @@ public abstract class RestServerEndpoint {
 	private final String configuredAddress;
 	private final int configuredPort;
 	private final SSLEngine sslEngine;
+	private final Path uploadDir;
+
+	private final CompletableFuture<Void> terminationFuture;
 
 	private ServerBootstrap bootstrap;
 	private Channel serverChannel;
 	private String restAddress;
 
-	private volatile boolean started;
+	private State state = State.CREATED;
 
-	public RestServerEndpoint(RestServerEndpointConfiguration configuration) {
+	public RestServerEndpoint(RestServerEndpointConfiguration configuration) throws IOException {
 		Preconditions.checkNotNull(configuration);
 		this.configuredAddress = configuration.getEndpointBindAddress();
 		this.configuredPort = configuration.getEndpointBindPort();
 		this.sslEngine = configuration.getSslEngine();
 
-		this.restAddress = null;
+		this.uploadDir = configuration.getUploadDir();
+		createUploadDir(uploadDir, log);
 
-		this.started = false;
+		terminationFuture = new CompletableFuture<>();
+
+		this.restAddress = null;
 	}
 
 	/**
@@ -98,12 +112,9 @@ public abstract class RestServerEndpoint {
 	 *
 	 * @throws Exception if we cannot start the RestServerEndpoint
 	 */
-	public void start() throws Exception {
+	public final void start() throws Exception {
 		synchronized (lock) {
-			if (started) {
-				// RestServerEndpoint already started
-				return;
-			}
+			Preconditions.checkState(state == State.CREATED, "The RestServerEndpoint cannot be restarted.");
 
 			log.info("Starting rest endpoint.");
 
@@ -141,6 +152,7 @@ public abstract class RestServerEndpoint {
 
 					ch.pipeline()
 						.addLast(new HttpServerCodec())
+						.addLast(new FileUploadHandler(uploadDir))
 						.addLast(new HttpObjectAggregator(MAX_REQUEST_SIZE_BYTES))
 						.addLast(handler.name(), handler)
 						.addLast(new PipelineErrorHandler(log));
@@ -182,28 +194,40 @@ public abstract class RestServerEndpoint {
 
 			restAddressFuture.complete(restAddress);
 
-			started = true;
+			state = State.RUNNING;
+
+			startInternal();
 		}
 	}
 
 	/**
+	 * Hook to start sub class specific services.
+	 *
+	 * @throws Exception if an error occurred
+	 */
+	protected abstract void startInternal() throws Exception;
+
+	/**
 	 * Returns the address on which this endpoint is accepting requests.
 	 *
-	 * @return address on which this endpoint is accepting requests
+	 * @return address on which this endpoint is accepting requests or null if none
 	 */
+	@Nullable
 	public InetSocketAddress getServerAddress() {
-		Preconditions.checkState(started, "The RestServerEndpoint has not been started yet.");
-		Channel server = this.serverChannel;
+		synchronized (lock) {
+			Preconditions.checkState(state != State.CREATED, "The RestServerEndpoint has not been started yet.");
+			Channel server = this.serverChannel;
 
-		if (server != null) {
-			try {
-				return ((InetSocketAddress) server.localAddress());
-			} catch (Exception e) {
-				log.error("Cannot access local server address", e);
+			if (server != null) {
+				try {
+					return ((InetSocketAddress) server.localAddress());
+				} catch (Exception e) {
+					log.error("Cannot access local server address", e);
+				}
 			}
-		}
 
-		return null;
+			return null;
+		}
 	}
 
 	/**
@@ -212,26 +236,49 @@ public abstract class RestServerEndpoint {
 	 * @return REST address of this endpoint
 	 */
 	public String getRestAddress() {
-		Preconditions.checkState(started, "The RestServerEndpoint has not been started yet.");
-		return restAddress;
+		synchronized (lock) {
+			Preconditions.checkState(state != State.CREATED, "The RestServerEndpoint has not been started yet.");
+			return restAddress;
+		}
+	}
+
+	public final CompletableFuture<Void> shutDownAsync() {
+		synchronized (lock) {
+			log.info("Shutting down rest endpoint.");
+
+			if (state == State.RUNNING) {
+				final CompletableFuture<Void> shutDownFuture = shutDownInternal();
+
+				shutDownFuture.whenComplete(
+					(Void ignored, Throwable throwable) -> {
+						if (throwable != null) {
+							terminationFuture.completeExceptionally(throwable);
+						} else {
+							terminationFuture.complete(null);
+						}
+					});
+				state = State.SHUTDOWN;
+			} else if (state == State.CREATED) {
+				terminationFuture.complete(null);
+				state = State.SHUTDOWN;
+			}
+
+			return terminationFuture;
+		}
 	}
 
 	/**
 	 * Stops this REST server endpoint.
+	 *
+	 * @return Future which is completed once the shut down has been finished.
 	 */
-	public void shutdown(Time timeout) {
+	protected CompletableFuture<Void> shutDownInternal() {
 
 		synchronized (lock) {
-			if (!started) {
-				// RestServerEndpoint has not been started
-				return;
-			}
-
-			log.info("Shutting down rest endpoint.");
 
 			CompletableFuture<?> channelFuture = new CompletableFuture<>();
-			if (this.serverChannel != null) {
-				this.serverChannel.close().addListener(finished -> {
+			if (serverChannel != null) {
+				serverChannel.close().addListener(finished -> {
 					if (finished.isSuccess()) {
 						channelFuture.complete(null);
 					} else {
@@ -242,11 +289,12 @@ public abstract class RestServerEndpoint {
 			}
 			CompletableFuture<?> groupFuture = new CompletableFuture<>();
 			CompletableFuture<?> childGroupFuture = new CompletableFuture<>();
+			final Time gracePeriod = Time.seconds(10L);
 
 			channelFuture.thenRun(() -> {
 				if (bootstrap != null) {
 					if (bootstrap.group() != null) {
-						bootstrap.group().shutdownGracefully(0L, timeout.toMilliseconds(), TimeUnit.MILLISECONDS)
+						bootstrap.group().shutdownGracefully(0L, gracePeriod.toMilliseconds(), TimeUnit.MILLISECONDS)
 							.addListener(finished -> {
 								if (finished.isSuccess()) {
 									groupFuture.complete(null);
@@ -256,7 +304,7 @@ public abstract class RestServerEndpoint {
 							});
 					}
 					if (bootstrap.childGroup() != null) {
-						bootstrap.childGroup().shutdownGracefully(0L, timeout.toMilliseconds(), TimeUnit.MILLISECONDS)
+						bootstrap.childGroup().shutdownGracefully(0L, gracePeriod.toMilliseconds(), TimeUnit.MILLISECONDS)
 							.addListener(finished -> {
 								if (finished.isSuccess()) {
 									childGroupFuture.complete(null);
@@ -273,15 +321,15 @@ public abstract class RestServerEndpoint {
 				}
 			});
 
-			try {
-				CompletableFuture.allOf(groupFuture, childGroupFuture).get(timeout.toMilliseconds(), TimeUnit.MILLISECONDS);
-				log.info("Rest endpoint shutdown complete.");
-			} catch (Exception e) {
-				log.warn("Rest endpoint shutdown failed.", e);
-			}
+			final CompletableFuture<Void> channelTerminationFuture = FutureUtils.completeAll(
+				Arrays.asList(groupFuture, childGroupFuture));
 
-			restAddress = null;
-			started = false;
+			return FutureUtils.runAfterwards(
+				channelTerminationFuture,
+				() -> {
+					log.info("Cleaning upload directory {}", uploadDir);
+					FileUtils.cleanDirectory(uploadDir.toFile());
+				});
 		}
 	}
 
@@ -301,6 +349,40 @@ public abstract class RestServerEndpoint {
 				break;
 			default:
 				throw new RuntimeException("Unsupported http method: " + specificationHandler.f0.getHttpMethod() + '.');
+		}
+	}
+
+	/**
+	 * Creates the upload dir if needed.
+	 */
+	@VisibleForTesting
+	static void createUploadDir(final Path uploadDir, final Logger log) throws IOException {
+		if (!Files.exists(uploadDir)) {
+			log.warn("Upload directory {} does not exist, or has been deleted externally. " +
+				"Previously uploaded files are no longer available.", uploadDir);
+			checkAndCreateUploadDir(uploadDir, log);
+		}
+	}
+
+	/**
+	 * Checks whether the given directory exists and is writable. If it doesn't exist, this method
+	 * will attempt to create it.
+	 *
+	 * @param uploadDir directory to check
+	 * @param log logger used for logging output
+	 * @throws IOException if the directory does not exist and cannot be created, or if the
+	 *                     directory isn't writable
+	 */
+	private static synchronized void checkAndCreateUploadDir(final Path uploadDir, final Logger log) throws IOException {
+		if (Files.exists(uploadDir) && Files.isWritable(uploadDir)) {
+			log.info("Using directory {} for file uploads.", uploadDir);
+		} else if (Files.isWritable(Files.createDirectories(uploadDir))) {
+			log.info("Created directory {} for file uploads.", uploadDir);
+		} else {
+			log.warn("Upload directory {} cannot be created or is not writable.", uploadDir);
+			throw new IOException(
+				String.format("Upload directory %s cannot be created or is not writable.",
+					uploadDir));
 		}
 	}
 
@@ -381,5 +463,11 @@ public abstract class RestServerEndpoint {
 				return n1 - n2;
 			}
 		}
+	}
+
+	private enum State {
+		CREATED,
+		RUNNING,
+		SHUTDOWN
 	}
 }

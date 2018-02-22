@@ -34,11 +34,12 @@ import org.apache.flink.runtime.highavailability.RunningJobsRegistry;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.jobgraph.JobStatus;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
-import org.apache.flink.runtime.jobmanager.OnCompletionActions;
 import org.apache.flink.runtime.jobmanager.SubmittedJobGraph;
 import org.apache.flink.runtime.jobmanager.SubmittedJobGraphStore;
 import org.apache.flink.runtime.jobmaster.JobManagerRunner;
 import org.apache.flink.runtime.jobmaster.JobManagerSharedServices;
+import org.apache.flink.runtime.jobmaster.JobNotFinishedException;
+import org.apache.flink.runtime.jobmaster.JobResult;
 import org.apache.flink.runtime.leaderelection.LeaderContender;
 import org.apache.flink.runtime.leaderelection.LeaderElectionService;
 import org.apache.flink.runtime.messages.Acknowledge;
@@ -102,19 +103,23 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> impleme
 
 	private final ArchivedExecutionGraphStore archivedExecutionGraphStore;
 
+	private final JobManagerRunnerFactory jobManagerRunnerFactory;
+
 	@Nullable
 	protected final String restAddress;
 
-	protected Dispatcher(
+	public Dispatcher(
 			RpcService rpcService,
 			String endpointId,
 			Configuration configuration,
 			HighAvailabilityServices highAvailabilityServices,
+			SubmittedJobGraphStore submittedJobGraphStore,
 			ResourceManagerGateway resourceManagerGateway,
 			BlobServer blobServer,
 			HeartbeatServices heartbeatServices,
 			MetricRegistry metricRegistry,
 			ArchivedExecutionGraphStore archivedExecutionGraphStore,
+			JobManagerRunnerFactory jobManagerRunnerFactory,
 			FatalErrorHandler fatalErrorHandler,
 			@Nullable String restAddress) throws Exception {
 		super(rpcService, endpointId);
@@ -126,12 +131,12 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> impleme
 		this.blobServer = Preconditions.checkNotNull(blobServer);
 		this.metricRegistry = Preconditions.checkNotNull(metricRegistry);
 		this.fatalErrorHandler = Preconditions.checkNotNull(fatalErrorHandler);
+		this.submittedJobGraphStore = Preconditions.checkNotNull(submittedJobGraphStore);
 
 		this.jobManagerSharedServices = JobManagerSharedServices.fromConfiguration(
 			configuration,
 			this.blobServer);
 
-		this.submittedJobGraphStore = highAvailabilityServices.getSubmittedJobGraphStore();
 		this.runningJobsRegistry = highAvailabilityServices.getRunningJobsRegistry();
 
 		jobManagerRunners = new HashMap<>(16);
@@ -141,6 +146,8 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> impleme
 		this.restAddress = restAddress;
 
 		this.archivedExecutionGraphStore = Preconditions.checkNotNull(archivedExecutionGraphStore);
+
+		this.jobManagerRunnerFactory = Preconditions.checkNotNull(jobManagerRunnerFactory);
 	}
 
 	//------------------------------------------------------
@@ -226,7 +233,7 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> impleme
 			final JobManagerRunner jobManagerRunner;
 
 			try {
-				jobManagerRunner = createJobManagerRunner(
+				jobManagerRunner = jobManagerRunnerFactory.createJobManagerRunner(
 					ResourceID.generate(),
 					jobGraph,
 					configuration,
@@ -236,8 +243,22 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> impleme
 					blobServer,
 					jobManagerSharedServices,
 					metricRegistry,
-					new DispatcherOnCompleteActions(jobGraph.getJobID()),
-					fatalErrorHandler);
+					restAddress);
+
+				jobManagerRunner.getResultFuture().whenCompleteAsync(
+					(ArchivedExecutionGraph archivedExecutionGraph, Throwable throwable) -> {
+						if (archivedExecutionGraph != null) {
+							jobReachedGloballyTerminalState(archivedExecutionGraph);
+						} else {
+							final Throwable strippedThrowable = ExceptionUtils.stripCompletionException(throwable);
+
+							if (strippedThrowable instanceof JobNotFinishedException) {
+								jobNotFinished(jobId);
+							} else {
+								onFatalError(new FlinkException("JobManagerRunner for job " + jobId + " failed.", strippedThrowable));
+							}
+						}
+					}, getMainThreadExecutor());
 
 				jobManagerRunner.start();
 			} catch (Exception e) {
@@ -373,8 +394,7 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> impleme
 		if (jobManagerRunner == null) {
 			return FutureUtils.completedExceptionally(new FlinkJobNotFoundException(jobId));
 		} else {
-			return jobManagerRunner.getJobManagerGateway()
-				.requestOperatorBackPressureStats(jobId, jobVertexId);
+			return jobManagerRunner.getJobManagerGateway().requestOperatorBackPressureStats(jobVertexId);
 		}
 	}
 
@@ -392,7 +412,24 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> impleme
 				return CompletableFuture.completedFuture(serializableExecutionGraph);
 			}
 		} else {
-			return jobManagerRunner.getJobManagerGateway().requestJob(jobId, timeout);
+			return jobManagerRunner.getJobManagerGateway().requestJob(timeout);
+		}
+	}
+
+	@Override
+	public CompletableFuture<JobResult> requestJobResult(JobID jobId, Time timeout) {
+		final JobManagerRunner jobManagerRunner = jobManagerRunners.get(jobId);
+
+		if (jobManagerRunner == null) {
+			final ArchivedExecutionGraph archivedExecutionGraph = archivedExecutionGraphStore.get(jobId);
+
+			if (archivedExecutionGraph == null) {
+				return FutureUtils.completedExceptionally(new FlinkJobNotFoundException(jobId));
+			} else {
+				return CompletableFuture.completedFuture(JobResult.createFrom(archivedExecutionGraph));
+			}
+		} else {
+			return jobManagerRunner.getResultFuture().thenApply(JobResult::createFrom);
 		}
 	}
 
@@ -425,7 +462,7 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> impleme
 		if (jobManagerRunners.containsKey(jobId)) {
 			return jobManagerRunners.get(jobId)
 				.getJobManagerGateway()
-				.triggerSavepoint(jobId, targetDirectory, timeout);
+				.triggerSavepoint(targetDirectory, timeout);
 		} else {
 			return FutureUtils.completedExceptionally(new FlinkJobNotFoundException(jobId));
 		}
@@ -507,16 +544,20 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> impleme
 			});
 	}
 
-	private void onFatalError(Throwable throwable) {
+	protected void onFatalError(Throwable throwable) {
 		log.error("Fatal error occurred in dispatcher {}.", getAddress(), throwable);
+
 		fatalErrorHandler.onFatalError(throwable);
 	}
 
-	private void jobReachedGloballyTerminalState(ArchivedExecutionGraph archivedExecutionGraph) {
+	protected void jobReachedGloballyTerminalState(ArchivedExecutionGraph archivedExecutionGraph) {
 		Preconditions.checkArgument(
 			archivedExecutionGraph.getState().isGloballyTerminalState(),
-			"Job " + archivedExecutionGraph.getJobID() + " is in state " +
-				archivedExecutionGraph.getState() + " which is not globally terminal.");
+			"Job %s is in state %s which is not globally terminal.",
+			archivedExecutionGraph.getJobID(),
+			archivedExecutionGraph.getState());
+
+		log.info("Job {} reached globally terminal state {}.", archivedExecutionGraph.getJobID(), archivedExecutionGraph.getState());
 
 		try {
 			archivedExecutionGraphStore.put(archivedExecutionGraph);
@@ -537,18 +578,15 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> impleme
 		}
 	}
 
-	protected abstract JobManagerRunner createJobManagerRunner(
-		ResourceID resourceId,
-		JobGraph jobGraph,
-		Configuration configuration,
-		RpcService rpcService,
-		HighAvailabilityServices highAvailabilityServices,
-		HeartbeatServices heartbeatServices,
-		BlobServer blobServer,
-		JobManagerSharedServices jobManagerSharedServices,
-		MetricRegistry metricRegistry,
-		OnCompletionActions onCompleteActions,
-		FatalErrorHandler fatalErrorHandler) throws Exception;
+	protected void jobNotFinished(JobID jobId) {
+		log.info("Job {} was not finished by JobManager.", jobId);
+
+		try {
+			removeJob(jobId, false);
+		} catch (Exception e) {
+			log.warn("Could not properly remove job {} from the dispatcher.", jobId, e);
+		}
+	}
 
 	//------------------------------------------------------
 	// Leader contender
@@ -647,37 +685,56 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> impleme
 	}
 
 	//------------------------------------------------------
-	// Utility classes
+	// Factories
 	//------------------------------------------------------
 
-	@VisibleForTesting
-	class DispatcherOnCompleteActions implements OnCompletionActions {
+	/**
+	 * Factory for a {@link JobManagerRunner}.
+	 */
+	@FunctionalInterface
+	public interface JobManagerRunnerFactory {
+		JobManagerRunner createJobManagerRunner(
+			ResourceID resourceId,
+			JobGraph jobGraph,
+			Configuration configuration,
+			RpcService rpcService,
+			HighAvailabilityServices highAvailabilityServices,
+			HeartbeatServices heartbeatServices,
+			BlobServer blobServer,
+			JobManagerSharedServices jobManagerServices,
+			MetricRegistry metricRegistry,
+			@Nullable String restAddress) throws Exception;
+	}
 
-		private final JobID jobId;
-
-		DispatcherOnCompleteActions(JobID jobId) {
-			this.jobId = Preconditions.checkNotNull(jobId);
-		}
+	/**
+	 * Singleton default factory for {@link JobManagerRunner}.
+	 */
+	public enum DefaultJobManagerRunnerFactory implements JobManagerRunnerFactory {
+		INSTANCE;
 
 		@Override
-		public void jobReachedGloballyTerminalState(ArchivedExecutionGraph executionGraph) {
-			log.info("Job {} reached globally terminal state {}.", jobId, executionGraph.getState());
-
-			runAsync(() -> Dispatcher.this.jobReachedGloballyTerminalState(executionGraph));
-		}
-
-		@Override
-		public void jobFinishedByOther() {
-			log.info("Job {} was finished by other JobManager.", jobId);
-
-			runAsync(
-				() -> {
-					try {
-						removeJob(jobId, false);
-					} catch (Exception e) {
-						log.warn("Could not properly remove job {} from the dispatcher.", jobId, e);
-					}
-				});
+		public JobManagerRunner createJobManagerRunner(
+				ResourceID resourceId,
+				JobGraph jobGraph,
+				Configuration configuration,
+				RpcService rpcService,
+				HighAvailabilityServices highAvailabilityServices,
+				HeartbeatServices heartbeatServices,
+				BlobServer blobServer,
+				JobManagerSharedServices jobManagerServices,
+				MetricRegistry metricRegistry,
+				@Nullable String restAddress) throws Exception {
+			return new JobManagerRunner(
+				resourceId,
+				jobGraph,
+				configuration,
+				rpcService,
+				highAvailabilityServices,
+				heartbeatServices,
+				blobServer,
+				jobManagerServices,
+				metricRegistry,
+				restAddress);
 		}
 	}
 }

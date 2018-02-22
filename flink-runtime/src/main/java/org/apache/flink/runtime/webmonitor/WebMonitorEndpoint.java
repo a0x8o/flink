@@ -23,6 +23,7 @@ import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.configuration.CheckpointingOptions;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.blob.TransientBlobService;
+import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.leaderelection.LeaderContender;
 import org.apache.flink.runtime.leaderelection.LeaderElectionService;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerGateway;
@@ -40,8 +41,10 @@ import org.apache.flink.runtime.rest.handler.job.JobExceptionsHandler;
 import org.apache.flink.runtime.rest.handler.job.JobExecutionResultHandler;
 import org.apache.flink.runtime.rest.handler.job.JobIdsHandler;
 import org.apache.flink.runtime.rest.handler.job.JobPlanHandler;
+import org.apache.flink.runtime.rest.handler.job.JobTerminationHandler;
 import org.apache.flink.runtime.rest.handler.job.JobVertexAccumulatorsHandler;
 import org.apache.flink.runtime.rest.handler.job.JobVertexBackPressureHandler;
+import org.apache.flink.runtime.rest.handler.job.JobVertexDetailsHandler;
 import org.apache.flink.runtime.rest.handler.job.JobVertexTaskManagersHandler;
 import org.apache.flink.runtime.rest.handler.job.JobsOverviewHandler;
 import org.apache.flink.runtime.rest.handler.job.SubtaskCurrentAttemptDetailsHandler;
@@ -78,11 +81,16 @@ import org.apache.flink.runtime.rest.messages.JobConfigHeaders;
 import org.apache.flink.runtime.rest.messages.JobExceptionsHeaders;
 import org.apache.flink.runtime.rest.messages.JobIdsWithStatusesOverviewHeaders;
 import org.apache.flink.runtime.rest.messages.JobPlanHeaders;
+import org.apache.flink.runtime.rest.messages.JobTerminationHeaders;
 import org.apache.flink.runtime.rest.messages.JobVertexAccumulatorsHeaders;
 import org.apache.flink.runtime.rest.messages.JobVertexBackPressureHeaders;
+import org.apache.flink.runtime.rest.messages.JobVertexDetailsHeaders;
 import org.apache.flink.runtime.rest.messages.JobVertexTaskManagersHeaders;
 import org.apache.flink.runtime.rest.messages.JobsOverviewHeaders;
 import org.apache.flink.runtime.rest.messages.SubtasksTimesHeaders;
+import org.apache.flink.runtime.rest.messages.TerminationModeQueryParameter;
+import org.apache.flink.runtime.rest.messages.YarnCancelJobTerminationHeaders;
+import org.apache.flink.runtime.rest.messages.YarnStopJobTerminationHeaders;
 import org.apache.flink.runtime.rest.messages.checkpoints.CheckpointConfigHeaders;
 import org.apache.flink.runtime.rest.messages.checkpoints.CheckpointStatisticDetailsHeaders;
 import org.apache.flink.runtime.rest.messages.checkpoints.CheckpointingStatisticsHeaders;
@@ -106,6 +114,7 @@ import org.apache.flink.runtime.rest.messages.taskmanager.TaskManagersHeaders;
 import org.apache.flink.runtime.rpc.FatalErrorHandler;
 import org.apache.flink.runtime.webmonitor.retriever.GatewayRetriever;
 import org.apache.flink.runtime.webmonitor.retriever.MetricQueryServiceRetriever;
+import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.FileUtils;
 import org.apache.flink.util.Preconditions;
 
@@ -130,17 +139,17 @@ import java.util.concurrent.Executor;
  */
 public class WebMonitorEndpoint<T extends RestfulGateway> extends RestServerEndpoint implements LeaderContender {
 
-	protected final GatewayRetriever<T> leaderRetriever;
-	private final Configuration clusterConfiguration;
+	protected final GatewayRetriever<? extends T> leaderRetriever;
+	protected final Configuration clusterConfiguration;
 	protected final RestHandlerConfiguration restConfiguration;
 	private final GatewayRetriever<ResourceManagerGateway> resourceManagerRetriever;
 	private final TransientBlobService transientBlobService;
-	private final Executor executor;
+	protected final Executor executor;
 
 	private final ExecutionGraphCache executionGraphCache;
 	private final CheckpointStatsCache checkpointStatsCache;
 
-	private final MetricFetcher<T> metricFetcher;
+	private final MetricFetcher<? extends T> metricFetcher;
 
 	private final LeaderElectionService leaderElectionService;
 
@@ -148,7 +157,7 @@ public class WebMonitorEndpoint<T extends RestfulGateway> extends RestServerEndp
 
 	public WebMonitorEndpoint(
 			RestServerEndpointConfiguration endpointConfiguration,
-			GatewayRetriever<T> leaderRetriever,
+			GatewayRetriever<? extends T> leaderRetriever,
 			Configuration clusterConfiguration,
 			RestHandlerConfiguration restConfiguration,
 			GatewayRetriever<ResourceManagerGateway> resourceManagerRetriever,
@@ -156,7 +165,7 @@ public class WebMonitorEndpoint<T extends RestfulGateway> extends RestServerEndp
 			Executor executor,
 			MetricQueryServiceRetriever metricQueryServiceRetriever,
 			LeaderElectionService leaderElectionService,
-			FatalErrorHandler fatalErrorHandler) {
+			FatalErrorHandler fatalErrorHandler) throws IOException {
 		super(endpointConfiguration);
 		this.leaderRetriever = Preconditions.checkNotNull(leaderRetriever);
 		this.clusterConfiguration = Preconditions.checkNotNull(clusterConfiguration);
@@ -449,6 +458,32 @@ public class WebMonitorEndpoint<T extends RestfulGateway> extends RestServerEndp
 			responseHeaders,
 			JobVertexBackPressureHeaders.getInstance());
 
+		final JobTerminationHandler jobCancelTerminationHandler = new JobTerminationHandler(
+			restAddressFuture,
+			leaderRetriever,
+			timeout,
+			responseHeaders,
+			JobTerminationHeaders.getInstance(),
+			TerminationModeQueryParameter.TerminationMode.CANCEL);
+
+		final JobTerminationHandler jobStopTerminationHandler = new JobTerminationHandler(
+			restAddressFuture,
+			leaderRetriever,
+			timeout,
+			responseHeaders,
+			JobTerminationHeaders.getInstance(),
+			TerminationModeQueryParameter.TerminationMode.STOP);
+
+		final JobVertexDetailsHandler jobVertexDetailsHandler = new JobVertexDetailsHandler(
+			restAddressFuture,
+			leaderRetriever,
+			timeout,
+			responseHeaders,
+			JobVertexDetailsHeaders.getInstance(),
+			executionGraphCache,
+			executor,
+			metricFetcher);
+
 		final File tmpDir = restConfiguration.getTmpDir();
 
 		Optional<StaticFileServerHandler<T>> optWebContent;
@@ -495,6 +530,12 @@ public class WebMonitorEndpoint<T extends RestfulGateway> extends RestServerEndp
 		handlers.add(Tuple2.of(SubtaskCurrentAttemptDetailsHeaders.getInstance(), subtaskCurrentAttemptDetailsHandler));
 		handlers.add(Tuple2.of(JobVertexTaskManagersHeaders.getInstance(), jobVertexTaskManagersHandler));
 		handlers.add(Tuple2.of(JobVertexBackPressureHeaders.getInstance(), jobVertexBackPressureHandler));
+		handlers.add(Tuple2.of(JobTerminationHeaders.getInstance(), jobCancelTerminationHandler));
+		handlers.add(Tuple2.of(JobVertexDetailsHeaders.getInstance(), jobVertexDetailsHandler));
+
+		// TODO: Remove once the Yarn proxy can forward all REST verbs
+		handlers.add(Tuple2.of(YarnCancelJobTerminationHeaders.getInstance(), jobCancelTerminationHandler));
+		handlers.add(Tuple2.of(YarnStopJobTerminationHeaders.getInstance(), jobStopTerminationHandler));
 
 		optWebContent.ifPresent(
 			webContent -> handlers.add(Tuple2.of(WebContentHandlerSpecification.getInstance(), webContent)));
@@ -568,31 +609,39 @@ public class WebMonitorEndpoint<T extends RestfulGateway> extends RestServerEndp
 	}
 
 	@Override
-	public void start() throws Exception {
-		super.start();
+	public void startInternal() throws Exception {
 		leaderElectionService.start(this);
 	}
 
 	@Override
-	public void shutdown(Time timeout) {
-		super.shutdown(timeout);
-
+	protected CompletableFuture<Void> shutDownInternal() {
 		executionGraphCache.close();
+
+		final CompletableFuture<Void> shutdownFuture = super.shutDownInternal();
 
 		final File tmpDir = restConfiguration.getTmpDir();
 
-		try {
-			log.info("Removing cache directory {}", tmpDir);
-			FileUtils.deleteDirectory(tmpDir);
-		} catch (Throwable t) {
-			log.warn("Error while deleting cache directory {}", tmpDir, t);
-		}
+		return FutureUtils.runAfterwardsAsync(
+			shutdownFuture,
+			() -> {
+				Exception exception = null;
+				try {
+					log.info("Removing cache directory {}", tmpDir);
+					FileUtils.deleteDirectory(tmpDir);
+				} catch (Exception e) {
+					exception = e;
+				}
 
-		try {
-			leaderElectionService.stop();
-		} catch (Exception e) {
-			log.warn("Error while stopping leaderElectionService", e);
-		}
+				try {
+					leaderElectionService.stop();
+				} catch (Exception e) {
+					exception = ExceptionUtils.firstOrSuppressed(e, exception);
+				}
+
+				if (exception != null) {
+					throw exception;
+				}
+			});
 	}
 
 	//-------------------------------------------------------------------------
