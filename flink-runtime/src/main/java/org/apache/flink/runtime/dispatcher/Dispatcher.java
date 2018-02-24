@@ -40,6 +40,7 @@ import org.apache.flink.runtime.jobmaster.JobManagerRunner;
 import org.apache.flink.runtime.jobmaster.JobManagerSharedServices;
 import org.apache.flink.runtime.jobmaster.JobNotFinishedException;
 import org.apache.flink.runtime.jobmaster.JobResult;
+import org.apache.flink.runtime.jobmaster.RescalingBehaviour;
 import org.apache.flink.runtime.leaderelection.LeaderContender;
 import org.apache.flink.runtime.leaderelection.LeaderElectionService;
 import org.apache.flink.runtime.messages.Acknowledge;
@@ -155,16 +156,20 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> impleme
 	//------------------------------------------------------
 
 	@Override
-	public void postStop() throws Exception {
+	public CompletableFuture<Void> postStop() {
 		log.info("Stopping dispatcher {}.", getAddress());
-		Throwable exception = null;
+		Exception exception = null;
 
-		clearState();
+		try {
+			clearState();
+		} catch (Exception e) {
+			exception = ExceptionUtils.firstOrSuppressed(e, exception);
+		}
 
 		try {
 			jobManagerSharedServices.shutdown();
-		} catch (Throwable t) {
-			exception = ExceptionUtils.firstOrSuppressed(t, exception);
+		} catch (Exception e) {
+			exception = ExceptionUtils.firstOrSuppressed(e, exception);
 		}
 
 		try {
@@ -179,16 +184,12 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> impleme
 			exception = ExceptionUtils.firstOrSuppressed(e, exception);
 		}
 
-		try {
-			super.postStop();
-		} catch (Exception e) {
-			exception = ExceptionUtils.firstOrSuppressed(e, exception);
-		}
-
 		if (exception != null) {
-			throw new FlinkException("Could not properly terminate the Dispatcher.", exception);
+			return FutureUtils.completedExceptionally(
+				new FlinkException("Could not properly terminate the Dispatcher.", exception));
+		} else {
+			return CompletableFuture.completedFuture(null);
 		}
-		log.info("Stopped dispatcher {}.", getAddress());
 	}
 
 	@Override
@@ -310,6 +311,17 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> impleme
 			return FutureUtils.completedExceptionally(new FlinkJobNotFoundException(jobId));
 		} else {
 			return jobManagerRunner.getJobManagerGateway().stop(timeout);
+		}
+	}
+
+	@Override
+	public CompletableFuture<Acknowledge> rescaleJob(JobID jobId, int newParallelism, RescalingBehaviour rescalingBehaviour, Time timeout) {
+		JobManagerRunner jobManagerRunner = jobManagerRunners.get(jobId);
+
+		if (jobManagerRunner == null) {
+			return FutureUtils.completedExceptionally(new FlinkJobNotFoundException(jobId));
+		} else {
+			return jobManagerRunner.getJobManagerGateway().rescaleJob(newParallelism, rescalingBehaviour, timeout);
 		}
 	}
 
