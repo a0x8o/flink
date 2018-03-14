@@ -44,7 +44,6 @@ import org.apache.flink.shaded.netty4.io.netty.channel.ChannelInboundHandler;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 
@@ -92,7 +91,6 @@ public class DispatcherRestEndpoint extends WebMonitorEndpoint<DispatcherGateway
 		// Add the Dispatcher specific handlers
 
 		final Time timeout = restConfiguration.getTimeout();
-		final Map<String, String> responseHeaders = restConfiguration.getResponseHeaders();
 
 		BlobServerPortHandler blobServerPortHandler = new BlobServerPortHandler(
 			restAddressFuture,
@@ -120,7 +118,12 @@ public class DispatcherRestEndpoint extends WebMonitorEndpoint<DispatcherGateway
 				// register extension handlers
 				handlers.addAll(webSubmissionExtension.getHandlers());
 			} catch (FlinkException e) {
-				log.info("Failed to load web based job submission extension.", e);
+				if (log.isDebugEnabled()) {
+					log.debug("Failed to load web based job submission extension.", e);
+				} else {
+					log.info("Failed to load web based job submission extension. " +
+						"Probable reason: flink-runtime-web is not in the classpath.");
+				}
 			}
 		} else {
 			log.info("Web-based job submission is not enabled.");
