@@ -56,19 +56,27 @@ public class MesosTaskManagerParameters {
 
 	public static final ConfigOption<Integer> MESOS_RM_TASKS_MEMORY_MB =
 		key("mesos.resourcemanager.tasks.mem")
-		.defaultValue(1024);
+		.defaultValue(1024)
+		.withDescription("Memory to assign to the Mesos workers in MB.");
 
 	public static final ConfigOption<Double> MESOS_RM_TASKS_CPUS =
 		key("mesos.resourcemanager.tasks.cpus")
-		.defaultValue(0.0);
+		.defaultValue(0.0)
+		.withDescription("CPUs to assign to the Mesos workers.");
+
+	public static final ConfigOption<Integer> MESOS_RM_TASKS_GPUS =
+		key("mesos.resourcemanager.tasks.gpus")
+		.defaultValue(0);
 
 	public static final ConfigOption<String> MESOS_RM_CONTAINER_TYPE =
 		key("mesos.resourcemanager.tasks.container.type")
-		.defaultValue("mesos");
+		.defaultValue("mesos")
+		.withDescription("Type of the containerization used: “mesos” or “docker”.");
 
 	public static final ConfigOption<String> MESOS_RM_CONTAINER_IMAGE_NAME =
 		key("mesos.resourcemanager.tasks.container.image.name")
-		.noDefaultValue();
+		.noDefaultValue()
+		.withDescription("Image name to use for the container.");
 
 	public static final ConfigOption<String> MESOS_TM_HOSTNAME =
 		key("mesos.resourcemanager.tasks.hostname")
@@ -84,11 +92,20 @@ public class MesosTaskManagerParameters {
 
 	public static final ConfigOption<String> MESOS_RM_CONTAINER_VOLUMES =
 		key("mesos.resourcemanager.tasks.container.volumes")
-		.noDefaultValue();
+		.noDefaultValue()
+		.withDescription("A comma separated list of [host_path:]container_path[:RO|RW]. This allows for mounting" +
+			" additional volumes into your container.");
+
+	public static final ConfigOption<String> MESOS_RM_CONTAINER_DOCKER_PARAMETERS =
+		key("mesos.resourcemanager.tasks.container.docker.parameters")
+		.noDefaultValue()
+		.withDescription("Custom parameters to be passed into docker run command when using the docker containerizer." +
+			" Comma separated list of \"key=value\" pairs. The \"value\" may contain '='.");
 
 	public static final ConfigOption<String> MESOS_CONSTRAINTS_HARD_HOSTATTR =
 		key("mesos.constraints.hard.hostattribute")
-		.noDefaultValue();
+		.noDefaultValue()
+		.withDescription("Constraints for task placement on mesos.");
 
 	/**
 	 * Value for {@code MESOS_RESOURCEMANAGER_TASKS_CONTAINER_TYPE} setting. Tells to use the Mesos containerizer.
@@ -101,6 +118,8 @@ public class MesosTaskManagerParameters {
 
 	private final double cpus;
 
+	private final int gpus;
+
 	private final ContainerType containerType;
 
 	private final Option<String> containerImageName;
@@ -108,6 +127,8 @@ public class MesosTaskManagerParameters {
 	private final ContaineredTaskManagerParameters containeredParameters;
 
 	private final List<Protos.Volume> containerVolumes;
+
+	private final List<Protos.Parameter> dockerParameters;
 
 	private final List<ConstraintEvaluator> constraints;
 
@@ -119,20 +140,24 @@ public class MesosTaskManagerParameters {
 
 	public MesosTaskManagerParameters(
 			double cpus,
+			int gpus,
 			ContainerType containerType,
 			Option<String> containerImageName,
 			ContaineredTaskManagerParameters containeredParameters,
 			List<Protos.Volume> containerVolumes,
+			List<Protos.Parameter> dockerParameters,
 			List<ConstraintEvaluator> constraints,
 			String command,
 			Option<String> bootstrapCommand,
 			Option<String> taskManagerHostname) {
 
 		this.cpus = cpus;
+		this.gpus = gpus;
 		this.containerType = Preconditions.checkNotNull(containerType);
 		this.containerImageName = Preconditions.checkNotNull(containerImageName);
 		this.containeredParameters = Preconditions.checkNotNull(containeredParameters);
 		this.containerVolumes = Preconditions.checkNotNull(containerVolumes);
+		this.dockerParameters = Preconditions.checkNotNull(dockerParameters);
 		this.constraints = Preconditions.checkNotNull(constraints);
 		this.command = Preconditions.checkNotNull(command);
 		this.bootstrapCommand = Preconditions.checkNotNull(bootstrapCommand);
@@ -144,6 +169,13 @@ public class MesosTaskManagerParameters {
 	 */
 	public double cpus() {
 		return cpus;
+	}
+
+	/**
+	 * Get the GPU units to use for the TaskManager Process.
+	 */
+	public int gpus() {
+		return gpus;
 	}
 
 	/**
@@ -174,6 +206,13 @@ public class MesosTaskManagerParameters {
 	 */
 	public List<Protos.Volume> containerVolumes() {
 		return containerVolumes;
+	}
+
+	/**
+	 * Get Docker runtime parameters.
+	 */
+	public List<Protos.Parameter> dockerParameters() {
+		return dockerParameters;
 	}
 
 	/**
@@ -208,10 +247,12 @@ public class MesosTaskManagerParameters {
 	public String toString() {
 		return "MesosTaskManagerParameters{" +
 			"cpus=" + cpus +
+			", gpus=" + gpus +
 			", containerType=" + containerType +
 			", containerImageName=" + containerImageName +
 			", containeredParameters=" + containeredParameters +
 			", containerVolumes=" + containerVolumes +
+			", dockerParameters=" + dockerParameters +
 			", constraints=" + constraints +
 			", taskManagerHostName=" + taskManagerHostname +
 			", command=" + command +
@@ -238,6 +279,13 @@ public class MesosTaskManagerParameters {
 			cpus = Math.max(containeredParameters.numSlots(), 1.0);
 		}
 
+		int gpus = flinkConfig.getInteger(MESOS_RM_TASKS_GPUS);
+
+		if (gpus < 0) {
+			throw new IllegalConfigurationException(MESOS_RM_TASKS_GPUS.key() +
+				" cannot be negative");
+		}
+
 		// parse the containerization parameters
 		String imageName = flinkConfig.getString(MESOS_RM_CONTAINER_IMAGE_NAME);
 
@@ -260,7 +308,11 @@ public class MesosTaskManagerParameters {
 
 		Option<String> containerVolOpt = Option.<String>apply(flinkConfig.getString(MESOS_RM_CONTAINER_VOLUMES));
 
+		Option<String> dockerParamsOpt = Option.<String>apply(flinkConfig.getString(MESOS_RM_CONTAINER_DOCKER_PARAMETERS));
+
 		List<Protos.Volume> containerVolumes = buildVolumes(containerVolOpt);
+
+		List<Protos.Parameter> dockerParameters = buildDockerParameters(dockerParamsOpt);
 
 		//obtain Task Manager Host Name from the configuration
 		Option<String> taskManagerHostname = Option.apply(flinkConfig.getString(MESOS_TM_HOSTNAME));
@@ -271,10 +323,12 @@ public class MesosTaskManagerParameters {
 
 		return new MesosTaskManagerParameters(
 			cpus,
+			gpus,
 			containerType,
 			Option.apply(imageName),
 			containeredParameters,
 			containerVolumes,
+			dockerParameters,
 			constraints,
 			tmCommand,
 			tmBootstrapCommand,
@@ -362,6 +416,32 @@ public class MesosTaskManagerParameters {
 				}
 			}
 			return volumes;
+		}
+	}
+
+	public static List<Protos.Parameter> buildDockerParameters(Option<String> dockerParameters) {
+		if (dockerParameters.isEmpty()) {
+			return Collections.emptyList();
+		} else {
+			String[] dockerParameterSpecifications = dockerParameters.get().split(",");
+
+			List<Protos.Parameter> parameters = new ArrayList<>(dockerParameterSpecifications.length);
+
+			for (String dockerParameterSpecification : dockerParameterSpecifications) {
+				if (!dockerParameterSpecification.trim().isEmpty()) {
+					// split with the limit of 2 in case the value includes '='
+					String[] match = dockerParameterSpecification.split("=", 2);
+					if (match.length != 2) {
+						throw new IllegalArgumentException("Docker parameter specification is invalid, given: "
+							+ dockerParameterSpecification);
+					}
+					Protos.Parameter.Builder parameter = Protos.Parameter.newBuilder();
+					parameter.setKey(match[0]);
+					parameter.setValue(match[1]);
+					parameters.add(parameter.build());
+				}
+			}
+			return parameters;
 		}
 	}
 

@@ -20,16 +20,19 @@ package org.apache.flink.runtime.minicluster;
 
 import org.apache.flink.api.common.JobExecutionResult;
 import org.apache.flink.api.common.JobID;
+import org.apache.flink.api.common.accumulators.AccumulatorHelper;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.blob.BlobServer;
 import org.apache.flink.runtime.client.JobExecutionException;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
+import org.apache.flink.runtime.executiongraph.ArchivedExecutionGraph;
 import org.apache.flink.runtime.heartbeat.HeartbeatServices;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.jobmanager.OnCompletionActions;
 import org.apache.flink.runtime.jobmaster.JobManagerRunner;
-import org.apache.flink.runtime.jobmaster.JobManagerServices;
+import org.apache.flink.runtime.jobmaster.JobManagerSharedServices;
+import org.apache.flink.runtime.jobmaster.JobResult;
 import org.apache.flink.runtime.metrics.MetricRegistry;
 import org.apache.flink.runtime.rpc.FatalErrorHandler;
 import org.apache.flink.runtime.rpc.RpcService;
@@ -39,6 +42,7 @@ import org.apache.flink.util.FlinkException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -56,46 +60,49 @@ public class MiniClusterJobDispatcher {
 
 	// ------------------------------------------------------------------------
 
-	/** lock to ensure that this dispatcher executes only one job at a time */
+	/** lock to ensure that this dispatcher executes only one job at a time. */
 	private final Object lock = new Object();
 
-	/** the configuration with which the mini cluster was started */
+	/** the configuration with which the mini cluster was started. */
 	private final Configuration configuration;
 
-	/** the RPC services to use by the job managers */
+	/** the RPC services to use by the job managers. */
 	private final RpcService[] rpcServices;
 
-	/** services for discovery, leader election, and recovery */
+	/** services for discovery, leader election, and recovery. */
 	private final HighAvailabilityServices haServices;
 
-	/** services for heartbeating */
+	/** services for heartbeating. */
 	private final HeartbeatServices heartbeatServices;
 
-	/** all the services that the JobManager needs, such as BLOB service, factories, etc */
-	private final JobManagerServices jobManagerServices;
+	/** BlobServer for storing blobs. */
+	private final BlobServer blobServer;
 
-	/** Registry for all metrics in the mini cluster */
+	/** all the services that the JobManager needs, such as BLOB service, factories, etc. */
+	private final JobManagerSharedServices jobManagerSharedServices;
+
+	/** Registry for all metrics in the mini cluster. */
 	private final MetricRegistry metricRegistry;
 
-	/** The number of JobManagers to launch (more than one simulates a high-availability setup) */
+	/** The number of JobManagers to launch (more than one simulates a high-availability setup). */
 	private final int numJobManagers;
 
-	/** The runner for the job and master. non-null if a job is currently running */
+	/** The runner for the job and master. non-null if a job is currently running. */
 	private volatile JobManagerRunner[] runners;
 
-	/** flag marking the dispatcher as hut down */
+	/** flag marking the dispatcher as hut down. */
 	private volatile boolean shutdown;
 
 
 	/**
 	 * Starts a mini cluster job dispatcher.
-	 * 
+	 *
 	 * <p>The dispatcher kicks off one JobManager per job, a behavior similar to a
 	 * non-highly-available setup.
-	 * 
+	 *
 	 * @param config The configuration of the mini cluster
 	 * @param haServices Access to the discovery, leader election, and recovery services
-	 * 
+	 *
 	 * @throws Exception Thrown, if the services for the JobMaster could not be started.
 	 */
 	public MiniClusterJobDispatcher(
@@ -120,11 +127,11 @@ public class MiniClusterJobDispatcher {
 	 *
 	 * <p>The dispatcher may kick off more than one JobManager per job, thus simulating
 	 * a highly-available setup.
-	 * 
+	 *
 	 * @param config The configuration of the mini cluster
 	 * @param haServices Access to the discovery, leader election, and recovery services
 	 * @param numJobManagers The number of JobMasters to start for each job.
-	 * 
+	 *
 	 * @throws Exception Thrown, if the services for the JobMaster could not be started.
 	 */
 	public MiniClusterJobDispatcher(
@@ -143,11 +150,12 @@ public class MiniClusterJobDispatcher {
 		this.rpcServices = rpcServices;
 		this.haServices = checkNotNull(haServices);
 		this.heartbeatServices = checkNotNull(heartbeatServices);
+		this.blobServer = checkNotNull(blobServer);
 		this.metricRegistry = checkNotNull(metricRegistry);
 		this.numJobManagers = numJobManagers;
 
 		LOG.info("Creating JobMaster services");
-		this.jobManagerServices = JobManagerServices.fromConfiguration(config, blobServer);
+		this.jobManagerSharedServices = JobManagerSharedServices.fromConfiguration(config, blobServer);
 	}
 
 	// ------------------------------------------------------------------------
@@ -183,9 +191,9 @@ public class MiniClusterJobDispatcher {
 					}
 				}
 
-				// shut down the JobManagerServices
+				// shut down the JobManagerSharedServices
 				try {
-					jobManagerServices.shutdown();
+					jobManagerSharedServices.shutdown();
 				} catch (Throwable throwable) {
 					exception = ExceptionUtils.firstOrSuppressed(throwable, exception);
 				}
@@ -276,7 +284,8 @@ public class MiniClusterJobDispatcher {
 					rpcServices[i],
 					haServices,
 					heartbeatServices,
-					jobManagerServices,
+					blobServer,
+					jobManagerSharedServices,
 					metricRegistry,
 					onCompletion,
 					errorHandler,
@@ -358,12 +367,7 @@ public class MiniClusterJobDispatcher {
 		}
 
 		@Override
-		public void jobFinished(JobExecutionResult result) {
-			decrementCheckAndCleanup();
-		}
-
-		@Override
-		public void jobFailed(Throwable cause) {
+		public void jobReachedGloballyTerminalState(ArchivedExecutionGraph executionGraph) {
 			decrementCheckAndCleanup();
 		}
 
@@ -401,11 +405,9 @@ public class MiniClusterJobDispatcher {
 
 		private final CountDownLatch jobMastersToWaitFor;
 
-		private volatile Throwable jobException;
-
 		private volatile Throwable runnerException;
 
-		private volatile JobExecutionResult result;
+		private volatile JobResult result;
 		
 		BlockingJobSync(JobID jobId, int numJobMastersToWaitFor) {
 			this.jobId = jobId;
@@ -413,14 +415,8 @@ public class MiniClusterJobDispatcher {
 		}
 
 		@Override
-		public void jobFinished(JobExecutionResult jobResult) {
-			this.result = jobResult;
-			jobMastersToWaitFor.countDown();
-		}
-
-		@Override
-		public void jobFailed(Throwable cause) {
-			jobException = cause;
+		public void jobReachedGloballyTerminalState(ArchivedExecutionGraph executionGraph) {
+			this.result = JobResult.createFrom(executionGraph);
 			jobMastersToWaitFor.countDown();
 		}
 
@@ -439,9 +435,8 @@ public class MiniClusterJobDispatcher {
 		public JobExecutionResult getResult() throws JobExecutionException, InterruptedException {
 			jobMastersToWaitFor.await();
 
-			final Throwable jobFailureCause = this.jobException;
 			final Throwable runnerException = this.runnerException;
-			final JobExecutionResult result = this.result;
+			final JobResult result = this.result;
 
 			// (1) we check if the job terminated with an exception
 			// (2) we check whether the job completed successfully
@@ -449,7 +444,11 @@ public class MiniClusterJobDispatcher {
 			//     completed successfully in that case, if multiple JobMasters were running
 			//     and other took over. only if all encounter a fatal error, the job cannot finish
 
-			if (jobFailureCause != null) {
+			if (result != null && !result.isSuccess()) {
+				checkState(result.getSerializedThrowable().isPresent());
+				final Throwable jobFailureCause = result.getSerializedThrowable()
+					.get()
+					.deserializeError(ClassLoader.getSystemClassLoader());
 				if (jobFailureCause instanceof JobExecutionException) {
 					throw (JobExecutionException) jobFailureCause;
 				}
@@ -458,7 +457,16 @@ public class MiniClusterJobDispatcher {
 				}
 			}
 			else if (result != null) {
-				return result;
+				try {
+					return new JobExecutionResult(
+						jobId,
+						result.getNetRuntime(),
+						AccumulatorHelper.deserializeAccumulators(
+							result.getAccumulatorResults(),
+							ClassLoader.getSystemClassLoader()));
+				} catch (final IOException | ClassNotFoundException e) {
+					throw new JobExecutionException(result.getJobId(), e);
+				}
 			}
 			else if (runnerException != null) {
 				throw new JobExecutionException(jobId,

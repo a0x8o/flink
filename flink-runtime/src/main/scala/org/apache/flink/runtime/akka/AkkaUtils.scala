@@ -249,7 +249,7 @@ object AkkaUtils {
          |    default-dispatcher {
          |      fork-join-executor {
          |        parallelism-factor = 1.0
-         |        parallelism-min = 1
+         |        parallelism-min = 2
          |        parallelism-max = 4
          |      }
          |    }
@@ -588,7 +588,7 @@ object AkkaUtils {
    * @param tries maximum number of tries before the future fails
    * @param executionContext which shall execute the future
    * @param timeout of the future
-   * @return future which tries to receover by re-executing itself a given number of times
+   * @return future which tries to recover by re-executing itself a given number of times
    */
   def retry(target: ActorRef, message: Any, tries: Int)(implicit executionContext:
   ExecutionContext, timeout: FiniteDuration): Future[Any] = {
@@ -694,21 +694,15 @@ object AkkaUtils {
     * @return The InetSocketAddress with teh extracted host and port.
     */
   @throws(classOf[Exception])
-  def getInetSockeAddressFromAkkaURL(akkaURL: String): InetSocketAddress = {
+  def getInetSocketAddressFromAkkaURL(akkaURL: String): InetSocketAddress = {
     // AkkaURLs have the form schema://systemName@host:port/.... if it's a remote Akka URL
     try {
-      // we need to manually strip the protocol, because "akka.tcp" is not
-      // a valid protocol for Java's URL class
-      val protocolonPos = akkaURL.indexOf("://")
-      if (protocolonPos == -1 || protocolonPos >= akkaURL.length - 4) {
-        throw new MalformedURLException()
+      val address = getAddressFromAkkaURL(akkaURL)
+
+      (address.host, address.port) match {
+        case (Some(hostname), Some(portValue)) => new InetSocketAddress(hostname, portValue)
+        case _ => throw new MalformedURLException()
       }
-      
-      val url = new URL("http://" + akkaURL.substring(protocolonPos + 3))
-      if (url.getHost == null || url.getPort == -1) {
-        throw new MalformedURLException()
-      }
-      new InetSocketAddress(url.getHost, url.getPort)
     }
     catch {
       case _ : MalformedURLException =>
@@ -716,7 +710,20 @@ object AkkaUtils {
     }
   }
 
-  def formatDurationParingErrorMessage: String = {
+  /**
+    * Extracts the [[Address]] from the given akka URL.
+    *
+    * @param akkaURL to extract the [[Address]] from
+    * @throws java.net.MalformedURLException if the [[Address]] could not be parsed from
+    *                                        the given akka URL
+    * @return Extracted [[Address]] from the given akka URL
+    */
+  @throws(classOf[MalformedURLException])
+  def getAddressFromAkkaURL(akkaURL: String): Address = {
+    AddressFromURIString(akkaURL)
+  }
+
+  def formatDurationParsingErrorMessage: String = {
     "Duration format must be \"val unit\", where 'val' is a number and 'unit' is " +
       "(d|day)|(h|hour)|(min|minute)|s|sec|second)|(ms|milli|millisecond)|" +
       "(µs|micro|microsecond)|(ns|nano|nanosecond)"

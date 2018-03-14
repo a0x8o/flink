@@ -48,7 +48,6 @@ import org.apache.flink.streaming.connectors.kinesis.util.KinesisConfigUtil;
 import com.amazonaws.services.kinesis.model.HashKeyRange;
 import com.amazonaws.services.kinesis.model.SequenceNumberRange;
 import com.amazonaws.services.kinesis.model.Shard;
-import org.junit.Assert;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.ExpectedException;
@@ -138,12 +137,12 @@ public class FlinkKinesisConsumerTest {
 		// arbitrary checkpoint id and timestamp
 		consumer.snapshotState(new StateSnapshotContextSynchronousImpl(123, 123));
 
-		Assert.assertTrue(listState.isClearCalled());
+		assertTrue(listState.isClearCalled());
 
 		// the checkpointed list state should contain only the shards that it should subscribe to
-		Assert.assertEquals(globalUnionState.size() / 2, listState.getList().size());
-		Assert.assertTrue(listState.getList().contains(globalUnionState.get(0)));
-		Assert.assertTrue(listState.getList().contains(globalUnionState.get(2)));
+		assertEquals(globalUnionState.size() / 2, listState.getList().size());
+		assertTrue(listState.getList().contains(globalUnionState.get(0)));
+		assertTrue(listState.getList().contains(globalUnionState.get(2)));
 	}
 
 	@Test
@@ -516,6 +515,79 @@ public class FlinkKinesisConsumerTest {
 		assertTrue(typeInformation.createSerializer(new ExecutionConfig()) instanceof PojoSerializer);
 	}
 
+	/**
+	 * FLINK-8484: ensure that a state change in the StreamShardMetadata other than {@link StreamShardMetadata#shardId} or
+	 * {@link StreamShardMetadata#streamName} does not result in the shard not being able to be restored.
+	 * This handles the corner case where the stored shard metadata is open (no ending sequence number), but after the
+	 * job restore, the shard has been closed (ending number set) due to re-sharding, and we can no longer rely on
+	 * {@link StreamShardMetadata#equals(Object)} to find back the sequence number in the collection of restored shard metadata.
+	 * <p></p>
+	 * Therefore, we will rely on synchronizing the snapshot's state with the Kinesis shard before attempting to find back
+	 * the sequence number to restore.
+	 */
+	@Test
+	public void testFindSequenceNumberToRestoreFromIfTheShardHasBeenClosedSinceTheStateWasStored() throws Exception {
+		// ----------------------------------------------------------------------
+		// setup initial state
+		// ----------------------------------------------------------------------
+
+		HashMap<StreamShardHandle, SequenceNumber> fakeRestoredState = getFakeRestoredStore("all");
+
+		// ----------------------------------------------------------------------
+		// mock operator state backend and initial state for initializeState()
+		// ----------------------------------------------------------------------
+
+		TestingListState<Tuple2<StreamShardMetadata, SequenceNumber>> listState = new TestingListState<>();
+		for (Map.Entry<StreamShardHandle, SequenceNumber> state : fakeRestoredState.entrySet()) {
+			listState.add(Tuple2.of(KinesisDataFetcher.convertToStreamShardMetadata(state.getKey()), state.getValue()));
+		}
+
+		OperatorStateStore operatorStateStore = mock(OperatorStateStore.class);
+		when(operatorStateStore.getUnionListState(Matchers.any(ListStateDescriptor.class))).thenReturn(listState);
+
+		StateInitializationContext initializationContext = mock(StateInitializationContext.class);
+		when(initializationContext.getOperatorStateStore()).thenReturn(operatorStateStore);
+		when(initializationContext.isRestored()).thenReturn(true);
+
+		// ----------------------------------------------------------------------
+		// mock fetcher
+		// ----------------------------------------------------------------------
+
+		KinesisDataFetcher mockedFetcher = Mockito.mock(KinesisDataFetcher.class);
+		List<StreamShardHandle> shards = new ArrayList<>();
+
+		// create a fake stream shard handle based on the first entry in the restored state
+		final StreamShardHandle originalStreamShardHandle = fakeRestoredState.keySet().iterator().next();
+		final StreamShardHandle closedStreamShardHandle = new StreamShardHandle(originalStreamShardHandle.getStreamName(), originalStreamShardHandle.getShard());
+		// close the shard handle by setting an ending sequence number
+		final SequenceNumberRange sequenceNumberRange = new SequenceNumberRange();
+		sequenceNumberRange.setEndingSequenceNumber("1293844");
+		closedStreamShardHandle.getShard().setSequenceNumberRange(sequenceNumberRange);
+
+		shards.add(closedStreamShardHandle);
+
+		when(mockedFetcher.discoverNewShardsToSubscribe()).thenReturn(shards);
+		PowerMockito.whenNew(KinesisDataFetcher.class).withAnyArguments().thenReturn(mockedFetcher);
+
+		// assume the given config is correct
+		PowerMockito.mockStatic(KinesisConfigUtil.class);
+		PowerMockito.doNothing().when(KinesisConfigUtil.class);
+
+		// ----------------------------------------------------------------------
+		// start to test fetcher's initial state seeding
+		// ----------------------------------------------------------------------
+
+		TestableFlinkKinesisConsumer consumer = new TestableFlinkKinesisConsumer(
+			"fakeStream", new Properties(), 10, 2);
+		consumer.initializeState(initializationContext);
+		consumer.open(new Configuration());
+		consumer.run(Mockito.mock(SourceFunction.SourceContext.class));
+
+		Mockito.verify(mockedFetcher).registerNewSubscribedShardState(
+			new KinesisStreamShardState(KinesisDataFetcher.convertToStreamShardMetadata(closedStreamShardHandle),
+				closedStreamShardHandle, fakeRestoredState.get(closedStreamShardHandle)));
+	}
+
 	private static final class TestingListState<T> implements ListState<T> {
 
 		private final List<T> list = new ArrayList<>();
@@ -543,6 +615,20 @@ public class FlinkKinesisConsumerTest {
 
 		public boolean isClearCalled() {
 			return clearCalled;
+		}
+
+		@Override
+		public void update(List<T> values) throws Exception {
+			list.clear();
+
+			addAll(values);
+		}
+
+		@Override
+		public void addAll(List<T> values) throws Exception {
+			if (values != null) {
+				list.addAll(values);
+			}
 		}
 	}
 

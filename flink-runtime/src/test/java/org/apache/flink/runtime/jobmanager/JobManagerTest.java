@@ -20,11 +20,12 @@ package org.apache.flink.runtime.jobmanager;
 
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.configuration.AkkaOptions;
+import org.apache.flink.configuration.CheckpointingOptions;
 import org.apache.flink.configuration.ConfigConstants;
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.configuration.CoreOptions;
 import org.apache.flink.configuration.JobManagerOptions;
 import org.apache.flink.configuration.TaskManagerOptions;
+import org.apache.flink.core.fs.Path;
 import org.apache.flink.queryablestate.KvStateID;
 import org.apache.flink.runtime.akka.AkkaUtils;
 import org.apache.flink.runtime.akka.ListeningBehaviour;
@@ -32,13 +33,14 @@ import org.apache.flink.runtime.checkpoint.CheckpointDeclineReason;
 import org.apache.flink.runtime.checkpoint.CheckpointMetaData;
 import org.apache.flink.runtime.checkpoint.CheckpointMetrics;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
-import org.apache.flink.runtime.checkpoint.CheckpointOptions.CheckpointType;
-import org.apache.flink.runtime.checkpoint.TaskStateSnapshot;
+import org.apache.flink.runtime.checkpoint.CheckpointType;
+import org.apache.flink.runtime.checkpoint.CheckpointRetentionPolicy;
 import org.apache.flink.runtime.clusterframework.messages.NotifyResourceStarted;
 import org.apache.flink.runtime.clusterframework.messages.RegisterResourceManager;
 import org.apache.flink.runtime.clusterframework.messages.RegisterResourceManagerSuccessful;
 import org.apache.flink.runtime.clusterframework.messages.TriggerRegistrationAtJobManager;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
+import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.ExecutionGraph;
@@ -59,9 +61,7 @@ import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobgraph.SavepointRestoreSettings;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
 import org.apache.flink.runtime.jobgraph.tasks.CheckpointCoordinatorConfiguration;
-import org.apache.flink.runtime.jobgraph.tasks.ExternalizedCheckpointSettings;
 import org.apache.flink.runtime.jobgraph.tasks.JobCheckpointingSettings;
-import org.apache.flink.runtime.jobgraph.tasks.StatefulTask;
 import org.apache.flink.runtime.jobmanager.JobManagerHARecoveryTest.BlockingStatefulInvokable;
 import org.apache.flink.runtime.messages.FlinkJobNotFoundException;
 import org.apache.flink.runtime.messages.JobManagerMessages.CancelJob;
@@ -149,16 +149,16 @@ import static org.apache.flink.runtime.testingUtils.TestingUtils.DEFAULT_AKKA_AS
 import static org.apache.flink.runtime.testingUtils.TestingUtils.TESTING_TIMEOUT;
 import static org.apache.flink.runtime.testingUtils.TestingUtils.startTestingCluster;
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
+
 import static org.mockito.Mockito.mock;
 
 public class JobManagerTest extends TestLogger {
 
 	@Rule
-	public TemporaryFolder tmpFolder = new TemporaryFolder();
+	public final TemporaryFolder tmpFolder = new TemporaryFolder();
 
 	private static ActorSystem system;
 
@@ -830,7 +830,7 @@ public class JobManagerTest extends TestLogger {
 
 		FiniteDuration timeout = new FiniteDuration(30, TimeUnit.SECONDS);
 		Configuration config = new Configuration();
-		config.setString(CoreOptions.SAVEPOINT_DIRECTORY, defaultSavepointDir.getAbsolutePath());
+		config.setString(CheckpointingOptions.SAVEPOINT_DIRECTORY, defaultSavepointDir.toURI().toString());
 
 		ActorSystem actorSystem = null;
 		ActorGateway jobManager = null;
@@ -892,7 +892,7 @@ public class JobManagerTest extends TestLogger {
 					3600000,
 					0,
 					Integer.MAX_VALUE,
-					ExternalizedCheckpointSettings.none(),
+					CheckpointRetentionPolicy.NEVER_RETAIN_AFTER_TERMINATION,
 					true),
 					null);
 
@@ -906,7 +906,7 @@ public class JobManagerTest extends TestLogger {
 			msg = new TestingJobManagerMessages.WaitForAllVerticesToBeRunning(jobGraph.getJobID());
 			Await.result(jobManager.ask(msg, timeout), timeout);
 
-			// Notify when canelled
+			// Notify when cancelled
 			msg = new NotifyWhenJobStatus(jobGraph.getJobID(), JobStatus.CANCELED);
 			Future<Object> cancelled = jobManager.ask(msg, timeout);
 
@@ -920,7 +920,7 @@ public class JobManagerTest extends TestLogger {
 				if (cancelResp instanceof CancellationFailure) {
 					CancellationFailure failure = (CancellationFailure) cancelResp;
 					if (failure.cause().getMessage().contains(CheckpointDeclineReason.NOT_ALL_REQUIRED_TASKS_RUNNING.message())) {
-						Thread.sleep(200); // wait and retry
+						Thread.sleep(10); // wait and retry
 					} else {
 						failure.cause().printStackTrace();
 						fail("Failed to cancel job: " + failure.cause().getMessage());
@@ -932,13 +932,13 @@ public class JobManagerTest extends TestLogger {
 			}
 
 			// Verify savepoint path
-			assertNotEquals("Savepoint not triggered", null, savepointPath);
+			assertNotNull("Savepoint not triggered", savepointPath);
 
 			// Wait for job status change
 			Await.ready(cancelled, timeout);
 
-			File savepointFile = new File(savepointPath);
-			assertEquals(true, savepointFile.exists());
+			File savepointFile = new File(new Path(savepointPath).getPath());
+			assertTrue(savepointFile.exists());
 		} finally {
 			if (actorSystem != null) {
 				actorSystem.shutdown();
@@ -982,7 +982,7 @@ public class JobManagerTest extends TestLogger {
 			3600000,
 			0,
 			Integer.MAX_VALUE,
-			ExternalizedCheckpointSettings.none(),
+			CheckpointRetentionPolicy.NEVER_RETAIN_AFTER_TERMINATION,
 			true);
 
 		JobCheckpointingSettings snapshottingSettings = new JobCheckpointingSettings(
@@ -1104,7 +1104,7 @@ public class JobManagerTest extends TestLogger {
 					3600000,
 					0,
 					Integer.MAX_VALUE,
-					ExternalizedCheckpointSettings.none(),
+					CheckpointRetentionPolicy.NEVER_RETAIN_AFTER_TERMINATION,
 					true),
 				null);
 
@@ -1157,7 +1157,7 @@ public class JobManagerTest extends TestLogger {
 
 		FiniteDuration timeout = new FiniteDuration(30, TimeUnit.SECONDS);
 		Configuration config = new Configuration();
-		config.setString(CoreOptions.SAVEPOINT_DIRECTORY, defaultSavepointDir.getAbsolutePath());
+		config.setString(CheckpointingOptions.SAVEPOINT_DIRECTORY, defaultSavepointDir.toURI().toString());
 
 		ActorSystem actorSystem = null;
 		ActorGateway jobManager = null;
@@ -1219,7 +1219,7 @@ public class JobManagerTest extends TestLogger {
 						360000,
 						0,
 						Integer.MAX_VALUE,
-						ExternalizedCheckpointSettings.none(),
+						CheckpointRetentionPolicy.NEVER_RETAIN_AFTER_TERMINATION,
 						true),
 					null);
 
@@ -1335,7 +1335,7 @@ public class JobManagerTest extends TestLogger {
 						360000,
 						0,
 						Integer.MAX_VALUE,
-						ExternalizedCheckpointSettings.none(),
+						CheckpointRetentionPolicy.NEVER_RETAIN_AFTER_TERMINATION,
 						true),
 					null);
 
@@ -1383,7 +1383,7 @@ public class JobManagerTest extends TestLogger {
 						360000,
 						0,
 						Integer.MAX_VALUE,
-						ExternalizedCheckpointSettings.none(),
+						CheckpointRetentionPolicy.NEVER_RETAIN_AFTER_TERMINATION,
 						true),
 					null);
 
@@ -1525,19 +1525,24 @@ public class JobManagerTest extends TestLogger {
 	/**
 	 * A blocking stateful source task that declines savepoints.
 	 */
-	public static class FailOnSavepointSourceTask extends AbstractInvokable implements StatefulTask {
+	public static class FailOnSavepointSourceTask extends AbstractInvokable {
 
 		private static final CountDownLatch CHECKPOINT_AFTER_SAVEPOINT_LATCH = new CountDownLatch(1);
 
 		private boolean receivedSavepoint;
 
-		@Override
-		public void invoke() throws Exception {
-			new CountDownLatch(1).await();
+		/**
+		 * Create an Invokable task and set its environment.
+		 *
+		 * @param environment The environment assigned to this invokable.
+		 */
+		public FailOnSavepointSourceTask(Environment environment) {
+			super(environment);
 		}
 
 		@Override
-		public void setInitialState(TaskStateSnapshot taskStateHandles) throws Exception {
+		public void invoke() throws Exception {
+			new CountDownLatch(1).await();
 		}
 
 		@Override

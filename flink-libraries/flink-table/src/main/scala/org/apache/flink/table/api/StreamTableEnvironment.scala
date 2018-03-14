@@ -28,10 +28,10 @@ import org.apache.calcite.rel.`type`.{RelDataType, RelDataTypeField, RelDataType
 import org.apache.calcite.sql2rel.RelDecorrelator
 import org.apache.calcite.tools.{RuleSet, RuleSets}
 import org.apache.flink.api.common.functions.MapFunction
-import org.apache.flink.api.common.typeinfo.{AtomicType, SqlTimeTypeInfo, TypeInformation}
+import org.apache.flink.api.common.typeinfo.{SqlTimeTypeInfo, TypeInformation}
 import org.apache.flink.api.common.typeutils.CompositeType
 import org.apache.flink.api.java.tuple.{Tuple2 => JTuple2}
-import org.apache.flink.api.java.typeutils.{PojoTypeInfo, RowTypeInfo, TupleTypeInfo}
+import org.apache.flink.api.java.typeutils.{RowTypeInfo, TupleTypeInfo}
 import org.apache.flink.api.scala.typeutils.CaseClassTypeInfo
 import org.apache.flink.streaming.api.TimeCharacteristic
 import org.apache.flink.streaming.api.datastream.DataStream
@@ -42,9 +42,9 @@ import org.apache.flink.table.expressions._
 import org.apache.flink.table.plan.nodes.FlinkConventions
 import org.apache.flink.table.plan.nodes.datastream.{DataStreamRel, UpdateAsRetractionTrait}
 import org.apache.flink.table.plan.rules.FlinkRuleSets
+import org.apache.flink.table.plan.schema.{DataStreamTable, RowSchema, StreamTableSourceTable, TableSinkTable}
 import org.apache.flink.table.plan.util.UpdatingPlanChecker
 import org.apache.flink.table.runtime.conversion._
-import org.apache.flink.table.plan.schema.{DataStreamTable, RowSchema, StreamTableSourceTable, TableSinkTable}
 import org.apache.flink.table.runtime.types.{CRow, CRowTypeInfo}
 import org.apache.flink.table.runtime.{CRowMapRunner, OutputRowtimeProcessFunction}
 import org.apache.flink.table.sinks._
@@ -97,17 +97,20 @@ abstract class StreamTableEnvironment(
   }
 
   /** Returns a unique table name according to the internal naming pattern. */
-  protected def createUniqueTableName(): String = "_DataStreamTable_" + nameCntr.getAndIncrement()
+  override protected def createUniqueTableName(): String =
+    "_DataStreamTable_" + nameCntr.getAndIncrement()
 
   /**
-    * Registers an external [[StreamTableSource]] in this [[TableEnvironment]]'s catalog.
-    * Registered tables can be referenced in SQL queries.
+    * Registers an internal [[StreamTableSource]] in this [[TableEnvironment]]'s catalog without
+    * name checking. Registered tables can be referenced in SQL queries.
     *
     * @param name        The name under which the [[TableSource]] is registered.
     * @param tableSource The [[TableSource]] to register.
     */
-  override def registerTableSource(name: String, tableSource: TableSource[_]): Unit = {
-    checkValidTableName(name)
+  override protected def registerTableSourceInternal(
+      name: String,
+      tableSource: TableSource[_])
+    : Unit = {
 
     tableSource match {
       case streamTableSource: StreamTableSource[_] =>
@@ -124,6 +127,17 @@ abstract class StreamTableEnvironment(
           "StreamTableEnvironment")
     }
   }
+
+// TODO expose this once we have enough table source factories that can deal with it
+//  /**
+//    * Creates a table from a descriptor that describes the source connector, source encoding,
+//    * the resulting table schema, and other properties.
+//    *
+//    * @param connectorDescriptor connector descriptor describing the source of the table
+//    */
+//  def from(connectorDescriptor: ConnectorDescriptor): StreamTableSourceDescriptor = {
+//    new StreamTableSourceDescriptor(this, connectorDescriptor)
+//  }
 
   /**
     * Registers an external [[TableSink]] with given field names and types in this
@@ -450,37 +464,57 @@ abstract class StreamTableEnvironment(
     exprs: Array[Expression])
   : (Option[(Int, String)], Option[(Int, String)]) = {
 
-    val fieldTypes: Array[TypeInformation[_]] = streamType match {
-      case c: CompositeType[_] => (0 until c.getArity).map(i => c.getTypeAt(i)).toArray
-      case a: AtomicType[_] => Array(a)
+    val (isRefByPos, fieldTypes) = streamType match {
+      case c: CompositeType[_] =>
+        // determine schema definition mode (by position or by name)
+        (isReferenceByPosition(c, exprs), (0 until c.getArity).map(i => c.getTypeAt(i)).toArray)
+      case t: TypeInformation[_] =>
+        (false, Array(t))
     }
 
     var fieldNames: List[String] = Nil
     var rowtime: Option[(Int, String)] = None
     var proctime: Option[(Int, String)] = None
 
+    def checkRowtimeType(t: TypeInformation[_]): Unit = {
+      if (!(TypeCheckUtils.isLong(t) || TypeCheckUtils.isTimePoint(t))) {
+        throw new TableException(
+          s"The rowtime attribute can only replace a field with a valid time type, " +
+          s"such as Timestamp or Long. But was: $t")
+      }
+    }
+
     def extractRowtime(idx: Int, name: String, origName: Option[String]): Unit = {
       if (rowtime.isDefined) {
         throw new TableException(
           "The rowtime attribute can only be defined once in a table schema.")
       } else {
-        val mappedIdx = streamType match {
-          case pti: PojoTypeInfo[_] =>
-            pti.getFieldIndex(origName.getOrElse(name))
-          case _ => idx;
+        // if the fields are referenced by position,
+        // it is possible to replace an existing field or append the time attribute at the end
+        if (isRefByPos) {
+          // aliases are not permitted
+          if (origName.isDefined) {
+            throw new TableException(
+              s"Invalid alias '${origName.get}' because fields are referenced by position.")
+          }
+          // check type of field that is replaced
+          if (idx < fieldTypes.length) {
+            checkRowtimeType(fieldTypes(idx))
+          }
         }
-        // check type of field that is replaced
-        if (mappedIdx < 0) {
-          throw new TableException(
-            s"The rowtime attribute can only replace a valid field. " +
-              s"${origName.getOrElse(name)} is not a field of type $streamType.")
-        }
-        else if (mappedIdx < fieldTypes.length &&
-          !(TypeCheckUtils.isLong(fieldTypes(mappedIdx)) ||
-            TypeCheckUtils.isTimePoint(fieldTypes(mappedIdx)))) {
-          throw new TableException(
-            s"The rowtime attribute can only replace a field with a valid time type, " +
-              s"such as Timestamp or Long. But was: ${fieldTypes(mappedIdx)}")
+        // check reference-by-name
+        else {
+          val aliasOrName = origName.getOrElse(name)
+          streamType match {
+            // both alias and reference must have a valid type if they replace a field
+            case ct: CompositeType[_] if ct.hasField(aliasOrName) =>
+              val t = ct.getTypeAt(ct.getFieldIndex(aliasOrName))
+              checkRowtimeType(t)
+            // alias could not be found
+            case _ if origName.isDefined =>
+              throw new TableException(s"Alias '${origName.get}' must reference an existing field.")
+            case _ => // ok
+          }
         }
 
         rowtime = Some(idx, name)
@@ -492,11 +526,26 @@ abstract class StreamTableEnvironment(
           throw new TableException(
             "The proctime attribute can only be defined once in a table schema.")
       } else {
-        // check that proctime is only appended
-        if (idx < fieldTypes.length) {
-          throw new TableException(
-            "The proctime attribute can only be appended to the table schema and not replace " +
-              "an existing field. Please move it to the end of the schema.")
+        // if the fields are referenced by position,
+        // it is only possible to append the time attribute at the end
+        if (isRefByPos) {
+
+          // check that proctime is only appended
+          if (idx < fieldTypes.length) {
+            throw new TableException(
+              "The proctime attribute can only be appended to the table schema and not replace " +
+                s"an existing field. Please move '$name' to the end of the schema.")
+          }
+        }
+        // check reference-by-name
+        else {
+          streamType match {
+            // proctime attribute must not replace a field
+            case ct: CompositeType[_] if ct.hasField(name) =>
+              throw new TableException(
+                s"The proctime attribute '$name' must not replace an existing field.")
+            case _ => // ok
+          }
         }
         proctime = Some(idx, name)
       }
@@ -512,16 +561,15 @@ abstract class StreamTableEnvironment(
       case (ProctimeAttribute(UnresolvedFieldReference(name)), idx) =>
         extractProctime(idx, name)
 
-      case (ProctimeAttribute(Alias(UnresolvedFieldReference(_), name, _)), idx) =>
-        extractProctime(idx, name)
-
       case (UnresolvedFieldReference(name), _) => fieldNames = name :: fieldNames
 
       case (Alias(UnresolvedFieldReference(_), name, _), _) => fieldNames = name :: fieldNames
 
       case (e, _) =>
         throw new TableException(s"Time attributes can only be defined on field references or " +
-          s"aliases of field references. But was: $e")
+          s"aliases of valid field references. Rowtime attributes can replace existing fields, " +
+          s"proctime attributes can not. " +
+          s"But was: $e")
     }
 
     if (rowtime.isDefined && fieldNames.contains(rowtime.get._2)) {

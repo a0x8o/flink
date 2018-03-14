@@ -18,10 +18,9 @@
 package org.apache.flink.streaming.api.environment;
 
 import org.apache.flink.annotation.Internal;
-import org.apache.flink.api.common.InvalidProgramException;
 import org.apache.flink.api.common.JobExecutionResult;
-import org.apache.flink.api.java.ExecutionEnvironment;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.RestOptions;
 import org.apache.flink.configuration.TaskManagerOptions;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.minicluster.MiniCluster;
@@ -40,12 +39,9 @@ import org.slf4j.LoggerFactory;
  * parallelism can be set via {@link #setParallelism(int)}.
  */
 @Internal
-public class Flip6LocalStreamEnvironment extends StreamExecutionEnvironment {
+public class Flip6LocalStreamEnvironment extends LocalStreamEnvironment {
 
 	private static final Logger LOG = LoggerFactory.getLogger(Flip6LocalStreamEnvironment.class);
-
-	/** The configuration to use for the mini cluster. */
-	private final Configuration conf;
 
 	/**
 	 * Creates a new mini cluster stream environment that uses the default configuration.
@@ -60,13 +56,7 @@ public class Flip6LocalStreamEnvironment extends StreamExecutionEnvironment {
 	 * @param config The configuration used to configure the local executor.
 	 */
 	public Flip6LocalStreamEnvironment(Configuration config) {
-		if (!ExecutionEnvironment.areExplicitEnvironmentsAllowed()) {
-			throw new InvalidProgramException(
-					"The Flip6LocalStreamEnvironment cannot be used when submitting a program through a client, " +
-							"or running in a TestEnvironment context.");
-		}
-
-		this.conf = config == null ? new Configuration() : config;
+		super(config);
 		setParallelism(1);
 	}
 
@@ -94,6 +84,8 @@ public class Flip6LocalStreamEnvironment extends StreamExecutionEnvironment {
 		// add (and override) the settings with what the user defined
 		configuration.addAll(this.conf);
 
+		configuration.setInteger(RestOptions.REST_PORT, 0);
+
 		MiniClusterConfiguration cfg = new MiniClusterConfiguration.Builder()
 			.setConfiguration(configuration)
 			.setNumSlotsPerTaskManager(jobGraph.getMaximumParallelism())
@@ -107,11 +99,13 @@ public class Flip6LocalStreamEnvironment extends StreamExecutionEnvironment {
 
 		try {
 			miniCluster.start();
-			return miniCluster.runJobBlocking(jobGraph);
+			configuration.setInteger(RestOptions.REST_PORT, miniCluster.getRestAddress().getPort());
+
+			return miniCluster.executeJobBlocking(jobGraph);
 		}
 		finally {
 			transformations.clear();
-			miniCluster.shutdown();
+			miniCluster.close();
 		}
 	}
 }

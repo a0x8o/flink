@@ -35,34 +35,33 @@ import org.apache.flink.runtime.taskexecutor.TaskExecutorGateway;
 import org.apache.flink.runtime.taskexecutor.TestingTaskExecutorGateway;
 import org.apache.flink.runtime.testingUtils.TestingUtils;
 import org.apache.flink.runtime.util.TestingFatalErrorHandler;
+import org.apache.flink.testutils.category.Flip6;
 import org.apache.flink.util.TestLogger;
 
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
+import org.junit.experimental.categories.Category;
 
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 
+@Category(Flip6.class)
 public class ResourceManagerTest extends TestLogger {
 
 	private TestingRpcService rpcService;
 
 	@Before
 	public void setUp() {
-		if (rpcService != null) {
-			rpcService.stopService();
-			rpcService = null;
-		}
-
 		rpcService = new TestingRpcService();
 	}
 
 	@After
-	public void tearDown() {
+	public void tearDown() throws ExecutionException, InterruptedException {
 		if (rpcService != null) {
-			rpcService.stopService();
+			rpcService.stopService().get();
 			rpcService = null;
 		}
 	}

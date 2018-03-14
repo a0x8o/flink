@@ -27,6 +27,7 @@ import org.apache.flink.util.Preconditions;
 
 import java.io.ByteArrayOutputStream;
 import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Heap-backed partitioned {@link org.apache.flink.api.common.state.ListState} that is snapshotted
@@ -37,7 +38,7 @@ import java.util.ArrayList;
  * @param <V> The type of the value.
  */
 public class HeapListState<K, N, V>
-		extends AbstractHeapMergingState<K, N, V, Iterable<V>, ArrayList<V>, ListState<V>, ListStateDescriptor<V>>
+		extends AbstractHeapMergingState<K, N, V, Iterable<V>, List<V>, ListState<V>, ListStateDescriptor<V>>
 		implements InternalListState<N, V> {
 
 	/**
@@ -49,7 +50,7 @@ public class HeapListState<K, N, V>
 	 */
 	public HeapListState(
 			ListStateDescriptor<V> stateDesc,
-			StateTable<K, N, ArrayList<V>> stateTable,
+			StateTable<K, N, List<V>> stateTable,
 			TypeSerializer<K> keySerializer,
 			TypeSerializer<N> namespaceSerializer) {
 		super(stateDesc, stateTable, keySerializer, namespaceSerializer);
@@ -66,15 +67,12 @@ public class HeapListState<K, N, V>
 
 	@Override
 	public void add(V value) {
+		Preconditions.checkNotNull(value, "You cannot add null to a ListState.");
+
 		final N namespace = currentNamespace;
 
-		if (value == null) {
-			clear();
-			return;
-		}
-
-		final StateTable<K, N, ArrayList<V>> map = stateTable;
-		ArrayList<V> list = map.get(namespace);
+		final StateTable<K, N, List<V>> map = stateTable;
+		List<V> list = map.get(namespace);
 
 		if (list == null) {
 			list = new ArrayList<>();
@@ -88,7 +86,7 @@ public class HeapListState<K, N, V>
 		Preconditions.checkState(namespace != null, "No namespace given.");
 		Preconditions.checkState(key != null, "No key given.");
 
-		ArrayList<V> result = stateTable.get(key, namespace);
+		List<V> result = stateTable.get(key, namespace);
 
 		if (result == null) {
 			return null;
@@ -116,8 +114,44 @@ public class HeapListState<K, N, V>
 	// ------------------------------------------------------------------------
 
 	@Override
-	protected ArrayList<V> mergeState(ArrayList<V> a, ArrayList<V> b) {
+	protected List<V> mergeState(List<V> a, List<V> b) {
 		a.addAll(b);
 		return a;
+	}
+
+	@Override
+	public void update(List<V> values) throws Exception {
+		Preconditions.checkNotNull(values, "List of values to add cannot be null.");
+
+		if (values.isEmpty()) {
+			clear();
+			return;
+		}
+
+		List<V> newStateList = new ArrayList<>();
+		for (V v : values) {
+			Preconditions.checkNotNull(v, "You cannot add null to a ListState.");
+			newStateList.add(v);
+		}
+
+		stateTable.put(currentNamespace, newStateList);
+	}
+
+	@Override
+	public void addAll(List<V> values) throws Exception {
+		Preconditions.checkNotNull(values, "List of values to add cannot be null.");
+
+		if (!values.isEmpty()) {
+			stateTable.transform(currentNamespace, values, (previousState, value) -> {
+				if (previousState == null) {
+					previousState = new ArrayList<>();
+				}
+				for (V v : value) {
+					Preconditions.checkNotNull(v, "You cannot add null to a ListState.");
+					previousState.add(v);
+				}
+				return previousState;
+			});
+		}
 	}
 }

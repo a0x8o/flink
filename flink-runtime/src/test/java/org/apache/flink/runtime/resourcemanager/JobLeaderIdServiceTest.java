@@ -23,9 +23,11 @@ import org.apache.flink.api.common.time.Time;
 import org.apache.flink.runtime.concurrent.ScheduledExecutor;
 import org.apache.flink.runtime.highavailability.TestingHighAvailabilityServices;
 import org.apache.flink.runtime.jobmaster.JobMasterId;
-import org.apache.flink.runtime.leaderelection.TestingLeaderRetrievalService;
+import org.apache.flink.runtime.leaderretrieval.SettableLeaderRetrievalService;
+import org.apache.flink.testutils.category.Flip6;
 import org.apache.flink.util.TestLogger;
 import org.junit.Test;
+import org.junit.experimental.categories.Category;
 import org.mockito.ArgumentCaptor;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
@@ -54,6 +56,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
+@Category(Flip6.class)
 public class JobLeaderIdServiceTest extends TestLogger {
 
 	/**
@@ -65,7 +68,7 @@ public class JobLeaderIdServiceTest extends TestLogger {
 		final String address = "foobar";
 		final JobMasterId leaderId = JobMasterId.generate();
 		TestingHighAvailabilityServices highAvailabilityServices = new TestingHighAvailabilityServices();
-		TestingLeaderRetrievalService leaderRetrievalService = new TestingLeaderRetrievalService(
+		SettableLeaderRetrievalService leaderRetrievalService = new SettableLeaderRetrievalService(
 			null,
 			null);
 
@@ -101,7 +104,7 @@ public class JobLeaderIdServiceTest extends TestLogger {
 	public void testRemovingJob() throws Exception {
 		final JobID jobId = new JobID();
 		TestingHighAvailabilityServices highAvailabilityServices = new TestingHighAvailabilityServices();
-		TestingLeaderRetrievalService leaderRetrievalService = new TestingLeaderRetrievalService(null, null);
+		SettableLeaderRetrievalService leaderRetrievalService = new SettableLeaderRetrievalService(null, null);
 
 		highAvailabilityServices.setJobMasterLeaderRetriever(jobId, leaderRetrievalService);
 
@@ -142,7 +145,7 @@ public class JobLeaderIdServiceTest extends TestLogger {
 	public void testInitialJobTimeout() throws Exception {
 		final JobID jobId = new JobID();
 		TestingHighAvailabilityServices highAvailabilityServices = new TestingHighAvailabilityServices();
-		TestingLeaderRetrievalService leaderRetrievalService = new TestingLeaderRetrievalService(
+		SettableLeaderRetrievalService leaderRetrievalService = new SettableLeaderRetrievalService(
 			null,
 			null);
 
@@ -186,7 +189,7 @@ public class JobLeaderIdServiceTest extends TestLogger {
 		final String address = "foobar";
 		final JobMasterId leaderId = JobMasterId.generate();
 		TestingHighAvailabilityServices highAvailabilityServices = new TestingHighAvailabilityServices();
-		TestingLeaderRetrievalService leaderRetrievalService = new TestingLeaderRetrievalService(
+		SettableLeaderRetrievalService leaderRetrievalService = new SettableLeaderRetrievalService(
 			null,
 			null);
 

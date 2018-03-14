@@ -21,6 +21,7 @@ import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.api.common.typeutils.CompositeType
 
 import _root_.scala.collection.mutable.ArrayBuffer
+import _root_.java.util.Objects
 
 /**
   * A TableSchema represents a Table's structure.
@@ -40,9 +41,9 @@ class TableSchema(
   // check uniqueness of field names
   if (columnNames.toSet.size != columnTypes.length) {
     val duplicateFields = columnNames
-      // count occurences of field names
+      // count occurrences of field names
       .groupBy(identity).mapValues(_.length)
-      // filter for occurences > 1 and map to field name
+      // filter for occurrences > 1 and map to field name
       .filter(g => g._2 > 1).keys
 
     throw new TableException(
@@ -92,6 +93,11 @@ class TableSchema(
   }
 
   /**
+    * Returns the number of columns.
+    */
+  def getColumnCount: Int = columnNames.length
+
+  /**
     * Returns all column names as an array.
     */
   def getColumnNames: Array[String] = columnNames
@@ -129,6 +135,9 @@ class TableSchema(
 
   def canEqual(other: Any): Boolean = other.isInstanceOf[TableSchema]
 
+  override def hashCode(): Int = {
+    Objects.hash(columnNames, columnTypes)
+  }
 }
 
 object TableSchema {

@@ -24,7 +24,9 @@ import org.junit.Test;
 
 import java.io.IOException;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.fail;
+
 /**
  * Tests for the {@link MemorySize} class.
  */
@@ -161,7 +163,7 @@ public class MemorySizeTest {
 			fail("exception expected");
 		} catch (IllegalArgumentException ignored) {}
 
-		// brank
+		// blank
 		try {
 			MemorySize.parseBytes("     ");
 			fail("exception expected");
@@ -185,7 +187,7 @@ public class MemorySizeTest {
 			fail("exception expected");
 		} catch (IllegalArgumentException ignored) {}
 
-		// negavive number
+		// negative number
 		try {
 			MemorySize.parseBytes("-100 bytes");
 			fail("exception expected");

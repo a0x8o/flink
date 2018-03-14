@@ -22,8 +22,10 @@ import org.apache.flink.configuration.AkkaOptions;
 import org.apache.flink.configuration.ConfigConstants;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.TaskManagerOptions;
+import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
+import org.apache.flink.runtime.io.network.buffer.BufferBuilder;
 import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
 import org.apache.flink.runtime.jobgraph.DistributionPattern;
 import org.apache.flink.runtime.jobgraph.JobGraph;
@@ -110,15 +112,19 @@ public class PartialConsumePipelinedResultTest extends TestLogger {
 	 */
 	public static class SlowBufferSender extends AbstractInvokable {
 
+		public SlowBufferSender(Environment environment) {
+			super(environment);
+		}
+
 		@Override
 		public void invoke() throws Exception {
 			final ResultPartitionWriter writer = getEnvironment().getWriter(0);
 
 			for (int i = 0; i < 8; i++) {
-				final Buffer buffer = writer.getBufferProvider().requestBufferBlocking();
-				writer.writeBuffer(buffer, 0);
-
+				final BufferBuilder bufferBuilder = writer.getBufferProvider().requestBufferBuilderBlocking();
+				writer.addBufferConsumer(bufferBuilder.createBufferConsumer(), 0);
 				Thread.sleep(50);
+				bufferBuilder.finish();
 			}
 		}
 	}
@@ -128,12 +134,16 @@ public class PartialConsumePipelinedResultTest extends TestLogger {
 	 */
 	public static class SingleBufferReceiver extends AbstractInvokable {
 
+		public SingleBufferReceiver(Environment environment) {
+			super(environment);
+		}
+
 		@Override
 		public void invoke() throws Exception {
 			InputGate gate = getEnvironment().getInputGate(0);
-			Buffer buffer = gate.getNextBufferOrEvent().getBuffer();
+			Buffer buffer = gate.getNextBufferOrEvent().orElseThrow(IllegalStateException::new).getBuffer();
 			if (buffer != null) {
-				buffer.recycle();
+				buffer.recycleBuffer();
 			}
 		}
 	}

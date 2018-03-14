@@ -18,30 +18,36 @@
 
 package org.apache.flink.runtime.jobmaster;
 
-import org.apache.flink.api.common.JobExecutionResult;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.blob.BlobServer;
 import org.apache.flink.runtime.blob.BlobStore;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
+import org.apache.flink.runtime.executiongraph.ArchivedExecutionGraph;
+import org.apache.flink.runtime.executiongraph.ErrorInfo;
 import org.apache.flink.runtime.heartbeat.HeartbeatServices;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.highavailability.RunningJobsRegistry;
 import org.apache.flink.runtime.jobgraph.JobGraph;
+import org.apache.flink.runtime.jobgraph.JobStatus;
 import org.apache.flink.runtime.jobgraph.JobVertex;
 import org.apache.flink.runtime.jobmanager.OnCompletionActions;
 import org.apache.flink.runtime.jobmanager.SubmittedJobGraphStore;
 import org.apache.flink.runtime.leaderelection.LeaderElectionService;
-import org.apache.flink.runtime.metrics.MetricRegistryImpl;
 import org.apache.flink.runtime.metrics.MetricRegistryConfiguration;
+import org.apache.flink.runtime.metrics.MetricRegistryImpl;
+import org.apache.flink.runtime.rest.handler.legacy.utils.ArchivedExecutionGraphBuilder;
 import org.apache.flink.runtime.rpc.FatalErrorHandler;
 import org.apache.flink.runtime.rpc.RpcService;
+import org.apache.flink.testutils.category.Flip6;
 import org.apache.flink.util.TestLogger;
+
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;
+import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
 import org.powermock.api.mockito.PowerMockito;
 import org.powermock.core.classloader.annotations.PrepareForTest;
@@ -60,6 +66,7 @@ import static org.mockito.Mockito.when;
 
 @RunWith(PowerMockRunner.class)
 @PrepareForTest(JobManagerRunner.class)
+@Category(Flip6.class)
 public class JobManagerRunnerMockTest extends TestLogger {
 
 	private JobManagerRunner runner;
@@ -98,7 +105,7 @@ public class JobManagerRunnerMockTest extends TestLogger {
 		SubmittedJobGraphStore submittedJobGraphStore = mock(SubmittedJobGraphStore.class);
 
 		blobStore = mock(BlobStore.class);
-		
+
 		HighAvailabilityServices haServices = mock(HighAvailabilityServices.class);
 		when(haServices.getJobManagerLeaderElectionService(any(JobID.class))).thenReturn(leaderElectionService);
 		when(haServices.getSubmittedJobGraphStore()).thenReturn(submittedJobGraphStore);
@@ -135,7 +142,7 @@ public class JobManagerRunnerMockTest extends TestLogger {
 		assertTrue(!jobCompletion.isJobFailed());
 
 		verify(jobManager).start(any(JobMasterId.class), any(Time.class));
-		
+
 		runner.shutdown();
 		verify(leaderElectionService).stop();
 		verify(jobManager).shutDown();
@@ -172,7 +179,7 @@ public class JobManagerRunnerMockTest extends TestLogger {
 		assertTrue(!jobCompletion.isJobFinished());
 
 		// runner been told by JobManager that job is finished
-		runner.jobFinished(mock(JobExecutionResult.class));
+		runner.jobReachedGloballyTerminalState(mock(ArchivedExecutionGraph.class));
 
 		assertTrue(jobCompletion.isJobFinished());
 		assertFalse(jobCompletion.isJobFinishedByOther());
@@ -191,8 +198,13 @@ public class JobManagerRunnerMockTest extends TestLogger {
 		verify(jobManager).start(eq(jobMasterId), any(Time.class));
 		assertTrue(!jobCompletion.isJobFinished());
 
+		final ArchivedExecutionGraph failedExecutionGraph = new ArchivedExecutionGraphBuilder()
+			.setFailureCause(new ErrorInfo(new Exception("failed manually"), 1L))
+			.setState(JobStatus.FAILED)
+			.build();
+
 		// runner been told by JobManager that job is failed
-		runner.jobFailed(new Exception("failed manually"));
+		runner.jobReachedGloballyTerminalState(failedExecutionGraph);
 
 		assertTrue(jobCompletion.isJobFailed());
 		verify(leaderElectionService).stop();
@@ -236,26 +248,22 @@ public class JobManagerRunnerMockTest extends TestLogger {
 
 	private static class TestingOnCompletionActions implements OnCompletionActions, FatalErrorHandler {
 
-		private volatile JobExecutionResult result;
+		private volatile JobResult result;
 
 		private volatile Throwable failedCause;
 
 		private volatile boolean finishedByOther;
 
 		@Override
-		public void jobFinished(JobExecutionResult result) {
+		public void jobReachedGloballyTerminalState(ArchivedExecutionGraph executionGraph) {
 			checkArgument(!isJobFinished(), "job finished already");
 			checkArgument(!isJobFailed(), "job failed already");
 
-			this.result = result;
-		}
+			this.result = JobResult.createFrom(executionGraph);
 
-		@Override
-		public void jobFailed(Throwable cause) {
-			checkArgument(!isJobFinished(), "job finished already");
-			checkArgument(!isJobFailed(), "job failed already");
-
-			this.failedCause = cause;
+			if (!result.isSuccess()) {
+				failedCause = result.getSerializedThrowable().get();
+			}
 		}
 
 		@Override
@@ -268,7 +276,10 @@ public class JobManagerRunnerMockTest extends TestLogger {
 
 		@Override
 		public void onFatalError(Throwable exception) {
-			jobFailed(exception);
+			checkArgument(!isJobFinished(), "job finished already");
+			checkArgument(!isJobFailed(), "job failed already");
+
+			this.failedCause = exception;
 		}
 
 		boolean isJobFinished() {

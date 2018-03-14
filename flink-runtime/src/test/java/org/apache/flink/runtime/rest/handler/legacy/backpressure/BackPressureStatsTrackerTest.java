@@ -88,23 +88,21 @@ public class BackPressureStatsTrackerTest extends TestLogger {
 		Time delayBetweenSamples = Time.milliseconds(100L);
 
 		BackPressureStatsTracker tracker = new BackPressureStatsTracker(
-				sampleCoordinator, 9999, numSamples, delayBetweenSamples);
+				sampleCoordinator, 9999, numSamples, Integer.MAX_VALUE, delayBetweenSamples);
 
-		// Trigger
-		Assert.assertTrue("Failed to trigger", tracker.triggerStackTraceSample(jobVertex));
+		// getOperatorBackPressureStats triggers stack trace sampling
+		Assert.assertFalse(tracker.getOperatorBackPressureStats(jobVertex).isPresent());
 
-		Mockito.verify(sampleCoordinator).triggerStackTraceSample(
+		Mockito.verify(sampleCoordinator, Mockito.times(1)).triggerStackTraceSample(
 				Matchers.eq(taskVertices),
 				Matchers.eq(numSamples),
 				Matchers.eq(delayBetweenSamples),
 				Matchers.eq(BackPressureStatsTracker.MAX_STACK_TRACE_DEPTH));
 
-		// Trigger again for pending request, should not fire
-		Assert.assertFalse("Unexpected trigger", tracker.triggerStackTraceSample(jobVertex));
-
+		// Request back pressure stats again. This should not trigger another sample request
 		Assert.assertTrue(!tracker.getOperatorBackPressureStats(jobVertex).isPresent());
 
-		Mockito.verify(sampleCoordinator).triggerStackTraceSample(
+		Mockito.verify(sampleCoordinator, Mockito.times(1)).triggerStackTraceSample(
 				Matchers.eq(taskVertices),
 				Matchers.eq(numSamples),
 				Matchers.eq(delayBetweenSamples),

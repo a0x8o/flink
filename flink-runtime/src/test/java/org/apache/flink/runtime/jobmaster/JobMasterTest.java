@@ -20,218 +20,233 @@ package org.apache.flink.runtime.jobmaster;
 
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.time.Time;
+import org.apache.flink.api.java.tuple.Tuple3;
+import org.apache.flink.configuration.BlobServerOptions;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.blob.BlobServer;
 import org.apache.flink.runtime.blob.VoidBlobStore;
-import org.apache.flink.runtime.checkpoint.CheckpointRecoveryFactory;
+import org.apache.flink.runtime.checkpoint.CheckpointProperties;
+import org.apache.flink.runtime.checkpoint.CheckpointRetentionPolicy;
+import org.apache.flink.runtime.checkpoint.Checkpoints;
+import org.apache.flink.runtime.checkpoint.CompletedCheckpoint;
+import org.apache.flink.runtime.checkpoint.StandaloneCheckpointIDCounter;
+import org.apache.flink.runtime.checkpoint.StandaloneCheckpointRecoveryFactory;
+import org.apache.flink.runtime.checkpoint.StandaloneCompletedCheckpointStore;
+import org.apache.flink.runtime.checkpoint.TestingCheckpointRecoveryFactory;
+import org.apache.flink.runtime.checkpoint.savepoint.SavepointV2;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
-import org.apache.flink.runtime.concurrent.ScheduledExecutor;
-import org.apache.flink.runtime.execution.librarycache.BlobLibraryCacheManager;
-import org.apache.flink.runtime.execution.librarycache.FlinkUserCodeClassLoaders;
-import org.apache.flink.runtime.executiongraph.restart.RestartStrategyFactory;
+import org.apache.flink.runtime.executiongraph.ArchivedExecutionGraph;
 import org.apache.flink.runtime.heartbeat.HeartbeatServices;
 import org.apache.flink.runtime.heartbeat.TestingHeartbeatServices;
+import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.highavailability.TestingHighAvailabilityServices;
 import org.apache.flink.runtime.jobgraph.JobGraph;
+import org.apache.flink.runtime.jobgraph.SavepointRestoreSettings;
+import org.apache.flink.runtime.jobgraph.tasks.CheckpointCoordinatorConfiguration;
+import org.apache.flink.runtime.jobgraph.tasks.JobCheckpointingSettings;
 import org.apache.flink.runtime.jobmanager.OnCompletionActions;
-import org.apache.flink.runtime.leaderelection.TestingLeaderRetrievalService;
+import org.apache.flink.runtime.leaderretrieval.SettableLeaderRetrievalService;
 import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.registration.RegistrationResponse;
-import org.apache.flink.runtime.resourcemanager.ResourceManagerGateway;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerId;
+import org.apache.flink.runtime.resourcemanager.utils.TestingResourceManagerGateway;
+import org.apache.flink.runtime.rpc.RpcUtils;
 import org.apache.flink.runtime.rpc.TestingRpcService;
-import org.apache.flink.runtime.taskexecutor.TaskExecutorGateway;
+import org.apache.flink.runtime.state.CompletedCheckpointStorageLocation;
+import org.apache.flink.runtime.state.StreamStateHandle;
+import org.apache.flink.runtime.taskexecutor.TestingTaskExecutorGateway;
+import org.apache.flink.runtime.taskmanager.LocalTaskManagerLocation;
 import org.apache.flink.runtime.taskmanager.TaskManagerLocation;
 import org.apache.flink.runtime.util.TestingFatalErrorHandler;
+import org.apache.flink.testutils.category.Flip6;
 import org.apache.flink.util.TestLogger;
+
+import org.hamcrest.Matchers;
+import org.junit.After;
+import org.junit.AfterClass;
+import org.junit.Before;
+import org.junit.BeforeClass;
+import org.junit.ClassRule;
 import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.mockito.ArgumentCaptor;
-import org.powermock.core.classloader.annotations.PrepareForTest;
-import org.powermock.modules.junit4.PowerMockRunner;
+import org.junit.experimental.categories.Category;
+import org.junit.rules.TemporaryFolder;
 
-import java.net.InetAddress;
-import java.net.URL;
+import javax.annotation.Nonnull;
+
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.util.Collections;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
-import static org.mockito.Mockito.*;
+import static org.hamcrest.MatcherAssert.assertThat;
 
-@RunWith(PowerMockRunner.class)
-@PrepareForTest(BlobLibraryCacheManager.class)
+/**
+ * Tests for {@link JobMaster}.
+ */
+@Category(Flip6.class)
 public class JobMasterTest extends TestLogger {
 
-	private final Time testingTimeout = Time.seconds(10L);
+	@ClassRule
+	public static TemporaryFolder temporaryFolder = new TemporaryFolder();
 
-	@Test
-	public void testHeartbeatTimeoutWithTaskManager() throws Exception {
-		final TestingHighAvailabilityServices haServices = new TestingHighAvailabilityServices();
-		final TestingLeaderRetrievalService rmLeaderRetrievalService = new TestingLeaderRetrievalService(
+	private static final Time testingTimeout = Time.seconds(10L);
+
+	private static final long heartbeatInterval = 1L;
+
+	private static final long heartbeatTimeout = 5L;
+
+	private static final JobGraph jobGraph = new JobGraph();
+
+	private static TestingRpcService rpcService;
+
+	private static HeartbeatServices fastHeartbeatServices;
+
+	private BlobServer blobServer;
+
+	private Configuration configuration;
+
+	private ResourceID jmResourceId;
+
+	private JobMasterId jobMasterId;
+
+	private TestingHighAvailabilityServices haServices;
+
+	private SettableLeaderRetrievalService rmLeaderRetrievalService;
+
+	private TestingFatalErrorHandler testingFatalErrorHandler;
+
+	@BeforeClass
+	public static void setupClass() {
+		rpcService = new TestingRpcService();
+
+		fastHeartbeatServices = new TestingHeartbeatServices(heartbeatInterval, heartbeatTimeout, rpcService.getScheduledExecutor());
+	}
+
+	@Before
+	public void setup() throws IOException {
+		configuration = new Configuration();
+		haServices = new TestingHighAvailabilityServices();
+		jobMasterId = JobMasterId.generate();
+		jmResourceId = ResourceID.generate();
+
+		testingFatalErrorHandler = new TestingFatalErrorHandler();
+
+		haServices.setCheckpointRecoveryFactory(new StandaloneCheckpointRecoveryFactory());
+
+		rmLeaderRetrievalService = new SettableLeaderRetrievalService(
 			null,
 			null);
 		haServices.setResourceManagerLeaderRetriever(rmLeaderRetrievalService);
-		haServices.setCheckpointRecoveryFactory(mock(CheckpointRecoveryFactory.class));
-		final TestingFatalErrorHandler testingFatalErrorHandler = new TestingFatalErrorHandler();
 
-		final String jobManagerAddress = "jm";
-		final JobMasterId jobMasterId = JobMasterId.generate();
-		final ResourceID jmResourceId = new ResourceID(jobManagerAddress);
+		configuration.setString(BlobServerOptions.STORAGE_DIRECTORY, temporaryFolder.newFolder().getAbsolutePath());
+		blobServer = new BlobServer(configuration, new VoidBlobStore());
 
-		final String taskManagerAddress = "tm";
-		final ResourceID tmResourceId = new ResourceID(taskManagerAddress);
-		final TaskManagerLocation taskManagerLocation = new TaskManagerLocation(tmResourceId, InetAddress.getLoopbackAddress(), 1234);
-		final TaskExecutorGateway taskExecutorGateway = mock(TaskExecutorGateway.class);
+		blobServer.start();
+	}
 
-		final TestingRpcService rpc = new TestingRpcService();
-		rpc.registerGateway(taskManagerAddress, taskExecutorGateway);
+	@After
+	public void teardown() throws Exception {
+		if (testingFatalErrorHandler != null) {
+			testingFatalErrorHandler.rethrowError();
+		}
 
-		final long heartbeatInterval = 1L;
-		final long heartbeatTimeout = 5L;
+		if (blobServer != null) {
+			blobServer.close();
+		}
+	}
 
-		final ScheduledExecutor scheduledExecutor = mock(ScheduledExecutor.class);
-		final HeartbeatServices heartbeatServices = new TestingHeartbeatServices(heartbeatInterval, heartbeatTimeout, scheduledExecutor);
+	@AfterClass
+	public static void teardownClass() {
+		if (rpcService != null) {
+			rpcService.stopService();
+			rpcService = null;
+		}
+	}
 
-		final JobGraph jobGraph = new JobGraph();
+	@Test
+	public void testHeartbeatTimeoutWithTaskManager() throws Exception {
+		final TaskManagerLocation taskManagerLocation = new LocalTaskManagerLocation();
+		final TestingTaskExecutorGateway taskExecutorGateway = new TestingTaskExecutorGateway();
 
-		Configuration configuration = new Configuration();
-		try (BlobServer blobServer = new BlobServer(configuration, new VoidBlobStore())) {
-			blobServer.start();
+		final CompletableFuture<ResourceID> heartbeatResourceIdFuture = new CompletableFuture<>();
+		final CompletableFuture<JobID> disconnectedJobManagerFuture = new CompletableFuture<>();
 
-			final JobMaster jobMaster = new JobMaster(
-				rpc,
-				jmResourceId,
-				jobGraph,
-				configuration,
-				haServices,
-				heartbeatServices,
-				Executors.newScheduledThreadPool(1),
-				blobServer,
-				new BlobLibraryCacheManager(
-					blobServer,
-					FlinkUserCodeClassLoaders.ResolveOrder.CHILD_FIRST,
-					new String[0]),
-				mock(RestartStrategyFactory.class),
-				testingTimeout,
-				null,
-				mock(OnCompletionActions.class),
-				testingFatalErrorHandler,
-				FlinkUserCodeClassLoaders.parentFirst(new URL[0], JobMasterTest.class.getClassLoader()),
-				null,
-				null);
+		taskExecutorGateway.setHeartbeatJobManagerConsumer(heartbeatResourceIdFuture::complete);
+		taskExecutorGateway.setDisconnectJobManagerConsumer(tuple -> disconnectedJobManagerFuture.complete(tuple.f0));
 
-			CompletableFuture<Acknowledge> startFuture = jobMaster.start(jobMasterId, testingTimeout);
+		rpcService.registerGateway(taskExecutorGateway.getAddress(), taskExecutorGateway);
 
+		final JobManagerSharedServices jobManagerSharedServices = new TestingJobManagerSharedServicesBuilder().build();
+		final JobMasterConfiguration jobMasterConfiguration = JobMasterConfiguration.fromConfiguration(configuration);
+
+		final JobMaster jobMaster = createJobMaster(jobMasterConfiguration, jobGraph, haServices, jobManagerSharedServices);
+
+		CompletableFuture<Acknowledge> startFuture = jobMaster.start(jobMasterId, testingTimeout);
+
+		try {
 			// wait for the start to complete
 			startFuture.get(testingTimeout.toMilliseconds(), TimeUnit.MILLISECONDS);
 
 			final JobMasterGateway jobMasterGateway = jobMaster.getSelfGateway(JobMasterGateway.class);
 
 			// register task manager will trigger monitor heartbeat target, schedule heartbeat request at interval time
-			CompletableFuture<RegistrationResponse> registrationResponse = jobMasterGateway
-				.registerTaskManager(taskManagerAddress, taskManagerLocation, testingTimeout);
+			CompletableFuture<RegistrationResponse> registrationResponse = jobMasterGateway.registerTaskManager(
+				taskExecutorGateway.getAddress(),
+				taskManagerLocation,
+				testingTimeout);
 
 			// wait for the completion of the registration
 			registrationResponse.get();
 
-			ArgumentCaptor<Runnable> heartbeatRunnableCaptor = ArgumentCaptor.forClass(Runnable.class);
-			verify(scheduledExecutor, times(1)).scheduleAtFixedRate(
-				heartbeatRunnableCaptor.capture(),
-				eq(0L),
-				eq(heartbeatInterval),
-				eq(TimeUnit.MILLISECONDS));
+			final ResourceID heartbeatResourceId = heartbeatResourceIdFuture.get(testingTimeout.toMilliseconds(), TimeUnit.MILLISECONDS);
 
-			Runnable heartbeatRunnable = heartbeatRunnableCaptor.getValue();
+			assertThat(heartbeatResourceId, Matchers.equalTo(jmResourceId));
 
-			ArgumentCaptor<Runnable> timeoutRunnableCaptor = ArgumentCaptor.forClass(Runnable.class);
-			verify(scheduledExecutor, timeout(testingTimeout.toMilliseconds())).schedule(timeoutRunnableCaptor.capture(), eq(heartbeatTimeout), eq(TimeUnit.MILLISECONDS));
+			final JobID disconnectedJobManager = disconnectedJobManagerFuture.get(testingTimeout.toMilliseconds(), TimeUnit.MILLISECONDS);
 
-			Runnable timeoutRunnable = timeoutRunnableCaptor.getValue();
-
-			// run the first heartbeat request
-			heartbeatRunnable.run();
-
-			verify(taskExecutorGateway, times(1)).heartbeatFromJobManager(eq(jmResourceId));
-
-			// run the timeout runnable to simulate a heartbeat timeout
-			timeoutRunnable.run();
-
-			verify(taskExecutorGateway, timeout(testingTimeout.toMilliseconds())).disconnectJobManager(eq(jobGraph.getJobID()), any(TimeoutException.class));
-
-			// check if a concurrent error occurred
-			testingFatalErrorHandler.rethrowError();
-
+			assertThat(disconnectedJobManager, Matchers.equalTo(jobGraph.getJobID()));
 		} finally {
-			rpc.stopService();
+			jobManagerSharedServices.shutdown();
+			RpcUtils.terminateRpcEndpoint(jobMaster, testingTimeout);
 		}
 	}
 
 	@Test
 	public void testHeartbeatTimeoutWithResourceManager() throws Exception {
 		final String resourceManagerAddress = "rm";
-		final String jobManagerAddress = "jm";
 		final ResourceManagerId resourceManagerId = ResourceManagerId.generate();
-		final JobMasterId jobMasterId = JobMasterId.generate();
 		final ResourceID rmResourceId = new ResourceID(resourceManagerAddress);
-		final ResourceID jmResourceId = new ResourceID(jobManagerAddress);
-		final JobGraph jobGraph = new JobGraph();
 
-		final TestingHighAvailabilityServices haServices = new TestingHighAvailabilityServices();
-		final TestingLeaderRetrievalService rmLeaderRetrievalService = new TestingLeaderRetrievalService(
-			null,
-			null);
-		haServices.setResourceManagerLeaderRetriever(rmLeaderRetrievalService);
-		haServices.setCheckpointRecoveryFactory(mock(CheckpointRecoveryFactory.class));
+		final TestingResourceManagerGateway resourceManagerGateway = new TestingResourceManagerGateway(
+			resourceManagerId,
+			rmResourceId,
+			heartbeatInterval,
+			"localhost",
+			"localhost");
 
-		final long heartbeatInterval = 1L;
-		final long heartbeatTimeout = 5L;
-		final ScheduledExecutor scheduledExecutor = mock(ScheduledExecutor.class);
-		final HeartbeatServices heartbeatServices = new TestingHeartbeatServices(heartbeatInterval, heartbeatTimeout, scheduledExecutor);
+		final CompletableFuture<Tuple3<JobMasterId, ResourceID, JobID>> jobManagerRegistrationFuture = new CompletableFuture<>();
+		final CompletableFuture<JobID> disconnectedJobManagerFuture = new CompletableFuture<>();
 
-		final ResourceManagerGateway resourceManagerGateway = mock(ResourceManagerGateway.class);
-		when(resourceManagerGateway.registerJobManager(
-			any(JobMasterId.class),
-			any(ResourceID.class),
-			anyString(),
-			any(JobID.class),
-			any(Time.class)
-		)).thenReturn(CompletableFuture.completedFuture(new JobMasterRegistrationSuccess(
-			heartbeatInterval, resourceManagerId, rmResourceId)));
+		resourceManagerGateway.setRegisterJobManagerConsumer(tuple -> jobManagerRegistrationFuture.complete(
+			Tuple3.of(
+				tuple.f0,
+				tuple.f1,
+				tuple.f3)));
 
-		final TestingRpcService rpc = new TestingRpcService();
-		rpc.registerGateway(resourceManagerAddress, resourceManagerGateway);
+		resourceManagerGateway.setDisconnectJobManagerConsumer(tuple -> disconnectedJobManagerFuture.complete(tuple.f0));
 
-		final TestingFatalErrorHandler testingFatalErrorHandler = new TestingFatalErrorHandler();
+		rpcService.registerGateway(resourceManagerAddress, resourceManagerGateway);
 
-		Configuration configuration = new Configuration();
-		try (BlobServer blobServer = new BlobServer(configuration, new VoidBlobStore())) {
-			blobServer.start();
+		final JobManagerSharedServices jobManagerSharedServices = new TestingJobManagerSharedServicesBuilder().build();
+		final JobMasterConfiguration jobMasterConfiguration = JobMasterConfiguration.fromConfiguration(configuration);
 
-			final JobMaster jobMaster = new JobMaster(
-				rpc,
-				jmResourceId,
-				jobGraph,
-				configuration,
-				haServices,
-				heartbeatServices,
-				Executors.newScheduledThreadPool(1),
-				blobServer,
-				new BlobLibraryCacheManager(
-					blobServer,
-					FlinkUserCodeClassLoaders.ResolveOrder.CHILD_FIRST,
-					new String[0]),
-				mock(RestartStrategyFactory.class),
-				testingTimeout,
-				null,
-				mock(OnCompletionActions.class),
-				testingFatalErrorHandler,
-				FlinkUserCodeClassLoaders.parentFirst(new URL[0], JobMasterTest.class.getClassLoader()),
-				null,
-				null);
+		final JobMaster jobMaster = createJobMaster(jobMasterConfiguration, jobGraph, haServices, jobManagerSharedServices);
 
-			CompletableFuture<Acknowledge> startFuture = jobMaster.start(jobMasterId, testingTimeout);
+		CompletableFuture<Acknowledge> startFuture = jobMaster.start(jobMasterId, testingTimeout);
 
+		try {
 			// wait for the start operation to complete
 			startFuture.get(testingTimeout.toMilliseconds(), TimeUnit.MILLISECONDS);
 
@@ -239,23 +254,204 @@ public class JobMasterTest extends TestLogger {
 			rmLeaderRetrievalService.notifyListener(resourceManagerAddress, resourceManagerId.toUUID());
 
 			// register job manager success will trigger monitor heartbeat target between jm and rm
-			verify(resourceManagerGateway, timeout(testingTimeout.toMilliseconds())).registerJobManager(
-				eq(jobMasterId),
-				eq(jmResourceId),
-				anyString(),
-				eq(jobGraph.getJobID()),
-				any(Time.class));
+			final Tuple3<JobMasterId, ResourceID, JobID> registrationInformation = jobManagerRegistrationFuture.get(
+				testingTimeout.toMilliseconds(),
+				TimeUnit.MILLISECONDS);
+
+			assertThat(registrationInformation.f0, Matchers.equalTo(jobMasterId));
+			assertThat(registrationInformation.f1, Matchers.equalTo(jmResourceId));
+			assertThat(registrationInformation.f2, Matchers.equalTo(jobGraph.getJobID()));
+
+			final JobID disconnectedJobManager = disconnectedJobManagerFuture.get(testingTimeout.toMilliseconds(), TimeUnit.MILLISECONDS);
 
 			// heartbeat timeout should trigger disconnect JobManager from ResourceManager
-			verify(resourceManagerGateway, timeout(heartbeatTimeout * 50L)).disconnectJobManager(eq(jobGraph.getJobID()), any(TimeoutException.class));
-
-			// check if a concurrent error occurred
-			testingFatalErrorHandler.rethrowError();
-
+			assertThat(disconnectedJobManager, Matchers.equalTo(jobGraph.getJobID()));
 		} finally {
-			rpc.stopService();
+			jobManagerSharedServices.shutdown();
+			RpcUtils.terminateRpcEndpoint(jobMaster, testingTimeout);
 		}
 	}
 
+	/**
+	 * Tests that a JobMaster will restore the given JobGraph from its savepoint upon
+	 * initial submission.
+	 */
+	@Test
+	public void testRestoringFromSavepoint() throws Exception {
+
+		// create savepoint data
+		final long savepointId = 42L;
+		final File savepointFile = createSavepoint(savepointId);
+
+		// set savepoint settings
+		final SavepointRestoreSettings savepointRestoreSettings = SavepointRestoreSettings.forPath(
+			savepointFile.getAbsolutePath(),
+			true);
+		final JobGraph jobGraph = createJobGraphWithCheckpointing(savepointRestoreSettings);
+
+		final StandaloneCompletedCheckpointStore completedCheckpointStore = new StandaloneCompletedCheckpointStore(1);
+		final TestingCheckpointRecoveryFactory testingCheckpointRecoveryFactory = new TestingCheckpointRecoveryFactory(completedCheckpointStore, new StandaloneCheckpointIDCounter());
+		haServices.setCheckpointRecoveryFactory(testingCheckpointRecoveryFactory);
+		final JobMaster jobMaster = createJobMaster(
+			JobMasterConfiguration.fromConfiguration(configuration),
+			jobGraph,
+			haServices,
+			new TestingJobManagerSharedServicesBuilder().build());
+
+		try {
+			// starting the JobMaster should have read the savepoint
+			final CompletedCheckpoint savepointCheckpoint = completedCheckpointStore.getLatestCheckpoint();
+
+			assertThat(savepointCheckpoint, Matchers.notNullValue());
+
+			assertThat(savepointCheckpoint.getCheckpointID(), Matchers.is(savepointId));
+		} finally {
+			RpcUtils.terminateRpcEndpoint(jobMaster, testingTimeout);
+		}
+	}
+
+	/**
+	 * Tests that an existing checkpoint will have precedence over an savepoint
+	 */
+	@Test
+	public void testCheckpointPrecedesSavepointRecovery() throws Exception {
+
+		// create savepoint data
+		final long savepointId = 42L;
+		final File savepointFile = createSavepoint(savepointId);
+
+		// set savepoint settings
+		final SavepointRestoreSettings savepointRestoreSettings = SavepointRestoreSettings.forPath("" +
+				savepointFile.getAbsolutePath(),
+			true);
+		final JobGraph jobGraph = createJobGraphWithCheckpointing(savepointRestoreSettings);
+
+		final long checkpointId = 1L;
+
+		final CompletedCheckpoint completedCheckpoint = new CompletedCheckpoint(
+			jobGraph.getJobID(),
+			checkpointId,
+			1L,
+			1L,
+			Collections.emptyMap(),
+			null,
+			CheckpointProperties.forCheckpoint(CheckpointRetentionPolicy.NEVER_RETAIN_AFTER_TERMINATION),
+			new DummyCheckpointStorageLocation());
+
+		final StandaloneCompletedCheckpointStore completedCheckpointStore = new StandaloneCompletedCheckpointStore(1);
+		completedCheckpointStore.addCheckpoint(completedCheckpoint);
+		final TestingCheckpointRecoveryFactory testingCheckpointRecoveryFactory = new TestingCheckpointRecoveryFactory(completedCheckpointStore, new StandaloneCheckpointIDCounter());
+		haServices.setCheckpointRecoveryFactory(testingCheckpointRecoveryFactory);
+		final JobMaster jobMaster = createJobMaster(
+			JobMasterConfiguration.fromConfiguration(configuration),
+			jobGraph,
+			haServices,
+			new TestingJobManagerSharedServicesBuilder().build());
+
+		try {
+			// starting the JobMaster should have read the savepoint
+			final CompletedCheckpoint savepointCheckpoint = completedCheckpointStore.getLatestCheckpoint();
+
+			assertThat(savepointCheckpoint, Matchers.notNullValue());
+
+			assertThat(savepointCheckpoint.getCheckpointID(), Matchers.is(checkpointId));
+		} finally {
+			RpcUtils.terminateRpcEndpoint(jobMaster, testingTimeout);
+		}
+	}
+
+	private File createSavepoint(long savepointId) throws IOException {
+		final File savepointFile = temporaryFolder.newFile();
+		final SavepointV2 savepoint = new SavepointV2(savepointId, Collections.emptyList(), Collections.emptyList());
+
+		try (FileOutputStream fileOutputStream = new FileOutputStream(savepointFile)) {
+			Checkpoints.storeCheckpointMetadata(savepoint, fileOutputStream);
+		}
+
+		return savepointFile;
+	}
+
+	@Nonnull
+	private JobGraph createJobGraphWithCheckpointing(SavepointRestoreSettings savepointRestoreSettings) {
+		final JobGraph jobGraph = new JobGraph();
+
+		// enable checkpointing which is required to resume from a savepoint
+		final CheckpointCoordinatorConfiguration checkpoinCoordinatorConfiguration = new CheckpointCoordinatorConfiguration(
+			1000L,
+			1000L,
+			1000L,
+			1,
+			CheckpointRetentionPolicy.NEVER_RETAIN_AFTER_TERMINATION,
+			true);
+		final JobCheckpointingSettings checkpointingSettings = new JobCheckpointingSettings(
+			Collections.emptyList(),
+			Collections.emptyList(),
+			Collections.emptyList(),
+			checkpoinCoordinatorConfiguration,
+			null);
+		jobGraph.setSnapshotSettings(checkpointingSettings);
+		jobGraph.setSavepointRestoreSettings(savepointRestoreSettings);
+
+		return jobGraph;
+	}
+
+	@Nonnull
+	private JobMaster createJobMaster(
+			JobMasterConfiguration jobMasterConfiguration,
+			JobGraph jobGraph,
+			HighAvailabilityServices highAvailabilityServices,
+			JobManagerSharedServices jobManagerSharedServices) throws Exception {
+		return new JobMaster(
+			rpcService,
+			jobMasterConfiguration,
+			jmResourceId,
+			jobGraph,
+			highAvailabilityServices,
+			jobManagerSharedServices,
+			fastHeartbeatServices,
+			blobServer,
+			null,
+			new NoOpOnCompletionActions(),
+			testingFatalErrorHandler,
+			JobMasterTest.class.getClassLoader(),
+			null,
+			null);
+	}
+
+	/**
+	 * No op implementation of {@link OnCompletionActions}.
+	 */
+	private static final class NoOpOnCompletionActions implements OnCompletionActions {
+
+		@Override
+		public void jobReachedGloballyTerminalState(ArchivedExecutionGraph executionGraph) {
+
+		}
+
+		@Override
+		public void jobFinishedByOther() {
+
+		}
+	}
+
+	private static final class DummyCheckpointStorageLocation implements CompletedCheckpointStorageLocation {
+
+		private static final long serialVersionUID = 164095949572620688L;
+
+		@Override
+		public String getExternalPointer() {
+			return null;
+		}
+
+		@Override
+		public StreamStateHandle getMetadataHandle() {
+			return null;
+		}
+
+		@Override
+		public void disposeStorageLocation() throws IOException {
+
+		}
+	}
 
 }

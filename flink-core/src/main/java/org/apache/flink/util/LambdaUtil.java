@@ -18,6 +18,8 @@
 
 package org.apache.flink.util;
 
+import org.apache.flink.util.function.ThrowingConsumer;
+
 /**
  * This class offers utility functions for Java's lambda features.
  */
@@ -39,7 +41,7 @@ public final class LambdaUtil {
 	 */
 	public static <T> void applyToAllWhileSuppressingExceptions(
 		Iterable<T> inputs,
-		ThrowingConsumer<T> throwingConsumer) throws Exception {
+		ThrowingConsumer<T, ? extends Exception> throwingConsumer) throws Exception {
 
 		if (inputs != null && throwingConsumer != null) {
 			Exception exception = null;

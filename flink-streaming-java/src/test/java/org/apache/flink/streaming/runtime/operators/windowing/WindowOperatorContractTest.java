@@ -21,6 +21,7 @@ package org.apache.flink.streaming.runtime.operators.windowing;
 import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.state.ValueStateDescriptor;
 import org.apache.flink.api.common.typeutils.base.StringSerializer;
+import org.apache.flink.runtime.checkpoint.OperatorSubtaskState;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.api.windowing.assigners.MergingWindowAssigner;
 import org.apache.flink.streaming.api.windowing.assigners.WindowAssigner;
@@ -31,7 +32,6 @@ import org.apache.flink.streaming.api.windowing.windows.TimeWindow;
 import org.apache.flink.streaming.api.windowing.windows.Window;
 import org.apache.flink.streaming.runtime.operators.windowing.functions.InternalWindowFunction;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
-import org.apache.flink.streaming.runtime.tasks.OperatorStateHandles;
 import org.apache.flink.streaming.util.AbstractStreamOperatorTestHarness;
 import org.apache.flink.streaming.util.KeyedOneInputStreamOperatorTestHarness;
 import org.apache.flink.streaming.util.OneInputStreamOperatorTestHarness;
@@ -1468,7 +1468,7 @@ public abstract class WindowOperatorContractTest extends TestLogger {
 			@Override
 			public TriggerResult answer(InvocationOnMock invocation) throws Exception {
 				Trigger.TriggerContext context = (Trigger.TriggerContext) invocation.getArguments()[3];
-				// don't intefere with cleanup timers
+				// don't interfere with cleanup timers
 				timeAdaptor.registerTimer(context, 0L);
 				context.getPartitionedState(valueStateDescriptor).update("hello");
 				return TriggerResult.CONTINUE;
@@ -1479,7 +1479,7 @@ public abstract class WindowOperatorContractTest extends TestLogger {
 			@Override
 			public TriggerResult answer(InvocationOnMock invocation) throws Exception {
 				Trigger.OnMergeContext context = (Trigger.OnMergeContext) invocation.getArguments()[1];
-				// don't intefere with cleanup timers
+				// don't interfere with cleanup timers
 				timeAdaptor.registerTimer(context, 0L);
 				context.getPartitionedState(valueStateDescriptor).update("hello");
 				return TriggerResult.CONTINUE;
@@ -2356,7 +2356,7 @@ public abstract class WindowOperatorContractTest extends TestLogger {
 		assertEquals(5, testHarness.numKeyedStateEntries());
 		assertEquals(4, testHarness.numEventTimeTimers()); // timers/gc timers for two windows
 
-		OperatorStateHandles snapshot = testHarness.snapshot(0, 0);
+		OperatorSubtaskState snapshot = testHarness.snapshot(0, 0);
 
 		// restore
 		mockAssigner = mockMergingAssigner();

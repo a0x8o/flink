@@ -20,13 +20,14 @@ package org.apache.flink.runtime.taskmanager;
 
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.configuration.AkkaOptions;
-import org.apache.flink.configuration.ConfigConstants;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.ConfigurationUtils;
 import org.apache.flink.core.memory.MemoryType;
 import org.apache.flink.runtime.akka.AkkaUtils;
 import org.apache.flink.runtime.clusterframework.FlinkResourceManager;
 import org.apache.flink.runtime.clusterframework.standalone.StandaloneResourceManager;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
+import org.apache.flink.runtime.concurrent.Executors;
 import org.apache.flink.runtime.execution.librarycache.FlinkUserCodeClassLoaders;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.highavailability.nonha.embedded.EmbeddedHaServices;
@@ -45,6 +46,8 @@ import org.apache.flink.runtime.metrics.MetricRegistryConfiguration;
 import org.apache.flink.runtime.metrics.NoOpMetricRegistry;
 import org.apache.flink.runtime.metrics.groups.TaskManagerMetricGroup;
 import org.apache.flink.runtime.query.KvStateRegistry;
+import org.apache.flink.runtime.state.LocalRecoveryConfig;
+import org.apache.flink.runtime.state.TaskExecutorLocalStateStoresManager;
 import org.apache.flink.runtime.taskexecutor.TaskManagerConfiguration;
 import org.apache.flink.runtime.testingUtils.TestingUtils;
 import org.apache.flink.util.TestLogger;
@@ -73,7 +76,6 @@ public class TaskManagerComponentsStartupShutdownTest extends TestLogger {
 	@Test
 	public void testComponentsStartupShutdown() throws Exception {
 
-		final String[] TMP_DIR = new String[] { ConfigConstants.DEFAULT_TASK_MANAGER_TMP_PATH };
 		final Time timeout = Time.seconds(100);
 		final int BUFFER_SIZE = 32 * 1024;
 
@@ -81,6 +83,8 @@ public class TaskManagerComponentsStartupShutdownTest extends TestLogger {
 		config.setString(AkkaOptions.WATCH_HEARTBEAT_INTERVAL, "200 ms");
 		config.setString(AkkaOptions.WATCH_HEARTBEAT_PAUSE, "1 s");
 		config.setInteger(AkkaOptions.WATCH_THRESHOLD, 1);
+
+		final String[] TMP_DIR = ConfigurationUtils.parseTempDirectories(config);
 
 		ActorSystem actorSystem = null;
 
@@ -120,11 +124,12 @@ public class TaskManagerComponentsStartupShutdownTest extends TestLogger {
 				Time.milliseconds(500),
 				Time.seconds(30),
 				Time.seconds(10),
-				1000000, // cleanup interval
 				config,
 				false, // exit-jvm-on-fatal-error
 				FlinkUserCodeClassLoaders.ResolveOrder.CHILD_FIRST,
-				new String[0]);
+				new String[0],
+				null,
+				null);
 
 			final int networkBufNum = 32;
 			// note: the network buffer memory configured here is not actually used below but set
@@ -151,9 +156,15 @@ public class TaskManagerComponentsStartupShutdownTest extends TestLogger {
 				netConf.partitionRequestInitialBackoff(),
 				netConf.partitionRequestMaxBackoff(),
 				netConf.networkBuffersPerChannel(),
-				netConf.floatingNetworkBuffersPerGate());
+				netConf.floatingNetworkBuffersPerGate(),
+				true);
 
 			network.start();
+
+			TaskExecutorLocalStateStoresManager storesManager = new TaskExecutorLocalStateStoresManager(
+				LocalRecoveryConfig.LocalRecoveryMode.DISABLED,
+				ioManager.getSpillingDirectories(),
+				Executors.directExecutor());
 
 			MetricRegistryConfiguration metricRegistryConfiguration = MetricRegistryConfiguration.fromConfiguration(config);
 
@@ -166,6 +177,7 @@ public class TaskManagerComponentsStartupShutdownTest extends TestLogger {
 				memManager,
 				ioManager,
 				network,
+				storesManager,
 				numberOfSlots,
 				highAvailabilityServices,
 				new TaskManagerMetricGroup(NoOpMetricRegistry.INSTANCE, connectionInfo.getHostname(), connectionInfo.getResourceID().getResourceIdString()));

@@ -25,7 +25,9 @@ import org.apache.flink.client.program.ClusterClient;
 import org.apache.flink.client.program.JobWithJars;
 import org.apache.flink.client.program.ProgramInvocationException;
 import org.apache.flink.client.program.StandaloneClusterClient;
+import org.apache.flink.client.program.rest.RestClusterClient;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.CoreOptions;
 import org.apache.flink.configuration.JobManagerOptions;
 import org.apache.flink.streaming.api.graph.StreamGraph;
 
@@ -199,14 +201,19 @@ public class RemoteStreamEnvironment extends StreamExecutionEnvironment {
 		configuration.setString(JobManagerOptions.ADDRESS, host);
 		configuration.setInteger(JobManagerOptions.PORT, port);
 
-		ClusterClient client;
+		final ClusterClient<?> client;
 		try {
-			client = new StandaloneClusterClient(configuration);
-			client.setPrintStatusDuringExecution(getConfig().isSysoutLoggingEnabled());
+			if (CoreOptions.OLD_MODE.equals(configuration.getString(CoreOptions.MODE))) {
+				client = new StandaloneClusterClient(configuration);
+			} else {
+				client = new RestClusterClient<>(configuration, "RemoteStreamEnvironment");
+			}
 		}
 		catch (Exception e) {
 			throw new ProgramInvocationException("Cannot establish connection to JobManager: " + e.getMessage(), e);
 		}
+
+		client.setPrintStatusDuringExecution(getConfig().isSysoutLoggingEnabled());
 
 		try {
 			return client.run(streamGraph, jarFiles, globalClasspaths, usercodeClassLoader).getJobExecutionResult();

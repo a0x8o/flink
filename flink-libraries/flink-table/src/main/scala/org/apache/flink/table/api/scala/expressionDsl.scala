@@ -214,6 +214,11 @@ trait ImplicitExpressionOperations {
   def varSamp = VarSamp(expr)
 
   /**
+    *  Returns multiset aggregate of a given expression.
+    */
+  def collect = Collect(expr)
+
+  /**
     * Converts a value to a given type.
     *
     * e.g. "42".cast(Types.INT) leads to 42.
@@ -380,6 +385,12 @@ trait ImplicitExpressionOperations {
     */
   def round(places: Expression) = Round(expr, places)
 
+  /**
+    * Returns a string representation of an integer numeric value in binary format. Returns null if
+    * numeric is null. E.g. "4" leads to "100", "12" leads to "1100".
+    */
+  def bin() = Bin(expr)
+
   // String operations
 
   /**
@@ -468,6 +479,22 @@ trait ImplicitExpressionOperations {
     * e.g. "a".position("bbbbba") leads to 6
     */
   def position(haystack: Expression) = Position(expr, haystack)
+
+  /**
+    * Returns a string left-padded with the given pad string to a length of len characters. If
+    * the string is longer than len, the return value is shortened to len characters.
+    *
+    * e.g. "hi".lpad(4, '??') returns "??hi",  "hi".lpad(1, '??') returns "h"
+    */
+  def lpad(len: Expression, pad: Expression) = Lpad(expr, len, pad)
+
+  /**
+    * Returns a string right-padded with the given pad string to a length of len characters. If
+    * the string is longer than len, the return value is shortened to len characters.
+    *
+    * e.g. "hi".rpad(4, '??') returns "hi??",  "hi".rpad(1, '??') returns "h"
+    */
+  def rpad(len: Expression, pad: Expression) = Rpad(expr, len, pad)
 
   /**
     * For windowing function to config over window
@@ -718,6 +745,29 @@ trait ImplicitExpressionOperations {
     * Flink's processing time.
     */
   def proctime = ProctimeAttribute(expr)
+
+  // Hash functions
+
+  /**
+    * Returns the MD5 hash of the string argument; null if string is null.
+    *
+    * @return string of 32 hexadecimal digits or null
+    */
+  def md5() = Md5(expr)
+
+  /**
+    * Returns the SHA-1 hash of the string argument; null if string is null.
+    *
+    * @return string of 40 hexadecimal digits or null
+    */
+  def sha1() = Sha1(expr)
+
+  /**
+    * Returns the SHA-256 hash of the string argument; null if string is null.
+    *
+    * @return string of 64 hexadecimal digits or null
+    */
+  def sha256() = Sha256(expr)
 }
 
 /**

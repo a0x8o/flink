@@ -22,6 +22,7 @@ import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.core.testutils.CheckedThread;
 
+import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -51,7 +52,7 @@ public class FileUtilsTest {
 	@Test
 	public void testDeletePathIfEmpty() throws IOException {
 		final FileSystem localFs = FileSystem.getLocalFileSystem();
-		
+
 		final File dir = tmp.newFolder();
 		assertTrue(dir.exists());
 
@@ -143,6 +144,7 @@ public class FileUtilsTest {
 		}
 	}
 
+	@Ignore
 	@Test
 	public void testDeleteDirectoryConcurrently() throws Exception {
 		final File parent = tmp.newFolder();

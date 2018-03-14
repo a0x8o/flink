@@ -25,7 +25,7 @@ under the License.
 	<parent>
 		<groupId>org.apache.flink</groupId>
 		<artifactId>flink-parent</artifactId>
-		<version>1.5-SNAPSHOT</version>
+		<version>1.6-SNAPSHOT</version>
 		<relativePath>..</relativePath>
 	</parent>
 
@@ -46,6 +46,16 @@ under the License.
 		<dependency>
 			<groupId>org.apache.flink</groupId>
 			<artifactId>flink-runtime_${scala.binary.version}</artifactId>
+			<version>${project.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.flink</groupId>
+			<artifactId>flink-yarn_${scala.binary.version}</artifactId>
+			<version>${project.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.flink</groupId>
+			<artifactId>flink-mesos_${scala.binary.version}</artifactId>
 			<version>${project.version}</version>
 		</dependency>
 
@@ -80,6 +90,14 @@ under the License.
 			<groupId>log4j</groupId>
 			<artifactId>log4j</artifactId>
 		</dependency>
+
+		<dependency>
+			<!-- Required because the surefire plugin tries to load the Flip6 category annotation -->
+			<groupId>org.apache.flink</groupId>
+			<artifactId>flink-test-utils-junit</artifactId>
+			<version>${project.version}</version>
+			<scope>test</scope>
+		</dependency>
 	</dependencies>
 
 	<build>
@@ -90,6 +108,23 @@ under the License.
 				<configuration>
 					<skip>true</skip>
 				</configuration>
+			</plugin>
+
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-enforcer-plugin</artifactId>
+				<executions>
+					<execution>
+						<!-- Not important for this module as we only access Flink classes-->
+						<id>dependency-convergence</id>
+						<goals>
+							<goal>enforce</goal>
+						</goals>
+						<configuration>
+							<skip>true</skip>
+						</configuration>
+					</execution>
+				</executions>
 			</plugin>
 		</plugins>
 	</build>
@@ -121,6 +156,51 @@ under the License.
 								<java classname="org.apache.flink.docs.rest.RestAPIDocGenerator" fork="true">
 									<classpath refid="maven.compile.classpath"/>
 									<arg value="${rootDir}/${generated.docs.dir}/"/>
+								</java>
+							</target>
+						</configuration>
+					</plugin>
+				</plugins>
+			</build>
+		</profile>
+		<profile>
+			<id>generate-config-docs</id>
+			<activation>
+				<property>
+					<name>generate-config-docs</name>
+				</property>
+			</activation>
+			<build>
+				<plugins>
+					<plugin>
+						<artifactId>maven-antrun-plugin</artifactId>
+						<version>1.7</version>
+						<executions>
+							<execution>
+								<phase>package</phase>
+								<goals>
+									<goal>run</goal>
+								</goals>
+							</execution>
+						</executions>
+						<configuration>
+							<target>
+								<mkdir dir="${rootDir}/${generated.docs.dir}"/>
+								<java classname="org.apache.flink.docs.configuration.ConfigOptionsDocGenerator" fork="true">
+									<classpath refid="maven.compile.classpath" />
+									<arg value="${rootDir}/${generated.docs.dir}/" />
+									<arg value="${rootDir}" />
+									<!--packages with configuration classes-->
+									<arg value="flink-core" />
+									<arg value="org.apache.flink.configuration" />
+									<arg value="flink-runtime" />
+									<arg value="org.apache.flink.runtime.io.network.netty" />
+									<arg value="flink-yarn" />
+									<arg value="org.apache.flink.yarn.configuration" />
+									<arg value="flink-mesos" />
+									<arg value="org.apache.flink.mesos.configuration" />
+									<arg value="flink-mesos" />
+									<arg value="org.apache.flink.mesos.runtime.clusterframework" />
 								</java>
 							</target>
 						</configuration>

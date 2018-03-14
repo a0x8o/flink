@@ -18,14 +18,16 @@
 
 package org.apache.flink.streaming.connectors.kafka;
 
+import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.common.serialization.DeserializationSchema;
 import org.apache.flink.api.java.typeutils.RowTypeInfo;
-import org.apache.flink.streaming.util.serialization.JsonRowDeserializationSchema;
+import org.apache.flink.formats.json.JsonRowDeserializationSchema;
 import org.apache.flink.table.api.TableSchema;
 import org.apache.flink.table.sources.DefinedFieldMapping;
 import org.apache.flink.table.sources.StreamTableSource;
 
 import java.util.Map;
+import java.util.Objects;
 import java.util.Properties;
 
 /**
@@ -36,6 +38,7 @@ import java.util.Properties;
  *
  * <p>The field names are used to parse the JSON file and so are the types.
  */
+@Internal
 public abstract class KafkaJsonTableSource extends KafkaTableSource implements DefinedFieldMapping {
 
 	private TableSchema jsonSchema;
@@ -81,7 +84,29 @@ public abstract class KafkaJsonTableSource extends KafkaTableSource implements D
 
 	@Override
 	public String explainSource() {
-		return "KafkaJSONTableSource";
+		return "KafkaJsonTableSource";
+	}
+
+	@Override
+	public boolean equals(Object o) {
+		if (this == o) {
+			return true;
+		}
+		if (!(o instanceof KafkaJsonTableSource)) {
+			return false;
+		}
+		if (!super.equals(o)) {
+			return false;
+		}
+		KafkaJsonTableSource that = (KafkaJsonTableSource) o;
+		return failOnMissingField == that.failOnMissingField &&
+			Objects.equals(jsonSchema, that.jsonSchema) &&
+			Objects.equals(fieldMapping, that.fieldMapping);
+	}
+
+	@Override
+	public int hashCode() {
+		return Objects.hash(super.hashCode(), jsonSchema, fieldMapping, failOnMissingField);
 	}
 
 	//////// SETTERS FOR OPTIONAL PARAMETERS
@@ -159,7 +184,8 @@ public abstract class KafkaJsonTableSource extends KafkaTableSource implements D
 		/**
 		 * Sets flag whether to fail if a field is missing or not.
 		 *
-		 * @param failOnMissingField If set to true, the TableSource fails if a missing fields.
+		 * @param failOnMissingField If set to true, the TableSource fails if there is a missing
+		 *                           field.
 		 *                           If set to false, a missing field is set to null.
 		 * @return The builder.
 		 */

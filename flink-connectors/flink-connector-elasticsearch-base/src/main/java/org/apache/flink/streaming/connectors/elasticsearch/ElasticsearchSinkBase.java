@@ -17,6 +17,7 @@
 
 package org.apache.flink.streaming.connectors.elasticsearch;
 
+import org.apache.flink.annotation.Internal;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.configuration.Configuration;
@@ -40,6 +41,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.Serializable;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -61,6 +63,7 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  *
  * @param <T> Type of the elements handled by this sink
  */
+@Internal
 public abstract class ElasticsearchSinkBase<T> extends RichSinkFunction<T> implements CheckpointedFunction {
 
 	private static final long serialVersionUID = -1007596293618451942L;
@@ -142,7 +145,7 @@ public abstract class ElasticsearchSinkBase<T> extends RichSinkFunction<T> imple
 	/** The user specified config map that we forward to Elasticsearch when we create the {@link Client}. */
 	private final Map<String, String> userConfig;
 
-	/** The function that is used to construct mulitple {@link ActionRequest ActionRequests} from each incoming element. */
+	/** The function that is used to construct multiple {@link ActionRequest ActionRequests} from each incoming element. */
 	private final ElasticsearchSinkFunction<T> elasticsearchSinkFunction;
 
 	/** User-provided handler for failed {@link ActionRequest ActionRequests}. */
@@ -213,6 +216,9 @@ public abstract class ElasticsearchSinkBase<T> extends RichSinkFunction<T> imple
 		// so that the resulting user config only contains configuration related to the Elasticsearch client.
 
 		checkNotNull(userConfig);
+
+		// copy config so we can remove entries without side-effects
+		userConfig = new HashMap<>(userConfig);
 
 		ParameterTool params = ParameterTool.fromMap(userConfig);
 

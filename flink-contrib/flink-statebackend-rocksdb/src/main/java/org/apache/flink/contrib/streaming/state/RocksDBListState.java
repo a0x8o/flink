@@ -60,6 +60,11 @@ public class RocksDBListState<K, N, V>
 	private final WriteOptions writeOptions;
 
 	/**
+	 * Separator of StringAppendTestOperator in RocksDB.
+	 */
+	private static final byte DELIMITER = ',';
+
+	/**
 	 * Creates a new {@code RocksDBListState}.
 	 *
 	 * @param namespaceSerializer The serializer for the namespace.
@@ -107,6 +112,10 @@ public class RocksDBListState<K, N, V>
 
 	@Override
 	public void add(V value) throws IOException {
+		if (value == null) {
+			return;
+		}
+
 		try {
 			writeCurrentKeyWithGroupAndNamespace();
 			byte[] key = keySerializationStream.toByteArray();
@@ -114,7 +123,6 @@ public class RocksDBListState<K, N, V>
 			DataOutputViewStreamWrapper out = new DataOutputViewStreamWrapper(keySerializationStream);
 			valueSerializer.serialize(value, out);
 			backend.db.merge(columnFamily, writeOptions, key, keySerializationStream.toByteArray());
-
 		} catch (Exception e) {
 			throw new RuntimeException("Error while adding data to RocksDB", e);
 		}
@@ -157,5 +165,62 @@ public class RocksDBListState<K, N, V>
 		catch (Exception e) {
 			throw new Exception("Error while merging state in RocksDB", e);
 		}
+	}
+
+	@Override
+	public void update(List<V> values) throws Exception {
+		clear();
+
+		if (values != null && !values.isEmpty()) {
+			try {
+				writeCurrentKeyWithGroupAndNamespace();
+				byte[] key = keySerializationStream.toByteArray();
+
+				byte[] premerge = getPreMergedValue(values);
+				if (premerge != null) {
+					backend.db.put(columnFamily, writeOptions, key, premerge);
+				} else {
+					throw new IOException("Failed pre-merge values in update()");
+				}
+			} catch (IOException | RocksDBException e) {
+				throw new RuntimeException("Error while updating data to RocksDB", e);
+			}
+		}
+	}
+
+	@Override
+	public void addAll(List<V> values) throws Exception {
+		if (values != null && !values.isEmpty()) {
+			try {
+				writeCurrentKeyWithGroupAndNamespace();
+				byte[] key = keySerializationStream.toByteArray();
+
+				byte[] premerge = getPreMergedValue(values);
+				if (premerge != null) {
+					backend.db.merge(columnFamily, writeOptions, key, premerge);
+				} else {
+					throw new IOException("Failed pre-merge values in addAll()");
+				}
+			} catch (IOException | RocksDBException e) {
+				throw new RuntimeException("Error while updating data to RocksDB", e);
+			}
+		}
+	}
+
+	private byte[] getPreMergedValue(List<V> values) throws IOException {
+		DataOutputViewStreamWrapper out = new DataOutputViewStreamWrapper(keySerializationStream);
+
+		keySerializationStream.reset();
+		boolean first = true;
+		for (V value : values) {
+			if (first) {
+				first = false;
+			} else {
+				keySerializationStream.write(DELIMITER);
+			}
+			valueSerializer.serialize(value, out);
+		}
+
+		return keySerializationStream.toByteArray();
 	}
 }

@@ -23,7 +23,7 @@ under the License.
 	<parent>
 		<groupId>org.apache.flink</groupId>
 		<artifactId>flink-parent</artifactId>
-		<version>1.5-SNAPSHOT</version>
+		<version>1.6-SNAPSHOT</version>
 		<relativePath>..</relativePath>
 	</parent>
 	
@@ -57,6 +57,7 @@ under the License.
 		<dependency>
 			<groupId>org.apache.flink</groupId>
 			<artifactId>flink-shaded-jackson</artifactId>
+			<scope>provided</scope>
 		</dependency>
 
 		<dependency>
@@ -88,7 +89,7 @@ under the License.
 		<dependency>
 			<groupId>com.netflix.fenzo</groupId>
 			<artifactId>fenzo-core</artifactId>
-			<version>0.9.3</version>
+			<version>0.10.1</version>
 			<exclusions>
 				<!-- exclude mesos here to override -->
 				<exclusion>
@@ -130,6 +131,11 @@ under the License.
 			<version>${project.version}</version>
 			<scope>test</scope>
 			<type>test-jar</type>
+		</dependency>
+
+		<dependency>
+			<groupId>org.apache.flink</groupId>
+			<artifactId>flink-test-utils-junit</artifactId>
 		</dependency>
 
 		<dependency>
@@ -262,11 +268,15 @@ under the License.
 							<goal>shade</goal>
 						</goals>
 						<configuration>
+							<shadeTestJar>false</shadeTestJar>
 							<artifactSet>
 								<includes combine.children="append">
 									<include>com.google.protobuf:protobuf-java</include>
 									<include>org.apache.mesos:mesos</include>
 									<include>com.netflix.fenzo:fenzo-core</include>
+									<include>com.fasterxml.jackson.core:jackson-core</include>
+									<include>com.fasterxml.jackson.core:jackson-annotations</include>
+									<include>com.fasterxml.jackson.core:jackson-databind</include>
 								</includes>
 							</artifactSet>
 							<relocations combine.children="append">

@@ -17,7 +17,6 @@
  */
 package org.apache.flink.table.expressions
 
-import scala.collection.JavaConversions._
 import org.apache.calcite.rex.RexNode
 import org.apache.calcite.sql.fun.SqlStdOperatorTable
 import org.apache.calcite.tools.RelBuilder
@@ -26,6 +25,8 @@ import org.apache.flink.api.common.typeinfo.{BasicTypeInfo, TypeInformation}
 import org.apache.flink.table.expressions.TrimMode.TrimMode
 import org.apache.flink.table.functions.sql.ScalarSqlFunctions
 import org.apache.flink.table.validate._
+
+import scala.collection.JavaConversions._
 
 /**
   * Returns the length of this `str`.
@@ -320,5 +321,39 @@ case class ConcatWs(separator: Expression, strings: Seq[Expression])
 
   override private[flink] def toRexNode(implicit relBuilder: RelBuilder): RexNode = {
     relBuilder.call(ScalarSqlFunctions.CONCAT_WS, children.map(_.toRexNode))
+  }
+}
+
+case class Lpad(text: Expression, len: Expression, pad: Expression)
+  extends Expression with InputTypeSpec {
+
+  override private[flink] def children: Seq[Expression] = Seq(text, len, pad)
+
+  override private[flink] def resultType: TypeInformation[_] = BasicTypeInfo.STRING_TYPE_INFO
+
+  override private[flink] def expectedTypes: Seq[TypeInformation[_]] =
+    Seq(BasicTypeInfo.STRING_TYPE_INFO, BasicTypeInfo.INT_TYPE_INFO, BasicTypeInfo.STRING_TYPE_INFO)
+
+  override def toString: String = s"($text).lpad($len, $pad)"
+
+  override private[flink] def toRexNode(implicit relBuilder: RelBuilder): RexNode = {
+    relBuilder.call(ScalarSqlFunctions.LPAD, children.map(_.toRexNode))
+  }
+}
+
+case class Rpad(text: Expression, len: Expression, pad: Expression)
+  extends Expression with InputTypeSpec {
+
+  override private[flink] def children: Seq[Expression] = Seq(text, len, pad)
+
+  override private[flink] def resultType: TypeInformation[_] = BasicTypeInfo.STRING_TYPE_INFO
+
+  override private[flink] def expectedTypes: Seq[TypeInformation[_]] =
+    Seq(BasicTypeInfo.STRING_TYPE_INFO, BasicTypeInfo.INT_TYPE_INFO, BasicTypeInfo.STRING_TYPE_INFO)
+
+  override def toString: String = s"($text).rpad($len, $pad)"
+
+  override private[flink] def toRexNode(implicit relBuilder: RelBuilder): RexNode = {
+    relBuilder.call(ScalarSqlFunctions.RPAD, children.map(_.toRexNode))
   }
 }

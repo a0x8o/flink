@@ -47,6 +47,7 @@ import org.apache.flink.runtime.clusterframework.ContaineredTaskManagerParameter
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
 import org.apache.flink.runtime.concurrent.FutureUtils;
+import org.apache.flink.runtime.entrypoint.ClusterInformation;
 import org.apache.flink.runtime.heartbeat.HeartbeatServices;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.metrics.MetricRegistry;
@@ -74,6 +75,8 @@ import org.apache.mesos.Scheduler;
 import org.apache.mesos.SchedulerDriver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import javax.annotation.Nullable;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -147,6 +150,7 @@ public class MesosResourceManager extends ResourceManager<RegisteredMesosWorkerN
 			SlotManager slotManager,
 			MetricRegistry metricRegistry,
 			JobLeaderIdService jobLeaderIdService,
+			ClusterInformation clusterInformation,
 			FatalErrorHandler fatalErrorHandler,
 			// Mesos specifics
 			Configuration flinkConfig,
@@ -164,6 +168,7 @@ public class MesosResourceManager extends ResourceManager<RegisteredMesosWorkerN
 			slotManager,
 			metricRegistry,
 			jobLeaderIdService,
+			clusterInformation,
 			fatalErrorHandler);
 
 		this.mesosServices = Preconditions.checkNotNull(mesosServices);
@@ -328,8 +333,7 @@ public class MesosResourceManager extends ResourceManager<RegisteredMesosWorkerN
 	}
 
 	@Override
-	public void postStop() throws Exception {
-		Exception exception = null;
+	public CompletableFuture<Void> postStop() {
 		FiniteDuration stopTimeout = new FiniteDuration(5L, TimeUnit.SECONDS);
 
 		CompletableFuture<Boolean> stopTaskMonitorFuture = stopActor(taskMonitor, stopTimeout);
@@ -350,28 +354,17 @@ public class MesosResourceManager extends ResourceManager<RegisteredMesosWorkerN
 			stopLaunchCoordinatorFuture,
 			stopReconciliationCoordinatorFuture);
 
-		// wait for the future to complete or to time out
-		try {
-			stopFuture.get();
-		} catch (Exception e) {
-			exception = e;
-		}
+		final CompletableFuture<Void> terminationFuture = super.postStop();
 
-		try {
-			super.postStop();
-		} catch (Exception e) {
-			exception = ExceptionUtils.firstOrSuppressed(e, exception);
-		}
-
-		if (exception != null) {
-			throw new ResourceManagerException("Could not properly shut down the ResourceManager.", exception);
-		}
+		return stopFuture.thenCombine(
+			terminationFuture,
+			(Void voidA, Void voidB) -> null);
 	}
 
 	@Override
 	protected void shutDownApplication(
 			ApplicationStatus finalStatus,
-			String optionalDiagnostics) throws ResourceManagerException {
+			@Nullable String optionalDiagnostics) throws ResourceManagerException {
 		LOG.info("Shutting down and unregistering as a Mesos framework.");
 
 		Exception exception = null;
@@ -661,6 +654,7 @@ public class MesosResourceManager extends ResourceManager<RegisteredMesosWorkerN
 		// create the specific TM parameters from the resource profile and some defaults
 		MesosTaskManagerParameters params = new MesosTaskManagerParameters(
 			resourceProfile.getCpuCores() < 1.0 ? taskManagerParameters.cpus() : resourceProfile.getCpuCores(),
+			taskManagerParameters.gpus(),
 			taskManagerParameters.containerType(),
 			taskManagerParameters.containerImageName(),
 			new ContaineredTaskManagerParameters(
@@ -670,6 +664,7 @@ public class MesosResourceManager extends ResourceManager<RegisteredMesosWorkerN
 				1,
 				new HashMap<>(taskManagerParameters.containeredParameters().taskManagerEnv())),
 			taskManagerParameters.containerVolumes(),
+			taskManagerParameters.dockerParameters(),
 			taskManagerParameters.constraints(),
 			taskManagerParameters.command(),
 			taskManagerParameters.bootstrapCommand(),

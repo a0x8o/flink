@@ -15,6 +15,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package org.apache.flink.runtime.executiongraph;
 
 import org.apache.flink.api.common.ArchivedExecutionConfig;
@@ -28,7 +29,6 @@ import org.apache.flink.util.SerializedValue;
 
 import javax.annotation.Nullable;
 
-import java.io.IOException;
 import java.util.Map;
 
 /**
@@ -50,7 +50,7 @@ public interface AccessExecutionGraph {
 	JobID getJobID();
 
 	/**
-	 * Returns the job name for thie execution graph.
+	 * Returns the job name for the execution graph.
 	 *
 	 * @return job name for this execution graph
 	 */
@@ -70,14 +70,15 @@ public interface AccessExecutionGraph {
 	 * @return failure causing exception, or null
 	 */
 	@Nullable
-	ErrorInfo getFailureCause();
+	ErrorInfo getFailureInfo();
 
 	/**
 	 * Returns the job vertex for the given {@link JobVertexID}.
 	 *
 	 * @param id id of job vertex to be returned
-	 * @return job vertex for the given id, or null
+	 * @return job vertex for the given id, or {@code null}
 	 */
+	@Nullable
 	AccessExecutionJobVertex getJobVertex(JobVertexID id);
 
 	/**
@@ -90,7 +91,7 @@ public interface AccessExecutionGraph {
 	/**
 	 * Returns an iterable containing all job vertices for this execution graph in the order they were created.
 	 *
-	 * @return iterable containing all job vertices for this execution graph in the order they were creater
+	 * @return iterable containing all job vertices for this execution graph in the order they were created
 	 */
 	Iterable<? extends AccessExecutionJobVertex> getVerticesTopologically();
 
@@ -102,7 +103,7 @@ public interface AccessExecutionGraph {
 	Iterable<? extends AccessExecutionVertex> getAllExecutionVertices();
 
 	/**
-	 * Returns the timestamp for the given {@link JobStatus}
+	 * Returns the timestamp for the given {@link JobStatus}.
 	 *
 	 * @param status status for which the timestamp should be returned
 	 * @return timestamp for the given job status
@@ -153,9 +154,8 @@ public interface AccessExecutionGraph {
 	 * Returns a map containing the serialized values of user-defined accumulators.
 	 *
 	 * @return map containing serialized values of user-defined accumulators
-	 * @throws IOException indicates that the serialization has failed
 	 */
-	Map<String, SerializedValue<Object>> getAccumulatorsSerialized() throws IOException;
+	Map<String, SerializedValue<Object>> getAccumulatorsSerialized();
 
 	/**
 	 * Returns whether this execution graph was archived.

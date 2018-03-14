@@ -23,6 +23,8 @@ import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.concurrent.Executors;
 import org.apache.flink.runtime.dispatcher.DispatcherGateway;
 import org.apache.flink.runtime.dispatcher.DispatcherRestEndpoint;
+import org.apache.flink.runtime.leaderelection.LeaderContender;
+import org.apache.flink.runtime.leaderelection.LeaderElectionService;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerGateway;
 import org.apache.flink.runtime.rest.RestServerEndpoint;
 import org.apache.flink.runtime.rest.RestServerEndpointConfiguration;
@@ -33,6 +35,7 @@ import org.apache.flink.runtime.rest.messages.EmptyResponseBody;
 import org.apache.flink.runtime.rest.messages.MessageHeaders;
 import org.apache.flink.runtime.rest.messages.MessagePathParameter;
 import org.apache.flink.runtime.rest.messages.MessageQueryParameter;
+import org.apache.flink.runtime.rpc.FatalErrorHandler;
 import org.apache.flink.runtime.webmonitor.retriever.GatewayRetriever;
 import org.apache.flink.runtime.webmonitor.retriever.MetricQueryServiceRetriever;
 import org.apache.flink.util.ConfigurationException;
@@ -54,6 +57,7 @@ import java.nio.file.Paths;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.stream.Collectors;
@@ -116,9 +120,7 @@ public class RestAPIDocGenerator {
 		List<MessageHeaders> specs = restEndpoint.getSpecs();
 		specs.forEach(spec -> html.append(createHtmlEntry(spec)));
 
-		if (Files.exists(outputFile)) {
-			Files.delete(outputFile);
-		}
+		Files.deleteIfExists(outputFile);
 		Files.write(outputFile, html.toString().getBytes(StandardCharsets.UTF_8));
 	}
 
@@ -284,13 +286,55 @@ public class RestAPIDocGenerator {
 			metricQueryServiceRetriever = path -> null;
 		}
 
-		private DocumentingDispatcherRestEndpoint() {
-			super(restConfig, dispatcherGatewayRetriever, config, handlerConfig, resourceManagerGatewayRetriever, executor, metricQueryServiceRetriever);
+		private DocumentingDispatcherRestEndpoint() throws IOException {
+			super(
+				restConfig,
+				dispatcherGatewayRetriever,
+				config,
+				handlerConfig,
+				resourceManagerGatewayRetriever,
+				NoOpTransientBlobService.INSTANCE,
+				executor,
+				metricQueryServiceRetriever,
+				NoOpElectionService.INSTANCE,
+				NoOpFatalErrorHandler.INSTANCE);
 		}
 
 		@Override
 		public List<Tuple2<RestHandlerSpecification, ChannelInboundHandler>> initializeHandlers(CompletableFuture<String> restAddressFuture) {
 			return super.initializeHandlers(restAddressFuture);
+		}
+
+		private enum NoOpElectionService implements LeaderElectionService {
+			INSTANCE;
+			@Override
+			public void start(final LeaderContender contender) throws Exception {
+
+			}
+
+			@Override
+			public void stop() throws Exception {
+
+			}
+
+			@Override
+			public void confirmLeaderSessionID(final UUID leaderSessionID) {
+
+			}
+
+			@Override
+			public boolean hasLeadership() {
+				return false;
+			}
+		}
+
+		private enum NoOpFatalErrorHandler implements FatalErrorHandler {
+			INSTANCE;
+
+			@Override
+			public void onFatalError(final Throwable exception) {
+
+			}
 		}
 	}
 

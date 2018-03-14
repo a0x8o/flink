@@ -19,16 +19,19 @@
 package org.apache.flink.runtime.rest.messages;
 
 import org.apache.flink.runtime.rest.util.RestMapperUtils;
+import org.apache.flink.testutils.category.Flip6;
 import org.apache.flink.util.TestLogger;
 
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.databind.ObjectMapper;
 
 import org.junit.Assert;
 import org.junit.Test;
+import org.junit.experimental.categories.Category;
 
 /**
  * Test base for verifying that marshalling / unmarshalling REST {@link RequestBody}s work properly.
  */
+@Category(Flip6.class)
 public abstract class RestRequestMarshallingTestBase<R extends RequestBody> extends TestLogger {
 
 	/**
@@ -56,7 +59,17 @@ public abstract class RestRequestMarshallingTestBase<R extends RequestBody> exte
 		final String marshalled = objectMapper.writeValueAsString(expected);
 
 		final R unmarshalled = objectMapper.readValue(marshalled, getTestRequestClass());
-		Assert.assertEquals(expected, unmarshalled);
+		assertOriginalEqualsToUnmarshalled(expected, unmarshalled);
+	}
+
+	/**
+	 * Asserts that two objects are equal. If they are not, an {@link AssertionError} is thrown.
+	 *
+	 * @param expected expected value
+	 * @param actual   the value to check against expected
+	 */
+	protected void assertOriginalEqualsToUnmarshalled(R expected, R actual) {
+		Assert.assertEquals(expected, actual);
 	}
 
 }

@@ -24,8 +24,8 @@ import org.apache.flink.runtime.io.disk.iomanager.IOManagerAsync;
 import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
 import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
 import org.apache.flink.runtime.io.network.buffer.BufferProvider;
+import org.apache.flink.runtime.io.network.util.TestBufferFactory;
 import org.apache.flink.runtime.io.network.util.TestConsumerCallback;
-import org.apache.flink.runtime.io.network.util.TestInfiniteBufferProvider;
 import org.apache.flink.runtime.io.network.util.TestPooledBufferProvider;
 import org.apache.flink.runtime.io.network.util.TestSubpartitionConsumer;
 
@@ -44,12 +44,13 @@ import java.util.concurrent.TimeoutException;
 
 import static org.mockito.Mockito.mock;
 
+/**
+ * Tests for {@link SpillableSubpartitionView}, in addition to indirect tests via {@link
+ * SpillableSubpartitionTest}.
+ */
 public class SpilledSubpartitionViewTest {
 
 	private static final IOManager IO_MANAGER = new IOManagerAsync();
-
-	private static final TestInfiniteBufferProvider writerBufferPool =
-		new TestInfiniteBufferProvider();
 
 	@AfterClass
 	public static void shutdown() {
@@ -62,7 +63,7 @@ public class SpilledSubpartitionViewTest {
 		final int numberOfBuffersToWrite = 512;
 
 		// Setup
-		final BufferFileWriter writer = createWriterAndWriteBuffers(IO_MANAGER, writerBufferPool, numberOfBuffersToWrite);
+		final BufferFileWriter writer = createWriterAndWriteBuffers(numberOfBuffersToWrite);
 
 		writer.close();
 
@@ -72,7 +73,7 @@ public class SpilledSubpartitionViewTest {
 			false, new TestConsumerCallback.RecyclingCallback());
 
 		SpilledSubpartitionView view = new SpilledSubpartitionView(
-			mock(ResultSubpartition.class),
+			mock(SpillableSubpartition.class),
 			viewBufferPool.getMemorySegmentSize(),
 			writer,
 			numberOfBuffersToWrite + 1, // +1 for end-of-partition
@@ -90,7 +91,7 @@ public class SpilledSubpartitionViewTest {
 		final int numberOfBuffersToWrite = 512;
 
 		// Setup
-		final BufferFileWriter writer = createWriterAndWriteBuffers(IO_MANAGER, writerBufferPool, numberOfBuffersToWrite);
+		final BufferFileWriter writer = createWriterAndWriteBuffers(numberOfBuffersToWrite);
 
 		writer.close();
 
@@ -98,7 +99,7 @@ public class SpilledSubpartitionViewTest {
 			false, new TestConsumerCallback.RecyclingCallback());
 
 		SpilledSubpartitionView view = new SpilledSubpartitionView(
-			mock(ResultSubpartition.class),
+			mock(SpillableSubpartition.class),
 			32 * 1024,
 			writer,
 			numberOfBuffersToWrite + 1,
@@ -130,8 +131,8 @@ public class SpilledSubpartitionViewTest {
 
 			// Setup
 			writers = new BufferFileWriter[]{
-				createWriterAndWriteBuffers(IO_MANAGER, writerBufferPool, 512),
-				createWriterAndWriteBuffers(IO_MANAGER, writerBufferPool, 512)
+				createWriterAndWriteBuffers(512),
+				createWriterAndWriteBuffers(512)
 			};
 
 			readers = new ResultSubpartitionView[writers.length];
@@ -139,7 +140,7 @@ public class SpilledSubpartitionViewTest {
 
 			BufferProvider inputBuffers = new TestPooledBufferProvider(2);
 
-			ResultSubpartition parent = mock(ResultSubpartition.class);
+			SpillableSubpartition parent = mock(SpillableSubpartition.class);
 
 			// Wait for writers to finish
 			for (BufferFileWriter writer : writers) {
@@ -207,15 +208,12 @@ public class SpilledSubpartitionViewTest {
 	 *
 	 * <p> Call {@link BufferFileWriter#close()} to ensure that all buffers have been written.
 	 */
-	static BufferFileWriter createWriterAndWriteBuffers(
-		IOManager ioManager,
-		BufferProvider bufferProvider,
-		int numberOfBuffers) throws IOException {
+	private static BufferFileWriter createWriterAndWriteBuffers(int numberOfBuffers) throws IOException {
 
-		final BufferFileWriter writer = ioManager.createBufferFileWriter(ioManager.createChannel());
+		final BufferFileWriter writer = IO_MANAGER.createBufferFileWriter(IO_MANAGER.createChannel());
 
 		for (int i = 0; i < numberOfBuffers; i++) {
-			writer.writeBlock(bufferProvider.requestBuffer());
+			writer.writeBlock(TestBufferFactory.createBuffer(TestBufferFactory.BUFFER_SIZE));
 		}
 
 		writer.writeBlock(EventSerializer.toBuffer(EndOfPartitionEvent.INSTANCE));

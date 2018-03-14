@@ -22,6 +22,7 @@ import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.operators.testutils.DummyEnvironment;
+import org.apache.flink.runtime.state.TestTaskStateManager;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.sink.DiscardingSink;
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
@@ -57,8 +58,11 @@ public class CheckpointExceptionHandlerConfigurationTest extends TestLogger {
 	private void testConfigForwarding(boolean failOnException) throws Exception {
 
 		final boolean expectedHandlerFlag = failOnException;
-		DummyEnvironment environment = new DummyEnvironment("test", 1, 0);
+
+		final DummyEnvironment environment = new DummyEnvironment("test", 1, 0);
+		environment.setTaskStateManager(new TestTaskStateManager());
 		environment.getExecutionConfig().setFailTaskOnCheckpointError(expectedHandlerFlag);
+
 		final CheckpointExceptionHandlerFactory inspectingFactory = new CheckpointExceptionHandlerFactory() {
 
 			@Override
@@ -71,26 +75,18 @@ public class CheckpointExceptionHandlerConfigurationTest extends TestLogger {
 			}
 		};
 
-		StreamTask streamTask = new StreamTask() {
+		StreamTask streamTask = new StreamTask(environment, null) {
 			@Override
-			protected void init() throws Exception {
-
-			}
+			protected void init() throws Exception {}
 
 			@Override
-			protected void run() throws Exception {
-
-			}
+			protected void run() throws Exception {}
 
 			@Override
-			protected void cleanup() throws Exception {
-
-			}
+			protected void cleanup() throws Exception {}
 
 			@Override
-			protected void cancelTask() throws Exception {
-
-			}
+			protected void cancelTask() throws Exception {}
 
 			@Override
 			protected CheckpointExceptionHandlerFactory createCheckpointExceptionHandlerFactory() {
@@ -98,7 +94,6 @@ public class CheckpointExceptionHandlerConfigurationTest extends TestLogger {
 			}
 		};
 
-		streamTask.setEnvironment(environment);
 		streamTask.invoke();
 	}
 

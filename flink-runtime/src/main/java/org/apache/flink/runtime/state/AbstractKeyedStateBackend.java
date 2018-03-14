@@ -51,7 +51,9 @@ import org.apache.flink.util.Preconditions;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.util.Collection;
 import java.util.HashMap;
+import java.util.stream.Stream;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
@@ -61,8 +63,11 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  *
  * @param <K> Type of the key by which state is keyed.
  */
-public abstract class AbstractKeyedStateBackend<K>
-		implements KeyedStateBackend<K>, Snapshotable<KeyedStateHandle>, Closeable, CheckpointListener {
+public abstract class AbstractKeyedStateBackend<K> implements
+	KeyedStateBackend<K>,
+	Snapshotable<SnapshotResult<KeyedStateHandle>, Collection<KeyedStateHandle>>,
+	Closeable,
+	CheckpointListener {
 
 	/** {@link TypeSerializer} for our key. */
 	protected final TypeSerializer<K> keySerializer;
@@ -98,9 +103,7 @@ public abstract class AbstractKeyedStateBackend<K>
 
 	private final ExecutionConfig executionConfig;
 
-	/**
-	 * Decoratores the input and output streams to write key-groups compressed.
-	 */
+	/** Decorates the input and output streams to write key-groups compressed. */
 	protected final StreamCompressionDecorator keyGroupCompressionDecorator;
 
 	public AbstractKeyedStateBackend(
@@ -111,7 +114,7 @@ public abstract class AbstractKeyedStateBackend<K>
 		KeyGroupRange keyGroupRange,
 		ExecutionConfig executionConfig) {
 
-		this.kvStateRegistry = kvStateRegistry; //Preconditions.checkNotNull(kvStateRegistry);
+		this.kvStateRegistry = kvStateRegistry;
 		this.keySerializer = Preconditions.checkNotNull(keySerializer);
 		this.numberOfKeyGroups = Preconditions.checkNotNull(numberOfKeyGroups);
 		this.userCodeClassLoader = Preconditions.checkNotNull(userCodeClassLoader);
@@ -138,7 +141,7 @@ public abstract class AbstractKeyedStateBackend<K>
 	@Override
 	public void dispose() {
 
-		IOUtils.closeQuietly(this);
+		IOUtils.closeQuietly(cancelStreamRegistry);
 
 		if (kvStateRegistry != null) {
 			kvStateRegistry.unregisterAll();
@@ -279,6 +282,38 @@ public abstract class AbstractKeyedStateBackend<K>
 	@Override
 	public KeyGroupRange getKeyGroupRange() {
 		return keyGroupRange;
+	}
+
+	/**
+	 * @see KeyedStateBackend
+	 */
+	@Override
+	public <N, S extends State, T> void applyToAllKeys(
+			final N namespace,
+			final TypeSerializer<N> namespaceSerializer,
+			final StateDescriptor<S, T> stateDescriptor,
+			final KeyedStateFunction<K, S> function) throws Exception {
+
+		try (Stream<K> keyStream = getKeys(stateDescriptor.getName(), namespace)) {
+			keyStream.forEach((K key) -> {
+				setCurrentKey(key);
+				try {
+					function.process(
+						key,
+						getPartitionedState(
+							namespace,
+							namespaceSerializer,
+							stateDescriptor)
+					);
+				} catch (Throwable e) {
+					// we wrap the checked exception in an unchecked
+					// one and catch it (and re-throw it) later.
+					throw new RuntimeException(e);
+				}
+			});
+		} catch (RuntimeException e) {
+			throw e;
+		}
 	}
 
 	/**

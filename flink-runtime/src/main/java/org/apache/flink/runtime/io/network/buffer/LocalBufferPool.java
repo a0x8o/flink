@@ -19,6 +19,7 @@
 package org.apache.flink.runtime.io.network.buffer;
 
 import org.apache.flink.core.memory.MemorySegment;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -179,7 +180,7 @@ class LocalBufferPool implements BufferPool {
 	@Override
 	public Buffer requestBuffer() throws IOException {
 		try {
-			return requestBuffer(false);
+			return toBuffer(requestMemorySegment(false));
 		}
 		catch (InterruptedException e) {
 			throw new IOException(e);
@@ -188,10 +189,29 @@ class LocalBufferPool implements BufferPool {
 
 	@Override
 	public Buffer requestBufferBlocking() throws IOException, InterruptedException {
-		return requestBuffer(true);
+		return toBuffer(requestMemorySegment(true));
 	}
 
-	private Buffer requestBuffer(boolean isBlocking) throws InterruptedException, IOException {
+	@Override
+	public BufferBuilder requestBufferBuilderBlocking() throws IOException, InterruptedException {
+		return toBufferBuilder(requestMemorySegment(true));
+	}
+
+	private Buffer toBuffer(MemorySegment memorySegment) {
+		if (memorySegment == null) {
+			return null;
+		}
+		return new NetworkBuffer(memorySegment, this);
+	}
+
+	private BufferBuilder toBufferBuilder(MemorySegment memorySegment) {
+		if (memorySegment == null) {
+			return null;
+		}
+		return new BufferBuilder(memorySegment, this);
+	}
+
+	private MemorySegment requestMemorySegment(boolean isBlocking) throws InterruptedException, IOException {
 		synchronized (availableMemorySegments) {
 			returnExcessMemorySegments();
 
@@ -226,7 +246,7 @@ class LocalBufferPool implements BufferPool {
 				}
 			}
 
-			return new Buffer(availableMemorySegments.poll(), this);
+			return availableMemorySegments.poll();
 		}
 	}
 
@@ -245,7 +265,7 @@ class LocalBufferPool implements BufferPool {
 				}
 				else {
 					try {
-						boolean needMoreBuffers = listener.notifyBufferAvailable(new Buffer(segment, this));
+						boolean needMoreBuffers = listener.notifyBufferAvailable(new NetworkBuffer(segment, this));
 						if (needMoreBuffers) {
 							registeredListeners.add(listener);
 						}

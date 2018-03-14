@@ -24,6 +24,7 @@ import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.akka.AkkaJobManagerGateway;
 import org.apache.flink.runtime.akka.AkkaUtils;
 import org.apache.flink.runtime.client.JobClient;
+import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.executiongraph.ExecutionGraph;
 import org.apache.flink.runtime.executiongraph.ExecutionJobVertex;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
@@ -31,6 +32,7 @@ import org.apache.flink.runtime.highavailability.HighAvailabilityServicesUtils;
 import org.apache.flink.runtime.instance.ActorGateway;
 import org.apache.flink.runtime.instance.AkkaActorGateway;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
+import org.apache.flink.runtime.io.network.buffer.BufferBuilder;
 import org.apache.flink.runtime.io.network.buffer.BufferPool;
 import org.apache.flink.runtime.io.network.buffer.NetworkBufferPool;
 import org.apache.flink.runtime.jobgraph.JobGraph;
@@ -181,6 +183,7 @@ public class BackPressureStatsTrackerITCase extends TestLogger {
 								coordinator,
 								100 * 1000,
 								20,
+								Integer.MAX_VALUE,
 								Time.milliseconds(10L));
 
 							int numAttempts = 10;
@@ -218,7 +221,7 @@ public class BackPressureStatsTrackerITCase extends TestLogger {
 							// 2) Release all buffers and let the tasks grab one
 							//
 							for (Buffer buf : buffers) {
-								buf.recycle();
+								buf.recycleBuffer();
 								Assert.assertTrue(buf.isRecycled());
 							}
 
@@ -312,12 +315,16 @@ public class BackPressureStatsTrackerITCase extends TestLogger {
 	 */
 	public static class BackPressuredTask extends AbstractInvokable {
 
+		public BackPressuredTask(Environment environment) {
+			super(environment);
+		}
+
 		@Override
 		public void invoke() throws Exception {
 			while (true) {
-				Buffer buffer = testBufferPool.requestBufferBlocking();
+				final BufferBuilder bufferBuilder = testBufferPool.requestBufferBuilderBlocking();
 				// Got a buffer, yay!
-				buffer.recycle();
+				bufferBuilder.build().recycleBuffer();
 
 				new CountDownLatch(1).await();
 			}

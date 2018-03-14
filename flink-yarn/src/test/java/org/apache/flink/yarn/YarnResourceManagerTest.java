@@ -28,6 +28,7 @@ import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
 import org.apache.flink.runtime.clusterframework.types.SlotID;
 import org.apache.flink.runtime.concurrent.ScheduledExecutor;
 import org.apache.flink.runtime.concurrent.ScheduledExecutorServiceAdapter;
+import org.apache.flink.runtime.entrypoint.ClusterInformation;
 import org.apache.flink.runtime.heartbeat.HeartbeatServices;
 import org.apache.flink.runtime.heartbeat.TestingHeartbeatServices;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
@@ -152,6 +153,7 @@ public class YarnResourceManagerTest extends TestLogger {
 				SlotManager slotManager,
 				MetricRegistry metricRegistry,
 				JobLeaderIdService jobLeaderIdService,
+				ClusterInformation clusterInformation,
 				FatalErrorHandler fatalErrorHandler,
 				@Nullable String webInterfaceUrl,
 				AMRMClientAsync<AMRMClient.ContainerRequest> mockResourceManagerClient,
@@ -168,6 +170,7 @@ public class YarnResourceManagerTest extends TestLogger {
 				slotManager,
 				metricRegistry,
 				jobLeaderIdService,
+				clusterInformation,
 				fatalErrorHandler,
 				webInterfaceUrl);
 			this.mockNMClient = mockNMClient;
@@ -249,6 +252,7 @@ public class YarnResourceManagerTest extends TestLogger {
 							rmServices.slotManager,
 							rmServices.metricRegistry,
 							rmServices.jobLeaderIdService,
+							new ClusterInformation("localhost", 1234),
 							fatalErrorHandler,
 							null,
 							mockResourceManagerClient,
@@ -304,7 +308,7 @@ public class YarnResourceManagerTest extends TestLogger {
 		 * Stop the Akka actor system.
 		 */
 		public void stopResourceManager() throws Exception {
-			rpcService.stopService();
+			rpcService.stopService().get();
 		}
 	}
 
@@ -347,7 +351,7 @@ public class YarnResourceManagerTest extends TestLogger {
 			final SlotReport slotReport = new SlotReport(
 				new SlotStatus(
 					new SlotID(taskManagerResourceId, 1),
-					new ResourceProfile(10, 1, 1, 1, Collections.emptyMap())));
+					new ResourceProfile(10, 1, 1, 1, 0, Collections.emptyMap())));
 
 			CompletableFuture<Integer> numberRegisteredSlotsFuture = rmGateway
 				.registerTaskExecutor(

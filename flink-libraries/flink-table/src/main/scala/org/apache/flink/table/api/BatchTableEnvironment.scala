@@ -86,17 +86,20 @@ abstract class BatchTableEnvironment(
   }
 
   /** Returns a unique table name according to the internal naming pattern. */
-  protected def createUniqueTableName(): String = "_DataSetTable_" + nameCntr.getAndIncrement()
+  override protected def createUniqueTableName(): String =
+    "_DataSetTable_" + nameCntr.getAndIncrement()
 
   /**
-    * Registers an external [[BatchTableSource]] in this [[TableEnvironment]]'s catalog.
-    * Registered tables can be referenced in SQL queries.
+    * Registers an internal [[BatchTableSource]] in this [[TableEnvironment]]'s catalog without
+    * name checking. Registered tables can be referenced in SQL queries.
     *
     * @param name        The name under which the [[TableSource]] is registered.
     * @param tableSource The [[TableSource]] to register.
     */
-  override def registerTableSource(name: String, tableSource: TableSource[_]): Unit = {
-    checkValidTableName(name)
+  override protected def registerTableSourceInternal(
+      name: String,
+      tableSource: TableSource[_])
+    : Unit = {
 
     tableSource match {
       case batchTableSource: BatchTableSource[_] =>
@@ -106,6 +109,17 @@ abstract class BatchTableEnvironment(
             "BatchTableEnvironment")
     }
   }
+
+// TODO expose this once we have enough table source factories that can deal with it
+//  /**
+//    * Creates a table from a descriptor that describes the source connector, source encoding,
+//    * the resulting table schema, and other properties.
+//    *
+//    * @param connectorDescriptor connector descriptor describing the source of the table
+//    */
+//  def from(connectorDescriptor: ConnectorDescriptor): BatchTableSourceDescriptor = {
+//    new BatchTableSourceDescriptor(this, connectorDescriptor)
+//  }
 
   /**
     * Registers an external [[TableSink]] with given field names and types in this
@@ -290,8 +304,10 @@ abstract class BatchTableEnvironment(
   protected def registerDataSetInternal[T](
       name: String, dataSet: DataSet[T], fields: Array[Expression]): Unit = {
 
+    val inputType = dataSet.getType
+
     val (fieldNames, fieldIndexes) = getFieldInfo[T](
-      dataSet.getType,
+      inputType,
       fields)
 
     if (fields.exists(_.isInstanceOf[TimeAttribute])) {

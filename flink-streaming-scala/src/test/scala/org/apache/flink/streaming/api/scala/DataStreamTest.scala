@@ -21,23 +21,30 @@ package org.apache.flink.streaming.api.scala
 import java.lang
 
 import org.apache.flink.api.common.functions._
-import org.apache.flink.api.common.operators.ResourceSpec
 import org.apache.flink.api.java.typeutils.TypeExtractor
 import org.apache.flink.streaming.api.collector.selector.OutputSelector
 import org.apache.flink.streaming.api.functions.ProcessFunction
 import org.apache.flink.streaming.api.functions.co.CoMapFunction
+import org.apache.flink.streaming.api.functions.sink.DiscardingSink
 import org.apache.flink.streaming.api.graph.{StreamEdge, StreamGraph}
 import org.apache.flink.streaming.api.operators.{AbstractUdfStreamOperator, KeyedProcessOperator, ProcessOperator, StreamOperator}
 import org.apache.flink.streaming.api.windowing.assigners.GlobalWindows
+import org.apache.flink.streaming.api.windowing.time.Time
 import org.apache.flink.streaming.api.windowing.triggers.{CountTrigger, PurgingTrigger}
 import org.apache.flink.streaming.api.windowing.windows.GlobalWindow
 import org.apache.flink.streaming.runtime.partitioner._
-import org.apache.flink.streaming.util.StreamingMultipleProgramsTestBase
+import org.apache.flink.test.util.AbstractTestBase
 import org.apache.flink.util.Collector
 import org.junit.Assert._
-import org.junit.Test
+import org.junit.rules.ExpectedException
+import org.junit.{Rule, Test}
 
-class DataStreamTest extends StreamingMultipleProgramsTestBase {
+class DataStreamTest extends AbstractTestBase {
+
+  private val expectedException = ExpectedException.none()
+
+  @Rule
+  def thrownException = expectedException
 
   @Test
   def testNaming(): Unit = {
@@ -242,7 +249,8 @@ class DataStreamTest extends StreamingMultipleProgramsTestBase {
    */
   @Test
   def testParallelism() {
-    val env: StreamExecutionEnvironment = StreamExecutionEnvironment.createLocalEnvironment(10)
+    val env: StreamExecutionEnvironment = StreamExecutionEnvironment.getExecutionEnvironment
+    val parallelism = env.getParallelism
 
     val src = env.fromElements(new Tuple2[Long, Long](0L, 0L))
     val map = src.map(x => (0L, 0L))
@@ -255,9 +263,12 @@ class DataStreamTest extends StreamingMultipleProgramsTestBase {
     val sink = map.addSink(x => {})
 
     assert(1 == env.getStreamGraph.getStreamNode(src.getId).getParallelism)
-    assert(10 == env.getStreamGraph.getStreamNode(map.getId).getParallelism)
+    assert(parallelism == env.getStreamGraph.getStreamNode(map.getId).getParallelism)
     assert(1 == env.getStreamGraph.getStreamNode(windowed.getId).getParallelism)
-    assert(10 == env.getStreamGraph.getStreamNode(sink.getTransformation.getId).getParallelism)
+    assert(parallelism == env
+      .getStreamGraph
+      .getStreamNode(sink.getTransformation.getId)
+      .getParallelism)
 
     try {
       src.setParallelism(3)
@@ -268,18 +279,23 @@ class DataStreamTest extends StreamingMultipleProgramsTestBase {
       }
     }
 
-    env.setParallelism(7)
+    val newParallelism = parallelism - 1
+
+    env.setParallelism(newParallelism)
     // the parallelism does not change since some windowing code takes the parallelism from
     // input operations and that cannot change dynamically
     assert(1 == env.getStreamGraph.getStreamNode(src.getId).getParallelism)
-    assert(10 == env.getStreamGraph.getStreamNode(map.getId).getParallelism)
+    assert(parallelism == env.getStreamGraph.getStreamNode(map.getId).getParallelism)
     assert(1 == env.getStreamGraph.getStreamNode(windowed.getId).getParallelism)
-    assert(10 == env.getStreamGraph.getStreamNode(sink.getTransformation.getId).getParallelism)
+    assert(parallelism == env
+      .getStreamGraph
+      .getStreamNode(sink.getTransformation.getId)
+      .getParallelism)
 
     val parallelSource = env.generateSequence(0, 0)
     parallelSource.print()
 
-    assert(7 == env.getStreamGraph.getStreamNode(parallelSource.getId).getParallelism)
+    assert(newParallelism == env.getStreamGraph.getStreamNode(parallelSource.getId).getParallelism)
 
     parallelSource.setParallelism(3)
     assert(3 == env.getStreamGraph.getStreamNode(parallelSource.getId).getParallelism)
@@ -289,6 +305,26 @@ class DataStreamTest extends StreamingMultipleProgramsTestBase {
 
     sink.setParallelism(4)
     assert(4 == env.getStreamGraph.getStreamNode(sink.getTransformation.getId).getParallelism)
+  }
+
+
+  /**
+    * Tests setting the parallelism after a partitioning operation (e.g., broadcast, rescale)
+    * should fail.
+    */
+  @Test
+  def testParallelismFailAfterPartitioning(): Unit = {
+    val env: StreamExecutionEnvironment = StreamExecutionEnvironment.getExecutionEnvironment
+
+    val src = env.fromElements(new Tuple2[Long, Long](0L, 0L))
+    val map = src.map(_ => (0L, 0L))
+
+    // This could be replaced with other partitioning operations (e.g., rescale, shuffle, forward),
+    // which trigger the setConnectionType() method.
+    val broadcastStream = map.broadcast
+    thrownException.expect(classOf[UnsupportedOperationException])
+    thrownException.expectMessage("cannot set the parallelism")
+    broadcastStream.setParallelism(1)
   }
 
   /**

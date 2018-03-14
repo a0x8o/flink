@@ -18,6 +18,7 @@
 
 package org.apache.flink.runtime.rpc.akka;
 
+import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.rpc.MainThreadValidatorUtil;
 import org.apache.flink.runtime.rpc.RpcEndpoint;
 import org.apache.flink.runtime.rpc.RpcGateway;
@@ -53,14 +54,14 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
 /**
  * Akka rpc actor which receives {@link LocalRpcInvocation}, {@link RunAsync} and {@link CallAsync}
  * {@link Processing} messages.
- * <p>
- * The {@link LocalRpcInvocation} designates a rpc and is dispatched to the given {@link RpcEndpoint}
+ *
+ * <p>The {@link LocalRpcInvocation} designates a rpc and is dispatched to the given {@link RpcEndpoint}
  * instance.
- * <p>
- * The {@link RunAsync} and {@link CallAsync} messages contain executable code which is executed
+ *
+ * <p>The {@link RunAsync} and {@link CallAsync} messages contain executable code which is executed
  * in the context of the actor thread.
- * <p>
- * The {@link Processing} message controls the processing behaviour of the akka rpc actor. A
+ *
+ * <p>The {@link Processing} message controls the processing behaviour of the akka rpc actor. A
  * {@link Processing#START} starts processing incoming messages. A {@link Processing#STOP} message
  * stops processing messages. All messages which arrive when the processing is stopped, will be
  * discarded.
@@ -68,7 +69,7 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * @param <T> Type of the {@link RpcEndpoint}
  */
 class AkkaRpcActor<T extends RpcEndpoint & RpcGateway> extends UntypedActor {
-	
+
 	protected final Logger log = LoggerFactory.getLogger(getClass());
 
 	/** the endpoint to invoke the methods on. */
@@ -77,12 +78,12 @@ class AkkaRpcActor<T extends RpcEndpoint & RpcGateway> extends UntypedActor {
 	/** the helper that tracks whether calls come from the main thread. */
 	private final MainThreadValidatorUtil mainThreadValidator;
 
-	private final CompletableFuture<Void> internalTerminationFuture;
+	private final CompletableFuture<Boolean> terminationFuture;
 
-	AkkaRpcActor(final T rpcEndpoint, final CompletableFuture<Void> internalTerminationFuture) {
+	AkkaRpcActor(final T rpcEndpoint, final CompletableFuture<Boolean> terminationFuture) {
 		this.rpcEndpoint = checkNotNull(rpcEndpoint, "rpc endpoint");
 		this.mainThreadValidator = new MainThreadValidatorUtil(rpcEndpoint);
-		this.internalTerminationFuture = checkNotNull(internalTerminationFuture);
+		this.terminationFuture = checkNotNull(terminationFuture);
 	}
 
 	@Override
@@ -90,12 +91,11 @@ class AkkaRpcActor<T extends RpcEndpoint & RpcGateway> extends UntypedActor {
 		mainThreadValidator.enterMainThread();
 
 		try {
-			Throwable shutdownThrowable = null;
-
+			CompletableFuture<Void> postStopFuture;
 			try {
-				rpcEndpoint.postStop();
+				postStopFuture = rpcEndpoint.postStop();
 			} catch (Throwable throwable) {
-				shutdownThrowable = throwable;
+				postStopFuture = FutureUtils.completedExceptionally(throwable);
 			}
 
 			super.postStop();
@@ -105,11 +105,14 @@ class AkkaRpcActor<T extends RpcEndpoint & RpcGateway> extends UntypedActor {
 			// future.
 			// Complete the termination future so that others know that we've stopped.
 
-			if (shutdownThrowable != null) {
-				internalTerminationFuture.completeExceptionally(shutdownThrowable);
-			} else {
-				internalTerminationFuture.complete(null);
-			}
+			postStopFuture.whenComplete(
+				(Void value, Throwable throwable) -> {
+					if (throwable != null) {
+						terminationFuture.completeExceptionally(throwable);
+					} else {
+						terminationFuture.complete(null);
+					}
+				});
 		} finally {
 			mainThreadValidator.exitMainThread();
 		}

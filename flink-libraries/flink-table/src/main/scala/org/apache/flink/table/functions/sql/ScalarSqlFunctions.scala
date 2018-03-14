@@ -15,10 +15,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package org.apache.flink.table.functions.sql
 
 import org.apache.calcite.sql.{SqlFunction, SqlFunctionCategory, SqlKind}
-import org.apache.calcite.sql.`type`.{OperandTypes, ReturnTypes, SqlTypeFamily}
+import org.apache.calcite.sql.`type`._
 
 /**
   * All built-in scalar SQL functions.
@@ -33,10 +34,18 @@ object ScalarSqlFunctions {
     OperandTypes.NILADIC,
     SqlFunctionCategory.NUMERIC)
 
+  val BIN = new SqlFunction(
+    "BIN",
+    SqlKind.OTHER_FUNCTION,
+    ReturnTypes.cascade(ReturnTypes.explicit(SqlTypeName.VARCHAR), SqlTypeTransforms.TO_NULLABLE),
+    InferTypes.RETURN_TYPE,
+    OperandTypes.family(SqlTypeFamily.INTEGER),
+    SqlFunctionCategory.NUMERIC)
+
   val CONCAT = new SqlFunction(
     "CONCAT",
     SqlKind.OTHER_FUNCTION,
-    ReturnTypes.VARCHAR_2000,
+    ReturnTypes.cascade(ReturnTypes.explicit(SqlTypeName.VARCHAR), SqlTypeTransforms.TO_NULLABLE),
     null,
     OperandTypes.ONE_OR_MORE,
     SqlFunctionCategory.STRING)
@@ -44,7 +53,7 @@ object ScalarSqlFunctions {
   val CONCAT_WS = new SqlFunction(
     "CONCAT_WS",
     SqlKind.OTHER_FUNCTION,
-    ReturnTypes.VARCHAR_2000,
+    ReturnTypes.cascade(ReturnTypes.explicit(SqlTypeName.VARCHAR), SqlTypeTransforms.TO_NULLABLE),
     null,
     OperandTypes.ONE_OR_MORE,
     SqlFunctionCategory.STRING)
@@ -58,4 +67,57 @@ object ScalarSqlFunctions {
       OperandTypes.family(SqlTypeFamily.NUMERIC, SqlTypeFamily.NUMERIC)),
     SqlFunctionCategory.NUMERIC)
 
+  val LPAD = new SqlFunction(
+    "LPAD",
+    SqlKind.OTHER_FUNCTION,
+    ReturnTypes.cascade(
+      ReturnTypes.explicit(SqlTypeName.VARCHAR), SqlTypeTransforms.FORCE_NULLABLE),
+    null,
+    OperandTypes.family(SqlTypeFamily.CHARACTER, SqlTypeFamily.INTEGER, SqlTypeFamily.CHARACTER),
+    SqlFunctionCategory.STRING)
+
+  val RPAD = new SqlFunction(
+    "RPAD",
+    SqlKind.OTHER_FUNCTION,
+    ReturnTypes.cascade(
+      ReturnTypes.explicit(SqlTypeName.VARCHAR), SqlTypeTransforms.FORCE_NULLABLE),
+    null,
+    OperandTypes.family(SqlTypeFamily.CHARACTER, SqlTypeFamily.INTEGER, SqlTypeFamily.CHARACTER),
+    SqlFunctionCategory.STRING)
+
+  val MD5 = new SqlFunction(
+    "MD5",
+    SqlKind.OTHER_FUNCTION,
+    ReturnTypes.ARG0_NULLABLE,
+    InferTypes.RETURN_TYPE,
+    OperandTypes.STRING,
+    SqlFunctionCategory.STRING
+  )
+
+  val SHA1 = new SqlFunction(
+    "SHA1",
+    SqlKind.OTHER_FUNCTION,
+    ReturnTypes.ARG0_NULLABLE,
+    InferTypes.RETURN_TYPE,
+    OperandTypes.STRING,
+    SqlFunctionCategory.STRING
+  )
+
+  val SHA256 = new SqlFunction(
+    "SHA256",
+    SqlKind.OTHER_FUNCTION,
+    ReturnTypes.ARG0_NULLABLE,
+    InferTypes.RETURN_TYPE,
+    OperandTypes.STRING,
+    SqlFunctionCategory.STRING
+  )
+
+  val DATE_FORMAT = new SqlFunction(
+    "DATE_FORMAT",
+    SqlKind.OTHER_FUNCTION,
+    ReturnTypes.ARG0_NULLABLE,
+    InferTypes.RETURN_TYPE,
+    OperandTypes.sequence("'(TIMESTAMP, FORMAT)'", OperandTypes.DATETIME, OperandTypes.STRING),
+    SqlFunctionCategory.TIMEDATE
+  )
 }

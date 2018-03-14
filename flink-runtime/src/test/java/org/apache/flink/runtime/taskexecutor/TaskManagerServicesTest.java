@@ -20,9 +20,11 @@ package org.apache.flink.runtime.taskexecutor;
 
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.TaskManagerOptions;
+import org.apache.flink.testutils.category.OldAndFlip6;
 import org.apache.flink.util.TestLogger;
 
 import org.junit.Test;
+import org.junit.experimental.categories.Category;
 
 import java.util.Random;
 
@@ -33,7 +35,8 @@ import static org.junit.Assert.fail;
 /**
  * Unit test for {@link TaskManagerServices}.
  */
-public class TaskManagerServicesTest extends TestLogger{
+@Category(OldAndFlip6.class)
+public class TaskManagerServicesTest extends TestLogger {
 
 	/**
 	 * Test for {@link TaskManagerServices#calculateNetworkBufferMemory(long, Configuration)} using old
@@ -174,7 +177,7 @@ public class TaskManagerServicesTest extends TestLogger{
 	/**
 	 * Returns the value or the lower/upper bound in case the value is less/greater than the lower/upper bound, respectively.
 	 *
-	 * @param value value to inspec
+	 * @param value value to inspect
 	 * @param lower lower bound
 	 * @param upper upper bound
 	 *

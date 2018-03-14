@@ -153,7 +153,6 @@ class CsvTableSource private (
   override def projectFields(fields: Array[Int]): CsvTableSource = {
 
     val selectedFields = if (fields.isEmpty) Array(0) else fields
-//    val selectedFiels = fields
 
     new CsvTableSource(
       path,
@@ -271,7 +270,7 @@ object CsvTableSource {
     /**
       * Adds a field with the field name and the type information. Required.
       * This method can be called multiple times. The call order of this method defines
-      * also the order of thee fields in a row.
+      * also the order of the fields in a row.
       *
       * @param fieldName the field name
       * @param fieldType the type information of the field

@@ -26,6 +26,8 @@ import org.apache.flink.util.FileUtils;
 
 import org.slf4j.LoggerFactory;
 
+import javax.annotation.Nullable;
+
 import java.io.File;
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -85,23 +87,22 @@ public class PermanentBlobCache extends AbstractBlobCache implements PermanentBl
 	/**
 	 * Instantiates a new cache for permanent BLOBs which are also available in an HA store.
 	 *
-	 * @param serverAddress
-	 * 		address of the {@link BlobServer} to use for fetching files from
 	 * @param blobClientConfig
 	 * 		global configuration
 	 * @param blobView
 	 * 		(distributed) HA blob store file system to retrieve files from first
-	 *
+	 * @param serverAddress
+	 * 		address of the {@link BlobServer} to use for fetching files from or {@code null} if none yet
 	 * @throws IOException
 	 * 		thrown if the (local or distributed) file storage cannot be created or is not usable
 	 */
 	public PermanentBlobCache(
-			final InetSocketAddress serverAddress,
 			final Configuration blobClientConfig,
-			final BlobView blobView) throws IOException {
+			final BlobView blobView,
+			@Nullable final InetSocketAddress serverAddress) throws IOException {
 
-		super(serverAddress, blobClientConfig, blobView,
-			LoggerFactory.getLogger(PermanentBlobCache.class));
+		super(blobClientConfig, blobView, LoggerFactory.getLogger(PermanentBlobCache.class), serverAddress
+		);
 
 		// Initializing the clean up task
 		this.cleanupTimer = new Timer(true);
@@ -261,7 +262,7 @@ public class PermanentBlobCache extends AbstractBlobCache implements PermanentBl
 
 					/*
 					 * NOTE: normally it is not required to acquire the write lock to delete the job's
-					 *       storage directory since there should be noone accessing it with the ref
+					 *       storage directory since there should be no one accessing it with the ref
 					 *       counter being 0 - acquire it just in case, to always be on the safe side
 					 */
 						readWriteLock.writeLock().lock();

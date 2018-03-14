@@ -18,13 +18,19 @@
 
 package org.apache.flink.runtime.io.network.partition;
 
-import org.apache.flink.runtime.io.network.buffer.Buffer;
-import org.apache.flink.runtime.io.network.util.TestBufferFactory;
+import org.apache.flink.runtime.io.network.buffer.BufferBuilderTestUtils;
+import org.apache.flink.runtime.io.network.buffer.BufferConsumer;
 import org.apache.flink.util.TestLogger;
+
 import org.junit.Test;
 
+import java.io.IOException;
+
+import static org.apache.flink.runtime.io.network.buffer.BufferBuilderTestUtils.createFilledBufferConsumer;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.mock;
 
@@ -46,8 +52,19 @@ public abstract class SubpartitionTestBase extends TestLogger {
 
 		try {
 			subpartition.finish();
+			assertEquals(1, subpartition.getTotalNumberOfBuffers());
+			assertEquals(0, subpartition.getTotalNumberOfBytes()); // only updated after consuming the buffers
 
-			assertFalse(subpartition.add(mock(Buffer.class)));
+			assertEquals(1, subpartition.getTotalNumberOfBuffers());
+			assertEquals(0, subpartition.getBuffersInBacklog());
+			assertEquals(0, subpartition.getTotalNumberOfBytes()); // only updated after consuming the buffers
+
+			BufferConsumer bufferConsumer = createFilledBufferConsumer(4096, 4096);
+
+			assertFalse(subpartition.add(bufferConsumer));
+			assertEquals(1, subpartition.getTotalNumberOfBuffers());
+			assertEquals(0, subpartition.getBuffersInBacklog());
+			assertEquals(0, subpartition.getTotalNumberOfBytes()); // only updated after consuming the buffers
 		} finally {
 			if (subpartition != null) {
 				subpartition.release();
@@ -61,8 +78,19 @@ public abstract class SubpartitionTestBase extends TestLogger {
 
 		try {
 			subpartition.release();
+			assertEquals(0, subpartition.getTotalNumberOfBuffers());
+			assertEquals(0, subpartition.getTotalNumberOfBytes());
 
-			assertFalse(subpartition.add(mock(Buffer.class)));
+			assertEquals(0, subpartition.getTotalNumberOfBuffers());
+			assertEquals(0, subpartition.getBuffersInBacklog());
+			assertEquals(0, subpartition.getTotalNumberOfBytes());
+
+			BufferConsumer bufferConsumer = createFilledBufferConsumer(4096, 4096);
+
+			assertFalse(subpartition.add(bufferConsumer));
+			assertEquals(0, subpartition.getTotalNumberOfBuffers());
+			assertEquals(0, subpartition.getBuffersInBacklog());
+			assertEquals(0, subpartition.getTotalNumberOfBytes());
 		} finally {
 			if (subpartition != null) {
 				subpartition.release();
@@ -85,16 +113,16 @@ public abstract class SubpartitionTestBase extends TestLogger {
 	}
 
 	private void verifyViewReleasedAfterParentRelease(ResultSubpartition partition) throws Exception {
-		// Add a buffer
-		Buffer buffer = TestBufferFactory.createBuffer();
-		partition.add(buffer);
+		// Add a bufferConsumer
+		BufferConsumer bufferConsumer = createFilledBufferConsumer(BufferBuilderTestUtils.BUFFER_SIZE);
+		partition.add(bufferConsumer);
 		partition.finish();
 
 		// Create the view
 		BufferAvailabilityListener listener = mock(BufferAvailabilityListener.class);
 		ResultSubpartitionView view = partition.createReadView(listener);
 
-		// The added buffer and end-of-partition event
+		// The added bufferConsumer and end-of-partition event
 		assertNotNull(view.getNextBuffer());
 		assertNotNull(view.getNextBuffer());
 
@@ -104,5 +132,20 @@ public abstract class SubpartitionTestBase extends TestLogger {
 
 		// Verify that parent release is reflected at partition view
 		assertTrue(view.isReleased());
+	}
+
+	protected void assertNextBuffer(
+			ResultSubpartitionView readView,
+			int expectedReadableBufferSize,
+			boolean expectedIsMoreAvailable,
+			int expectedBuffersInBacklog) throws IOException, InterruptedException {
+		ResultSubpartition.BufferAndBacklog bufferAndBacklog = readView.getNextBuffer();
+		assertEquals(expectedReadableBufferSize, bufferAndBacklog.buffer().readableBytes());
+		assertEquals(expectedIsMoreAvailable, bufferAndBacklog.isMoreAvailable());
+		assertEquals(expectedBuffersInBacklog, bufferAndBacklog.buffersInBacklog());
+	}
+
+	protected void assertNoNextBuffer(ResultSubpartitionView readView) throws IOException, InterruptedException {
+		assertNull(readView.getNextBuffer());
 	}
 }

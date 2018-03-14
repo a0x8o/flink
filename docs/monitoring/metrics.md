@@ -903,8 +903,8 @@ Thus, in order to infer the metric identifier:
   <tbody>
     <tr>
       <th rowspan="1"><strong>Job-/TaskManager</strong></th>
-      <td rowspan="1">Status.JVM.ClassLoader</td>
-      <td>Threads.Count</td>
+      <td rowspan="1">Status.JVM.Threads</td>
+      <td>Count</td>
       <td>The total number of live threads.</td>
       <td>Gauge</td>
     </tr>
@@ -1190,12 +1190,13 @@ Thus, in order to infer the metric identifier:
   </thead>
   <tbody>
     <tr>
-      <th rowspan="7"><strong>Task</strong></th>
-      <td>currentLowWatermark</td>
-      <td>The lowest watermark this task has received (in milliseconds).</td>
-      <td>Gauge</td>
+      <th rowspan="1"><strong>Job (only available on TaskManager)</strong></th>
+      <td>&lt;source_id&gt;.&lt;source_subtask_index&gt;.&lt;operator_id&gt;.&lt;operator_subtask_index&gt;.latency</td>
+      <td>The latency distributions from a given source subtask to an operator subtask (in milliseconds).</td>
+      <td>Histogram</td>
     </tr>
     <tr>
+      <th rowspan="6"><strong>Task</strong></th>
       <td>numBytesInLocal</td>
       <td>The total number of bytes this task has read from a local source.</td>
       <td>Counter</td>
@@ -1252,10 +1253,36 @@ Thus, in order to infer the metric identifier:
       <td>Counter</td>
     </tr>
     <tr>
-      <th rowspan="2"><strong>Operator</strong></th>
-      <td>latency</td>
-      <td>The latency distributions from all incoming sources (in milliseconds).</td>
-      <td>Histogram</td>
+      <th rowspan="5"><strong>Operator</strong></th>
+      <td>currentInputWatermark</td>
+      <td>
+        The last watermark this operator has received (in milliseconds).
+        <p><strong>Note:</strong> For operators with 2 inputs this is the minimum of the last received watermarks.</p>
+      </td>
+      <td>Gauge</td>
+    </tr>
+    <tr>
+      <td>currentInput1Watermark</td>
+      <td>
+        The last watermark this operator has received in its first input (in milliseconds).
+        <p><strong>Note:</strong> Only for operators with 2 inputs.</p>
+      </td>
+      <td>Gauge</td>
+    </tr>
+    <tr>
+      <td>currentInput2Watermark</td>
+      <td>
+        The last watermark this operator has received in its second input (in milliseconds).
+        <p><strong>Note:</strong> Only for operators with 2 inputs.</p>
+      </td>
+      <td>Gauge</td>
+    </tr>
+    <tr>
+      <td>currentOutputWatermark</td>
+      <td>
+        The last watermark this operator has emitted (in milliseconds).
+      </td>
+      <td>Gauge</td>
     </tr>
     <tr>
       <td>numSplitsProcessed</td>
@@ -1271,24 +1298,73 @@ Thus, in order to infer the metric identifier:
 <table class="table table-bordered">
   <thead>
     <tr>
-      <th class="text-left" style="width: 18%">Scope</th>
-      <th class="text-left" style="width: 26%">Metrics</th>
-      <th class="text-left" style="width: 48%">Description</th>
-      <th class="text-left" style="width: 8%">Type</th>
+      <th class="text-left" style="width: 15%">Scope</th>
+      <th class="text-left" style="width: 18%">Metrics</th>
+      <th class="text-left" style="width: 18%">User Variables</th>
+      <th class="text-left" style="width: 39%">Description</th>
+      <th class="text-left" style="width: 10%">Type</th>
     </tr>
   </thead>
   <tbody>
     <tr>
       <th rowspan="1">Operator</th>
       <td>commitsSucceeded</td>
-      <td>Kafka offset commit success count if Kafka commit is turned on and checkpointing is enabled.</td>
+      <td>n/a</td>
+      <td>The total number of successful offset commits to Kafka, if offset committing is turned on and checkpointing is enabled.</td>
       <td>Counter</td>
     </tr>
     <tr>
        <th rowspan="1">Operator</th>
        <td>commitsFailed</td>
-       <td>Kafka offset commit failure count if Kafka commit is turned on and checkpointing is enabled.</td>
+       <td>n/a</td>
+       <td>The total number of offset commit failures to Kafka, if offset committing is
+       turned on and checkpointing is enabled. Note that committing offsets back to Kafka
+       is only a means to expose consumer progress, so a commit failure does not affect
+       the integrity of Flink's checkpointed partition offsets.</td>
        <td>Counter</td>
+    </tr>
+    <tr>
+       <th rowspan="1">Operator</th>
+       <td>committedOffsets</td>
+       <td>topic, partition</td>
+       <td>The last successfully committed offsets to Kafka, for each partition.
+       A particular partition's metric can be specified by topic name and partition id.</td>
+       <td>Gauge</td>
+    </tr>
+    <tr>
+      <th rowspan="1">Operator</th>
+      <td>currentOffsets</td>
+      <td>topic, partition</td>
+      <td>The consumer's current read offset, for each partition. A particular
+      partition's metric can be specified by topic name and partition id.</td>
+      <td>Gauge</td>
+    </tr>
+  </tbody>
+</table>
+
+#### Kinesis Connectors
+<table class="table table-bordered">
+  <thead>
+    <tr>
+      <th class="text-left" style="width: 15%">Scope</th>
+      <th class="text-left" style="width: 18%">Metrics</th>
+      <th class="text-left" style="width: 18%">User Variables</th>
+      <th class="text-left" style="width: 39%">Description</th>
+      <th class="text-left" style="width: 10%">Type</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th rowspan="1">Operator</th>
+      <td>millisBehindLatest</td>
+      <td>stream, shardId</td>
+      <td>The number of milliseconds the consumer is behind the head of the stream,
+      indicating how far behind current time the consumer is, for each Kinesis shard.
+      A particular shard's metric can be specified by stream name and shard id.
+      A value of 0 indicates record processing is caught up, and there are no new records
+      to process at this moment. A value of -1 indicates that there is no reported value for the metric, yet.
+      </td>
+      <td>Gauge</td>
     </tr>
   </tbody>
 </table>

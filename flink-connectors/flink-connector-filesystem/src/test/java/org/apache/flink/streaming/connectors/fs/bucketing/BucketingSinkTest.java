@@ -22,6 +22,7 @@ import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.typeinfo.TypeHint;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.runtime.checkpoint.OperatorSubtaskState;
 import org.apache.flink.streaming.api.operators.StreamSink;
 import org.apache.flink.streaming.connectors.fs.AvroKeyValueSinkWriter;
 import org.apache.flink.streaming.connectors.fs.Clock;
@@ -29,11 +30,11 @@ import org.apache.flink.streaming.connectors.fs.SequenceFileWriter;
 import org.apache.flink.streaming.connectors.fs.StringWriter;
 import org.apache.flink.streaming.connectors.fs.Writer;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
-import org.apache.flink.streaming.runtime.tasks.OperatorStateHandles;
 import org.apache.flink.streaming.util.AbstractStreamOperatorTestHarness;
 import org.apache.flink.streaming.util.OneInputStreamOperatorTestHarness;
 import org.apache.flink.util.NetUtils;
 import org.apache.flink.util.OperatingSystem;
+import org.apache.flink.util.TestLogger;
 
 import org.apache.avro.Schema;
 import org.apache.avro.file.DataFileConstants;
@@ -70,7 +71,7 @@ import java.util.Map;
 /**
  * Tests for the {@link BucketingSink}.
  */
-public class BucketingSinkTest {
+public class BucketingSinkTest extends TestLogger {
 	@ClassRule
 	public static TemporaryFolder tempFolder = new TemporaryFolder();
 
@@ -236,7 +237,7 @@ public class BucketingSinkTest {
 		testHarness.notifyOfCompletedCheckpoint(0);
 		checkFs(outDir, 1, 0, 2, 0);
 
-		OperatorStateHandles snapshot = testHarness.snapshot(1, 0);
+		OperatorSubtaskState snapshot = testHarness.snapshot(1, 0);
 
 		testHarness.close();
 		checkFs(outDir, 0, 1, 2, 0);
@@ -286,7 +287,7 @@ public class BucketingSinkTest {
 		checkFs(outDir, 2, 0, 0, 0);
 
 		// intentionally we snapshot them in the reverse order so that the states are shuffled
-		OperatorStateHandles mergedSnapshot = AbstractStreamOperatorTestHarness.repackageState(
+		OperatorSubtaskState mergedSnapshot = AbstractStreamOperatorTestHarness.repackageState(
 			testHarness2.snapshot(0, 0),
 			testHarness1.snapshot(0, 0)
 		);
@@ -347,7 +348,7 @@ public class BucketingSinkTest {
 		checkFs(outDir, 4, 0, 0, 0);
 
 		// intentionally we snapshot them in the reverse order so that the states are shuffled
-		OperatorStateHandles mergedSnapshot = AbstractStreamOperatorTestHarness.repackageState(
+		OperatorSubtaskState mergedSnapshot = AbstractStreamOperatorTestHarness.repackageState(
 			testHarness3.snapshot(0, 0),
 			testHarness1.snapshot(0, 0),
 			testHarness2.snapshot(0, 0)
@@ -392,7 +393,7 @@ public class BucketingSinkTest {
 		checkFs(outDir, 5, 0, 0, 0);
 
 		// intentionally we snapshot them in the reverse order so that the states are shuffled
-		OperatorStateHandles mergedSnapshot = AbstractStreamOperatorTestHarness.repackageState(
+		OperatorSubtaskState mergedSnapshot = AbstractStreamOperatorTestHarness.repackageState(
 			testHarness2.snapshot(0, 0),
 			testHarness1.snapshot(0, 0)
 		);

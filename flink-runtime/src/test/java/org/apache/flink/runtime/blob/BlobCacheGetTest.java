@@ -78,7 +78,7 @@ import static org.mockito.Mockito.mock;
 /**
  * Tests for GET-specific parts of the {@link BlobCacheService}.
  *
- * This includes access of transient BLOBs from the {@link PermanentBlobCache}, permanent BLOBS from
+ * <p>This includes access of transient BLOBs from the {@link PermanentBlobCache}, permanent BLOBS from
  * the {@link TransientBlobCache}, and how failing GET requests behave in the presence of failures
  * when used with a {@link BlobCacheService}.
  *
@@ -130,8 +130,8 @@ public class BlobCacheGetTest extends TestLogger {
 
 		try (
 			BlobServer server = new BlobServer(config, new VoidBlobStore());
-			BlobCacheService cache = new BlobCacheService(new InetSocketAddress("localhost", server.getPort()),
-				config, new VoidBlobStore())) {
+			BlobCacheService cache = new BlobCacheService(config, new VoidBlobStore(), new InetSocketAddress("localhost", server.getPort())
+			)) {
 
 			server.start();
 
@@ -221,8 +221,8 @@ public class BlobCacheGetTest extends TestLogger {
 		File tempFileDir = null;
 		try (
 			BlobServer server = new BlobServer(config, new VoidBlobStore());
-			BlobCacheService cache = new BlobCacheService(new InetSocketAddress("localhost", server.getPort()),
-				config, new VoidBlobStore())) {
+			BlobCacheService cache = new BlobCacheService(config, new VoidBlobStore(), new InetSocketAddress("localhost", server.getPort())
+			)) {
 
 			server.start();
 
@@ -323,8 +323,8 @@ public class BlobCacheGetTest extends TestLogger {
 		File jobStoreDir = null;
 		try (
 			BlobServer server = new BlobServer(config, new VoidBlobStore());
-			BlobCacheService cache = new BlobCacheService(new InetSocketAddress("localhost", server.getPort()),
-				config, new VoidBlobStore())) {
+			BlobCacheService cache = new BlobCacheService(config, new VoidBlobStore(), new InetSocketAddress("localhost", server.getPort())
+			)) {
 
 			server.start();
 
@@ -391,8 +391,8 @@ public class BlobCacheGetTest extends TestLogger {
 
 		try (
 			BlobServer server = new BlobServer(config, new VoidBlobStore());
-			BlobCacheService cache = new BlobCacheService(new InetSocketAddress("localhost", server.getPort()),
-				config, new VoidBlobStore())) {
+			BlobCacheService cache = new BlobCacheService(config, new VoidBlobStore(), new InetSocketAddress("localhost", server.getPort())
+			)) {
 
 			server.start();
 
@@ -457,8 +457,8 @@ public class BlobCacheGetTest extends TestLogger {
 
 		try (
 			BlobServer server = new BlobServer(config, new VoidBlobStore());
-			BlobCacheService cache = new BlobCacheService(new InetSocketAddress("localhost", server.getPort()),
-				config, new VoidBlobStore())) {
+			BlobCacheService cache = new BlobCacheService(config, new VoidBlobStore(), new InetSocketAddress("localhost", server.getPort())
+			)) {
 
 			server.start();
 
@@ -552,8 +552,8 @@ public class BlobCacheGetTest extends TestLogger {
 
 		try (
 			final BlobServer server = new BlobServer(config, blobStoreServer);
-			final BlobCacheService cache = new BlobCacheService(new InetSocketAddress("localhost", server.getPort()),
-				config, cacheAccessesHAStore ? blobStoreServer : blobStoreCache)) {
+			final BlobCacheService cache = new BlobCacheService(config, cacheAccessesHAStore ? blobStoreServer : blobStoreCache, new InetSocketAddress("localhost", server.getPort())
+			)) {
 
 			server.start();
 

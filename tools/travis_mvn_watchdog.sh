@@ -45,7 +45,7 @@ LOG4J_PROPERTIES=${HERE}/log4j-travis.properties
 
 MODULES_CORE="\
 flink-test-utils-parent/flink-test-utils,\
-flink-contrib/flink-statebackend-rocksdb,\
+flink-state-backends/flink-statebackend-rocksdb,\
 flink-clients,\
 flink-core,\
 flink-java,\
@@ -67,6 +67,7 @@ flink-libraries/flink-gelly-scala,\
 flink-libraries/flink-gelly-examples,\
 flink-libraries/flink-ml,\
 flink-libraries/flink-python,\
+flink-libraries/flink-streaming-python,\
 flink-libraries/flink-table,\
 flink-queryable-state/flink-queryable-state-runtime,\
 flink-queryable-state/flink-queryable-state-client-java"
@@ -182,6 +183,28 @@ ARTIFACTS_FILE=${TRAVIS_JOB_NUMBER}.tar.gz
 # =============================================================================
 # FUNCTIONS
 # =============================================================================
+
+print_system_info() {
+	FOLD_ESCAPE="\x0d\x1b"
+	COLOR_ON="\x5b\x30\x4b\x1b\x5b\x33\x33\x3b\x31\x6d"
+	COLOR_OFF="\x1b\x5b\x30\x6d"
+
+	echo -e "travis_fold:start:cpu_info${FOLD_ESCAPE}${COLOR_ON}CPU information${COLOR_OFF}"
+	lscpu
+	echo -en "travis_fold:end:cpu_info${FOLD_ESCAPE}"
+
+	echo -e "travis_fold:start:mem_info${FOLD_ESCAPE}${COLOR_ON}Memory information${COLOR_OFF}"
+	cat /proc/meminfo
+	echo -en "travis_fold:end:mem_info${FOLD_ESCAPE}"
+
+	echo -e "travis_fold:start:disk_info${FOLD_ESCAPE}${COLOR_ON}Disk information${COLOR_OFF}"
+	df -hH
+	echo -en "travis_fold:end:disk_info${FOLD_ESCAPE}"
+
+	echo -e "travis_fold:start:cache_info${FOLD_ESCAPE}${COLOR_ON}Cache information${COLOR_OFF}"
+	du -s --si $HOME/.m2
+	echo -en "travis_fold:end:cache_info${FOLD_ESCAPE}"
+}
 
 upload_artifacts_s3() {
 	echo "PRODUCED build artifacts."
@@ -422,6 +445,32 @@ check_shaded_artifacts_s3_fs() {
 	return 0
 }
 
+# Check the elasticsearch connectors' fat jars for illegal or missing artifacts
+check_shaded_artifacts_connector_elasticsearch() {
+	VARIANT=$1
+	find flink-connectors/flink-connector-elasticsearch${VARIANT}/target/flink-connector-elasticsearch${VARIANT}*.jar ! -name "*-tests.jar" -exec jar tf {} \; > allClasses
+
+	UNSHADED_CLASSES=`cat allClasses | grep -v -e '^META-INF' -e '^assets' -e "^org/apache/flink/streaming/connectors/elasticsearch/" -e "^org/apache/flink/streaming/connectors/elasticsearch${VARIANT}/" -e "^org/elasticsearch/" | grep '\.class$'`
+	if [ "$?" == "0" ]; then
+		echo "=============================================================================="
+		echo "Detected unshaded dependencies in flink-connector-elasticsearch${VARIANT}'s fat jar:"
+		echo "${UNSHADED_CLASSES}"
+		echo "=============================================================================="
+		return 1
+	fi
+
+	UNSHADED_SERVICES=`cat allClasses | grep '^META-INF/services/' | grep -v -e '^META-INF/services/org\.apache\.flink\.core\.fs\.FileSystemFactory$' -e "^META-INF/services/org\.apache\.flink\.fs\.s3${VARIANT}\.shaded" -e '^META-INF/services/'`
+	if [ "$?" == "0" ]; then
+		echo "=============================================================================="
+		echo "Detected unshaded service files in flink-connector-elasticsearch${VARIANT}'s fat jar:"
+		echo "${UNSHADED_SERVICES}"
+		echo "=============================================================================="
+		return 1
+	fi
+
+	return 0
+}
+
 # =============================================================================
 # WATCHDOG
 # =============================================================================
@@ -433,24 +482,7 @@ WD_PID=$!
 
 echo "STARTED watchdog (${WD_PID})."
 
-
-# Print and fold CPU, memory, and filesystem info
-FOLD_ESCAPE="\x0d\x1b"
-COLOR_ON="\x5b\x30\x4b\x1b\x5b\x33\x33\x3b\x31\x6d"
-COLOR_OFF="\x1b\x5b\x30\x6d"
-
-echo -e "travis_fold:start:cpu_info${FOLD_ESCAPE}${COLOR_ON}CPU information${COLOR_OFF}"
-lscpu
-echo -en "travis_fold:end:cpu_info${FOLD_ESCAPE}"
-
-echo -e "travis_fold:start:mem_info${FOLD_ESCAPE}${COLOR_ON}Memory information${COLOR_OFF}"
-cat /proc/meminfo
-echo -en "travis_fold:end:mem_info${FOLD_ESCAPE}"
-
-echo -e "travis_fold:start:disk_info${FOLD_ESCAPE}${COLOR_ON}Disk information${COLOR_OFF}"
-df -hH
-echo -en "travis_fold:end:disk_info${FOLD_ESCAPE}"
-
+print_system_info
 
 # Make sure to be in project root
 cd $HERE/../
@@ -516,8 +548,12 @@ case $TEST in
 	(connectors)
 		if [ $EXIT_CODE == 0 ]; then
 			check_shaded_artifacts_s3_fs hadoop
+			EXIT_CODE=$(($EXIT_CODE+$?))
 			check_shaded_artifacts_s3_fs presto
-			EXIT_CODE=$?
+			check_shaded_artifacts_connector_elasticsearch ""
+			check_shaded_artifacts_connector_elasticsearch 2
+			check_shaded_artifacts_connector_elasticsearch 5
+			EXIT_CODE=$(($EXIT_CODE+$?))
 		else
 			echo "=============================================================================="
 			echo "Compilation/test failure detected, skipping shaded dependency check."
@@ -540,35 +576,9 @@ case $TEST in
 			printf "Running end-to-end tests\n"
 			printf "==============================================================================\n"
 
-			printf "\n==============================================================================\n"
-			printf "Running Wordcount end-to-end test\n"
-			printf "==============================================================================\n"
-			FLINK_DIR=build-target CLUSTER_MODE=cluster test-infra/end-to-end-test/test_batch_wordcount.sh
-			EXIT_CODE=$(($EXIT_CODE+$?))
+			FLINK_DIR=build-target flink-end-to-end-tests/run-pre-commit-tests.sh
 
-			printf "\n==============================================================================\n"
-			printf "Running Kafka end-to-end test\n"
-			printf "==============================================================================\n"
-			FLINK_DIR=build-target CLUSTER_MODE=cluster test-infra/end-to-end-test/test_streaming_kafka010.sh
-			EXIT_CODE=$(($EXIT_CODE+$?))
-
-			printf "\n==============================================================================\n"
-			printf "Running class loading end-to-end test\n"
-			printf "==============================================================================\n"
-			FLINK_DIR=build-target CLUSTER_MODE=cluster test-infra/end-to-end-test/test_streaming_classloader.sh
-			EXIT_CODE=$(($EXIT_CODE+$?))
-
-			printf "\n==============================================================================\n"
-			printf "Running Shaded Hadoop S3A end-to-end test\n"
-			printf "==============================================================================\n"
-			FLINK_DIR=build-target CLUSTER_MODE=cluster test-infra/end-to-end-test/test_shaded_hadoop_s3a.sh
-			EXIT_CODE=$(($EXIT_CODE+$?))
-
-			printf "\n==============================================================================\n"
-			printf "Running Shaded Presto S3 end-to-end test\n"
-			printf "==============================================================================\n"
-			FLINK_DIR=build-target CLUSTER_MODE=cluster test-infra/end-to-end-test/test_shaded_presto_s3.sh
-			EXIT_CODE=$(($EXIT_CODE+$?))
+			EXIT_CODE=$?
 		else
 			printf "\n==============================================================================\n"
 			printf "Previous build failure detected, skipping end-to-end tests.\n"

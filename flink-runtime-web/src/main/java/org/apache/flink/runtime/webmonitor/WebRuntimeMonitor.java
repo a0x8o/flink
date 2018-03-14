@@ -19,8 +19,8 @@
 package org.apache.flink.runtime.webmonitor;
 
 import org.apache.flink.api.common.time.Time;
+import org.apache.flink.configuration.CheckpointingOptions;
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.configuration.CoreOptions;
 import org.apache.flink.configuration.WebOptions;
 import org.apache.flink.runtime.concurrent.ScheduledExecutor;
 import org.apache.flink.runtime.jobmanager.MemoryArchivist;
@@ -56,7 +56,7 @@ import org.apache.flink.runtime.rest.handler.legacy.SubtasksAllAccumulatorsHandl
 import org.apache.flink.runtime.rest.handler.legacy.SubtasksTimesHandler;
 import org.apache.flink.runtime.rest.handler.legacy.TaskManagerLogHandler;
 import org.apache.flink.runtime.rest.handler.legacy.TaskManagersHandler;
-import org.apache.flink.runtime.rest.handler.legacy.backpressure.BackPressureStatsTracker;
+import org.apache.flink.runtime.rest.handler.legacy.backpressure.BackPressureStatsTrackerImpl;
 import org.apache.flink.runtime.rest.handler.legacy.backpressure.StackTraceSampleCoordinator;
 import org.apache.flink.runtime.rest.handler.legacy.checkpoints.CheckpointConfigHandler;
 import org.apache.flink.runtime.rest.handler.legacy.checkpoints.CheckpointStatsDetailsHandler;
@@ -72,18 +72,19 @@ import org.apache.flink.runtime.rest.handler.legacy.metrics.JobVertexMetricsHand
 import org.apache.flink.runtime.rest.handler.legacy.metrics.MetricFetcher;
 import org.apache.flink.runtime.rest.handler.legacy.metrics.SubtaskMetricsHandler;
 import org.apache.flink.runtime.rest.handler.legacy.metrics.TaskManagerMetricsHandler;
-import org.apache.flink.runtime.webmonitor.handlers.JarAccessDeniedHandler;
-import org.apache.flink.runtime.webmonitor.handlers.JarDeleteHandler;
-import org.apache.flink.runtime.webmonitor.handlers.JarListHandler;
-import org.apache.flink.runtime.webmonitor.handlers.JarPlanHandler;
-import org.apache.flink.runtime.webmonitor.handlers.JarRunHandler;
-import org.apache.flink.runtime.webmonitor.handlers.JarUploadHandler;
+import org.apache.flink.runtime.webmonitor.handlers.legacy.JarAccessDeniedHandler;
+import org.apache.flink.runtime.webmonitor.handlers.legacy.JarDeleteHandler;
+import org.apache.flink.runtime.webmonitor.handlers.legacy.JarListHandler;
+import org.apache.flink.runtime.webmonitor.handlers.legacy.JarPlanHandler;
+import org.apache.flink.runtime.webmonitor.handlers.legacy.JarRunHandler;
+import org.apache.flink.runtime.webmonitor.handlers.legacy.JarUploadHandler;
 import org.apache.flink.runtime.webmonitor.history.JsonArchivist;
 import org.apache.flink.runtime.webmonitor.retriever.LeaderGatewayRetriever;
 import org.apache.flink.runtime.webmonitor.retriever.MetricQueryServiceRetriever;
 import org.apache.flink.runtime.webmonitor.utils.WebFrontendBootstrap;
 import org.apache.flink.util.FileUtils;
 import org.apache.flink.util.Preconditions;
+import org.apache.flink.util.ShutdownHookUtil;
 
 import org.apache.flink.shaded.netty4.io.netty.channel.ChannelInboundHandler;
 import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.router.Router;
@@ -143,7 +144,7 @@ public class WebRuntimeMonitor implements WebMonitor {
 
 	private final StackTraceSampleCoordinator stackTraceSamples;
 
-	private final BackPressureStatsTracker backPressureStatsTracker;
+	private final BackPressureStatsTrackerImpl backPressureStatsTrackerImpl;
 
 	private final WebMonitorConfig cfg;
 
@@ -188,13 +189,7 @@ public class WebRuntimeMonitor implements WebMonitor {
 		if (webSubmitAllow) {
 			// create storage for uploads
 			this.uploadDir = getUploadDir(config);
-			// the upload directory should either 1. exist and writable or 2. can be created and writable
-			if (!(uploadDir.exists() && uploadDir.canWrite()) && !(uploadDir.mkdirs() && uploadDir.canWrite())) {
-				throw new IOException(
-					String.format("Jar upload directory %s cannot be created or is not writable.",
-						uploadDir.getAbsolutePath()));
-			}
-			LOG.info("Using directory {} for web frontend JAR file uploads", uploadDir);
+			checkAndCreateUploadDir(uploadDir);
 		}
 		else {
 			this.uploadDir = null;
@@ -229,8 +224,12 @@ public class WebRuntimeMonitor implements WebMonitor {
 
 		Time delayBetweenSamples = Time.milliseconds(delay);
 
-		backPressureStatsTracker = new BackPressureStatsTracker(
-				stackTraceSamples, cleanUpInterval, numSamples, delayBetweenSamples);
+		backPressureStatsTrackerImpl = new BackPressureStatsTrackerImpl(
+			stackTraceSamples,
+			cleanUpInterval,
+			numSamples,
+			config.getInteger(WebOptions.BACKPRESSURE_REFRESH_INTERVAL),
+			delayBetweenSamples);
 
 		// --------------------------------------------------------------------
 
@@ -249,7 +248,7 @@ public class WebRuntimeMonitor implements WebMonitor {
 		}
 		metricFetcher = new MetricFetcher(retriever, queryServiceRetriever, scheduledExecutor, timeout);
 
-		String defaultSavepointDir = config.getString(CoreOptions.SAVEPOINT_DIRECTORY);
+		String defaultSavepointDir = config.getString(CheckpointingOptions.SAVEPOINT_DIRECTORY);
 
 		JobCancellationWithSavepointHandlers cancelWithSavepoint = new JobCancellationWithSavepointHandlers(executionGraphCache, scheduledExecutor, defaultSavepointDir);
 		RuntimeMonitorHandler triggerHandler = handler(cancelWithSavepoint.getTriggerHandler());
@@ -290,7 +289,7 @@ public class WebRuntimeMonitor implements WebMonitor {
 		get(router, new SubtasksTimesHandler(executionGraphCache, scheduledExecutor));
 		get(router, new JobVertexTaskManagersHandler(executionGraphCache, scheduledExecutor, metricFetcher));
 		get(router, new JobVertexAccumulatorsHandler(executionGraphCache, scheduledExecutor));
-		get(router, new JobVertexBackPressureHandler(executionGraphCache, scheduledExecutor, backPressureStatsTracker, refreshInterval));
+		get(router, new JobVertexBackPressureHandler(executionGraphCache, scheduledExecutor, backPressureStatsTrackerImpl, refreshInterval));
 		get(router, new SubtasksAllAccumulatorsHandler(executionGraphCache, scheduledExecutor));
 		get(router, new SubtaskCurrentAttemptDetailsHandler(executionGraphCache, scheduledExecutor, metricFetcher));
 		get(router, new SubtaskExecutionAttemptDetailsHandler(executionGraphCache, scheduledExecutor, metricFetcher));
@@ -384,20 +383,7 @@ public class WebRuntimeMonitor implements WebMonitor {
 			webRootDir));
 
 		// add shutdown hook for deleting the directories and remaining temp files on shutdown
-		try {
-			Runtime.getRuntime().addShutdownHook(new Thread() {
-				@Override
-				public void run() {
-					cleanup();
-				}
-			});
-		} catch (IllegalStateException e) {
-			// race, JVM is in shutdown already, we can safely ignore this
-			LOG.debug("Unable to add shutdown hook, shutdown already in progress", e);
-		} catch (Throwable t) {
-			// these errors usually happen when the shutdown is already in progress
-			LOG.warn("Error while adding shutdown hook", t);
-		}
+		ShutdownHookUtil.addShutdownHook(this::cleanup, getClass().getSimpleName(), LOG);
 
 		this.netty = new WebFrontendBootstrap(router, LOG, uploadDir, serverSSLContext, configuredAddress, configuredPort, config);
 
@@ -449,7 +435,7 @@ public class WebRuntimeMonitor implements WebMonitor {
 		synchronized (startupShutdownLock) {
 			leaderRetrievalService.start(retriever);
 
-			long delay = backPressureStatsTracker.getCleanUpInterval();
+			long delay = backPressureStatsTrackerImpl.getCleanUpInterval();
 
 			// Scheduled back pressure stats tracker cache cleanup. We schedule
 			// this here repeatedly, because cache clean up only happens on
@@ -459,7 +445,7 @@ public class WebRuntimeMonitor implements WebMonitor {
 				@Override
 				public void run() {
 					try {
-						backPressureStatsTracker.cleanUpOperatorStatsCache();
+						backPressureStatsTrackerImpl.cleanUpOperatorStatsCache();
 					} catch (Throwable t) {
 						LOG.error("Error during back pressure stats cache cleanup.", t);
 					}
@@ -482,7 +468,7 @@ public class WebRuntimeMonitor implements WebMonitor {
 
 			stackTraceSamples.shutDown();
 
-			backPressureStatsTracker.shutDown();
+			backPressureStatsTrackerImpl.shutDown();
 
 			cleanup();
 		}
@@ -575,5 +561,29 @@ public class WebRuntimeMonitor implements WebMonitor {
 
 		boolean uploadDirSpecified = configuration.contains(WebOptions.UPLOAD_DIR);
 		return uploadDirSpecified ? baseDir : new File(baseDir, "flink-web-" + UUID.randomUUID());
+	}
+
+	public static void logExternalUploadDirDeletion(File uploadDir) {
+		LOG.warn("Jar storage directory {} has been deleted externally. Previously uploaded jars are no longer available.", uploadDir.getAbsolutePath());
+	}
+
+	/**
+	 * Checks whether the given directory exists and is writable. If it doesn't exist this method will attempt to create
+	 * it.
+	 *
+	 * @param uploadDir directory to check
+	 * @throws IOException if the directory does not exist and cannot be created, or if the directory isn't writable
+	 */
+	public static synchronized void checkAndCreateUploadDir(File uploadDir) throws IOException {
+		if (uploadDir.exists() && uploadDir.canWrite()) {
+			LOG.info("Using directory {} for web frontend JAR file uploads.", uploadDir);
+		} else if (uploadDir.mkdirs() && uploadDir.canWrite()) {
+			LOG.info("Created directory {} for web frontend JAR file uploads.", uploadDir);
+		} else {
+			LOG.warn("Jar upload directory {} cannot be created or is not writable.", uploadDir.getAbsolutePath());
+			throw new IOException(
+				String.format("Jar upload directory %s cannot be created or is not writable.",
+					uploadDir.getAbsolutePath()));
+		}
 	}
 }

@@ -19,9 +19,12 @@
 package org.apache.flink.runtime.jobmaster;
 
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.runtime.blob.TransientBlobService;
+import org.apache.flink.runtime.leaderelection.LeaderElectionService;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerGateway;
 import org.apache.flink.runtime.rest.RestServerEndpointConfiguration;
 import org.apache.flink.runtime.rest.handler.RestHandlerConfiguration;
+import org.apache.flink.runtime.rpc.FatalErrorHandler;
 import org.apache.flink.runtime.webmonitor.WebMonitorEndpoint;
 import org.apache.flink.runtime.webmonitor.retriever.GatewayRetriever;
 import org.apache.flink.runtime.webmonitor.retriever.MetricQueryServiceRetriever;
@@ -39,8 +42,21 @@ public class JobMasterRestEndpoint extends WebMonitorEndpoint<JobMasterGateway> 
 			Configuration clusterConfiguration,
 			RestHandlerConfiguration restConfiguration,
 			GatewayRetriever<ResourceManagerGateway> resourceManagerRetriever,
+			TransientBlobService transientBlobService,
 			Executor executor,
-			MetricQueryServiceRetriever metricQueryServiceRetriever) {
-		super(endpointConfiguration, leaderRetriever, clusterConfiguration, restConfiguration, resourceManagerRetriever, executor, metricQueryServiceRetriever);
+			MetricQueryServiceRetriever metricQueryServiceRetriever,
+			LeaderElectionService leaderElectionService,
+			FatalErrorHandler fatalErrorHandler) {
+		super(
+			endpointConfiguration,
+			leaderRetriever,
+			clusterConfiguration,
+			restConfiguration,
+			resourceManagerRetriever,
+			transientBlobService,
+			executor,
+			metricQueryServiceRetriever,
+			leaderElectionService,
+			fatalErrorHandler);
 	}
 }

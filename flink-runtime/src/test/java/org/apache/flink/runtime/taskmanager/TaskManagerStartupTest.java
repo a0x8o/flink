@@ -18,14 +18,13 @@
 
 package org.apache.flink.runtime.taskmanager;
 
-import static org.junit.Assert.*;
-
-import org.apache.commons.io.FileUtils;
 import org.apache.flink.configuration.ConfigConstants;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.CoreOptions;
 import org.apache.flink.configuration.IllegalConfigurationException;
 import org.apache.flink.configuration.JobManagerOptions;
 import org.apache.flink.configuration.TaskManagerOptions;
+import org.apache.flink.runtime.akka.AkkaUtils;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.highavailability.nonha.embedded.EmbeddedHaServices;
@@ -35,25 +34,35 @@ import org.apache.flink.runtime.util.StartupUtils;
 import org.apache.flink.util.NetUtils;
 import org.apache.flink.util.TestLogger;
 
+import akka.actor.ActorSystem;
+import org.apache.commons.io.FileUtils;
 import org.junit.After;
+import org.junit.Assume;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
-import scala.Option;
+import org.junit.rules.TemporaryFolder;
 
 import java.io.File;
 import java.io.IOException;
-import java.net.InetAddress;
 import java.net.BindException;
+import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
+
+import scala.Option;
+
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 /**
  * Tests that check how the TaskManager behaves when encountering startup
  * problems.
  */
 public class TaskManagerStartupTest extends TestLogger {
+	@Rule
+	public TemporaryFolder tempFolder = new TemporaryFolder();
 
 	private HighAvailabilityServices highAvailabilityServices;
 
@@ -131,17 +140,13 @@ public class TaskManagerStartupTest extends TestLogger {
 	 */
 	@Test
 	public void testIODirectoryNotWritable() throws Exception {
-		File tempDir = new File(ConfigConstants.DEFAULT_TASK_MANAGER_TMP_PATH);
-		File nonWritable = new File(tempDir, UUID.randomUUID().toString());
-
-		if (!nonWritable.mkdirs() || !nonWritable.setWritable(false, false)) {
-			System.err.println("Cannot create non-writable temporary file directory. Skipping test.");
-			return;
-		}
+		File nonWritable = tempFolder.newFolder();
+		Assume.assumeTrue("Cannot create non-writable temporary file directory. Skipping test.",
+			nonWritable.setWritable(false, false));
 
 		try {
 			Configuration cfg = new Configuration();
-			cfg.setString(ConfigConstants.TASK_MANAGER_TMP_DIR_KEY, nonWritable.getAbsolutePath());
+			cfg.setString(CoreOptions.TMP_DIRS, nonWritable.getAbsolutePath());
 			cfg.setLong(TaskManagerOptions.MANAGED_MEMORY_SIZE, 4L);
 			cfg.setString(JobManagerOptions.ADDRESS, "localhost");
 			cfg.setInteger(JobManagerOptions.PORT, 21656);
@@ -242,13 +247,13 @@ public class TaskManagerStartupTest extends TestLogger {
 
 			final Configuration cfg = new Configuration();
 			cfg.setString(ConfigConstants.TASK_MANAGER_HOSTNAME_KEY, "localhost");
-			cfg.setInteger(ConfigConstants.TASK_MANAGER_DATA_PORT_KEY, blocker.getLocalPort());
+			cfg.setInteger(TaskManagerOptions.DATA_PORT, blocker.getLocalPort());
 			cfg.setLong(TaskManagerOptions.MANAGED_MEMORY_SIZE, 1L);
-
+			ActorSystem actorSystem = AkkaUtils.createLocalActorSystem(cfg);
 			TaskManager.startTaskManagerComponentsAndActor(
 				cfg,
 				ResourceID.generate(),
-				null,
+				actorSystem,
 				highAvailabilityServices,
 				NoOpMetricRegistry.INSTANCE,
 				"localhost",

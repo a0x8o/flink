@@ -26,9 +26,10 @@ public enum MigrationVersion {
 
 	// NOTE: the version strings must not change,
 	// as they are used to locate snapshot file paths
-	v1_1("1.1"),
 	v1_2("1.2"),
-	v1_3("1.3");
+	v1_3("1.3"),
+	v1_4("1.4"),
+	v1_5("1.5");
 
 	private String versionStr;
 

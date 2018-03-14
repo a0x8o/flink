@@ -463,7 +463,7 @@ The following `TimestampExtractor` implementations are currently available:
 * `ExistingField(fieldName)`: Extracts the value of a rowtime attribute from an existing `LONG` or `SQL_TIMESTAMP` field.
 * `StreamRecordTimestamp()`: Extracts the value of a rowtime attribute from the timestamp of the `DataStream` `StreamRecord`. Note, this `TimestampExtractor` is not available for batch table sources.
 
-A custom `TimestampExtrator` can be defined by implementing the corresponding interface.
+A custom `TimestampExtractor` can be defined by implementing the corresponding interface.
 
 #### Provided WatermarkStrategies
 
@@ -479,7 +479,7 @@ A custom `WatermarkStrategy` can be defined by implementing the corresponding in
 
 ### CsvTableSource
 
-The `CsvTableSource` is already included in `flink-table` without additional dependecies.
+The `CsvTableSource` is already included in `flink-table` without additional dependencies.
 
 The easiest way to create a `CsvTableSource` is by using the enclosed builder `CsvTableSource.builder()`, the builder has the following methods to configure properties:
 
@@ -548,7 +548,7 @@ An `OrcTableSource` is created as shown below:
 Configuration config = new Configuration();
 
 OrcTableSource orcTableSource = OrcTableSource.builder()
-  // path to ORC file(s)
+  // path to ORC file(s). NOTE: By default, directories are recursively scanned.
   .path("file:///path/to/data")
   // schema of ORC files
   .forOrcSchema("struct<name:string,addresses:array<struct<street:string,zip:smallint>>>")
@@ -566,7 +566,7 @@ OrcTableSource orcTableSource = OrcTableSource.builder()
 val config = new Configuration()
 
 val orcTableSource = OrcTableSource.builder()
-  // path to ORC file(s)
+  // path to ORC file(s). NOTE: By default, directories are recursively scanned.
   .path("file:///path/to/data")
   // schema of ORC files
   .forOrcSchema("struct<name:string,addresses:array<struct<street:string,zip:smallint>>>")

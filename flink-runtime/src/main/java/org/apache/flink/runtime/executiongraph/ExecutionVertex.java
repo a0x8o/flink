@@ -25,7 +25,8 @@ import org.apache.flink.api.common.time.Time;
 import org.apache.flink.configuration.JobManagerOptions;
 import org.apache.flink.runtime.JobException;
 import org.apache.flink.runtime.blob.PermanentBlobKey;
-import org.apache.flink.runtime.checkpoint.TaskStateSnapshot;
+import org.apache.flink.runtime.checkpoint.JobManagerTaskRestore;
+import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.deployment.InputChannelDeploymentDescriptor;
 import org.apache.flink.runtime.deployment.InputGateDeploymentDescriptor;
 import org.apache.flink.runtime.deployment.PartialInputChannelDeploymentDescriptor;
@@ -54,6 +55,8 @@ import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.SerializedValue;
 
 import org.slf4j.Logger;
+
+import javax.annotation.Nullable;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -293,6 +296,18 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 		}
 	}
 
+	public Execution getLatestPriorExecution() {
+		synchronized (priorExecutions) {
+			final int size = priorExecutions.size();
+			if (size > 0) {
+				return priorExecutions.get(size - 1);
+			}
+			else {
+				return null;
+			}
+		}
+	}
+
 	/**
 	 * Gets the location where the latest completed/canceled/failed execution of the vertex's
 	 * task happened.
@@ -300,15 +315,13 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 	 * @return The latest prior execution location, or null, if there is none, yet.
 	 */
 	public TaskManagerLocation getLatestPriorLocation() {
-		synchronized (priorExecutions) {
-			final int size = priorExecutions.size();
-			if (size > 0) {
-				return priorExecutions.get(size - 1).getAssignedResourceLocation();
-			}
-			else {
-				return null;
-			}
-		}
+		Execution latestPriorExecution = getLatestPriorExecution();
+		return latestPriorExecution != null ? latestPriorExecution.getAssignedResourceLocation() : null;
+	}
+
+	public AllocationID getLatestPriorAllocation() {
+		Execution latestPriorExecution = getLatestPriorExecution();
+		return latestPriorExecution != null ? latestPriorExecution.getAssignedAllocationID() : null;
 	}
 
 	EvictingBoundedList<Execution> getCopyOfPriorExecutionsList() {
@@ -447,7 +460,7 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 	 *     <li>Repeated executions of stateful tasks try to co-locate the execution with its state.
 	 * </ul>
 	 * 
-	 * @return The preferred excution locations for the execution attempt.
+	 * @return The preferred execution locations for the execution attempt.
 	 * 
 	 * @see #getPreferredLocationsBasedOnState()
 	 * @see #getPreferredLocationsBasedOnInputs() 
@@ -466,7 +479,7 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 	 */
 	public Collection<CompletableFuture<TaskManagerLocation>> getPreferredLocationsBasedOnState() {
 		TaskManagerLocation priorLocation;
-		if (currentExecution.getTaskStateSnapshot() != null && (priorLocation = getLatestPriorLocation()) != null) {
+		if (currentExecution.getTaskRestore() != null && (priorLocation = getLatestPriorLocation()) != null) {
 			return Collections.singleton(CompletableFuture.completedFuture(priorLocation));
 		}
 		else {
@@ -605,9 +618,10 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 	 * @param slotProvider to allocate the slots from
 	 * @param queued if the allocation can be queued
 	 * @param locationPreferenceConstraint constraint for the location preferences
-	 * @return
+	 * @return Future which is completed once the execution is deployed. The future
+	 * can also completed exceptionally.
 	 */
-	public boolean scheduleForExecution(
+	public CompletableFuture<Void> scheduleForExecution(
 			SlotProvider slotProvider,
 			boolean queued,
 			LocationPreferenceConstraint locationPreferenceConstraint) {
@@ -746,7 +760,7 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 	TaskDeploymentDescriptor createDeploymentDescriptor(
 			ExecutionAttemptID executionId,
 			LogicalSlot targetSlot,
-			TaskStateSnapshot taskStateHandles,
+			@Nullable JobManagerTaskRestore taskRestore,
 			int attemptNumber) throws ExecutionGraphException {
 		
 		// Produced intermediate results
@@ -836,7 +850,7 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 			subTaskIndex,
 			attemptNumber,
 			targetSlot.getPhysicalSlotNumber(),
-			taskStateHandles,
+			taskRestore,
 			producedPartitions,
 			consumedPartitions);
 	}

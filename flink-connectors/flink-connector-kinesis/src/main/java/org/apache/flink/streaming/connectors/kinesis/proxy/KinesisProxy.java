@@ -17,12 +17,13 @@
 
 package org.apache.flink.streaming.connectors.kinesis.proxy;
 
+import org.apache.flink.annotation.Internal;
 import org.apache.flink.streaming.connectors.kinesis.config.ConsumerConfigConstants;
 import org.apache.flink.streaming.connectors.kinesis.model.StreamShardHandle;
 import org.apache.flink.streaming.connectors.kinesis.util.AWSUtil;
 
 import com.amazonaws.AmazonServiceException;
-import com.amazonaws.services.kinesis.AmazonKinesisClient;
+import com.amazonaws.services.kinesis.AmazonKinesis;
 import com.amazonaws.services.kinesis.model.DescribeStreamRequest;
 import com.amazonaws.services.kinesis.model.DescribeStreamResult;
 import com.amazonaws.services.kinesis.model.GetRecordsRequest;
@@ -58,14 +59,15 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * <p>NOTE:
  * In the AWS KCL library, there is a similar implementation - {@link com.amazonaws.services.kinesis.clientlibrary.proxies.KinesisProxy}.
  * This implementation differs mainly in that we can make operations to arbitrary Kinesis streams, which is a needed
- * functionality for the Flink Kinesis Connecter since the consumer may simultaneously read from multiple Kinesis streams.
+ * functionality for the Flink Kinesis Connector since the consumer may simultaneously read from multiple Kinesis streams.
  */
+@Internal
 public class KinesisProxy implements KinesisProxyInterface {
 
 	private static final Logger LOG = LoggerFactory.getLogger(KinesisProxy.class);
 
 	/** The actual Kinesis client from the AWS SDK that we will be using to make calls. */
-	private final AmazonKinesisClient kinesisClient;
+	private final AmazonKinesis kinesisClient;
 
 	/** Random seed used to calculate backoff jitter for Kinesis operations. */
 	private static final Random seed = new Random();

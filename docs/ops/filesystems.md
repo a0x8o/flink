@@ -27,7 +27,7 @@ This page provides details on setting up and configuring distributed file system
 ## Flink' File System support
 
 Flink uses file systems both as a source and sink in streaming/batch applications, and as a target for checkpointing.
-These file systens can for example be *Unix/Windows file systems*, *HDFS*, or even object stores like *S3*.
+These file systems can for example be *Unix/Windows file systems*, *HDFS*, or even object stores like *S3*.
 
 The file system used for a specific file is determined by the file URI's scheme. For example `file:///home/user/text.txt` refers to
 a file in the local file system, while `hdfs://namenode:50010/data/user/text.txt` refers to a file in a specific HDFS cluster.
@@ -46,18 +46,23 @@ including any NFS or SAN that is mounted into that local file system.
   - **S3**: Flink directly provides file systems to talk to Amazon S3, registered under the scheme *"s3://"*.
 There are two alternative implementations, `flink-s3-fs-presto` and `flink-s3-fs-hadoop`, based on code from the [Presto project](https://prestodb.io/)
 and the [Hadoop Project](https://hadoop.apache.org/). Both implementations are self-contained with no dependency footprint.
-To use those when using Flink as a library, add the resective maven dependency (`org.apache.flink:flink-s3-fs-presto:{{ site.version }}` or `org.apache.flink:flink-s3-fs-hadoop:{{ site.version }}`).
+To use those when using Flink as a library, add the respective maven dependency (`org.apache.flink:flink-s3-fs-presto:{{ site.version }}` or `org.apache.flink:flink-s3-fs-hadoop:{{ site.version }}`).
 When starting a Flink application from the Flink binaries, copy or move the respective jar file from the `opt` folder to the `lib` folder.
 See [AWS setup](deployment/aws.html) for details.
 
   - **MapR FS**: The MapR file system *"maprfs://"* is automatically available when the MapR libraries are in the classpath.
+  
+  - **OpenStack Swift FS**: Flink directly provides a file system to talk to the OpenStack Swift file system, registered under the scheme *"swift://"*. 
+  The implementation `flink-swift-fs-hadoop` is based on the [Hadoop Project](https://hadoop.apache.org/) but is self-contained with no dependency footprint.
+  To use it when using Flink as a library, add the respective maven dependency (`org.apache.flink:flink-swift-fs-hadoop:{{ site.version }}`
+  When starting a Flink application from the Flink binaries, copy or move the respective jar file from the `opt` folder to the `lib` folder.
 
 ### HDFS and Hadoop File System support 
 
 For a scheme where Flink does not implemented a file system itself, Flink will try to use Hadoop to instantiate a file system for the respective scheme.
 All Hadoop file systems are automatically available once `flink-runtime` and the relevant Hadoop libraries are in classpath.
 
-That way, Flink seamslessly supports all of Hadoop file systems, and all Hadoop-compatible file systems (HCFS), for example:
+That way, Flink seamlessly supports all of Hadoop file systems, and all Hadoop-compatible file systems (HCFS), for example:
 
   - **hdfs**
   - **ftp**
@@ -104,7 +109,7 @@ the total number of concurrent streams (`fs.<scheme>.limit.total`). If the file 
 If the opening of the stream takes longer than `fs.<scheme>.limit.timeout`, the stream opening will fail.
 
 To prevent inactive streams from taking up the complete pool (preventing new connections to be opened), you can add an inactivity timeout for streams:
-`fs.<scheme>.limit.stream-timeout`. If a stream does not read/write any bytes for at least that amout of time, it is forcibly closed.
+`fs.<scheme>.limit.stream-timeout`. If a stream does not read/write any bytes for at least that amount of time, it is forcibly closed.
 
 These limits are enforced per TaskManager, so each TaskManager in a Flink application or cluster will open up to that number of connections.
 In addition, the The limit are also enforced only per FileSystem instance. Because File Systems are created per scheme and authority, different
