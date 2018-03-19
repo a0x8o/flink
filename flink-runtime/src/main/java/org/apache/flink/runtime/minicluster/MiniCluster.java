@@ -50,6 +50,8 @@ import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.metrics.MetricRegistry;
 import org.apache.flink.runtime.metrics.MetricRegistryConfiguration;
 import org.apache.flink.runtime.metrics.MetricRegistryImpl;
+import org.apache.flink.runtime.metrics.groups.JobManagerMetricGroup;
+import org.apache.flink.runtime.metrics.util.MetricUtils;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerGateway;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerId;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerRunner;
@@ -154,6 +156,9 @@ public class MiniCluster implements JobExecutorService, AutoCloseableAsync {
 	private StandaloneDispatcher dispatcher;
 
 	@GuardedBy("lock")
+	private JobManagerMetricGroup jobManagerMetricGroup;
+
+	@GuardedBy("lock")
 	private RpcGatewayRetriever<DispatcherId, DispatcherGateway> dispatcherGatewayRetriever;
 
 	/** Flag marking the mini cluster as started/running. */
@@ -211,9 +216,6 @@ public class MiniCluster implements JobExecutorService, AutoCloseableAsync {
 
 			LOG.info("Starting Flink Mini Cluster");
 			LOG.debug("Using configuration {}", miniClusterConfiguration);
-
-			// create a new termination future
-			terminationFuture = new CompletableFuture<>();
 
 			final Configuration configuration = miniClusterConfiguration.getConfiguration();
 			final Time rpcTimeout = miniClusterConfiguration.getRpcTimeout();
@@ -339,10 +341,12 @@ public class MiniCluster implements JobExecutorService, AutoCloseableAsync {
 
 				dispatcherRestEndpoint.start();
 
-				restAddressURI = new URI(dispatcherRestEndpoint.getRestAddress());
+				restAddressURI = new URI(dispatcherRestEndpoint.getRestBaseUrl());
 
 				// bring up the dispatcher that launches JobManagers when jobs submitted
 				LOG.info("Starting job dispatcher(s) for JobManger");
+
+				this.jobManagerMetricGroup = MetricUtils.instantiateJobManagerMetricGroup(metricRegistry, "localhost");
 
 				dispatcher = new StandaloneDispatcher(
 					jobManagerRpcService,
@@ -352,11 +356,12 @@ public class MiniCluster implements JobExecutorService, AutoCloseableAsync {
 					resourceManagerRunner.getResourceManageGateway(),
 					blobServer,
 					heartbeatServices,
-					metricRegistry,
+					jobManagerMetricGroup,
+					metricRegistry.getMetricQueryServicePath(),
 					new MemoryArchivedExecutionGraphStore(),
 					Dispatcher.DefaultJobManagerRunnerFactory.INSTANCE,
 					new ShutDownFatalErrorHandler(),
-					dispatcherRestEndpoint.getRestAddress());
+					dispatcherRestEndpoint.getRestBaseUrl());
 
 				dispatcher.start();
 
@@ -375,6 +380,9 @@ public class MiniCluster implements JobExecutorService, AutoCloseableAsync {
 				}
 				throw e;
 			}
+
+			// create a new termination future
+			terminationFuture = new CompletableFuture<>();
 
 			// now officially mark this as running
 			running = true;
@@ -424,6 +432,10 @@ public class MiniCluster implements JobExecutorService, AutoCloseableAsync {
 						componentsTerminationFuture,
 						() -> {
 							synchronized (lock) {
+								if (jobManagerMetricGroup != null) {
+									jobManagerMetricGroup.close();
+									jobManagerMetricGroup = null;
+								}
 								// metrics shutdown
 								if (metricRegistry != null) {
 									metricRegistry.shutdown();
