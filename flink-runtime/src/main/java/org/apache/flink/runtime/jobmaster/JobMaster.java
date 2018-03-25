@@ -27,6 +27,7 @@ import org.apache.flink.core.io.InputSplitAssigner;
 import org.apache.flink.queryablestate.KvStateID;
 import org.apache.flink.runtime.JobException;
 import org.apache.flink.runtime.StoppingException;
+import org.apache.flink.runtime.accumulators.AccumulatorSnapshot;
 import org.apache.flink.runtime.blob.BlobServer;
 import org.apache.flink.runtime.checkpoint.CheckpointCoordinator;
 import org.apache.flink.runtime.checkpoint.CheckpointDeclineReason;
@@ -93,6 +94,7 @@ import org.apache.flink.runtime.rpc.RpcService;
 import org.apache.flink.runtime.rpc.RpcTimeout;
 import org.apache.flink.runtime.rpc.akka.AkkaRpcServiceUtils;
 import org.apache.flink.runtime.state.KeyGroupRange;
+import org.apache.flink.runtime.taskexecutor.AccumulatorReport;
 import org.apache.flink.runtime.taskexecutor.TaskExecutorGateway;
 import org.apache.flink.runtime.taskexecutor.slot.SlotOffer;
 import org.apache.flink.runtime.taskmanager.TaskExecutionState;
@@ -166,7 +168,7 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 	private final JobManagerJobMetricGroup jobMetricGroup;
 
 	/** The heartbeat manager with task managers. */
-	private final HeartbeatManager<Void, Void> taskManagerHeartbeatManager;
+	private final HeartbeatManager<AccumulatorReport, Void> taskManagerHeartbeatManager;
 
 	/** The heartbeat manager with resource manager. */
 	private final HeartbeatManager<Void, Void> resourceManagerHeartbeatManager;
@@ -687,6 +689,8 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 
 	@Override
 	public CompletableFuture<Acknowledge> disconnectTaskManager(final ResourceID resourceID, final Exception cause) {
+		log.debug("Disconnect TaskExecutor {} because: {}", resourceID, cause.getMessage());
+
 		taskManagerHeartbeatManager.unmonitorTarget(resourceID);
 		CompletableFuture<Acknowledge> releaseFuture = slotPoolGateway.releaseTaskManager(resourceID);
 
@@ -938,8 +942,8 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 	}
 
 	@Override
-	public void heartbeatFromTaskManager(final ResourceID resourceID) {
-		taskManagerHeartbeatManager.receiveHeartbeat(resourceID, null);
+	public void heartbeatFromTaskManager(final ResourceID resourceID, AccumulatorReport accumulatorReport) {
+		taskManagerHeartbeatManager.receiveHeartbeat(resourceID, accumulatorReport);
 	}
 
 	@Override
@@ -1504,7 +1508,7 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 		}
 	}
 
-	private class TaskManagerHeartbeatListener implements HeartbeatListener<Void, Void> {
+	private class TaskManagerHeartbeatListener implements HeartbeatListener<AccumulatorReport, Void> {
 
 		private final JobMasterGateway jobMasterGateway;
 
@@ -1514,16 +1518,16 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 
 		@Override
 		public void notifyHeartbeatTimeout(ResourceID resourceID) {
-			log.info("Heartbeat of TaskManager with id {} timed out.", resourceID);
-
 			jobMasterGateway.disconnectTaskManager(
 				resourceID,
 				new TimeoutException("Heartbeat of TaskManager with id " + resourceID + " timed out."));
 		}
 
 		@Override
-		public void reportPayload(ResourceID resourceID, Void payload) {
-			// nothing to do since there is no payload
+		public void reportPayload(ResourceID resourceID, AccumulatorReport payload) {
+			for (AccumulatorSnapshot snapshot : payload.getAccumulatorSnapshots()) {
+				executionGraph.updateAccumulators(snapshot);
+			}
 		}
 
 		@Override
