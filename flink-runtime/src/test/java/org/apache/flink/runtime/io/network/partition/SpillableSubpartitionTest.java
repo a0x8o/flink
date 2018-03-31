@@ -34,6 +34,7 @@ import org.apache.flink.runtime.io.network.buffer.BufferProvider;
 
 import org.junit.AfterClass;
 import org.junit.Assert;
+import org.junit.BeforeClass;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.ExpectedException;
@@ -74,7 +75,12 @@ public class SpillableSubpartitionTest extends SubpartitionTestBase {
 	private static final ExecutorService executorService = Executors.newCachedThreadPool();
 
 	/** Asynchronous I/O manager. */
-	private static final IOManager ioManager = new IOManagerAsync();
+	private static IOManager ioManager;
+
+	@BeforeClass
+	public static void setup() {
+		ioManager = new IOManagerAsync();
+	}
 
 	@AfterClass
 	public static void shutdown() {
@@ -669,14 +675,12 @@ public class SpillableSubpartitionTest extends SubpartitionTestBase {
 		SpillableSubpartition partition = createSubpartition();
 		BufferBuilder bufferBuilder = createBufferBuilder(BUFFER_DATA_SIZE);
 
-		try (BufferConsumer buffer = bufferBuilder.createBufferConsumer()) {
-			partition.add(buffer);
-			assertEquals(0, partition.releaseMemory());
-			// finally fill the buffer with some bytes
-			bufferBuilder.appendAndCommit(ByteBuffer.allocate(BUFFER_DATA_SIZE));
-			bufferBuilder.finish(); // so that this buffer can be removed from the queue
-			assertEquals(BUFFER_DATA_SIZE, partition.spillFinishedBufferConsumers());
-		}
+		partition.add(bufferBuilder.createBufferConsumer());
+		assertEquals(0, partition.releaseMemory());
+		// finally fill the buffer with some bytes
+		bufferBuilder.appendAndCommit(ByteBuffer.allocate(BUFFER_DATA_SIZE));
+		bufferBuilder.finish(); // so that this buffer can be removed from the queue
+		assertEquals(BUFFER_DATA_SIZE, partition.spillFinishedBufferConsumers());
 	}
 
 	/**

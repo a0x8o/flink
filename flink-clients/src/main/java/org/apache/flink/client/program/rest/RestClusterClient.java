@@ -72,6 +72,10 @@ import org.apache.flink.runtime.rest.messages.job.JobExecutionResultHeaders;
 import org.apache.flink.runtime.rest.messages.job.JobSubmitHeaders;
 import org.apache.flink.runtime.rest.messages.job.JobSubmitRequestBody;
 import org.apache.flink.runtime.rest.messages.job.JobSubmitResponseBody;
+import org.apache.flink.runtime.rest.messages.job.savepoints.SavepointDisposalRequest;
+import org.apache.flink.runtime.rest.messages.job.savepoints.SavepointDisposalStatusHeaders;
+import org.apache.flink.runtime.rest.messages.job.savepoints.SavepointDisposalStatusMessageParameters;
+import org.apache.flink.runtime.rest.messages.job.savepoints.SavepointDisposalTriggerHeaders;
 import org.apache.flink.runtime.rest.messages.job.savepoints.SavepointInfo;
 import org.apache.flink.runtime.rest.messages.job.savepoints.SavepointStatusHeaders;
 import org.apache.flink.runtime.rest.messages.job.savepoints.SavepointStatusMessageParameters;
@@ -89,6 +93,7 @@ import org.apache.flink.runtime.webmonitor.retriever.LeaderRetriever;
 import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.ExecutorUtils;
 import org.apache.flink.util.FlinkException;
+import org.apache.flink.util.OptionalFailure;
 import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.function.CheckedSupplier;
 
@@ -409,7 +414,7 @@ public class RestClusterClient<T> extends ClusterClient<T> {
 	}
 
 	@Override
-	public Map<String, Object> getAccumulators(final JobID jobID, ClassLoader loader) throws Exception {
+	public Map<String, OptionalFailure<Object>> getAccumulators(final JobID jobID, ClassLoader loader) throws Exception {
 		final JobAccumulatorsHeaders accumulatorsHeaders = JobAccumulatorsHeaders.getInstance();
 		final JobAccumulatorsMessageParameters accMsgParams = accumulatorsHeaders.getUnresolvedMessageParameters();
 		accMsgParams.jobPathParameter.resolve(jobID);
@@ -420,7 +425,7 @@ public class RestClusterClient<T> extends ClusterClient<T> {
 			accMsgParams
 		);
 
-		Map<String, Object> result = Collections.emptyMap();
+		Map<String, OptionalFailure<Object>> result = Collections.emptyMap();
 
 		try {
 			result = responseFuture.thenApply((JobAccumulatorsInfo accumulatorsInfo) -> {
@@ -502,24 +507,55 @@ public class RestClusterClient<T> extends ClusterClient<T> {
 		final CompletableFuture<AsynchronousOperationInfo> rescalingOperationFuture = rescalingTriggerResponseFuture.thenCompose(
 			(TriggerResponse triggerResponse) -> {
 				final TriggerId triggerId = triggerResponse.getTriggerId();
+				final RescalingStatusHeaders rescalingStatusHeaders = RescalingStatusHeaders.getInstance();
+				final RescalingStatusMessageParameters rescalingStatusMessageParameters = rescalingStatusHeaders.getUnresolvedMessageParameters();
+
+				rescalingStatusMessageParameters.jobPathParameter.resolve(jobId);
+				rescalingStatusMessageParameters.triggerIdPathParameter.resolve(triggerId);
 
 				return pollResourceAsync(
-					() -> {
-						final RescalingStatusHeaders rescalingStatusHeaders = RescalingStatusHeaders.getInstance();
-						final RescalingStatusMessageParameters rescalingStatusMessageParameters = rescalingStatusHeaders.getUnresolvedMessageParameters();
-
-						rescalingStatusMessageParameters.jobPathParameter.resolve(jobId);
-						rescalingStatusMessageParameters.triggerIdPathParameter.resolve(triggerId);
-						return sendRetryableRequest(
-							rescalingStatusHeaders,
-							rescalingStatusMessageParameters,
-							EmptyRequestBody.getInstance(),
-							isConnectionProblemException());
-					}
-				);
+					() -> sendRetryableRequest(
+						rescalingStatusHeaders,
+						rescalingStatusMessageParameters,
+						EmptyRequestBody.getInstance(),
+						isConnectionProblemException()));
 			});
 
 		return rescalingOperationFuture.thenApply(
+			(AsynchronousOperationInfo asynchronousOperationInfo) -> {
+				if (asynchronousOperationInfo.getFailureCause() == null) {
+					return Acknowledge.get();
+				} else {
+					throw new CompletionException(asynchronousOperationInfo.getFailureCause());
+				}
+			});
+	}
+
+	@Override
+	public CompletableFuture<Acknowledge> disposeSavepoint(String savepointPath) {
+		final SavepointDisposalRequest savepointDisposalRequest = new SavepointDisposalRequest(savepointPath);
+
+		final CompletableFuture<TriggerResponse> savepointDisposalTriggerFuture = sendRequest(
+			SavepointDisposalTriggerHeaders.getInstance(),
+			EmptyMessageParameters.getInstance(),
+			savepointDisposalRequest);
+
+		final CompletableFuture<AsynchronousOperationInfo> savepointDisposalFuture = savepointDisposalTriggerFuture.thenCompose(
+			(TriggerResponse triggerResponse) -> {
+				final TriggerId triggerId = triggerResponse.getTriggerId();
+				final SavepointDisposalStatusHeaders savepointDisposalStatusHeaders = SavepointDisposalStatusHeaders.getInstance();
+				final SavepointDisposalStatusMessageParameters savepointDisposalStatusMessageParameters = savepointDisposalStatusHeaders.getUnresolvedMessageParameters();
+				savepointDisposalStatusMessageParameters.triggerIdPathParameter.resolve(triggerId);
+
+				return pollResourceAsync(
+					() -> sendRetryableRequest(
+						savepointDisposalStatusHeaders,
+						savepointDisposalStatusMessageParameters,
+						EmptyRequestBody.getInstance(),
+						isConnectionProblemException()));
+			});
+
+		return savepointDisposalFuture.thenApply(
 			(AsynchronousOperationInfo asynchronousOperationInfo) -> {
 				if (asynchronousOperationInfo.getFailureCause() == null) {
 					return Acknowledge.get();

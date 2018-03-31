@@ -36,6 +36,7 @@ import org.apache.flink.api.common.state.MapState;
 import org.apache.flink.api.common.state.MapStateDescriptor;
 import org.apache.flink.api.common.state.ReducingState;
 import org.apache.flink.api.common.state.ReducingStateDescriptor;
+import org.apache.flink.api.common.state.StateDescriptor;
 import org.apache.flink.api.common.state.ValueState;
 import org.apache.flink.api.common.state.ValueStateDescriptor;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
@@ -904,7 +905,7 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 
 		ValueState<String> state = backend.getPartitionedState(VoidNamespace.INSTANCE, VoidNamespaceSerializer.INSTANCE, kvId);
 		@SuppressWarnings("unchecked")
-		InternalKvState<VoidNamespace> kvState = (InternalKvState<VoidNamespace>) state;
+		InternalKvState<Integer, VoidNamespace, String> kvState = (InternalKvState<Integer, VoidNamespace, String>) state;
 
 		// this is only available after the backend initialized the serializer
 		TypeSerializer<String> valueSerializer = kvId.getSerializer();
@@ -954,7 +955,7 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 
 		ValueState<String> restored1 = backend.getPartitionedState(VoidNamespace.INSTANCE, VoidNamespaceSerializer.INSTANCE, kvId);
 		@SuppressWarnings("unchecked")
-		InternalKvState<VoidNamespace> restoredKvState1 = (InternalKvState<VoidNamespace>) restored1;
+		InternalKvState<Integer, VoidNamespace, String> restoredKvState1 = (InternalKvState<Integer, VoidNamespace, String>) restored1;
 
 		backend.setCurrentKey(1);
 		assertEquals("1", restored1.value());
@@ -970,7 +971,7 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 
 		ValueState<String> restored2 = backend.getPartitionedState(VoidNamespace.INSTANCE, VoidNamespaceSerializer.INSTANCE, kvId);
 		@SuppressWarnings("unchecked")
-		InternalKvState<VoidNamespace> restoredKvState2 = (InternalKvState<VoidNamespace>) restored2;
+		InternalKvState<Integer, VoidNamespace, String> restoredKvState2 = (InternalKvState<Integer, VoidNamespace, String>) restored2;
 
 		backend.setCurrentKey(1);
 		assertEquals("u1", restored2.value());
@@ -986,7 +987,8 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 	}
 
 	/**
-	 * Tests {@link ValueState#value()} and {@link InternalKvState#getSerializedValue(byte[])}
+	 * Tests {@link ValueState#value()} and
+	 * {@link InternalKvState#getSerializedValue(byte[], TypeSerializer, TypeSerializer, TypeSerializer)}
 	 * accessing the state concurrently. They should not get in the way of each
 	 * other.
 	 */
@@ -1011,7 +1013,7 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 		final TypeSerializer<String> valueSerializer = kvId.getSerializer();
 
 		@SuppressWarnings("unchecked")
-		final InternalKvState<Integer> kvState = (InternalKvState<Integer>) state;
+		final InternalKvState<Integer, Integer, String> kvState = (InternalKvState<Integer, Integer, String>) state;
 
 		/**
 		 * 1) Test that ValueState#value() before and after
@@ -1231,7 +1233,7 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 
 		ListState<String> state = backend.getPartitionedState(VoidNamespace.INSTANCE, VoidNamespaceSerializer.INSTANCE, kvId);
 		@SuppressWarnings("unchecked")
-		InternalKvState<VoidNamespace> kvState = (InternalKvState<VoidNamespace>) state;
+		InternalKvState<Integer, VoidNamespace, String> kvState = (InternalKvState<Integer, VoidNamespace, String>) state;
 
 		// this is only available after the backend initialized the serializer
 		TypeSerializer<String> valueSerializer = kvId.getElementSerializer();
@@ -1289,7 +1291,7 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 
 		ListState<String> restored1 = backend.getPartitionedState(VoidNamespace.INSTANCE, VoidNamespaceSerializer.INSTANCE, kvId);
 		@SuppressWarnings("unchecked")
-		InternalKvState<VoidNamespace> restoredKvState1 = (InternalKvState<VoidNamespace>) restored1;
+		InternalKvState<Integer, VoidNamespace, String> restoredKvState1 = (InternalKvState<Integer, VoidNamespace, String>) restored1;
 
 		backend.setCurrentKey(1);
 		assertEquals("1", joiner.join(restored1.get()));
@@ -1306,7 +1308,7 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 
 		ListState<String> restored2 = backend.getPartitionedState(VoidNamespace.INSTANCE, VoidNamespaceSerializer.INSTANCE, kvId);
 		@SuppressWarnings("unchecked")
-		InternalKvState<VoidNamespace> restoredKvState2 = (InternalKvState<VoidNamespace>) restored2;
+		InternalKvState<Integer, VoidNamespace, String> restoredKvState2 = (InternalKvState<Integer, VoidNamespace, String>) restored2;
 
 		backend.setCurrentKey(1);
 		assertEquals("1,u1", joiner.join(restored2.get()));
@@ -1559,8 +1561,8 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 		final Integer namespace3 = 3;
 
 		try {
-			InternalListState<Integer, Long> state =
-				(InternalListState<Integer, Long>) keyedBackend.getPartitionedState(0, IntSerializer.INSTANCE, stateDescr);
+			InternalListState<String, Integer, Long> state =
+				(InternalListState<String, Integer, Long>) keyedBackend.getPartitionedState(0, IntSerializer.INSTANCE, stateDescr);
 
 			// populate the different namespaces
 			//  - abc spreads the values over three namespaces
@@ -1675,7 +1677,7 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 
 		ReducingState<String> state = backend.getPartitionedState(VoidNamespace.INSTANCE, VoidNamespaceSerializer.INSTANCE, kvId);
 		@SuppressWarnings("unchecked")
-		InternalKvState<VoidNamespace> kvState = (InternalKvState<VoidNamespace>) state;
+		InternalKvState<Integer, VoidNamespace, String> kvState = (InternalKvState<Integer, VoidNamespace, String>) state;
 
 		// this is only available after the backend initialized the serializer
 		TypeSerializer<String> valueSerializer = kvId.getSerializer();
@@ -1725,7 +1727,7 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 
 		ReducingState<String> restored1 = backend.getPartitionedState(VoidNamespace.INSTANCE, VoidNamespaceSerializer.INSTANCE, kvId);
 		@SuppressWarnings("unchecked")
-		InternalKvState<VoidNamespace> restoredKvState1 = (InternalKvState<VoidNamespace>) restored1;
+		InternalKvState<Integer, VoidNamespace, String> restoredKvState1 = (InternalKvState<Integer, VoidNamespace, String>) restored1;
 
 		backend.setCurrentKey(1);
 		assertEquals("1", restored1.get());
@@ -1741,7 +1743,7 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 
 		ReducingState<String> restored2 = backend.getPartitionedState(VoidNamespace.INSTANCE, VoidNamespaceSerializer.INSTANCE, kvId);
 		@SuppressWarnings("unchecked")
-		InternalKvState<VoidNamespace> restoredKvState2 = (InternalKvState<VoidNamespace>) restored2;
+		InternalKvState<Integer, VoidNamespace, String> restoredKvState2 = (InternalKvState<Integer, VoidNamespace, String>) restored2;
 
 		backend.setCurrentKey(1);
 		assertEquals("1,u1", restored2.get());
@@ -1826,8 +1828,8 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 		AbstractKeyedStateBackend<String> keyedBackend = createKeyedBackend(StringSerializer.INSTANCE);
 
 		try {
-			final InternalReducingState<Integer, Long> state =
-				(InternalReducingState<Integer, Long>) keyedBackend.getPartitionedState(0, IntSerializer.INSTANCE, stateDescr);
+			final InternalReducingState<String, Integer, Long> state =
+				(InternalReducingState<String, Integer, Long>) keyedBackend.getPartitionedState(0, IntSerializer.INSTANCE, stateDescr);
 
 			// populate the different namespaces
 			//  - abc spreads the values over three namespaces
@@ -1999,8 +2001,8 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 		AbstractKeyedStateBackend<String> keyedBackend = createKeyedBackend(StringSerializer.INSTANCE);
 
 		try {
-			InternalAggregatingState<Integer, Long, Long> state =
-				(InternalAggregatingState<Integer, Long, Long>) keyedBackend.getPartitionedState(0, IntSerializer.INSTANCE, stateDescr);
+			InternalAggregatingState<String, Integer, Long, Long, Long> state =
+				(InternalAggregatingState<String, Integer, Long, Long, Long>) keyedBackend.getPartitionedState(0, IntSerializer.INSTANCE, stateDescr);
 
 			// populate the different namespaces
 			//  - abc spreads the values over three namespaces
@@ -2172,8 +2174,8 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 		AbstractKeyedStateBackend<String> keyedBackend = createKeyedBackend(StringSerializer.INSTANCE);
 
 		try {
-			InternalAggregatingState<Integer, Long, Long> state =
-				(InternalAggregatingState<Integer, Long, Long>) keyedBackend.getPartitionedState(0, IntSerializer.INSTANCE, stateDescr);
+			InternalAggregatingState<String, Integer, Long, Long, Long> state =
+				(InternalAggregatingState<String, Integer, Long, Long, Long>) keyedBackend.getPartitionedState(0, IntSerializer.INSTANCE, stateDescr);
 
 			// populate the different namespaces
 			//  - abc spreads the values over three namespaces
@@ -2291,7 +2293,7 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 
 		FoldingState<Integer, String> state = backend.getPartitionedState(VoidNamespace.INSTANCE, VoidNamespaceSerializer.INSTANCE, kvId);
 		@SuppressWarnings("unchecked")
-		InternalKvState<VoidNamespace> kvState = (InternalKvState<VoidNamespace>) state;
+		InternalKvState<Integer, VoidNamespace, String> kvState = (InternalKvState<Integer, VoidNamespace, String>) state;
 
 		// this is only available after the backend initialized the serializer
 		TypeSerializer<String> valueSerializer = kvId.getSerializer();
@@ -2342,7 +2344,7 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 
 		FoldingState<Integer, String> restored1 = backend.getPartitionedState(VoidNamespace.INSTANCE, VoidNamespaceSerializer.INSTANCE, kvId);
 		@SuppressWarnings("unchecked")
-		InternalKvState<VoidNamespace> restoredKvState1 = (InternalKvState<VoidNamespace>) restored1;
+		InternalKvState<Integer, VoidNamespace, String> restoredKvState1 = (InternalKvState<Integer, VoidNamespace, String>) restored1;
 
 		backend.setCurrentKey(1);
 		assertEquals("Fold-Initial:,1", restored1.get());
@@ -2359,7 +2361,7 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 		@SuppressWarnings("unchecked")
 		FoldingState<Integer, String> restored2 = backend.getPartitionedState(VoidNamespace.INSTANCE, VoidNamespaceSerializer.INSTANCE, kvId);
 		@SuppressWarnings("unchecked")
-		InternalKvState<VoidNamespace> restoredKvState2 = (InternalKvState<VoidNamespace>) restored2;
+		InternalKvState<Integer, VoidNamespace, String> restoredKvState2 = (InternalKvState<Integer, VoidNamespace, String>) restored2;
 
 		backend.setCurrentKey(1);
 		assertEquals("Fold-Initial:,101", restored2.get());
@@ -2387,7 +2389,7 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 
 		MapState<Integer, String> state = backend.getPartitionedState(VoidNamespace.INSTANCE, VoidNamespaceSerializer.INSTANCE, kvId);
 		@SuppressWarnings("unchecked")
-		InternalKvState<VoidNamespace> kvState = (InternalKvState<VoidNamespace>) state;
+		InternalKvState<Integer, VoidNamespace, Map<Integer, String>> kvState = (InternalKvState<Integer, VoidNamespace, Map<Integer, String>>) state;
 
 		// these are only available after the backend initialized the serializer
 		TypeSerializer<Integer> userKeySerializer = kvId.getKeySerializer();
@@ -2490,7 +2492,7 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 
 		MapState<Integer, String> restored1 = backend.getPartitionedState(VoidNamespace.INSTANCE, VoidNamespaceSerializer.INSTANCE, kvId);
 		@SuppressWarnings("unchecked")
-		InternalKvState<VoidNamespace> restoredKvState1 = (InternalKvState<VoidNamespace>) restored1;
+		InternalKvState<Integer, VoidNamespace, Map<Integer, String>> restoredKvState1 = (InternalKvState<Integer, VoidNamespace, Map<Integer, String>>) restored1;
 
 		backend.setCurrentKey(1);
 		assertEquals("1", restored1.get(1));
@@ -2509,7 +2511,7 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 		@SuppressWarnings("unchecked")
 		MapState<Integer, String> restored2 = backend.getPartitionedState(VoidNamespace.INSTANCE, VoidNamespaceSerializer.INSTANCE, kvId);
 		@SuppressWarnings("unchecked")
-		InternalKvState<VoidNamespace> restoredKvState2 = (InternalKvState<VoidNamespace>) restored2;
+		InternalKvState<Integer, VoidNamespace, Map<Integer, String>> restoredKvState2 = (InternalKvState<Integer, VoidNamespace, Map<Integer, String>>) restored2;
 
 		backend.setCurrentKey(1);
 		assertEquals("101", restored2.get(1));
@@ -3065,7 +3067,7 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 					VoidNamespaceSerializer.INSTANCE,
 					desc);
 
-			InternalKvState<VoidNamespace> kvState = (InternalKvState<VoidNamespace>) state;
+			InternalKvState<Integer, VoidNamespace, Integer> kvState = (InternalKvState<Integer, VoidNamespace, Integer>) state;
 			assertTrue(kvState instanceof AbstractHeapState);
 
 			kvState.setCurrentNamespace(VoidNamespace.INSTANCE);
@@ -3087,7 +3089,7 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 					VoidNamespaceSerializer.INSTANCE,
 					desc);
 
-			InternalKvState<VoidNamespace> kvState = (InternalKvState<VoidNamespace>) state;
+			InternalKvState<Integer, VoidNamespace, Integer> kvState = (InternalKvState<Integer, VoidNamespace, Integer>) state;
 			assertTrue(kvState instanceof AbstractHeapState);
 
 			kvState.setCurrentNamespace(VoidNamespace.INSTANCE);
@@ -3114,7 +3116,7 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 					VoidNamespaceSerializer.INSTANCE,
 					desc);
 
-			InternalKvState<VoidNamespace> kvState = (InternalKvState<VoidNamespace>) state;
+			InternalKvState<Integer, VoidNamespace, Integer> kvState = (InternalKvState<Integer, VoidNamespace, Integer>) state;
 			assertTrue(kvState instanceof AbstractHeapState);
 
 			kvState.setCurrentNamespace(VoidNamespace.INSTANCE);
@@ -3141,7 +3143,7 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 					VoidNamespaceSerializer.INSTANCE,
 					desc);
 
-			InternalKvState<VoidNamespace> kvState = (InternalKvState<VoidNamespace>) state;
+			InternalKvState<Integer, VoidNamespace, Integer> kvState = (InternalKvState<Integer, VoidNamespace, Integer>) state;
 			assertTrue(kvState instanceof AbstractHeapState);
 
 			kvState.setCurrentNamespace(VoidNamespace.INSTANCE);
@@ -3162,7 +3164,7 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 					VoidNamespaceSerializer.INSTANCE,
 					desc);
 
-			InternalKvState<VoidNamespace> kvState = (InternalKvState<VoidNamespace>) state;
+			InternalKvState<Integer, VoidNamespace, Map<Integer, String>> kvState = (InternalKvState<Integer, VoidNamespace, Map<Integer, String>>) state;
 			assertTrue(kvState instanceof AbstractHeapState);
 
 			kvState.setCurrentNamespace(VoidNamespace.INSTANCE);
@@ -3324,7 +3326,7 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 			}
 
 			// insert some data to the backend.
-			InternalValueState<VoidNamespace, Integer> valueState = backend.createValueState(
+			InternalValueState<Integer, VoidNamespace, Integer> valueState = backend.createValueState(
 				VoidNamespaceSerializer.INSTANCE,
 				new ValueStateDescriptor<>("test", IntSerializer.INSTANCE));
 
@@ -3381,7 +3383,7 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 
 		try {
 			backend = createKeyedBackend(IntSerializer.INSTANCE);
-			InternalValueState<VoidNamespace, Integer> valueState = backend.createValueState(
+			InternalValueState<Integer, VoidNamespace, Integer> valueState = backend.createValueState(
 					VoidNamespaceSerializer.INSTANCE,
 					new ValueStateDescriptor<>("test", IntSerializer.INSTANCE));
 
@@ -3428,7 +3430,7 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 		try {
 			backend = restoreKeyedBackend(IntSerializer.INSTANCE, stateHandle);
 
-			InternalValueState<VoidNamespace, Integer> valueState = backend.createValueState(
+			InternalValueState<Integer, VoidNamespace, Integer> valueState = backend.createValueState(
 					VoidNamespaceSerializer.INSTANCE,
 					new ValueStateDescriptor<>("test", IntSerializer.INSTANCE));
 
@@ -3449,6 +3451,83 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 		}
 	}
 
+	/**
+	 * Since {@link AbstractKeyedStateBackend#getKeys(String, Object)} does't support concurrent modification
+	 * and {@link AbstractKeyedStateBackend#applyToAllKeys(Object, TypeSerializer, StateDescriptor,
+	 * KeyedStateFunction)} rely on it to get keys from backend. So we need this unit test to verify the concurrent
+	 * modification with {@link AbstractKeyedStateBackend#applyToAllKeys(Object, TypeSerializer, StateDescriptor, KeyedStateFunction)}.
+	 */
+	@Test
+	public void testConcurrentModificationWithApplyToAllKeys() throws Exception {
+		AbstractKeyedStateBackend<Integer> backend = createKeyedBackend(IntSerializer.INSTANCE);
+
+		try {
+			ListStateDescriptor<String> listStateDescriptor =
+				new ListStateDescriptor<>("foo", StringSerializer.INSTANCE);
+
+			ListState<String> listState =
+				backend.getPartitionedState(VoidNamespace.INSTANCE, VoidNamespaceSerializer.INSTANCE, listStateDescriptor);
+
+			for (int i = 0; i < 100; ++i) {
+				backend.setCurrentKey(i);
+				listState.add("Hello" + i);
+			}
+
+			// valid state value via applyToAllKeys().
+			backend.applyToAllKeys(VoidNamespace.INSTANCE, VoidNamespaceSerializer.INSTANCE, listStateDescriptor,
+				new KeyedStateFunction<Integer, ListState<String>>() {
+					@Override
+					public void process(Integer key, ListState<String> state) throws Exception {
+						assertEquals("Hello" + key, state.get().iterator().next());
+					}
+				});
+
+			// clear state via applyToAllKeys().
+			backend.applyToAllKeys(VoidNamespace.INSTANCE, VoidNamespaceSerializer.INSTANCE, listStateDescriptor,
+				new KeyedStateFunction<Integer, ListState<String>>() {
+					@Override
+					public void process(Integer key, ListState<String> state) throws Exception {
+						state.clear();
+					}
+				});
+
+			// valid that state has been cleared.
+			backend.applyToAllKeys(VoidNamespace.INSTANCE, VoidNamespaceSerializer.INSTANCE, listStateDescriptor,
+				new KeyedStateFunction<Integer, ListState<String>>() {
+					@Override
+					public void process(Integer key, ListState<String> state) throws Exception {
+						assertFalse(state.get().iterator().hasNext());
+					}
+				});
+
+			// clear() with add() in applyToAllKeys()
+			backend.applyToAllKeys(VoidNamespace.INSTANCE, VoidNamespaceSerializer.INSTANCE, listStateDescriptor,
+				new KeyedStateFunction<Integer, ListState<String>>() {
+					@Override
+					public void process(Integer key, ListState<String> state) throws Exception {
+						state.add("Hello" + key);
+						state.clear();
+						state.add("Hello_" + key);
+					}
+				});
+
+			// valid state value via applyToAllKeys().
+			backend.applyToAllKeys(VoidNamespace.INSTANCE, VoidNamespaceSerializer.INSTANCE, listStateDescriptor,
+				new KeyedStateFunction<Integer, ListState<String>>() {
+					@Override
+					public void process(Integer key, ListState<String> state) throws Exception {
+						final Iterator<String> it = state.get().iterator();
+						assertEquals("Hello_" + key, it.next());
+						assertFalse(it.hasNext()); // finally verify we have no more elements
+					}
+				});
+		}
+		finally {
+			IOUtils.closeQuietly(backend);
+			backend.dispose();
+		}
+	}
+
 	@Test
 	public void testAsyncSnapshotCancellation() throws Exception {
 		OneShotLatch blocker = new OneShotLatch();
@@ -3466,7 +3545,7 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 				return;
 			}
 
-			InternalValueState<VoidNamespace, Integer> valueState = backend.createValueState(
+			InternalValueState<Integer, VoidNamespace, Integer> valueState = backend.createValueState(
 					VoidNamespaceSerializer.INSTANCE,
 					new ValueStateDescriptor<>("test", IntSerializer.INSTANCE));
 
@@ -3520,7 +3599,7 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 	 * if it is not null.
 	 */
 	protected static <V, K, N> V getSerializedValue(
-			InternalKvState<N> kvState,
+			InternalKvState<K, N, V> kvState,
 			K key,
 			TypeSerializer<K> keySerializer,
 			N namespace,
@@ -3530,7 +3609,12 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 		byte[] serializedKeyAndNamespace = KvStateSerializer.serializeKeyAndNamespace(
 				key, keySerializer, namespace, namespaceSerializer);
 
-		byte[] serializedValue = kvState.getSerializedValue(serializedKeyAndNamespace);
+		byte[] serializedValue = kvState.getSerializedValue(
+				serializedKeyAndNamespace,
+				kvState.getKeySerializer(),
+				kvState.getNamespaceSerializer(),
+				kvState.getValueSerializer()
+		);
 
 		if (serializedValue == null) {
 			return null;
@@ -3544,7 +3628,7 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 	 * if it is not null.
 	 */
 	private static <V, K, N> List<V> getSerializedList(
-			InternalKvState<N> kvState,
+			InternalKvState<K, N, V> kvState,
 			K key,
 			TypeSerializer<K> keySerializer,
 			N namespace,
@@ -3554,7 +3638,12 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 		byte[] serializedKeyAndNamespace = KvStateSerializer.serializeKeyAndNamespace(
 				key, keySerializer, namespace, namespaceSerializer);
 
-		byte[] serializedValue = kvState.getSerializedValue(serializedKeyAndNamespace);
+		byte[] serializedValue = kvState.getSerializedValue(
+				serializedKeyAndNamespace,
+				kvState.getKeySerializer(),
+				kvState.getNamespaceSerializer(),
+				kvState.getValueSerializer()
+		);
 
 		if (serializedValue == null) {
 			return null;
@@ -3568,7 +3657,7 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 	 * if it is not null.
 	 */
 	private static <UK, UV, K, N> Map<UK, UV> getSerializedMap(
-			InternalKvState<N> kvState,
+			InternalKvState<K, N, Map<UK, UV>> kvState,
 			K key,
 			TypeSerializer<K> keySerializer,
 			N namespace,
@@ -3580,7 +3669,12 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 		byte[] serializedKeyAndNamespace = KvStateSerializer.serializeKeyAndNamespace(
 				key, keySerializer, namespace, namespaceSerializer);
 
-		byte[] serializedValue = kvState.getSerializedValue(serializedKeyAndNamespace);
+		byte[] serializedValue = kvState.getSerializedValue(
+				serializedKeyAndNamespace,
+				kvState.getKeySerializer(),
+				kvState.getNamespaceSerializer(),
+				kvState.getValueSerializer()
+		);
 
 		if (serializedValue == null) {
 			return null;
