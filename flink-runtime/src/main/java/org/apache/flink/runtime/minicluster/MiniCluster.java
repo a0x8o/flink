@@ -20,13 +20,17 @@ package org.apache.flink.runtime.minicluster;
 
 import org.apache.flink.api.common.JobExecutionResult;
 import org.apache.flink.api.common.JobID;
+import org.apache.flink.api.common.JobSubmissionResult;
 import org.apache.flink.api.common.io.FileOutputFormat;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.WebOptions;
+import org.apache.flink.core.fs.Path;
 import org.apache.flink.runtime.akka.AkkaUtils;
 import org.apache.flink.runtime.blob.BlobCacheService;
+import org.apache.flink.runtime.blob.BlobClient;
 import org.apache.flink.runtime.blob.BlobServer;
+import org.apache.flink.runtime.blob.PermanentBlobKey;
 import org.apache.flink.runtime.client.JobExecutionException;
 import org.apache.flink.runtime.client.JobStatusMessage;
 import org.apache.flink.runtime.clusterframework.FlinkResourceManager;
@@ -85,8 +89,10 @@ import java.net.InetSocketAddress;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
@@ -95,7 +101,7 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.apache.flink.util.Preconditions.checkState;
 
 /**
- * Flip-6 based MiniCluster.
+ * MiniCluster to execute Flink jobs locally.
  */
 public class MiniCluster implements JobExecutorService, AutoCloseableAsync {
 
@@ -573,18 +579,7 @@ public class MiniCluster implements JobExecutorService, AutoCloseableAsync {
 	public void runDetached(JobGraph job) throws JobExecutionException, InterruptedException {
 		checkNotNull(job, "job is null");
 
-		final DispatcherGateway currentDispatcherGateway;
-		try {
-			currentDispatcherGateway = getDispatcherGateway();
-		} catch (LeaderRetrievalException e) {
-			throw new JobExecutionException(job.getJobID(), e);
-		}
-
-		// we have to allow queued scheduling in Flip-6 mode because we need to request slots
-		// from the ResourceManager
-		job.setAllowQueuedScheduling(true);
-
-		final CompletableFuture<Acknowledge> submissionFuture = currentDispatcherGateway.submitJob(job, rpcTimeout);
+		final CompletableFuture<JobSubmissionResult> submissionFuture = submitJob(job);
 
 		try {
 			submissionFuture.get();
@@ -607,21 +602,10 @@ public class MiniCluster implements JobExecutorService, AutoCloseableAsync {
 	public JobExecutionResult executeJobBlocking(JobGraph job) throws JobExecutionException, InterruptedException {
 		checkNotNull(job, "job is null");
 
-		final DispatcherGateway currentDispatcherGateway;
-		try {
-			currentDispatcherGateway = getDispatcherGateway();
-		} catch (LeaderRetrievalException e) {
-			throw new JobExecutionException(job.getJobID(), e);
-		}
-
-		// we have to allow queued scheduling in Flip-6 mode because we need to request slots
-		// from the ResourceManager
-		job.setAllowQueuedScheduling(true);
-
-		final CompletableFuture<Acknowledge> submissionFuture = currentDispatcherGateway.submitJob(job, rpcTimeout);
+		final CompletableFuture<JobSubmissionResult> submissionFuture = submitJob(job);
 
 		final CompletableFuture<JobResult> jobResultFuture = submissionFuture.thenCompose(
-			(Acknowledge ack) -> currentDispatcherGateway.requestJobResult(job.getJobID(), RpcUtils.INF_TIMEOUT));
+			(JobSubmissionResult ignored) -> requestJobResult(job.getJobID()));
 
 		final JobResult jobResult;
 
@@ -640,6 +624,40 @@ public class MiniCluster implements JobExecutorService, AutoCloseableAsync {
 		}
 	}
 
+	public CompletableFuture<JobSubmissionResult> submitJob(JobGraph jobGraph) {
+		final DispatcherGateway dispatcherGateway;
+		try {
+			dispatcherGateway = getDispatcherGateway();
+		} catch (LeaderRetrievalException | InterruptedException e) {
+			ExceptionUtils.checkInterrupted(e);
+			return FutureUtils.completedExceptionally(e);
+		}
+
+		// we have to allow queued scheduling in Flip-6 mode because we need to request slots
+		// from the ResourceManager
+		jobGraph.setAllowQueuedScheduling(true);
+
+		final CompletableFuture<Void> jarUploadFuture = uploadAndSetJarFiles(dispatcherGateway, jobGraph);
+
+		final CompletableFuture<Acknowledge> acknowledgeCompletableFuture = jarUploadFuture.thenCompose(
+			(Void ack) -> dispatcherGateway.submitJob(jobGraph, rpcTimeout));
+
+		return acknowledgeCompletableFuture.thenApply(
+			(Acknowledge ignored) -> new JobSubmissionResult(jobGraph.getJobID()));
+	}
+
+	public CompletableFuture<JobResult> requestJobResult(JobID jobId) {
+		final DispatcherGateway dispatcherGateway;
+		try {
+			dispatcherGateway = getDispatcherGateway();
+		} catch (LeaderRetrievalException | InterruptedException e) {
+			ExceptionUtils.checkInterrupted(e);
+			return FutureUtils.completedExceptionally(e);
+		}
+
+		return dispatcherGateway.requestJobResult(jobId, RpcUtils.INF_TIMEOUT);
+	}
+
 	private DispatcherGateway getDispatcherGateway() throws LeaderRetrievalException, InterruptedException {
 		synchronized (lock) {
 			checkState(running, "MiniCluster is not yet running.");
@@ -649,6 +667,34 @@ public class MiniCluster implements JobExecutorService, AutoCloseableAsync {
 				throw new LeaderRetrievalException("Could not retrieve the leading dispatcher.", ExceptionUtils.stripExecutionException(e));
 			}
 		}
+	}
+
+	private CompletableFuture<Void> uploadAndSetJarFiles(final DispatcherGateway currentDispatcherGateway, final JobGraph job) {
+		List<Path> userJars = job.getUserJars();
+		if (!userJars.isEmpty()) {
+			CompletableFuture<List<PermanentBlobKey>> jarUploadFuture = uploadJarFiles(currentDispatcherGateway, job.getJobID(), job.getUserJars());
+			return jarUploadFuture.thenAccept(blobKeys -> {
+					for (PermanentBlobKey blobKey : blobKeys) {
+						job.addBlob(blobKey);
+					}
+				});
+		} else {
+			LOG.debug("No jars to upload for job {}.", job.getJobID());
+			return CompletableFuture.completedFuture(null);
+		}
+	}
+
+	private CompletableFuture<List<PermanentBlobKey>> uploadJarFiles(final DispatcherGateway currentDispatcherGateway, final JobID jobId, final List<Path> jars) {
+		return currentDispatcherGateway.getBlobServerPort(rpcTimeout)
+			.thenApply(blobServerPort -> {
+				InetSocketAddress blobServerAddress = new InetSocketAddress(currentDispatcherGateway.getHostname(), blobServerPort);
+
+				try {
+					return BlobClient.uploadJarFiles(blobServerAddress, miniClusterConfiguration.getConfiguration(), jobId, jars);
+				} catch (IOException ioe) {
+					throw new CompletionException(new FlinkException("Could not upload job jar files.", ioe));
+				}
+			});
 	}
 
 	// ------------------------------------------------------------------------

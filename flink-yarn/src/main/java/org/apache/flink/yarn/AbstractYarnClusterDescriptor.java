@@ -313,10 +313,18 @@ public abstract class AbstractYarnClusterDescriptor implements ClusterDescriptor
 		return false;
 	}
 
+	/**
+	 * @deprecated The cluster descriptor should not know about this option.
+	 */
+	@Deprecated
 	public void setDetachedMode(boolean detachedMode) {
 		this.detached = detachedMode;
 	}
 
+	/**
+	 * @deprecated The cluster descriptor should not know about this option.
+	 */
+	@Deprecated
 	public boolean isDetachedMode() {
 		return detached;
 	}
@@ -1042,7 +1050,7 @@ public abstract class AbstractYarnClusterDescriptor implements ClusterDescriptor
 			LOG.debug("Application State: {}", appState);
 			switch(appState) {
 				case FAILED:
-				case FINISHED: //TODO: the finished state may be valid in flip-6
+				case FINISHED:
 				case KILLED:
 					throw new YarnDeploymentException("The YARN application unexpectedly switched to state "
 						+ appState + " during deployment. \n" +
@@ -1070,7 +1078,7 @@ public abstract class AbstractYarnClusterDescriptor implements ClusterDescriptor
 			LOG.info("The Flink YARN client has been started in detached mode. In order to stop " +
 					"Flink on YARN, use the following command or a YARN web interface to stop " +
 					"it:\nyarn application -kill " + appId + "\nPlease also note that the " +
-					"temporary files of the YARN session in the home directoy will not be removed.");
+					"temporary files of the YARN session in the home directory will not be removed.");
 		}
 		// since deployment was successful, remove the hook
 		ShutdownHookUtil.removeShutdownHook(deploymentFailureHook, getClass().getSimpleName(), LOG);

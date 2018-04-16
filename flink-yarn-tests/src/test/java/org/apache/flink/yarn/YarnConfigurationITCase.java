@@ -56,6 +56,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
+import static org.apache.flink.yarn.util.YarnTestUtils.getTestJarPath;
 import static org.hamcrest.Matchers.closeTo;
 import static org.hamcrest.Matchers.is;
 import static org.junit.Assert.assertThat;
@@ -90,7 +91,7 @@ public class YarnConfigurationITCase extends YarnTestBase {
 		configuration.setLong(TaskManagerOptions.NETWORK_BUFFERS_MEMORY_MAX, (4L << 20));
 
 		final YarnConfiguration yarnConfiguration = getYarnConfiguration();
-		final Flip6YarnClusterDescriptor clusterDescriptor = new Flip6YarnClusterDescriptor(
+		final YarnClusterDescriptor clusterDescriptor = new YarnClusterDescriptor(
 			configuration,
 			yarnConfiguration,
 			CliFrontend.getConfigurationDirectoryFromEnv(),
@@ -100,9 +101,7 @@ public class YarnConfigurationITCase extends YarnTestBase {
 		clusterDescriptor.setLocalJarPath(new Path(flinkUberjar.getAbsolutePath()));
 		clusterDescriptor.addShipFiles(Arrays.asList(flinkLibFolder.listFiles()));
 
-		final File streamingWordCountFile = new File("target/programs/WindowJoin.jar");
-
-		assertThat(streamingWordCountFile.exists(), is(true));
+		final File streamingWordCountFile = getTestJarPath("WindowJoin.jar");
 
 		final PackagedProgram packagedProgram = new PackagedProgram(streamingWordCountFile);
 		final JobGraph jobGraph = PackagedProgramUtils.createJobGraph(packagedProgram, configuration, 1);

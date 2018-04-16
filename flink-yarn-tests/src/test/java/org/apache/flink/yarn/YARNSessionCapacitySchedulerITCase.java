@@ -78,6 +78,7 @@ import java.util.regex.Pattern;
 import static junit.framework.TestCase.assertTrue;
 import static org.apache.flink.yarn.UtilsTest.addTestAppender;
 import static org.apache.flink.yarn.UtilsTest.checkForLogString;
+import static org.apache.flink.yarn.util.YarnTestUtils.getTestJarPath;
 import static org.junit.Assume.assumeTrue;
 
 /**
@@ -102,7 +103,7 @@ public class YARNSessionCapacitySchedulerITCase extends YarnTestBase {
 	 */
 	@Test
 	public void testClientStartup() throws IOException {
-		assumeTrue("Flip-6 does not start TMs upfront.", !flip6);
+		assumeTrue("The new mode does not start TMs upfront.", !isNewMode);
 		LOG.info("Starting testClientStartup()");
 		runWithArgs(new String[]{"-j", flinkUberjar.getAbsolutePath(), "-t", flinkLibFolder.getAbsolutePath(),
 						"-n", "1",
@@ -123,8 +124,7 @@ public class YARNSessionCapacitySchedulerITCase extends YarnTestBase {
 	public void perJobYarnCluster() throws IOException {
 		LOG.info("Starting perJobYarnCluster()");
 		addTestAppender(JobClient.class, Level.INFO);
-		File exampleJarLocation = new File("target/programs/BatchWordCount.jar");
-		Assert.assertNotNull("Could not find wordcount jar", exampleJarLocation);
+		File exampleJarLocation = getTestJarPath("BatchWordCount.jar");
 		runWithArgs(new String[]{"run", "-m", "yarn-cluster",
 				"-yj", flinkUberjar.getAbsolutePath(), "-yt", flinkLibFolder.getAbsolutePath(),
 				"-yn", "1",
@@ -152,8 +152,7 @@ public class YARNSessionCapacitySchedulerITCase extends YarnTestBase {
 	public void perJobYarnClusterOffHeap() throws IOException {
 		LOG.info("Starting perJobYarnCluster()");
 		addTestAppender(JobClient.class, Level.INFO);
-		File exampleJarLocation = new File("target/programs/BatchWordCount.jar");
-		Assert.assertNotNull("Could not find wordcount jar", exampleJarLocation);
+		File exampleJarLocation = getTestJarPath("BatchWordCount.jar");
 
 		// set memory constraints (otherwise this is the same test as perJobYarnCluster() above)
 		final long taskManagerMemoryMB = 1024;
@@ -192,7 +191,7 @@ public class YARNSessionCapacitySchedulerITCase extends YarnTestBase {
 	 */
 	@Test(timeout = 100000) // timeout after 100 seconds
 	public void testTaskManagerFailure() throws Exception {
-		assumeTrue("Flip-6 does not start TMs upfront.", !flip6);
+		assumeTrue("The new mode does not start TMs upfront.", !isNewMode);
 		LOG.info("Starting testTaskManagerFailure()");
 		Runner runner = startWithArgs(new String[]{"-j", flinkUberjar.getAbsolutePath(), "-t", flinkLibFolder.getAbsolutePath(),
 				"-n", "1",
@@ -394,8 +393,7 @@ public class YARNSessionCapacitySchedulerITCase extends YarnTestBase {
 		// write log messages to stdout as well, so that the runWithArgs() method
 		// is catching the log output
 		addTestAppender(JobClient.class, Level.INFO);
-		File exampleJarLocation = new File("target/programs/BatchWordCount.jar");
-		Assert.assertNotNull("Could not find wordcount jar", exampleJarLocation);
+		File exampleJarLocation = getTestJarPath("BatchWordCount.jar");
 		runWithArgs(new String[]{"run",
 				"-p", "2", //test that the job is executed with a DOP of 2
 				"-m", "yarn-cluster",
@@ -419,9 +417,7 @@ public class YARNSessionCapacitySchedulerITCase extends YarnTestBase {
 	public void testDetachedPerJobYarnCluster() throws Exception {
 		LOG.info("Starting testDetachedPerJobYarnCluster()");
 
-		File exampleJarLocation = new File("target/programs/BatchWordCount.jar");
-
-		Assert.assertNotNull("Could not find batch wordcount jar", exampleJarLocation);
+		File exampleJarLocation = getTestJarPath("BatchWordCount.jar");
 
 		testDetachedPerJobYarnClusterInternal(exampleJarLocation.getAbsolutePath());
 
@@ -435,9 +431,7 @@ public class YARNSessionCapacitySchedulerITCase extends YarnTestBase {
 	public void testDetachedPerJobYarnClusterWithStreamingJob() throws Exception {
 		LOG.info("Starting testDetachedPerJobYarnClusterWithStreamingJob()");
 
-		File exampleJarLocation = new File("target/programs/StreamingWordCount.jar");
-
-		Assert.assertNotNull("Could not find streaming wordcount jar", exampleJarLocation);
+		File exampleJarLocation = getTestJarPath("StreamingWordCount.jar");
 
 		testDetachedPerJobYarnClusterInternal(exampleJarLocation.getAbsolutePath());
 

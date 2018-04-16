@@ -30,6 +30,7 @@ import org.apache.flink.client.program.ClusterClient;
 import org.apache.flink.configuration.AkkaOptions;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.HeartbeatManagerOptions;
+import org.apache.flink.core.testutils.CheckedThread;
 import org.apache.flink.core.testutils.OneShotLatch;
 import org.apache.flink.optimizer.DataStatistics;
 import org.apache.flink.optimizer.Optimizer;
@@ -41,7 +42,7 @@ import org.apache.flink.runtime.testingUtils.TestingUtils;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.test.util.MiniClusterResource;
-import org.apache.flink.testutils.category.Flip6;
+import org.apache.flink.testutils.category.New;
 import org.apache.flink.util.Collector;
 import org.apache.flink.util.TestLogger;
 
@@ -62,7 +63,7 @@ import java.util.concurrent.TimeUnit;
 /**
  * Tests the availability of accumulator results during runtime.
  */
-@Category(Flip6.class)
+@Category(New.class)
 public class AccumulatorLiveITCase extends TestLogger {
 
 	private static final Logger LOG = LoggerFactory.getLogger(AccumulatorLiveITCase.class);
@@ -140,10 +141,16 @@ public class AccumulatorLiveITCase extends TestLogger {
 	private static void submitJobAndVerifyResults(JobGraph jobGraph) throws Exception {
 		Deadline deadline = Deadline.now().plus(Duration.ofSeconds(30));
 
-		ClusterClient<?> client = MINI_CLUSTER_RESOURCE.getClusterClient();
+		final ClusterClient<?> client = MINI_CLUSTER_RESOURCE.getClusterClient();
 
-		client.setDetached(true);
-		client.submitJob(jobGraph, AccumulatorLiveITCase.class.getClassLoader());
+		final CheckedThread submissionThread = new CheckedThread() {
+			@Override
+			public void go() throws Exception {
+				client.submitJob(jobGraph, AccumulatorLiveITCase.class.getClassLoader());
+			}
+		};
+
+		submissionThread.start();
 
 		try {
 			NotifyingMapper.notifyLatch.await();
@@ -167,6 +174,9 @@ public class AccumulatorLiveITCase extends TestLogger {
 			NotifyingMapper.shutdownLatch.trigger();
 		} finally {
 			NotifyingMapper.shutdownLatch.trigger();
+
+			// wait for the job to have terminated
+			submissionThread.sync();
 		}
 	}
 

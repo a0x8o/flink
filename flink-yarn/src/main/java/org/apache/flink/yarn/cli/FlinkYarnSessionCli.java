@@ -21,7 +21,6 @@ package org.apache.flink.yarn.cli;
 import org.apache.flink.client.cli.AbstractCustomCommandLine;
 import org.apache.flink.client.cli.CliArgsException;
 import org.apache.flink.client.cli.CliFrontend;
-import org.apache.flink.client.cli.CliFrontendParser;
 import org.apache.flink.client.deployment.ClusterSpecification;
 import org.apache.flink.client.program.ClusterClient;
 import org.apache.flink.configuration.ConfigConstants;
@@ -40,7 +39,7 @@ import org.apache.flink.util.ExecutorUtils;
 import org.apache.flink.util.FlinkException;
 import org.apache.flink.util.Preconditions;
 import org.apache.flink.yarn.AbstractYarnClusterDescriptor;
-import org.apache.flink.yarn.Flip6YarnClusterDescriptor;
+import org.apache.flink.yarn.LegacyYarnClusterDescriptor;
 import org.apache.flink.yarn.YarnClusterDescriptor;
 import org.apache.flink.yarn.configuration.YarnConfigOptions;
 
@@ -84,6 +83,8 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
+import static org.apache.flink.client.cli.CliFrontendParser.DETACHED_OPTION;
+import static org.apache.flink.client.cli.CliFrontendParser.YARN_DETACHED_OPTION;
 import static org.apache.flink.configuration.HighAvailabilityOptions.HA_CLUSTER_ID;
 
 /**
@@ -127,7 +128,6 @@ public class FlinkYarnSessionCli extends AbstractCustomCommandLine<ApplicationId
 	private final Option tmMemory;
 	private final Option container;
 	private final Option slots;
-	private final Option detached;
 	private final Option zookeeperNamespace;
 	private final Option help;
 
@@ -158,12 +158,9 @@ public class FlinkYarnSessionCli extends AbstractCustomCommandLine<ApplicationId
 
 	private final String yarnPropertiesFileLocation;
 
-	private final boolean flip6;
+	private final boolean isNewMode;
 
 	private final YarnConfiguration yarnConfiguration;
-
-	//------------------------------------ Internal fields -------------------------
-	private boolean detachedMode = false;
 
 	public FlinkYarnSessionCli(
 			Configuration configuration,
@@ -183,7 +180,7 @@ public class FlinkYarnSessionCli extends AbstractCustomCommandLine<ApplicationId
 		this.configurationDirectory = Preconditions.checkNotNull(configurationDirectory);
 		this.acceptInteractiveInput = acceptInteractiveInput;
 
-		this.flip6 = configuration.getString(CoreOptions.MODE).equalsIgnoreCase(CoreOptions.FLIP6_MODE);
+		this.isNewMode = configuration.getString(CoreOptions.MODE).equalsIgnoreCase(CoreOptions.NEW_MODE);
 
 		// Create the command line options
 
@@ -202,7 +199,6 @@ public class FlinkYarnSessionCli extends AbstractCustomCommandLine<ApplicationId
 			.valueSeparator()
 			.desc("use value for given property")
 			.build();
-		detached = new Option(shortPrefix + "d", longPrefix + "detached", false, "Start detached");
 		streaming = new Option(shortPrefix + "st", longPrefix + "streaming", false, "Start Flink in streaming mode");
 		name = new Option(shortPrefix + "nm", longPrefix + "name", true, "Set a custom name for the application on YARN");
 		zookeeperNamespace = new Option(shortPrefix + "z", longPrefix + "zookeeperNamespace", true, "Namespace to create the Zookeeper sub-paths for high availability mode");
@@ -218,7 +214,8 @@ public class FlinkYarnSessionCli extends AbstractCustomCommandLine<ApplicationId
 		allOptions.addOption(shipPath);
 		allOptions.addOption(slots);
 		allOptions.addOption(dynamicproperties);
-		allOptions.addOption(detached);
+		allOptions.addOption(DETACHED_OPTION);
+		allOptions.addOption(YARN_DETACHED_OPTION);
 		allOptions.addOption(streaming);
 		allOptions.addOption(name);
 		allOptions.addOption(applicationId);
@@ -348,8 +345,7 @@ public class FlinkYarnSessionCli extends AbstractCustomCommandLine<ApplicationId
 
 		yarnClusterDescriptor.setDynamicPropertiesEncoded(dynamicPropertiesEncoded);
 
-		if (cmd.hasOption(detached.getOpt()) || cmd.hasOption(CliFrontendParser.DETACHED_OPTION.getOpt())) {
-			this.detachedMode = true;
+		if (cmd.hasOption(YARN_DETACHED_OPTION.getOpt()) || cmd.hasOption(DETACHED_OPTION.getOpt())) {
 			yarnClusterDescriptor.setDetachedMode(true);
 		}
 
@@ -366,7 +362,7 @@ public class FlinkYarnSessionCli extends AbstractCustomCommandLine<ApplicationId
 	}
 
 	private ClusterSpecification createClusterSpecification(Configuration configuration, CommandLine cmd) {
-		if (!flip6 && !cmd.hasOption(container.getOpt())) { // number of containers is required option!
+		if (!isNewMode && !cmd.hasOption(container.getOpt())) { // number of containers is required option!
 			LOG.error("Missing required argument {}", container.getOpt());
 			printUsage();
 			throw new IllegalArgumentException("Missing required argument " + container.getOpt());
@@ -519,7 +515,7 @@ public class FlinkYarnSessionCli extends AbstractCustomCommandLine<ApplicationId
 
 		for (Option option : commandLine.getOptions()) {
 			if (allOptions.hasOption(option.getOpt())) {
-				if (!option.getOpt().equals(detached.getOpt())) {
+				if (!isDetachedOption(option)) {
 					// don't resume from properties file if yarn options have been specified
 					canApplyYarnProperties = false;
 					break;
@@ -528,6 +524,10 @@ public class FlinkYarnSessionCli extends AbstractCustomCommandLine<ApplicationId
 		}
 
 		return canApplyYarnProperties;
+	}
+
+	private boolean isDetachedOption(Option option) {
+		return option.getOpt().equals(YARN_DETACHED_OPTION.getOpt()) || option.getOpt().equals(DETACHED_OPTION.getOpt());
 	}
 
 	private Configuration applyYarnProperties(Configuration configuration) throws FlinkException {
@@ -621,7 +621,7 @@ public class FlinkYarnSessionCli extends AbstractCustomCommandLine<ApplicationId
 					}
 				}
 
-				if (detachedMode) {
+				if (yarnClusterDescriptor.isDetachedMode()) {
 					LOG.info("The Flink YARN client has been started in detached mode. In order to stop " +
 						"Flink on YARN, use the following command or a YARN web interface to stop it:\n" +
 						"yarn application -kill " + yarnApplicationId);
@@ -971,15 +971,15 @@ public class FlinkYarnSessionCli extends AbstractCustomCommandLine<ApplicationId
 		yarnClient.init(yarnConfiguration);
 		yarnClient.start();
 
-		if (flip6) {
-			return new Flip6YarnClusterDescriptor(
+		if (isNewMode) {
+			return new YarnClusterDescriptor(
 				configuration,
 				yarnConfiguration,
 				configurationDirectory,
 				yarnClient,
 				false);
 		} else {
-			return new YarnClusterDescriptor(
+			return new LegacyYarnClusterDescriptor(
 				configuration,
 				yarnConfiguration,
 				configurationDirectory,

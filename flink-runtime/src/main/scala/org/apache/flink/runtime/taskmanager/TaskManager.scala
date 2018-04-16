@@ -1204,7 +1204,7 @@ class TaskManager(
 
       val jobID = jobInformation.getJobId
 
-      // Allocation ids do not work properly without flip-6, so we just fake one, based on the jid.
+      // Allocation ids do not work properly in legacy mode, so we just fake one, based on the jid.
       val fakeAllocationID = new AllocationID(jobID.getLowerPart, jobID.getUpperPart)
 
       val taskLocalStateStore = taskManagerLocalStateStoresManager.localStateStoreForSubtask(
@@ -1884,7 +1884,7 @@ object TaskManager {
       // if desired, start the logging daemon that periodically logs the
       // memory usage information
       if (LOG.isInfoEnabled && configuration.getBoolean(
-        TaskManagerOptions.DEBUG_MEMORY_USAGE_START_LOG_THREAD))
+        TaskManagerOptions.DEBUG_MEMORY_LOG))
       {
         LOG.info("Starting periodic memory usage logger")
 
