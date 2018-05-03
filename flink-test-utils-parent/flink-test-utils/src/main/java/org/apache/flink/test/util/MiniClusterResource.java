@@ -55,9 +55,9 @@ public class MiniClusterResource extends ExternalResource {
 
 	private static final Logger LOG = LoggerFactory.getLogger(MiniClusterResource.class);
 
-	private static final String CODEBASE_KEY = "codebase";
+	public static final String CODEBASE_KEY = "codebase";
 
-	private static final String NEW_CODEBASE = "new";
+	public static final String NEW_CODEBASE = "new";
 
 	private final MiniClusterResourceConfiguration miniClusterResourceConfiguration;
 
@@ -74,6 +74,8 @@ public class MiniClusterResource extends ExternalResource {
 	private int numberSlots = -1;
 
 	private TestEnvironment executionEnvironment;
+
+	private int webUIPort = -1;
 
 	public MiniClusterResource(final MiniClusterResourceConfiguration miniClusterResourceConfiguration) {
 		this(miniClusterResourceConfiguration, false);
@@ -127,6 +129,10 @@ public class MiniClusterResource extends ExternalResource {
 
 	public TestEnvironment getTestEnvironment() {
 		return executionEnvironment;
+	}
+
+	public int getWebUIPort() {
+		return webUIPort;
 	}
 
 	@Override
@@ -192,7 +198,7 @@ public class MiniClusterResource extends ExternalResource {
 	private void startLegacyMiniCluster() throws Exception {
 		final Configuration configuration = new Configuration(miniClusterResourceConfiguration.getConfiguration());
 		configuration.setInteger(ConfigConstants.LOCAL_NUMBER_TASK_MANAGER, miniClusterResourceConfiguration.getNumberTaskManagers());
-		configuration.setInteger(ConfigConstants.TASK_MANAGER_NUM_TASK_SLOTS, miniClusterResourceConfiguration.getNumberSlotsPerTaskManager());
+		configuration.setInteger(TaskManagerOptions.NUM_TASK_SLOTS, miniClusterResourceConfiguration.getNumberSlotsPerTaskManager());
 
 		final LocalFlinkMiniCluster flinkMiniCluster = TestBaseUtils.startCluster(
 			configuration,
@@ -205,6 +211,10 @@ public class MiniClusterResource extends ExternalResource {
 		Configuration restClientConfig = new Configuration();
 		restClientConfig.setInteger(JobManagerOptions.PORT, flinkMiniCluster.getLeaderRPCPort());
 		this.restClusterClientConfig = new UnmodifiableConfiguration(restClientConfig);
+
+		if (flinkMiniCluster.webMonitor().isDefined()) {
+			webUIPort = flinkMiniCluster.webMonitor().get().getServerPort();
+		}
 	}
 
 	private void startMiniCluster() throws Exception {
@@ -221,7 +231,7 @@ public class MiniClusterResource extends ExternalResource {
 		}
 
 		// set rest port to 0 to avoid clashes with concurrent MiniClusters
-		configuration.setInteger(RestOptions.REST_PORT, 0);
+		configuration.setInteger(RestOptions.PORT, 0);
 
 		final MiniClusterConfiguration miniClusterConfiguration = new MiniClusterConfiguration.Builder()
 			.setConfiguration(configuration)
@@ -234,7 +244,7 @@ public class MiniClusterResource extends ExternalResource {
 		miniCluster.start();
 
 		// update the port of the rest endpoint
-		configuration.setInteger(RestOptions.REST_PORT, miniCluster.getRestAddress().getPort());
+		configuration.setInteger(RestOptions.PORT, miniCluster.getRestAddress().getPort());
 
 		jobExecutorService = miniCluster;
 		if (enableClusterClient) {
@@ -242,8 +252,10 @@ public class MiniClusterResource extends ExternalResource {
 		}
 		Configuration restClientConfig = new Configuration();
 		restClientConfig.setString(JobManagerOptions.ADDRESS, miniCluster.getRestAddress().getHost());
-		restClientConfig.setInteger(RestOptions.REST_PORT, miniCluster.getRestAddress().getPort());
+		restClientConfig.setInteger(RestOptions.PORT, miniCluster.getRestAddress().getPort());
 		this.restClusterClientConfig = new UnmodifiableConfiguration(restClientConfig);
+
+		webUIPort = miniCluster.getRestAddress().getPort();
 	}
 
 	/**

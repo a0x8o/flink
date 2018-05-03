@@ -101,6 +101,313 @@
 <table class="table table-bordered">
   <tbody>
     <tr>
+      <td class="text-left" colspan="2"><strong>/jars</strong></td>
+    </tr>
+    <tr>
+      <td class="text-left" style="width: 20%">Verb: <code>GET</code></td>
+      <td class="text-left">Response code: <code>200 OK</code></td>
+    </tr>
+    <tr>
+      <td colspan="2">description</td>
+    </tr>
+    <tr>
+      <td colspan="2">
+        <button data-toggle="collapse" data-target="#-525177469">Request</button>
+        <div id="-525177469" class="collapse">
+          <pre>
+            <code>
+{}            </code>
+          </pre>
+         </div>
+      </td>
+    </tr>
+    <tr>
+      <td colspan="2">
+        <button data-toggle="collapse" data-target="#-1669843955">Response</button>
+        <div id="-1669843955" class="collapse">
+          <pre>
+            <code>
+{
+  "type" : "object",
+  "id" : "urn:jsonschema:org:apache:flink:runtime:webmonitor:handlers:JarListInfo",
+  "properties" : {
+    "address" : {
+      "type" : "string"
+    },
+    "files" : {
+      "type" : "array",
+      "items" : {
+        "type" : "object",
+        "id" : "urn:jsonschema:org:apache:flink:runtime:webmonitor:handlers:JarListInfo:JarFileInfo",
+        "properties" : {
+          "id" : {
+            "type" : "string"
+          },
+          "name" : {
+            "type" : "string"
+          },
+          "uploaded" : {
+            "type" : "integer"
+          },
+          "entry" : {
+            "type" : "array",
+            "items" : {
+              "type" : "object",
+              "id" : "urn:jsonschema:org:apache:flink:runtime:webmonitor:handlers:JarListInfo:JarEntryInfo",
+              "properties" : {
+                "name" : {
+                  "type" : "string"
+                },
+                "description" : {
+                  "type" : "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}            </code>
+          </pre>
+         </div>
+      </td>
+    </tr>
+  </tbody>
+</table>
+<table class="table table-bordered">
+  <tbody>
+    <tr>
+      <td class="text-left" colspan="2"><strong>/jars/upload</strong></td>
+    </tr>
+    <tr>
+      <td class="text-left" style="width: 20%">Verb: <code>POST</code></td>
+      <td class="text-left">Response code: <code>200 OK</code></td>
+    </tr>
+    <tr>
+      <td colspan="2">description</td>
+    </tr>
+    <tr>
+      <td colspan="2">
+        <button data-toggle="collapse" data-target="#919877128">Request</button>
+        <div id="919877128" class="collapse">
+          <pre>
+            <code>
+{
+  "type" : "object",
+  "id" : "urn:jsonschema:org:apache:flink:runtime:rest:messages:FileUpload",
+  "properties" : {
+    "path" : {
+      "type" : "string"
+    }
+  }
+}            </code>
+          </pre>
+         </div>
+      </td>
+    </tr>
+    <tr>
+      <td colspan="2">
+        <button data-toggle="collapse" data-target="#1132420209">Response</button>
+        <div id="1132420209" class="collapse">
+          <pre>
+            <code>
+{
+  "type" : "object",
+  "id" : "urn:jsonschema:org:apache:flink:runtime:webmonitor:handlers:JarUploadResponseBody",
+  "properties" : {
+    "filename" : {
+      "type" : "string"
+    },
+    "status" : {
+      "type" : "string",
+      "enum" : [ "success" ]
+    }
+  }
+}            </code>
+          </pre>
+         </div>
+      </td>
+    </tr>
+  </tbody>
+</table>
+<table class="table table-bordered">
+  <tbody>
+    <tr>
+      <td class="text-left" colspan="2"><strong>/jars/:jarid</strong></td>
+    </tr>
+    <tr>
+      <td class="text-left" style="width: 20%">Verb: <code>DELETE</code></td>
+      <td class="text-left">Response code: <code>200 OK</code></td>
+    </tr>
+    <tr>
+      <td colspan="2">description</td>
+    </tr>
+    <tr>
+      <td colspan="2">Path parameters</td>
+    </tr>
+    <tr>
+      <td colspan="2">
+        <ul>
+<li><code>jarid</code> - description</li>
+        </ul>
+      </td>
+    </tr>
+    <tr>
+      <td colspan="2">
+        <button data-toggle="collapse" data-target="#-974639435">Request</button>
+        <div id="-974639435" class="collapse">
+          <pre>
+            <code>
+{}            </code>
+          </pre>
+         </div>
+      </td>
+    </tr>
+    <tr>
+      <td colspan="2">
+        <button data-toggle="collapse" data-target="#-789656611">Response</button>
+        <div id="-789656611" class="collapse">
+          <pre>
+            <code>
+{}            </code>
+          </pre>
+         </div>
+      </td>
+    </tr>
+  </tbody>
+</table>
+<table class="table table-bordered">
+  <tbody>
+    <tr>
+      <td class="text-left" colspan="2"><strong>/jars/:jarid/plan</strong></td>
+    </tr>
+    <tr>
+      <td class="text-left" style="width: 20%">Verb: <code>GET</code></td>
+      <td class="text-left">Response code: <code>200 OK</code></td>
+    </tr>
+    <tr>
+      <td colspan="2">description</td>
+    </tr>
+    <tr>
+      <td colspan="2">Path parameters</td>
+    </tr>
+    <tr>
+      <td colspan="2">
+        <ul>
+<li><code>jarid</code> - description</li>
+        </ul>
+      </td>
+    </tr>
+    <tr>
+      <td colspan="2">Query parameters</td>
+    </tr>
+    <tr>
+      <td colspan="2">
+        <ul>
+<li><code>entry-class</code> (optional): description</li>
+<li><code>parallelism</code> (optional): description</li>
+<li><code>program-args</code> (optional): description</li>
+        </ul>
+      </td>
+    </tr>
+    <tr>
+      <td colspan="2">
+        <button data-toggle="collapse" data-target="#-181694384">Request</button>
+        <div id="-181694384" class="collapse">
+          <pre>
+            <code>
+{}            </code>
+          </pre>
+         </div>
+      </td>
+    </tr>
+    <tr>
+      <td colspan="2">
+        <button data-toggle="collapse" data-target="#1311035100">Response</button>
+        <div id="1311035100" class="collapse">
+          <pre>
+            <code>
+{
+  "type" : "any"
+}            </code>
+          </pre>
+         </div>
+      </td>
+    </tr>
+  </tbody>
+</table>
+<table class="table table-bordered">
+  <tbody>
+    <tr>
+      <td class="text-left" colspan="2"><strong>/jars/:jarid/run</strong></td>
+    </tr>
+    <tr>
+      <td class="text-left" style="width: 20%">Verb: <code>POST</code></td>
+      <td class="text-left">Response code: <code>200 OK</code></td>
+    </tr>
+    <tr>
+      <td colspan="2">description</td>
+    </tr>
+    <tr>
+      <td colspan="2">Path parameters</td>
+    </tr>
+    <tr>
+      <td colspan="2">
+        <ul>
+<li><code>jarid</code> - description</li>
+        </ul>
+      </td>
+    </tr>
+    <tr>
+      <td colspan="2">Query parameters</td>
+    </tr>
+    <tr>
+      <td colspan="2">
+        <ul>
+<li><code>program-args</code> (optional): description</li>
+<li><code>entry-class</code> (optional): description</li>
+<li><code>parallelism</code> (optional): description</li>
+<li><code>allowNonRestoredState</code> (optional): description</li>
+<li><code>savepointPath</code> (optional): description</li>
+        </ul>
+      </td>
+    </tr>
+    <tr>
+      <td colspan="2">
+        <button data-toggle="collapse" data-target="#1936993190">Request</button>
+        <div id="1936993190" class="collapse">
+          <pre>
+            <code>
+{}            </code>
+          </pre>
+         </div>
+      </td>
+    </tr>
+    <tr>
+      <td colspan="2">
+        <button data-toggle="collapse" data-target="#-914083094">Response</button>
+        <div id="-914083094" class="collapse">
+          <pre>
+            <code>
+{
+  "type" : "object",
+  "id" : "urn:jsonschema:org:apache:flink:runtime:webmonitor:handlers:JarRunResponseBody",
+  "properties" : {
+    "jobid" : {
+      "type" : "any"
+    }
+  }
+}            </code>
+          </pre>
+         </div>
+      </td>
+    </tr>
+  </tbody>
+</table>
+<table class="table table-bordered">
+  <tbody>
+    <tr>
       <td class="text-left" colspan="2"><strong>/jobmanager/config</strong></td>
     </tr>
     <tr>
@@ -301,6 +608,56 @@
       "type" : "string"
     }
   }
+}            </code>
+          </pre>
+         </div>
+      </td>
+    </tr>
+  </tbody>
+</table>
+<table class="table table-bordered">
+  <tbody>
+    <tr>
+      <td class="text-left" colspan="2"><strong>/jobs/metrics</strong></td>
+    </tr>
+    <tr>
+      <td class="text-left" style="width: 20%">Verb: <code>GET</code></td>
+      <td class="text-left">Response code: <code>200 OK</code></td>
+    </tr>
+    <tr>
+      <td colspan="2">description</td>
+    </tr>
+    <tr>
+      <td colspan="2">Query parameters</td>
+    </tr>
+    <tr>
+      <td colspan="2">
+        <ul>
+<li><code>get</code> (optional): description</li>
+<li><code>agg</code> (optional): description</li>
+<li><code>jobs</code> (optional): description</li>
+        </ul>
+      </td>
+    </tr>
+    <tr>
+      <td colspan="2">
+        <button data-toggle="collapse" data-target="#-790902571">Request</button>
+        <div id="-790902571" class="collapse">
+          <pre>
+            <code>
+{}            </code>
+          </pre>
+         </div>
+      </td>
+    </tr>
+    <tr>
+      <td colspan="2">
+        <button data-toggle="collapse" data-target="#128306770">Response</button>
+        <div id="128306770" class="collapse">
+          <pre>
+            <code>
+{
+  "type" : "any"
 }            </code>
           </pre>
          </div>
@@ -1044,6 +1401,123 @@
 <table class="table table-bordered">
   <tbody>
     <tr>
+      <td class="text-left" colspan="2"><strong>/jobs/:jobid/checkpoints/details/:checkpointid</strong></td>
+    </tr>
+    <tr>
+      <td class="text-left" style="width: 20%">Verb: <code>GET</code></td>
+      <td class="text-left">Response code: <code>200 OK</code></td>
+    </tr>
+    <tr>
+      <td colspan="2">description</td>
+    </tr>
+    <tr>
+      <td colspan="2">Path parameters</td>
+    </tr>
+    <tr>
+      <td colspan="2">
+        <ul>
+<li><code>jobid</code> - description</li>
+<li><code>checkpointid</code> - description</li>
+        </ul>
+      </td>
+    </tr>
+    <tr>
+      <td colspan="2">
+        <button data-toggle="collapse" data-target="#2082812513">Request</button>
+        <div id="2082812513" class="collapse">
+          <pre>
+            <code>
+{}            </code>
+          </pre>
+         </div>
+      </td>
+    </tr>
+    <tr>
+      <td colspan="2">
+        <button data-toggle="collapse" data-target="#59893771">Response</button>
+        <div id="59893771" class="collapse">
+          <pre>
+            <code>
+{
+  "type" : "object",
+  "id" : "urn:jsonschema:org:apache:flink:runtime:rest:messages:checkpoints:CheckpointStatistics",
+  "properties" : {
+    "id" : {
+      "type" : "integer"
+    },
+    "status" : {
+      "type" : "string",
+      "enum" : [ "IN_PROGRESS", "COMPLETED", "FAILED" ]
+    },
+    "is_savepoint" : {
+      "type" : "boolean"
+    },
+    "trigger_timestamp" : {
+      "type" : "integer"
+    },
+    "latest_ack_timestamp" : {
+      "type" : "integer"
+    },
+    "state_size" : {
+      "type" : "integer"
+    },
+    "end_to_end_duration" : {
+      "type" : "integer"
+    },
+    "alignment_buffered" : {
+      "type" : "integer"
+    },
+    "num_subtasks" : {
+      "type" : "integer"
+    },
+    "num_acknowledged_subtasks" : {
+      "type" : "integer"
+    },
+    "tasks" : {
+      "type" : "object",
+      "additionalProperties" : {
+        "type" : "object",
+        "id" : "urn:jsonschema:org:apache:flink:runtime:rest:messages:checkpoints:TaskCheckpointStatistics",
+        "properties" : {
+          "id" : {
+            "type" : "integer"
+          },
+          "status" : {
+            "type" : "string",
+            "enum" : [ "IN_PROGRESS", "COMPLETED", "FAILED" ]
+          },
+          "latest_ack_timestamp" : {
+            "type" : "integer"
+          },
+          "state_size" : {
+            "type" : "integer"
+          },
+          "end_to_end_duration" : {
+            "type" : "integer"
+          },
+          "alignment_buffered" : {
+            "type" : "integer"
+          },
+          "num_subtasks" : {
+            "type" : "integer"
+          },
+          "num_acknowledged_subtasks" : {
+            "type" : "integer"
+          }
+        }
+      }
+    }
+  }
+}            </code>
+          </pre>
+         </div>
+      </td>
+    </tr>
+  </tbody>
+</table>
+<table class="table table-bordered">
+  <tbody>
+    <tr>
       <td class="text-left" colspan="2"><strong>/jobs/:jobid/checkpoints/details/:checkpointid/subtasks/:vertexid</strong></td>
     </tr>
     <tr>
@@ -1175,123 +1649,6 @@
           },
           "status" : {
             "type" : "string"
-          }
-        }
-      }
-    }
-  }
-}            </code>
-          </pre>
-         </div>
-      </td>
-    </tr>
-  </tbody>
-</table>
-<table class="table table-bordered">
-  <tbody>
-    <tr>
-      <td class="text-left" colspan="2"><strong>/jobs/:jobid/checkpoints/:checkpointid</strong></td>
-    </tr>
-    <tr>
-      <td class="text-left" style="width: 20%">Verb: <code>GET</code></td>
-      <td class="text-left">Response code: <code>200 OK</code></td>
-    </tr>
-    <tr>
-      <td colspan="2">description</td>
-    </tr>
-    <tr>
-      <td colspan="2">Path parameters</td>
-    </tr>
-    <tr>
-      <td colspan="2">
-        <ul>
-<li><code>jobid</code> - description</li>
-<li><code>checkpointid</code> - description</li>
-        </ul>
-      </td>
-    </tr>
-    <tr>
-      <td colspan="2">
-        <button data-toggle="collapse" data-target="#-968188818">Request</button>
-        <div id="-968188818" class="collapse">
-          <pre>
-            <code>
-{}            </code>
-          </pre>
-         </div>
-      </td>
-    </tr>
-    <tr>
-      <td colspan="2">
-        <button data-toggle="collapse" data-target="#1303859736">Response</button>
-        <div id="1303859736" class="collapse">
-          <pre>
-            <code>
-{
-  "type" : "object",
-  "id" : "urn:jsonschema:org:apache:flink:runtime:rest:messages:checkpoints:CheckpointStatistics",
-  "properties" : {
-    "id" : {
-      "type" : "integer"
-    },
-    "status" : {
-      "type" : "string",
-      "enum" : [ "IN_PROGRESS", "COMPLETED", "FAILED" ]
-    },
-    "is_savepoint" : {
-      "type" : "boolean"
-    },
-    "trigger_timestamp" : {
-      "type" : "integer"
-    },
-    "latest_ack_timestamp" : {
-      "type" : "integer"
-    },
-    "state_size" : {
-      "type" : "integer"
-    },
-    "end_to_end_duration" : {
-      "type" : "integer"
-    },
-    "alignment_buffered" : {
-      "type" : "integer"
-    },
-    "num_subtasks" : {
-      "type" : "integer"
-    },
-    "num_acknowledged_subtasks" : {
-      "type" : "integer"
-    },
-    "tasks" : {
-      "type" : "object",
-      "additionalProperties" : {
-        "type" : "object",
-        "id" : "urn:jsonschema:org:apache:flink:runtime:rest:messages:checkpoints:TaskCheckpointStatistics",
-        "properties" : {
-          "id" : {
-            "type" : "integer"
-          },
-          "status" : {
-            "type" : "string",
-            "enum" : [ "IN_PROGRESS", "COMPLETED", "FAILED" ]
-          },
-          "latest_ack_timestamp" : {
-            "type" : "integer"
-          },
-          "state_size" : {
-            "type" : "integer"
-          },
-          "end_to_end_duration" : {
-            "type" : "integer"
-          },
-          "alignment_buffered" : {
-            "type" : "integer"
-          },
-          "num_subtasks" : {
-            "type" : "integer"
-          },
-          "num_acknowledged_subtasks" : {
-            "type" : "integer"
           }
         }
       }
@@ -2208,6 +2565,67 @@
 <table class="table table-bordered">
   <tbody>
     <tr>
+      <td class="text-left" colspan="2"><strong>/jobs/:jobid/vertices/:vertexid/subtasks/metrics</strong></td>
+    </tr>
+    <tr>
+      <td class="text-left" style="width: 20%">Verb: <code>GET</code></td>
+      <td class="text-left">Response code: <code>200 OK</code></td>
+    </tr>
+    <tr>
+      <td colspan="2">description</td>
+    </tr>
+    <tr>
+      <td colspan="2">Path parameters</td>
+    </tr>
+    <tr>
+      <td colspan="2">
+        <ul>
+<li><code>jobid</code> - description</li>
+<li><code>vertexid</code> - description</li>
+        </ul>
+      </td>
+    </tr>
+    <tr>
+      <td colspan="2">Query parameters</td>
+    </tr>
+    <tr>
+      <td colspan="2">
+        <ul>
+<li><code>get</code> (optional): description</li>
+<li><code>agg</code> (optional): description</li>
+<li><code>subtasks</code> (optional): description</li>
+        </ul>
+      </td>
+    </tr>
+    <tr>
+      <td colspan="2">
+        <button data-toggle="collapse" data-target="#265134755">Request</button>
+        <div id="265134755" class="collapse">
+          <pre>
+            <code>
+{}            </code>
+          </pre>
+         </div>
+      </td>
+    </tr>
+    <tr>
+      <td colspan="2">
+        <button data-toggle="collapse" data-target="#1184344096">Response</button>
+        <div id="1184344096" class="collapse">
+          <pre>
+            <code>
+{
+  "type" : "any"
+}            </code>
+          </pre>
+         </div>
+      </td>
+    </tr>
+  </tbody>
+</table>
+<table class="table table-bordered">
+  <tbody>
+    <tr>
       <td class="text-left" colspan="2"><strong>/jobs/:jobid/vertices/:vertexid/subtasks/:subtaskindex</strong></td>
     </tr>
     <tr>
@@ -2313,7 +2731,7 @@
 <table class="table table-bordered">
   <tbody>
     <tr>
-      <td class="text-left" colspan="2"><strong>/jobs/:jobid/vertices/:vertexid/subtasks/:subtaskindex/attempts/attempt</strong></td>
+      <td class="text-left" colspan="2"><strong>/jobs/:jobid/vertices/:vertexid/subtasks/:subtaskindex/attempts/:attempt</strong></td>
     </tr>
     <tr>
       <td class="text-left" style="width: 20%">Verb: <code>GET</code></td>
@@ -2337,8 +2755,8 @@
     </tr>
     <tr>
       <td colspan="2">
-        <button data-toggle="collapse" data-target="#1633948804">Request</button>
-        <div id="1633948804" class="collapse">
+        <button data-toggle="collapse" data-target="#168850740">Request</button>
+        <div id="168850740" class="collapse">
           <pre>
             <code>
 {}            </code>
@@ -2348,8 +2766,8 @@
     </tr>
     <tr>
       <td colspan="2">
-        <button data-toggle="collapse" data-target="#-384785209">Response</button>
-        <div id="-384785209" class="collapse">
+        <button data-toggle="collapse" data-target="#-1849883273">Response</button>
+        <div id="-1849883273" class="collapse">
           <pre>
             <code>
 {
@@ -2419,7 +2837,7 @@
 <table class="table table-bordered">
   <tbody>
     <tr>
-      <td class="text-left" colspan="2"><strong>/jobs/:jobid/vertices/:vertexid/subtasks/:subtaskindex/attempts/attempt/accumulators</strong></td>
+      <td class="text-left" colspan="2"><strong>/jobs/:jobid/vertices/:vertexid/subtasks/:subtaskindex/attempts/:attempt/accumulators</strong></td>
     </tr>
     <tr>
       <td class="text-left" style="width: 20%">Verb: <code>GET</code></td>
@@ -2443,8 +2861,8 @@
     </tr>
     <tr>
       <td colspan="2">
-        <button data-toggle="collapse" data-target="#1869002000">Request</button>
-        <div id="1869002000" class="collapse">
+        <button data-toggle="collapse" data-target="#-1303317920">Request</button>
+        <div id="-1303317920" class="collapse">
           <pre>
             <code>
 {}            </code>
@@ -2454,8 +2872,8 @@
     </tr>
     <tr>
       <td colspan="2">
-        <button data-toggle="collapse" data-target="#1717045676">Response</button>
-        <div id="1717045676" class="collapse">
+        <button data-toggle="collapse" data-target="#-1455274244">Response</button>
+        <div id="-1455274244" class="collapse">
           <pre>
             <code>
 {
@@ -3028,6 +3446,56 @@
       }
     }
   }
+}            </code>
+          </pre>
+         </div>
+      </td>
+    </tr>
+  </tbody>
+</table>
+<table class="table table-bordered">
+  <tbody>
+    <tr>
+      <td class="text-left" colspan="2"><strong>/taskmanagers/metrics</strong></td>
+    </tr>
+    <tr>
+      <td class="text-left" style="width: 20%">Verb: <code>GET</code></td>
+      <td class="text-left">Response code: <code>200 OK</code></td>
+    </tr>
+    <tr>
+      <td colspan="2">description</td>
+    </tr>
+    <tr>
+      <td colspan="2">Query parameters</td>
+    </tr>
+    <tr>
+      <td colspan="2">
+        <ul>
+<li><code>get</code> (optional): description</li>
+<li><code>agg</code> (optional): description</li>
+<li><code>taskmanagers</code> (optional): description</li>
+        </ul>
+      </td>
+    </tr>
+    <tr>
+      <td colspan="2">
+        <button data-toggle="collapse" data-target="#521351018">Request</button>
+        <div id="521351018" class="collapse">
+          <pre>
+            <code>
+{}            </code>
+          </pre>
+         </div>
+      </td>
+    </tr>
+    <tr>
+      <td colspan="2">
+        <button data-toggle="collapse" data-target="#1440560359">Response</button>
+        <div id="1440560359" class="collapse">
+          <pre>
+            <code>
+{
+  "type" : "any"
 }            </code>
           </pre>
          </div>

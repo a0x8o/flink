@@ -18,11 +18,6 @@
 
 package org.apache.flink.yarn;
 
-import akka.actor.ActorRef;
-import akka.actor.ActorSystem;
-import akka.actor.PoisonPill;
-import akka.actor.Props;
-import akka.testkit.JavaTestKit;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.akka.AkkaUtils;
 import org.apache.flink.runtime.clusterframework.ContaineredTaskManagerParameters;
@@ -30,19 +25,24 @@ import org.apache.flink.runtime.clusterframework.messages.NotifyResourceStarted;
 import org.apache.flink.runtime.clusterframework.messages.RegisterResourceManager;
 import org.apache.flink.runtime.clusterframework.messages.RegisterResourceManagerSuccessful;
 import org.apache.flink.runtime.instance.AkkaActorGateway;
-import org.apache.flink.runtime.leaderelection.TestingLeaderRetrievalService;
+import org.apache.flink.runtime.leaderretrieval.SettableLeaderRetrievalService;
 import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.testingUtils.TestingUtils;
 import org.apache.flink.util.TestLogger;
 import org.apache.flink.yarn.messages.NotifyWhenResourcesRegistered;
 import org.apache.flink.yarn.messages.RequestNumberOfRegisteredResources;
+
+import akka.actor.ActorRef;
+import akka.actor.ActorSystem;
+import akka.actor.PoisonPill;
+import akka.actor.Props;
+import akka.testkit.JavaTestKit;
+import org.apache.hadoop.yarn.api.records.ApplicationAttemptId;
+import org.apache.hadoop.yarn.api.records.ApplicationId;
 import org.apache.hadoop.yarn.api.records.Container;
 import org.apache.hadoop.yarn.api.records.ContainerId;
 import org.apache.hadoop.yarn.api.records.ContainerLaunchContext;
 import org.apache.hadoop.yarn.api.records.NodeId;
-import org.apache.hadoop.yarn.api.records.Priority;
-import org.apache.hadoop.yarn.api.records.Resource;
-import org.apache.hadoop.yarn.api.records.Token;
 import org.apache.hadoop.yarn.client.api.AMRMClient;
 import org.apache.hadoop.yarn.client.api.NMClient;
 import org.apache.hadoop.yarn.client.api.async.AMRMClientAsync;
@@ -53,24 +53,29 @@ import org.junit.Test;
 import org.mockito.Matchers;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
-import scala.Option;
-import scala.concurrent.Await;
-import scala.concurrent.Future;
-import scala.concurrent.duration.Deadline;
-import scala.concurrent.duration.FiniteDuration;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+
+import scala.Option;
+import scala.concurrent.Await;
+import scala.concurrent.Future;
+import scala.concurrent.duration.Deadline;
+import scala.concurrent.duration.FiniteDuration;
 
 import static org.junit.Assert.assertEquals;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+/**
+ * Tests for {@link YarnFlinkResourceManager}.
+ */
 public class YarnFlinkResourceManagerTest extends TestLogger {
 
 	private static ActorSystem system;
@@ -93,11 +98,13 @@ public class YarnFlinkResourceManagerTest extends TestLogger {
 
 			Configuration flinkConfig = new Configuration();
 			YarnConfiguration yarnConfig = new YarnConfiguration();
-			TestingLeaderRetrievalService leaderRetrievalService = new TestingLeaderRetrievalService();
+			SettableLeaderRetrievalService leaderRetrievalService = new SettableLeaderRetrievalService(
+				null,
+				null);
 			String applicationMasterHostName = "localhost";
 			String webInterfaceURL = "foobar";
 			ContaineredTaskManagerParameters taskManagerParameters = new ContaineredTaskManagerParameters(
-				1l, 1l, 1l, 1, new HashMap<String, String>());
+				1L, 1L, 1L, 1, new HashMap<String, String>());
 			ContainerLaunchContext taskManagerLaunchContext = mock(ContainerLaunchContext.class);
 			int yarnHeartbeatIntervalMillis = 1000;
 			int maxFailedContainers = 10;
@@ -110,7 +117,15 @@ public class YarnFlinkResourceManagerTest extends TestLogger {
 			final List<Container> containerList = new ArrayList<>();
 
 			for (int i = 0; i < numInitialTaskManagers; i++) {
-				containerList.add(new TestingContainer("container_" + i, "localhost"));
+				Container mockContainer = mock(Container.class);
+				when(mockContainer.getId()).thenReturn(
+					ContainerId.newInstance(
+						ApplicationAttemptId.newInstance(
+							ApplicationId.newInstance(System.currentTimeMillis(), 1),
+							1),
+						i));
+				when(mockContainer.getNodeId()).thenReturn(NodeId.newInstance("container", 1234));
+				containerList.add(mockContainer);
 			}
 
 			doAnswer(new Answer() {
@@ -126,6 +141,26 @@ public class YarnFlinkResourceManagerTest extends TestLogger {
 					return null;
 				}
 			}).when(resourceManagerClient).addContainerRequest(Matchers.any(AMRMClient.ContainerRequest.class));
+
+			final CompletableFuture<AkkaActorGateway> resourceManagerFuture = new CompletableFuture<>();
+			final CompletableFuture<AkkaActorGateway> leaderGatewayFuture = new CompletableFuture<>();
+
+			doAnswer(
+				(InvocationOnMock invocation) -> {
+					Container container = (Container) invocation.getArguments()[0];
+					resourceManagerFuture.thenCombine(leaderGatewayFuture,
+						(resourceManagerGateway, leaderGateway) -> {
+						resourceManagerGateway.tell(
+							new NotifyResourceStarted(YarnFlinkResourceManager.extractResourceID(container)),
+							leaderGateway);
+						return null;
+						});
+					return null;
+				})
+				.when(nodeManagerClient)
+				.startContainer(
+					Matchers.any(Container.class),
+					Matchers.any(ContainerLaunchContext.class));
 
 			ActorRef resourceManager = null;
 			ActorRef leader1;
@@ -161,19 +196,12 @@ public class YarnFlinkResourceManagerTest extends TestLogger {
 				final AkkaActorGateway leader1Gateway = new AkkaActorGateway(leader1, leaderSessionID);
 				final AkkaActorGateway resourceManagerGateway = new AkkaActorGateway(resourceManager, leaderSessionID);
 
-				doAnswer(new Answer() {
-					@Override
-					public Object answer(InvocationOnMock invocation) throws Throwable {
-						Container container = (Container) invocation.getArguments()[0];
-						resourceManagerGateway.tell(new NotifyResourceStarted(YarnFlinkResourceManager.extractResourceID(container)),
-							leader1Gateway);
-						return null;
-					}
-				}).when(nodeManagerClient).startContainer(Matchers.any(Container.class), Matchers.any(ContainerLaunchContext.class));
+				leaderGatewayFuture.complete(leader1Gateway);
+				resourceManagerFuture.complete(resourceManagerGateway);
 
 				expectMsgClass(deadline.timeLeft(), RegisterResourceManager.class);
 
-				resourceManagerGateway.tell(new RegisterResourceManagerSuccessful(leader1, Collections.EMPTY_LIST));
+				resourceManagerGateway.tell(new RegisterResourceManagerSuccessful(leader1, Collections.emptyList()));
 
 				for (int i = 0; i < containerList.size(); i++) {
 					expectMsgClass(deadline.timeLeft(), Acknowledge.class);
@@ -189,7 +217,7 @@ public class YarnFlinkResourceManagerTest extends TestLogger {
 
 				expectMsgClass(deadline.timeLeft(), RegisterResourceManager.class);
 
-				resourceManagerGateway.tell(new RegisterResourceManagerSuccessful(leader1, Collections.EMPTY_LIST));
+				resourceManagerGateway.tell(new RegisterResourceManagerSuccessful(leader1, Collections.emptyList()));
 
 				for (Container container: containerList) {
 					resourceManagerGateway.tell(
@@ -201,7 +229,7 @@ public class YarnFlinkResourceManagerTest extends TestLogger {
 					expectMsgClass(deadline.timeLeft(), Acknowledge.class);
 				}
 
-				Future<Object> numberOfRegisteredResourcesFuture = resourceManagerGateway.ask(RequestNumberOfRegisteredResources.Instance, deadline.timeLeft());
+				Future<Object> numberOfRegisteredResourcesFuture = resourceManagerGateway.ask(RequestNumberOfRegisteredResources.INSTANCE, deadline.timeLeft());
 
 				int numberOfRegisteredResources = (Integer) Await.result(numberOfRegisteredResourcesFuture, deadline.timeLeft());
 
@@ -212,87 +240,5 @@ public class YarnFlinkResourceManagerTest extends TestLogger {
 				}
 			}
 		}};
-	}
-
-	static class TestingContainer extends Container {
-
-		private final String id;
-		private final String host;
-
-		TestingContainer(String id, String host) {
-			this.id = id;
-			this.host = host;
-		}
-
-		@Override
-		public ContainerId getId() {
-			ContainerId containerId = mock(ContainerId.class);
-			when(containerId.toString()).thenReturn(id);
-
-			return containerId;
-		}
-
-		@Override
-		public void setId(ContainerId containerId) {
-
-		}
-
-		@Override
-		public NodeId getNodeId() {
-			NodeId nodeId = mock(NodeId.class);
-			when(nodeId.getHost()).thenReturn(host);
-
-			return nodeId;
-		}
-
-		@Override
-		public void setNodeId(NodeId nodeId) {
-
-		}
-
-		@Override
-		public String getNodeHttpAddress() {
-			return null;
-		}
-
-		@Override
-		public void setNodeHttpAddress(String s) {
-
-		}
-
-		@Override
-		public Resource getResource() {
-			return null;
-		}
-
-		@Override
-		public void setResource(Resource resource) {
-
-		}
-
-		@Override
-		public Priority getPriority() {
-			return null;
-		}
-
-		@Override
-		public void setPriority(Priority priority) {
-
-		}
-
-		@Override
-		public Token getContainerToken() {
-			return null;
-		}
-
-		@Override
-		public void setContainerToken(Token token) {
-
-		}
-
-		@Override
-		public int compareTo(Container o) {
-			return 0;
-		}
 	}
 }

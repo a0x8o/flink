@@ -452,7 +452,7 @@ under the License.
 			<dependency>
 				<groupId>org.javassist</groupId>
 				<artifactId>javassist</artifactId>
-				<version>3.18.2-GA</version>
+				<version>3.19.0-GA</version>
 			</dependency>
 
 			<!-- joda time is pulled in different versions by different transitive dependencies-->
@@ -635,6 +635,63 @@ under the License.
 	</dependencyManagement>
 
 	<profiles>
+
+		<profile>
+			<id>fast</id>
+			<activation>
+				<property>
+					<name>fast</name>
+				</property>
+			</activation>
+			<build>
+				<pluginManagement>
+					<plugins>
+						<plugin>
+							<groupId>org.apache.rat</groupId>
+							<artifactId>apache-rat-plugin</artifactId>
+							<configuration>
+								<skip>true</skip>
+							</configuration>
+						</plugin>
+						<plugin>
+							<groupId>org.apache.maven.plugins</groupId>
+							<artifactId>maven-checkstyle-plugin</artifactId>
+							<configuration>
+								<skip>true</skip>
+							</configuration>
+						</plugin>
+						<plugin>
+							<groupId>org.scalastyle</groupId>
+							<artifactId>scalastyle-maven-plugin</artifactId>
+							<configuration>
+								<skip>true</skip>
+							</configuration>
+						</plugin>
+						<plugin>
+							<groupId>org.apache.maven.plugins</groupId>
+							<artifactId>maven-enforcer-plugin</artifactId>
+							<configuration>
+								<skip>true</skip>
+							</configuration>
+						</plugin>
+						<plugin>
+							<groupId>org.apache.maven.plugins</groupId>
+							<artifactId>maven-javadoc-plugin</artifactId>
+							<configuration>
+								<skip>true</skip>
+							</configuration>
+						</plugin>
+						<plugin>
+							<groupId>com.github.siom79.japicmp</groupId>
+							<artifactId>japicmp-maven-plugin</artifactId>
+							<configuration>
+								<skip>true</skip>
+							</configuration>
+						</plugin>
+					</plugins>
+				</pluginManagement>
+			</build>
+		</profile>
 
 		<profile>
 			<id>legacyCode</id>
