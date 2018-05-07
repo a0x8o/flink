@@ -33,14 +33,9 @@ else
   NUM_SLOTS=$NEW_DOP
 fi
 
-# modify configuration to have enough slots
-cp $FLINK_DIR/conf/flink-conf.yaml $FLINK_DIR/conf/flink-conf.yaml.bak
-sed -i -e "s/taskmanager.numberOfTaskSlots: 1/taskmanager.numberOfTaskSlots: $NUM_SLOTS/" $FLINK_DIR/conf/flink-conf.yaml
-
-# modify configuration to use SLF4J reporter; we will be using this to monitor the state machine progress
-cp $FLINK_DIR/opt/flink-metrics-slf4j-*.jar $FLINK_DIR/lib/
-echo "metrics.reporter.slf4j.class: org.apache.flink.metrics.slf4j.Slf4jReporter" >> $FLINK_DIR/conf/flink-conf.yaml
-echo "metrics.reporter.slf4j.interval: 1 SECONDS" >> $FLINK_DIR/conf/flink-conf.yaml
+backup_config
+change_conf "taskmanager.numberOfTaskSlots" "1" "${NUM_SLOTS}"
+setup_flink_slf4j_metric_reporter
 
 start_cluster
 
@@ -52,8 +47,7 @@ function test_cleanup {
   trap "" EXIT
 
   # revert our modifications to the Flink distribution
-  mv -f $FLINK_DIR/conf/flink-conf.yaml.bak $FLINK_DIR/conf/flink-conf.yaml
-  rm $FLINK_DIR/lib/flink-metrics-slf4j-*.jar
+  rm ${FLINK_DIR}/lib/flink-metrics-slf4j-*.jar
 
   # make sure to run regular cleanup as well
   cleanup
@@ -75,30 +69,7 @@ DATASTREAM_JOB=$($FLINK_DIR/bin/flink run -d -p $ORIGINAL_DOP $TEST_PROGRAM_JAR 
 
 wait_job_running $DATASTREAM_JOB
 
-function get_metric_processed_records {
-  grep ".General purpose test job.ArtificalKeyedStateMapper.0.numRecordsIn:" $FLINK_DIR/log/*taskexecutor*.log | sed 's/.* //g' | tail -1
-}
-
-function get_num_metric_samples {
-  grep ".General purpose test job.ArtificalKeyedStateMapper.0.numRecordsIn:" $FLINK_DIR/log/*taskexecutor*.log | wc -l
-}
-
-# monitor the numRecordsIn metric of the state machine operator;
-# only proceed to savepoint when the operator has processed 200 records
-while : ; do
-  NUM_RECORDS=$(get_metric_processed_records)
-
-  if [ -z $NUM_RECORDS ]; then
-    NUM_RECORDS=0
-  fi
-
-  if (( $NUM_RECORDS < 200 )); then
-    echo "Waiting for job to process up to 200 records, current progress: $NUM_RECORDS records ..."
-    sleep 1
-  else
-    break
-  fi
-done
+wait_oper_metric_num_in_records ArtificalKeyedStateMapper.0 200
 
 # take a savepoint of the state machine job
 SAVEPOINT_PATH=$(take_savepoint $DATASTREAM_JOB $TEST_DATA_DIR \
@@ -121,24 +92,7 @@ DATASTREAM_JOB=$($FLINK_DIR/bin/flink run -s $SAVEPOINT_PATH -p $NEW_DOP -d $TES
 
 wait_job_running $DATASTREAM_JOB
 
-# monitor the numRecordsIn metric of the state machine operator in the second execution
-# we let the test finish once the second restore execution has processed 200 records
-while : ; do
-  NUM_METRICS=$(get_num_metric_samples)
-  NUM_RECORDS=$(get_metric_processed_records)
-
-  # only account for metrics that appeared in the second execution
-  if (( $OLD_NUM_METRICS >= $NUM_METRICS )) ; then
-    NUM_RECORDS=0
-  fi
-
-  if (( $NUM_RECORDS < 200 )); then
-    echo "Waiting for job to process up to 200 records, current progress: $NUM_RECORDS records ..."
-    sleep 1
-  else
-    break
-  fi
-done
+wait_oper_metric_num_in_records ArtificalKeyedStateMapper.0 200
 
 # if state is errorneous and the state machine job produces alerting state transitions,
 # output would be non-empty and the test will not pass

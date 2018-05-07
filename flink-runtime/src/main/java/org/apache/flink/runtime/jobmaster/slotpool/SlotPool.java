@@ -26,6 +26,7 @@ import org.apache.flink.runtime.akka.AkkaUtils;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
+import org.apache.flink.runtime.clusterframework.types.SlotID;
 import org.apache.flink.runtime.clusterframework.types.SlotProfile;
 import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.executiongraph.ExecutionGraph;
@@ -875,17 +876,12 @@ public class SlotPool extends RpcEndpoint implements SlotPoolGateway, AllocatedS
 		List<CompletableFuture<Optional<SlotOffer>>> acceptedSlotOffers = offers.stream().map(
 			offer -> {
 				CompletableFuture<Optional<SlotOffer>> acceptedSlotOffer = offerSlot(
-					taskManagerLocation,
-					taskManagerGateway,
-					offer)
+						taskManagerLocation,
+						taskManagerGateway,
+						offer)
 					.thenApply(
-						(acceptedSlot) -> {
-							if (acceptedSlot) {
-								return Optional.of(offer);
-							} else {
-								return Optional.empty();
-							}
-						});
+						(acceptedSlot) -> acceptedSlot ? Optional.of(offer) : Optional.empty()
+					);
 
 				return acceptedSlotOffer;
 			}
@@ -893,18 +889,9 @@ public class SlotPool extends RpcEndpoint implements SlotPoolGateway, AllocatedS
 
 		CompletableFuture<Collection<Optional<SlotOffer>>> optionalSlotOffers = FutureUtils.combineAll(acceptedSlotOffers);
 
-		CompletableFuture<Collection<SlotOffer>> resultingSlotOffers = optionalSlotOffers.thenApply(
-			collection -> {
-				Collection<SlotOffer> slotOffers = collection
-					.stream()
-					.flatMap(
-						opt -> opt.map(Stream::of).orElseGet(Stream::empty))
-					.collect(Collectors.toList());
-
-				return slotOffers;
-			});
-
-		return resultingSlotOffers;
+		return optionalSlotOffers.thenApply(collection -> collection.stream()
+				.flatMap(opt -> opt.map(Stream::of).orElseGet(Stream::empty))
+				.collect(Collectors.toList()));
 	}
 
 	/**
@@ -923,6 +910,7 @@ public class SlotPool extends RpcEndpoint implements SlotPoolGateway, AllocatedS
 			final TaskManagerLocation taskManagerLocation,
 			final TaskManagerGateway taskManagerGateway,
 			final SlotOffer slotOffer) {
+
 		validateRunsInMainThread();
 
 		// check if this TaskManager is valid
@@ -936,12 +924,31 @@ public class SlotPool extends RpcEndpoint implements SlotPoolGateway, AllocatedS
 		}
 
 		// check whether we have already using this slot
-		if (allocatedSlots.contains(allocationID) || availableSlots.contains(allocationID)) {
-			log.debug("Received repeated offer for slot [{}]. Ignoring.", allocationID);
+		AllocatedSlot existingSlot;
+		if ((existingSlot = allocatedSlots.get(allocationID)) != null ||
+			(existingSlot = availableSlots.get(allocationID)) != null) {
 
-			// return true here so that the sender will get a positive acknowledgement to the retry
-			// and mark the offering as a success
-			return CompletableFuture.completedFuture(true);
+			// we need to figure out if this is a repeated offer for the exact same slot,
+			// or another offer that comes from a different TaskManager after the ResourceManager
+			// re-tried the request
+
+			// we write this in terms of comparing slot IDs, because the Slot IDs are the identifiers of
+			// the actual slots on the TaskManagers
+			// Note: The slotOffer should have the SlotID
+			final SlotID existingSlotId = existingSlot.getSlotId();
+			final SlotID newSlotId = new SlotID(taskManagerLocation.getResourceID(), slotOffer.getSlotIndex());
+
+			if (existingSlotId.equals(newSlotId)) {
+				log.info("Received repeated offer for slot [{}]. Ignoring.", allocationID);
+
+				// return true here so that the sender will get a positive acknowledgement to the retry
+				// and mark the offering as a success
+				return CompletableFuture.completedFuture(true);
+			} else {
+				// the allocation has been fulfilled by another slot, reject the offer so the task executor
+				// will offer the slot to the resource manager
+				return CompletableFuture.completedFuture(false);
+			}
 		}
 
 		final AllocatedSlot allocatedSlot = new AllocatedSlot(
@@ -1382,6 +1389,15 @@ public class SlotPool extends RpcEndpoint implements SlotPoolGateway, AllocatedS
 		 */
 		boolean contains(AllocationID slotId) {
 			return availableSlots.containsKey(slotId);
+		}
+
+		AllocatedSlot get(AllocationID allocationID) {
+			SlotAndTimestamp slotAndTimestamp = availableSlots.get(allocationID);
+			if (slotAndTimestamp != null) {
+				return slotAndTimestamp.slot();
+			} else {
+				return null;
+			}
 		}
 
 		/**
