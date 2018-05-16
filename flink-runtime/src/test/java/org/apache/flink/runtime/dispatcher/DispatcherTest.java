@@ -567,7 +567,8 @@ public class DispatcherTest extends TestLogger {
 				archivedExecutionGraphStore,
 				jobManagerRunnerFactory,
 				fatalErrorHandler,
-				null);
+				null,
+				VoidHistoryServerArchivist.INSTANCE);
 		}
 
 		@VisibleForTesting

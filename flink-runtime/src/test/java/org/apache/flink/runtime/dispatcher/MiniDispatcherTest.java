@@ -258,6 +258,7 @@ public class MiniDispatcherTest extends TestLogger {
 			testingJobManagerRunnerFactory,
 			testingFatalErrorHandler,
 			null,
+			VoidHistoryServerArchivist.INSTANCE,
 			jobGraph,
 			executionMode);
 	}

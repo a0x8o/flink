@@ -3083,7 +3083,18 @@ STRING.sha1()
       </td>
     </tr>
 
-        <tr>
+    <tr>
+      <td>
+        {% highlight java %}
+STRING.sha224()
+{% endhighlight %}
+      </td>
+      <td>
+        <p>Returns the SHA-224 hash of the string argument as a string of 56 hexadecimal digits; null if <i>string</i> is null.</p>
+      </td>
+    </tr>
+
+    <tr>
       <td>
         {% highlight java %}
 STRING.sha256()
@@ -3091,6 +3102,40 @@ STRING.sha256()
       </td>
       <td>
         <p>Returns the SHA-256 hash of the string argument as a string of 64 hexadecimal digits; null if <i>string</i> is null.</p>
+      </td>
+    </tr>
+
+    <tr>
+      <td>
+        {% highlight java %}
+STRING.sha384()
+{% endhighlight %}
+      </td>
+      <td>
+        <p>Returns the SHA-384 hash of the string argument as a string of 96 hexadecimal digits; null if <i>string</i> is null.</p>
+      </td>
+    </tr>
+
+    <tr>
+      <td>
+        {% highlight java %}
+STRING.sha512()
+{% endhighlight %}
+      </td>
+      <td>
+        <p>Returns the SHA-512 hash of the string argument as a string of 128 hexadecimal digits; null if <i>string</i> is null.</p>
+      </td>
+    </tr>
+
+    <tr>
+      <td>
+        {% highlight java %}
+STRING.sha2(INT)
+{% endhighlight %}
+      </td>
+      <td>
+        <p>Returns the hash using the SHA-2 family of hash functions (SHA-224, SHA-256, SHA-384, or SHA-512). The first argument <i>string</i> is the string to be hashed. <i>hashLength</i> is the bit length of the result (either 224, 256, 384, or 512). Returns <i>null</i> if <i>string</i> or <i>hashLength</i> is <i>null</i>.
+        </p>
       </td>
     </tr>
 
@@ -4529,7 +4574,18 @@ STRING.sha1()
       </td>
     </tr>
 
-        <tr>
+    <tr>
+      <td>
+        {% highlight scala %}
+STRING.sha224()
+{% endhighlight %}
+      </td>
+      <td>
+        <p>Returns the SHA-224 hash of the string argument as a string of 56 hexadecimal digits; null if <i>string</i> is null.</p>
+      </td>
+    </tr>
+
+    <tr>
       <td>
         {% highlight scala %}
 STRING.sha256()
@@ -4539,7 +4595,40 @@ STRING.sha256()
         <p>Returns the SHA-256 hash of the string argument as a string of 64 hexadecimal digits; null if <i>string</i> is null.</p>
       </td>
     </tr>
+    
+    <tr>
+      <td>
+        {% highlight scala %}
+STRING.sha384()
+{% endhighlight %}
+      </td>
+      <td>
+        <p>Returns the SHA-384 hash of the string argument as a string of 96 hexadecimal digits; null if <i>string</i> is null.</p>
+      </td>
+    </tr>    
 
+    <tr>
+      <td>
+        {% highlight scala %}
+STRING.sha512()
+{% endhighlight %}
+      </td>
+      <td>
+        <p>Returns the SHA-512 hash of the string argument as a string of 128 hexadecimal digits; null if <i>string</i> is null.</p>
+      </td>
+    </tr>
+
+    <tr>
+      <td>
+        {% highlight scala %}
+STRING.sha2(INT)
+{% endhighlight %}
+      </td>
+      <td>
+        <p>Returns the hash using the SHA-2 family of hash functions (SHA-224, SHA-256, SHA-384, or SHA-512). The first argument <i>string</i> is the string to be hashed. <i>hashLength</i> is the bit length of the result (either 224, 256, 384, or 512). Returns <i>null</i> if <i>string</i> or <i>hashLength</i> is <i>null</i>.
+        </p>
+      </td>
+    </tr>
     </tbody>
 </table>
 
