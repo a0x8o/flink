@@ -18,7 +18,6 @@
 
 package org.apache.flink.runtime.dispatcher;
 
-import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.configuration.BlobServerOptions;
@@ -48,9 +47,7 @@ import org.apache.flink.runtime.leaderelection.TestingLeaderElectionService;
 import org.apache.flink.runtime.leaderretrieval.SettableLeaderRetrievalService;
 import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.messages.FlinkJobNotFoundException;
-import org.apache.flink.runtime.metrics.groups.JobManagerMetricGroup;
 import org.apache.flink.runtime.metrics.groups.UnregisteredMetricGroups;
-import org.apache.flink.runtime.resourcemanager.ResourceManagerGateway;
 import org.apache.flink.runtime.resourcemanager.utils.TestingResourceManagerGateway;
 import org.apache.flink.runtime.rest.handler.legacy.utils.ArchivedExecutionGraphBuilder;
 import org.apache.flink.runtime.rpc.FatalErrorHandler;
@@ -63,7 +60,6 @@ import org.apache.flink.runtime.state.CheckpointStorageLocation;
 import org.apache.flink.runtime.state.CompletedCheckpointStorageLocation;
 import org.apache.flink.runtime.state.StateBackend;
 import org.apache.flink.runtime.testtasks.NoOpInvokable;
-import org.apache.flink.runtime.testutils.InMemorySubmittedJobGraphStore;
 import org.apache.flink.runtime.util.TestingFatalErrorHandler;
 import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.FlinkException;
@@ -79,7 +75,6 @@ import org.junit.rules.TemporaryFolder;
 import org.junit.rules.TestName;
 
 import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
 
 import java.io.File;
 import java.io.IOException;
@@ -132,7 +127,7 @@ public class DispatcherTest extends TestLogger {
 
 	private TestingFatalErrorHandler fatalErrorHandler;
 
-	private InMemorySubmittedJobGraphStore submittedJobGraphStore;
+	private FaultySubmittedJobGraphStore submittedJobGraphStore;
 
 	private TestingLeaderElectionService dispatcherLeaderElectionService;
 
@@ -172,7 +167,7 @@ public class DispatcherTest extends TestLogger {
 
 		fatalErrorHandler = new TestingFatalErrorHandler();
 		final HeartbeatServices heartbeatServices = new HeartbeatServices(1000L, 10000L);
-		submittedJobGraphStore = new InMemorySubmittedJobGraphStore();
+		submittedJobGraphStore = new FaultySubmittedJobGraphStore();
 
 		dispatcherLeaderElectionService = new TestingLeaderElectionService();
 		jobMasterLeaderElectionService = new TestingLeaderElectionService();
@@ -194,7 +189,14 @@ public class DispatcherTest extends TestLogger {
 		createdJobManagerRunnerLatch = new CountDownLatch(2);
 		blobServer = new BlobServer(configuration, new VoidBlobStore());
 
-		dispatcher = new TestingDispatcher(
+		dispatcher = createDispatcher(heartbeatServices, haServices);
+
+		dispatcher.start();
+	}
+
+	@Nonnull
+	private TestingDispatcher createDispatcher(HeartbeatServices heartbeatServices, TestingHighAvailabilityServices haServices) throws Exception {
+		return new TestingDispatcher(
 			rpcService,
 			Dispatcher.DISPATCHER_NAME + '_' + name.getMethodName(),
 			configuration,
@@ -207,8 +209,6 @@ public class DispatcherTest extends TestLogger {
 			new MemoryArchivedExecutionGraphStore(),
 			new ExpectedJobIdJobManagerRunnerFactory(TEST_JOB_ID, createdJobManagerRunnerLatch),
 			fatalErrorHandler);
-
-		dispatcher.start();
 	}
 
 	@After
@@ -290,6 +290,42 @@ public class DispatcherTest extends TestLogger {
 		dispatcher.onAddedJobGraph(TEST_JOB_ID);
 		createdJobManagerRunnerLatch.await();
 		assertThat(dispatcherGateway.listJobs(TIMEOUT).get(), hasSize(1));
+	}
+
+	@Test
+	public void testOnAddedJobGraphRecoveryFailure() throws Exception {
+		final FlinkException expectedFailure = new FlinkException("Expected failure");
+		submittedJobGraphStore.setRecoveryFailure(expectedFailure);
+
+		dispatcherLeaderElectionService.isLeader(UUID.randomUUID()).get();
+
+		submittedJobGraphStore.putJobGraph(new SubmittedJobGraph(jobGraph, null));
+		dispatcher.onAddedJobGraph(TEST_JOB_ID);
+
+		final CompletableFuture<Throwable> errorFuture = fatalErrorHandler.getErrorFuture();
+
+		final Throwable throwable = errorFuture.get();
+
+		assertThat(ExceptionUtils.findThrowable(throwable, expectedFailure::equals).isPresent(), is(true));
+
+		fatalErrorHandler.clearError();
+	}
+
+	@Test
+	public void testOnAddedJobGraphWithFinishedJob() throws Throwable {
+		dispatcherLeaderElectionService.isLeader(UUID.randomUUID()).get();
+
+		submittedJobGraphStore.putJobGraph(new SubmittedJobGraph(jobGraph, null));
+		runningJobsRegistry.setJobFinished(TEST_JOB_ID);
+		dispatcher.onAddedJobGraph(TEST_JOB_ID);
+
+		final CompletableFuture<Throwable> errorFuture = fatalErrorHandler.getErrorFuture();
+
+		final Throwable throwable = errorFuture.get();
+
+		assertThat(throwable, instanceOf(DispatcherException.class));
+
+		fatalErrorHandler.clearError();
 	}
 
 	/**
@@ -535,46 +571,6 @@ public class DispatcherTest extends TestLogger {
 		}
 	}
 
-	private static class TestingDispatcher extends Dispatcher {
-
-		private TestingDispatcher(
-				RpcService rpcService,
-				String endpointId,
-				Configuration configuration,
-				HighAvailabilityServices highAvailabilityServices,
-				ResourceManagerGateway resourceManagerGateway,
-				BlobServer blobServer,
-				HeartbeatServices heartbeatServices,
-				JobManagerMetricGroup jobManagerMetricGroup,
-				@Nullable String metricQueryServicePath,
-				ArchivedExecutionGraphStore archivedExecutionGraphStore,
-				JobManagerRunnerFactory jobManagerRunnerFactory,
-				FatalErrorHandler fatalErrorHandler) throws Exception {
-			super(
-				rpcService,
-				endpointId,
-				configuration,
-				highAvailabilityServices,
-				highAvailabilityServices.getSubmittedJobGraphStore(),
-				resourceManagerGateway,
-				blobServer,
-				heartbeatServices,
-				jobManagerMetricGroup,
-				metricQueryServicePath,
-				archivedExecutionGraphStore,
-				jobManagerRunnerFactory,
-				fatalErrorHandler,
-				null,
-				VoidHistoryServerArchivist.INSTANCE);
-		}
-
-		@VisibleForTesting
-		void completeJobExecution(ArchivedExecutionGraph archivedExecutionGraph) {
-			runAsync(
-				() -> jobReachedGloballyTerminalState(archivedExecutionGraph));
-		}
-	}
-
 	private static final class ExpectedJobIdJobManagerRunnerFactory implements Dispatcher.JobManagerRunnerFactory {
 
 		private final JobID expectedJobId;
@@ -615,4 +611,5 @@ public class DispatcherTest extends TestLogger {
 				fatalErrorHandler);
 		}
 	}
+
 }
