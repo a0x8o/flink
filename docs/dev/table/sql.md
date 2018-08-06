@@ -1411,6 +1411,17 @@ LOG10(numeric)
 
     <tr>
       <td>
+        {% highlight text %}
+LOG2(numeric)
+{% endhighlight %}
+      </td>
+      <td>
+        <p>Returns the base 2 logarithm of <i>numeric</i>.</p>
+      </td>
+    </tr>
+
+    <tr>
+      <td>
        {% highlight text %}
 LOG(x numeric)
 LOG(b numeric, x numeric)
@@ -1497,6 +1508,17 @@ COT(numeric)
       </td>
       <td>
         <p>Calculates the cotangent of a given number.</p>
+      </td>
+    </tr>
+
+    <tr>
+      <td>
+        {% highlight text %}
+ATAN2(numeric, numeric)
+{% endhighlight %}
+      </td>
+      <td>
+        <p>Calculates the arc tangent of a given coordinate.</p>
       </td>
     </tr>
 
@@ -1826,6 +1848,28 @@ RPAD(text string, len integer, pad string)
       </td>
       <td>
         <p>Returns the string text right-padded with the string pad to a length of len characters. If text is longer than len, the return value is shortened to len characters. E.g. <code>RPAD('hi',4,'??')</code> returns <code>hi??</code>, <code>RPAD('hi',1,'??')</code> returns <code>h</code>.</p>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        {% highlight text %}
+FROM_BASE64(text string)
+{% endhighlight %}
+      </td>
+      <td>
+        <p>Returns the base string decoded with base64, if text is NULL, returns NULL. E.g. <code>FROM_BASE64('aGVsbG8gd29ybGQ=')</code> returns <code>hello world</code>.</p>
+      </td>
+    </tr>  
+        
+    <tr>
+      <td>
+        {% highlight text %}
+TO_BASE64(string)
+{% endhighlight %}
+      </td>
+      <td>
+        <p>Returns the base64-encoded result of <i>string</i>; returns NULL if <i>string</i> is NULL.</p> 
+        <p>E.g., <code>TO_BASE64("hello world")</code> returns "aGVsbG8gd29ybGQ=".</p>
       </td>
     </tr>
 

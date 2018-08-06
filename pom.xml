@@ -21,7 +21,7 @@ under the License.
 	<parent>
 		<groupId>org.apache</groupId>
 		<artifactId>apache</artifactId>
-		<version>18</version>
+		<version>20</version>
 	</parent>
 
 	<modelVersion>4.0.0</modelVersion>
@@ -46,7 +46,7 @@ under the License.
 	<scm>
 		<url>https://github.com/apache/flink</url>
 		<connection>git@github.com:apache/flink.git</connection>
-		<developerConnection>scm:git:https://git-wip-us.apache.org/repos/asf/flink.git</developerConnection>
+		<developerConnection>scm:git:https://gitbox.apache.org/repos/asf/flink.git</developerConnection>
 	</scm>
 
 	<modules>
@@ -299,8 +299,14 @@ under the License.
 				<version>1.1.4</version>
 			</dependency>
 
+			<dependency>
+				<groupId>com.github.oshi</groupId>
+				<artifactId>oshi-core</artifactId>
+				<version>3.4.0</version>
+			</dependency>
+
 			<!-- Make sure we use a consistent avro version between Flink and Hadoop -->		
- 			<dependency>
+			<dependency>
 				<groupId>org.apache.avro</groupId>
 				<artifactId>avro</artifactId>
 				<version>${avro.version}</version>
@@ -1115,6 +1121,7 @@ under the License.
 						<exclude>flink-libraries/flink-table/src/test/scala/resources/*.out</exclude>
 						<exclude>flink-yarn/src/test/resources/krb5.keytab</exclude>
 						<exclude>flink-end-to-end-tests/test-scripts/test-data/*</exclude>
+						<exclude>flink-end-to-end-tests/test-scripts/docker-hadoop-secure-cluster/config/keystore.jks</exclude>
 
 						<!-- snapshots -->
 						<exclude>**/src/test/resources/*-snapshot</exclude>
@@ -1423,6 +1430,20 @@ under the License.
 					<groupId>org.apache.maven.plugins</groupId>
 					<artifactId>maven-shade-plugin</artifactId>
 					<version>3.0.0</version>
+				</plugin>
+
+				<plugin>
+					<groupId>pl.project13.maven</groupId>
+					<artifactId>git-commit-id-plugin</artifactId>
+					<!-- Don't use 2.1.14 as it is incompatible with various maven versions --> 
+					<version>2.1.10</version>
+					<configuration>
+						<excludeProperties>
+							<excludeProperty>git.build.*</excludeProperty>
+							<excludeProperty>git.branch.*</excludeProperty>
+							<excludeProperty>git.remote.*</excludeProperty>
+						</excludeProperties>
+					</configuration>
 				</plugin>
 
 				<!-- Disable certain plugins in Eclipse -->

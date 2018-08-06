@@ -61,7 +61,7 @@ case class InitCap(child: Expression) extends UnaryExpression {
     if (child.resultType == STRING_TYPE_INFO) {
       ValidationSuccess
     } else {
-      ValidationFailure(s"InitCap operator requires String input, " + 
+      ValidationFailure(s"InitCap operator requires String input, " +
         s"but $child is of type ${child.resultType}")
     }
   }
@@ -356,4 +356,57 @@ case class Rpad(text: Expression, len: Expression, pad: Expression)
   override private[flink] def toRexNode(implicit relBuilder: RelBuilder): RexNode = {
     relBuilder.call(ScalarSqlFunctions.RPAD, children.map(_.toRexNode))
   }
+}
+
+/**
+  * Returns the base string decoded with base64.
+  * Returns NULL If the input string is NULL.
+  */
+case class FromBase64(child: Expression) extends UnaryExpression with InputTypeSpec {
+
+  override private[flink] def expectedTypes: Seq[TypeInformation[_]] = Seq(STRING_TYPE_INFO)
+
+  override private[flink] def resultType: TypeInformation[_] = STRING_TYPE_INFO
+
+  override private[flink] def validateInput(): ValidationResult = {
+    if (child.resultType == STRING_TYPE_INFO) {
+      ValidationSuccess
+    } else {
+      ValidationFailure(s"FromBase64 operator requires String input, " +
+        s"but $child is of type ${child.resultType}")
+    }
+  }
+
+  override private[flink] def toRexNode(implicit relBuilder: RelBuilder): RexNode = {
+    relBuilder.call(ScalarSqlFunctions.FROM_BASE64, child.toRexNode)
+  }
+
+  override def toString: String = s"($child).fromBase64"
+
+}
+
+/**
+  * Returns the base64-encoded result of the input string.
+  */
+case class ToBase64(child: Expression) extends UnaryExpression with InputTypeSpec {
+
+  override private[flink] def expectedTypes: Seq[TypeInformation[_]] = Seq(STRING_TYPE_INFO)
+
+  override private[flink] def resultType: TypeInformation[_] = STRING_TYPE_INFO
+
+  override private[flink] def validateInput(): ValidationResult = {
+    if (child.resultType == STRING_TYPE_INFO) {
+      ValidationSuccess
+    } else {
+      ValidationFailure(s"ToBase64 operator requires a String input, " +
+        s"but $child is of type ${child.resultType}")
+    }
+  }
+
+  override private[flink] def toRexNode(implicit relBuilder: RelBuilder): RexNode = {
+    relBuilder.call(ScalarSqlFunctions.TO_BASE64, child.toRexNode)
+  }
+
+  override def toString: String = s"($child).toBase64"
+
 }

@@ -1613,7 +1613,7 @@ suffixed = interval | cast | as | if | functionCall ;
 
 interval = timeInterval | rowInterval ;
 
-timeInterval = composite , "." , ("year" | "years" | "month" | "months" | "day" | "days" | "hour" | "hours" | "minute" | "minutes" | "second" | "seconds" | "milli" | "millis") ;
+timeInterval = composite , "." , ("year" | "years" | "quarter" | "quarters" | "month" | "months" | "week" | "weeks" | "day" | "days" | "hour" | "hours" | "minute" | "minutes" | "second" | "seconds" | "milli" | "millis") ;
 
 rowInterval = composite , "." , "rows" ;
 
@@ -1633,7 +1633,7 @@ fieldReference = "*" | identifier ;
 
 nullLiteral = "Null(" , dataType , ")" ;
 
-timeIntervalUnit = "YEAR" | "YEAR_TO_MONTH" | "MONTH" | "DAY" | "DAY_TO_HOUR" | "DAY_TO_MINUTE" | "DAY_TO_SECOND" | "HOUR" | "HOUR_TO_MINUTE" | "HOUR_TO_SECOND" | "MINUTE" | "MINUTE_TO_SECOND" | "SECOND" ;
+timeIntervalUnit = "YEAR" | "YEAR_TO_MONTH" | "MONTH" | "QUARTER" | "WEEK" | "DAY" | "DAY_TO_HOUR" | "DAY_TO_MINUTE" | "DAY_TO_SECOND" | "HOUR" | "HOUR_TO_MINUTE" | "HOUR_TO_SECOND" | "MINUTE" | "MINUTE_TO_SECOND" | "SECOND" ;
 
 timePointUnit = "YEAR" | "MONTH" | "DAY" | "HOUR" | "MINUTE" | "SECOND" | "QUARTER" | "WEEK" | "MILLISECOND" | "MICROSECOND" ;
 
@@ -2070,6 +2070,17 @@ NUMERIC.log10()
     <tr>
       <td>
         {% highlight java %}
+NUMERIC.log2()
+{% endhighlight %}
+      </td>
+      <td>
+        <p>Calculates the base 2 logarithm of given value.</p>
+      </td>
+    </tr>
+
+    <tr>
+      <td>
+        {% highlight java %}
 numeric1.log()
 numeric1.log(numeric2)
 {% endhighlight %}
@@ -2168,6 +2179,17 @@ NUMERIC.asin()
       </td>
     </tr>
 
+    <tr>
+      <td>
+        {% highlight java %}
+atan2(NUMERIC, NUMERIC)
+{% endhighlight %}
+      </td>
+      <td>
+        <p>Calculates the arc tangent of a given coordinate.</p>
+      </td>
+    </tr>
+    
     <tr>
       <td>
         {% highlight java %}
@@ -2463,6 +2485,30 @@ STRING.rpad(len INT, pad STRING)
         <p>Returns a string right-padded with the given pad string to a length of len characters. If the string is longer than len, the return value is shortened to len characters. E.g. "hi".rpad(4, '??') returns "hi??",  "hi".rpad(1, '??') returns "h".</p>
       </td>
     </tr>
+    <tr>
+      <td>
+        {% highlight java %}
+STRING.fromBase64()
+{% endhighlight %}
+      </td>
+
+      <td>
+        <p>Returns the base string decoded with base64, if string is null, returns null. E.g. "aGVsbG8gd29ybGQ=".fromBase64() returns "hello world".</p>
+      </td>
+    </tr>
+    
+    <tr>
+      <td>
+        {% highlight java %}
+STRING.toBase64()
+{% endhighlight %}
+      </td>
+
+      <td>
+        <p>Returns the base64-encoded result of <i>STRING</i>; retruns NULL if <i>STRING</i> is NULL.</p>
+         <p>E.g., <code>"hello world".toBase64()</code> returns "aGVsbG8gd29ybGQ=".</p>
+      </td>
+    </tr>
 
     <tr>
       <td>
@@ -2750,7 +2796,7 @@ TEMPORAL.extract(TIMEINTERVALUNIT)
 {% endhighlight %}
       </td>
       <td>
-        <p>Extracts parts of a time point or time interval. Returns the part as a long value. E.g. <code>'2006-06-05'.toDate.extract(DAY)</code> leads to 5.</p>
+        <p>Extracts parts of a time point or time interval. Returns the part as a long value. E.g. <code>'2006-06-05'.toDate.extract(DAY)</code> leads to 5 or <code>'2006-06-05'.toDate.extract(QUARTER)</code> leads to 2.</p>
       </td>
     </tr>
 
@@ -2773,17 +2819,6 @@ TIMEPOINT.ceil(TIMEINTERVALUNIT)
       </td>
       <td>
         <p>Rounds a time point up to the given unit. E.g. <code>'12:44:31'.toTime.floor(MINUTE)</code> leads to 12:45:00.</p>
-      </td>
-    </tr>
-
-    <tr>
-      <td>
-        {% highlight java %}
-DATE.quarter()
-{% endhighlight %}
-      </td>
-      <td>
-        <p>Returns the quarter of a year from a SQL date. E.g. <code>'1994-09-27'.toDate.quarter()</code> leads to 3.</p>
       </td>
     </tr>
 
@@ -3724,6 +3759,17 @@ NUMERIC.cot()
     <tr>
       <td>
         {% highlight scala %}
+atan2(NUMERIC, NUMERIC)
+{% endhighlight %}
+      </td>
+      <td>
+        <p>Calculates the arc tangent of a given coordinate.</p>
+      </td>
+    </tr>
+    
+    <tr>
+      <td>
+        {% highlight scala %}
 NUMERIC.asin()
 {% endhighlight %}
       </td>
@@ -4003,6 +4049,19 @@ STRING.initCap()
       </td>
     </tr>
 
+    <tr>
+      <td>
+        {% highlight scala %}
+STRING.toBase64()
+{% endhighlight %}
+      </td>
+
+      <td>
+        <p>Returns the base64-encoded result of <i>STRING</i>; returns NULL if <i>STRING</i> is NULL.</p>
+        <p>E.g., <code>"hello world".toBase64()</code> returns "aGVsbG8gd29ybGQ=".</p>
+      </td>
+    </tr>
+
   </tbody>
 </table>
 
@@ -4267,7 +4326,7 @@ TEMPORAL.extract(TimeIntervalUnit)
 {% endhighlight %}
       </td>
       <td>
-        <p>Extracts parts of a time point or time interval. Returns the part as a long value. E.g. <code>"2006-06-05".toDate.extract(TimeIntervalUnit.DAY)</code> leads to 5.</p>
+        <p>Extracts parts of a time point or time interval. Returns the part as a long value. E.g. <code>"2006-06-05".toDate.extract(TimeIntervalUnit.DAY)</code> leads to 5 or <code>'2006-06-05'.toDate.extract(QUARTER)</code> leads to 2.</p>
       </td>
     </tr>
 
@@ -4290,17 +4349,6 @@ TIMEPOINT.ceil(TimeIntervalUnit)
       </td>
       <td>
         <p>Rounds a time point up to the given unit. E.g. <code>"12:44:31".toTime.floor(TimeIntervalUnit.MINUTE)</code> leads to 12:45:00.</p>
-      </td>
-    </tr>
-
-    <tr>
-      <td>
-        {% highlight scala %}
-DATE.quarter()
-{% endhighlight %}
-      </td>
-      <td>
-        <p>Returns the quarter of a year from a SQL date. E.g. <code>"1994-09-27".toDate.quarter()</code> leads to 3.</p>
       </td>
     </tr>
 
