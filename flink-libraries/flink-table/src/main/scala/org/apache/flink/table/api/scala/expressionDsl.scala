@@ -172,7 +172,7 @@ trait ImplicitExpressionOperations {
     * If all values are null, 0 is returned.
     */
   def sum0 = Sum0(expr)
-  
+
   /**
     * Returns the minimum value of field across all input values.
     */
@@ -236,7 +236,18 @@ trait ImplicitExpressionOperations {
     */
   def as(name: Symbol, extraNames: Symbol*) = Alias(expr, name.name, extraNames.map(_.name))
 
+  /**
+    * Specifies ascending order of an expression i.e. a field for orderBy call.
+    *
+    * @return ascend expression
+    */
   def asc = Asc(expr)
+
+  /**
+    * Specifies descending order of an expression i.e. a field for orderBy call.
+    *
+    * @return descend expression
+    */
   def desc = Desc(expr)
 
   /**
@@ -406,6 +417,15 @@ trait ImplicitExpressionOperations {
     */
   def bin() = Bin(expr)
 
+  /**
+    * Returns a string representation of an integer numeric value or a string in hex format. Returns
+    * null if numeric or string is null.
+    *
+    * E.g. a numeric 20 leads to "14", a numeric 100 leads to "64", and a string "hello,world" leads
+    * to "68656c6c6f2c776f726c64".
+    */
+  def hex() = Hex(expr)
+
   // String operations
 
   /**
@@ -554,20 +574,35 @@ trait ImplicitExpressionOperations {
     */
   def toBase64() = ToBase64(expr)
 
+  /**
+    * Returns a string that removes the left whitespaces from the given string.
+    */
+  def ltrim() = LTrim(expr)
+
+  /**
+    * Returns a string that removes the right whitespaces from the given string.
+    */
+  def rtrim() = RTrim(expr)
+
+  /**
+    * Returns a string that repeats the base string n times.
+    */
+  def repeat(n: Expression) = Repeat(expr, n)
+
   // Temporal operations
 
   /**
-    * Parses a date string in the form "yy-mm-dd" to a SQL Date.
+    * Parses a date string in the form "yyyy-MM-dd" to a SQL Date.
     */
   def toDate = Cast(expr, SqlTimeTypeInfo.DATE)
 
   /**
-    * Parses a time string in the form "hh:mm:ss" to a SQL Time.
+    * Parses a time string in the form "HH:mm:ss" to a SQL Time.
     */
   def toTime = Cast(expr, SqlTimeTypeInfo.TIME)
 
   /**
-    * Parses a timestamp string in the form "yy-mm-dd hh:mm:ss.fff" to a SQL Timestamp.
+    * Parses a timestamp string in the form "yyyy-MM-dd HH:mm:ss[.SSS]" to a SQL Timestamp.
     */
   def toTimestamp = Cast(expr, SqlTimeTypeInfo.TIMESTAMP)
 
@@ -1244,6 +1279,25 @@ object atan2 {
 object concat_ws {
   def apply(separator: Expression, string: Expression, strings: Expression*): Expression = {
     ConcatWs(separator, Seq(string) ++ strings)
+  }
+}
+
+/**
+  * Returns an UUID (Universally Unique Identifier) string (e.g.,
+  * "3d3c68f7-f608-473f-b60c-b0c44ad4cc4e") according to RFC 4122 type 4 (pseudo randomly
+  * generated) UUID. The UUID is generated using a cryptographically strong pseudo random number
+  * generator.
+  */
+object uuid {
+
+  /**
+    * Returns an UUID (Universally Unique Identifier) string (e.g.,
+    * "3d3c68f7-f608-473f-b60c-b0c44ad4cc4e") according to RFC 4122 type 4 (pseudo randomly
+    * generated) UUID. The UUID is generated using a cryptographically strong pseudo random number
+    * generator.
+    */
+  def apply(): Expression = {
+    UUID()
   }
 }
 

@@ -17,11 +17,13 @@
  */
 package org.apache.flink.table.runtime.functions
 
-import scala.annotation.varargs
+import java.lang.{StringBuilder, Long => JLong}
 import java.math.{BigDecimal => JBigDecimal}
-import java.lang.StringBuilder
 
-import org.apache.commons.codec.binary.Base64
+import org.apache.commons.codec.binary.{Base64, Hex}
+import org.apache.commons.lang3.StringUtils
+
+import scala.annotation.varargs
 
 /**
   * Built-in scalar runtime functions.
@@ -211,5 +213,25 @@ object ScalarFunctions {
     * Returns the base64-encoded result of the input string.
     */
   def toBase64(base: String): String = Base64.encodeBase64String(base.getBytes())
+
+  /**
+    * Returns the hex string of a long argument.
+    */
+  def hex(x: Long): String = JLong.toHexString(x).toUpperCase()
+
+  /**
+    * Returns the hex string of a string argument.
+    */
+  def hex(x: String): String = Hex.encodeHexString(x.getBytes).toUpperCase()
+
+  /**
+    * Returns an UUID string using Java utilities.
+    */
+  def uuid(): String = java.util.UUID.randomUUID().toString
+
+  /**
+    * Returns a string that repeats the base string n times.
+    */
+  def repeat(base: String, n: Int): String = StringUtils.repeat(base, n)
 
 }

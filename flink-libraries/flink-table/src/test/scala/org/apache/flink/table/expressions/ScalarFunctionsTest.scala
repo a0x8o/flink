@@ -393,6 +393,99 @@ class ScalarFunctionsTest extends ScalarTypesTestBase {
   }
 
   @Test
+  def testHex(): Unit = {
+    testAllApis(
+      100.hex(),
+      "100.hex()",
+      "HEX(100)",
+      "64")
+
+    testAllApis(
+      'f2.hex(),
+      "f2.hex()",
+      "HEX(f2)",
+      "2A")
+
+    testAllApis(
+      Null(Types.BYTE).hex(),
+      "hex(Null(BYTE))",
+      "HEX(CAST(NULL AS TINYINT))",
+      "null")
+
+    testAllApis(
+      'f3.hex(),
+      "f3.hex()",
+      "HEX(f3)",
+      "2B")
+
+    testAllApis(
+      'f4.hex(),
+      "f4.hex()",
+      "HEX(f4)",
+      "2C")
+
+    testAllApis(
+      'f7.hex(),
+      "f7.hex()",
+      "HEX(f7)",
+      "3")
+
+    testAllApis(
+      12.hex(),
+      "12.hex()",
+      "HEX(12)",
+      "C")
+
+    testAllApis(
+      10.hex(),
+      "10.hex()",
+      "HEX(10)",
+      "A")
+
+    testAllApis(
+      0.hex(),
+      "0.hex()",
+      "HEX(0)",
+      "0")
+
+    testAllApis(
+      "ö".hex(),
+      "'ö'.hex()",
+      "HEX('ö')",
+      "C3B6")
+
+    testAllApis(
+      'f32.hex(),
+      "f32.hex()",
+      "HEX(f32)",
+      "FFFFFFFFFFFFFFFF")
+
+    testAllApis(
+      'f0.hex(),
+      "f0.hex()",
+      "HEX(f0)",
+      "546869732069732061207465737420537472696E672E")
+
+    testAllApis(
+      'f8.hex(),
+      "f8.hex()",
+      "HEX(f8)",
+      "20546869732069732061207465737420537472696E672E20")
+
+    testAllApis(
+      'f23.hex(),
+      "f23.hex()",
+      "HEX(f23)",
+      "25546869732069732061207465737420537472696E672E")
+
+    testAllApis(
+      'f24.hex(),
+      "f24.hex()",
+      "HEX(f24)",
+      "2A5F546869732069732061207465737420537472696E672E")
+  }
+
+  @Test
   def testBin(): Unit = {
 
     testAllApis(
@@ -498,6 +591,132 @@ class ScalarFunctionsTest extends ScalarTypesTestBase {
       "f33.toBase64()",
       "TO_BASE64(f33)",
       "null")
+  }
+
+  @Test
+  def testUUID(): Unit = {
+    testAllApis(
+      uuid().charLength(),
+      "uuid().charLength",
+      "CHARACTER_LENGTH(UUID())",
+      "36")
+
+    testAllApis(
+      uuid().substring(9, 1),
+      "uuid().substring(9, 1)",
+      "SUBSTRING(UUID(), 9, 1)",
+      "-")
+
+    testAllApis(
+      uuid().substring(14, 1),
+      "uuid().substring(14, 1)",
+      "SUBSTRING(UUID(), 14, 1)",
+      "-")
+
+    testAllApis(
+      uuid().substring(19, 1),
+      "uuid().substring(19, 1)",
+      "SUBSTRING(UUID(), 19, 1)",
+      "-")
+
+    testAllApis(
+      uuid().substring(24, 1),
+      "uuid().substring(24, 1)",
+      "SUBSTRING(UUID(), 24, 1)",
+      "-")
+  }
+
+  @Test
+  def testLTrim(): Unit = {
+    testAllApis(
+      'f8.ltrim(),
+      "f8.ltrim",
+      "LTRIM(f8)",
+      "This is a test String. ")
+
+    testAllApis(
+      'f0.ltrim(),
+      "f0.ltrim",
+      "LTRIM(f0)",
+      "This is a test String.")
+
+    testAllApis(
+      "".ltrim(),
+      "''.ltrim()",
+      "LTRIM('')",
+      "")
+
+    testAllApis(
+      'f33.ltrim(),
+      "f33.ltrim",
+      "LTRIM(f33)",
+      "null")
+  }
+
+  @Test
+  def testRTrim(): Unit = {
+    testAllApis(
+      'f8.rtrim(),
+      "f8.rtrim",
+      "RTRIM(f8)",
+      " This is a test String.")
+
+    testAllApis(
+      'f0.rtrim(),
+      "f0.rtrim",
+      "RTRIM(f0)",
+      "This is a test String.")
+
+    testAllApis(
+      "".rtrim(),
+      "''.rtrim()",
+      "RTRIM('')",
+      "")
+
+    testAllApis(
+      'f33.rtrim(),
+      "f33.rtrim",
+      "RTRIM(f33)",
+      "null")
+  }
+
+  @Test
+  def testRepeat(): Unit = {
+    testAllApis(
+      'f0.repeat(1),
+      "f0.repeat(1)",
+      "REPEAT(f0, 1)",
+      "This is a test String.")
+
+    testAllApis(
+      'f0.repeat(2),
+      "f0.repeat(2)",
+      "REPEAT(f0, 2)",
+      "This is a test String.This is a test String.")
+
+    testAllApis(
+      'f0.repeat(0),
+      "f0.repeat(0)",
+      "REPEAT(f0, 0)",
+      "")
+
+    testAllApis(
+      'f0.repeat(-1),
+      "f0.repeat(-1)",
+      "REPEAT(f0, -1)",
+      "")
+
+    testAllApis(
+      'f33.repeat(2),
+      "f33.repeat(2)",
+      "REPEAT(f33, 2)",
+      "null")
+
+    testAllApis(
+      "".repeat(1),
+      "''.repeat(1)",
+      "REPEAT('', 2)",
+      "")
   }
 
   // ----------------------------------------------------------------------------------------------

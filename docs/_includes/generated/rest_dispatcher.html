@@ -1,7 +1,7 @@
 <table class="table table-bordered">
   <tbody>
     <tr>
-      <td class="text-left" colspan="2"><strong>/cluster</strong></td>
+      <td class="text-left" colspan="2"><h5><strong>/cluster</strong></h5></td>
     </tr>
     <tr>
       <td class="text-left" style="width: 20%">Verb: <code>DELETE</code></td>
@@ -37,7 +37,7 @@
 <table class="table table-bordered">
   <tbody>
     <tr>
-      <td class="text-left" colspan="2"><strong>/config</strong></td>
+      <td class="text-left" colspan="2"><h5><strong>/config</strong></h5></td>
     </tr>
     <tr>
       <td class="text-left" style="width: 20%">Verb: <code>GET</code></td>
@@ -93,7 +93,7 @@
 <table class="table table-bordered">
   <tbody>
     <tr>
-      <td class="text-left" colspan="2"><strong>/jars</strong></td>
+      <td class="text-left" colspan="2"><h5><strong>/jars</strong></h5></td>
     </tr>
     <tr>
       <td class="text-left" style="width: 20%">Verb: <code>GET</code></td>
@@ -170,7 +170,7 @@
 <table class="table table-bordered">
   <tbody>
     <tr>
-      <td class="text-left" colspan="2"><strong>/jars/upload</strong></td>
+      <td class="text-left" colspan="2"><h5><strong>/jars/upload</strong></h5></td>
     </tr>
     <tr>
       <td class="text-left" style="width: 20%">Verb: <code>POST</code></td>
@@ -219,7 +219,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
 <table class="table table-bordered">
   <tbody>
     <tr>
-      <td class="text-left" colspan="2"><strong>/jars/:jarid</strong></td>
+      <td class="text-left" colspan="2"><h5><strong>/jars/:jarid</strong></h5></td>
     </tr>
     <tr>
       <td class="text-left" style="width: 20%">Verb: <code>DELETE</code></td>
@@ -234,7 +234,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
     <tr>
       <td colspan="2">
         <ul>
-<li><code>jarid</code> - description</li>
+<li><code>jarid</code> - String value that identifies a jar. When uploading the jar a path is returned, where the filename is the ID. This value is equivalent to the `id` field in the list of uploaded jars (/jars).</li>
         </ul>
       </td>
     </tr>
@@ -265,7 +265,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
 <table class="table table-bordered">
   <tbody>
     <tr>
-      <td class="text-left" colspan="2"><strong>/jars/:jarid/plan</strong></td>
+      <td class="text-left" colspan="2"><h5><strong>/jars/:jarid/plan</strong></h5></td>
     </tr>
     <tr>
       <td class="text-left" style="width: 20%">Verb: <code>GET</code></td>
@@ -280,7 +280,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
     <tr>
       <td colspan="2">
         <ul>
-<li><code>jarid</code> - description</li>
+<li><code>jarid</code> - String value that identifies a jar. When uploading the jar a path is returned, where the filename is the ID. This value is equivalent to the `id` field in the list of uploaded jars (/jars).</li>
         </ul>
       </td>
     </tr>
@@ -290,9 +290,9 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
     <tr>
       <td colspan="2">
         <ul>
-<li><code>entry-class</code> (optional): description</li>
-<li><code>parallelism</code> (optional): description</li>
-<li><code>program-args</code> (optional): description</li>
+<li><code>entry-class</code> (optional): String value that specifies the fully qualified name of the entry point class. Overrides the class defined in the jar file manifest.</li>
+<li><code>parallelism</code> (optional): Positive integer value that specifies the desired parallelism for the job.</li>
+<li><code>program-args</code> (optional): String value that specifies the arguments for the program or plan.</li>
         </ul>
       </td>
     </tr>
@@ -314,7 +314,13 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
           <pre>
             <code>
 {
-  "type" : "any"
+  "type" : "object",
+  "id" : "urn:jsonschema:org:apache:flink:runtime:rest:messages:JobPlanInfo",
+  "properties" : {
+    "plan" : {
+      "type" : "any"
+    }
+  }
 }            </code>
           </pre>
          </div>
@@ -325,7 +331,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
 <table class="table table-bordered">
   <tbody>
     <tr>
-      <td class="text-left" colspan="2"><strong>/jars/:jarid/run</strong></td>
+      <td class="text-left" colspan="2"><h5><strong>/jars/:jarid/run</strong></h5></td>
     </tr>
     <tr>
       <td class="text-left" style="width: 20%">Verb: <code>POST</code></td>
@@ -340,7 +346,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
     <tr>
       <td colspan="2">
         <ul>
-<li><code>jarid</code> - description</li>
+<li><code>jarid</code> - String value that identifies a jar. When uploading the jar a path is returned, where the filename is the ID. This value is equivalent to the `id` field in the list of uploaded jars (/jars).</li>
         </ul>
       </td>
     </tr>
@@ -350,11 +356,11 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
     <tr>
       <td colspan="2">
         <ul>
-<li><code>program-args</code> (optional): description</li>
-<li><code>entry-class</code> (optional): description</li>
-<li><code>parallelism</code> (optional): description</li>
-<li><code>allowNonRestoredState</code> (optional): description</li>
-<li><code>savepointPath</code> (optional): description</li>
+<li><code>program-args</code> (optional): String value that specifies the arguments for the program or plan.</li>
+<li><code>entry-class</code> (optional): String value that specifies the fully qualified name of the entry point class. Overrides the class defined in the jar file manifest.</li>
+<li><code>parallelism</code> (optional): Positive integer value that specifies the desired parallelism for the job.</li>
+<li><code>allowNonRestoredState</code> (optional): Boolean value that specifies whether the job submission should be rejected if the savepoint contains state that cannot be mapped back to the job.</li>
+<li><code>savepointPath</code> (optional): String value that specifies the path of the savepoint to restore the job from.</li>
         </ul>
       </td>
     </tr>
@@ -413,7 +419,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
 <table class="table table-bordered">
   <tbody>
     <tr>
-      <td class="text-left" colspan="2"><strong>/jobmanager/config</strong></td>
+      <td class="text-left" colspan="2"><h5><strong>/jobmanager/config</strong></h5></td>
     </tr>
     <tr>
       <td class="text-left" style="width: 20%">Verb: <code>GET</code></td>
@@ -463,7 +469,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
 <table class="table table-bordered">
   <tbody>
     <tr>
-      <td class="text-left" colspan="2"><strong>/jobmanager/metrics</strong></td>
+      <td class="text-left" colspan="2"><h5><strong>/jobmanager/metrics</strong></h5></td>
     </tr>
     <tr>
       <td class="text-left" style="width: 20%">Verb: <code>GET</code></td>
@@ -478,7 +484,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
     <tr>
       <td colspan="2">
         <ul>
-<li><code>get</code> (optional): description</li>
+<li><code>get</code> (optional): Comma-separated list of string values to select specific metrics.</li>
         </ul>
       </td>
     </tr>
@@ -511,7 +517,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
 <table class="table table-bordered">
   <tbody>
     <tr>
-      <td class="text-left" colspan="2"><strong>/jobs</strong></td>
+      <td class="text-left" colspan="2"><h5><strong>/jobs</strong></h5></td>
     </tr>
     <tr>
       <td class="text-left" style="width: 20%">Verb: <code>GET</code></td>
@@ -568,14 +574,14 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
 <table class="table table-bordered">
   <tbody>
     <tr>
-      <td class="text-left" colspan="2"><strong>/jobs</strong></td>
+      <td class="text-left" colspan="2"><h5><strong>/jobs</strong></h5></td>
     </tr>
     <tr>
       <td class="text-left" style="width: 20%">Verb: <code>POST</code></td>
       <td class="text-left">Response code: <code>202 Accepted</code></td>
     </tr>
     <tr>
-      <td colspan="2">Submits a job. This call is primarily intended to be used by the Flink client. This call expects amultipart/form-data request that consists of file uploads for the serialized JobGraph, jars anddistributed cache artifacts and an attribute named "request"for the JSON payload.</td>
+      <td colspan="2">Submits a job. This call is primarily intended to be used by the Flink client. This call expects a multipart/form-data request that consists of file uploads for the serialized JobGraph, jars and distributed cache artifacts and an attribute named "request" for the JSON payload.</td>
     </tr>
     <tr>
       <td colspan="2">
@@ -641,7 +647,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
 <table class="table table-bordered">
   <tbody>
     <tr>
-      <td class="text-left" colspan="2"><strong>/jobs/metrics</strong></td>
+      <td class="text-left" colspan="2"><h5><strong>/jobs/metrics</strong></h5></td>
     </tr>
     <tr>
       <td class="text-left" style="width: 20%">Verb: <code>GET</code></td>
@@ -656,9 +662,9 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
     <tr>
       <td colspan="2">
         <ul>
-<li><code>get</code> (optional): description</li>
-<li><code>agg</code> (optional): description</li>
-<li><code>jobs</code> (optional): description</li>
+<li><code>get</code> (optional): Comma-separated list of string values to select specific metrics.</li>
+<li><code>agg</code> (optional): Comma-separated list of aggregation modes which should be calculated. Available aggregations are: "min, max, sum, avg".</li>
+<li><code>jobs</code> (optional): Comma-separated list of 32-character hexadecimal strings to select specific jobs.</li>
         </ul>
       </td>
     </tr>
@@ -691,7 +697,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
 <table class="table table-bordered">
   <tbody>
     <tr>
-      <td class="text-left" colspan="2"><strong>/jobs/overview</strong></td>
+      <td class="text-left" colspan="2"><h5><strong>/jobs/overview</strong></h5></td>
     </tr>
     <tr>
       <td class="text-left" style="width: 20%">Verb: <code>GET</code></td>
@@ -738,7 +744,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
 <table class="table table-bordered">
   <tbody>
     <tr>
-      <td class="text-left" colspan="2"><strong>/jobs/:jobid</strong></td>
+      <td class="text-left" colspan="2"><h5><strong>/jobs/:jobid</strong></h5></td>
     </tr>
     <tr>
       <td class="text-left" style="width: 20%">Verb: <code>GET</code></td>
@@ -753,7 +759,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
     <tr>
       <td colspan="2">
         <ul>
-<li><code>jobid</code> - description</li>
+<li><code>jobid</code> - 32-character hexadecimal string value that identifies a job.</li>
         </ul>
       </td>
     </tr>
@@ -896,7 +902,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
 <table class="table table-bordered">
   <tbody>
     <tr>
-      <td class="text-left" colspan="2"><strong>/jobs/:jobid</strong></td>
+      <td class="text-left" colspan="2"><h5><strong>/jobs/:jobid</strong></h5></td>
     </tr>
     <tr>
       <td class="text-left" style="width: 20%">Verb: <code>PATCH</code></td>
@@ -911,7 +917,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
     <tr>
       <td colspan="2">
         <ul>
-<li><code>jobid</code> - description</li>
+<li><code>jobid</code> - 32-character hexadecimal string value that identifies a job.</li>
         </ul>
       </td>
     </tr>
@@ -921,7 +927,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
     <tr>
       <td colspan="2">
         <ul>
-<li><code>mode</code> (optional): description</li>
+<li><code>mode</code> (optional): String value that specifies the termination mode. Supported values are: "cancel, stop".</li>
         </ul>
       </td>
     </tr>
@@ -952,7 +958,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
 <table class="table table-bordered">
   <tbody>
     <tr>
-      <td class="text-left" colspan="2"><strong>/jobs/:jobid/accumulators</strong></td>
+      <td class="text-left" colspan="2"><h5><strong>/jobs/:jobid/accumulators</strong></h5></td>
     </tr>
     <tr>
       <td class="text-left" style="width: 20%">Verb: <code>GET</code></td>
@@ -967,7 +973,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
     <tr>
       <td colspan="2">
         <ul>
-<li><code>jobid</code> - description</li>
+<li><code>jobid</code> - 32-character hexadecimal string value that identifies a job.</li>
         </ul>
       </td>
     </tr>
@@ -977,7 +983,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
     <tr>
       <td colspan="2">
         <ul>
-<li><code>includeSerializedValue</code> (optional): description</li>
+<li><code>includeSerializedValue</code> (optional): Boolean value that specifies whether serialized user task accumulators should be included in the response.</li>
         </ul>
       </td>
     </tr>
@@ -1043,7 +1049,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
 <table class="table table-bordered">
   <tbody>
     <tr>
-      <td class="text-left" colspan="2"><strong>/jobs/:jobid/checkpoints</strong></td>
+      <td class="text-left" colspan="2"><h5><strong>/jobs/:jobid/checkpoints</strong></h5></td>
     </tr>
     <tr>
       <td class="text-left" style="width: 20%">Verb: <code>GET</code></td>
@@ -1058,7 +1064,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
     <tr>
       <td colspan="2">
         <ul>
-<li><code>jobid</code> - description</li>
+<li><code>jobid</code> - 32-character hexadecimal string value that identifies a job.</li>
         </ul>
       </td>
     </tr>
@@ -1346,7 +1352,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
 <table class="table table-bordered">
   <tbody>
     <tr>
-      <td class="text-left" colspan="2"><strong>/jobs/:jobid/checkpoints/config</strong></td>
+      <td class="text-left" colspan="2"><h5><strong>/jobs/:jobid/checkpoints/config</strong></h5></td>
     </tr>
     <tr>
       <td class="text-left" style="width: 20%">Verb: <code>GET</code></td>
@@ -1361,7 +1367,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
     <tr>
       <td colspan="2">
         <ul>
-<li><code>jobid</code> - description</li>
+<li><code>jobid</code> - 32-character hexadecimal string value that identifies a job.</li>
         </ul>
       </td>
     </tr>
@@ -1424,7 +1430,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
 <table class="table table-bordered">
   <tbody>
     <tr>
-      <td class="text-left" colspan="2"><strong>/jobs/:jobid/checkpoints/details/:checkpointid</strong></td>
+      <td class="text-left" colspan="2"><h5><strong>/jobs/:jobid/checkpoints/details/:checkpointid</strong></h5></td>
     </tr>
     <tr>
       <td class="text-left" style="width: 20%">Verb: <code>GET</code></td>
@@ -1439,8 +1445,8 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
     <tr>
       <td colspan="2">
         <ul>
-<li><code>jobid</code> - description</li>
-<li><code>checkpointid</code> - description</li>
+<li><code>jobid</code> - 32-character hexadecimal string value that identifies a job.</li>
+<li><code>checkpointid</code> - Long value that identifies a checkpoint.</li>
         </ul>
       </td>
     </tr>
@@ -1541,7 +1547,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
 <table class="table table-bordered">
   <tbody>
     <tr>
-      <td class="text-left" colspan="2"><strong>/jobs/:jobid/checkpoints/details/:checkpointid/subtasks/:vertexid</strong></td>
+      <td class="text-left" colspan="2"><h5><strong>/jobs/:jobid/checkpoints/details/:checkpointid/subtasks/:vertexid</strong></h5></td>
     </tr>
     <tr>
       <td class="text-left" style="width: 20%">Verb: <code>GET</code></td>
@@ -1556,9 +1562,9 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
     <tr>
       <td colspan="2">
         <ul>
-<li><code>jobid</code> - description</li>
-<li><code>checkpointid</code> - description</li>
-<li><code>vertexid</code> - description</li>
+<li><code>jobid</code> - 32-character hexadecimal string value that identifies a job.</li>
+<li><code>checkpointid</code> - Long value that identifies a checkpoint.</li>
+<li><code>vertexid</code> - 32-character hexadecimal string value that identifies a job vertex.</li>
         </ul>
       </td>
     </tr>
@@ -1687,7 +1693,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
 <table class="table table-bordered">
   <tbody>
     <tr>
-      <td class="text-left" colspan="2"><strong>/jobs/:jobid/config</strong></td>
+      <td class="text-left" colspan="2"><h5><strong>/jobs/:jobid/config</strong></h5></td>
     </tr>
     <tr>
       <td class="text-left" style="width: 20%">Verb: <code>GET</code></td>
@@ -1702,7 +1708,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
     <tr>
       <td colspan="2">
         <ul>
-<li><code>jobid</code> - description</li>
+<li><code>jobid</code> - 32-character hexadecimal string value that identifies a job.</li>
         </ul>
       </td>
     </tr>
@@ -1735,7 +1741,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
 <table class="table table-bordered">
   <tbody>
     <tr>
-      <td class="text-left" colspan="2"><strong>/jobs/:jobid/exceptions</strong></td>
+      <td class="text-left" colspan="2"><h5><strong>/jobs/:jobid/exceptions</strong></h5></td>
     </tr>
     <tr>
       <td class="text-left" style="width: 20%">Verb: <code>GET</code></td>
@@ -1750,7 +1756,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
     <tr>
       <td colspan="2">
         <ul>
-<li><code>jobid</code> - description</li>
+<li><code>jobid</code> - 32-character hexadecimal string value that identifies a job.</li>
         </ul>
       </td>
     </tr>
@@ -1816,7 +1822,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
 <table class="table table-bordered">
   <tbody>
     <tr>
-      <td class="text-left" colspan="2"><strong>/jobs/:jobid/execution-result</strong></td>
+      <td class="text-left" colspan="2"><h5><strong>/jobs/:jobid/execution-result</strong></h5></td>
     </tr>
     <tr>
       <td class="text-left" style="width: 20%">Verb: <code>GET</code></td>
@@ -1831,7 +1837,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
     <tr>
       <td colspan="2">
         <ul>
-<li><code>jobid</code> - description</li>
+<li><code>jobid</code> - 32-character hexadecimal string value that identifies a job.</li>
         </ul>
       </td>
     </tr>
@@ -1882,7 +1888,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
 <table class="table table-bordered">
   <tbody>
     <tr>
-      <td class="text-left" colspan="2"><strong>/jobs/:jobid/metrics</strong></td>
+      <td class="text-left" colspan="2"><h5><strong>/jobs/:jobid/metrics</strong></h5></td>
     </tr>
     <tr>
       <td class="text-left" style="width: 20%">Verb: <code>GET</code></td>
@@ -1897,7 +1903,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
     <tr>
       <td colspan="2">
         <ul>
-<li><code>jobid</code> - description</li>
+<li><code>jobid</code> - 32-character hexadecimal string value that identifies a job.</li>
         </ul>
       </td>
     </tr>
@@ -1907,7 +1913,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
     <tr>
       <td colspan="2">
         <ul>
-<li><code>get</code> (optional): description</li>
+<li><code>get</code> (optional): Comma-separated list of string values to select specific metrics.</li>
         </ul>
       </td>
     </tr>
@@ -1940,7 +1946,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
 <table class="table table-bordered">
   <tbody>
     <tr>
-      <td class="text-left" colspan="2"><strong>/jobs/:jobid/plan</strong></td>
+      <td class="text-left" colspan="2"><h5><strong>/jobs/:jobid/plan</strong></h5></td>
     </tr>
     <tr>
       <td class="text-left" style="width: 20%">Verb: <code>GET</code></td>
@@ -1955,7 +1961,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
     <tr>
       <td colspan="2">
         <ul>
-<li><code>jobid</code> - description</li>
+<li><code>jobid</code> - 32-character hexadecimal string value that identifies a job.</li>
         </ul>
       </td>
     </tr>
@@ -1977,7 +1983,13 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
           <pre>
             <code>
 {
-  "type" : "any"
+  "type" : "object",
+  "id" : "urn:jsonschema:org:apache:flink:runtime:rest:messages:JobPlanInfo",
+  "properties" : {
+    "plan" : {
+      "type" : "any"
+    }
+  }
 }            </code>
           </pre>
          </div>
@@ -1988,7 +2000,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
 <table class="table table-bordered">
   <tbody>
     <tr>
-      <td class="text-left" colspan="2"><strong>/jobs/:jobid/rescaling</strong></td>
+      <td class="text-left" colspan="2"><h5><strong>/jobs/:jobid/rescaling</strong></h5></td>
     </tr>
     <tr>
       <td class="text-left" style="width: 20%">Verb: <code>PATCH</code></td>
@@ -2003,7 +2015,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
     <tr>
       <td colspan="2">
         <ul>
-<li><code>jobid</code> - description</li>
+<li><code>jobid</code> - 32-character hexadecimal string value that identifies a job.</li>
         </ul>
       </td>
     </tr>
@@ -2013,7 +2025,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
     <tr>
       <td colspan="2">
         <ul>
-<li><code>parallelism</code> (mandatory): description</li>
+<li><code>parallelism</code> (mandatory): Positive integer value that specifies the desired parallelism.</li>
         </ul>
       </td>
     </tr>
@@ -2052,7 +2064,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
 <table class="table table-bordered">
   <tbody>
     <tr>
-      <td class="text-left" colspan="2"><strong>/jobs/:jobid/rescaling/:triggerid</strong></td>
+      <td class="text-left" colspan="2"><h5><strong>/jobs/:jobid/rescaling/:triggerid</strong></h5></td>
     </tr>
     <tr>
       <td class="text-left" style="width: 20%">Verb: <code>GET</code></td>
@@ -2067,8 +2079,8 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
     <tr>
       <td colspan="2">
         <ul>
-<li><code>jobid</code> - description</li>
-<li><code>triggerid</code> - description</li>
+<li><code>jobid</code> - 32-character hexadecimal string value that identifies a job.</li>
+<li><code>triggerid</code> - 32-character hexadecimal string that identifies an asynchronous operation trigger ID. The ID was returned then the operation was triggered.</li>
         </ul>
       </td>
     </tr>
@@ -2118,7 +2130,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
 <table class="table table-bordered">
   <tbody>
     <tr>
-      <td class="text-left" colspan="2"><strong>/jobs/:jobid/savepoints</strong></td>
+      <td class="text-left" colspan="2"><h5><strong>/jobs/:jobid/savepoints</strong></h5></td>
     </tr>
     <tr>
       <td class="text-left" style="width: 20%">Verb: <code>POST</code></td>
@@ -2133,7 +2145,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
     <tr>
       <td colspan="2">
         <ul>
-<li><code>jobid</code> - description</li>
+<li><code>jobid</code> - 32-character hexadecimal string value that identifies a job.</li>
         </ul>
       </td>
     </tr>
@@ -2183,7 +2195,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
 <table class="table table-bordered">
   <tbody>
     <tr>
-      <td class="text-left" colspan="2"><strong>/jobs/:jobid/savepoints/:triggerid</strong></td>
+      <td class="text-left" colspan="2"><h5><strong>/jobs/:jobid/savepoints/:triggerid</strong></h5></td>
     </tr>
     <tr>
       <td class="text-left" style="width: 20%">Verb: <code>GET</code></td>
@@ -2198,8 +2210,8 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
     <tr>
       <td colspan="2">
         <ul>
-<li><code>jobid</code> - description</li>
-<li><code>triggerid</code> - description</li>
+<li><code>jobid</code> - 32-character hexadecimal string value that identifies a job.</li>
+<li><code>triggerid</code> - 32-character hexadecimal string that identifies an asynchronous operation trigger ID. The ID was returned then the operation was triggered.</li>
         </ul>
       </td>
     </tr>
@@ -2249,7 +2261,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
 <table class="table table-bordered">
   <tbody>
     <tr>
-      <td class="text-left" colspan="2"><strong>/jobs/:jobid/vertices/:vertexid</strong></td>
+      <td class="text-left" colspan="2"><h5><strong>/jobs/:jobid/vertices/:vertexid</strong></h5></td>
     </tr>
     <tr>
       <td class="text-left" style="width: 20%">Verb: <code>GET</code></td>
@@ -2264,8 +2276,8 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
     <tr>
       <td colspan="2">
         <ul>
-<li><code>jobid</code> - description</li>
-<li><code>vertexid</code> - description</li>
+<li><code>jobid</code> - 32-character hexadecimal string value that identifies a job.</li>
+<li><code>vertexid</code> - 32-character hexadecimal string value that identifies a job vertex.</li>
         </ul>
       </td>
     </tr>
@@ -2374,7 +2386,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
 <table class="table table-bordered">
   <tbody>
     <tr>
-      <td class="text-left" colspan="2"><strong>/jobs/:jobid/vertices/:vertexid/accumulators</strong></td>
+      <td class="text-left" colspan="2"><h5><strong>/jobs/:jobid/vertices/:vertexid/accumulators</strong></h5></td>
     </tr>
     <tr>
       <td class="text-left" style="width: 20%">Verb: <code>GET</code></td>
@@ -2389,8 +2401,8 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
     <tr>
       <td colspan="2">
         <ul>
-<li><code>jobid</code> - description</li>
-<li><code>vertexid</code> - description</li>
+<li><code>jobid</code> - 32-character hexadecimal string value that identifies a job.</li>
+<li><code>vertexid</code> - 32-character hexadecimal string value that identifies a job vertex.</li>
         </ul>
       </td>
     </tr>
@@ -2447,7 +2459,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
 <table class="table table-bordered">
   <tbody>
     <tr>
-      <td class="text-left" colspan="2"><strong>/jobs/:jobid/vertices/:vertexid/backpressure</strong></td>
+      <td class="text-left" colspan="2"><h5><strong>/jobs/:jobid/vertices/:vertexid/backpressure</strong></h5></td>
     </tr>
     <tr>
       <td class="text-left" style="width: 20%">Verb: <code>GET</code></td>
@@ -2462,8 +2474,8 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
     <tr>
       <td colspan="2">
         <ul>
-<li><code>jobid</code> - description</li>
-<li><code>vertexid</code> - description</li>
+<li><code>jobid</code> - 32-character hexadecimal string value that identifies a job.</li>
+<li><code>vertexid</code> - 32-character hexadecimal string value that identifies a job vertex.</li>
         </ul>
       </td>
     </tr>
@@ -2529,7 +2541,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
 <table class="table table-bordered">
   <tbody>
     <tr>
-      <td class="text-left" colspan="2"><strong>/jobs/:jobid/vertices/:vertexid/metrics</strong></td>
+      <td class="text-left" colspan="2"><h5><strong>/jobs/:jobid/vertices/:vertexid/metrics</strong></h5></td>
     </tr>
     <tr>
       <td class="text-left" style="width: 20%">Verb: <code>GET</code></td>
@@ -2544,8 +2556,8 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
     <tr>
       <td colspan="2">
         <ul>
-<li><code>jobid</code> - description</li>
-<li><code>vertexid</code> - description</li>
+<li><code>jobid</code> - 32-character hexadecimal string value that identifies a job.</li>
+<li><code>vertexid</code> - 32-character hexadecimal string value that identifies a job vertex.</li>
         </ul>
       </td>
     </tr>
@@ -2555,7 +2567,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
     <tr>
       <td colspan="2">
         <ul>
-<li><code>get</code> (optional): description</li>
+<li><code>get</code> (optional): Comma-separated list of string values to select specific metrics.</li>
         </ul>
       </td>
     </tr>
@@ -2588,7 +2600,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
 <table class="table table-bordered">
   <tbody>
     <tr>
-      <td class="text-left" colspan="2"><strong>/jobs/:jobid/vertices/:vertexid/subtasks/accumulators</strong></td>
+      <td class="text-left" colspan="2"><h5><strong>/jobs/:jobid/vertices/:vertexid/subtasks/accumulators</strong></h5></td>
     </tr>
     <tr>
       <td class="text-left" style="width: 20%">Verb: <code>GET</code></td>
@@ -2603,8 +2615,8 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
     <tr>
       <td colspan="2">
         <ul>
-<li><code>jobid</code> - description</li>
-<li><code>vertexid</code> - description</li>
+<li><code>jobid</code> - 32-character hexadecimal string value that identifies a job.</li>
+<li><code>vertexid</code> - 32-character hexadecimal string value that identifies a job vertex.</li>
         </ul>
       </td>
     </tr>
@@ -2682,7 +2694,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
 <table class="table table-bordered">
   <tbody>
     <tr>
-      <td class="text-left" colspan="2"><strong>/jobs/:jobid/vertices/:vertexid/subtasks/metrics</strong></td>
+      <td class="text-left" colspan="2"><h5><strong>/jobs/:jobid/vertices/:vertexid/subtasks/metrics</strong></h5></td>
     </tr>
     <tr>
       <td class="text-left" style="width: 20%">Verb: <code>GET</code></td>
@@ -2697,8 +2709,8 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
     <tr>
       <td colspan="2">
         <ul>
-<li><code>jobid</code> - description</li>
-<li><code>vertexid</code> - description</li>
+<li><code>jobid</code> - 32-character hexadecimal string value that identifies a job.</li>
+<li><code>vertexid</code> - 32-character hexadecimal string value that identifies a job vertex.</li>
         </ul>
       </td>
     </tr>
@@ -2708,9 +2720,9 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
     <tr>
       <td colspan="2">
         <ul>
-<li><code>get</code> (optional): description</li>
-<li><code>agg</code> (optional): description</li>
-<li><code>subtasks</code> (optional): description</li>
+<li><code>get</code> (optional): Comma-separated list of string values to select specific metrics.</li>
+<li><code>agg</code> (optional): Comma-separated list of aggregation modes which should be calculated. Available aggregations are: "min, max, sum, avg".</li>
+<li><code>subtasks</code> (optional): Comma-separated list of integer ranges (e.g. "1,3,5-9") to select specific subtasks.</li>
         </ul>
       </td>
     </tr>
@@ -2743,7 +2755,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
 <table class="table table-bordered">
   <tbody>
     <tr>
-      <td class="text-left" colspan="2"><strong>/jobs/:jobid/vertices/:vertexid/subtasks/:subtaskindex</strong></td>
+      <td class="text-left" colspan="2"><h5><strong>/jobs/:jobid/vertices/:vertexid/subtasks/:subtaskindex</strong></h5></td>
     </tr>
     <tr>
       <td class="text-left" style="width: 20%">Verb: <code>GET</code></td>
@@ -2758,9 +2770,9 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
     <tr>
       <td colspan="2">
         <ul>
-<li><code>jobid</code> - description</li>
-<li><code>vertexid</code> - description</li>
-<li><code>subtaskindex</code> - description</li>
+<li><code>jobid</code> - 32-character hexadecimal string value that identifies a job.</li>
+<li><code>vertexid</code> - 32-character hexadecimal string value that identifies a job vertex.</li>
+<li><code>subtaskindex</code> - Positive integer value that identifies a subtask.</li>
         </ul>
       </td>
     </tr>
@@ -2848,7 +2860,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
 <table class="table table-bordered">
   <tbody>
     <tr>
-      <td class="text-left" colspan="2"><strong>/jobs/:jobid/vertices/:vertexid/subtasks/:subtaskindex/attempts/:attempt</strong></td>
+      <td class="text-left" colspan="2"><h5><strong>/jobs/:jobid/vertices/:vertexid/subtasks/:subtaskindex/attempts/:attempt</strong></h5></td>
     </tr>
     <tr>
       <td class="text-left" style="width: 20%">Verb: <code>GET</code></td>
@@ -2863,10 +2875,10 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
     <tr>
       <td colspan="2">
         <ul>
-<li><code>jobid</code> - description</li>
-<li><code>vertexid</code> - description</li>
-<li><code>subtaskindex</code> - description</li>
-<li><code>attempt</code> - description</li>
+<li><code>jobid</code> - 32-character hexadecimal string value that identifies a job.</li>
+<li><code>vertexid</code> - 32-character hexadecimal string value that identifies a job vertex.</li>
+<li><code>subtaskindex</code> - Positive integer value that identifies a subtask.</li>
+<li><code>attempt</code> - Positive integer value that identifies an execution attempt.</li>
         </ul>
       </td>
     </tr>
@@ -2954,7 +2966,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
 <table class="table table-bordered">
   <tbody>
     <tr>
-      <td class="text-left" colspan="2"><strong>/jobs/:jobid/vertices/:vertexid/subtasks/:subtaskindex/attempts/:attempt/accumulators</strong></td>
+      <td class="text-left" colspan="2"><h5><strong>/jobs/:jobid/vertices/:vertexid/subtasks/:subtaskindex/attempts/:attempt/accumulators</strong></h5></td>
     </tr>
     <tr>
       <td class="text-left" style="width: 20%">Verb: <code>GET</code></td>
@@ -2969,10 +2981,10 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
     <tr>
       <td colspan="2">
         <ul>
-<li><code>jobid</code> - description</li>
-<li><code>vertexid</code> - description</li>
-<li><code>subtaskindex</code> - description</li>
-<li><code>attempt</code> - description</li>
+<li><code>jobid</code> - 32-character hexadecimal string value that identifies a job.</li>
+<li><code>vertexid</code> - 32-character hexadecimal string value that identifies a job vertex.</li>
+<li><code>subtaskindex</code> - Positive integer value that identifies a subtask.</li>
+<li><code>attempt</code> - Positive integer value that identifies an execution attempt.</li>
         </ul>
       </td>
     </tr>
@@ -3035,7 +3047,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
 <table class="table table-bordered">
   <tbody>
     <tr>
-      <td class="text-left" colspan="2"><strong>/jobs/:jobid/vertices/:vertexid/subtasks/:subtaskindex/metrics</strong></td>
+      <td class="text-left" colspan="2"><h5><strong>/jobs/:jobid/vertices/:vertexid/subtasks/:subtaskindex/metrics</strong></h5></td>
     </tr>
     <tr>
       <td class="text-left" style="width: 20%">Verb: <code>GET</code></td>
@@ -3050,9 +3062,9 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
     <tr>
       <td colspan="2">
         <ul>
-<li><code>jobid</code> - description</li>
-<li><code>vertexid</code> - description</li>
-<li><code>subtaskindex</code> - description</li>
+<li><code>jobid</code> - 32-character hexadecimal string value that identifies a job.</li>
+<li><code>vertexid</code> - 32-character hexadecimal string value that identifies a job vertex.</li>
+<li><code>subtaskindex</code> - Positive integer value that identifies a subtask.</li>
         </ul>
       </td>
     </tr>
@@ -3062,7 +3074,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
     <tr>
       <td colspan="2">
         <ul>
-<li><code>get</code> (optional): description</li>
+<li><code>get</code> (optional): Comma-separated list of string values to select specific metrics.</li>
         </ul>
       </td>
     </tr>
@@ -3095,7 +3107,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
 <table class="table table-bordered">
   <tbody>
     <tr>
-      <td class="text-left" colspan="2"><strong>/jobs/:jobid/vertices/:vertexid/subtasktimes</strong></td>
+      <td class="text-left" colspan="2"><h5><strong>/jobs/:jobid/vertices/:vertexid/subtasktimes</strong></h5></td>
     </tr>
     <tr>
       <td class="text-left" style="width: 20%">Verb: <code>GET</code></td>
@@ -3110,8 +3122,8 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
     <tr>
       <td colspan="2">
         <ul>
-<li><code>jobid</code> - description</li>
-<li><code>vertexid</code> - description</li>
+<li><code>jobid</code> - 32-character hexadecimal string value that identifies a job.</li>
+<li><code>vertexid</code> - 32-character hexadecimal string value that identifies a job vertex.</li>
         </ul>
       </td>
     </tr>
@@ -3180,7 +3192,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
 <table class="table table-bordered">
   <tbody>
     <tr>
-      <td class="text-left" colspan="2"><strong>/jobs/:jobid/vertices/:vertexid/taskmanagers</strong></td>
+      <td class="text-left" colspan="2"><h5><strong>/jobs/:jobid/vertices/:vertexid/taskmanagers</strong></h5></td>
     </tr>
     <tr>
       <td class="text-left" style="width: 20%">Verb: <code>GET</code></td>
@@ -3195,8 +3207,8 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
     <tr>
       <td colspan="2">
         <ul>
-<li><code>jobid</code> - description</li>
-<li><code>vertexid</code> - description</li>
+<li><code>jobid</code> - 32-character hexadecimal string value that identifies a job.</li>
+<li><code>vertexid</code> - 32-character hexadecimal string value that identifies a job vertex.</li>
         </ul>
       </td>
     </tr>
@@ -3302,7 +3314,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
 <table class="table table-bordered">
   <tbody>
     <tr>
-      <td class="text-left" colspan="2"><strong>/overview</strong></td>
+      <td class="text-left" colspan="2"><h5><strong>/overview</strong></h5></td>
     </tr>
     <tr>
       <td class="text-left" style="width: 20%">Verb: <code>GET</code></td>
@@ -3370,7 +3382,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
 <table class="table table-bordered">
   <tbody>
     <tr>
-      <td class="text-left" colspan="2"><strong>/savepoint-disposal</strong></td>
+      <td class="text-left" colspan="2"><h5><strong>/savepoint-disposal</strong></h5></td>
     </tr>
     <tr>
       <td class="text-left" style="width: 20%">Verb: <code>POST</code></td>
@@ -3422,7 +3434,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
 <table class="table table-bordered">
   <tbody>
     <tr>
-      <td class="text-left" colspan="2"><strong>/savepoint-disposal/:triggerid</strong></td>
+      <td class="text-left" colspan="2"><h5><strong>/savepoint-disposal/:triggerid</strong></h5></td>
     </tr>
     <tr>
       <td class="text-left" style="width: 20%">Verb: <code>GET</code></td>
@@ -3437,7 +3449,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
     <tr>
       <td colspan="2">
         <ul>
-<li><code>triggerid</code> - description</li>
+<li><code>triggerid</code> - 32-character hexadecimal string that identifies an asynchronous operation trigger ID. The ID was returned then the operation was triggered.</li>
         </ul>
       </td>
     </tr>
@@ -3487,7 +3499,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
 <table class="table table-bordered">
   <tbody>
     <tr>
-      <td class="text-left" colspan="2"><strong>/taskmanagers</strong></td>
+      <td class="text-left" colspan="2"><h5><strong>/taskmanagers</strong></h5></td>
     </tr>
     <tr>
       <td class="text-left" style="width: 20%">Verb: <code>GET</code></td>
@@ -3573,7 +3585,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
 <table class="table table-bordered">
   <tbody>
     <tr>
-      <td class="text-left" colspan="2"><strong>/taskmanagers/metrics</strong></td>
+      <td class="text-left" colspan="2"><h5><strong>/taskmanagers/metrics</strong></h5></td>
     </tr>
     <tr>
       <td class="text-left" style="width: 20%">Verb: <code>GET</code></td>
@@ -3588,9 +3600,9 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
     <tr>
       <td colspan="2">
         <ul>
-<li><code>get</code> (optional): description</li>
-<li><code>agg</code> (optional): description</li>
-<li><code>taskmanagers</code> (optional): description</li>
+<li><code>get</code> (optional): Comma-separated list of string values to select specific metrics.</li>
+<li><code>agg</code> (optional): Comma-separated list of aggregation modes which should be calculated. Available aggregations are: "min, max, sum, avg".</li>
+<li><code>taskmanagers</code> (optional): Comma-separated list of 32-character hexadecimal strings to select specific task managers.</li>
         </ul>
       </td>
     </tr>
@@ -3623,7 +3635,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
 <table class="table table-bordered">
   <tbody>
     <tr>
-      <td class="text-left" colspan="2"><strong>/taskmanagers/:taskmanagerid</strong></td>
+      <td class="text-left" colspan="2"><h5><strong>/taskmanagers/:taskmanagerid</strong></h5></td>
     </tr>
     <tr>
       <td class="text-left" style="width: 20%">Verb: <code>GET</code></td>
@@ -3638,7 +3650,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
     <tr>
       <td colspan="2">
         <ul>
-<li><code>taskmanagerid</code> - description</li>
+<li><code>taskmanagerid</code> - 32-character hexadecimal string that identifies a task manager.</li>
         </ul>
       </td>
     </tr>
@@ -3776,7 +3788,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
 <table class="table table-bordered">
   <tbody>
     <tr>
-      <td class="text-left" colspan="2"><strong>/taskmanagers/:taskmanagerid/metrics</strong></td>
+      <td class="text-left" colspan="2"><h5><strong>/taskmanagers/:taskmanagerid/metrics</strong></h5></td>
     </tr>
     <tr>
       <td class="text-left" style="width: 20%">Verb: <code>GET</code></td>
@@ -3791,7 +3803,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
     <tr>
       <td colspan="2">
         <ul>
-<li><code>taskmanagerid</code> - description</li>
+<li><code>taskmanagerid</code> - 32-character hexadecimal string that identifies a task manager.</li>
         </ul>
       </td>
     </tr>
@@ -3801,7 +3813,7 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=#pa
     <tr>
       <td colspan="2">
         <ul>
-<li><code>get</code> (optional): description</li>
+<li><code>get</code> (optional): Comma-separated list of string values to select specific metrics.</li>
         </ul>
       </td>
     </tr>

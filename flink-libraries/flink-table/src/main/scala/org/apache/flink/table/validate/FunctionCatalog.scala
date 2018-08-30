@@ -204,6 +204,10 @@ object FunctionCatalog {
     "rpad" -> classOf[Rpad],
     "fromBase64" -> classOf[FromBase64],
     "toBase64" -> classOf[ToBase64],
+    "uuid" -> classOf[UUID],
+    "ltrim" -> classOf[LTrim],
+    "rtrim" -> classOf[RTrim],
+    "repeat" -> classOf[Repeat],
 
     // math functions
     "plus" -> classOf[Plus],
@@ -239,6 +243,7 @@ object FunctionCatalog {
     "rand" -> classOf[Rand],
     "randInteger" -> classOf[RandInteger],
     "bin" -> classOf[Bin],
+    "hex" -> classOf[Hex],
 
     // temporal functions
     "extract" -> classOf[Extract],
@@ -438,6 +443,7 @@ class BasicOperatorTable extends ReflectiveSqlOperatorTable {
     ScalarSqlFunctions.CONCAT,
     ScalarSqlFunctions.CONCAT_WS,
     ScalarSqlFunctions.BIN,
+    ScalarSqlFunctions.HEX,
     SqlStdOperatorTable.TIMESTAMP_ADD,
     ScalarSqlFunctions.LOG,
     ScalarSqlFunctions.LPAD,
@@ -451,6 +457,11 @@ class BasicOperatorTable extends ReflectiveSqlOperatorTable {
     ScalarSqlFunctions.SHA2,
     ScalarSqlFunctions.FROM_BASE64,
     ScalarSqlFunctions.TO_BASE64,
+    ScalarSqlFunctions.UUID,
+    ScalarSqlFunctions.LTRIM,
+    ScalarSqlFunctions.RTRIM,
+    ScalarSqlFunctions.REPEAT,
+
     // EXTENSIONS
     BasicOperatorTable.TUMBLE,
     BasicOperatorTable.HOP,
