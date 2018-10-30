@@ -38,8 +38,12 @@ import org.apache.flink.runtime.client.JobExecutionException;
 import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.jobgraph.JobStatus;
+import org.apache.flink.runtime.jobgraph.JobVertex;
 import org.apache.flink.runtime.jobgraph.SavepointRestoreSettings;
+import org.apache.flink.runtime.messages.FlinkJobNotFoundException;
 import org.apache.flink.runtime.testingUtils.TestingUtils;
+import org.apache.flink.runtime.testtasks.BlockingNoOpInvokable;
+import org.apache.flink.runtime.testutils.MiniClusterResourceConfiguration;
 import org.apache.flink.streaming.api.checkpoint.ListCheckpointed;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.IterativeStream;
@@ -48,8 +52,7 @@ import org.apache.flink.streaming.api.functions.sink.DiscardingSink;
 import org.apache.flink.streaming.api.functions.source.RichSourceFunction;
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
 import org.apache.flink.streaming.api.graph.StreamGraph;
-import org.apache.flink.test.util.MiniClusterResource;
-import org.apache.flink.test.util.MiniClusterResourceConfiguration;
+import org.apache.flink.test.util.MiniClusterWithClientResource;
 import org.apache.flink.util.Collector;
 import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.TestLogger;
@@ -71,6 +74,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Random;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.Assert.assertEquals;
@@ -138,7 +142,7 @@ public class SavepointITCase extends TestLogger {
 		final JobID jobId = jobGraph.getJobID();
 		StatefulCounter.resetForTest(parallelism);
 
-		MiniClusterResource cluster = clusterFactory.get();
+		MiniClusterWithClientResource cluster = clusterFactory.get();
 		cluster.before();
 		ClusterClient<?> client = cluster.getClusterClient();
 
@@ -180,7 +184,7 @@ public class SavepointITCase extends TestLogger {
 		final JobID jobId = jobGraph.getJobID();
 		StatefulCounter.resetForTest(parallelism);
 
-		MiniClusterResource cluster = clusterFactory.get();
+		MiniClusterWithClientResource cluster = clusterFactory.get();
 		cluster.before();
 		ClusterClient<?> client = cluster.getClusterClient();
 
@@ -215,6 +219,80 @@ public class SavepointITCase extends TestLogger {
 	}
 
 	@Test
+	public void testTriggerSavepointForNonExistingJob() throws Exception {
+		// Config
+		final int numTaskManagers = 1;
+		final int numSlotsPerTaskManager = 1;
+
+		final File tmpDir = folder.newFolder();
+		final File savepointDir = new File(tmpDir, "savepoints");
+
+		final Configuration config = new Configuration();
+		config.setString(CheckpointingOptions.SAVEPOINT_DIRECTORY, savepointDir.toURI().toString());
+
+		final MiniClusterWithClientResource cluster = new MiniClusterWithClientResource(
+			new MiniClusterResourceConfiguration.Builder()
+				.setConfiguration(config)
+				.setNumberTaskManagers(numTaskManagers)
+				.setNumberSlotsPerTaskManager(numSlotsPerTaskManager)
+				.build());
+		cluster.before();
+		final ClusterClient<?> client = cluster.getClusterClient();
+
+		final JobID jobID = new JobID();
+
+		try {
+			client.triggerSavepoint(jobID, null).get();
+
+			fail();
+		} catch (ExecutionException e) {
+			assertTrue(ExceptionUtils.findThrowable(e, FlinkJobNotFoundException.class).isPresent());
+			assertTrue(ExceptionUtils.findThrowableWithMessage(e, jobID.toString()).isPresent());
+		} finally {
+			cluster.after();
+		}
+	}
+
+	@Test
+	public void testTriggerSavepointWithCheckpointingDisabled() throws Exception {
+		// Config
+		final int numTaskManagers = 1;
+		final int numSlotsPerTaskManager = 1;
+
+		final Configuration config = new Configuration();
+
+		final MiniClusterWithClientResource cluster = new MiniClusterWithClientResource(
+			new MiniClusterResourceConfiguration.Builder()
+				.setConfiguration(config)
+				.setNumberTaskManagers(numTaskManagers)
+				.setNumberSlotsPerTaskManager(numSlotsPerTaskManager)
+				.build());
+		cluster.before();
+		final ClusterClient<?> client = cluster.getClusterClient();
+
+		final JobVertex vertex = new JobVertex("Blocking vertex");
+		vertex.setInvokableClass(BlockingNoOpInvokable.class);
+		vertex.setParallelism(1);
+
+		final JobGraph graph = new JobGraph(vertex);
+
+		try {
+			client.setDetached(true);
+			client.submitJob(graph, SavepointITCase.class.getClassLoader());
+
+			client.triggerSavepoint(graph.getJobID(), null).get();
+
+			fail();
+		} catch (ExecutionException e) {
+			assertTrue(ExceptionUtils.findThrowable(e, IllegalStateException.class).isPresent());
+			assertTrue(ExceptionUtils.findThrowableWithMessage(e, graph.getJobID().toString()).isPresent());
+			assertTrue(ExceptionUtils.findThrowableWithMessage(e, "is not a streaming job").isPresent());
+		} finally {
+			cluster.after();
+		}
+	}
+
+	@Test
 	public void testSubmitWithUnknownSavepointPath() throws Exception {
 		// Config
 		int numTaskManagers = 1;
@@ -227,7 +305,7 @@ public class SavepointITCase extends TestLogger {
 		final Configuration config = new Configuration();
 		config.setString(CheckpointingOptions.SAVEPOINT_DIRECTORY, savepointDir.toURI().toString());
 
-		MiniClusterResource cluster = new MiniClusterResource(
+		MiniClusterWithClientResource cluster = new MiniClusterWithClientResource(
 			new MiniClusterResourceConfiguration.Builder()
 				.setConfiguration(config)
 				.setNumberTaskManagers(numTaskManagers)
@@ -295,7 +373,7 @@ public class SavepointITCase extends TestLogger {
 		LOG.info("Flink configuration: " + config + ".");
 
 		// Start Flink
-		MiniClusterResource cluster = new MiniClusterResource(
+		MiniClusterWithClientResource cluster = new MiniClusterWithClientResource(
 			new MiniClusterResourceConfiguration.Builder()
 				.setConfiguration(config)
 				.setNumberTaskManagers(numTaskManagers)
@@ -339,7 +417,7 @@ public class SavepointITCase extends TestLogger {
 
 		// create a new TestingCluster to make sure we start with completely
 		// new resources
-		cluster = new MiniClusterResource(
+		cluster = new MiniClusterWithClientResource(
 			new MiniClusterResourceConfiguration.Builder()
 				.setConfiguration(config)
 				.setNumberTaskManagers(numTaskManagers)
@@ -575,7 +653,7 @@ public class SavepointITCase extends TestLogger {
 		config.setInteger(CheckpointingOptions.FS_SMALL_FILE_THRESHOLD, 0);
 		config.setString(CheckpointingOptions.SAVEPOINT_DIRECTORY, savepointDir.toURI().toString());
 
-		MiniClusterResource cluster = new MiniClusterResource(
+		MiniClusterWithClientResource cluster = new MiniClusterWithClientResource(
 			new MiniClusterResourceConfiguration.Builder()
 				.setConfiguration(config)
 				.setNumberTaskManagers(1)
@@ -711,8 +789,8 @@ public class SavepointITCase extends TestLogger {
 			this.config = config;
 		}
 
-		MiniClusterResource get() {
-			return new MiniClusterResource(
+		MiniClusterWithClientResource get() {
+			return new MiniClusterWithClientResource(
 				new MiniClusterResourceConfiguration.Builder()
 					.setConfiguration(config)
 					.setNumberTaskManagers(numTaskManagers)

@@ -33,6 +33,7 @@ import org.apache.flink.table.plan.schema.TimeIndicatorRelDataType
 import org.apache.flink.table.validate.BasicOperatorTable
 
 import scala.collection.JavaConversions._
+import scala.collection.JavaConverters._
 import scala.collection.mutable
 
 /**
@@ -96,8 +97,50 @@ class RelTimeIndicatorConverter(rexBuilder: RexBuilder) extends RelShuttle {
     LogicalSort.create(input, sort.collation, sort.offset, sort.fetch)
   }
 
-  override def visit(`match`: LogicalMatch): RelNode =
-    throw new TableException("Logical match in a stream environment is not supported yet.")
+  override def visit(matchRel: LogicalMatch): RelNode = {
+    // visit children and update inputs
+    val input = matchRel.getInput.accept(this)
+
+    // check if input field contains time indicator type
+    // materialize field if no time indicator is present anymore
+    // if input field is already materialized, change to timestamp type
+    val materializer = new RexTimeIndicatorMaterializer(
+      rexBuilder,
+      input.getRowType.getFieldList.map(_.getType))
+
+    // update input expressions
+    val patternDefs = matchRel.getPatternDefinitions.mapValues(_.accept(materializer))
+    val measures = matchRel.getMeasures
+      .mapValues(_.accept(materializer))
+      .mapValues(materializerUtils.materialize)
+    val partitionKeys = matchRel.getPartitionKeys
+      .map(_.accept(materializer))
+      .map(materializerUtils.materialize)
+    val interval = if (matchRel.getInterval != null) {
+      matchRel.getInterval.accept(materializer)
+    } else {
+      null
+    }
+
+    // materialize all output types
+    // TODO allow passing through for rowtime accessor function, once introduced
+    val outputType = materializerUtils.getRowTypeWithoutIndicators(matchRel.getRowType)
+
+    LogicalMatch.create(
+      input,
+      outputType,
+      matchRel.getPattern,
+      matchRel.isStrictStart,
+      matchRel.isStrictEnd,
+      patternDefs,
+      measures,
+      matchRel.getAfter,
+      matchRel.getSubsets.asInstanceOf[java.util.Map[String, java.util.TreeSet[String]]],
+      matchRel.isAllRows,
+      partitionKeys,
+      matchRel.getOrderKeys,
+      interval)
+  }
 
   override def visit(other: RelNode): RelNode = other match {
 
@@ -478,6 +521,23 @@ class RexTimeIndicatorMaterializerUtils(rexBuilder: RexBuilder) {
       input,
       projects,
       input.getRowType.getFieldNames)
+  }
+
+  def getRowTypeWithoutIndicators(relType: RelDataType): RelDataType = {
+    val outputTypeBuilder = rexBuilder
+      .getTypeFactory
+      .asInstanceOf[FlinkTypeFactory]
+      .builder()
+
+    relType.getFieldList.asScala.zipWithIndex.foreach { case (field, idx) =>
+      if (FlinkTypeFactory.isTimeIndicatorType(field.getType)) {
+        outputTypeBuilder.add(field.getName, timestamp)
+      } else {
+        outputTypeBuilder.add(field.getName, field.getType)
+      }
+    }
+
+    outputTypeBuilder.build()
   }
 
   def materializeIfContains(expr: RexNode, index: Int, indicesToMaterialize: Set[Int]): RexNode = {

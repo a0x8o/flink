@@ -18,9 +18,9 @@
 
 package org.apache.flink.api.common.typeutils.base;
 
-import org.apache.flink.api.common.typeutils.CompatibilityResult;
-import org.apache.flink.api.common.typeutils.TypeSerializerConfigSnapshot;
-import org.apache.flink.api.common.typeutils.TypeSerializerSerializationUtil;
+import org.apache.flink.api.common.typeutils.TypeSerializerSchemaCompatibility;
+import org.apache.flink.api.common.typeutils.TypeSerializerSnapshotSerializationUtil;
+import org.apache.flink.api.common.typeutils.TypeSerializerSnapshot;
 import org.apache.flink.core.memory.DataInputViewStreamWrapper;
 import org.apache.flink.core.memory.DataOutputViewStreamWrapper;
 import org.apache.flink.util.TestLogger;
@@ -56,7 +56,7 @@ public class EnumSerializerUpgradeTest extends TestLogger {
 	 */
 	@Test
 	public void checkIndenticalEnums() throws Exception {
-		Assert.assertFalse(checkCompatibility(ENUM_A, ENUM_A).isRequiresMigration());
+		Assert.assertTrue(checkCompatibility(ENUM_A, ENUM_A).isCompatibleAsIs());
 	}
 
 	/**
@@ -64,7 +64,7 @@ public class EnumSerializerUpgradeTest extends TestLogger {
 	 */
 	@Test
 	public void checkAppendedField() throws Exception {
-		Assert.assertFalse(checkCompatibility(ENUM_A, ENUM_B).isRequiresMigration());
+		Assert.assertTrue(checkCompatibility(ENUM_A, ENUM_B).isCompatibleAsIs());
 	}
 
 	/**
@@ -72,7 +72,7 @@ public class EnumSerializerUpgradeTest extends TestLogger {
 	 */
 	@Test
 	public void checkRemovedField() throws Exception {
-		Assert.assertTrue(checkCompatibility(ENUM_A, ENUM_C).isRequiresMigration());
+		Assert.assertTrue(checkCompatibility(ENUM_A, ENUM_C).isIncompatible());
 	}
 
 	/**
@@ -80,11 +80,11 @@ public class EnumSerializerUpgradeTest extends TestLogger {
 	 */
 	@Test
 	public void checkDifferentFieldOrder() throws Exception {
-		Assert.assertFalse(checkCompatibility(ENUM_A, ENUM_D).isRequiresMigration());
+		Assert.assertTrue(checkCompatibility(ENUM_A, ENUM_D).isCompatibleAsIs());
 	}
 
 	@SuppressWarnings("unchecked")
-	private static CompatibilityResult checkCompatibility(String enumSourceA, String enumSourceB)
+	private static TypeSerializerSchemaCompatibility checkCompatibility(String enumSourceA, String enumSourceB)
 		throws IOException, ClassNotFoundException {
 
 		ClassLoader classLoader = compileAndLoadEnum(
@@ -92,29 +92,31 @@ public class EnumSerializerUpgradeTest extends TestLogger {
 
 		EnumSerializer enumSerializer = new EnumSerializer(classLoader.loadClass(ENUM_NAME));
 
-		TypeSerializerConfigSnapshot snapshot = enumSerializer.snapshotConfiguration();
+		TypeSerializerSnapshot snapshot = enumSerializer.snapshotConfiguration();
 		byte[] snapshotBytes;
 		try (
 			ByteArrayOutputStream outBuffer = new ByteArrayOutputStream();
 			DataOutputViewStreamWrapper outputViewStreamWrapper = new DataOutputViewStreamWrapper(outBuffer)) {
 
-			TypeSerializerSerializationUtil.writeSerializerConfigSnapshot(outputViewStreamWrapper, snapshot);
+			TypeSerializerSnapshotSerializationUtil.writeSerializerSnapshot(
+				outputViewStreamWrapper, snapshot, enumSerializer);
 			snapshotBytes = outBuffer.toByteArray();
 		}
 
 		ClassLoader classLoader2 = compileAndLoadEnum(
 			temporaryFolder.newFolder(), ENUM_NAME + ".java", enumSourceB);
 
-		TypeSerializerConfigSnapshot restoredSnapshot;
+		TypeSerializerSnapshot restoredSnapshot;
 		try (
 			ByteArrayInputStream inBuffer = new ByteArrayInputStream(snapshotBytes);
 			DataInputViewStreamWrapper inputViewStreamWrapper = new DataInputViewStreamWrapper(inBuffer)) {
 
-			restoredSnapshot = TypeSerializerSerializationUtil.readSerializerConfigSnapshot(inputViewStreamWrapper, classLoader2);
+			restoredSnapshot = TypeSerializerSnapshotSerializationUtil.readSerializerSnapshot(
+				inputViewStreamWrapper, classLoader2, enumSerializer);
 		}
 
 		EnumSerializer enumSerializer2 = new EnumSerializer(classLoader2.loadClass(ENUM_NAME));
-		return enumSerializer2.ensureCompatibility(restoredSnapshot);
+		return restoredSnapshot.resolveSchemaCompatibility(enumSerializer2);
 	}
 
 	private static ClassLoader compileAndLoadEnum(File root, String filename, String source) throws IOException {

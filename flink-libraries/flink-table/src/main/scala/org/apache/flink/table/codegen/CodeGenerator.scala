@@ -274,7 +274,7 @@ abstract class CodeGenerator(
           generateExpression(rowtimeExpression.get)
       case TimeIndicatorTypeInfo.ROWTIME_STREAM_MARKER |
            TimeIndicatorTypeInfo.ROWTIME_BATCH_MARKER =>
-          throw TableException("Rowtime extraction expression missing. Please report a bug.")
+          throw new TableException("Rowtime extraction expression missing. Please report a bug.")
       case TimeIndicatorTypeInfo.PROCTIME_STREAM_MARKER =>
         // attribute is proctime indicator.
         // we use a null literal and generate a timestamp when we need it.
@@ -769,7 +769,7 @@ abstract class CodeGenerator(
         val right = operands(1)
         requireTemporal(left)
         requireTemporal(right)
-        generateTemporalPlusMinus(plus = true, nullCheck, left, right, config)
+        generateTemporalPlusMinus(plus = true, nullCheck, resultType, left, right, config)
 
       case MINUS if isNumeric(resultType) =>
         val left = operands.head
@@ -783,7 +783,7 @@ abstract class CodeGenerator(
         val right = operands(1)
         requireTemporal(left)
         requireTemporal(right)
-        generateTemporalPlusMinus(plus = false, nullCheck, left, right, config)
+        generateTemporalPlusMinus(plus = false, nullCheck, resultType, left, right, config)
 
       case MULTIPLY if isNumeric(resultType) =>
         val left = operands.head
@@ -927,6 +927,11 @@ abstract class CodeGenerator(
         val left = operands.head
         val right = operands.tail
         generateIn(this, left, right)
+
+      case NOT_IN =>
+        val left = operands.head
+        val right = operands.tail
+        generateNot(nullCheck, generateIn(this, left, right))
 
       // casting
       case CAST | REINTERPRET =>
@@ -1093,7 +1098,8 @@ abstract class CodeGenerator(
     }
   }
 
-  private def generateFieldAccess(refExpr: GeneratedExpression, index: Int): GeneratedExpression = {
+  protected def generateFieldAccess(refExpr: GeneratedExpression, index: Int)
+    : GeneratedExpression = {
 
     val fieldAccessExpr = generateFieldAccess(
       refExpr.resultType,
@@ -1130,7 +1136,7 @@ abstract class CodeGenerator(
     GeneratedExpression(resultTerm, nullTerm, resultCode, fieldAccessExpr.resultType)
   }
 
-  private def generateInputAccess(
+  protected def generateInputAccess(
       inputType: TypeInformation[_ <: Any],
       inputTerm: String,
       index: Int)

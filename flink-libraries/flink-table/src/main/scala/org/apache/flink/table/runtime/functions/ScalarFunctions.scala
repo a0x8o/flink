@@ -21,6 +21,7 @@ import java.lang.{StringBuilder, Long => JLong}
 import java.math.{BigDecimal => JBigDecimal}
 import java.nio.charset.StandardCharsets
 import java.util.regex.Matcher
+import java.util.regex.Pattern
 
 import org.apache.commons.codec.binary.{Base64, Hex}
 import org.apache.commons.lang3.StringUtils
@@ -42,6 +43,13 @@ object ScalarFunctions {
 
   def power(a: Double, b: JBigDecimal): Double = {
     Math.pow(a, b.doubleValue())
+  }
+
+  /**
+    * Returns the hyperbolic cosine of a big decimal value.
+    */
+  def cosh(x: JBigDecimal): Double = {
+    Math.cosh(x.doubleValue())
   }
 
   /**
@@ -104,6 +112,20 @@ object ScalarFunctions {
     } else {
       Math.log(x)
     }
+  }
+
+  /**
+    * Calculates the hyperbolic tangent of a big decimal number.
+    */
+  def tanh(x: JBigDecimal): Double = {
+    Math.tanh(x.doubleValue())
+  }
+
+  /**
+    * Returns the hyperbolic sine of a big decimal value.
+    */
+  def sinh(x: JBigDecimal): Double = {
+    Math.sinh(x.doubleValue())
   }
 
   /**
@@ -217,6 +239,31 @@ object ScalarFunctions {
     }
 
     str.replaceAll(regex, Matcher.quoteReplacement(replacement))
+  }
+
+  /**
+    * Returns a string extracted with a specified regular expression and a regex match group index.
+    */
+  def regexp_extract(str: String, regex: String, extractIndex: Integer): String = {
+    if (str == null || regex == null) {
+      return null
+    }
+
+    val m = Pattern.compile(regex).matcher(str)
+    if (m.find) {
+      val mr = m.toMatchResult
+      return mr.group(extractIndex)
+    }
+
+    null
+  }
+
+  /**
+    * Returns a string extracted with a specified regular expression and
+    * a optional regex match group index.
+    */
+  def regexp_extract(str: String, regex: String): String = {
+    regexp_extract(str, regex, 0)
   }
 
   /**

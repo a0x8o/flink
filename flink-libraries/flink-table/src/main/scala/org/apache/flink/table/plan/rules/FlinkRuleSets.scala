@@ -21,6 +21,7 @@ package org.apache.flink.table.plan.rules
 import org.apache.calcite.rel.core.RelFactories
 import org.apache.calcite.rel.rules._
 import org.apache.calcite.tools.{RuleSet, RuleSets}
+import org.apache.flink.table.plan.nodes.logical
 import org.apache.flink.table.plan.rules.common._
 import org.apache.flink.table.plan.rules.logical._
 import org.apache.flink.table.plan.rules.dataSet._
@@ -142,7 +143,8 @@ object FlinkRuleSets {
     FlinkLogicalValues.CONVERTER,
     FlinkLogicalTableSourceScan.CONVERTER,
     FlinkLogicalTableFunctionScan.CONVERTER,
-    FlinkLogicalNativeTableScan.CONVERTER
+    FlinkLogicalNativeTableScan.CONVERTER,
+    FlinkLogicalMatch.CONVERTER
   )
 
   /**
@@ -164,7 +166,11 @@ object FlinkRuleSets {
     WindowPropertiesHavingRule.INSTANCE,
 
     // expand distinct aggregate to normal aggregate with groupby
-    AggregateExpandDistinctAggregatesRule.JOIN
+    AggregateExpandDistinctAggregatesRule.JOIN,
+
+    // merge a cascade of predicates to IN or NOT_IN
+    ConvertToNotInOrInRule.IN_INSTANCE,
+    ConvertToNotInOrInRule.NOT_IN_INSTANCE
   )
 
   /**
@@ -201,7 +207,11 @@ object FlinkRuleSets {
     ReduceExpressionsRule.FILTER_INSTANCE,
     ReduceExpressionsRule.PROJECT_INSTANCE,
     ReduceExpressionsRule.CALC_INSTANCE,
-    ProjectToWindowRule.PROJECT
+    ProjectToWindowRule.PROJECT,
+
+    // merge a cascade of predicates to IN or NOT_IN
+    ConvertToNotInOrInRule.IN_INSTANCE,
+    ConvertToNotInOrInRule.NOT_IN_INSTANCE
   )
 
   /**
@@ -221,7 +231,8 @@ object FlinkRuleSets {
     DataStreamWindowJoinRule.INSTANCE,
     DataStreamJoinRule.INSTANCE,
     DataStreamTemporalTableJoinRule.INSTANCE,
-    StreamTableSourceScanRule.INSTANCE
+    StreamTableSourceScanRule.INSTANCE,
+    DataStreamMatchRule.INSTANCE
   )
 
   /**
