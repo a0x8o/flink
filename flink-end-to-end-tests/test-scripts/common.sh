@@ -33,6 +33,7 @@ case "$(uname -s)" in
 esac
 
 export EXIT_CODE=0
+export TASK_SLOTS_PER_TM_HA=4
 
 echo "Flink dist directory: $FLINK_DIR"
 
@@ -123,7 +124,7 @@ function create_ha_config() {
     jobmanager.rpc.port: 6123
     jobmanager.heap.mb: 1024
     taskmanager.heap.mb: 1024
-    taskmanager.numberOfTaskSlots: 4
+    taskmanager.numberOfTaskSlots: ${TASK_SLOTS_PER_TM_HA}
 
     #==============================================================================
     # High Availability
@@ -238,9 +239,7 @@ function start_local_zk {
     done < <(grep "^server\." "${FLINK_DIR}/conf/zoo.cfg")
 }
 
-function start_cluster {
-  "$FLINK_DIR"/bin/start-cluster.sh
-
+function wait_dispatcher_running {
   # wait at most 10 seconds until the dispatcher is up
   local QUERY_URL
   if [ "x$USE_SSL" = "xON" ]; then
@@ -262,6 +261,11 @@ function start_cluster {
     echo "Waiting for dispatcher REST endpoint to come up..."
     sleep 1
   done
+}
+
+function start_cluster {
+  "$FLINK_DIR"/bin/start-cluster.sh
+  wait_dispatcher_running
 }
 
 function start_taskmanagers {
@@ -343,6 +347,7 @@ function check_logs_for_exceptions {
    | grep -v "java.lang.Exception: Execution was suspended" \
    | grep -v "java.io.InvalidClassException: org.apache.flink.formats.avro.typeutils.AvroSerializer" \
    | grep -v "Caused by: java.lang.Exception: JobManager is shutting down" \
+   | grep -v "java.lang.Exception: Artificial failure" \
    | grep -ic "exception")
   if [[ ${exception_count} -gt 0 ]]; then
     echo "Found exception in log files:"
@@ -457,43 +462,6 @@ function check_result_hash {
   fi
 }
 
-function s3_put {
-  local_file=$1
-  bucket=$2
-  s3_file=$3
-  resource="/${bucket}/${s3_file}"
-  contentType="application/octet-stream"
-  dateValue=`date -R`
-  stringToSign="PUT\n\n${contentType}\n${dateValue}\n${resource}"
-  s3Key=$ARTIFACTS_AWS_ACCESS_KEY
-  s3Secret=$ARTIFACTS_AWS_SECRET_KEY
-  signature=`echo -en ${stringToSign} | openssl sha1 -hmac ${s3Secret} -binary | base64`
-  curl -X PUT -T "${local_file}" \
-    -H "Host: ${bucket}.s3.amazonaws.com" \
-    -H "Date: ${dateValue}" \
-    -H "Content-Type: ${contentType}" \
-    -H "Authorization: AWS ${s3Key}:${signature}" \
-    https://${bucket}.s3.amazonaws.com/${s3_file}
-}
-
-function s3_delete {
-  bucket=$1
-  s3_file=$2
-  resource="/${bucket}/${s3_file}"
-  contentType="application/octet-stream"
-  dateValue=`date -R`
-  stringToSign="DELETE\n\n${contentType}\n${dateValue}\n${resource}"
-  s3Key=$ARTIFACTS_AWS_ACCESS_KEY
-  s3Secret=$ARTIFACTS_AWS_SECRET_KEY
-  signature=`echo -en ${stringToSign} | openssl sha1 -hmac ${s3Secret} -binary | base64`
-  curl -X DELETE \
-    -H "Host: ${bucket}.s3.amazonaws.com" \
-    -H "Date: ${dateValue}" \
-    -H "Content-Type: ${contentType}" \
-    -H "Authorization: AWS ${s3Key}:${signature}" \
-    https://${bucket}.s3.amazonaws.com/${s3_file}
-}
-
 # This function starts the given number of task managers and monitors their processes.
 # If a task manager process goes away a replacement is started.
 function tm_watchdog {
@@ -599,6 +567,33 @@ function wait_oper_metric_num_in_records {
     done
 }
 
+function wait_num_of_occurence_in_logs {
+    local text=$1
+    local number=$2
+    local logs
+    if [ -z "$3" ]; then
+        logs="standalonesession"
+    else
+        logs="$3"
+    fi
+
+    echo "Waiting for text ${text} to appear ${number} of times in logs..."
+
+    while : ; do
+      N=$(grep -o "${text}" $FLINK_DIR/log/*${logs}*.log | wc -l)
+
+      if [ -z $N ]; then
+        N=0
+      fi
+
+      if (( N < number )); then
+        sleep 1
+      else
+        break
+      fi
+    done
+}
+
 function wait_num_checkpoints {
     JOB=$1
     NUM_CHECKPOINTS=$2
@@ -657,6 +652,23 @@ function expect_in_taskmanager_logs {
         if ((i > timeout)); then
             echo "A timeout occurred waiting for '${expected}' to appear in the taskmanager logs"
             exit 1
+        fi
+    done
+}
+
+function wait_for_restart_to_complete {
+    local base_num_restarts=$1
+    local jobid=$2
+
+    local current_num_restarts=${base_num_restarts}
+    local expected_num_restarts=$((current_num_restarts + 1))
+
+    echo "Waiting for restart to happen"
+    while ! [[ ${current_num_restarts} -eq ${expected_num_restarts} ]]; do
+        sleep 5
+        current_num_restarts=$(get_job_metric ${jobid} "fullRestarts")
+        if [[ -z ${current_num_restarts} ]]; then
+            current_num_restarts=${base_num_restarts}
         fi
     done
 }
