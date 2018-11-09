@@ -1461,12 +1461,6 @@ under the License.
 				</executions>
 			</plugin>
 
-			<!-- We use shading in all packages for relocating some classes, such as
-				Guava and ASM.
-				By doing so, users adding Flink as a dependency won't run into conflicts.
-				(For example users can use whatever guava version they want, because we don't
-				expose our guava dependency)
-			-->
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-shade-plugin</artifactId>
@@ -1556,7 +1550,7 @@ under the License.
 						<dependency>
 							<groupId>com.puppycrawl.tools</groupId>
 							<artifactId>checkstyle</artifactId>
-							<!-- Note: match version with docs/internals/ide_setup.md -->
+							<!-- Note: match version with docs/flinkDev/ide_setup.md -->
 							<version>8.9</version>
 						</dependency>
 					</dependencies>

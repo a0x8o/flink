@@ -17,8 +17,6 @@
 # limitations under the License.
 ################################################################################
 
-set -o pipefail
-
 if [[ -z $TEST_DATA_DIR ]]; then
   echo "Must run common.sh before elasticsearch-common.sh."
   exit 1
@@ -45,10 +43,10 @@ function wait_elasticsearch_working {
     echo "Waiting for Elasticsearch node to work..."
 
     for ((i=1;i<=60;i++)); do
-        curl -XGET 'http://localhost:9200'
+        output=$(curl -XGET 'http://localhost:9200' | grep "cluster_name" || true)
 
         # make sure the elasticsearch node is actually working
-        if [ $? -ne 0 ]; then
+        if [ "${output}" = "" ]; then
             sleep 1
         else
             echo "Elasticsearch node is working."
@@ -69,7 +67,7 @@ function verify_result_line_number {
     fi
 
     while : ; do
-      curl "localhost:9200/${index}/_search?q=*&pretty&size=21" > $TEST_DATA_DIR/output
+      curl "localhost:9200/${index}/_search?q=*&pretty&size=21" > $TEST_DATA_DIR/output || true
 
       if [ -n "$(grep "\"total\" : $numRecords" $TEST_DATA_DIR/output)" ]; then
           echo "Elasticsearch end to end test pass."
@@ -88,7 +86,7 @@ function verify_result_hash {
   local hash=$4
 
   while : ; do
-    curl "localhost:9200/${index}/_search?q=*&pretty" > $TEST_DATA_DIR/es_output
+    curl "localhost:9200/${index}/_search?q=*&pretty" > $TEST_DATA_DIR/es_output || true
 
     if [ -n "$(grep "\"total\" : $numRecords" $TEST_DATA_DIR/es_output)" ]; then
       break
