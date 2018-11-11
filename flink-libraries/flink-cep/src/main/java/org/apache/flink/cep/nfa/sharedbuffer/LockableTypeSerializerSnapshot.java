@@ -16,8 +16,9 @@
  * limitations under the License.
  */
 
-package org.apache.flink.api.common.typeutils.base;
+package org.apache.flink.cep.nfa.sharedbuffer;
 
+import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.common.typeutils.CompositeSerializerSnapshot;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.common.typeutils.TypeSerializerSchemaCompatibility;
@@ -27,14 +28,14 @@ import org.apache.flink.core.memory.DataOutputView;
 import org.apache.flink.util.Preconditions;
 
 import java.io.IOException;
-import java.util.List;
 
 import static org.apache.flink.util.Preconditions.checkState;
 
 /**
- * Snapshot class for the {@link ListSerializer}.
+ * A {@link TypeSerializerSnapshot} for the {@link Lockable.LockableTypeSerializer}.
  */
-public class ListSerializerSnapshot<T> implements TypeSerializerSnapshot<List<T>> {
+@Internal
+public class LockableTypeSerializerSnapshot<E> implements TypeSerializerSnapshot<Lockable<E>> {
 
 	private static final int CURRENT_VERSION = 1;
 
@@ -43,12 +44,12 @@ public class ListSerializerSnapshot<T> implements TypeSerializerSnapshot<List<T>
 	/**
 	 * Constructor for read instantiation.
 	 */
-	public ListSerializerSnapshot() {}
+	public LockableTypeSerializerSnapshot() {}
 
 	/**
 	 * Constructor to create the snapshot for writing.
 	 */
-	public ListSerializerSnapshot(TypeSerializer<T> elementSerializer) {
+	public LockableTypeSerializerSnapshot(TypeSerializer<E> elementSerializer) {
 		this.nestedElementSerializerSnapshot = new CompositeSerializerSnapshot(Preconditions.checkNotNull(elementSerializer));
 	}
 
@@ -58,16 +59,16 @@ public class ListSerializerSnapshot<T> implements TypeSerializerSnapshot<List<T>
 	}
 
 	@Override
-	public TypeSerializer<List<T>> restoreSerializer() {
-		return new ListSerializer<>(nestedElementSerializerSnapshot.getRestoreSerializer(0));
+	public TypeSerializer<Lockable<E>> restoreSerializer() {
+		return new Lockable.LockableTypeSerializer<>(nestedElementSerializerSnapshot.getRestoreSerializer(0));
 	}
 
 	@Override
-	public TypeSerializerSchemaCompatibility<List<T>> resolveSchemaCompatibility(TypeSerializer<List<T>> newSerializer) {
+	public TypeSerializerSchemaCompatibility<Lockable<E>> resolveSchemaCompatibility(TypeSerializer<Lockable<E>> newSerializer) {
 		checkState(nestedElementSerializerSnapshot != null);
 
-		if (newSerializer instanceof ListSerializer) {
-			ListSerializer<T> serializer = (ListSerializer<T>) newSerializer;
+		if (newSerializer instanceof Lockable.LockableTypeSerializer) {
+			Lockable.LockableTypeSerializer<E> serializer = (Lockable.LockableTypeSerializer<E>) newSerializer;
 
 			return nestedElementSerializerSnapshot.resolveCompatibilityWithNested(
 				TypeSerializerSchemaCompatibility.compatibleAsIs(),
@@ -87,4 +88,5 @@ public class ListSerializerSnapshot<T> implements TypeSerializerSnapshot<List<T>
 	public void readSnapshot(int readVersion, DataInputView in, ClassLoader userCodeClassLoader) throws IOException {
 		this.nestedElementSerializerSnapshot = CompositeSerializerSnapshot.readCompositeSnapshot(in, userCodeClassLoader);
 	}
+
 }

@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-package org.apache.flink.api.common.typeutils.base;
+package org.apache.flink.api.scala.typeutils;
 
 import org.apache.flink.api.common.typeutils.CompositeSerializerSnapshot;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
@@ -27,29 +27,33 @@ import org.apache.flink.core.memory.DataOutputView;
 import org.apache.flink.util.Preconditions;
 
 import java.io.IOException;
-import java.util.List;
+
+import scala.util.Either;
 
 import static org.apache.flink.util.Preconditions.checkState;
 
 /**
- * Snapshot class for the {@link ListSerializer}.
+ * Configuration snapshot for serializers of Scala's {@link Either} type,
+ * containing configuration snapshots of the Left and Right serializers.
  */
-public class ListSerializerSnapshot<T> implements TypeSerializerSnapshot<List<T>> {
+public class ScalaEitherSerializerSnapshot<L, R> implements TypeSerializerSnapshot<Either<L, R>> {
 
 	private static final int CURRENT_VERSION = 1;
 
-	private CompositeSerializerSnapshot nestedElementSerializerSnapshot;
+	private CompositeSerializerSnapshot nestedLeftRightSerializerSnapshot;
 
 	/**
 	 * Constructor for read instantiation.
 	 */
-	public ListSerializerSnapshot() {}
+	public ScalaEitherSerializerSnapshot() {}
 
 	/**
 	 * Constructor to create the snapshot for writing.
 	 */
-	public ListSerializerSnapshot(TypeSerializer<T> elementSerializer) {
-		this.nestedElementSerializerSnapshot = new CompositeSerializerSnapshot(Preconditions.checkNotNull(elementSerializer));
+	public ScalaEitherSerializerSnapshot(TypeSerializer<L> leftSerializer, TypeSerializer<R> rightSerializer) {
+		Preconditions.checkNotNull(leftSerializer);
+		Preconditions.checkNotNull(rightSerializer);
+		this.nestedLeftRightSerializerSnapshot = new CompositeSerializerSnapshot(leftSerializer, rightSerializer);
 	}
 
 	@Override
@@ -58,20 +62,24 @@ public class ListSerializerSnapshot<T> implements TypeSerializerSnapshot<List<T>
 	}
 
 	@Override
-	public TypeSerializer<List<T>> restoreSerializer() {
-		return new ListSerializer<>(nestedElementSerializerSnapshot.getRestoreSerializer(0));
+	public TypeSerializer<Either<L, R>> restoreSerializer() {
+		return new EitherSerializer<>(
+			nestedLeftRightSerializerSnapshot.getRestoreSerializer(0),
+			nestedLeftRightSerializerSnapshot.getRestoreSerializer(1));
 	}
 
 	@Override
-	public TypeSerializerSchemaCompatibility<List<T>> resolveSchemaCompatibility(TypeSerializer<List<T>> newSerializer) {
-		checkState(nestedElementSerializerSnapshot != null);
+	public TypeSerializerSchemaCompatibility<Either<L, R>> resolveSchemaCompatibility(
+			TypeSerializer<Either<L, R>> newSerializer) {
+		checkState(nestedLeftRightSerializerSnapshot != null);
 
-		if (newSerializer instanceof ListSerializer) {
-			ListSerializer<T> serializer = (ListSerializer<T>) newSerializer;
+		if (newSerializer instanceof EitherSerializer) {
+			EitherSerializer<L, R> serializer = (EitherSerializer<L, R>) newSerializer;
 
-			return nestedElementSerializerSnapshot.resolveCompatibilityWithNested(
+			return nestedLeftRightSerializerSnapshot.resolveCompatibilityWithNested(
 				TypeSerializerSchemaCompatibility.compatibleAsIs(),
-				serializer.getElementSerializer());
+				serializer.getLeftSerializer(),
+				serializer.getRightSerializer());
 		}
 		else {
 			return TypeSerializerSchemaCompatibility.incompatible();
@@ -80,11 +88,11 @@ public class ListSerializerSnapshot<T> implements TypeSerializerSnapshot<List<T>
 
 	@Override
 	public void writeSnapshot(DataOutputView out) throws IOException {
-		nestedElementSerializerSnapshot.writeCompositeSnapshot(out);
+		nestedLeftRightSerializerSnapshot.writeCompositeSnapshot(out);
 	}
 
 	@Override
 	public void readSnapshot(int readVersion, DataInputView in, ClassLoader userCodeClassLoader) throws IOException {
-		this.nestedElementSerializerSnapshot = CompositeSerializerSnapshot.readCompositeSnapshot(in, userCodeClassLoader);
+		this.nestedLeftRightSerializerSnapshot = CompositeSerializerSnapshot.readCompositeSnapshot(in, userCodeClassLoader);
 	}
 }

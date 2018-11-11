@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-package org.apache.flink.api.common.typeutils.base;
+package org.apache.flink.table.dataview;
 
 import org.apache.flink.api.common.typeutils.CompositeSerializerSnapshot;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
@@ -24,32 +24,36 @@ import org.apache.flink.api.common.typeutils.TypeSerializerSchemaCompatibility;
 import org.apache.flink.api.common.typeutils.TypeSerializerSnapshot;
 import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataOutputView;
+import org.apache.flink.table.api.dataview.MapView;
 import org.apache.flink.util.Preconditions;
 
 import java.io.IOException;
-import java.util.List;
+import java.util.Map;
 
 import static org.apache.flink.util.Preconditions.checkState;
 
 /**
- * Snapshot class for the {@link ListSerializer}.
+ * A {@link TypeSerializerSnapshot} for the {@link MapViewSerializer}.
+ *
+ * @param <K> the key type of the map entries.
+ * @param <V> the value type of the map entries.
  */
-public class ListSerializerSnapshot<T> implements TypeSerializerSnapshot<List<T>> {
+public class MapViewSerializerSnapshot<K, V> implements TypeSerializerSnapshot<MapView<K, V>> {
 
 	private static final int CURRENT_VERSION = 1;
 
-	private CompositeSerializerSnapshot nestedElementSerializerSnapshot;
+	private CompositeSerializerSnapshot nestedMapSerializerSnapshot;
 
 	/**
 	 * Constructor for read instantiation.
 	 */
-	public ListSerializerSnapshot() {}
+	public MapViewSerializerSnapshot() {}
 
 	/**
 	 * Constructor to create the snapshot for writing.
 	 */
-	public ListSerializerSnapshot(TypeSerializer<T> elementSerializer) {
-		this.nestedElementSerializerSnapshot = new CompositeSerializerSnapshot(Preconditions.checkNotNull(elementSerializer));
+	public MapViewSerializerSnapshot(TypeSerializer<Map<K, V>> mapSerializer) {
+		this.nestedMapSerializerSnapshot = new CompositeSerializerSnapshot(Preconditions.checkNotNull(mapSerializer));
 	}
 
 	@Override
@@ -58,20 +62,21 @@ public class ListSerializerSnapshot<T> implements TypeSerializerSnapshot<List<T>
 	}
 
 	@Override
-	public TypeSerializer<List<T>> restoreSerializer() {
-		return new ListSerializer<>(nestedElementSerializerSnapshot.getRestoreSerializer(0));
+	public TypeSerializer<MapView<K, V>> restoreSerializer() {
+		return new MapViewSerializer<>(nestedMapSerializerSnapshot.getRestoreSerializer(0));
 	}
 
 	@Override
-	public TypeSerializerSchemaCompatibility<List<T>> resolveSchemaCompatibility(TypeSerializer<List<T>> newSerializer) {
-		checkState(nestedElementSerializerSnapshot != null);
+	public TypeSerializerSchemaCompatibility<MapView<K, V>> resolveSchemaCompatibility(
+			TypeSerializer<MapView<K, V>> newSerializer) {
+		checkState(nestedMapSerializerSnapshot != null);
 
-		if (newSerializer instanceof ListSerializer) {
-			ListSerializer<T> serializer = (ListSerializer<T>) newSerializer;
+		if (newSerializer instanceof MapViewSerializer) {
+			MapViewSerializer<K, V> serializer = (MapViewSerializer<K, V>) newSerializer;
 
-			return nestedElementSerializerSnapshot.resolveCompatibilityWithNested(
+			return nestedMapSerializerSnapshot.resolveCompatibilityWithNested(
 				TypeSerializerSchemaCompatibility.compatibleAsIs(),
-				serializer.getElementSerializer());
+				serializer.getMapSerializer());
 		}
 		else {
 			return TypeSerializerSchemaCompatibility.incompatible();
@@ -80,11 +85,11 @@ public class ListSerializerSnapshot<T> implements TypeSerializerSnapshot<List<T>
 
 	@Override
 	public void writeSnapshot(DataOutputView out) throws IOException {
-		nestedElementSerializerSnapshot.writeCompositeSnapshot(out);
+		nestedMapSerializerSnapshot.writeCompositeSnapshot(out);
 	}
 
 	@Override
 	public void readSnapshot(int readVersion, DataInputView in, ClassLoader userCodeClassLoader) throws IOException {
-		this.nestedElementSerializerSnapshot = CompositeSerializerSnapshot.readCompositeSnapshot(in, userCodeClassLoader);
+		this.nestedMapSerializerSnapshot = CompositeSerializerSnapshot.readCompositeSnapshot(in, userCodeClassLoader);
 	}
 }
