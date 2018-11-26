@@ -118,7 +118,7 @@ public abstract class AbstractOperatorRestoreTestBase extends TestLogger {
 
 		clusterClient.submitJob(jobToMigrate, classLoader);
 
-		CompletableFuture<JobStatus> jobRunningFuture = FutureUtils.retrySuccesfulWithDelay(
+		CompletableFuture<JobStatus> jobRunningFuture = FutureUtils.retrySuccessfulWithDelay(
 			() -> clusterClient.getJobStatus(jobToMigrate.getJobID()),
 			Time.milliseconds(50),
 			deadline,
@@ -142,6 +142,7 @@ public abstract class AbstractOperatorRestoreTestBase extends TestLogger {
 			} catch (Exception e) {
 				String exceptionString = ExceptionUtils.stringifyException(e);
 				if (!(exceptionString.matches("(.*\n)*.*savepoint for the job .* failed(.*\n)*") // legacy
+						|| exceptionString.matches("(.*\n)*.*was not running(.*\n)*")
 						|| exceptionString.matches("(.*\n)*.*Not all required tasks are currently running(.*\n)*") // new
 						|| exceptionString.matches("(.*\n)*.*Checkpoint was declined \\(tasks not ready\\)(.*\n)*"))) { // new
 					throw e;
@@ -151,7 +152,7 @@ public abstract class AbstractOperatorRestoreTestBase extends TestLogger {
 
 		assertNotNull("Could not take savepoint.", savepointPath);
 
-		CompletableFuture<JobStatus> jobCanceledFuture = FutureUtils.retrySuccesfulWithDelay(
+		CompletableFuture<JobStatus> jobCanceledFuture = FutureUtils.retrySuccessfulWithDelay(
 			() -> clusterClient.getJobStatus(jobToMigrate.getJobID()),
 			Time.milliseconds(50),
 			deadline,
@@ -172,7 +173,7 @@ public abstract class AbstractOperatorRestoreTestBase extends TestLogger {
 
 		clusterClient.submitJob(jobToRestore, classLoader);
 
-		CompletableFuture<JobStatus> jobStatusFuture = FutureUtils.retrySuccesfulWithDelay(
+		CompletableFuture<JobStatus> jobStatusFuture = FutureUtils.retrySuccessfulWithDelay(
 			() -> clusterClient.getJobStatus(jobToRestore.getJobID()),
 			Time.milliseconds(50),
 			deadline,
