@@ -669,10 +669,13 @@ abstract class StreamTableEnvironment(
       case (RowtimeAttribute(UnresolvedFieldReference(name)), idx) =>
         extractRowtime(idx, name, None)
 
-      case (RowtimeAttribute(Alias(UnresolvedFieldReference(origName), name, _)), idx) =>
+      case (Alias(RowtimeAttribute(UnresolvedFieldReference(origName)), name, _), idx) =>
         extractRowtime(idx, name, Some(origName))
 
       case (ProctimeAttribute(UnresolvedFieldReference(name)), idx) =>
+        extractProctime(idx, name)
+
+      case (Alias(ProctimeAttribute(UnresolvedFieldReference(_)), name, _), idx) =>
         extractProctime(idx, name)
 
       case (UnresolvedFieldReference(name), _) => fieldNames = name :: fieldNames
@@ -680,9 +683,8 @@ abstract class StreamTableEnvironment(
       case (Alias(UnresolvedFieldReference(_), name, _), _) => fieldNames = name :: fieldNames
 
       case (e, _) =>
-        throw new TableException(s"Time attributes can only be defined on field references or " +
-          s"aliases of valid field references. Rowtime attributes can replace existing fields, " +
-          s"proctime attributes can not. " +
+        throw new TableException(s"Time attributes can only be defined on field references. " +
+          s"Rowtime attributes can replace existing fields, proctime attributes can not. " +
           s"But was: $e")
     }
 

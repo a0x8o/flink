@@ -179,7 +179,7 @@ under the License.
 		<dependency>
 			<groupId>org.apache.flink</groupId>
 			<artifactId>flink-shaded-hadoop2-uber</artifactId>
-			<version>${project.version}</version>
+			<version>${project.version}-${hadoop.version}</version>
 			<!--
 				Exclusion of flink-shaded-hadoop2 not necessary, dependencies
 				are shaded away properly by flink-shaded-hadoop2-uber.
@@ -224,13 +224,6 @@ under the License.
 		<dependency>
 			<groupId>org.apache.flink</groupId>
 			<artifactId>flink-metrics-dropwizard</artifactId>
-			<version>${project.version}</version>
-			<scope>provided</scope>
-		</dependency>
-
-		<dependency>
-			<groupId>org.apache.flink</groupId>
-			<artifactId>flink-metrics-ganglia</artifactId>
 			<version>${project.version}</version>
 			<scope>provided</scope>
 		</dependency>
@@ -346,6 +339,13 @@ under the License.
 		<dependency>
 			<groupId>org.apache.flink</groupId>
 			<artifactId>flink-swift-fs-hadoop</artifactId>
+			<version>${project.version}</version>
+			<scope>provided</scope>
+		</dependency>
+
+		<dependency>
+			<groupId>org.apache.flink</groupId>
+			<artifactId>flink-oss-fs-hadoop</artifactId>
 			<version>${project.version}</version>
 			<scope>provided</scope>
 		</dependency>
@@ -542,7 +542,9 @@ under the License.
 								</transformer>
 								<!-- The service transformer is needed to merge META-INF/services files -->
 								<transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
-								<transformer implementation="org.apache.maven.plugins.shade.resource.ApacheNoticeResourceTransformer"/>
+								<transformer implementation="org.apache.maven.plugins.shade.resource.ApacheNoticeResourceTransformer">
+									<projectName>Apache Flink</projectName>
+								</transformer>
 							</transformers>
 						</configuration>
 					</execution>

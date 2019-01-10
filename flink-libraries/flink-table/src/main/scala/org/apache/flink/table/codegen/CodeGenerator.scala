@@ -838,6 +838,11 @@ abstract class CodeGenerator(
         val right = operands(1)
         generateEquals(nullCheck, left, right)
 
+      case IS_NOT_DISTINCT_FROM =>
+        val left = operands.head
+        val right = operands(1)
+        generateIsNotDistinctFrom(nullCheck, left, right);
+
       case NOT_EQUALS =>
         val left = operands.head
         val right = operands(1)
@@ -1048,6 +1053,25 @@ abstract class CodeGenerator(
   // generator helping methods
   // ----------------------------------------------------------------------------------------------
 
+  protected def makeReusableInSplits(exprs: Iterable[GeneratedExpression]): Unit = {
+    // add results of expressions to member area such that all split functions can access it
+    exprs.foreach { expr =>
+
+      // declaration
+      val resultTypeTerm = primitiveTypeTermForTypeInfo(expr.resultType)
+      if (nullCheck && !expr.nullTerm.equals(NEVER_NULL) && !expr.nullTerm.equals(ALWAYS_NULL)) {
+        reusableMemberStatements.add(s"private boolean ${expr.nullTerm};")
+      }
+      reusableMemberStatements.add(s"private $resultTypeTerm ${expr.resultTerm};")
+
+      // assignment
+      if (nullCheck && !expr.nullTerm.equals(NEVER_NULL) && !expr.nullTerm.equals(ALWAYS_NULL)) {
+        reusablePerRecordStatements.add(s"this.${expr.nullTerm} = ${expr.nullTerm};")
+      }
+      reusablePerRecordStatements.add(s"this.${expr.resultTerm} = ${expr.resultTerm};")
+    }
+  }
+
   private def generateCodeSplits(splits: Seq[String]): String = {
     val totalLen = splits.map(_.length + 1).sum // 1 for a line break
 
@@ -1057,21 +1081,7 @@ abstract class CodeGenerator(
       hasCodeSplits = true
 
       // add input unboxing to member area such that all split functions can access it
-      reusableInputUnboxingExprs.foreach { case (_, expr) =>
-
-        // declaration
-        val resultTypeTerm = primitiveTypeTermForTypeInfo(expr.resultType)
-        if (nullCheck && !expr.nullTerm.equals(NEVER_NULL) && !expr.nullTerm.equals(ALWAYS_NULL)) {
-          reusableMemberStatements.add(s"private boolean ${expr.nullTerm};")
-        }
-        reusableMemberStatements.add(s"private $resultTypeTerm ${expr.resultTerm};")
-
-        // assignment
-        if (nullCheck && !expr.nullTerm.equals(NEVER_NULL) && !expr.nullTerm.equals(ALWAYS_NULL)) {
-          reusablePerRecordStatements.add(s"this.${expr.nullTerm} = ${expr.nullTerm};")
-        }
-        reusablePerRecordStatements.add(s"this.${expr.resultTerm} = ${expr.resultTerm};")
-      }
+      makeReusableInSplits(reusableInputUnboxingExprs.values)
 
       // add split methods to the member area and return the code necessary to call those methods
       val methodCalls = splits.map { split =>
@@ -1196,7 +1206,7 @@ abstract class CodeGenerator(
     GeneratedExpression(resultTerm, nullTerm, inputCheckCode, fieldType)
   }
 
-  private def generateFieldAccess(
+  protected def generateFieldAccess(
       inputType: TypeInformation[_],
       inputTerm: String,
       index: Int)
