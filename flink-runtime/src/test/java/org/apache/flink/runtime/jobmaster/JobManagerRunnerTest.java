@@ -21,11 +21,11 @@ package org.apache.flink.runtime.jobmaster;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.configuration.BlobServerOptions;
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.runtime.blob.BlobServer;
-import org.apache.flink.runtime.blob.VoidBlobStore;
+import org.apache.flink.runtime.blob.VoidPermanentBlobService;
 import org.apache.flink.runtime.checkpoint.StandaloneCheckpointRecoveryFactory;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
-import org.apache.flink.runtime.execution.librarycache.LibraryCacheManager;
+import org.apache.flink.runtime.execution.librarycache.BlobLibraryCacheManager;
+import org.apache.flink.runtime.execution.librarycache.FlinkUserCodeClassLoaders;
 import org.apache.flink.runtime.executiongraph.ArchivedExecutionGraph;
 import org.apache.flink.runtime.heartbeat.HeartbeatServices;
 import org.apache.flink.runtime.highavailability.TestingHighAvailabilityServices;
@@ -61,7 +61,7 @@ import static org.junit.Assert.assertThat;
 import static org.junit.Assert.fail;
 
 /**
- * Tests for the {@link JobManagerRunner}
+ * Tests for the {@link JobManagerRunner}.
  */
 public class JobManagerRunnerTest extends TestLogger {
 
@@ -71,8 +71,6 @@ public class JobManagerRunnerTest extends TestLogger {
 	private static Configuration configuration;
 
 	private static TestingRpcService rpcService;
-
-	private static BlobServer blobServer;
 
 	private static HeartbeatServices heartbeatServices = new HeartbeatServices(1000L, 1000L);
 
@@ -93,11 +91,7 @@ public class JobManagerRunnerTest extends TestLogger {
 
 		configuration.setString(BlobServerOptions.STORAGE_DIRECTORY, temporaryFolder.newFolder().getAbsolutePath());
 
-		blobServer = new BlobServer(
-			configuration,
-			new VoidBlobStore());
-
-		jobManagerSharedServices = JobManagerSharedServices.fromConfiguration(configuration, blobServer);
+		jobManagerSharedServices = new TestingJobManagerSharedServicesBuilder().build();
 
 		final JobVertex jobVertex = new JobVertex("Test vertex");
 		jobVertex.setInvokableClass(NoOpInvokable.class);
@@ -130,15 +124,11 @@ public class JobManagerRunnerTest extends TestLogger {
 			jobManagerSharedServices.shutdown();
 		}
 
-		if (blobServer != null) {
-			blobServer.close();
-		}
-
 		if (rpcService != null) {
 			rpcService.stopService();
 		}
 	}
-	
+
 	@Test
 	public void testJobCompletion() throws Exception {
 		final JobManagerRunner jobManagerRunner = createJobManagerRunner();
@@ -208,12 +198,17 @@ public class JobManagerRunnerTest extends TestLogger {
 
 	@Test
 	public void testLibraryCacheManagerRegistration() throws Exception {
-		final JobManagerRunner jobManagerRunner = createJobManagerRunner();
+		final BlobLibraryCacheManager libraryCacheManager = new BlobLibraryCacheManager(
+			VoidPermanentBlobService.INSTANCE,
+			FlinkUserCodeClassLoaders.ResolveOrder.CHILD_FIRST,
+			new String[]{});
+		final JobManagerSharedServices jobManagerSharedServices = new TestingJobManagerSharedServicesBuilder()
+			.setLibraryCacheManager(libraryCacheManager)
+			.build();
+		final JobManagerRunner jobManagerRunner = createJobManagerRunner(jobManagerSharedServices);
 
 		try {
 			jobManagerRunner.start();
-
-			final LibraryCacheManager libraryCacheManager = jobManagerSharedServices.getLibraryCacheManager();
 
 			final JobID jobID = jobGraph.getJobID();
 			assertThat(libraryCacheManager.hasClassLoader(jobID), is(true));
@@ -228,6 +223,11 @@ public class JobManagerRunnerTest extends TestLogger {
 
 	@Nonnull
 	private JobManagerRunner createJobManagerRunner() throws Exception {
+		return createJobManagerRunner(jobManagerSharedServices);
+	}
+
+	@Nonnull
+	private JobManagerRunner createJobManagerRunner(final JobManagerSharedServices jobManagerSharedServices) throws Exception {
 		return new JobManagerRunner(
 			ResourceID.generate(),
 			jobGraph,
@@ -235,7 +235,6 @@ public class JobManagerRunnerTest extends TestLogger {
 			rpcService,
 			haServices,
 			heartbeatServices,
-			blobServer,
 			jobManagerSharedServices,
 			UnregisteredJobManagerJobMetricGroupFactory.INSTANCE,
 			fatalErrorHandler);

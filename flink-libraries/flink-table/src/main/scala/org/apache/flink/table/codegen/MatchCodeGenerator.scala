@@ -21,15 +21,14 @@ package org.apache.flink.table.codegen
 import java.lang.{Long => JLong}
 import java.util
 
-import org.apache.calcite.rel.RelFieldCollation
 import org.apache.calcite.rel.`type`.RelDataType
 import org.apache.calcite.rex._
 import org.apache.calcite.sql.SqlAggFunction
 import org.apache.calcite.sql.fun.SqlStdOperatorTable._
 import org.apache.flink.api.common.functions._
 import org.apache.flink.api.common.typeinfo.{SqlTimeTypeInfo, TypeInformation}
+import org.apache.flink.cep.functions.PatternProcessFunction
 import org.apache.flink.cep.pattern.conditions.{IterativeCondition, RichIterativeCondition}
-import org.apache.flink.cep.{RichPatternFlatSelectFunction, RichPatternSelectFunction}
 import org.apache.flink.configuration.Configuration
 import org.apache.flink.table.api.dataview.DataViewSpec
 import org.apache.flink.table.api.{TableConfig, TableException}
@@ -39,71 +38,18 @@ import org.apache.flink.table.codegen.GeneratedExpression.{NEVER_NULL, NO_CODE}
 import org.apache.flink.table.codegen.Indenter.toISC
 import org.apache.flink.table.functions.{AggregateFunction => TableAggregateFunction}
 import org.apache.flink.table.plan.schema.RowSchema
-import org.apache.flink.table.runtime.`match`.{IterativeConditionRunner, PatternSelectFunctionRunner}
+import org.apache.flink.table.runtime.`match`.{IterativeConditionRunner, PatternProcessFunctionRunner}
 import org.apache.flink.table.runtime.aggregate.AggregateUtil
+import org.apache.flink.table.typeutils.TimeIndicatorTypeInfo
 import org.apache.flink.table.util.MatchUtil.{ALL_PATTERN_VARIABLE, AggregationPatternVariableFinder}
 import org.apache.flink.table.utils.EncodingUtils
+import org.apache.flink.table.validate.BasicOperatorTable.{MATCH_PROCTIME, MATCH_ROWTIME}
 import org.apache.flink.types.Row
 import org.apache.flink.util.Collector
 import org.apache.flink.util.MathUtils.checkedDownCast
 
 import scala.collection.JavaConverters._
 import scala.collection.mutable
-
-object MatchCodeGenerator {
-
-  def generateIterativeCondition(
-    config: TableConfig,
-    patternDefinition: RexNode,
-    inputTypeInfo: TypeInformation[_],
-    patternName: String,
-    names: Seq[String])
-  : IterativeConditionRunner = {
-    val generator = new MatchCodeGenerator(config, inputTypeInfo, names, Some(patternName))
-    val condition = generator.generateCondition(patternDefinition)
-    val body =
-      s"""
-         |${condition.code}
-         |return ${condition.resultTerm};
-         |""".stripMargin
-
-    val genCondition = generator
-      .generateMatchFunction("MatchRecognizeCondition",
-        classOf[RichIterativeCondition[Row]],
-        body,
-        condition.resultType)
-    new IterativeConditionRunner(genCondition.name, genCondition.code)
-  }
-
-  def generateOneRowPerMatchExpression(
-    config: TableConfig,
-    returnType: RowSchema,
-    partitionKeys: util.List[RexNode],
-    orderKeys: util.List[RelFieldCollation],
-    measures: util.Map[String, RexNode],
-    inputTypeInfo: TypeInformation[_],
-    patternNames: Seq[String])
-  : PatternSelectFunctionRunner = {
-    val generator = new MatchCodeGenerator(config, inputTypeInfo, patternNames)
-
-    val resultExpression = generator.generateOneRowPerMatchExpression(
-      partitionKeys,
-      measures,
-      returnType)
-    val body =
-      s"""
-         |${resultExpression.code}
-         |return ${resultExpression.resultTerm};
-         |""".stripMargin
-
-    val genFunction = generator.generateMatchFunction(
-      "MatchRecognizePatternSelectFunction",
-      classOf[RichPatternSelectFunction[Row, Row]],
-      body,
-      resultExpression.resultType)
-    new PatternSelectFunctionRunner(genFunction.name, genFunction.code)
-  }
-}
 
 /**
   * A code generator for generating CEP related functions.
@@ -126,7 +72,7 @@ object MatchCodeGenerator {
   *
   * {{{
   *
-  * public class MatchRecognizePatternSelectFunction$175 extends RichPatternSelectFunction {
+  * public class MatchRecognizePatternProcessFunction$175 extends PatternProcessFunction {
   *
   *     // Class used to calculate aggregates for a single pattern variable
   *     public final class AggFunction_variable$115$151 extends GeneratedAggregations {
@@ -161,7 +107,11 @@ object MatchCodeGenerator {
   *     }
   *
   *     @Override
-  *     public Object select(Map<String, List<Row>> in1) throws Exception {
+  *     public void processMatch(
+  *         Map<String, List<Row>> in1,
+  *         Context ctx,
+  *         Collector<Row> c
+  *       ) throws Exception {
   *
   *       // Extract list of rows assigned to a single pattern variable
   *       java.util.List patternEvents$130 = (java.util.List) in1.get("A");
@@ -182,6 +132,8 @@ object MatchCodeGenerator {
   *
   *       double result$144 = $result135 + result$137;
   *       out.setField(2, result$144);
+  *
+  *       c.collect(out);
   *     }
   *
   *     public void close() {
@@ -279,6 +231,64 @@ class MatchCodeGenerator(
   }
 
   /**
+    * Generates a wrapper [[IterativeConditionRunner]] around code generated [[IterativeCondition]]
+    * for a single pattern definition defined in DEFINE clause.
+    *
+    * @param patternDefinition pattern definition as defined in DEFINE clause
+    * @return a code generated condition that can be used in constructing a
+    *         [[org.apache.flink.cep.pattern.Pattern]]
+    */
+  def generateIterativeCondition(patternDefinition: RexNode): IterativeConditionRunner = {
+    val condition = generateCondition(patternDefinition)
+    val body =
+      s"""
+         |${condition.code}
+         |return ${condition.resultTerm};
+         |""".stripMargin
+
+    val genCondition = generateMatchFunction(
+        "MatchRecognizeCondition",
+        classOf[RichIterativeCondition[Row]],
+        body,
+        condition.resultType)
+    new IterativeConditionRunner(genCondition.name, genCondition.code)
+  }
+
+  /**
+    * Generates a wrapper [[PatternProcessFunctionRunner]] around code generated
+    * [[PatternProcessFunction]] that transform found matches into expected output as defined
+    * in the MEASURES. It also accounts for fields used in PARTITION BY.
+    *
+    * @param returnType the schema of output row
+    * @param partitionKeys keys used for partitioning incoming data, they will be included in the
+    *                      output
+    * @param measures definitions from MEASURE clause
+    * @return a process function that can be applied to [[org.apache.flink.cep.PatternStream]]
+    */
+  def generateOneRowPerMatchExpression(
+      returnType: RowSchema,
+      partitionKeys: util.List[RexNode],
+      measures: util.Map[String, RexNode])
+    : PatternProcessFunctionRunner = {
+    val resultExpression = generateOneRowPerMatchExpression(
+      partitionKeys,
+      measures,
+      returnType)
+    val body =
+      s"""
+         |${resultExpression.code}
+         |$collectorTerm.collect(${resultExpression.resultTerm});
+         |""".stripMargin
+
+    val genFunction = generateMatchFunction(
+      "MatchRecognizePatternProcessFunction",
+      classOf[PatternProcessFunction[Row, Row]],
+      body,
+      resultExpression.resultType)
+    new PatternProcessFunctionRunner(genFunction.name, genFunction.code)
+  }
+
+  /**
     * Generates a [[org.apache.flink.api.common.functions.Function]] that can be passed to Java
     * compiler.
     *
@@ -292,7 +302,7 @@ class MatchCodeGenerator(
     * @tparam T Return type of the Flink Function.
     * @return instance of GeneratedFunction
     */
-  def generateMatchFunction[F <: Function, T <: Any](
+  private def generateMatchFunction[F <: Function, T <: Any](
       name: String,
       clazz: Class[F],
       bodyCode: String,
@@ -309,21 +319,15 @@ class MatchCodeGenerator(
         (baseClass,
           s"boolean filter(Object _in1, $contextType $contextTerm)",
           List(s"$inputTypeTerm $input1Term = ($inputTypeTerm) _in1;"))
-      } else if (clazz == classOf[RichPatternSelectFunction[_, _]]) {
-        val baseClass = classOf[RichPatternSelectFunction[_, _]]
+      } else if (clazz == classOf[PatternProcessFunction[_, _]]) {
+        val baseClass = classOf[PatternProcessFunction[_, _]]
         val inputTypeTerm =
           s"java.util.Map<String, java.util.List<${boxedTypeTermForTypeInfo(input)}>>"
+        val contextTypeTerm = classOf[PatternProcessFunction.Context].getCanonicalName
 
         (baseClass,
-          s"Object select($inputTypeTerm $input1Term)",
-          List())
-      } else if (clazz == classOf[RichPatternFlatSelectFunction[_, _]]) {
-        val baseClass = classOf[RichPatternFlatSelectFunction[_, _]]
-        val inputTypeTerm =
-          s"java.util.Map<String, java.util.List<${boxedTypeTermForTypeInfo(input)}>>"
-
-        (baseClass,
-          s"void flatSelect($inputTypeTerm $input1Term, $collectorTypeTerm $collectorTerm)",
+          s"void processMatch($inputTypeTerm $input1Term, $contextTypeTerm $contextTerm, " +
+            s"$collectorTypeTerm $collectorTerm)",
           List())
       } else {
         throw new CodeGenException("Unsupported Function.")
@@ -407,7 +411,7 @@ class MatchCodeGenerator(
     generateFieldAccess(keyRow, partitionKey.getIndex)
   }
 
-  def generateOneRowPerMatchExpression(
+  private def generateOneRowPerMatchExpression(
       partitionKeys: util.List[RexNode],
       measures: util.Map[String, RexNode],
       returnType: RowSchema)
@@ -434,7 +438,7 @@ class MatchCodeGenerator(
     exp
   }
 
-  def generateCondition(call: RexNode): GeneratedExpression = {
+  private def generateCondition(call: RexNode): GeneratedExpression = {
     val exp = call.accept(this)
     aggregatesPerVariable.values.foreach(_.generateAggFunction())
     if (hasCodeSplits) {
@@ -484,6 +488,13 @@ class MatchCodeGenerator(
 
         matchAgg.generateDeduplicatedAggAccess(call)
 
+      case MATCH_PROCTIME =>
+        generateNullLiteral(TimeIndicatorTypeInfo.PROCTIME_INDICATOR)
+
+      case MATCH_ROWTIME =>
+        generateStreamRecordRowtimeAccess()
+          .copy(resultType = TimeIndicatorTypeInfo.ROWTIME_INDICATOR)
+
       case _ => super.visitCall(call)
     }
   }
@@ -491,10 +502,9 @@ class MatchCodeGenerator(
   override private[flink] def generateProctimeTimestamp() = {
     val resultTerm = newName("result")
 
-    //TODO use timerService once it is available in PatternFlatSelectFunction
     val resultCode =
       j"""
-         |long $resultTerm = System.currentTimeMillis();
+         |long $resultTerm = $contextTerm.currentProcessingTime();
          |""".stripMargin
     GeneratedExpression(resultTerm, NEVER_NULL, resultCode, SqlTimeTypeInfo.TIMESTAMP)
   }
@@ -727,7 +737,7 @@ class MatchCodeGenerator(
         matchAgg.aggregations.map(_.aggFunction).toArray,
         matchAgg.aggregations.map(_.inputIndices).toArray,
         matchAgg.aggregations.indices.toArray,
-        Array.fill(matchAgg.aggregations.size)(false),
+        matchAgg.getDistinctAccMapping,
         isStateBackedDataViews = false,
         partialResults = false,
         Array.emptyIntArray,
@@ -771,18 +781,27 @@ class MatchCodeGenerator(
           callsWithIndices.map(_._2).toArray)
       })
 
+      val distinctAccMap: mutable.Map[util.Set[Integer], Integer] = mutable.Map()
       val aggs = logicalAggregates.zipWithIndex.map {
         case (agg, index) =>
           val result = AggregateUtil.extractAggregateCallMetadata(
             agg.function,
             isDistinct = false, // TODO properly set once supported in Calcite
+            distinctAccMap,
+            new util.ArrayList[Integer](), // TODO properly set once supported in Calcite
+            aggregates.length,
+            input.getArity,
             agg.inputTypes,
             needRetraction = false,
             config,
             isStateBackedDataViews = false,
             index)
 
-          SingleAggCall(result.aggregateFunction, agg.exprIndices.toArray, result.accumulatorSpecs)
+          SingleAggCall(
+            result.aggregateFunction,
+            agg.exprIndices.toArray,
+            result.accumulatorSpecs,
+            result.distinctAccIndex)
       }
 
       MatchAgg(aggs, inputRows.values.map(_._1).toSeq)
@@ -857,14 +876,25 @@ class MatchCodeGenerator(
     private case class SingleAggCall(
       aggFunction: TableAggregateFunction[_, _],
       inputIndices: Array[Int],
-      dataViews: Seq[DataViewSpec[_]]
+      dataViews: Seq[DataViewSpec[_]],
+      distinctAccIndex: Int
     )
 
     private case class MatchAgg(
       aggregations: Seq[SingleAggCall],
-      inputExprs: Seq[RexNode]
-    )
+      inputExprs: Seq[RexNode]) {
 
+      def getDistinctAccMapping: Array[(Integer, util.List[Integer])] = {
+        val distinctAccMapping = mutable.Map[Integer, util.List[Integer]]()
+        aggregations.map(_.distinctAccIndex).zipWithIndex.foreach {
+          case (distinctAccIndex, aggIndex) =>
+            distinctAccMapping
+              .getOrElseUpdate(distinctAccIndex, new util.ArrayList[Integer]())
+              .add(aggIndex)
+        }
+        distinctAccMapping.toArray
+      }
+    }
   }
 
 }

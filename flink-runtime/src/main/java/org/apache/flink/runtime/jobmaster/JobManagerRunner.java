@@ -19,9 +19,7 @@
 package org.apache.flink.runtime.jobmaster;
 
 import org.apache.flink.annotation.VisibleForTesting;
-import org.apache.flink.api.common.time.Time;
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.runtime.blob.BlobServer;
 import org.apache.flink.runtime.client.JobExecutionException;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.execution.librarycache.LibraryCacheManager;
@@ -78,11 +76,9 @@ public class JobManagerRunner implements LeaderContender, OnCompletionActions, A
 
 	private final JobManagerSharedServices jobManagerSharedServices;
 
-	private final JobMaster jobMaster;
+	private final JobMasterService jobMasterService;
 
 	private final FatalErrorHandler fatalErrorHandler;
-
-	private final Time rpcTimeout;
 
 	private final CompletableFuture<ArchivedExecutionGraph> resultFuture;
 
@@ -100,7 +96,7 @@ public class JobManagerRunner implements LeaderContender, OnCompletionActions, A
 	 * thrown and not reported to the given {@code FatalErrorHandler}.
 	 *
 	 * @throws Exception Thrown if the runner cannot be set up, because either one of the
-	 *                   required services could not be started, ot the Job could not be initialized.
+	 *                   required services could not be started, or the Job could not be initialized.
 	 */
 	public JobManagerRunner(
 			final ResourceID resourceId,
@@ -109,7 +105,6 @@ public class JobManagerRunner implements LeaderContender, OnCompletionActions, A
 			final RpcService rpcService,
 			final HighAvailabilityServices haServices,
 			final HeartbeatServices heartbeatServices,
-			final BlobServer blobServer,
 			final JobManagerSharedServices jobManagerSharedServices,
 			final JobManagerJobMetricGroupFactory jobManagerJobMetricGroupFactory,
 			final FatalErrorHandler fatalErrorHandler) throws Exception {
@@ -145,8 +140,6 @@ public class JobManagerRunner implements LeaderContender, OnCompletionActions, A
 
 			final JobMasterConfiguration jobMasterConfiguration = JobMasterConfiguration.fromConfiguration(configuration);
 
-			this.rpcTimeout = jobMasterConfiguration.getRpcTimeout();
-
 			this.leaderGatewayFuture = new CompletableFuture<>();
 
 			final SlotPoolFactory slotPoolFactory = DefaultSlotPoolFactory.fromConfiguration(
@@ -154,7 +147,7 @@ public class JobManagerRunner implements LeaderContender, OnCompletionActions, A
 				rpcService);
 
 			// now start the JobManager
-			this.jobMaster = new JobMaster(
+			this.jobMasterService = new JobMaster(
 				rpcService,
 				jobMasterConfiguration,
 				resourceId,
@@ -163,7 +156,6 @@ public class JobManagerRunner implements LeaderContender, OnCompletionActions, A
 				slotPoolFactory,
 				jobManagerSharedServices,
 				heartbeatServices,
-				blobServer,
 				jobManagerJobMetricGroupFactory,
 				this,
 				fatalErrorHandler,
@@ -215,8 +207,7 @@ public class JobManagerRunner implements LeaderContender, OnCompletionActions, A
 				setNewLeaderGatewayFuture();
 				leaderGatewayFuture.completeExceptionally(new FlinkException("JobMaster has been shut down."));
 
-				jobMaster.shutDown();
-				final CompletableFuture<Void> jobManagerTerminationFuture = jobMaster.getTerminationFuture();
+				final CompletableFuture<Void> jobManagerTerminationFuture = jobMasterService.closeAsync();
 
 				jobManagerTerminationFuture.whenComplete(
 					(Void ignored, Throwable throwable) -> {
@@ -331,7 +322,7 @@ public class JobManagerRunner implements LeaderContender, OnCompletionActions, A
 
 			runningJobsRegistry.setJobRunning(jobGraph.getJobID());
 
-			final CompletableFuture<Acknowledge> startFuture = jobMaster.start(new JobMasterId(leaderSessionId), rpcTimeout);
+			final CompletableFuture<Acknowledge> startFuture = jobMasterService.start(new JobMasterId(leaderSessionId));
 			final CompletableFuture<JobMasterGateway> currentLeaderGatewayFuture = leaderGatewayFuture;
 
 			startFuture.whenCompleteAsync(
@@ -348,7 +339,7 @@ public class JobManagerRunner implements LeaderContender, OnCompletionActions, A
 
 	private void confirmLeaderSessionIdIfStillLeader(UUID leaderSessionId, CompletableFuture<JobMasterGateway> currentLeaderGatewayFuture) {
 		if (leaderElectionService.hasLeadership(leaderSessionId)) {
-			currentLeaderGatewayFuture.complete(jobMaster.getSelfGateway(JobMasterGateway.class));
+			currentLeaderGatewayFuture.complete(jobMasterService.getGateway());
 			leaderElectionService.confirmLeaderSessionID(leaderSessionId);
 		} else {
 			log.debug("Ignoring confirmation of leader session id because {} is no longer the leader.", getAddress());
@@ -368,7 +359,7 @@ public class JobManagerRunner implements LeaderContender, OnCompletionActions, A
 
 			setNewLeaderGatewayFuture();
 
-			CompletableFuture<Acknowledge>  suspendFuture = jobMaster.suspend(new FlinkException("JobManager is no longer the leader."), rpcTimeout);
+			CompletableFuture<Acknowledge>  suspendFuture = jobMasterService.suspend(new FlinkException("JobManager is no longer the leader."));
 
 			suspendFuture.whenCompleteAsync(
 				(Acknowledge ack, Throwable throwable) -> {
@@ -399,7 +390,7 @@ public class JobManagerRunner implements LeaderContender, OnCompletionActions, A
 
 	@Override
 	public String getAddress() {
-		return jobMaster.getAddress();
+		return jobMasterService.getAddress();
 	}
 
 	@Override
