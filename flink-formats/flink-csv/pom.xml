@@ -18,7 +18,7 @@ specific language governing permissions and limitations
 under the License.
 -->
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-		xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+		 xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
 
 	<modelVersion>4.0.0</modelVersion>
 
@@ -29,8 +29,8 @@ under the License.
 		<relativePath>..</relativePath>
 	</parent>
 
-	<artifactId>flink-json</artifactId>
-	<name>flink-json</name>
+	<artifactId>flink-csv</artifactId>
+	<name>flink-csv</name>
 
 	<packaging>jar</packaging>
 
@@ -60,7 +60,7 @@ under the License.
 
 		<!-- test dependencies -->
 
-		<!-- JSON table descriptor testing -->
+		<!-- CSV table descriptor testing -->
 		<dependency>
 			<groupId>org.apache.flink</groupId>
 			<artifactId>flink-table-common</artifactId>
@@ -69,7 +69,7 @@ under the License.
 			<type>test-jar</type>
 		</dependency>
 
-		<!-- TODO This could be dropped if we change JsonRowFormatFactoryTest -->
+		<!-- TODO This could be dropped if we change CsvRowFormatFactoryTest -->
 		<dependency>
 			<groupId>org.apache.flink</groupId>
 			<artifactId>flink-table-planner_${scala.binary.version}</artifactId>
@@ -77,7 +77,7 @@ under the License.
 			<scope>test</scope>
 		</dependency>
 
-		<!-- TODO This could be dropped if we change JsonRowFormatFactoryTest -->
+		<!-- TODO This could be dropped if we change CsvRowFormatFactoryTest -->
 		<dependency>
 			<groupId>org.scala-lang</groupId>
 			<artifactId>scala-compiler</artifactId>
