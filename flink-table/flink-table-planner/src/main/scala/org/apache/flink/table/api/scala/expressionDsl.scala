@@ -22,9 +22,8 @@ import java.sql.{Date, Time, Timestamp}
 
 import org.apache.calcite.avatica.util.DateTimeUtils._
 import org.apache.flink.api.common.typeinfo.{SqlTimeTypeInfo, TypeInformation}
-import org.apache.flink.table.api.{CurrentRange, CurrentRow, TableException, UnboundedRange, UnboundedRow}
+import org.apache.flink.table.api.{Table, TableException}
 import org.apache.flink.table.expressions.ExpressionUtils.{convertArray, toMilliInterval, toMonthInterval, toRowInterval}
-import org.apache.flink.table.api.Table
 import org.apache.flink.table.expressions.TimeIntervalUnit.TimeIntervalUnit
 import org.apache.flink.table.expressions.TimePointUnit.TimePointUnit
 import org.apache.flink.table.expressions._
@@ -966,10 +965,30 @@ trait ImplicitExpressionOperations {
  */
 trait ImplicitExpressionConversions {
 
+  /**
+    * Offset constant to be used in the `preceding` clause of unbounded [[Over]] windows. Use this
+    * constant for a time interval. Unbounded over windows start with the first row of a partition.
+    */
   implicit val UNBOUNDED_ROW = UnboundedRow()
+
+  /**
+    * Offset constant to be used in the `preceding` clause of unbounded [[Over]] windows. Use this
+    * constant for a row-count interval. Unbounded over windows start with the first row of a
+    * partition.
+    */
   implicit val UNBOUNDED_RANGE = UnboundedRange()
 
+  /**
+    * Offset constant to be used in the `following` clause of [[Over]] windows. Use this for setting
+    * the upper bound of the window to the current row.
+    */
   implicit val CURRENT_ROW = CurrentRow()
+
+  /**
+    * Offset constant to be used in the `following` clause of [[Over]] windows. Use this for setting
+    * the upper bound of the window to the sort key of the current row, i.e., all rows with the same
+    * sort key as the current row are included in the window.
+    */
   implicit val CURRENT_RANGE = CurrentRange()
 
   implicit class WithOperations(e: Expression) extends ImplicitExpressionOperations {
@@ -1411,6 +1430,66 @@ object uuid {
     */
   def apply(): Expression = {
     UUID()
+  }
+}
+
+/**
+  * Returns a null literal value of a given type.
+  *
+  * e.g. nullOf(Types.INT)
+  */
+object nullOf {
+
+  /**
+    * Returns a null literal value of a given type.
+    *
+    * e.g. nullOf(Types.INT)
+    */
+  def apply(typeInfo: TypeInformation[_]): Expression = {
+    Null(typeInfo)
+  }
+}
+
+/**
+  * Calculates the logarithm of the given value.
+  */
+object log {
+
+  /**
+    * Calculates the natural logarithm of the given value.
+    */
+  def apply(value: Expression): Expression = {
+    Log(null, value)
+  }
+
+  /**
+    * Calculates the logarithm of the given value to the given base.
+    */
+  def apply(base: Expression, value: Expression): Expression = {
+    Log(base, value)
+  }
+}
+
+/**
+  * Ternary conditional operator that decides which of two other expressions should be evaluated
+  * based on a evaluated boolean condition.
+  *
+  * e.g. ifThenElse(42 > 5, "A", "B") leads to "A"
+  */
+object ifThenElse {
+
+  /**
+    * Ternary conditional operator that decides which of two other expressions should be evaluated
+    * based on a evaluated boolean condition.
+    *
+    * e.g. ifThenElse(42 > 5, "A", "B") leads to "A"
+    *
+    * @param condition boolean condition
+    * @param ifTrue expression to be evaluated if condition holds
+    * @param ifFalse expression to be evaluated if condition does not hold
+    */
+  def apply(condition: Expression, ifTrue: Expression, ifFalse: Expression): Expression = {
+    If(condition, ifTrue, ifFalse)
   }
 }
 

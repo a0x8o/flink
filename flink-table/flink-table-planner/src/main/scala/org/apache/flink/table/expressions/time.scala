@@ -33,7 +33,7 @@ import org.apache.flink.table.validate.{ValidationFailure, ValidationResult, Val
 
 import scala.collection.JavaConversions._
 
-case class Extract(timeIntervalUnit: Expression, temporal: Expression) extends Expression {
+case class Extract(timeIntervalUnit: Expression, temporal: Expression) extends PlannerExpression {
 
   override private[flink] def children: Seq[Expression] = timeIntervalUnit :: temporal :: Nil
 
@@ -85,7 +85,7 @@ case class Extract(timeIntervalUnit: Expression, temporal: Expression) extends E
 abstract class TemporalCeilFloor(
     timeIntervalUnit: Expression,
     temporal: Expression)
-  extends Expression {
+  extends PlannerExpression {
 
   override private[flink] def children: Seq[Expression] = timeIntervalUnit :: temporal :: Nil
 
@@ -197,33 +197,6 @@ case class LocalTime() extends CurrentTimePoint(SqlTimeTypeInfo.TIME, local = tr
 case class LocalTimestamp() extends CurrentTimePoint(SqlTimeTypeInfo.TIMESTAMP, local = true)
 
 /**
-  * Extracts the quarter of a year from a SQL date.
-  */
-case class Quarter(child: Expression) extends UnaryExpression with InputTypeSpec {
-
-  override private[flink] def expectedTypes: Seq[TypeInformation[_]] = Seq(SqlTimeTypeInfo.DATE)
-
-  override private[flink] def resultType: TypeInformation[_] = LONG_TYPE_INFO
-
-  override def toString: String = s"($child).quarter()"
-
-  override private[flink] def toRexNode(implicit relBuilder: RelBuilder): RexNode = {
-    /**
-      * Standard conversion of the QUARTER operator.
-      * Source: [[org.apache.calcite.sql2rel.StandardConvertletTable#convertQuarter()]]
-      */
-    Plus(
-      Div(
-        Minus(
-          Extract(TimeIntervalUnit.MONTH, child),
-          Literal(1L)),
-        Literal(TimeUnit.QUARTER.multiplier.longValue())),
-      Literal(1L)
-    ).toRexNode
-  }
-}
-
-/**
   * Determines whether two anchored time intervals overlap.
   */
 case class TemporalOverlaps(
@@ -231,7 +204,7 @@ case class TemporalOverlaps(
     leftTemporal: Expression,
     rightTimePoint: Expression,
     rightTemporal: Expression)
-  extends Expression {
+  extends PlannerExpression {
 
   override private[flink] def children: Seq[Expression] =
     Seq(leftTimePoint, leftTemporal, rightTimePoint, rightTemporal)
@@ -330,7 +303,7 @@ case class TemporalOverlaps(
   }
 }
 
-case class DateFormat(timestamp: Expression, format: Expression) extends Expression {
+case class DateFormat(timestamp: Expression, format: Expression) extends PlannerExpression {
   override private[flink] def children = timestamp :: format :: Nil
 
   override private[flink] def toRexNode(implicit relBuilder: RelBuilder) =
@@ -345,7 +318,7 @@ case class TimestampDiff(
     timePointUnit: Expression,
     timePoint1: Expression,
     timePoint2: Expression)
-  extends Expression {
+  extends PlannerExpression {
 
   override private[flink] def children: Seq[Expression] =
     timePointUnit :: timePoint1 :: timePoint2 :: Nil

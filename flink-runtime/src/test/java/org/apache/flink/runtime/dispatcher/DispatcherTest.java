@@ -266,7 +266,7 @@ public class DispatcherTest extends TestLogger {
 
 		assertTrue(
 			"jobManagerRunner was not started",
-			dispatcherLeaderElectionService.isStarted());
+			dispatcherLeaderElectionService.getStartFuture().isDone());
 	}
 
 	/**
@@ -545,6 +545,8 @@ public class DispatcherTest extends TestLogger {
 
 		dispatcher = createAndStartDispatcher(heartbeatServices, haServices, new ExpectedJobIdJobManagerRunnerFactory(TEST_JOB_ID, createdJobManagerRunnerLatch));
 
+		dispatcher.waitUntilStarted();
+
 		final SubmittedJobGraph submittedJobGraph = new SubmittedJobGraph(jobGraph);
 		submittedJobGraphStore.putJobGraph(submittedJobGraph);
 
@@ -572,6 +574,8 @@ public class DispatcherTest extends TestLogger {
 		final FlinkException testException = new FlinkException("Test exception");
 
 		dispatcher = createAndStartDispatcher(heartbeatServices, haServices, new ExpectedJobIdJobManagerRunnerFactory(TEST_JOB_ID, createdJobManagerRunnerLatch));
+
+		dispatcher.waitUntilStarted();
 
 		final JobGraph failingJobGraph = createFailingJobGraph(testException);
 

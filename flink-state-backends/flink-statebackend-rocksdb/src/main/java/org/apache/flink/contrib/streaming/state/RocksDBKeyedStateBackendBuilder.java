@@ -36,7 +36,6 @@ import org.apache.flink.runtime.query.TaskKvStateRegistry;
 import org.apache.flink.runtime.state.AbstractKeyedStateBackendBuilder;
 import org.apache.flink.runtime.state.BackendBuildingException;
 import org.apache.flink.runtime.state.IncrementalKeyedStateHandle;
-import org.apache.flink.runtime.state.IncrementalLocalKeyedStateHandle;
 import org.apache.flink.runtime.state.KeyGroupRange;
 import org.apache.flink.runtime.state.KeyedStateHandle;
 import org.apache.flink.runtime.state.LocalRecoveryConfig;
@@ -81,7 +80,7 @@ import java.util.function.Function;
 public class RocksDBKeyedStateBackendBuilder<K> extends AbstractKeyedStateBackendBuilder<K> {
 
 	private static final Logger LOG = LoggerFactory.getLogger(RocksDBKeyedStateBackendBuilder.class);
-	public static final String DB_INSTANCE_DIR_STRING = "db";
+	static final String DB_INSTANCE_DIR_STRING = "db";
 
 	/** String that identifies the operator that owns this backend. */
 	private final String operatorIdentifier;
@@ -199,22 +198,22 @@ public class RocksDBKeyedStateBackendBuilder<K> extends AbstractKeyedStateBacken
 		this.injectedDefaultColumnFamilyHandle = injectedDefaultColumnFamilyHandle;
 	}
 
-	public RocksDBKeyedStateBackendBuilder<K> setEnableIncrementalCheckpointing(boolean enableIncrementalCheckpointing) {
+	RocksDBKeyedStateBackendBuilder<K> setEnableIncrementalCheckpointing(boolean enableIncrementalCheckpointing) {
 		this.enableIncrementalCheckpointing = enableIncrementalCheckpointing;
 		return this;
 	}
 
-	public RocksDBKeyedStateBackendBuilder<K> setEnableTtlCompactionFilter (boolean enableTtlCompactionFilter) {
+	RocksDBKeyedStateBackendBuilder<K> setEnableTtlCompactionFilter(boolean enableTtlCompactionFilter) {
 		this.enableTtlCompactionFilter = enableTtlCompactionFilter;
 		return this;
 	}
 
-	public RocksDBKeyedStateBackendBuilder<K> setNativeMetricOptions(RocksDBNativeMetricOptions nativeMetricOptions) {
+	RocksDBKeyedStateBackendBuilder<K> setNativeMetricOptions(RocksDBNativeMetricOptions nativeMetricOptions) {
 		this.nativeMetricOptions = nativeMetricOptions;
 		return this;
 	}
 
-	public RocksDBKeyedStateBackendBuilder<K> setNumberOfTransferingThreads(int numberOfTransferingThreads) {
+	RocksDBKeyedStateBackendBuilder<K> setNumberOfTransferingThreads(int numberOfTransferingThreads) {
 		this.numberOfTransferingThreads = numberOfTransferingThreads;
 		return this;
 	}
@@ -376,9 +375,7 @@ public class RocksDBKeyedStateBackendBuilder<K> extends AbstractKeyedStateBacken
 				ttlTimeProvider);
 		}
 		KeyedStateHandle firstStateHandle = restoreStateHandles.iterator().next();
-		boolean isIncrementalStateHandle = (firstStateHandle instanceof IncrementalKeyedStateHandle)
-			|| (firstStateHandle instanceof IncrementalLocalKeyedStateHandle);
-		if (isIncrementalStateHandle) {
+		if (firstStateHandle instanceof IncrementalKeyedStateHandle) {
 			return new RocksDBIncrementalRestoreOperation<>(
 				operatorIdentifier,
 				keyGroupRange,

@@ -115,14 +115,14 @@ class ScalarFunctionsTest extends ScalarTypesTestBase {
       "null")
 
     testAllApis(
-      'f0.replace(Null(Types.STRING), ""),
-      "f0.replace(Null(STRING), '')",
+      'f0.replace(nullOf(Types.STRING), ""),
+      "f0.replace(nullOf(STRING), '')",
       "REPLACE(f0, NULLIF('', ''), '')",
       "null")
 
     testAllApis(
-      'f0.replace(" ", Null(Types.STRING)),
-      "f0.replace(' ', Null(STRING))",
+      'f0.replace(" ", nullOf(Types.STRING)),
+      "f0.replace(' ', nullOf(STRING))",
       "REPLACE(f0, ' ', NULLIF('', ''))",
       "null")
   }
@@ -440,8 +440,8 @@ class ScalarFunctionsTest extends ScalarTypesTestBase {
       "2A")
 
     testAllApis(
-      Null(Types.BYTE).hex(),
-      "hex(Null(BYTE))",
+      nullOf(Types.BYTE).hex(),
+      "hex(nullOf(BYTE))",
       "HEX(CAST(NULL AS TINYINT))",
       "null")
 
@@ -529,8 +529,8 @@ class ScalarFunctionsTest extends ScalarTypesTestBase {
   def testBin(): Unit = {
 
     testAllApis(
-      Null(Types.BYTE).bin(),
-      "bin(Null(BYTE))",
+      nullOf(Types.BYTE).bin(),
+      "bin(nullOf(BYTE))",
       "BIN((CAST(NULL AS TINYINT)))",
       "null")
 
@@ -648,8 +648,8 @@ class ScalarFunctionsTest extends ScalarTypesTestBase {
 
     // This test was added for the null literal problem in string expression parsing (FLINK-10463).
     testAllApis(
-      Null(Types.STRING).regexpReplace("oo|ar", 'f33),
-      "Null(STRING).regexpReplace('oo|ar', f33)",
+      nullOf(Types.STRING).regexpReplace("oo|ar", 'f33),
+      "nullOf(STRING).regexpReplace('oo|ar', f33)",
       "REGEXP_REPLACE(CAST(NULL AS VARCHAR), 'oo|ar', f33)",
       "null")
   }
@@ -1712,37 +1712,37 @@ class ScalarFunctionsTest extends ScalarTypesTestBase {
       math.atan2(0.42.toByte, 0.toByte).toString)
 
     testAllApis(
-      Atan2('f26, 'f25),
+      atan2('f26, 'f25),
       "atan2(f26, f25)",
       "ATAN2(f26, f25)",
       math.atan2(0.toShort, 0.toShort).toString)
 
     testAllApis(
-      Atan2('f27, 'f27),
+      atan2('f27, 'f27),
       "atan2(f27, f27)",
       "ATAN2(f27, f27)",
       math.atan2(0.toLong, 0.toLong).toString)
 
     testAllApis(
-      Atan2('f28, 'f28),
+      atan2('f28, 'f28),
       "atan2(f28, f28)",
       "ATAN2(f28, f28)",
       math.atan2(0.45.toFloat, 0.45.toFloat).toString)
 
     testAllApis(
-      Atan2('f29, 'f29),
+      atan2('f29, 'f29),
       "atan2(f29, f29)",
       "ATAN2(f29, f29)",
       math.atan2(0.46, 0.46).toString)
 
     testAllApis(
-      Atan2('f30, 'f30),
+      atan2('f30, 'f30),
       "atan2(f30, f30)",
       "ATAN2(f30, f30)",
       math.atan2(1, 1).toString)
 
     testAllApis(
-      Atan2('f31, 'f31),
+      atan2('f31, 'f31),
       "atan2(f31, f31)",
       "ATAN2(f31, f31)",
       math.atan2(-0.1231231321321321111, -0.1231231321321321111).toString)
@@ -1933,8 +1933,8 @@ class ScalarFunctionsTest extends ScalarTypesTestBase {
     )
 
     testTableApi(
-      Log('f6),
-      "Log(f6)",
+      log('f6),
+      "log(f6)",
       "1.5260563034950492"
     )
 
@@ -1967,8 +1967,8 @@ class ScalarFunctionsTest extends ScalarTypesTestBase {
     )
 
     testTableApi(
-      Log(10, 100),
-      "Log(10, 100)",
+      log(10, 100),
+      "log(10, 100)",
       "2.0"
     )
   }
@@ -2645,17 +2645,17 @@ class ScalarFunctionsTest extends ScalarTypesTestBase {
     }
 
     testAllApis(
-      timestampDiff(TimePointUnit.DAY, Null(Types.SQL_TIMESTAMP),
+      timestampDiff(TimePointUnit.DAY, nullOf(Types.SQL_TIMESTAMP),
         "2016-02-24 12:42:25".toTimestamp),
-      "timestampDiff(DAY, Null(SQL_TIMESTAMP), '2016-02-24 12:42:25'.toTimestamp)",
+      "timestampDiff(DAY, nullOf(SQL_TIMESTAMP), '2016-02-24 12:42:25'.toTimestamp)",
       "TIMESTAMPDIFF(DAY, CAST(NULL AS TIMESTAMP), TIMESTAMP '2016-02-24 12:42:25')",
       "null"
     )
 
     testAllApis(
       timestampDiff(TimePointUnit.DAY, "2016-02-24 12:42:25".toTimestamp,
-        Null(Types.SQL_TIMESTAMP)),
-      "timestampDiff(DAY, '2016-02-24 12:42:25'.toTimestamp,  Null(SQL_TIMESTAMP))",
+        nullOf(Types.SQL_TIMESTAMP)),
+      "timestampDiff(DAY, '2016-02-24 12:42:25'.toTimestamp,  nullOf(SQL_TIMESTAMP))",
       "TIMESTAMPDIFF(DAY, TIMESTAMP '2016-02-24 12:42:25',  CAST(NULL AS TIMESTAMP))",
       "null"
     )
@@ -2779,20 +2779,20 @@ class ScalarFunctionsTest extends ScalarTypesTestBase {
     }
 
     testAllApis(
-      "2016-02-24 12:42:25".toTimestamp + Null(Types.INTERVAL_MILLIS),
-      "'2016-02-24 12:42:25'.toTimestamp + Null(INTERVAL_MILLIS)",
+      "2016-02-24 12:42:25".toTimestamp + nullOf(Types.INTERVAL_MILLIS),
+      "'2016-02-24 12:42:25'.toTimestamp + nullOf(INTERVAL_MILLIS)",
       "TIMESTAMPADD(HOUR, CAST(NULL AS INTEGER), TIMESTAMP '2016-02-24 12:42:25')",
       "null")
 
     testAllApis(
-      Null(Types.SQL_TIMESTAMP) + -200.hours,
-      "Null(SQL_TIMESTAMP) + -200.hours",
+      nullOf(Types.SQL_TIMESTAMP) + -200.hours,
+      "nullOf(SQL_TIMESTAMP) + -200.hours",
       "TIMESTAMPADD(HOUR, -200, CAST(NULL AS TIMESTAMP))",
       "null")
 
     testAllApis(
-      Null(Types.SQL_TIMESTAMP) + 3.months,
-      "Null(SQL_TIMESTAMP) + 3.months",
+      nullOf(Types.SQL_TIMESTAMP) + 3.months,
+      "nullOf(SQL_TIMESTAMP) + 3.months",
       "TIMESTAMPADD(MONTH, 3, CAST(NULL AS TIMESTAMP))",
       "null")
 
@@ -2827,13 +2827,13 @@ class ScalarFunctionsTest extends ScalarTypesTestBase {
       "timestampadd(SECOND, 1, date '2016-06-15')",
       "2016-06-15 00:00:01.0")
 
-    testAllApis(Null(Types.SQL_TIMESTAMP) + 1.second,
-      "Null(SQL_TIMESTAMP) + 1.second",
+    testAllApis(nullOf(Types.SQL_TIMESTAMP) + 1.second,
+      "nullOf(SQL_TIMESTAMP) + 1.second",
       "timestampadd(SECOND, 1, cast(null as date))",
       "null")
 
-    testAllApis(Null(Types.SQL_TIMESTAMP) + 1.day,
-      "Null(SQL_TIMESTAMP) + 1.day",
+    testAllApis(nullOf(Types.SQL_TIMESTAMP) + 1.day,
+      "nullOf(SQL_TIMESTAMP) + 1.day",
       "timestampadd(DAY, 1, cast(null as date))",
       "null")
 
@@ -2986,8 +2986,8 @@ class ScalarFunctionsTest extends ScalarTypesTestBase {
       "null")
 
     testAllApis(
-      "test".sha2(Null(Types.INT)),
-      "sha2('test', Null(INT))",
+      "test".sha2(nullOf(Types.INT)),
+      "sha2('test', nullOf(INT))",
       "SHA2('test', CAST(NULL AS INT))",
       "null")
 

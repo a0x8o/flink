@@ -173,6 +173,7 @@ object FunctionCatalog {
     "if" -> classOf[If],
     "between" -> classOf[Between],
     "notBetween" -> classOf[NotBetween],
+    "ifThenElse" -> classOf[If],
 
     // aggregate functions
     "avg" -> classOf[Avg],
@@ -262,7 +263,6 @@ object FunctionCatalog {
     "currentTimestamp" -> classOf[CurrentTimestamp],
     "localTime" -> classOf[LocalTime],
     "localTimestamp" -> classOf[LocalTimestamp],
-    "quarter" -> classOf[Quarter],
     "temporalOverlaps" -> classOf[TemporalOverlaps],
     "dateTimePlus" -> classOf[Plus],
     "dateFormat" -> classOf[DateFormat],

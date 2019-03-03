@@ -76,11 +76,14 @@ case class Or(left: Expression, right: Expression) extends BinaryPredicate {
   }
 }
 
+@deprecated(
+  "Use ifThenElse(...) instead. It is available through the implicit Scala DSL.",
+  "1.8.0")
 case class If(
     condition: Expression,
     ifTrue: Expression,
     ifFalse: Expression)
-  extends Expression {
+  extends PlannerExpression {
   private[flink] def children = Seq(condition, ifTrue, ifFalse)
 
   override private[flink] def resultType = ifTrue.resultType

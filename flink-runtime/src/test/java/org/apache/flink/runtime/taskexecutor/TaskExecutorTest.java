@@ -88,7 +88,9 @@ import org.apache.flink.runtime.taskexecutor.slot.TaskSlotTable;
 import org.apache.flink.runtime.taskexecutor.slot.TimerService;
 import org.apache.flink.runtime.taskmanager.CheckpointResponder;
 import org.apache.flink.runtime.taskmanager.LocalTaskManagerLocation;
+import org.apache.flink.runtime.taskmanager.NoOpTaskManagerActions;
 import org.apache.flink.runtime.taskmanager.Task;
+import org.apache.flink.runtime.taskmanager.TaskExecutionState;
 import org.apache.flink.runtime.taskmanager.TaskManagerActions;
 import org.apache.flink.runtime.taskmanager.TaskManagerLocation;
 import org.apache.flink.runtime.testingUtils.TestingUtils;
@@ -342,7 +344,7 @@ public class TaskExecutorTest extends TestLogger {
 			.setTaskStateManager(localStateStoresManager)
 			.build();
 
-		final TaskExecutor taskManager = new TaskExecutor(
+		final TestingTaskExecutor taskManager = new TestingTaskExecutor(
 			rpc,
 			taskManagerConfiguration,
 			haServices,
@@ -355,6 +357,7 @@ public class TaskExecutorTest extends TestLogger {
 
 		try {
 			taskManager.start();
+			taskManager.waitUntilStarted();
 
 			rpc.registerGateway(jobMasterAddress, jobMasterGateway);
 
@@ -715,11 +718,20 @@ public class TaskExecutorTest extends TestLogger {
 		final JobMasterGateway jobMasterGateway = mock(JobMasterGateway.class);
 		when(jobMasterGateway.getFencingToken()).thenReturn(jobMasterId);
 
+		final OneShotLatch taskInTerminalState = new OneShotLatch();
+		final TaskManagerActions taskManagerActions = new NoOpTaskManagerActions() {
+			@Override
+			public void updateTaskExecutionState(TaskExecutionState taskExecutionState) {
+				if (taskExecutionState.getExecutionState().isTerminal()) {
+					taskInTerminalState.trigger();
+				}
+			}
+		};
 		final JobManagerConnection jobManagerConnection = new JobManagerConnection(
 			jobId,
 			ResourceID.generate(),
 			jobMasterGateway,
-			mock(TaskManagerActions.class),
+			taskManagerActions,
 			mock(CheckpointResponder.class),
 			new TestGlobalAggregateManager(),
 			libraryCacheManager,
@@ -769,6 +781,8 @@ public class TaskExecutorTest extends TestLogger {
 			CompletableFuture<Boolean> completionFuture = TestInvokable.COMPLETABLE_FUTURE;
 
 			completionFuture.get();
+
+			taskInTerminalState.await();
 		} finally {
 			RpcUtils.terminateRpcEndpoint(taskManager, timeout);
 		}
@@ -1034,7 +1048,7 @@ public class TaskExecutorTest extends TestLogger {
 			.setTaskStateManager(localStateStoresManager)
 			.build();
 
-		final TaskExecutor taskManager = new TaskExecutor(
+		final TestingTaskExecutor taskManager = new TestingTaskExecutor(
 			rpc,
 			taskManagerConfiguration,
 			haServices,
@@ -1047,6 +1061,7 @@ public class TaskExecutorTest extends TestLogger {
 
 		try {
 			taskManager.start();
+			taskManager.waitUntilStarted();
 
 			final TaskExecutorGateway tmGateway = taskManager.getSelfGateway(TaskExecutorGateway.class);
 
@@ -1260,7 +1275,7 @@ public class TaskExecutorTest extends TestLogger {
 			.setTaskStateManager(localStateStoresManager)
 			.build();
 
-		final TaskExecutor taskExecutor = new TaskExecutor(
+		final TestingTaskExecutor taskExecutor = new TestingTaskExecutor(
 			rpc,
 			taskManagerConfiguration,
 			haServices,
@@ -1292,6 +1307,7 @@ public class TaskExecutorTest extends TestLogger {
 			haServices.setJobMasterLeaderRetriever(jobId, jobMasterLeaderRetriever);
 
 			taskExecutor.start();
+			taskExecutor.waitUntilStarted();
 
 			final TaskExecutorGateway taskExecutorGateway = taskExecutor.getSelfGateway(TaskExecutorGateway.class);
 
