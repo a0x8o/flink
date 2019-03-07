@@ -21,7 +21,7 @@ import org.apache.calcite.rel.RelNode
 import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.api.java.operators.join.JoinType
 import org.apache.flink.table.calcite.{FlinkRelBuilder, FlinkTypeFactory}
-import org.apache.flink.table.expressions.{Alias, Asc, Expression, ExpressionParser, Ordering, ResolvedFieldReference, UnresolvedAlias, UnresolvedFieldReference, WindowProperty}
+import org.apache.flink.table.expressions.{Alias, Asc, Expression, ExpressionParser, Ordering, ResolvedFieldReference, UnresolvedAlias, WindowProperty}
 import org.apache.flink.table.functions.TemporalTableFunction
 import org.apache.flink.table.functions.utils.UserDefinedFunctionUtils
 import org.apache.flink.table.plan.ProjectionTranslator._
@@ -65,44 +65,13 @@ class Table(
     private[flink] val tableEnv: TableEnvironment,
     private[flink] val logicalPlan: LogicalNode) {
 
-  // Check if the plan has an unbounded TableFunctionCall as child node.
-  //   A TableFunctionCall is tolerated as root node because the Table holds the initial call.
-  if (containsUnboundedUDTFCall(logicalPlan) &&
-    !logicalPlan.isInstanceOf[LogicalTableFunctionCall]) {
-    throw new ValidationException(
-      "Table functions can only be used in table.joinLateral() and table.leftOuterJoinLateral().")
-  }
-
-  /**
-    * Creates a [[Table]] for a TableFunction call from a String expression.
-    *
-    * @param tableEnv The TableEnvironment in which the call is created.
-    * @param tableFunctionCall A string expression of a table function call.
-    *
-    * @deprecated This constructor will be removed. Use table.joinLateral() or
-    *             table.leftOuterJoinLateral() instead.
-    */
-  @Deprecated
-  @deprecated(
-    "This constructor will be removed. Use table.joinLateral() or " +
-      "table.leftOuterJoinLateral() instead.",
-    "1.8")
-  def this(tableEnv: TableEnvironment, tableFunctionCall: String) {
-    this(tableEnv, UserDefinedFunctionUtils
-      .createLogicalFunctionCall(tableEnv, ExpressionParser.parseExpression(tableFunctionCall)))
-  }
-
   private lazy val tableSchema: TableSchema = new TableSchema(
     logicalPlan.output.map(_.name).toArray,
     logicalPlan.output.map(_.resultType).toArray)
 
   def relBuilder: FlinkRelBuilder = tableEnv.getRelBuilder
 
-  def getRelNode: RelNode = if (containsUnboundedUDTFCall(logicalPlan)) {
-    throw new ValidationException("Cannot translate a query with an unbounded table function call.")
-  } else {
-    logicalPlan.toRelNode(relBuilder)
-  }
+  def getRelNode: RelNode = logicalPlan.toRelNode(relBuilder)
 
   /**
     * Returns the schema of this table.
@@ -246,34 +215,7 @@ class Table(
     * }}}
     */
   def as(fields: Expression*): Table = {
-
-    logicalPlan match {
-      case functionCall: LogicalTableFunctionCall if functionCall.child == null =>
-        // If the logical plan is a TableFunctionCall, we replace its field names to avoid special
-        //   cases during the validation.
-        if (fields.length != functionCall.output.length) {
-          throw new ValidationException(
-            "List of column aliases must have same degree as TableFunction's output")
-        }
-        if (!fields.forall(_.isInstanceOf[UnresolvedFieldReference])) {
-          throw new ValidationException(
-            "Alias field must be an instance of UnresolvedFieldReference"
-          )
-        }
-        new Table(
-          tableEnv,
-          LogicalTableFunctionCall(
-            functionCall.functionName,
-            functionCall.tableFunction,
-            functionCall.parameters,
-            functionCall.resultType,
-            fields.map(_.asInstanceOf[UnresolvedFieldReference].name).toArray,
-            functionCall.child)
-        )
-      case _ =>
-        // prepend an AliasNode
-        new Table(tableEnv, AliasNode(fields, logicalPlan).validate(tableEnv))
-    }
+    new Table(tableEnv, AliasNode(fields, logicalPlan).validate(tableEnv))
   }
 
   /**
@@ -564,46 +506,16 @@ class Table(
   }
 
   private def join(right: Table, joinPredicate: Option[Expression], joinType: JoinType): Table = {
-
-    // check if we join with a table or a table function
-    if (!containsUnboundedUDTFCall(right.logicalPlan)) {
-      // regular table-table join
-
-      // check that the TableEnvironment of right table is not null
-      // and right table belongs to the same TableEnvironment
-      if (right.tableEnv != this.tableEnv) {
-        throw new ValidationException("Only tables from the same TableEnvironment can be joined.")
-      }
-
-      new Table(
-        tableEnv,
-        Join(this.logicalPlan, right.logicalPlan, joinType, joinPredicate, correlated = false)
-          .validate(tableEnv))
-
-    } else {
-      // join with a table function
-
-      // check join type
-      if (joinType != JoinType.INNER && joinType != JoinType.LEFT_OUTER) {
-        throw new ValidationException(
-          "TableFunctions are currently supported for join and leftOuterJoin.")
-      }
-
-      val udtf = right.logicalPlan.asInstanceOf[LogicalTableFunctionCall]
-      val udtfCall = LogicalTableFunctionCall(
-        udtf.functionName,
-        udtf.tableFunction,
-        udtf.parameters,
-        udtf.resultType,
-        udtf.fieldNames,
-        this.logicalPlan
-      ).validate(tableEnv)
-
-      new Table(
-        tableEnv,
-        Join(this.logicalPlan, udtfCall, joinType, joinPredicate, correlated = true)
-          .validate(tableEnv))
+    // check that the TableEnvironment of right table is not null
+    // and right table belongs to the same TableEnvironment
+    if (right.tableEnv != this.tableEnv) {
+      throw new ValidationException("Only tables from the same TableEnvironment can be joined.")
     }
+
+    new Table(
+      tableEnv,
+      Join(this.logicalPlan, right.logicalPlan, joinType, joinPredicate, correlated = false)
+        .validate(tableEnv))
   }
 
   /**
@@ -799,21 +711,16 @@ class Table(
         "Table functions are currently only supported for inner and left outer lateral joins.")
     }
 
-    val logicalCall = UserDefinedFunctionUtils.createLogicalFunctionCall(tableEnv, callExpr)
-
-    val validatedLogicalCall = LogicalTableFunctionCall(
-      logicalCall.functionName,
-      logicalCall.tableFunction,
-      logicalCall.parameters,
-      logicalCall.resultType,
-      logicalCall.fieldNames,
-      this.logicalPlan
-    ).validate(tableEnv)
+    val logicalCall = UserDefinedFunctionUtils.createLogicalFunctionCall(
+      tableEnv,
+      callExpr,
+      logicalPlan)
+    val validatedLogicalCall = logicalCall.validate(tableEnv)
 
     new Table(
       tableEnv,
       Join(
-        this.logicalPlan,
+        logicalPlan,
         validatedLogicalCall,
         joinType,
         joinPredicate,
@@ -1118,13 +1025,7 @@ class Table(
     * @param tableName Name of the registered [[TableSink]] to which the [[Table]] is written.
     */
   def insertInto(tableName: String): Unit = {
-    this.logicalPlan match {
-      case _: LogicalTableFunctionCall =>
-        throw new ValidationException("Table functions can only be used in table.joinLateral() " +
-          "and table.leftOuterJoinLateral().")
-      case _ =>
-        tableEnv.insertInto(this, tableName, this.tableEnv.queryConfig)
-    }
+    insertInto(tableName, tableEnv.queryConfig)
   }
 
   /**
@@ -1140,13 +1041,7 @@ class Table(
     * @param conf The [[QueryConfig]] to use.
     */
   def insertInto(tableName: String, conf: QueryConfig): Unit = {
-    this.logicalPlan match {
-      case _: LogicalTableFunctionCall =>
-        throw new ValidationException(
-          "Table functions can only be used for joinLateral() and leftOuterJoinLateral().")
-      case _ =>
-        tableEnv.insertInto(this, tableName, conf)
-    }
+    tableEnv.insertInto(this, tableName, conf)
   }
 
   /**
@@ -1220,20 +1115,6 @@ class Table(
       tableEnv.registerTable(tableName, this)
     }
     tableName
-  }
-
-  /**
-    * Checks if the plan represented by a [[LogicalNode]] contains an unbounded UDTF call.
-    * @param n the node to check
-    * @return true if the plan contains an unbounded UDTF call, false otherwise.
-    */
-  private def containsUnboundedUDTFCall(n: LogicalNode): Boolean = {
-    n match {
-      case functionCall: LogicalTableFunctionCall if functionCall.child == null => true
-      case u: UnaryNode => containsUnboundedUDTFCall(u.child)
-      case b: BinaryNode => containsUnboundedUDTFCall(b.left) || containsUnboundedUDTFCall(b.right)
-      case _: LeafNode => false
-    }
   }
 }
 
@@ -1347,6 +1228,16 @@ class OverWindowedTable(
     private[flink] val table: Table,
     private[flink] val overWindows: Array[OverWindow]) {
 
+  /**
+    * Performs a selection operation on an over-windowed table. Similar to an SQL SELECT statement.
+    * The field expressions can contain complex expressions and aggregations.
+    *
+    * Example:
+    *
+    * {{{
+    *   overWindowedTable.select('c, 'b.count over 'ow, 'e.sum over 'ow)
+    * }}}
+    */
   def select(fields: Expression*): Table = {
     val expandedFields = expandProjectList(
       fields,
@@ -1371,6 +1262,16 @@ class OverWindowedTable(
     )
   }
 
+  /**
+    * Performs a selection operation on an over-windowed table. Similar to an SQL SELECT statement.
+    * The field expressions can contain complex expressions and aggregations.
+    *
+    * Example:
+    *
+    * {{{
+    *   overWindowedTable.select("c, b.count over ow, e.sum over ow")
+    * }}}
+    */
   def select(fields: String): Table = {
     val fieldExprs = ExpressionParser.parseExpressionList(fields)
     //get the correct expression for AggFunctionCall

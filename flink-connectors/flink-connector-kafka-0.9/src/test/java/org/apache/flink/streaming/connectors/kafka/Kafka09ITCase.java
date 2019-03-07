@@ -29,7 +29,7 @@ import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataInputViewStreamWrapper;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.streaming.api.functions.sink.SinkFunction;
+import org.apache.flink.streaming.api.functions.sink.DiscardingSink;
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
 import org.apache.flink.streaming.util.serialization.KeyedDeserializationSchema;
 
@@ -38,6 +38,7 @@ import org.junit.Test;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.util.Properties;
 
 /**
  * IT cases for Kafka 0.9 .
@@ -183,11 +184,13 @@ public class Kafka09ITCase extends KafkaConsumerTestBase {
 			boolean running = true;
 
 			@Override
-			public void run(SourceContext<String> ctx) throws Exception {
+			public void run(SourceContext<String> ctx) {
 				long i = 0;
 				while (running) {
 					byte[] data = new byte[] {1};
-					ctx.collect(new String(data)); // 1 byte
+					synchronized (ctx.getCheckpointLock()) {
+						ctx.collect(new String(data)); // 1 byte
+					}
 					if (i++ == 100L) {
 						running = false;
 					}
@@ -200,7 +203,12 @@ public class Kafka09ITCase extends KafkaConsumerTestBase {
 			}
 		});
 
-		stream.addSink(new FlinkKafkaProducer09<>(testTopic, new SimpleStringSchema(), standardProps)).setParallelism(1);
+		Properties producerProperties = new Properties();
+		producerProperties.putAll(standardProps);
+		producerProperties.putAll(secureProps);
+		producerProperties.put("retries", 3);
+
+		stream.addSink(new FlinkKafkaProducer09<>(testTopic, new SimpleStringSchema(), producerProperties));
 		env.execute("Produce 100 bytes of data to test topic");
 
 		// ---------- Consumer from Kafka in a ratelimited way -----------
@@ -211,7 +219,7 @@ public class Kafka09ITCase extends KafkaConsumerTestBase {
 		env.getConfig().disableSysoutLogging();
 
 		// ---------- RateLimiter config -------------
-		long globalRate = 3; // bytes/second
+		final long globalRate = 10; // bytes/second
 		FlinkKafkaConsumer09<String> consumer09 = new FlinkKafkaConsumer09<>(testTopic,
 			new StringDeserializer(globalRate), standardProps);
 		FlinkConnectorRateLimiter rateLimiter = new GuavaFlinkConnectorRateLimiter();
@@ -219,17 +227,12 @@ public class Kafka09ITCase extends KafkaConsumerTestBase {
 		consumer09.setRateLimiter(rateLimiter);
 
 		DataStream<String> stream1 = env.addSource(consumer09);
-		stream1.addSink(new SinkFunction<String>() {
-			@Override
-			public void invoke(String value, Context context) throws Exception {
-
-			}
-		});
+		stream1.addSink(new DiscardingSink<>());
 		env.execute("Consume 100 bytes of data from test topic");
 
 		// ------- Assertions --------------
 		Assert.assertNotNull(consumer09.getRateLimiter());
-		Assert.assertEquals(consumer09.getRateLimiter().getRate(), globalRate);
+		Assert.assertEquals(globalRate, consumer09.getRateLimiter().getRate());
 
 		deleteTestTopic(testTopic);
 	}
