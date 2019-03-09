@@ -49,11 +49,11 @@ import static org.apache.flink.util.Preconditions.checkArgument;
  * The difference is that BinaryRow is placed on a discontinuous memory, and the variable length
  * type can also be placed on a fixed length area (If it's short enough).
  */
-public final class BinaryRow extends BinaryFormat<Object> implements BaseRow {
+public final class BinaryRow extends BinaryFormat implements BaseRow {
 
 	public static final boolean LITTLE_ENDIAN = (ByteOrder.nativeOrder() == ByteOrder.LITTLE_ENDIAN);
 	private static final long FIRST_BYTE_ZERO = LITTLE_ENDIAN ? 0xFFF0 : 0x0FFF;
-	private static final int HEADER_SIZE_IN_BITS = 8;
+	public static final int HEADER_SIZE_IN_BITS = 8;
 
 	public static int calculateBitSetWidthInBytes(int arity) {
 		return ((arity + 63 + HEADER_SIZE_IN_BITS) / 64) * 8;
@@ -99,18 +99,6 @@ public final class BinaryRow extends BinaryFormat<Object> implements BaseRow {
 	@Override
 	public void setHeader(byte header) {
 		segments[0].put(offset, header);
-	}
-
-	public void pointTo(MemorySegment segment, int offset, int sizeInBytes) {
-		this.segments = new MemorySegment[] {segment};
-		this.offset = offset;
-		this.sizeInBytes = sizeInBytes;
-	}
-
-	public void pointTo(MemorySegment[] segments, int offset, int sizeInBytes) {
-		this.segments = segments;
-		this.offset = offset;
-		this.sizeInBytes = sizeInBytes;
 	}
 
 	public void setTotalSize(int sizeInBytes) {
@@ -164,6 +152,37 @@ public final class BinaryRow extends BinaryFormat<Object> implements BaseRow {
 		assertIndexIsValid(pos);
 		setNotNullAt(pos);
 		segments[0].putChar(getFieldOffset(pos), value);
+	}
+
+	@Override
+	public void setDecimal(int pos, Decimal value, int precision) {
+		assertIndexIsValid(pos);
+
+		if (Decimal.isCompact(precision)) {
+			// compact format
+			setLong(pos, value.toUnscaledLong());
+		} else {
+			int fieldOffset = getFieldOffset(pos);
+			int cursor = (int) (segments[0].getLong(fieldOffset) >>> 32);
+			assert cursor > 0 : "invalid cursor " + cursor;
+			// zero-out the bytes
+			SegmentsUtil.setLong(segments, offset + cursor, 0L);
+			SegmentsUtil.setLong(segments, offset + cursor + 8, 0L);
+
+			if (value == null) {
+				setNullAt(pos);
+				// keep the offset for future update
+				segments[0].putLong(fieldOffset, ((long) cursor) << 32);
+			} else {
+
+				byte[] bytes = value.toUnscaledBytes();
+				assert(bytes.length <= 16);
+
+				// Write the bytes to the variable length portion.
+				SegmentsUtil.copyFromBytes(segments, offset + cursor, bytes, 0, bytes.length);
+				setLong(pos, ((long) cursor << 32) | ((long) bytes.length));
+			}
+		}
 	}
 
 	@Override
@@ -251,6 +270,26 @@ public final class BinaryRow extends BinaryFormat<Object> implements BaseRow {
 	}
 
 	@Override
+	public Decimal getDecimal(int pos, int precision, int scale) {
+		assertIndexIsValid(pos);
+
+		if (Decimal.isCompact(precision)) {
+			return Decimal.fromUnscaledLong(precision, scale,
+					segments[0].getLong(getFieldOffset(pos)));
+		}
+
+		int fieldOffset = getFieldOffset(pos);
+		final long offsetAndSize = segments[0].getLong(fieldOffset);
+		return Decimal.readDecimalFieldFromSegments(segments, offset, offsetAndSize, precision, scale);
+	}
+
+	@Override
+	public <T> BinaryGeneric<T> getGeneric(int pos) {
+		assertIndexIsValid(pos);
+		return BinaryGeneric.readBinaryGenericFieldFromSegments(segments, offset, getLong(pos));
+	}
+
+	@Override
 	public BinaryArray getArray(int pos) {
 		assertIndexIsValid(pos);
 		return BinaryArray.readBinaryArrayFieldFromSegments(segments, offset, getLong(pos));
@@ -260,6 +299,12 @@ public final class BinaryRow extends BinaryFormat<Object> implements BaseRow {
 	public BinaryMap getMap(int pos) {
 		assertIndexIsValid(pos);
 		return BinaryMap.readBinaryMapFieldFromSegments(segments, offset, getLong(pos));
+	}
+
+	@Override
+	public BaseRow getRow(int pos, int numFields) {
+		assertIndexIsValid(pos);
+		return NestedRow.readNestedRowFieldFromSegments(segments, numFields, offset, getLong(pos));
 	}
 
 	/**
@@ -299,5 +344,10 @@ public final class BinaryRow extends BinaryFormat<Object> implements BaseRow {
 		byte[] bytes = SegmentsUtil.copyToBytes(segments, offset, sizeInBytes);
 		reuse.pointTo(MemorySegmentFactory.wrap(bytes), 0, sizeInBytes);
 		return reuse;
+	}
+
+	@Override
+	public int hashCode() {
+		return SegmentsUtil.hashByWords(segments, offset, sizeInBytes);
 	}
 }
