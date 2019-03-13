@@ -26,3 +26,4 @@ import org.apache.flink.table.plan.nodes.physical.FlinkPhysicalRel
 trait BatchPhysicalRel extends FlinkPhysicalRel {
 
 }
+

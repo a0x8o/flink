@@ -34,8 +34,11 @@ public final class TableFunctionDefinition extends FunctionDefinition {
 	private final TableFunction tableFunction;
 	private final TypeInformation resultType;
 
-	public TableFunctionDefinition(TableFunction tableFunction, TypeInformation resultType) {
-		super(tableFunction.getClass().getName(), TABLE_FUNCTION);
+	public TableFunctionDefinition(
+			String name,
+			TableFunction tableFunction,
+			TypeInformation resultType) {
+		super(name, TABLE_FUNCTION);
 		this.tableFunction = Preconditions.checkNotNull(tableFunction);
 		this.resultType = Preconditions.checkNotNull(resultType);
 	}
