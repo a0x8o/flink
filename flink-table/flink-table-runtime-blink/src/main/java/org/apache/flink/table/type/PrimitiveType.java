@@ -23,6 +23,8 @@ package org.apache.flink.table.type;
  */
 public abstract class PrimitiveType implements AtomicType {
 
+	private static final long serialVersionUID = 1L;
+
 	@Override
 	public boolean equals(Object o) {
 		return this == o || o != null && getClass() == o.getClass();

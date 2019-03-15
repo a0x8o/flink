@@ -32,12 +32,12 @@ final class LogicalWatermarkAssigner(
     cluster: RelOptCluster,
     traits: RelTraitSet,
     input: RelNode,
-    rowtimeField: String,
-    watermarkOffset: Long)
-  extends WatermarkAssigner(cluster, traits, input, rowtimeField, watermarkOffset) {
+    rowtimeFieldIndex: Option[Int],
+    watermarkDelay: Option[Long])
+  extends WatermarkAssigner(cluster, traits, input, rowtimeFieldIndex, watermarkDelay) {
 
   override def copy(traitSet: RelTraitSet, inputs: util.List[RelNode]): RelNode = {
-    new LogicalWatermarkAssigner(cluster, traits, inputs.get(0), rowtimeField, watermarkOffset)
+    new LogicalWatermarkAssigner(cluster, traits, inputs.get(0), rowtimeFieldIndex, watermarkDelay)
   }
 }
 

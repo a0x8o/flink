@@ -19,8 +19,9 @@
 package org.apache.flink.table.codegen
 
 import org.apache.flink.api.common.typeinfo.TypeInformation
+import org.apache.flink.core.memory.MemorySegment
 import org.apache.flink.table.`type`._
-import org.apache.flink.table.dataformat._
+import org.apache.flink.table.dataformat.{Decimal, _}
 import org.apache.flink.table.typeutils.TypeCheckUtils
 
 import java.lang.reflect.Method
@@ -33,12 +34,39 @@ object CodeGenUtils {
 
   val DEFAULT_TIMEZONE_TERM = "timeZone"
 
+  val DEFAULT_INPUT1_TERM = "in1"
+
+  val DEFAULT_INPUT2_TERM = "in2"
+
+  val DEFAULT_COLLECTOR_TERM = "c"
+
+  val DEFAULT_OUT_RECORD_TERM = "out"
+
+  val DEFAULT_OPERATOR_COLLECTOR_TERM = "output"
+
+  val DEFAULT_OUT_RECORD_WRITER_TERM = "outWriter"
+
+  val DEFAULT_CONTEXT_TERM = "ctx"
+
   // -------------------------- CANONICAL CLASS NAMES ---------------------------------------
 
   val BINARY_ROW: String = className[BinaryRow]
+
+  val BINARY_ARRAY: String = className[BinaryArray]
+
+  val BINARY_GENERIC: String = className[BinaryGeneric[_]]
+
   val BINARY_STRING: String = className[BinaryString]
+
+  val BINARY_MAP: String = className[BinaryMap]
+
   val BASE_ROW: String = className[BaseRow]
+
   val GENERIC_ROW: String = className[GenericRow]
+
+  val DECIMAL: String = className[Decimal]
+
+  val SEGMENT: String = className[MemorySegment]
 
   // ----------------------------------------------------------------------------------------
 
@@ -58,15 +86,6 @@ object CodeGenUtils {
     * Retrieve the canonical name of a class type.
     */
   def className[T](implicit m: Manifest[T]): String = m.runtimeClass.getCanonicalName
-
-  def needCopyForType(t: InternalType): Boolean = t match {
-    case InternalTypes.STRING => true
-    case _: ArrayType => true
-    case _: MapType => true
-    case _: RowType => true
-    case _: GenericType[_] => true
-    case _ => false
-  }
 
   // when casting we first need to unbox Primitives, for example,
   // float a = 1.0f;
@@ -108,9 +127,9 @@ object CodeGenUtils {
     case InternalTypes.TIMESTAMP => boxedTypeTermForType(InternalTypes.LONG)
 
     case InternalTypes.STRING => BINARY_STRING
+    case InternalTypes.BINARY => "byte[]"
 
     case _: DecimalType => className[Decimal]
-    // BINARY is also an ArrayType and uses BinaryArray internally too
     case _: ArrayType => className[BinaryArray]
     case _: MapType => className[BinaryMap]
     case _: RowType => className[BaseRow]
@@ -185,6 +204,16 @@ object CodeGenUtils {
       throw new CodeGenException("Boolean expression type expected.")
     }
 
+  def requireTemporal(genExpr: GeneratedExpression): Unit =
+    if (!TypeCheckUtils.isTemporal(genExpr.resultType)) {
+      throw new CodeGenException("Temporal expression type expected.")
+    }
+
+  def requireTimeInterval(genExpr: GeneratedExpression): Unit =
+    if (!TypeCheckUtils.isTimeInterval(genExpr.resultType)) {
+      throw new CodeGenException("Interval expression type expected.")
+    }
+
   def requireArray(genExpr: GeneratedExpression): Unit =
     if (!TypeCheckUtils.isArray(genExpr.resultType)) {
       throw new CodeGenException("Array expression type expected.")
@@ -200,34 +229,267 @@ object CodeGenUtils {
       throw new CodeGenException("Integer expression type expected.")
     }
 
-  // --------------------------- Generate Utils ---------------------------------------
+  // --------------------------------------------------------------------------------
+  // DataFormat Operations
+  // --------------------------------------------------------------------------------
 
-  def generateOutputRecordStatement(
-      t: InternalType,
-      clazz: Class[_],
-      outRecordTerm: String,
-      outRecordWriterTerm: Option[String] = None): String = {
-    t match {
-      case rt: RowType if clazz == classOf[BinaryRow] =>
-        val writerTerm = outRecordWriterTerm.getOrElse(
-          throw new CodeGenException("No writer is specified when writing BinaryRow record.")
-        )
-        val binaryRowWriter = className[BinaryRowWriter]
-        val typeTerm = clazz.getCanonicalName
+  // -------------------------- BaseRow Read Access -------------------------------
+
+  def baseRowFieldReadAccess(
+      ctx: CodeGeneratorContext,
+      index: Int,
+      rowTerm: String,
+      fieldType: InternalType) : String =
+    baseRowFieldReadAccess(ctx, index.toString, rowTerm, fieldType)
+
+  def baseRowFieldReadAccess(
+      ctx: CodeGeneratorContext,
+      indexTerm: String,
+      rowTerm: String,
+      fieldType: InternalType) : String =
+    fieldType match {
+      // primitive types
+      case InternalTypes.BOOLEAN => s"$rowTerm.getBoolean($indexTerm)"
+      case InternalTypes.BYTE => s"$rowTerm.getByte($indexTerm)"
+      case InternalTypes.CHAR => s"$rowTerm.getChar($indexTerm)"
+      case InternalTypes.SHORT => s"$rowTerm.getShort($indexTerm)"
+      case InternalTypes.INT => s"$rowTerm.getInt($indexTerm)"
+      case InternalTypes.LONG => s"$rowTerm.getLong($indexTerm)"
+      case InternalTypes.FLOAT => s"$rowTerm.getFloat($indexTerm)"
+      case InternalTypes.DOUBLE => s"$rowTerm.getDouble($indexTerm)"
+      case InternalTypes.STRING => s"$rowTerm.getString($indexTerm)"
+      case InternalTypes.BINARY => s"$rowTerm.getBinary($indexTerm)"
+      case dt: DecimalType => s"$rowTerm.getDecimal($indexTerm, ${dt.precision()}, ${dt.scale()})"
+
+      // temporal types
+      case _: DateType => s"$rowTerm.getInt($indexTerm)"
+      case InternalTypes.TIME => s"$rowTerm.getInt($indexTerm)"
+      case _: TimestampType => s"$rowTerm.getLong($indexTerm)"
+
+      // complex types
+      case _: ArrayType => s"$rowTerm.getArray($indexTerm)"
+      case _: MapType  => s"$rowTerm.getMap($indexTerm)"
+      case rt: RowType => s"$rowTerm.getRow($indexTerm, ${rt.getArity})"
+
+      case _: GenericType[_] => s"$rowTerm.getGeneric($indexTerm)"
+    }
+
+  // -------------------------- BaseRow Set Field -------------------------------
+
+  def baseRowSetField(
+    ctx: CodeGeneratorContext,
+    rowClass: Class[_ <: BaseRow],
+    rowTerm: String,
+    indexTerm: String,
+    fieldExpr: GeneratedExpression,
+    binaryRowWriterTerm: Option[String]): String = {
+
+    val fieldType = fieldExpr.resultType
+    val fieldTerm = fieldExpr.resultTerm
+
+    if (rowClass == classOf[BinaryRow]) {
+      binaryRowWriterTerm match {
+        case Some(writer) =>
+          // use writer to set field
+          val writeField = binaryWriterWriteField(ctx, indexTerm, fieldTerm, writer, fieldType)
+          if (ctx.nullCheck) {
+            s"""
+               |${fieldExpr.code}
+               |if (${fieldExpr.nullTerm}) {
+               |  ${binaryWriterWriteNull(indexTerm, writer, fieldType)};
+               |} else {
+               |  $writeField;
+               |}
+             """.stripMargin
+          } else {
+            s"""
+               |${fieldExpr.code}
+               |$writeField;
+             """.stripMargin
+          }
+
+        case None =>
+          // directly set field to BinaryRow, this depends on all the fields are fixed length
+          val writeField = binaryRowFieldSetAccess(indexTerm, rowTerm, fieldType, fieldTerm)
+          if (ctx.nullCheck) {
+            s"""
+               |${fieldExpr.code}
+               |if (${fieldExpr.nullTerm}) {
+               |  ${binaryRowSetNull(indexTerm, rowTerm, fieldType)};
+               |} else {
+               |  $writeField;
+               |}
+             """.stripMargin
+          } else {
+            s"""
+               |${fieldExpr.code}
+               |$writeField;
+             """.stripMargin
+          }
+      }
+    } else if (rowClass == classOf[GenericRow] || rowClass == classOf[BoxedWrapperRow]) {
+      val writeField = if (rowClass == classOf[GenericRow]) {
+        s"$rowTerm.setField($indexTerm, $fieldTerm);"
+      } else {
+        boxedWrapperRowFieldSetAccess(rowTerm, indexTerm, fieldTerm, fieldType)
+      }
+      if (ctx.nullCheck) {
         s"""
-           |final $typeTerm $outRecordTerm = new $typeTerm(${rt.getArity});
-           |final $binaryRowWriter $writerTerm = new $binaryRowWriter($outRecordTerm);
-           |""".stripMargin.trim
-      case rt: RowType if classOf[ObjectArrayRow].isAssignableFrom(clazz) =>
-        val typeTerm = clazz.getCanonicalName
-        s"final $typeTerm $outRecordTerm = new $typeTerm(${rt.getArity});"
-      case _: RowType if clazz == classOf[JoinedRow] =>
-        val typeTerm = clazz.getCanonicalName
-        s"final $typeTerm $outRecordTerm = new $typeTerm();"
-      case _ =>
-        val typeTerm = boxedTypeTermForType(t)
-        s"final $typeTerm $outRecordTerm = new $typeTerm();"
+           |${fieldExpr.code}
+           |if (${fieldExpr.nullTerm}) {
+           |  $rowTerm.setNullAt($indexTerm);
+           |} else {
+           |  $writeField;
+           |}
+          """.stripMargin
+      } else {
+        s"""
+           |${fieldExpr.code}
+           |$writeField;
+         """.stripMargin
+      }
+    } else {
+      throw new UnsupportedOperationException("Not support set field for " + rowClass)
     }
   }
 
+  // -------------------------- BinaryRow Set Field -------------------------------
+
+  def binaryRowSetNull(index: Int, rowTerm: String, t: InternalType): String =
+    binaryRowSetNull(index.toString, rowTerm, t)
+
+  def binaryRowSetNull(indexTerm: String, rowTerm: String, t: InternalType): String = t match {
+    case d: DecimalType if !Decimal.isCompact(d.precision()) =>
+      s"$rowTerm.setDecimal($indexTerm, null, ${d.precision()}, ${d.scale()})"
+    case _ => s"$rowTerm.setNullAt($indexTerm)"
+  }
+
+  def binaryRowFieldSetAccess(
+      index: Int,
+      binaryRowTerm: String,
+      fieldType: InternalType,
+      fieldValTerm: String): String =
+    binaryRowFieldSetAccess(index.toString, binaryRowTerm, fieldType, fieldValTerm)
+
+  def binaryRowFieldSetAccess(
+      index: String,
+      binaryRowTerm: String,
+      fieldType: InternalType,
+      fieldValTerm: String): String =
+    fieldType match {
+      case InternalTypes.INT => s"$binaryRowTerm.setInt($index, $fieldValTerm)"
+      case InternalTypes.LONG => s"$binaryRowTerm.setLong($index, $fieldValTerm)"
+      case InternalTypes.SHORT => s"$binaryRowTerm.setShort($index, $fieldValTerm)"
+      case InternalTypes.BYTE => s"$binaryRowTerm.setByte($index, $fieldValTerm)"
+      case InternalTypes.FLOAT => s"$binaryRowTerm.setFloat($index, $fieldValTerm)"
+      case InternalTypes.DOUBLE => s"$binaryRowTerm.setDouble($index, $fieldValTerm)"
+      case InternalTypes.BOOLEAN => s"$binaryRowTerm.setBoolean($index, $fieldValTerm)"
+      case InternalTypes.CHAR =>  s"$binaryRowTerm.setChar($index, $fieldValTerm)"
+      case _: DateType =>  s"$binaryRowTerm.setInt($index, $fieldValTerm)"
+      case InternalTypes.TIME =>  s"$binaryRowTerm.setInt($index, $fieldValTerm)"
+      case _: TimestampType =>  s"$binaryRowTerm.setLong($index, $fieldValTerm)"
+      case d: DecimalType =>
+        s"$binaryRowTerm.setDecimal($index, $fieldValTerm, ${d.precision()}, ${d.scale()})"
+      case _ =>
+        throw new CodeGenException("Fail to find binary row field setter method of InternalType "
+          + fieldType + ".")
+    }
+
+  // -------------------------- BoxedWrapperRow Set Field -------------------------------
+
+  def boxedWrapperRowFieldSetAccess(
+      rowTerm: String,
+      indexTerm: String,
+      fieldTerm: String,
+      fieldType: InternalType): String =
+    fieldType match {
+      case InternalTypes.INT => s"$rowTerm.setInt($indexTerm, $fieldTerm)"
+      case InternalTypes.LONG => s"$rowTerm.setLong($indexTerm, $fieldTerm)"
+      case InternalTypes.SHORT => s"$rowTerm.setShort($indexTerm, $fieldTerm)"
+      case InternalTypes.BYTE => s"$rowTerm.setByte($indexTerm, $fieldTerm)"
+      case InternalTypes.FLOAT => s"$rowTerm.setFloat($indexTerm, $fieldTerm)"
+      case InternalTypes.DOUBLE => s"$rowTerm.setDouble($indexTerm, $fieldTerm)"
+      case InternalTypes.BOOLEAN => s"$rowTerm.setBoolean($indexTerm, $fieldTerm)"
+      case InternalTypes.CHAR =>  s"$rowTerm.setChar($indexTerm, $fieldTerm)"
+      case _: DateType =>  s"$rowTerm.setInt($indexTerm, $fieldTerm)"
+      case InternalTypes.TIME =>  s"$rowTerm.setInt($indexTerm, $fieldTerm)"
+      case _: TimestampType =>  s"$rowTerm.setLong($indexTerm, $fieldTerm)"
+      case _ => s"$rowTerm.setNonPrimitiveValue($indexTerm, $fieldTerm)"
+    }
+
+  // -------------------------- BinaryArray Set Access -------------------------------
+
+  def binaryArraySetNull(
+      index: Int,
+      arrayTerm: String,
+      elementType: InternalType): String = elementType match {
+    case InternalTypes.BOOLEAN => s"$arrayTerm.setNullBoolean($index)"
+    case InternalTypes.BYTE => s"$arrayTerm.setNullByte($index)"
+    case InternalTypes.CHAR => s"$arrayTerm.setNullChar($index)"
+    case InternalTypes.SHORT => s"$arrayTerm.setNullShort($index)"
+    case InternalTypes.INT => s"$arrayTerm.setNullInt($index)"
+    case InternalTypes.LONG => s"$arrayTerm.setNullLong($index)"
+    case InternalTypes.FLOAT => s"$arrayTerm.setNullFloat($index)"
+    case InternalTypes.DOUBLE => s"$arrayTerm.setNullDouble($index)"
+    case InternalTypes.TIME => s"$arrayTerm.setNullInt($index)"
+    case _: DateType => s"$arrayTerm.setNullInt($index)"
+    case _: TimestampType => s"$arrayTerm.setNullLong($index)"
+    case _ => s"$arrayTerm.setNullLong($index)"
+  }
+
+  // -------------------------- BinaryWriter Write -------------------------------
+
+  def binaryWriterWriteNull(index: Int, writerTerm: String, t: InternalType): String =
+    binaryWriterWriteNull(index.toString, writerTerm, t)
+
+  def binaryWriterWriteNull(
+      indexTerm: String,
+      writerTerm: String,
+      t: InternalType): String = t match {
+    case d: DecimalType if !Decimal.isCompact(d.precision()) =>
+      s"$writerTerm.writeDecimal($indexTerm, null, ${d.precision()})"
+    case _ => s"$writerTerm.setNullAt($indexTerm)"
+  }
+
+
+  def binaryWriterWriteField(
+      ctx: CodeGeneratorContext,
+      index: Int,
+      fieldValTerm: String,
+      writerTerm: String,
+      fieldType: InternalType): String =
+    binaryWriterWriteField(ctx, index.toString, fieldValTerm, writerTerm, fieldType)
+
+  def binaryWriterWriteField(
+      ctx: CodeGeneratorContext,
+      indexTerm: String,
+      fieldValTerm: String,
+      writerTerm: String,
+      fieldType: InternalType): String =
+    fieldType match {
+      case InternalTypes.INT => s"$writerTerm.writeInt($indexTerm, $fieldValTerm)"
+      case InternalTypes.LONG => s"$writerTerm.writeLong($indexTerm, $fieldValTerm)"
+      case InternalTypes.SHORT => s"$writerTerm.writeShort($indexTerm, $fieldValTerm)"
+      case InternalTypes.BYTE => s"$writerTerm.writeByte($indexTerm, $fieldValTerm)"
+      case InternalTypes.FLOAT => s"$writerTerm.writeFloat($indexTerm, $fieldValTerm)"
+      case InternalTypes.DOUBLE => s"$writerTerm.writeDouble($indexTerm, $fieldValTerm)"
+      case InternalTypes.BOOLEAN => s"$writerTerm.writeBoolean($indexTerm, $fieldValTerm)"
+      case InternalTypes.BINARY => s"$writerTerm.writeBinary($indexTerm, $fieldValTerm)"
+      case InternalTypes.STRING => s"$writerTerm.writeString($indexTerm, $fieldValTerm)"
+      case d: DecimalType =>
+        s"$writerTerm.writeDecimal($indexTerm, $fieldValTerm, ${d.precision()})"
+      case InternalTypes.CHAR => s"$writerTerm.writeChar($indexTerm, $fieldValTerm)"
+      case _: DateType => s"$writerTerm.writeInt($indexTerm, $fieldValTerm)"
+      case InternalTypes.TIME => s"$writerTerm.writeInt($indexTerm, $fieldValTerm)"
+      case _: TimestampType => s"$writerTerm.writeLong($indexTerm, $fieldValTerm)"
+
+      // complex types
+      case _: ArrayType => s"$writerTerm.writeArray($indexTerm, $fieldValTerm)"
+      case _: MapType => s"$writerTerm.writeMap($indexTerm, $fieldValTerm)"
+      case _: RowType =>
+        val serializerTerm = ctx.addReusableTypeSerializer(fieldType)
+        s"$writerTerm.writeRow($indexTerm, $fieldValTerm, $serializerTerm)"
+
+      case _: GenericType[_] => s"$writerTerm.writeGeneric($indexTerm, $fieldValTerm)"
+    }
 }

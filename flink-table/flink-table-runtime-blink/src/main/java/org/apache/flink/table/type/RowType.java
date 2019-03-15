@@ -31,6 +31,8 @@ import java.util.Arrays;
  */
 public class RowType implements InternalType {
 
+	private static final long serialVersionUID = 1L;
+
 	private final InternalType[] types;
 
 	private final String[] fieldNames;
@@ -104,7 +106,8 @@ public class RowType implements InternalType {
 		RowType that = (RowType) o;
 
 		// RowType comparisons should not compare names and are compatible with the behavior of CompositeTypeInfo.
-		return Arrays.equals(getFieldTypes(), that.getFieldTypes());
+		return Arrays.equals(getFieldTypes(), that.getFieldTypes()) &&
+			Arrays.equals(getFieldNames(), that.getFieldNames());
 	}
 
 	@Override
