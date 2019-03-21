@@ -83,7 +83,6 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
 import java.io.IOException;
-import java.net.URL;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -212,9 +211,6 @@ public class ExecutionGraph implements AccessExecutionGraph {
 	/** Listeners that receive messages when the entire job switches it status
 	 * (such as from RUNNING to FINISHED). */
 	private final List<JobStatusListener> jobStatusListeners;
-
-	/** Listeners that receive messages whenever a single task execution changes its status. */
-	private final List<ExecutionStatusListener> executionListeners;
 
 	/** The implementation that decides how to recover the failures of tasks. */
 	private final FailoverStrategy failoverStrategy;
@@ -410,7 +406,6 @@ public class ExecutionGraph implements AccessExecutionGraph {
 		this.currentExecutions = new ConcurrentHashMap<>(16);
 
 		this.jobStatusListeners  = new CopyOnWriteArrayList<>();
-		this.executionListeners = new CopyOnWriteArrayList<>();
 
 		this.stateTimestamps = new long[JobStatus.values().length];
 		this.stateTimestamps[JobStatus.CREATED.ordinal()] = System.currentTimeMillis();
@@ -600,26 +595,6 @@ public class ExecutionGraph implements AccessExecutionGraph {
 
 	// --------------------------------------------------------------------------------------------
 	//  Properties and Status of the Execution Graph
-	// --------------------------------------------------------------------------------------------
-
-	/**
-	 * Returns a list of BLOB keys referring to the JAR files required to run this job.
-	 *
-	 * @return list of BLOB keys referring to the JAR files required to run this job
-	 */
-	public Collection<PermanentBlobKey> getRequiredJarFiles() {
-		return jobInformation.getRequiredJarFileBlobKeys();
-	}
-
-	/**
-	 * Returns a list of classpaths referring to the directories/JAR files required to run this job.
-	 *
-	 * @return list of classpaths referring to the directories/JAR files required to run this job
-	 */
-	public Collection<URL> getRequiredClasspaths() {
-		return jobInformation.getRequiredClasspathURLs();
-	}
-
 	// --------------------------------------------------------------------------------------------
 
 	public void setJsonPlan(String jsonPlan) {
@@ -1779,12 +1754,6 @@ public class ExecutionGraph implements AccessExecutionGraph {
 		}
 	}
 
-	public void registerExecutionListener(ExecutionStatusListener listener) {
-		if (listener != null) {
-			executionListeners.add(listener);
-		}
-	}
-
 	private void notifyJobStatusChange(JobStatus newState, Throwable error) {
 		if (jobStatusListeners.size() > 0) {
 			final long timestamp = System.currentTimeMillis();
@@ -1804,23 +1773,6 @@ public class ExecutionGraph implements AccessExecutionGraph {
 			final Execution execution,
 			final ExecutionState newExecutionState,
 			final Throwable error) {
-
-		if (executionListeners.size() > 0) {
-			final ExecutionJobVertex vertex = execution.getVertex().getJobVertex();
-			final String message = error == null ? null : ExceptionUtils.stringifyException(error);
-			final long timestamp = System.currentTimeMillis();
-
-			for (ExecutionStatusListener listener : executionListeners) {
-				try {
-					listener.executionStatusChanged(
-							getJobID(), vertex.getJobVertexId(), vertex.getJobVertex().getName(),
-							vertex.getParallelism(), execution.getParallelSubtaskIndex(),
-							execution.getAttemptId(), newExecutionState, timestamp, message);
-				} catch (Throwable t) {
-					LOG.warn("Error while notifying ExecutionStatusListener", t);
-				}
-			}
-		}
 
 		// see what this means for us. currently, the first FAILED state means -> FAILED
 		if (newExecutionState == ExecutionState.FAILED) {

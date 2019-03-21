@@ -22,7 +22,7 @@ import java.math.{BigDecimal => JBigDecimal}
 import java.sql.{Date, Time, Timestamp}
 
 import org.apache.flink.api.common.typeinfo.{SqlTimeTypeInfo, TypeInformation}
-import org.apache.flink.table.api.{Table, ValidationException}
+import org.apache.flink.table.api.{Over, Table, ValidationException}
 import org.apache.flink.table.expressions.ApiExpressionUtils._
 import org.apache.flink.table.expressions.BuiltInFunctionDefinitions.{E => FDE, UUID => FDUUID, _}
 import org.apache.flink.table.expressions._
@@ -1005,7 +1005,7 @@ trait ImplicitExpressionConversions {
   }
 
   implicit class UnresolvedFieldExpression(s: Symbol) extends ImplicitExpressionOperations {
-    def expr: Expression = fieldRef(s.name)
+    def expr: Expression = unresolvedFieldRef(s.name)
   }
 
   implicit class LiteralLongExpression(l: Long) extends ImplicitExpressionOperations {
@@ -1124,7 +1124,7 @@ trait ImplicitExpressionConversions {
     symbol(sym)
 
   implicit def symbol2FieldExpression(sym: Symbol): Expression =
-    fieldRef(sym.name)
+    unresolvedFieldRef(sym.name)
 
   implicit def byte2Literal(b: Byte): Expression = valueLiteral(b)
 

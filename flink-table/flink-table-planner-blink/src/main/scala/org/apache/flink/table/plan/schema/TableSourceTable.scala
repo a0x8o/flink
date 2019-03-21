@@ -22,8 +22,8 @@ import org.apache.flink.table.plan.stats.FlinkStatistic
 import org.apache.flink.table.sources.TableSource
 
 /**
-  * Abstract class which define the interfaces required to
-  * convert a [[TableSource]] to a Calcite Table.
+  * Abstract class which define the interfaces required to convert a [[TableSource]] to
+  * a Calcite Table
   */
 abstract class TableSourceTable[T](
     val tableSource: TableSource[T],

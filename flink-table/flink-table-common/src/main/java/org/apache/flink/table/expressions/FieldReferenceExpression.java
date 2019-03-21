@@ -25,38 +25,53 @@ import org.apache.flink.util.Preconditions;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
-import java.util.Optional;
 
 /**
- * A reference to a field. The reference might be typed or not.
- *
- * <p>Whether a field reference has a type depends on the current planning phase. Usually, field
- * references used in the API have not been resolved/validated and, thus, have no type attached.
- * References that come out of the optimizer are likely to be resolved and typed.
+ * A reference to a field in an input. The reference contains:
+ * <ul>
+ *     <li>type</li>
+ *     <li>index of an input the field belongs to</li>
+ *     <li>index of a field within the corresponding input</li>
+ * </ul>
  */
 @PublicEvolving
 public final class FieldReferenceExpression implements Expression {
 
 	private final String name;
 
-	private final Optional<TypeInformation<?>> resultType;
+	private final TypeInformation<?> resultType;
 
-	public FieldReferenceExpression(String name) {
-		this.name = Preconditions.checkNotNull(name);
-		this.resultType = Optional.empty();
-	}
+	private final int inputIndex;
 
-	public FieldReferenceExpression(String name, TypeInformation<?> resultType) {
+	private final int fieldIndex;
+
+	public FieldReferenceExpression(
+			String name,
+			TypeInformation<?> resultType,
+			int inputIndex,
+			int fieldIndex) {
+		Preconditions.checkArgument(inputIndex >= 0, "Index of input should be a positive number");
+		Preconditions.checkArgument(fieldIndex >= 0, "Index of field should be a positive number");
 		this.name = Preconditions.checkNotNull(name);
-		this.resultType = Optional.of(resultType);
+		this.resultType = Preconditions.checkNotNull(resultType);
+		this.inputIndex = inputIndex;
+		this.fieldIndex = fieldIndex;
 	}
 
 	public String getName() {
 		return name;
 	}
 
-	public Optional<TypeInformation<?>> getResultType() {
+	public TypeInformation<?> getResultType() {
 		return resultType;
+	}
+
+	public int getInputIndex() {
+		return inputIndex;
+	}
+
+	public int getFieldIndex() {
+		return fieldIndex;
 	}
 
 	@Override
@@ -78,12 +93,15 @@ public final class FieldReferenceExpression implements Expression {
 			return false;
 		}
 		FieldReferenceExpression that = (FieldReferenceExpression) o;
-		return Objects.equals(name, that.name) && Objects.equals(resultType, that.resultType);
+		return Objects.equals(name, that.name) &&
+			Objects.equals(resultType, that.resultType) &&
+			inputIndex == that.inputIndex &&
+			fieldIndex == that.fieldIndex;
 	}
 
 	@Override
 	public int hashCode() {
-		return Objects.hash(name, resultType);
+		return Objects.hash(name, resultType, inputIndex, fieldIndex);
 	}
 
 	@Override

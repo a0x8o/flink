@@ -23,8 +23,6 @@ import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.state.State;
 import org.apache.flink.api.common.state.StateDescriptor;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
-import org.apache.flink.api.common.typeutils.TypeSerializerSchemaCompatibility;
-import org.apache.flink.api.common.typeutils.TypeSerializerSnapshot;
 import org.apache.flink.core.fs.CloseableRegistry;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.query.TaskKvStateRegistry;
@@ -36,9 +34,8 @@ import org.apache.flink.util.Preconditions;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Set;
 import java.util.stream.Stream;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
@@ -62,7 +59,7 @@ public abstract class AbstractKeyedStateBackend<K> implements
 	private K currentKey;
 
 	/** Listeners to changes of keyed context ({@link #currentKey}). */
-	private final Set<KeySelectionListener<K>> keySelectionListeners;
+	private final ArrayList<KeySelectionListener<K>> keySelectionListeners;
 
 	/** The key group of the currently active key. */
 	private int currentKeyGroup;
@@ -142,7 +139,7 @@ public abstract class AbstractKeyedStateBackend<K> implements
 		this.executionConfig = executionConfig;
 		this.keyGroupCompressionDecorator = keyGroupCompressionDecorator;
 		this.ttlTimeProvider = Preconditions.checkNotNull(ttlTimeProvider);
-		this.keySelectionListeners = new HashSet<>();
+		this.keySelectionListeners = new ArrayList<>(1);
 	}
 
 	private static StreamCompressionDecorator determineStreamCompression(ExecutionConfig executionConfig) {
@@ -183,7 +180,10 @@ public abstract class AbstractKeyedStateBackend<K> implements
 	}
 
 	private void notifyKeySelected(K newKey) {
-		keySelectionListeners.forEach(listener -> listener.keySelected(newKey));
+		// we prefer a for-loop over other iteration schemes for performance reasons here.
+		for (int i = 0; i < keySelectionListeners.size(); ++i) {
+			keySelectionListeners.get(i).keySelected(newKey);
+		}
 	}
 
 	@Override
@@ -202,12 +202,6 @@ public abstract class AbstractKeyedStateBackend<K> implements
 	@Override
 	public TypeSerializer<K> getKeySerializer() {
 		return keySerializerProvider.currentSchemaSerializer();
-	}
-
-	public TypeSerializerSchemaCompatibility<K> checkKeySerializerSchemaCompatibility(
-			TypeSerializerSnapshot<K> previousKeySerializerSnapshot) {
-
-		return keySerializerProvider.setPreviousSerializerSnapshotForRestoredState(previousKeySerializerSnapshot);
 	}
 
 	/**
