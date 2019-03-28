@@ -19,38 +19,44 @@
 package org.apache.flink.table.expressions;
 
 import org.apache.flink.annotation.PublicEvolving;
-import org.apache.flink.api.common.typeinfo.TypeInformation;
-import org.apache.flink.table.utils.TypeStringUtils;
 import org.apache.flink.util.Preconditions;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 /**
- * Expression that wraps {@link TypeInformation} as a literal.
+ * A call expression where the target function has not been resolved yet.
+ *
+ * <p>Instead of a {@link FunctionDefinition}, the call is identified by the function's name and needs to be lookup in
+ * a catalog
  */
 @PublicEvolving
-public final class TypeLiteralExpression implements Expression {
+public final class LookupCallExpression implements Expression {
 
-	private final TypeInformation<?> type;
+	private final String unresolvedName;
 
-	public TypeLiteralExpression(TypeInformation<?> type) {
-		this.type = Preconditions.checkNotNull(type);
-	}
+	private final List<Expression> args;
 
-	public TypeInformation<?> getType() {
-		return type;
+	public LookupCallExpression(String unresolvedFunction, List<Expression> args) {
+		this.unresolvedName = Preconditions.checkNotNull(unresolvedFunction);
+		this.args = Collections.unmodifiableList(new ArrayList<>(Preconditions.checkNotNull(args)));
 	}
 
 	@Override
 	public List<Expression> getChildren() {
-		return Collections.emptyList();
+		return this.args;
+	}
+
+	public String getUnresolvedName() {
+		return unresolvedName;
 	}
 
 	@Override
 	public <R> R accept(ExpressionVisitor<R> visitor) {
-		return visitor.visitTypeLiteral(this);
+		return visitor.visit(this);
 	}
 
 	@Override
@@ -61,17 +67,19 @@ public final class TypeLiteralExpression implements Expression {
 		if (o == null || getClass() != o.getClass()) {
 			return false;
 		}
-		TypeLiteralExpression that = (TypeLiteralExpression) o;
-		return Objects.equals(type, that.type);
+		LookupCallExpression that = (LookupCallExpression) o;
+		return Objects.equals(unresolvedName, that.unresolvedName) &&
+			Objects.equals(args, that.args);
 	}
 
 	@Override
 	public int hashCode() {
-		return Objects.hash(type);
+		return Objects.hash(unresolvedName, args);
 	}
 
 	@Override
 	public String toString() {
-		return TypeStringUtils.writeTypeInfo(type);
+		final List<String> argList = args.stream().map(Object::toString).collect(Collectors.toList());
+		return unresolvedName + "(" + String.join(", ", argList) + ")";
 	}
 }

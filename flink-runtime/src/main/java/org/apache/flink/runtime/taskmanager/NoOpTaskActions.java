@@ -16,24 +16,23 @@
  * limitations under the License.
  */
 
-package org.apache.flink.table.expressions
+package org.apache.flink.runtime.taskmanager;
 
-import org.apache.flink.table.validate.FunctionCatalog
+import org.apache.flink.api.common.JobID;
+import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
+import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 
 /**
-  * Bridges between API [[Expression]]s (for both Java and Scala) and final expression stack.
-  */
-class ExpressionBridge[E <: Expression](
-    functionCatalog: FunctionCatalog,
-    finalVisitor: ExpressionVisitor[E]) {
+ * A dummy implementation of the {@link TaskActions} which is mainly used for tests.
+ */
+public class NoOpTaskActions implements TaskActions {
 
-  private val callResolver = new LookupCallResolver(functionCatalog)
+	@Override
+	public void triggerPartitionProducerStateCheck(
+		JobID jobId,
+		IntermediateDataSetID intermediateDataSetId,
+		ResultPartitionID resultPartitionId) {}
 
-  def bridge(expression: Expression): E = {
-    // resolve calls
-    val resolvedExpressionTree = expression.accept(callResolver)
-
-    // convert to final expressions
-    resolvedExpressionTree.accept(finalVisitor)
-  }
+	@Override
+	public void failExternally(Throwable cause) {}
 }
