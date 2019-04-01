@@ -28,9 +28,11 @@ import org.apache.flink.table.calcite.{FlinkTypeFactory, RexAggLocalVariable, Re
 import org.apache.flink.table.codegen.CodeGenUtils.{requireTemporal, requireTimeInterval, _}
 import org.apache.flink.table.codegen.GenerateUtils._
 import org.apache.flink.table.codegen.GeneratedExpression.{NEVER_NULL, NO_CODE}
+import org.apache.flink.table.codegen.calls.{BinaryStringCallGen, FunctionGenerator, ScalarFunctionCallGen, TableFunctionCallGen}
 import org.apache.flink.table.codegen.calls.ScalarOperatorGens._
 import org.apache.flink.table.dataformat._
 import org.apache.flink.table.functions.sql.FlinkSqlOperatorTable._
+import org.apache.flink.table.functions.utils.{ScalarSqlFunction, TableSqlFunction}
 import org.apache.flink.table.typeutils.TypeCheckUtils.{isNumeric, isTemporal, isTimeInterval}
 import org.apache.flink.table.typeutils.{TimeIndicatorTypeInfo, TypeCheckUtils}
 
@@ -704,13 +706,27 @@ class ExprCodeGenerator(ctx: CodeGeneratorContext, nullableInput: Boolean)
       case STREAMRECORD_TIMESTAMP =>
         generateRowtimeAccess(ctx, contextTerm)
 
+      case ssf: ScalarSqlFunction =>
+        new ScalarFunctionCallGen(ssf.getScalarFunction).generate(ctx, operands, resultType)
+
+      case tsf: TableSqlFunction =>
+        new TableFunctionCallGen(tsf.getTableFunction).generate(ctx, operands, resultType)
+
       // advanced scalar functions
       case sqlOperator: SqlOperator =>
-        val explainCall = s"$sqlOperator(${operands.map(_.resultType).mkString(", ")})"
-        // TODO: support BinaryStringCallGen and  FunctionGenerator
-        throw new CodeGenException(s"Unsupported call: $explainCall \n" +
-          s"If you think this function should be supported, " +
-          s"you can create an issue and start a discussion for it.")
+        BinaryStringCallGen.generateCallExpression(ctx, operator, operands, resultType).getOrElse {
+          FunctionGenerator
+            .getCallGenerator(
+              sqlOperator,
+              operands.map(expr => expr.resultType),
+              resultType)
+            .getOrElse(
+              throw new CodeGenException(s"Unsupported call: " +
+              s"$sqlOperator(${operands.map(_.resultType).mkString(", ")}) \n" +
+              s"If you think this function should be supported, " +
+              s"you can create an issue and start a discussion for it."))
+            .generate(ctx, operands, resultType)
+        }
 
       // unknown or invalid
       case call@_ =>
