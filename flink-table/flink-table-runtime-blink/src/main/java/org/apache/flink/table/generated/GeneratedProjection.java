@@ -21,7 +21,7 @@ package org.apache.flink.table.generated;
 /**
  * Describes a generated {@link Projection}.
  */
-public final class GeneratedProjection extends GeneratedClass<Projection> {
+public class GeneratedProjection extends GeneratedClass<Projection> {
 
 	private static final long serialVersionUID = 1L;
 

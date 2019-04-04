@@ -18,11 +18,10 @@
 
 package org.apache.flink.table.api
 
+import org.apache.flink.table.`type`.TypeConverters.createExternalTypeInfoFromInternalType
 import org.apache.flink.table.calcite.FlinkTypeFactory._
 import org.apache.flink.table.expressions.Expression
 import org.apache.flink.table.functions.TemporalTableFunction
-import org.apache.flink.table.`type`.TypeConverters.createInternalTypeInfoFromInternalType
-
 import org.apache.calcite.rel.RelNode
 
 import _root_.scala.collection.JavaConversions._
@@ -45,7 +44,7 @@ class TableImpl(val tableEnv: TableEnvironment, relNode: RelNode) extends Table 
     val fieldNames = rowType.getFieldList.map(_.getName)
     val fieldTypes = rowType.getFieldList map { tp =>
       val internalType = toInternalType(tp.getType)
-      createInternalTypeInfoFromInternalType(internalType)
+      createExternalTypeInfoFromInternalType(internalType)
     }
     new TableSchema(fieldNames.toArray, fieldTypes.toArray)
   }
@@ -178,4 +177,20 @@ class TableImpl(val tableEnv: TableEnvironment, relNode: RelNode) extends Table 
   override def window(groupWindow: GroupWindow): GroupWindowedTable = ???
 
   override def window(overWindows: OverWindow*): OverWindowedTable = ???
+
+  override def addColumns(fields: String): Table = ???
+
+  override def addColumns(fields: Expression*): Table = ???
+
+  override def addOrReplaceColumns(fields: String): Table = ???
+
+  override def addOrReplaceColumns(fields: Expression*): Table = ???
+
+  override def renameColumns(fields: String): Table = ???
+
+  override def renameColumns(fields: Expression*): Table = ???
+
+  override def dropColumns(fields: String): Table = ???
+
+  override def dropColumns(fields: Expression*): Table = ???
 }

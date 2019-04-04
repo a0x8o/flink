@@ -19,6 +19,11 @@ package org.apache.flink
 
 package object table {
 
+  type JDouble = java.lang.Double
+
+  type JList[T] = java.util.List[T]
+  type JArrayList[T] = java.util.ArrayList[T]
+
   type CalcitePair[T, R] = org.apache.calcite.util.Pair[T, R]
 
 }

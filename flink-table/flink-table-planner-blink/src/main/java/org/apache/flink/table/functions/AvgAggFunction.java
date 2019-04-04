@@ -23,6 +23,9 @@ import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.table.expressions.Expression;
 import org.apache.flink.table.expressions.UnresolvedFieldReferenceExpression;
 import org.apache.flink.table.type.DecimalType;
+import org.apache.flink.table.type.InternalType;
+import org.apache.flink.table.type.InternalTypes;
+import org.apache.flink.table.type.TypeConverters;
 import org.apache.flink.table.typeutils.DecimalTypeInfo;
 
 import java.math.BigDecimal;
@@ -44,9 +47,7 @@ public abstract class AvgAggFunction extends DeclarativeAggregateFunction {
 	private UnresolvedFieldReferenceExpression sum = new UnresolvedFieldReferenceExpression("sum");
 	private UnresolvedFieldReferenceExpression count = new UnresolvedFieldReferenceExpression("count");
 
-	public TypeInformation getSumType() {
-		return Types.LONG;
-	}
+	public abstract TypeInformation getSumType();
 
 	@Override
 	public int operandCount() {
@@ -58,6 +59,14 @@ public abstract class AvgAggFunction extends DeclarativeAggregateFunction {
 		return new UnresolvedFieldReferenceExpression[] {
 				sum,
 				count};
+	}
+
+	@Override
+	public InternalType[] getAggBufferTypes() {
+		return new InternalType[] {
+				TypeConverters.createInternalTypeFromTypeInfo(getSumType()),
+				InternalTypes.LONG
+		};
 	}
 
 	@Override
@@ -109,6 +118,11 @@ public abstract class AvgAggFunction extends DeclarativeAggregateFunction {
 		@Override
 		public TypeInformation getResultType() {
 			return Types.DOUBLE;
+		}
+
+		@Override
+		public TypeInformation getSumType() {
+			return Types.LONG;
 		}
 	}
 
