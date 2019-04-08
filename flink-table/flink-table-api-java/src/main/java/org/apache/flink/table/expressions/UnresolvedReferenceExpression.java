@@ -19,7 +19,6 @@
 package org.apache.flink.table.expressions;
 
 import org.apache.flink.annotation.PublicEvolving;
-import org.apache.flink.table.operations.TableOperation;
 import org.apache.flink.util.Preconditions;
 
 import java.util.Collections;
@@ -27,27 +26,22 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * Expression that references another table.
+ * An unresolved reference to a field or table.
  *
- * <p>This is a pure API expression that is translated into uncorrelated sub-queries by the planner.
+ * <p>This is a purely API facing expression that will be resolved into
+ * {@link FieldReferenceExpression} or {@link TableReferenceExpression}.
  */
 @PublicEvolving
-public final class TableReferenceExpression implements Expression {
+public final class UnresolvedReferenceExpression implements Expression {
 
 	private final String name;
-	private final TableOperation tableOperation;
 
-	public TableReferenceExpression(String name, TableOperation tableOperation) {
+	public UnresolvedReferenceExpression(String name) {
 		this.name = Preconditions.checkNotNull(name);
-		this.tableOperation = Preconditions.checkNotNull(tableOperation);
 	}
 
 	public String getName() {
 		return name;
-	}
-
-	public TableOperation getTableOperation() {
-		return tableOperation;
 	}
 
 	@Override
@@ -68,14 +62,13 @@ public final class TableReferenceExpression implements Expression {
 		if (o == null || getClass() != o.getClass()) {
 			return false;
 		}
-		TableReferenceExpression that = (TableReferenceExpression) o;
-		return Objects.equals(name, that.name) &&
-			Objects.equals(tableOperation, that.tableOperation);
+		UnresolvedReferenceExpression that = (UnresolvedReferenceExpression) o;
+		return Objects.equals(name, that.name);
 	}
 
 	@Override
 	public int hashCode() {
-		return Objects.hash(name, tableOperation);
+		return Objects.hash(name);
 	}
 
 	@Override

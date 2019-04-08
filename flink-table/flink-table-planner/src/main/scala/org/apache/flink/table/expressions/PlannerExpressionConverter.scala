@@ -699,7 +699,7 @@ class PlannerExpressionConverter private extends ApiExpressionVisitor[PlannerExp
       fieldReference.getResultType)
   }
 
-  override def visitUnresolvedField(fieldReference: UnresolvedFieldReferenceExpression)
+  override def visitUnresolvedReference(fieldReference: UnresolvedReferenceExpression)
     : PlannerExpression = {
     UnresolvedFieldReference(fieldReference.getName)
   }
@@ -711,7 +711,7 @@ class PlannerExpressionConverter private extends ApiExpressionVisitor[PlannerExp
   override def visitTableReference(tableRef: TableReferenceExpression): PlannerExpression = {
     TableReference(
       tableRef.asInstanceOf[TableReferenceExpression].getName,
-      tableRef.asInstanceOf[TableReferenceExpression].getTable
+      tableRef.asInstanceOf[TableReferenceExpression].getTableOperation
     )
   }
 
