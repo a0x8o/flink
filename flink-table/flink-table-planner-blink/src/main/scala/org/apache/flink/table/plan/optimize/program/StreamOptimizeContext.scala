@@ -23,4 +23,10 @@ package org.apache.flink.table.plan.optimize.program
   */
 trait StreamOptimizeContext extends FlinkOptimizeContext {
 
+  /**
+    * Returns true if the sink requests updates as retraction messages
+    * defined in [[org.apache.flink.table.plan.optimize.StreamOptimizer.optimize]].
+    */
+  def updateAsRetraction: Boolean
+
 }
