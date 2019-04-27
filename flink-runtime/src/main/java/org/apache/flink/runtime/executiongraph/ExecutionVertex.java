@@ -32,7 +32,6 @@ import org.apache.flink.runtime.checkpoint.JobManagerTaskRestore;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.deployment.InputChannelDeploymentDescriptor;
 import org.apache.flink.runtime.deployment.InputGateDeploymentDescriptor;
-import org.apache.flink.runtime.deployment.PartialInputChannelDeploymentDescriptor;
 import org.apache.flink.runtime.deployment.ResultPartitionDeploymentDescriptor;
 import org.apache.flink.runtime.deployment.TaskDeploymentDescriptor;
 import org.apache.flink.runtime.execution.ExecutionState;
@@ -635,6 +634,11 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 					getExecutionGraph().vertexUnFinished();
 				}
 
+				// reset the intermediate results
+				for (IntermediateResultPartition resultPartition : resultPartitions.values()) {
+					resultPartition.resetForNewExecution();
+				}
+
 				return newExecution;
 			}
 			else {
@@ -727,12 +731,8 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 		}
 	}
 
-	public void cachePartitionInfo(PartialInputChannelDeploymentDescriptor partitionInfo){
+	void cachePartitionInfo(PartitionInfo partitionInfo){
 		getCurrentExecutionAttempt().cachePartitionInfo(partitionInfo);
-	}
-
-	void sendPartitionInfos() {
-		currentExecution.sendPartitionInfos();
 	}
 
 	/**
@@ -857,10 +857,11 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 			}
 		}
 
+		final InputChannelDeploymentDescriptor[] icddArray = new InputChannelDeploymentDescriptor[0];
+
 		for (ExecutionEdge[] edges : inputEdges) {
-			InputChannelDeploymentDescriptor[] partitions = InputChannelDeploymentDescriptor.fromEdges(
-				edges,
-				targetSlot.getTaskManagerLocation().getResourceID(),
+			List<InputChannelDeploymentDescriptor> partitions = InputChannelDeploymentDescriptor.fromEdges(
+				Arrays.asList(edges),
 				lazyScheduling);
 
 			// If the produced partition has multiple consumers registered, we
@@ -874,7 +875,7 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 			final IntermediateDataSetID resultId = consumedIntermediateResult.getId();
 			final ResultPartitionType partitionType = consumedIntermediateResult.getResultType();
 
-			consumedPartitions.add(new InputGateDeploymentDescriptor(resultId, partitionType, queueToRequest, partitions));
+			consumedPartitions.add(new InputGateDeploymentDescriptor(resultId, partitionType, queueToRequest, partitions.toArray(icddArray)));
 		}
 
 		final Either<SerializedValue<JobInformation>, PermanentBlobKey> jobInformationOrBlobKey = getExecutionGraph().getJobInformationOrBlobKey();
