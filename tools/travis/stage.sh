@@ -50,9 +50,6 @@ flink-libraries/flink-cep-scala,\
 flink-libraries/flink-gelly,\
 flink-libraries/flink-gelly-scala,\
 flink-libraries/flink-gelly-examples,\
-flink-libraries/flink-ml,\
-flink-libraries/flink-python,\
-flink-libraries/flink-streaming-python,\
 flink-table/flink-table-common,\
 flink-table/flink-table-api-java,\
 flink-table/flink-table-api-scala,\
@@ -61,9 +58,7 @@ flink-table/flink-table-api-scala-bridge,\
 flink-table/flink-table-planner,\
 flink-table/flink-table-planner-blink,\
 flink-table/flink-table-runtime-blink,\
-flink-table/flink-sql-client,\
-flink-queryable-state/flink-queryable-state-runtime,\
-flink-queryable-state/flink-queryable-state-client-java"
+flink-table/flink-sql-client"
 
 MODULES_CONNECTORS="\
 flink-contrib/flink-connector-wikiedits,\
@@ -114,7 +109,9 @@ flink-metrics/flink-metrics-influxdb,\
 flink-metrics/flink-metrics-prometheus,\
 flink-metrics/flink-metrics-statsd,\
 flink-metrics/flink-metrics-datadog,\
-flink-metrics/flink-metrics-slf4j"
+flink-metrics/flink-metrics-slf4j,\
+flink-queryable-state/flink-queryable-state-runtime,\
+flink-queryable-state/flink-queryable-state-client-java"
 
 MODULES_CONNECTORS_JDK9_EXCLUSIONS="\
 !flink-filesystems/flink-s3-fs-hadoop,\
@@ -155,7 +152,8 @@ function get_compile_modules_for_stage() {
             echo "-pl $MODULES_TESTS -am"
         ;;
         (${STAGE_MISC})
-            # compile everything since dist needs it anyway
+            # compile everything; using the -am switch does not work with negated module lists!
+            # the negation takes precedence, thus not all required modules would be built
             echo ""
         ;;
     esac

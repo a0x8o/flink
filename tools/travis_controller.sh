@@ -62,10 +62,9 @@ print_system_info() {
 
 	start_fold "cache_info" "Cache information"
 	echo "Maven: $(du -s --si $HOME/.m2)"
-	echo "RVM: $(du -s --si $HOME/.rvm)"
 	echo "Flink: $(du -s --si $HOME/flink_cache)"
 	echo "Maven (binaries): $(du -s --si $HOME/maven_cache)"
-	echo "gems: $(du -s -si $HOME/gem_cache)"
+	echo "gems: $(du -s --si $HOME/gem_cache)"
 	end_fold "cache_info"
 }
 
@@ -127,6 +126,26 @@ if [ $STAGE == "$STAGE_COMPILE" ]; then
         echo "=============================================================================="
     fi
 
+    if [[ ${PROFILE} == *"jdk9"* ]]; then
+        printf "\n\n==============================================================================\n"
+        printf "Skipping end-to-end tests since they fail on Java 9.\n"
+        printf "==============================================================================\n"
+    else
+        if [ $EXIT_CODE == 0 ]; then
+            printf "\n\n==============================================================================\n"
+            printf "Running end-to-end tests\n"
+            printf "==============================================================================\n"
+
+            FLINK_DIR=build-target flink-end-to-end-tests/run-pre-commit-tests.sh
+
+            EXIT_CODE=$?
+        else
+            printf "\n==============================================================================\n"
+            printf "Previous build failure detected, skipping end-to-end tests.\n"
+            printf "==============================================================================\n"
+        fi
+    fi
+
     if [ $EXIT_CODE == 0 ]; then
         echo "Creating cache build directory $CACHE_FLINK_DIR"
         mkdir -p "$CACHE_FLINK_DIR"
@@ -175,6 +194,8 @@ elif [ $STAGE != "$STAGE_CLEANUP" ]; then
 	# adjust timestamps to prevent recompilation
 	find . -type f -name '*.java' | xargs touch
 	find . -type f -name '*.scala' | xargs touch
+	# wait a bit for better odds of different timestamps
+	sleep 5
 	find . -type f -name '*.class' | xargs touch
 	find . -type f -name '*.timestamp' | xargs touch
 	travis_time_finish
