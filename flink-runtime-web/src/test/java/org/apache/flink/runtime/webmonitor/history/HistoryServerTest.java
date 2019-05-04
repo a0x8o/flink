@@ -28,6 +28,7 @@ import org.apache.flink.runtime.messages.webmonitor.MultipleJobsDetails;
 import org.apache.flink.runtime.rest.messages.JobsOverviewHeaders;
 import org.apache.flink.runtime.testutils.MiniClusterResourceConfiguration;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.api.functions.sink.DiscardingSink;
 import org.apache.flink.test.util.MiniClusterWithClientResource;
 import org.apache.flink.util.TestLogger;
 
@@ -42,6 +43,8 @@ import org.junit.Before;
 import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
+import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
 
 import java.io.File;
 import java.io.IOException;
@@ -50,6 +53,8 @@ import java.io.StringWriter;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.file.Path;
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -57,6 +62,7 @@ import java.util.concurrent.TimeUnit;
 /**
  * Tests for the HistoryServer.
  */
+@RunWith(Parameterized.class)
 public class HistoryServerTest extends TestLogger {
 
 	@ClassRule
@@ -70,10 +76,18 @@ public class HistoryServerTest extends TestLogger {
 	private File jmDirectory;
 	private File hsDirectory;
 
+	@Parameterized.Parameters(name = "Flink version less than 1.4: {0}")
+	public static Collection<Boolean> parameters() {
+		return Arrays.asList(true, false);
+	}
+
+	@Parameterized.Parameter
+	public static boolean versionLessThan14;
+
 	@Before
 	public void setUp() throws Exception {
-		jmDirectory = TMP.newFolder("jm");
-		hsDirectory = TMP.newFolder("hs");
+		jmDirectory = TMP.newFolder("jm_" + versionLessThan14);
+		hsDirectory = TMP.newFolder("hs_" + versionLessThan14);
 
 		Configuration clusterConfig = new Configuration();
 		clusterConfig.setString(JobManagerOptions.ARCHIVE_DIR, jmDirectory.toURI().toString());
@@ -135,8 +149,7 @@ public class HistoryServerTest extends TestLogger {
 
 	private static void runJob() throws Exception {
 		StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
-		env.fromElements(1, 2, 3)
-			.print();
+		env.fromElements(1, 2, 3).addSink(new DiscardingSink<>());
 
 		env.execute();
 	}
@@ -177,7 +190,13 @@ public class HistoryServerTest extends TestLogger {
 						try (JsonObject tasks = new JsonObject(gen, "tasks")) {
 							gen.writeNumberField("total", 0);
 
-							gen.writeNumberField("pending", 0);
+							if (versionLessThan14) {
+								gen.writeNumberField("pending", 0);
+							} else {
+								gen.writeNumberField("created", 0);
+								gen.writeNumberField("deploying", 0);
+								gen.writeNumberField("scheduled", 0);
+							}
 							gen.writeNumberField("running", 0);
 							gen.writeNumberField("finished", 0);
 							gen.writeNumberField("canceling", 0);
