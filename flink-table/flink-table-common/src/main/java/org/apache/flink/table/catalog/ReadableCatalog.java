@@ -22,7 +22,6 @@ import org.apache.flink.table.catalog.exceptions.CatalogException;
 import org.apache.flink.table.catalog.exceptions.DatabaseNotExistException;
 import org.apache.flink.table.catalog.exceptions.FunctionNotExistException;
 import org.apache.flink.table.catalog.exceptions.PartitionNotExistException;
-import org.apache.flink.table.catalog.exceptions.PartitionSpecInvalidException;
 import org.apache.flink.table.catalog.exceptions.TableNotExistException;
 import org.apache.flink.table.catalog.exceptions.TableNotPartitionedException;
 
@@ -97,6 +96,8 @@ public interface ReadableCatalog {
 	 */
 	boolean databaseExists(String databaseName) throws CatalogException;
 
+	// ------ tables and views ------
+
 	/**
 	 * Get names of all tables and views under this database. An empty list is returned if none exists.
 	 *
@@ -117,24 +118,24 @@ public interface ReadableCatalog {
 	List<String> listViews(String databaseName) throws DatabaseNotExistException, CatalogException;
 
 	/**
-	 * Get a CatalogTable or CatalogView identified by objectPath.
+	 * Get a CatalogTable or CatalogView identified by tablePath.
 	 *
-	 * @param objectPath		Path of the table or view
+	 * @param tablePath		Path of the table or view
 	 * @return The requested table or view
 	 * @throws TableNotExistException if the target does not exist
 	 * @throws CatalogException in case of any runtime exception
 	 */
-	CatalogBaseTable getTable(ObjectPath objectPath) throws TableNotExistException, CatalogException;
+	CatalogBaseTable getTable(ObjectPath tablePath) throws TableNotExistException, CatalogException;
 
 	/**
 	 * Check if a table or view exists in this catalog.
 	 *
-	 * @param objectPath    Path of the table or view
+	 * @param tablePath    Path of the table or view
 	 * @return true if the given table exists in the catalog
 	 *         false otherwise
 	 * @throws CatalogException in case of any runtime exception
 	 */
-	boolean tableExists(ObjectPath objectPath) throws CatalogException;
+	boolean tableExists(ObjectPath tablePath) throws CatalogException;
 
 	// ------ partitions ------
 
@@ -160,11 +161,10 @@ public interface ReadableCatalog {
 	 *
 	 * @throws TableNotExistException thrown if the table does not exist in the catalog
 	 * @throws TableNotPartitionedException thrown if the table is not partitioned
-	 * @throws PartitionSpecInvalidException thrown if the given partition spec is invalid
 	 * @throws CatalogException in case of any runtime exception
 	 */
 	List<CatalogPartitionSpec> listPartitions(ObjectPath tablePath, CatalogPartitionSpec partitionSpec)
-		throws TableNotExistException, TableNotPartitionedException, PartitionSpecInvalidException, CatalogException;
+		throws TableNotExistException, TableNotPartitionedException, CatalogException;
 
 	/**
 	 * Get a partition of the given table.
@@ -174,14 +174,11 @@ public interface ReadableCatalog {
 	 * @param partitionSpec partition spec of partition to get
 	 * @return the requested partition
 	 *
-	 * @throws TableNotExistException thrown if the table does not exist in the catalog
-	 * @throws TableNotPartitionedException thrown if the table is not partitioned
-	 * @throws PartitionSpecInvalidException thrown if the given partition spec is invalid,
 	 * @throws PartitionNotExistException thrown if the partition is not partitioned
 	 * @throws CatalogException	in case of any runtime exception
 	 */
 	CatalogPartition getPartition(ObjectPath tablePath, CatalogPartitionSpec partitionSpec)
-		throws TableNotExistException, TableNotPartitionedException, PartitionSpecInvalidException, PartitionNotExistException, CatalogException;
+		throws PartitionNotExistException, CatalogException;
 
 	/**
 	 * Check whether a partition exists or not.

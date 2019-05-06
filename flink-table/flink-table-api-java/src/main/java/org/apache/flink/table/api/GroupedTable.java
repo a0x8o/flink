@@ -54,4 +54,39 @@ public interface GroupedTable {
 	 * </pre>
 	 */
 	Table select(Expression... fields);
+
+	/**
+	 * Performs a flatAggregate operation on a grouped table. FlatAggregate takes a
+	 * TableAggregateFunction which returns multiple rows. Use a selection after flatAggregate.
+	 *
+	 * <p>Example:
+	 *
+	 * <pre>
+	 * {@code
+	 *   val tableAggFunc: TableAggregateFunction = new MyTableAggregateFunction
+	 *   tableEnv.registerFunction("tableAggFunc", tableAggFunc);
+	 *   tab.groupBy("key")
+	 *     .flatAggregate("tableAggFunc(a, b) as (x, y, z)")
+	 *     .select("key, x, y, z")
+	 * }
+	 * </pre>
+	 */
+	FlatAggregateTable flatAggregate(String tableAggFunction);
+
+	/**
+	 * Performs a flatAggregate operation on a grouped table. FlatAggregate takes a
+	 * TableAggregateFunction which returns multiple rows. Use a selection after flatAggregate.
+	 *
+	 * <p>Scala Example:
+	 *
+	 * <pre>
+	 * {@code
+	 *   val tableAggFunc: TableAggregateFunction = new MyTableAggregateFunction
+	 *   tab.groupBy('key)
+	 *     .flatAggregate(tableAggFunc('a, 'b) as ('x, 'y, 'z))
+	 *     .select('key, 'x, 'y, 'z)
+	 * }
+	 * </pre>
+	 */
+	FlatAggregateTable flatAggregate(Expression tableAggFunction);
 }

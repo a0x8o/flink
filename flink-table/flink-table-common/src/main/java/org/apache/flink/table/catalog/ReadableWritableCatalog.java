@@ -102,11 +102,10 @@ public interface ReadableWritableCatalog extends ReadableCatalog {
 	 *                          if set to false, throw an exception,
 	 *                          if set to true, do nothing.
 	 * @throws TableNotExistException if the table does not exist
-	 * @throws DatabaseNotExistException if the database in tablePath to doesn't exist
 	 * @throws CatalogException in case of any runtime exception
 	 */
 	void renameTable(ObjectPath tablePath, String newTableName, boolean ignoreIfNotExists)
-		throws TableNotExistException, TableAlreadyExistException, DatabaseNotExistException, CatalogException;
+		throws TableNotExistException, TableAlreadyExistException, CatalogException;
 
 	/**
 	 * Create a new table or view.
@@ -128,7 +127,7 @@ public interface ReadableWritableCatalog extends ReadableCatalog {
 	 * Note that the new and old CatalogBaseTable must be of the same type. For example, this doesn't
 	 * allow alter a regular table to partitioned table, or alter a view to a table, and vice versa.
 	 *
-	 * @param tableName path of the table or view to be modified
+	 * @param tablePath path of the table or view to be modified
 	 * @param newTable the new table definition
 	 * @param ignoreIfNotExists flag to specify behavior when the table or view does not exist:
 	 *                          if set to false, throw an exception,
@@ -136,7 +135,7 @@ public interface ReadableWritableCatalog extends ReadableCatalog {
 	 * @throws TableNotExistException if the table does not exist
 	 * @throws CatalogException in case of any runtime exception
 	 */
-	void alterTable(ObjectPath tableName, CatalogBaseTable newTable, boolean ignoreIfNotExists)
+	void alterTable(ObjectPath tablePath, CatalogBaseTable newTable, boolean ignoreIfNotExists)
 		throws TableNotExistException, CatalogException;
 
 	// ------ partitions ------
@@ -169,14 +168,11 @@ public interface ReadableWritableCatalog extends ReadableCatalog {
 	 *                          if set to false, throw an exception,
 	 *                          if set to true, nothing happens.
 	 *
-	 * @throws TableNotExistException thrown if the target table does not exist
-	 * @throws TableNotPartitionedException thrown if the target table is not partitioned
-	 * @throws PartitionSpecInvalidException thrown if the given partition spec is invalid
 	 * @throws PartitionNotExistException thrown if the target partition does not exist
 	 * @throws CatalogException in case of any runtime exception
 	 */
 	void dropPartition(ObjectPath tablePath, CatalogPartitionSpec partitionSpec, boolean ignoreIfNotExists)
-		throws TableNotExistException, TableNotPartitionedException, PartitionSpecInvalidException, PartitionNotExistException, CatalogException;
+		throws PartitionNotExistException, CatalogException;
 
 	/**
 	 * Alter a partition.
@@ -188,14 +184,11 @@ public interface ReadableWritableCatalog extends ReadableCatalog {
 	 *                          if set to false, throw an exception,
 	 *                          if set to true, nothing happens.
 	 *
-	 * @throws TableNotExistException thrown if the target table does not exist
-	 * @throws TableNotPartitionedException thrown if the target table is not partitioned
-	 * @throws PartitionSpecInvalidException thrown if the given partition spec is invalid
 	 * @throws PartitionNotExistException thrown if the target partition does not exist
 	 * @throws CatalogException in case of any runtime exception
 	 */
 	void alterPartition(ObjectPath tablePath, CatalogPartitionSpec partitionSpec, CatalogPartition newPartition, boolean ignoreIfNotExists)
-		throws TableNotExistException, TableNotPartitionedException, PartitionSpecInvalidException, PartitionNotExistException, CatalogException;
+		throws PartitionNotExistException, CatalogException;
 
 	// ------ functions ------
 
@@ -238,6 +231,6 @@ public interface ReadableWritableCatalog extends ReadableCatalog {
 	 * @throws FunctionNotExistException if the function does not exist
 	 * @throws CatalogException in case of any runtime exception
 	 */
-	void dropFunction(ObjectPath functionPath, boolean ignoreIfNotExists) throws FunctionNotExistException,
-		CatalogException;
+	void dropFunction(ObjectPath functionPath, boolean ignoreIfNotExists)
+		throws FunctionNotExistException, CatalogException;
 }

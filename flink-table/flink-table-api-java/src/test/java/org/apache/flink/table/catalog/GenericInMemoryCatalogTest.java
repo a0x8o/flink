@@ -18,9 +18,6 @@
 
 package org.apache.flink.table.catalog;
 
-import org.apache.flink.api.common.typeinfo.BasicTypeInfo;
-import org.apache.flink.api.common.typeinfo.TypeInformation;
-import org.apache.flink.table.api.TableSchema;
 import org.apache.flink.table.catalog.exceptions.DatabaseNotExistException;
 import org.apache.flink.table.catalog.exceptions.FunctionAlreadyExistException;
 import org.apache.flink.table.catalog.exceptions.FunctionNotExistException;
@@ -40,7 +37,6 @@ import org.junit.Test;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
@@ -62,123 +58,12 @@ public class GenericInMemoryCatalogTest extends CatalogTestBase {
 
 	@After
 	public void close() throws Exception {
-		if (catalog.tableExists(path1)) {
-			catalog.dropTable(path1, true);
-		}
-		if (catalog.tableExists(path2)) {
-			catalog.dropTable(path2, true);
-		}
-		if (catalog.tableExists(path3)) {
-			catalog.dropTable(path3, true);
-		}
 		if (catalog.functionExists(path1)) {
 			catalog.dropFunction(path1, true);
 		}
 	}
 
 	// ------ tables ------
-
-	@Test
-	public void testCreateTable_Streaming() throws Exception {
-		catalog.createDatabase(db1, createDb(), false);
-		CatalogTable table = createStreamingTable();
-		catalog.createTable(path1, table, false);
-
-		CatalogTestUtil.checkEquals(table, (CatalogTable) catalog.getTable(path1));
-	}
-
-	@Test
-	public void testCreateTable_Batch() throws Exception {
-		catalog.createDatabase(db1, createDb(), false);
-
-		// Non-partitioned table
-		CatalogTable table = createTable();
-		catalog.createTable(path1, table, false);
-
-		CatalogBaseTable tableCreated = catalog.getTable(path1);
-
-		CatalogTestUtil.checkEquals(table, (CatalogTable) tableCreated);
-		assertEquals(TABLE_COMMENT, tableCreated.getDescription().get());
-
-		List<String> tables = catalog.listTables(db1);
-
-		assertEquals(1, tables.size());
-		assertEquals(path1.getObjectName(), tables.get(0));
-
-		catalog.dropTable(path1, false);
-
-		// Partitioned table
-		table = createPartitionedTable();
-		catalog.createTable(path1, table, false);
-
-		CatalogTestUtil.checkEquals(table, (CatalogTable) catalog.getTable(path1));
-
-		tables = catalog.listTables(db1);
-
-		assertEquals(1, tables.size());
-		assertEquals(path1.getObjectName(), tables.get(0));
-	}
-
-	@Test
-	public void testCreateTable_DatabaseNotExistException() throws Exception {
-		assertFalse(catalog.databaseExists(db1));
-
-		exception.expect(DatabaseNotExistException.class);
-		exception.expectMessage("Database db1 does not exist in Catalog");
-		catalog.createTable(nonExistObjectPath, createTable(), false);
-	}
-
-	@Test
-	public void testCreateTable_TableAlreadyExistException() throws Exception {
-		catalog.createDatabase(db1, createDb(), false);
-		catalog.createTable(path1,  createTable(), false);
-
-		exception.expect(TableAlreadyExistException.class);
-		exception.expectMessage("Table (or view) db1.t1 already exists in Catalog");
-		catalog.createTable(path1, createTable(), false);
-	}
-
-	@Test
-	public void testCreateTable_TableAlreadyExist_ignored() throws Exception {
-		catalog.createDatabase(db1, createDb(), false);
-
-		CatalogTable table = createTable();
-		catalog.createTable(path1, table, false);
-
-		CatalogTestUtil.checkEquals(table, (CatalogTable) catalog.getTable(path1));
-
-		catalog.createTable(path1, createAnotherTable(), true);
-
-		CatalogTestUtil.checkEquals(table, (CatalogTable) catalog.getTable(path1));
-	}
-
-	@Test
-	public void testGetTable_TableNotExistException() throws Exception {
-		catalog.createDatabase(db1, createDb(), false);
-
-		exception.expect(TableNotExistException.class);
-		exception.expectMessage("Table (or view) db1.nonexist does not exist in Catalog");
-		catalog.getTable(nonExistObjectPath);
-	}
-
-	@Test
-	public void testGetTable_TableNotExistException_NoDb() throws Exception {
-		exception.expect(TableNotExistException.class);
-		exception.expectMessage("Table (or view) db1.nonexist does not exist in Catalog");
-		catalog.getTable(nonExistObjectPath);
-	}
-
-	@Test
-	public void testDropTable_nonPartitionedTable() throws Exception {
-		catalog.createDatabase(db1, createDb(), false);
-		catalog.createTable(path1, createTable(), false);
-
-		assertTrue(catalog.tableExists(path1));
-
-		catalog.dropTable(path1, false);
-
-		assertFalse(catalog.tableExists(path1));
-	}
 
 	@Test
 	public void testDropTable_partitionedTable() throws Exception {
@@ -214,78 +99,6 @@ public class GenericInMemoryCatalogTest extends CatalogTestBase {
 	}
 
 	@Test
-	public void testDropTable_TableNotExistException() throws Exception {
-		exception.expect(TableNotExistException.class);
-		exception.expectMessage("Table (or view) non.exist does not exist in Catalog");
-		catalog.dropTable(nonExistDbPath, false);
-	}
-
-	@Test
-	public void testDropTable_TableNotExist_ignored() throws Exception {
-		catalog.createDatabase(db1, createDb(), false);
-		catalog.dropTable(nonExistObjectPath, true);
-	}
-
-	@Test
-	public void testAlterTable() throws Exception {
-		catalog.createDatabase(db1, createDb(), false);
-
-		// Non-partitioned table
-		CatalogTable table = createTable();
-		catalog.createTable(path1, table, false);
-
-		CatalogTestUtil.checkEquals(table, (CatalogTable) catalog.getTable(path1));
-
-		CatalogTable newTable = createAnotherTable();
-		catalog.alterTable(path1, newTable, false);
-
-		assertNotEquals(table, catalog.getTable(path1));
-		CatalogTestUtil.checkEquals(newTable, (CatalogTable) catalog.getTable(path1));
-
-		catalog.dropTable(path1, false);
-
-		// Partitioned table
-		table = createPartitionedTable();
-		catalog.createTable(path1, table, false);
-
-		CatalogTestUtil.checkEquals(table, (CatalogTable) catalog.getTable(path1));
-
-		newTable = createAnotherPartitionedTable();
-		catalog.alterTable(path1, newTable, false);
-
-		CatalogTestUtil.checkEquals(newTable, (CatalogTable) catalog.getTable(path1));
-	}
-
-	@Test
-	public void testAlterTable_TableNotExistException() throws Exception {
-		exception.expect(TableNotExistException.class);
-		exception.expectMessage("Table (or view) non.exist does not exist in Catalog");
-		catalog.alterTable(nonExistDbPath, createTable(), false);
-	}
-
-	@Test
-	public void testAlterTable_TableNotExist_ignored() throws Exception {
-		catalog.createDatabase(db1, createDb(), false);
-		catalog.alterTable(nonExistObjectPath, createTable(), true);
-
-		assertFalse(catalog.tableExists(nonExistObjectPath));
-	}
-
-	@Test
-	public void testRenameTable_nonPartitionedTable() throws Exception {
-		catalog.createDatabase(db1, createDb(), false);
-		CatalogTable table = createTable();
-		catalog.createTable(path1, table, false);
-
-		CatalogTestUtil.checkEquals(table, (CatalogTable) catalog.getTable(path1));
-
-		catalog.renameTable(path1, t2, false);
-
-		CatalogTestUtil.checkEquals(table, (CatalogTable) catalog.getTable(path3));
-		assertFalse(catalog.tableExists(path1));
-	}
-
-	@Test
 	public void testRenameTable_partitionedTable() throws Exception {
 		catalog.createDatabase(db1, createDb(), false);
 		CatalogTable table = createPartitionedTable();
@@ -303,44 +116,6 @@ public class GenericInMemoryCatalogTest extends CatalogTestBase {
 		assertTrue(catalog.partitionExists(path3, catalogPartitionSpec));
 		assertFalse(catalog.tableExists(path1));
 		assertFalse(catalog.partitionExists(path1, catalogPartitionSpec));
-	}
-
-	@Test
-	public void testRenameTable_TableNotExistException() throws Exception {
-		catalog.createDatabase(db1, createDb(), false);
-
-		exception.expect(TableNotExistException.class);
-		exception.expectMessage("Table (or view) db1.t1 does not exist in Catalog");
-		catalog.renameTable(path1, t2, false);
-	}
-
-	@Test
-	public void testRenameTable_TableNotExistException_ignored() throws Exception {
-		catalog.createDatabase(db1, createDb(), false);
-		catalog.renameTable(path1, t2, true);
-	}
-
-	@Test
-	public void testRenameTable_TableAlreadyExistException() throws Exception {
-		catalog.createDatabase(db1, createDb(), false);
-		CatalogTable table = createTable();
-		catalog.createTable(path1, table, false);
-		catalog.createTable(path3, createAnotherTable(), false);
-
-		exception.expect(TableAlreadyExistException.class);
-		exception.expectMessage("Table (or view) db1.t2 already exists in Catalog");
-		catalog.renameTable(path1, t2, false);
-	}
-
-	@Test
-	public void testTableExists() throws Exception {
-		catalog.createDatabase(db1, createDb(), false);
-
-		assertFalse(catalog.tableExists(path1));
-
-		catalog.createTable(path1, createTable(), false);
-
-		assertTrue(catalog.tableExists(path1));
 	}
 
 	// ------ views ------
@@ -492,11 +267,7 @@ public class GenericInMemoryCatalogTest extends CatalogTestBase {
 		CatalogTestUtil.checkEquals(anotherPartition, catalog.getPartition(path1, anotherPartitionSpec));
 
 		CatalogPartitionSpec invalid = createInvalidPartitionSpecSubset();
-		exception.expect(PartitionSpecInvalidException.class);
-		exception.expectMessage(
-			String.format("PartitionSpec %s does not match partition keys %s of table %s in catalog %s",
-				invalid, table.getPartitionKeys(), path1.getFullName(), TEST_CATALOG_NAME));
-		catalog.listPartitions(path1, invalid);
+		assertTrue(catalog.listPartitions(path1, invalid).isEmpty());
 	}
 
 	@Test
@@ -574,37 +345,41 @@ public class GenericInMemoryCatalogTest extends CatalogTestBase {
 	}
 
 	@Test
-	public void testDropPartition_TableNotExistException() throws Exception {
+	public void testDropPartition_PartitionNotExistException_TableNotExist() throws Exception {
 		catalog.createDatabase(db1, createDb(), false);
+		CatalogPartitionSpec partitionSpec = createPartitionSpec();
 
-		exception.expect(TableNotExistException.class);
+		exception.expect(PartitionNotExistException.class);
 		exception.expectMessage(
-			String.format("Table (or view) %s does not exist in Catalog %s.", path1.getFullName(), TEST_CATALOG_NAME));
-		catalog.dropPartition(path1, createPartitionSpec(), false);
+			String.format("Partition %s of table %s in catalog %s does not exist.",
+				partitionSpec, path1.getFullName(), TEST_CATALOG_NAME));
+		catalog.dropPartition(path1, partitionSpec, false);
 	}
 
 	@Test
-	public void testDropPartition_TableNotPartitionedException() throws Exception {
+	public void testDropPartition_PartitionNotExistException_TableNotPartitioned() throws Exception {
 		catalog.createDatabase(db1, createDb(), false);
 		catalog.createTable(path1, createTable(), false);
+		CatalogPartitionSpec partitionSpec = createPartitionSpec();
 
-		exception.expect(TableNotPartitionedException.class);
+		exception.expect(PartitionNotExistException.class);
 		exception.expectMessage(
-			String.format("Table %s in catalog %s is not partitioned.", path1.getFullName(), TEST_CATALOG_NAME));
-		catalog.dropPartition(path1, createPartitionSpec(), false);
+			String.format("Partition %s of table %s in catalog %s does not exist.",
+				partitionSpec, path1.getFullName(), TEST_CATALOG_NAME));
+		catalog.dropPartition(path1, partitionSpec, false);
 	}
 
 	@Test
-	public void testDropPartition_PartitionSpecInvalidException() throws Exception {
+	public void testDropPartition_PartitionNotExistException_PartitionSpecInvalid() throws Exception {
 		catalog.createDatabase(db1, createDb(), false);
 		CatalogTable table = createPartitionedTable();
 		catalog.createTable(path1, table, false);
 
 		CatalogPartitionSpec partitionSpec = createInvalidPartitionSpecSubset();
-		exception.expect(PartitionSpecInvalidException.class);
+		exception.expect(PartitionNotExistException.class);
 		exception.expectMessage(
-			String.format("PartitionSpec %s does not match partition keys %s of table %s in catalog %s.",
-				partitionSpec, table.getPartitionKeys(), path1.getFullName(), TEST_CATALOG_NAME));
+			String.format("Partition %s of table %s in catalog %s does not exist.",
+				partitionSpec, path1.getFullName(), TEST_CATALOG_NAME));
 		catalog.dropPartition(path1, partitionSpec, false);
 	}
 
@@ -657,39 +432,41 @@ public class GenericInMemoryCatalogTest extends CatalogTestBase {
 	}
 
 	@Test
-	public void testAlterPartition_TableNotExistException() throws Exception {
+	public void testAlterPartition_PartitionNotExistException_TableNotExist() throws Exception {
 		catalog.createDatabase(db1, createDb(), false);
 
 		CatalogPartitionSpec partitionSpec = createPartitionSpec();
-		exception.expect(TableNotExistException.class);
+		exception.expect(PartitionNotExistException.class);
 		exception.expectMessage(
-			String.format("Table (or view) %s does not exist in Catalog %s.", path1.getFullName(), TEST_CATALOG_NAME));
+			String.format("Partition %s of table %s in catalog %s does not exist.",
+				partitionSpec, path1.getFullName(), TEST_CATALOG_NAME));
 		catalog.alterPartition(path1, partitionSpec, createPartition(), false);
 	}
 
 	@Test
-	public void testAlterPartition_TableNotPartitionedException() throws Exception {
+	public void testAlterPartition_PartitionNotExistException_TableNotPartitioned() throws Exception {
 		catalog.createDatabase(db1, createDb(), false);
 		catalog.createTable(path1, createTable(), false);
 
 		CatalogPartitionSpec partitionSpec = createPartitionSpec();
-		exception.expect(TableNotPartitionedException.class);
+		exception.expect(PartitionNotExistException.class);
 		exception.expectMessage(
-			String.format("Table %s in catalog %s is not partitioned.", path1.getFullName(), TEST_CATALOG_NAME));
+			String.format("Partition %s of table %s in catalog %s does not exist.",
+				partitionSpec, path1.getFullName(), TEST_CATALOG_NAME));
 		catalog.alterPartition(path1, partitionSpec, createPartition(), false);
 	}
 
 	@Test
-	public void testAlterPartition_PartitionSpecInvalidException() throws Exception {
+	public void testAlterPartition_PartitionNotExistException_PartitionSpecInvalid() throws Exception {
 		catalog.createDatabase(db1, createDb(), false);
 		CatalogTable table = createPartitionedTable();
 		catalog.createTable(path1, table, false);
 
 		CatalogPartitionSpec partitionSpec = createInvalidPartitionSpecSubset();
-		exception.expect(PartitionSpecInvalidException.class);
+		exception.expect(PartitionNotExistException.class);
 		exception.expectMessage(
-			String.format("PartitionSpec %s does not match partition keys %s of table %s in catalog %s.",
-				partitionSpec, table.getPartitionKeys(), path1.getFullName(), TEST_CATALOG_NAME));
+			String.format("Partition %s of table %s in catalog %s does not exist.",
+				partitionSpec, path1.getFullName(), TEST_CATALOG_NAME));
 		catalog.alterPartition(path1, partitionSpec, createPartition(), false);
 	}
 
@@ -715,20 +492,21 @@ public class GenericInMemoryCatalogTest extends CatalogTestBase {
 	}
 
 	@Test
-	public void testGetPartition_TableNotExistException() throws Exception {
-		exception.expect(TableNotExistException.class);
+	public void testGetPartition_PartitionNotExistException_TableNotExist() throws Exception {
+		exception.expect(PartitionNotExistException.class);
 		catalog.getPartition(path1, createPartitionSpec());
 	}
 
 	@Test
-	public void testGetPartition_TableNotPartitionedException() throws Exception {
+	public void testGetPartition_PartitionNotExistException_TableNotPartitioned() throws Exception {
 		catalog.createDatabase(db1, createDb(), false);
 		catalog.createTable(path1, createTable(), false);
-
-		exception.expect(TableNotPartitionedException.class);
+		CatalogPartitionSpec partitionSpec = createPartitionSpec();
+		exception.expect(PartitionNotExistException.class);
 		exception.expectMessage(
-			String.format("Table %s in catalog %s is not partitioned.", path1.getFullName(), TEST_CATALOG_NAME));
-		catalog.getPartition(path1, createPartitionSpec());
+			String.format("Partition %s of table %s in catalog %s does not exist.", partitionSpec,
+				path1.getFullName(), TEST_CATALOG_NAME));
+		catalog.getPartition(path1, partitionSpec);
 	}
 
 	@Test
@@ -738,15 +516,15 @@ public class GenericInMemoryCatalogTest extends CatalogTestBase {
 		catalog.createTable(path1, table, false);
 
 		CatalogPartitionSpec partitionSpec = createInvalidPartitionSpecSubset();
-		exception.expect(PartitionSpecInvalidException.class);
+		exception.expect(PartitionNotExistException.class);
 		exception.expectMessage(
-			String.format("PartitionSpec %s does not match partition keys %s of table %s in catalog %s.",
-				partitionSpec, table.getPartitionKeys(), path1.getFullName(), TEST_CATALOG_NAME));
+			String.format("Partition %s of table %s in catalog %s does not exist.",
+				partitionSpec, path1.getFullName(), TEST_CATALOG_NAME));
 		catalog.getPartition(path1, partitionSpec);
 	}
 
 	@Test
-	public void testGetPartition_PartitionSpecInvalidException_sizeNotEqual() throws Exception {
+	public void testGetPartition_PartitionNotExistException_PartitionSpecInvalid_sizeNotEqual() throws Exception {
 		catalog.createDatabase(db1, createDb(), false);
 		CatalogTable table = createPartitionedTable();
 		catalog.createTable(path1, table, false);
@@ -756,10 +534,10 @@ public class GenericInMemoryCatalogTest extends CatalogTestBase {
 				put("second", "bob");
 			}}
 		);
-		exception.expect(PartitionSpecInvalidException.class);
+		exception.expect(PartitionNotExistException.class);
 		exception.expectMessage(
-			String.format("PartitionSpec %s does not match partition keys %s of table %s in catalog %s.",
-				partitionSpec, table.getPartitionKeys(), path1.getFullName(), TEST_CATALOG_NAME));
+			String.format("Partition %s of table %s in catalog %s does not exist.",
+				partitionSpec, path1.getFullName(), TEST_CATALOG_NAME));
 		catalog.getPartition(path1, partitionSpec);
 	}
 
@@ -948,24 +726,29 @@ public class GenericInMemoryCatalogTest extends CatalogTestBase {
 
 	@Override
 	public CatalogDatabase createDb() {
-		return new GenericCatalogDatabase(new HashMap<String, String>() {{
-			put("k1", "v1");
-		}}, TEST_COMMENT);
+		return new GenericCatalogDatabase(
+			new HashMap<String, String>() {{
+				put("k1", "v1");
+			}},
+			TEST_COMMENT);
 	}
 
 	@Override
 	public CatalogDatabase createAnotherDb() {
-		return new GenericCatalogDatabase(new HashMap<String, String>() {{
-			put("k2", "v2");
-		}}, "this is another database.");
+		return new GenericCatalogDatabase(
+			new HashMap<String, String>() {{
+				put("k2", "v2");
+			}},
+			"this is another database.");
 	}
 
-	private GenericCatalogTable createStreamingTable() {
+	@Override
+	public GenericCatalogTable createStreamingTable() {
 		return new GenericCatalogTable(
 			createTableSchema(),
 			new TableStats(0),
 			getStreamingTableProperties(),
-			TABLE_COMMENT);
+			TEST_COMMENT);
 	}
 
 	@Override
@@ -974,7 +757,7 @@ public class GenericInMemoryCatalogTest extends CatalogTestBase {
 			createTableSchema(),
 			new TableStats(0),
 			getBatchTableProperties(),
-			TABLE_COMMENT);
+			TEST_COMMENT);
 	}
 
 	@Override
@@ -983,29 +766,27 @@ public class GenericInMemoryCatalogTest extends CatalogTestBase {
 			createAnotherTableSchema(),
 			new TableStats(0),
 			getBatchTableProperties(),
-			TABLE_COMMENT);
+			TEST_COMMENT);
 	}
 
-	protected CatalogTable createPartitionedTable() {
+	@Override
+	public CatalogTable createPartitionedTable() {
 		return new GenericCatalogTable(
 			createTableSchema(),
 			new TableStats(0),
 			createPartitionKeys(),
 			getBatchTableProperties(),
-			TABLE_COMMENT);
+			TEST_COMMENT);
 	}
 
-	protected CatalogTable createAnotherPartitionedTable() {
+	@Override
+	public CatalogTable createAnotherPartitionedTable() {
 		return new GenericCatalogTable(
 			createAnotherTableSchema(),
 			new TableStats(0),
 			createPartitionKeys(),
 			getBatchTableProperties(),
-			TABLE_COMMENT);
-	}
-
-	private List<String> createPartitionKeys() {
-		return Arrays.asList("second", "third");
+			TEST_COMMENT);
 	}
 
 	private CatalogPartitionSpec createPartitionSpec() {
@@ -1048,40 +829,6 @@ public class GenericInMemoryCatalogTest extends CatalogTestBase {
 
 	private CatalogPartition createPartition(Map<String, String> props) {
 		return new GenericCatalogPartition(props);
-	}
-
-	private Map<String, String> getBatchTableProperties() {
-		return new HashMap<String, String>() {{
-			put(IS_STREAMING, "false");
-		}};
-	}
-
-	private Map<String, String> getStreamingTableProperties() {
-		return new HashMap<String, String>() {{
-			put(IS_STREAMING, "true");
-		}};
-	}
-
-	private TableSchema createTableSchema() {
-		return new TableSchema(
-			new String[] {"first", "second", "third"},
-			new TypeInformation[] {
-				BasicTypeInfo.STRING_TYPE_INFO,
-				BasicTypeInfo.INT_TYPE_INFO,
-				BasicTypeInfo.STRING_TYPE_INFO,
-			}
-		);
-	}
-
-	private TableSchema createAnotherTableSchema() {
-		return new TableSchema(
-			new String[] {"first2", "second", "third"},
-			new TypeInformation[] {
-				BasicTypeInfo.STRING_TYPE_INFO,
-				BasicTypeInfo.STRING_TYPE_INFO,
-				BasicTypeInfo.STRING_TYPE_INFO
-			}
-		);
 	}
 
 	private CatalogView createView() {
