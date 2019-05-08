@@ -24,11 +24,19 @@ import org.apache.flink.table.catalog.exceptions.FunctionNotExistException;
 import org.apache.flink.table.catalog.exceptions.PartitionAlreadyExistsException;
 import org.apache.flink.table.catalog.exceptions.PartitionNotExistException;
 import org.apache.flink.table.catalog.exceptions.PartitionSpecInvalidException;
-import org.apache.flink.table.catalog.exceptions.TableAlreadyExistException;
 import org.apache.flink.table.catalog.exceptions.TableNotExistException;
 import org.apache.flink.table.catalog.exceptions.TableNotPartitionedException;
+import org.apache.flink.table.catalog.stats.CatalogColumnStatistics;
+import org.apache.flink.table.catalog.stats.CatalogColumnStatisticsDataBase;
+import org.apache.flink.table.catalog.stats.CatalogColumnStatisticsDataBinary;
+import org.apache.flink.table.catalog.stats.CatalogColumnStatisticsDataBoolean;
+import org.apache.flink.table.catalog.stats.CatalogColumnStatisticsDataDate;
+import org.apache.flink.table.catalog.stats.CatalogColumnStatisticsDataDouble;
+import org.apache.flink.table.catalog.stats.CatalogColumnStatisticsDataLong;
+import org.apache.flink.table.catalog.stats.CatalogColumnStatisticsDataString;
+import org.apache.flink.table.catalog.stats.CatalogTableStatistics;
+import org.apache.flink.table.catalog.stats.Date;
 import org.apache.flink.table.functions.ScalarFunction;
-import org.apache.flink.table.plan.stats.TableStats;
 
 import org.junit.After;
 import org.junit.BeforeClass;
@@ -36,7 +44,6 @@ import org.junit.Test;
 
 import java.util.Arrays;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
@@ -82,23 +89,6 @@ public class GenericInMemoryCatalogTest extends CatalogTestBase {
 	}
 
 	@Test
-	public void testListTables() throws Exception {
-		catalog.createDatabase(db1, createDb(), false);
-
-		catalog.createTable(path1, createTable(), false);
-		catalog.createTable(path3, createTable(), false);
-		catalog.createTable(path4, createView(), false);
-
-		assertEquals(3, catalog.listTables(db1).size());
-		assertEquals(1, catalog.listViews(db1).size());
-
-		catalog.dropTable(path1, false);
-		catalog.dropTable(path3, false);
-		catalog.dropTable(path4, false);
-		catalog.dropDatabase(db1, false);
-	}
-
-	@Test
 	public void testRenameTable_partitionedTable() throws Exception {
 		catalog.createDatabase(db1, createDb(), false);
 		CatalogTable table = createPartitionedTable();
@@ -116,129 +106,6 @@ public class GenericInMemoryCatalogTest extends CatalogTestBase {
 		assertTrue(catalog.partitionExists(path3, catalogPartitionSpec));
 		assertFalse(catalog.tableExists(path1));
 		assertFalse(catalog.partitionExists(path1, catalogPartitionSpec));
-	}
-
-	// ------ views ------
-
-	@Test
-	public void testCreateView() throws Exception {
-		catalog.createDatabase(db1, createDb(), false);
-
-		assertFalse(catalog.tableExists(path1));
-
-		CatalogView view = createView();
-		catalog.createTable(path1, view, false);
-
-		assertTrue(catalog.getTable(path1) instanceof CatalogView);
-		CatalogTestUtil.checkEquals(view, (GenericCatalogView) catalog.getTable(path1));
-	}
-
-	@Test
-	public void testCreateView_DatabaseNotExistException() throws Exception {
-		assertFalse(catalog.databaseExists(db1));
-
-		exception.expect(DatabaseNotExistException.class);
-		exception.expectMessage("Database db1 does not exist in Catalog");
-		catalog.createTable(nonExistObjectPath, createView(), false);
-	}
-
-	@Test
-	public void testCreateView_TableAlreadyExistException() throws Exception {
-		catalog.createDatabase(db1, createDb(), false);
-		catalog.createTable(path1, createView(), false);
-
-		exception.expect(TableAlreadyExistException.class);
-		exception.expectMessage("Table (or view) db1.t1 already exists in Catalog");
-		catalog.createTable(path1, createView(), false);
-	}
-
-	@Test
-	public void testCreateView_TableAlreadyExist_ignored() throws Exception {
-		catalog.createDatabase(db1, createDb(), false);
-
-		CatalogView view = createView();
-		catalog.createTable(path1, view, false);
-
-		assertTrue(catalog.getTable(path1) instanceof CatalogView);
-		CatalogTestUtil.checkEquals(view, (GenericCatalogView) catalog.getTable(path1));
-
-		catalog.createTable(path1, createAnotherView(), true);
-
-		assertTrue(catalog.getTable(path1) instanceof CatalogView);
-		CatalogTestUtil.checkEquals(view, (GenericCatalogView) catalog.getTable(path1));
-	}
-
-	@Test
-	public void testDropView() throws Exception {
-		catalog.createDatabase(db1, createDb(), false);
-		catalog.createTable(path1, createView(), false);
-
-		assertTrue(catalog.tableExists(path1));
-
-		catalog.dropTable(path1, false);
-
-		assertFalse(catalog.tableExists(path1));
-	}
-
-	@Test
-	public void testAlterView() throws Exception {
-		catalog.createDatabase(db1, createDb(), false);
-
-		CatalogView view = createView();
-		catalog.createTable(path1, view, false);
-
-		CatalogTestUtil.checkEquals(view, (GenericCatalogView) catalog.getTable(path1));
-
-		CatalogView newView = createAnotherView();
-		catalog.alterTable(path1, newView, false);
-
-		assertTrue(catalog.getTable(path1) instanceof CatalogView);
-		CatalogTestUtil.checkEquals(newView, (GenericCatalogView) catalog.getTable(path1));
-	}
-
-	@Test
-	public void testAlterView_TableNotExistException() throws Exception {
-		exception.expect(TableNotExistException.class);
-		exception.expectMessage("Table (or view) non.exist does not exist in Catalog");
-		catalog.alterTable(nonExistDbPath, createTable(), false);
-	}
-
-	@Test
-	public void testAlterView_TableNotExist_ignored() throws Exception {
-		catalog.createDatabase(db1, createDb(), false);
-		catalog.alterTable(nonExistObjectPath, createView(), true);
-
-		assertFalse(catalog.tableExists(nonExistObjectPath));
-	}
-
-	@Test
-	public void testListView() throws Exception {
-		catalog.createDatabase(db1, createDb(), false);
-
-		assertTrue(catalog.listTables(db1).isEmpty());
-
-		catalog.createTable(path1, createView(), false);
-		catalog.createTable(path3, createTable(), false);
-
-		assertEquals(2, catalog.listTables(db1).size());
-		assertEquals(new HashSet<>(Arrays.asList(path1.getObjectName(), path3.getObjectName())),
-			new HashSet<>(catalog.listTables(db1)));
-		assertEquals(Arrays.asList(path1.getObjectName()), catalog.listViews(db1));
-	}
-
-	@Test
-	public void testRenameView() throws Exception {
-		catalog.createDatabase("db1", new GenericCatalogDatabase(new HashMap<>()), false);
-		GenericCatalogView view = new GenericCatalogView("select * from t1",
-			"select * from db1.t1", createTableSchema(), new HashMap<>());
-		ObjectPath viewPath1 = new ObjectPath(db1, "view1");
-		catalog.createTable(viewPath1, view, false);
-		assertTrue(catalog.tableExists(viewPath1));
-		catalog.renameTable(viewPath1, "view2", false);
-		assertFalse(catalog.tableExists(viewPath1));
-		ObjectPath viewPath2 = new ObjectPath(db1, "view2");
-		assertTrue(catalog.tableExists(viewPath2));
-		catalog.dropTable(viewPath2, false);
 	}
 
 	// ------ partitions ------
@@ -717,6 +584,47 @@ public class GenericInMemoryCatalogTest extends CatalogTestBase {
 		catalog.dropDatabase(db1, false);
 	}
 
+	// ------ statistics ------
+
+	@Test
+	public void testStatistics() throws Exception {
+		// Table related
+		catalog.createDatabase(db1, createDb(), false);
+		CatalogTable table = createTable();
+		catalog.createTable(path1, table, false);
+
+		CatalogTestUtil.checkEquals(catalog.getTableStatistics(path1), CatalogTableStatistics.UNKNOWN);
+		CatalogTestUtil.checkEquals(catalog.getTableColumnStatistics(path1), CatalogColumnStatistics.UNKNOWN);
+
+		CatalogTableStatistics tableStatistics = new CatalogTableStatistics(5, 2, 100, 575);
+		catalog.alterTableStatistics(path1, tableStatistics, false);
+		CatalogTestUtil.checkEquals(tableStatistics, catalog.getTableStatistics(path1));
+		CatalogColumnStatistics columnStatistics = createColumnStats();
+		catalog.alterTableColumnStatistics(path1, columnStatistics, false);
+		CatalogTestUtil.checkEquals(columnStatistics, catalog.getTableColumnStatistics(path1));
+
+		// Partition related
+		catalog.createDatabase(db2, createDb(), false);
+		CatalogTable table2 = createPartitionedTable();
+		catalog.createTable(path2, table2, false);
+		CatalogPartitionSpec partitionSpec = createPartitionSpec();
+		catalog.createPartition(path2, partitionSpec, createPartition(), false);
+
+		CatalogTestUtil.checkEquals(catalog.getPartitionStatistics(path2, partitionSpec), CatalogTableStatistics.UNKNOWN);
+		CatalogTestUtil.checkEquals(catalog.getPartitionColumnStatistics(path2, partitionSpec), CatalogColumnStatistics.UNKNOWN);
+
+		catalog.alterPartitionStatistics(path2, partitionSpec, tableStatistics, false);
+		CatalogTestUtil.checkEquals(tableStatistics, catalog.getPartitionStatistics(path2, partitionSpec));
+		catalog.alterPartitionColumnStatistics(path2, partitionSpec, columnStatistics, false);
+		CatalogTestUtil.checkEquals(columnStatistics, catalog.getPartitionColumnStatistics(path2, partitionSpec));
+
+		// Clean up
+		catalog.dropTable(path1, false);
+		catalog.dropDatabase(db1, false);
+		catalog.dropTable(path2, false);
+		catalog.dropDatabase(db2, false);
+	}
+
 	// ------ utilities ------
 
 	@Override
@@ -746,7 +654,6 @@ public class GenericInMemoryCatalogTest extends CatalogTestBase {
 	public GenericCatalogTable createStreamingTable() {
 		return new GenericCatalogTable(
 			createTableSchema(),
-			new TableStats(0),
 			getStreamingTableProperties(),
 			TEST_COMMENT);
 	}
@@ -755,7 +662,6 @@ public class GenericInMemoryCatalogTest extends CatalogTestBase {
 	public CatalogTable createTable() {
 		return new GenericCatalogTable(
 			createTableSchema(),
-			new TableStats(0),
 			getBatchTableProperties(),
 			TEST_COMMENT);
 	}
@@ -764,7 +670,6 @@ public class GenericInMemoryCatalogTest extends CatalogTestBase {
 	public CatalogTable createAnotherTable() {
 		return new GenericCatalogTable(
 			createAnotherTableSchema(),
-			new TableStats(0),
 			getBatchTableProperties(),
 			TEST_COMMENT);
 	}
@@ -773,7 +678,6 @@ public class GenericInMemoryCatalogTest extends CatalogTestBase {
 	public CatalogTable createPartitionedTable() {
 		return new GenericCatalogTable(
 			createTableSchema(),
-			new TableStats(0),
 			createPartitionKeys(),
 			getBatchTableProperties(),
 			TEST_COMMENT);
@@ -783,7 +687,6 @@ public class GenericInMemoryCatalogTest extends CatalogTestBase {
 	public CatalogTable createAnotherPartitionedTable() {
 		return new GenericCatalogTable(
 			createAnotherTableSchema(),
-			new TableStats(0),
 			createPartitionKeys(),
 			getBatchTableProperties(),
 			TEST_COMMENT);
@@ -831,7 +734,8 @@ public class GenericInMemoryCatalogTest extends CatalogTestBase {
 		return new GenericCatalogPartition(props);
 	}
 
-	private CatalogView createView() {
+	@Override
+	public CatalogView createView() {
 		return new GenericCatalogView(
 			String.format("select * from %s", t1),
 			String.format("select * from %s.%s", TEST_CATALOG_NAME, path1.getFullName()),
@@ -840,13 +744,32 @@ public class GenericInMemoryCatalogTest extends CatalogTestBase {
 			"This is a view");
 	}
 
-	private CatalogView createAnotherView() {
+	@Override
+	public CatalogView createAnotherView() {
 		return new GenericCatalogView(
 			String.format("select * from %s", t2),
 			String.format("select * from %s.%s", TEST_CATALOG_NAME, path2.getFullName()),
-			createTableSchema(),
+			createAnotherTableSchema(),
 			new HashMap<>(),
 			"This is another view");
+	}
+
+	private CatalogColumnStatistics createColumnStats() {
+		CatalogColumnStatisticsDataBoolean booleanColStats = new CatalogColumnStatisticsDataBoolean(55L, 45L, 5L);
+		CatalogColumnStatisticsDataLong longColStats = new CatalogColumnStatisticsDataLong(-123L, 763322L, 23L, 79L);
+		CatalogColumnStatisticsDataString stringColStats = new CatalogColumnStatisticsDataString(152L, 43.5D, 20L, 0L);
+		CatalogColumnStatisticsDataDate dateColStats = new CatalogColumnStatisticsDataDate(new Date(71L),
+			new Date(17923L), 1321, 0L);
+		CatalogColumnStatisticsDataDouble doubleColStats = new CatalogColumnStatisticsDataDouble(-123.35D, 7633.22D, 23L, 79L);
+		CatalogColumnStatisticsDataBinary binaryColStats = new CatalogColumnStatisticsDataBinary(755L, 43.5D, 20L);
+		Map<String, CatalogColumnStatisticsDataBase> colStatsMap = new HashMap<>(6);
+		colStatsMap.put("b1", booleanColStats);
+		colStatsMap.put("l2", longColStats);
+		colStatsMap.put("s3", stringColStats);
+		colStatsMap.put("d4", dateColStats);
+		colStatsMap.put("dd5", doubleColStats);
+		colStatsMap.put("bb6", binaryColStats);
+		return new CatalogColumnStatistics(colStatsMap);
 	}
 
 	protected CatalogFunction createFunction() {
@@ -874,4 +797,5 @@ public class GenericInMemoryCatalogTest extends CatalogTestBase {
 			return String.valueOf(i);
 		}
 	}
+
 }
