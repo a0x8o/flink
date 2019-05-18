@@ -28,118 +28,28 @@ import org.junit.BeforeClass;
 import java.io.IOException;
 import java.util.HashMap;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+
 /**
  * Test for HiveCatalog.
  */
 public class HiveCatalogTest extends CatalogTestBase {
+
 	@BeforeClass
 	public static void init() throws IOException {
-		catalog = HiveTestUtils.createGenericHiveMetastoreCatalog();
+		catalog = HiveTestUtils.createHiveCatalog();
 		catalog.open();
 	}
 
 	// =====================
-	// HiveCatalog doesn't support table operation yet
-	// Thus, overriding the following tests which involve table operation in CatalogTestBase so they won't run against HiveCatalog
+	// HiveCatalog doesn't support streaming table operation. Ignore this test in CatalogTestBase.
 	// =====================
-
-	// TODO: re-enable these tests once HiveCatalog support table operations
-	public void testDropDb_DatabaseNotEmptyException() throws Exception {
-	}
 
 	public void testCreateTable_Streaming() throws Exception {
 	}
 
-	public void testCreateTable_Batch() throws Exception {
-	}
-
-	public void testCreateTable_DatabaseNotExistException() throws Exception {
-	}
-
-	public void testCreateTable_TableAlreadyExistException() throws Exception {
-	}
-
-	public void testCreateTable_TableAlreadyExist_ignored() throws Exception {
-	}
-
-	public void testGetTable_TableNotExistException() throws Exception {
-	}
-
-	public void testGetTable_TableNotExistException_NoDb() throws Exception {
-	}
-
-	public void testDropTable_nonPartitionedTable() throws Exception {
-	}
-
-	public void testDropTable_TableNotExistException() throws Exception {
-	}
-
-	public void testDropTable_TableNotExist_ignored() throws Exception {
-	}
-
-	public void testAlterTable() throws Exception {
-	}
-
-	public void testAlterTable_TableNotExistException() throws Exception {
-	}
-
-	public void testAlterTable_TableNotExist_ignored() throws Exception {
-	}
-
-	public void testRenameTable_nonPartitionedTable() throws Exception {
-	}
-
-	public void testRenameTable_TableNotExistException() throws Exception {
-	}
-
-	public void testRenameTable_TableNotExistException_ignored() throws Exception {
-	}
-
-	public void testRenameTable_TableAlreadyExistException() throws Exception {
-	}
-
-	public void testListTables() throws Exception {
-	}
-
-	public void testTableExists() throws Exception {
-	}
-
-	public void testCreateView() throws Exception {
-	}
-
-	public void testCreateView_DatabaseNotExistException() throws Exception {
-	}
-
-	public void testCreateView_TableAlreadyExistException() throws Exception {
-	}
-
-	public void testCreateView_TableAlreadyExist_ignored() throws Exception {
-	}
-
-	public void testDropView() throws Exception {
-	}
-
-	public void testAlterView() throws Exception {
-	}
-
-	public void testAlterView_TableNotExistException() throws Exception {
-	}
-
-	public void testAlterView_TableNotExist_ignored() throws Exception {
-	}
-
-	public void testListView() throws Exception {
-	}
-
-	public void testRenameView() throws Exception {
-	}
-
 	// ------ utils ------
-
-	@Override
-	public String getBuiltInDefaultDatabase() {
-		return HiveCatalogBase.DEFAULT_DB;
-	}
 
 	@Override
 	public CatalogDatabase createDb() {
@@ -163,43 +73,85 @@ public class HiveCatalogTest extends CatalogTestBase {
 
 	@Override
 	public CatalogTable createTable() {
-		// TODO: implement this once HiveCatalog support table operations
-		return null;
+		return new HiveCatalogTable(
+			createTableSchema(),
+			getBatchTableProperties(),
+			TEST_COMMENT
+		);
 	}
 
 	@Override
 	public CatalogTable createAnotherTable() {
-		// TODO: implement this once HiveCatalog support table operations
-		return null;
+		return new HiveCatalogTable(
+			createAnotherTableSchema(),
+			getBatchTableProperties(),
+			TEST_COMMENT
+		);
 	}
 
 	@Override
 	public CatalogTable createStreamingTable() {
-		// TODO: implement this once HiveCatalog support table operations
-		return null;
+		throw new UnsupportedOperationException("HiveCatalog doesn't support streaming tables.");
 	}
 
 	@Override
 	public CatalogTable createPartitionedTable() {
-		// TODO: implement this once HiveCatalog support table operations
-		return null;
+		return new HiveCatalogTable(
+			createTableSchema(),
+			createPartitionKeys(),
+			getBatchTableProperties(),
+			TEST_COMMENT);
 	}
 
 	@Override
 	public CatalogTable createAnotherPartitionedTable() {
-		// TODO: implement this once HiveCatalog support table operations
-		return null;
+		return new HiveCatalogTable(
+			createAnotherTableSchema(),
+			createPartitionKeys(),
+			getBatchTableProperties(),
+			TEST_COMMENT);
 	}
 
 	@Override
 	public CatalogView createView() {
-		// TODO: implement this once HiveCatalog support view operations
-		return null;
+		return new HiveCatalogView(
+			String.format("select * from %s", t1),
+			String.format("select * from %s.%s", TEST_CATALOG_NAME, path1.getFullName()),
+			createTableSchema(),
+			new HashMap<>(),
+			"This is a hive view");
 	}
 
 	@Override
 	public CatalogView createAnotherView() {
-		// TODO: implement this once HiveCatalog support view operations
-		return null;
+		return new HiveCatalogView(
+			String.format("select * from %s", t2),
+			String.format("select * from %s.%s", TEST_CATALOG_NAME, path2.getFullName()),
+			createAnotherTableSchema(),
+			new HashMap<>(),
+			"This is another hive view");
+	}
+
+	@Override
+	public void checkEquals(CatalogTable t1, CatalogTable t2) {
+		assertEquals(t1.getSchema(), t2.getSchema());
+		assertEquals(t1.getComment(), t2.getComment());
+		assertEquals(t1.getPartitionKeys(), t2.getPartitionKeys());
+		assertEquals(t1.isPartitioned(), t2.isPartitioned());
+
+		// Hive tables may have properties created by itself
+		// thus properties of Hive table is a super set of those in its corresponding Flink table
+		assertTrue(t2.getProperties().entrySet().containsAll(t1.getProperties().entrySet()));
+	}
+
+	protected void checkEquals(CatalogView v1, CatalogView v2) {
+		assertEquals(v1.getSchema(), v1.getSchema());
+		assertEquals(v1.getComment(), v2.getComment());
+		assertEquals(v1.getOriginalQuery(), v2.getOriginalQuery());
+		assertEquals(v1.getExpandedQuery(), v2.getExpandedQuery());
+
+		// Hive views may have properties created by itself
+		// thus properties of Hive view is a super set of those in its corresponding Flink view
+		assertTrue(v2.getProperties().entrySet().containsAll(v1.getProperties().entrySet()));
 	}
 }

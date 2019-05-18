@@ -48,10 +48,9 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * A generic catalog implementation that holds all meta objects in memory.
  */
 public class GenericInMemoryCatalog implements Catalog {
+	private static final String DEFAULT_DB = "default";
 
-	public static final String DEFAULT_DB = "default";
-
-	private String currentDatabase = DEFAULT_DB;
+	private final String defaultDatabase;
 
 	private final String catalogName;
 	private final Map<String, CatalogDatabase> databases;
@@ -65,11 +64,17 @@ public class GenericInMemoryCatalog implements Catalog {
 	private final Map<ObjectPath, Map<CatalogPartitionSpec, CatalogColumnStatistics>> partitionColumnStats;
 
 	public GenericInMemoryCatalog(String name) {
+		this(name, DEFAULT_DB);
+	}
+
+	public GenericInMemoryCatalog(String name, String defaultDatabase) {
 		checkArgument(!StringUtils.isNullOrWhitespaceOnly(name), "name cannot be null or empty");
+		checkArgument(!StringUtils.isNullOrWhitespaceOnly(defaultDatabase), "defaultDatabase cannot be null or empty");
 
 		this.catalogName = name;
+		this.defaultDatabase = defaultDatabase;
 		this.databases = new LinkedHashMap<>();
-		this.databases.put(DEFAULT_DB, new GenericCatalogDatabase(new HashMap<>()));
+		this.databases.put(defaultDatabase, new GenericCatalogDatabase(new HashMap<>()));
 		this.tables = new LinkedHashMap<>();
 		this.functions = new LinkedHashMap<>();
 		this.partitions = new LinkedHashMap<>();
@@ -81,7 +86,6 @@ public class GenericInMemoryCatalog implements Catalog {
 
 	@Override
 	public void open() {
-
 	}
 
 	@Override
@@ -92,19 +96,8 @@ public class GenericInMemoryCatalog implements Catalog {
 	// ------ databases ------
 
 	@Override
-	public String getCurrentDatabase() {
-		return currentDatabase;
-	}
-
-	@Override
-	public void setCurrentDatabase(String databaseName) throws DatabaseNotExistException {
-		checkArgument(!StringUtils.isNullOrWhitespaceOnly(databaseName));
-
-		if (!databaseExists(databaseName)) {
-			throw new DatabaseNotExistException(catalogName, databaseName);
-		}
-
-		currentDatabase = databaseName;
+	public String getDefaultDatabase() {
+		return defaultDatabase;
 	}
 
 	@Override
@@ -216,11 +209,15 @@ public class GenericInMemoryCatalog implements Catalog {
 		checkNotNull(tablePath);
 		checkNotNull(newTable);
 
-		// TODO: validate the new and old CatalogBaseTable must be of the same type. For example, this doesn't
-		//		allow alter a regular table to partitioned table, or alter a view to a table, and vice versa.
-		//		And also add unit tests.
-
 		if (tableExists(tablePath)) {
+			CatalogBaseTable oldTable = tables.get(tablePath);
+
+			if (oldTable.getClass() != newTable.getClass()) {
+				throw new CatalogException(
+					String.format("Table classes don't match. Existing table is '%s' and new table is '%s'. They should be of the same class.",
+						oldTable.getClass().getName(), newTable.getClass().getName()));
+			}
+
 			tables.put(tablePath, newTable.copy());
 		} else if (!ignoreIfNotExists) {
 			throw new TableNotExistException(catalogName, tablePath);
