@@ -34,20 +34,17 @@ public class HiveTestUtils {
 	private static final TemporaryFolder TEMPORARY_FOLDER = new TemporaryFolder();
 
 	/**
-	 * Create a GenericHiveMetastoreCatalog with an embedded Hive Metastore.
-	 */
-	public static GenericHiveMetastoreCatalog createGenericHiveMetastoreCatalog() throws IOException {
-		return new GenericHiveMetastoreCatalog(CatalogTestBase.TEST_CATALOG_NAME, getHiveConf());
-	}
-
-	/**
 	 * Create a HiveCatalog with an embedded Hive Metastore.
 	 */
 	public static HiveCatalog createHiveCatalog() throws IOException {
 		return new HiveCatalog(CatalogTestBase.TEST_CATALOG_NAME, getHiveConf());
 	}
 
-	private static HiveConf getHiveConf() throws IOException {
+	public static HiveCatalog createHiveCatalog(HiveConf hiveConf) {
+		return new HiveCatalog(CatalogTestBase.TEST_CATALOG_NAME, hiveConf);
+	}
+
+	public static HiveConf getHiveConf() throws IOException {
 		ClassLoader classLoader = new HiveTestUtils().getClass().getClassLoader();
 		HiveConf.setHiveSiteLocation(classLoader.getResource(HIVE_SITE_XML));
 

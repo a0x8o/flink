@@ -19,9 +19,10 @@
 package org.apache.flink.table.plan.rules
 
 import org.apache.flink.table.plan.nodes.logical._
-import org.apache.flink.table.plan.rules.logical.{CalcSnapshotTransposeRule, _}
+import org.apache.flink.table.plan.rules.logical._
 import org.apache.flink.table.plan.rules.physical.FlinkExpandConversionRule
 import org.apache.flink.table.plan.rules.physical.stream._
+
 import org.apache.calcite.rel.core.RelFactories
 import org.apache.calcite.rel.logical.{LogicalIntersect, LogicalMinus, LogicalUnion}
 import org.apache.calcite.rel.rules._
@@ -33,7 +34,9 @@ object FlinkStreamRuleSets {
 
   val SEMI_JOIN_RULES: RuleSet = RuleSets.ofList(
     SimplifyFilterConditionRule.EXTENDED,
+    FlinkRewriteSubQueryRule.FILTER,
     FlinkSubQueryRemoveRule.FILTER,
+    JoinConditionTypeCoerceRule.INSTANCE,
     FlinkJoinPushExpressionsRule.INSTANCE
   )
 
@@ -87,10 +90,21 @@ object FlinkStreamRuleSets {
   )
 
   /**
+    * RuleSet to simplify predicate expressions in filters and joins
+    */
+  private val PREDICATE_SIMPLIFY_EXPRESSION_RULES: RuleSet = RuleSets.ofList(
+    SimplifyFilterConditionRule.INSTANCE,
+    SimplifyJoinConditionRule.INSTANCE,
+    JoinConditionTypeCoerceRule.INSTANCE,
+    JoinPushExpressionsRule.INSTANCE
+  )
+
+  /**
     * RuleSet to normalize plans for stream
     */
   val DEFAULT_REWRITE_RULES: RuleSet = RuleSets.ofList((
-    REWRITE_COALESCE_RULES.asScala ++
+    PREDICATE_SIMPLIFY_EXPRESSION_RULES.asScala ++
+      REWRITE_COALESCE_RULES.asScala ++
       REDUCE_EXPRESSION_RULES.asScala ++
       List(
         StreamLogicalWindowAggregateRule.INSTANCE,
@@ -105,7 +119,9 @@ object FlinkStreamRuleSets {
         new CoerceInputsRule(classOf[LogicalIntersect], false),
         //ensure except set operator have the same row type
         new CoerceInputsRule(classOf[LogicalMinus], false),
-        ConvertToNotInOrInRule.INSTANCE
+        ConvertToNotInOrInRule.INSTANCE,
+        // optimize limit 0
+        FlinkLimit0RemoveRule.INSTANCE
       )
     ).asJava)
 
@@ -127,19 +143,11 @@ object FlinkStreamRuleSets {
   )
 
   /**
-    * Ruleset to simplify expressions
-    */
-  private val PREDICATE_SIMPLIFY_EXPRESSION_RULES: RuleSet = RuleSets.ofList(
-    // TODO: add filter simply and join condition simplify rules
-    FlinkJoinPushExpressionsRule.INSTANCE
-  )
-
-  /**
     * RuleSet to do predicate pushdown
     */
   val FILTER_PREPARE_RULES: RuleSet = RuleSets.ofList((
     FILTER_RULES.asScala
-      // simplify expressions
+      // simplify predicate expressions in filters and joins
       ++ PREDICATE_SIMPLIFY_EXPRESSION_RULES.asScala
       // reduce expressions in filters and joins
       ++ REDUCE_EXPRESSION_RULES.asScala
@@ -152,7 +160,7 @@ object FlinkStreamRuleSets {
     PruneEmptyRules.AGGREGATE_INSTANCE,
     PruneEmptyRules.FILTER_INSTANCE,
     PruneEmptyRules.JOIN_LEFT_INSTANCE,
-    PruneEmptyRules.JOIN_RIGHT_INSTANCE,
+    FlinkPruneEmptyRules.JOIN_RIGHT_INSTANCE,
     PruneEmptyRules.PROJECT_INSTANCE,
     PruneEmptyRules.SORT_INSTANCE,
     PruneEmptyRules.UNION_INSTANCE
@@ -164,7 +172,7 @@ object FlinkStreamRuleSets {
   val PROJECT_RULES: RuleSet = RuleSets.ofList(
     // push a projection past a filter
     ProjectFilterTransposeRule.INSTANCE,
-    // push a projection to the children of a join
+    // push a projection to the children of a non semi/anti join
     // push all expressions to handle the time indicator correctly
     new FlinkProjectJoinTransposeRule(
       PushProjector.ExprCondition.FALSE, RelFactories.LOGICAL_BUILDER),
@@ -187,11 +195,10 @@ object FlinkStreamRuleSets {
     * This RuleSet is a sub-set of [[LOGICAL_OPT_RULES]].
     */
   private val LOGICAL_RULES: RuleSet = RuleSets.ofList(
-    // aggregation and projection rules
-    AggregateProjectMergeRule.INSTANCE,
-    AggregateProjectPullUpConstantsRule.INSTANCE,
     // reorder sort and projection
     SortProjectTransposeRule.INSTANCE,
+    // remove unnecessary sort rule
+    SortRemoveRule.INSTANCE,
 
     // join rules
     FlinkJoinPushExpressionsRule.INSTANCE,
@@ -201,8 +208,14 @@ object FlinkStreamRuleSets {
     // convert non-all union into all-union + distinct
     UnionToDistinctRule.INSTANCE,
 
+    // aggregation and projection rules
+    AggregateProjectMergeRule.INSTANCE,
+    AggregateProjectPullUpConstantsRule.INSTANCE,
+
     // remove aggregation if it does not aggregate and input is already distinct
-    AggregateRemoveRule.INSTANCE,
+    FlinkAggregateRemoveRule.INSTANCE,
+    // push aggregate through join
+    FlinkAggregateJoinTransposeRule.LEFT_RIGHT_OUTER_JOIN_EXTENDED,
     // using variants of aggregate union rule
     AggregateUnionAggregateRule.AGG_ON_FIRST_INPUT,
     AggregateUnionAggregateRule.AGG_ON_SECOND_INPUT,
@@ -211,11 +224,12 @@ object FlinkStreamRuleSets {
     AggregateReduceFunctionsRule.INSTANCE,
     WindowAggregateReduceFunctionsRule.INSTANCE,
 
+    // reduce useless aggCall
+    PruneAggregateCallRule.PROJECT_ON_AGGREGATE,
+    PruneAggregateCallRule.CALC_ON_AGGREGATE,
+
     // expand grouping sets
     DecomposeGroupingSetsRule.INSTANCE,
-
-    // remove unnecessary sort rule
-    SortRemoveRule.INSTANCE,
 
     // calc rules
     FilterCalcMergeRule.INSTANCE,
@@ -227,7 +241,11 @@ object FlinkStreamRuleSets {
     // semi/anti join transpose rule
     FlinkSemiAntiJoinJoinTransposeRule.INSTANCE,
     FlinkSemiAntiJoinProjectTransposeRule.INSTANCE,
-    FlinkSemiAntiJoinFilterTransposeRule.INSTANCE
+    FlinkSemiAntiJoinFilterTransposeRule.INSTANCE,
+
+    // set operators
+    ReplaceIntersectWithSemiJoinRule.INSTANCE,
+    ReplaceMinusWithAntiJoinRule.INSTANCE
   )
 
   /**
@@ -236,7 +254,7 @@ object FlinkStreamRuleSets {
   private val LOGICAL_CONVERTERS: RuleSet = RuleSets.ofList(
     // translate to flink logical rel nodes
     FlinkLogicalAggregate.STREAM_CONVERTER,
-    FlinkLogicalOverWindow.CONVERTER,
+    FlinkLogicalOverAggregate.CONVERTER,
     FlinkLogicalCalc.CONVERTER,
     FlinkLogicalCorrelate.CONVERTER,
     FlinkLogicalJoin.CONVERTER,
@@ -271,6 +289,10 @@ object FlinkStreamRuleSets {
   val LOGICAL_REWRITE: RuleSet = RuleSets.ofList(
     // transform over window to topn node
     FlinkLogicalRankRule.INSTANCE,
+    // transpose calc past rank to reduce rank input fields
+    CalcRankTransposeRule.INSTANCE,
+    // remove output of rank number when it is a constant
+    RankNumberColumnRemoveRule.INSTANCE,
     // split distinct aggregate to reduce data skew
     SplitAggregateRule.INSTANCE,
     // transpose calc past snapshot
@@ -284,27 +306,39 @@ object FlinkStreamRuleSets {
     */
   val PHYSICAL_OPT_RULES: RuleSet = RuleSets.ofList(
     FlinkExpandConversionRule.STREAM_INSTANCE,
+    // source
     StreamExecDataStreamScanRule.INSTANCE,
     StreamExecTableSourceScanRule.INSTANCE,
     StreamExecIntermediateTableScanRule.INSTANCE,
     StreamExecValuesRule.INSTANCE,
+    // calc
     StreamExecCalcRule.INSTANCE,
+    // union
     StreamExecUnionRule.INSTANCE,
+    // sort
     StreamExecSortRule.INSTANCE,
     StreamExecLimitRule.INSTANCE,
     StreamExecSortLimitRule.INSTANCE,
-    StreamExecRankRule.INSTANCE,
     StreamExecTemporalSortRule.INSTANCE,
+    // rank
+    StreamExecRankRule.INSTANCE,
     StreamExecDeduplicateRule.RANK_INSTANCE,
-    StreamExecGroupAggregateRule.INSTANCE,
-    StreamExecOverAggregateRule.INSTANCE,
-    StreamExecGroupWindowAggregateRule.INSTANCE,
+    // expand
     StreamExecExpandRule.INSTANCE,
+    // group agg
+    StreamExecGroupAggregateRule.INSTANCE,
+    // over agg
+    StreamExecOverAggregateRule.INSTANCE,
+    // window agg
+    StreamExecGroupWindowAggregateRule.INSTANCE,
+    // join
     StreamExecJoinRule.INSTANCE,
     StreamExecWindowJoinRule.INSTANCE,
-    StreamExecCorrelateRule.INSTANCE,
     StreamExecLookupJoinRule.SNAPSHOT_ON_TABLESCAN,
     StreamExecLookupJoinRule.SNAPSHOT_ON_CALC_TABLESCAN,
+    // correlate
+    StreamExecCorrelateRule.INSTANCE,
+    // sink
     StreamExecSinkRule.INSTANCE
   )
 

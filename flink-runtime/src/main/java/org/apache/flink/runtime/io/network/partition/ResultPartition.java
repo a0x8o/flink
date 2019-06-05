@@ -18,22 +18,18 @@
 
 package org.apache.flink.runtime.io.network.partition;
 
-import org.apache.flink.api.common.JobID;
 import org.apache.flink.runtime.executiongraph.IntermediateResultPartition;
-import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
+import org.apache.flink.runtime.io.network.buffer.BufferBuilder;
 import org.apache.flink.runtime.io.network.buffer.BufferConsumer;
 import org.apache.flink.runtime.io.network.buffer.BufferPool;
 import org.apache.flink.runtime.io.network.buffer.BufferPoolOwner;
-import org.apache.flink.runtime.io.network.buffer.BufferProvider;
 import org.apache.flink.runtime.io.network.partition.consumer.LocalInputChannel;
 import org.apache.flink.runtime.io.network.partition.consumer.RemoteInputChannel;
 import org.apache.flink.runtime.jobgraph.DistributionPattern;
 import org.apache.flink.runtime.taskexecutor.TaskExecutor;
-import org.apache.flink.runtime.taskmanager.TaskActions;
-import org.apache.flink.util.ExceptionUtils;
-import org.apache.flink.util.FlinkRuntimeException;
+import org.apache.flink.util.function.FunctionWithException;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -69,13 +65,6 @@ import static org.apache.flink.util.Preconditions.checkState;
  * <li><strong>Release</strong>: </li>
  * </ol>
  *
- * <h2>Lazy deployment and updates of consuming tasks</h2>
- *
- * <p>Before a consuming task can request the result, it has to be deployed. The time of deployment
- * depends on the PIPELINED vs. BLOCKING characteristic of the result partition. With pipelined
- * results, receivers are deployed as soon as the first buffer is added to the result partition.
- * With blocking results on the other hand, receivers are deployed after the partition is finished.
- *
  * <h2>Buffer management</h2>
  *
  * <h2>State management</h2>
@@ -85,10 +74,6 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 	private static final Logger LOG = LoggerFactory.getLogger(ResultPartition.class);
 
 	private final String owningTaskName;
-
-	private final TaskActions taskActions;
-
-	private final JobID jobId;
 
 	private final ResultPartitionID partitionId;
 
@@ -100,11 +85,7 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 
 	private final ResultPartitionManager partitionManager;
 
-	private final ResultPartitionConsumableNotifier partitionConsumableNotifier;
-
 	public final int numTargetKeyGroups;
-
-	private final boolean sendScheduleOrUpdateConsumersMessage;
 
 	// - Runtime state --------------------------------------------------------
 
@@ -119,58 +100,28 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 
 	private BufferPool bufferPool;
 
-	private boolean hasNotifiedPipelinedConsumers;
-
 	private boolean isFinished;
 
 	private volatile Throwable cause;
 
+	private final FunctionWithException<BufferPoolOwner, BufferPool, IOException> bufferPoolFactory;
+
 	public ResultPartition(
 		String owningTaskName,
-		TaskActions taskActions, // actions on the owning task
-		JobID jobId,
 		ResultPartitionID partitionId,
 		ResultPartitionType partitionType,
-		int numberOfSubpartitions,
+		ResultSubpartition[] subpartitions,
 		int numTargetKeyGroups,
 		ResultPartitionManager partitionManager,
-		ResultPartitionConsumableNotifier partitionConsumableNotifier,
-		IOManager ioManager,
-		boolean sendScheduleOrUpdateConsumersMessage) {
+		FunctionWithException<BufferPoolOwner, BufferPool, IOException> bufferPoolFactory) {
 
 		this.owningTaskName = checkNotNull(owningTaskName);
-		this.taskActions = checkNotNull(taskActions);
-		this.jobId = checkNotNull(jobId);
 		this.partitionId = checkNotNull(partitionId);
 		this.partitionType = checkNotNull(partitionType);
-		this.subpartitions = new ResultSubpartition[numberOfSubpartitions];
+		this.subpartitions = checkNotNull(subpartitions);
 		this.numTargetKeyGroups = numTargetKeyGroups;
 		this.partitionManager = checkNotNull(partitionManager);
-		this.partitionConsumableNotifier = checkNotNull(partitionConsumableNotifier);
-		this.sendScheduleOrUpdateConsumersMessage = sendScheduleOrUpdateConsumersMessage;
-
-		// Create the subpartitions.
-		switch (partitionType) {
-			case BLOCKING:
-				initializeBoundedBlockingPartitions(subpartitions, this, ioManager);
-				break;
-
-			case PIPELINED:
-			case PIPELINED_BOUNDED:
-				for (int i = 0; i < subpartitions.length; i++) {
-					subpartitions[i] = new PipelinedSubpartition(i, this);
-				}
-
-				break;
-
-			default:
-				throw new IllegalArgumentException("Unsupported result partition type.");
-		}
-
-		// Initially, partitions should be consumed once before release.
-		pin();
-
-		LOG.debug("{}: Initialized {}", owningTaskName, this);
+		this.bufferPoolFactory = bufferPoolFactory;
 	}
 
 	/**
@@ -181,17 +132,16 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 	 * <p>The pool is registered with the partition *after* it as been constructed in order to conform
 	 * to the life-cycle of task registrations in the {@link TaskExecutor}.
 	 */
-	public void registerBufferPool(BufferPool bufferPool) {
-		checkArgument(bufferPool.getNumberOfRequiredMemorySegments() >= getNumberOfSubpartitions(),
-				"Bug in result partition setup logic: Buffer pool has not enough guaranteed buffers for this result partition.");
-
+	@Override
+	public void setup() throws IOException {
 		checkState(this.bufferPool == null, "Bug in result partition setup logic: Already registered buffer pool.");
 
-		this.bufferPool = checkNotNull(bufferPool);
-	}
+		BufferPool bufferPool = checkNotNull(bufferPoolFactory.apply(this));
+		checkArgument(bufferPool.getNumberOfRequiredMemorySegments() >= getNumberOfSubpartitions(),
+			"Bug in result partition setup logic: Buffer pool has not enough guaranteed buffers for this result partition.");
 
-	public JobID getJobId() {
-		return jobId;
+		this.bufferPool = bufferPool;
+		partitionManager.registerResultPartition(this);
 	}
 
 	public String getOwningTaskName() {
@@ -205,11 +155,6 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 	@Override
 	public int getNumberOfSubpartitions() {
 		return subpartitions.length;
-	}
-
-	@Override
-	public BufferProvider getBufferProvider() {
-		return bufferPool;
 	}
 
 	public BufferPool getBufferPool() {
@@ -238,7 +183,14 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 	// ------------------------------------------------------------------------
 
 	@Override
-	public void addBufferConsumer(BufferConsumer bufferConsumer, int subpartitionIndex) throws IOException {
+	public BufferBuilder getBufferBuilder() throws IOException, InterruptedException {
+		checkInProduceState();
+
+		return bufferPool.requestBufferBuilderBlocking();
+	}
+
+	@Override
+	public boolean addBufferConsumer(BufferConsumer bufferConsumer, int subpartitionIndex) throws IOException {
 		checkNotNull(bufferConsumer);
 
 		ResultSubpartition subpartition;
@@ -251,9 +203,7 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 			throw ex;
 		}
 
-		if (subpartition.add(bufferConsumer)) {
-			notifyPipelinedConsumers();
-		}
+		return subpartition.add(bufferConsumer);
 	}
 
 	@Override
@@ -275,25 +225,15 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 	 *
 	 * <p>For BLOCKING results, this will trigger the deployment of consuming tasks.
 	 */
+	@Override
 	public void finish() throws IOException {
-		boolean success = false;
+		checkInProduceState();
 
-		try {
-			checkInProduceState();
-
-			for (ResultSubpartition subpartition : subpartitions) {
-				subpartition.finish();
-			}
-
-			success = true;
+		for (ResultSubpartition subpartition : subpartitions) {
+			subpartition.finish();
 		}
-		finally {
-			if (success) {
-				isFinished = true;
 
-				notifyPipelinedConsumers();
-			}
-		}
+		isFinished = true;
 	}
 
 	public void release() {
@@ -332,6 +272,7 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 		}
 	}
 
+	@Override
 	public void fail(@Nullable Throwable throwable) {
 		partitionManager.releasePartition(partitionId, throwable);
 	}
@@ -453,47 +394,5 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 
 	private void checkInProduceState() throws IllegalStateException {
 		checkState(!isFinished, "Partition already finished.");
-	}
-
-	/**
-	 * Notifies pipelined consumers of this result partition once.
-	 */
-	private void notifyPipelinedConsumers() {
-		if (sendScheduleOrUpdateConsumersMessage && !hasNotifiedPipelinedConsumers && partitionType.isPipelined()) {
-			partitionConsumableNotifier.notifyPartitionConsumable(jobId, partitionId, taskActions);
-
-			hasNotifiedPipelinedConsumers = true;
-		}
-	}
-
-	private static void initializeBoundedBlockingPartitions(
-			ResultSubpartition[] subpartitions,
-			ResultPartition parent,
-			IOManager ioManager) {
-
-		int i = 0;
-		try {
-			for (; i < subpartitions.length; i++) {
-				subpartitions[i] = new BoundedBlockingSubpartition(
-						i, parent, ioManager.createChannel().getPathFile().toPath());
-			}
-		}
-		catch (IOException e) {
-			// undo all the work so that a failed constructor does not leave any resources
-			// in need of disposal
-			releasePartitionsQuietly(subpartitions, i);
-
-			// this is not good, we should not be forced to wrap this in a runtime exception.
-			// the fact that the ResultPartition and Task constructor (which calls this) do not tolerate any exceptions
-			// is incompatible with eager initialization of resources (RAII).
-			throw new FlinkRuntimeException(e);
-		}
-	}
-
-	private static void releasePartitionsQuietly(ResultSubpartition[] partitions, int until) {
-		for (int i = 0; i < until; i++) {
-			final ResultSubpartition subpartition = partitions[i];
-			ExceptionUtils.suppressExceptions(subpartition::release);
-		}
 	}
 }

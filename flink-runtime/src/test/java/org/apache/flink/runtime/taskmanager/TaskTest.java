@@ -33,6 +33,10 @@ import org.apache.flink.runtime.blob.VoidBlobStore;
 import org.apache.flink.runtime.broadcast.BroadcastVariableManager;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.concurrent.Executors;
+import org.apache.flink.runtime.deployment.InputChannelDeploymentDescriptor;
+import org.apache.flink.runtime.deployment.InputGateDeploymentDescriptor;
+import org.apache.flink.runtime.deployment.ResultPartitionDeploymentDescriptor;
+import org.apache.flink.runtime.deployment.ResultPartitionLocation;
 import org.apache.flink.runtime.execution.CancelTaskException;
 import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.execution.ExecutionState;
@@ -47,12 +51,14 @@ import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.network.NetworkEnvironment;
 import org.apache.flink.runtime.io.network.NetworkEnvironmentBuilder;
 import org.apache.flink.runtime.io.network.TaskEventDispatcher;
-import org.apache.flink.runtime.io.network.netty.PartitionProducerStateChecker;
 import org.apache.flink.runtime.io.network.partition.NoOpResultPartitionConsumableNotifier;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionConsumableNotifier;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
+import org.apache.flink.runtime.io.network.partition.ResultPartitionType;
+import org.apache.flink.runtime.io.network.partition.consumer.RemoteChannelStateChecker;
 import org.apache.flink.runtime.io.network.partition.consumer.SingleInputGate;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
+import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
 import org.apache.flink.runtime.jobmanager.PartitionProducerDisposedException;
@@ -63,6 +69,7 @@ import org.apache.flink.runtime.operators.testutils.MockInputSplitProvider;
 import org.apache.flink.runtime.query.KvStateRegistry;
 import org.apache.flink.runtime.state.TestTaskStateManager;
 import org.apache.flink.runtime.taskexecutor.KvStateService;
+import org.apache.flink.runtime.taskexecutor.PartitionProducerStateChecker;
 import org.apache.flink.runtime.taskexecutor.TestGlobalAggregateManager;
 import org.apache.flink.runtime.testingUtils.TestingUtils;
 import org.apache.flink.runtime.util.TestingTaskManagerRuntimeInfo;
@@ -92,18 +99,19 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
 
+import static org.hamcrest.CoreMatchers.is;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.assertThat;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -262,7 +270,29 @@ public class TaskTest extends TestLogger {
 	}
 
 	@Test
-	public void testExecutionFailsInNetworkRegistration() throws Exception {
+	public void testExecutionFailsInNetworkRegistrationForPartitions() throws Exception {
+		ResultPartitionDeploymentDescriptor dummyPartition = new ResultPartitionDeploymentDescriptor(
+			new IntermediateDataSetID(), new IntermediateResultPartitionID(),
+			ResultPartitionType.PIPELINED, 1, 1, true);
+		testExecutionFailsInNetworkRegistration(Collections.singleton(dummyPartition), Collections.emptyList());
+	}
+
+	@Test
+	public void testExecutionFailsInNetworkRegistrationForGates() throws Exception {
+		InputChannelDeploymentDescriptor dummyChannel =
+			new InputChannelDeploymentDescriptor(new ResultPartitionID(), ResultPartitionLocation.createLocal());
+		InputGateDeploymentDescriptor dummyGate = new InputGateDeploymentDescriptor(
+			new IntermediateDataSetID(), ResultPartitionType.PIPELINED, 0,
+			new InputChannelDeploymentDescriptor[] { dummyChannel });
+		testExecutionFailsInNetworkRegistration(Collections.emptyList(), Collections.singleton(dummyGate));
+	}
+
+	private void testExecutionFailsInNetworkRegistration(
+		Collection<ResultPartitionDeploymentDescriptor> resultPartitions,
+		Collection<InputGateDeploymentDescriptor> inputGates) throws Exception {
+
+		final String errorMessage = "Network buffer pool has already been destroyed.";
+
 		final ResultPartitionConsumableNotifier consumableNotifier = new NoOpResultPartitionConsumableNotifier();
 		final PartitionProducerStateChecker partitionProducerStateChecker = mock(PartitionProducerStateChecker.class);
 
@@ -271,6 +301,8 @@ public class TaskTest extends TestLogger {
 			.setTaskManagerActions(taskManagerActions)
 			.setConsumableNotifier(consumableNotifier)
 			.setPartitionProducerStateChecker(partitionProducerStateChecker)
+			.setResultPartitions(resultPartitions)
+			.setInputGates(inputGates)
 			.build();
 
 		// shut down the network to make the following task registration failure
@@ -282,10 +314,10 @@ public class TaskTest extends TestLogger {
 		// verify final state
 		assertEquals(ExecutionState.FAILED, task.getExecutionState());
 		assertTrue(task.isCanceledOrFailed());
-		assertTrue(task.getFailureCause().getMessage().contains("NetworkEnvironment is shut down"));
+		assertTrue(task.getFailureCause().getMessage().contains(errorMessage));
 
 		taskManagerActions.validateListenerMessage(
-			ExecutionState.FAILED, task, new IllegalStateException("NetworkEnvironment is shut down"));
+			ExecutionState.FAILED, task, new IllegalStateException(errorMessage));
 	}
 
 	@Test
@@ -525,18 +557,14 @@ public class TaskTest extends TestLogger {
 
 	@Test
 	public void testOnPartitionStateUpdate() throws Exception {
-		final IntermediateDataSetID resultId = new IntermediateDataSetID();
 		final ResultPartitionID partitionId = new ResultPartitionID();
-
-		final SingleInputGate inputGate = mock(SingleInputGate.class);
-		when(inputGate.getConsumedResultId()).thenReturn(resultId);
 
 		final Task task = createTaskBuilder()
 			.setInvokable(InvokableBlockingInInvoke.class)
 			.build();
 
-		// Set the mock input gate
-		setInputGate(task, inputGate);
+		RemoteChannelStateChecker checker =
+			new RemoteChannelStateChecker(partitionId, "test task");
 
 		// Expected task state for each producer state
 		final Map<ExecutionState, ExecutionState> expected = new HashMap<>(ExecutionState.values().length);
@@ -555,17 +583,20 @@ public class TaskTest extends TestLogger {
 		expected.put(ExecutionState.CANCELING, ExecutionState.CANCELING);
 		expected.put(ExecutionState.FAILED, ExecutionState.CANCELING);
 
+		int producingStateCounter = 0;
 		for (ExecutionState state : ExecutionState.values()) {
 			setState(task, ExecutionState.RUNNING);
 
-			task.onPartitionStateUpdate(resultId, partitionId, state);
+			if (checker.isProducerReadyOrAbortConsumption(task.new PartitionProducerStateResponseHandle(state, null))) {
+				producingStateCounter++;
+			}
 
 			ExecutionState newTaskState = task.getExecutionState();
 
 			assertEquals(expected.get(state), newTaskState);
 		}
 
-		verify(inputGate, times(4)).retriggerPartitionRequest(eq(partitionId.getPartitionId()));
+		assertEquals(4, producingStateCounter);
 	}
 
 	/**
@@ -580,6 +611,11 @@ public class TaskTest extends TestLogger {
 
 		final ResultPartitionConsumableNotifier consumableNotifier = new NoOpResultPartitionConsumableNotifier();
 
+		AtomicInteger callCount = new AtomicInteger(0);
+
+		RemoteChannelStateChecker remoteChannelStateChecker =
+			new RemoteChannelStateChecker(partitionId, "test task");
+
 		// Test all branches of trigger partition state check
 		{
 			// Reset latches
@@ -592,11 +628,14 @@ public class TaskTest extends TestLogger {
 				.setPartitionProducerStateChecker(partitionChecker)
 				.setExecutor(Executors.directExecutor())
 				.build();
+			setState(task, ExecutionState.RUNNING);
 
 			final CompletableFuture<ExecutionState> promise = new CompletableFuture<>();
 			when(partitionChecker.requestPartitionProducerState(eq(task.getJobID()), eq(resultId), eq(partitionId))).thenReturn(promise);
 
-			task.triggerPartitionProducerStateCheck(task.getJobID(), resultId, partitionId);
+			task.requestPartitionProducerState(resultId, partitionId).thenAccept(checkResult ->
+				assertThat(remoteChannelStateChecker.isProducerReadyOrAbortConsumption(checkResult), is(false))
+			);
 
 			promise.completeExceptionally(new PartitionProducerDisposedException(partitionId));
 			assertEquals(ExecutionState.CANCELING, task.getExecutionState());
@@ -613,11 +652,14 @@ public class TaskTest extends TestLogger {
 				.setPartitionProducerStateChecker(partitionChecker)
 				.setExecutor(Executors.directExecutor())
 				.build();
+			setState(task, ExecutionState.RUNNING);
 
 			final CompletableFuture<ExecutionState> promise = new CompletableFuture<>();
 			when(partitionChecker.requestPartitionProducerState(eq(task.getJobID()), eq(resultId), eq(partitionId))).thenReturn(promise);
 
-			task.triggerPartitionProducerStateCheck(task.getJobID(), resultId, partitionId);
+			task.requestPartitionProducerState(resultId, partitionId).thenAccept(checkResult ->
+				assertThat(remoteChannelStateChecker.isProducerReadyOrAbortConsumption(checkResult), is(false))
+			);
 
 			promise.completeExceptionally(new RuntimeException("Any other exception"));
 
@@ -625,6 +667,8 @@ public class TaskTest extends TestLogger {
 		}
 
 		{
+			callCount.set(0);
+
 			// Reset latches
 			setup();
 
@@ -637,25 +681,24 @@ public class TaskTest extends TestLogger {
 				.setExecutor(Executors.directExecutor())
 				.build();
 
-			final SingleInputGate inputGate = mock(SingleInputGate.class);
-			when(inputGate.getConsumedResultId()).thenReturn(resultId);
-
 			try {
 				task.startTaskThread();
 				awaitLatch.await();
 
-				setInputGate(task, inputGate);
-
 				CompletableFuture<ExecutionState> promise = new CompletableFuture<>();
 				when(partitionChecker.requestPartitionProducerState(eq(task.getJobID()), eq(resultId), eq(partitionId))).thenReturn(promise);
 
-				task.triggerPartitionProducerStateCheck(task.getJobID(), resultId, partitionId);
+				task.requestPartitionProducerState(resultId, partitionId).thenAccept(checkResult -> {
+					if (remoteChannelStateChecker.isProducerReadyOrAbortConsumption(checkResult)) {
+						callCount.incrementAndGet();
+					}
+				});
 
 				promise.completeExceptionally(new TimeoutException());
 
 				assertEquals(ExecutionState.RUNNING, task.getExecutionState());
 
-				verify(inputGate, times(1)).retriggerPartitionRequest(eq(partitionId.getPartitionId()));
+				assertEquals(1, callCount.get());
 			} finally {
 				task.getExecutingThread().interrupt();
 				task.getExecutingThread().join();
@@ -663,6 +706,8 @@ public class TaskTest extends TestLogger {
 		}
 
 		{
+			callCount.set(0);
+
 			// Reset latches
 			setup();
 
@@ -674,25 +719,24 @@ public class TaskTest extends TestLogger {
 				.setExecutor(Executors.directExecutor())
 				.build();
 
-			final SingleInputGate inputGate = mock(SingleInputGate.class);
-			when(inputGate.getConsumedResultId()).thenReturn(resultId);
-
 			try {
 				task.startTaskThread();
 				awaitLatch.await();
 
-				setInputGate(task, inputGate);
-
 				CompletableFuture<ExecutionState> promise = new CompletableFuture<>();
 				when(partitionChecker.requestPartitionProducerState(eq(task.getJobID()), eq(resultId), eq(partitionId))).thenReturn(promise);
 
-				task.triggerPartitionProducerStateCheck(task.getJobID(), resultId, partitionId);
+				task.requestPartitionProducerState(resultId, partitionId).thenAccept(checkResult -> {
+					if (remoteChannelStateChecker.isProducerReadyOrAbortConsumption(checkResult)) {
+						callCount.incrementAndGet();
+					}
+				});
 
 				promise.complete(ExecutionState.RUNNING);
 
 				assertEquals(ExecutionState.RUNNING, task.getExecutionState());
 
-				verify(inputGate, times(1)).retriggerPartitionRequest(eq(partitionId.getPartitionId()));
+				assertEquals(1, callCount.get());
 			} finally {
 				task.getExecutingThread().interrupt();
 				task.getExecutingThread().join();
@@ -935,6 +979,8 @@ public class TaskTest extends TestLogger {
 		private Configuration taskManagerConfig;
 		private ExecutionConfig executionConfig;
 		private Collection<PermanentBlobKey> requiredJarFileBlobKeys;
+		private Collection<ResultPartitionDeploymentDescriptor> resultPartitions = Collections.emptyList();
+		private Collection<InputGateDeploymentDescriptor> inputGates = Collections.emptyList();
 
 		{
 			invokable = TestInvokableCorrect.class;
@@ -1010,6 +1056,16 @@ public class TaskTest extends TestLogger {
 			return this;
 		}
 
+		public TaskBuilder setResultPartitions(Collection<ResultPartitionDeploymentDescriptor> resultPartitions) {
+			this.resultPartitions = resultPartitions;
+			return this;
+		}
+
+		public TaskBuilder setInputGates(Collection<InputGateDeploymentDescriptor> inputGates) {
+			this.inputGates = inputGates;
+			return this;
+		}
+
 		private Task build() throws Exception {
 			final JobID jobId = new JobID();
 			final JobVertexID jobVertexId = new JobVertexID();
@@ -1046,8 +1102,8 @@ public class TaskTest extends TestLogger {
 				new AllocationID(),
 				0,
 				0,
-				Collections.emptyList(),
-				Collections.emptyList(),
+				resultPartitions,
+				inputGates,
 				0,
 				mock(MemoryManager.class),
 				mock(IOManager.class),

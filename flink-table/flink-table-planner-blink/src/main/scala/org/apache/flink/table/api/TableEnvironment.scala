@@ -18,6 +18,21 @@
 
 package org.apache.flink.table.api
 
+import _root_.java.lang.reflect.Modifier
+import _root_.java.util.concurrent.atomic.AtomicInteger
+import _root_.java.util.{Arrays => JArrays}
+
+import org.apache.calcite.config.Lex
+import org.apache.calcite.jdbc.CalciteSchema
+import org.apache.calcite.plan.{RelOptPlanner, RelTrait, RelTraitDef}
+import org.apache.calcite.rel.RelNode
+import org.apache.calcite.schema.SchemaPlus
+import org.apache.calcite.schema.impl.AbstractTable
+import org.apache.calcite.sql._
+import org.apache.calcite.sql.parser.SqlParser
+import org.apache.calcite.sql.util.{ChainedSqlOperatorTable, ListSqlOperatorTable}
+import org.apache.calcite.sql2rel.SqlToRelConverter
+import org.apache.calcite.tools._
 import org.apache.flink.annotation.VisibleForTesting
 import org.apache.flink.api.common.JobExecutionResult
 import org.apache.flink.api.common.typeinfo.TypeInformation
@@ -30,7 +45,7 @@ import org.apache.flink.streaming.api.scala.{StreamExecutionEnvironment => Scala
 import org.apache.flink.streaming.api.transformations.StreamTransformation
 import org.apache.flink.table.api.java.{BatchTableEnvironment => JavaBatchTableEnvironment, StreamTableEnvironment => JavaStreamTableEnv}
 import org.apache.flink.table.api.scala.{BatchTableEnvironment => ScalaBatchTableEnvironment, StreamTableEnvironment => ScalaStreamTableEnv}
-import org.apache.flink.table.calcite.{FlinkContextImpl, FlinkPlannerImpl, FlinkRelBuilder, FlinkTypeFactory, FlinkTypeSystem}
+import org.apache.flink.table.calcite._
 import org.apache.flink.table.codegen.ExpressionReducer
 import org.apache.flink.table.dataformat.BaseRow
 import org.apache.flink.table.functions.sql.FlinkSqlOperatorTable
@@ -51,22 +66,6 @@ import org.apache.flink.table.sources.TableSource
 import org.apache.flink.table.typeutils.BaseRowTypeInfo
 import org.apache.flink.table.validate.FunctionCatalog
 import org.apache.flink.types.Row
-
-import org.apache.calcite.config.Lex
-import org.apache.calcite.jdbc.CalciteSchema
-import org.apache.calcite.plan.{RelOptPlanner, RelTrait, RelTraitDef}
-import org.apache.calcite.rel.RelNode
-import org.apache.calcite.schema.SchemaPlus
-import org.apache.calcite.schema.impl.AbstractTable
-import org.apache.calcite.sql._
-import org.apache.calcite.sql.parser.SqlParser
-import org.apache.calcite.sql.util.{ChainedSqlOperatorTable, ListSqlOperatorTable}
-import org.apache.calcite.sql2rel.SqlToRelConverter
-import org.apache.calcite.tools._
-
-import _root_.java.lang.reflect.Modifier
-import _root_.java.util.concurrent.atomic.AtomicInteger
-import _root_.java.util.{Arrays => JArrays}
 
 import _root_.scala.annotation.varargs
 import _root_.scala.collection.JavaConversions._
