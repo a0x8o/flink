@@ -202,7 +202,7 @@ public class CheckpointCoordinatorMasterHooksTest {
 		verify(statelessHook, times(1)).triggerCheckpoint(anyLong(), anyLong(), any(Executor.class));
 
 		final long checkpointId = cc.getPendingCheckpoints().values().iterator().next().getCheckpointId();
-		cc.receiveAcknowledgeMessage(new AcknowledgeCheckpoint(jid, execId, checkpointId));
+		cc.receiveAcknowledgeMessage(new AcknowledgeCheckpoint(jid, execId, checkpointId), "Unknown location");
 		assertEquals(0, cc.getNumberOfPendingCheckpoints());
 
 		assertEquals(1, cc.getNumberOfRetainedSuccessfulCheckpoints());

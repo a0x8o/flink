@@ -56,11 +56,6 @@ public class InputGateWithMetrics extends InputGate {
 	}
 
 	@Override
-	public String getOwningTaskName() {
-		return inputGate.getOwningTaskName();
-	}
-
-	@Override
 	public boolean isFinished() {
 		return inputGate.isFinished();
 	}
@@ -76,13 +71,13 @@ public class InputGateWithMetrics extends InputGate {
 	}
 
 	@Override
-	public Optional<BufferOrEvent> getNextBufferOrEvent() throws IOException, InterruptedException {
-		return updateMetrics(inputGate.getNextBufferOrEvent());
+	public Optional<BufferOrEvent> getNext() throws IOException, InterruptedException {
+		return updateMetrics(inputGate.getNext());
 	}
 
 	@Override
-	public Optional<BufferOrEvent> pollNextBufferOrEvent() throws IOException, InterruptedException {
-		return updateMetrics(inputGate.pollNextBufferOrEvent());
+	public Optional<BufferOrEvent> pollNext() throws IOException, InterruptedException {
+		return updateMetrics(inputGate.pollNext());
 	}
 
 	@Override

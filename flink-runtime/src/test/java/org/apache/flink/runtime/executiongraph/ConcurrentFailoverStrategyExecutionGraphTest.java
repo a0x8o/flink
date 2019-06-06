@@ -446,7 +446,8 @@ public class ConcurrentFailoverStrategyExecutionGraphTest extends TestLogger {
 			new AcknowledgeCheckpoint(
 				graph.getJobID(),
 				vertex1.getCurrentExecutionAttempt().getAttemptId(),
-				checkpointToAcknowledge));
+				checkpointToAcknowledge),
+				"Unknown location");
 
 		Map<Long, PendingCheckpoint> oldPendingCheckpoints = new HashMap<>(3);
 

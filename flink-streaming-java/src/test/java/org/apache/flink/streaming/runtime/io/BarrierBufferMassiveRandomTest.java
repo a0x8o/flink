@@ -65,7 +65,7 @@ public class BarrierBufferMassiveRandomTest {
 			BarrierBuffer barrierBuffer = new BarrierBuffer(myIG, new BufferSpiller(ioMan, myIG.getPageSize()));
 
 			for (int i = 0; i < 2000000; i++) {
-				BufferOrEvent boe = barrierBuffer.getNextNonBlocked();
+				BufferOrEvent boe = barrierBuffer.pollNext().get();
 				if (boe.isBuffer()) {
 					boe.getBuffer().recycleBuffer();
 				}
@@ -138,29 +138,17 @@ public class BarrierBufferMassiveRandomTest {
 		private int currentChannel = 0;
 		private long c = 0;
 
-		private final String owningTaskName;
-
 		public RandomGeneratingInputGate(BufferPool[] bufferPools, BarrierGenerator[] barrierGens) {
-			this(bufferPools, barrierGens, "TestTask");
-		}
-
-		public RandomGeneratingInputGate(BufferPool[] bufferPools, BarrierGenerator[] barrierGens, String owningTaskName) {
 			this.numberOfChannels = bufferPools.length;
 			this.currentBarriers = new int[numberOfChannels];
 			this.bufferPools = bufferPools;
 			this.barrierGens = barrierGens;
-			this.owningTaskName = owningTaskName;
 			this.isAvailable = AVAILABLE;
 		}
 
 		@Override
 		public int getNumberOfInputChannels() {
 			return numberOfChannels;
-		}
-
-		@Override
-		public String getOwningTaskName() {
-			return owningTaskName;
 		}
 
 		@Override
@@ -172,7 +160,7 @@ public class BarrierBufferMassiveRandomTest {
 		public void requestPartitions() {}
 
 		@Override
-		public Optional<BufferOrEvent> getNextBufferOrEvent() throws IOException, InterruptedException {
+		public Optional<BufferOrEvent> getNext() throws IOException, InterruptedException {
 			currentChannel = (currentChannel + 1) % numberOfChannels;
 
 			if (barrierGens[currentChannel].isNextBarrier()) {
@@ -191,8 +179,8 @@ public class BarrierBufferMassiveRandomTest {
 		}
 
 		@Override
-		public Optional<BufferOrEvent> pollNextBufferOrEvent() throws IOException, InterruptedException {
-			return getNextBufferOrEvent();
+		public Optional<BufferOrEvent> pollNext() throws IOException, InterruptedException {
+			return getNext();
 		}
 
 		@Override

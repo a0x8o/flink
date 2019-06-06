@@ -25,8 +25,8 @@ import org.apache.flink.runtime.executiongraph.ExecutionVertex;
 import org.apache.flink.runtime.jobgraph.JobStatus;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.messages.checkpoint.AcknowledgeCheckpoint;
-import org.apache.flink.runtime.state.OperatorStateHandle;
 import org.apache.flink.runtime.state.KeyedStateHandle;
+import org.apache.flink.runtime.state.OperatorStateHandle;
 import org.apache.flink.runtime.state.OperatorStreamStateHandle;
 import org.apache.flink.runtime.state.SharedStateRegistry;
 import org.apache.flink.runtime.state.memory.MemoryStateBackend;
@@ -112,7 +112,7 @@ public class CheckpointCoordinatorFailureTest extends TestLogger {
 		AcknowledgeCheckpoint acknowledgeMessage = new AcknowledgeCheckpoint(jid, executionAttemptId, checkpointId, new CheckpointMetrics(), subtaskState);
 
 		try {
-			coord.receiveAcknowledgeMessage(acknowledgeMessage);
+			coord.receiveAcknowledgeMessage(acknowledgeMessage, "Unknown location");
 			fail("Expected a checkpoint exception because the completed checkpoint store could not " +
 				"store the completed checkpoint.");
 		} catch (CheckpointException e) {

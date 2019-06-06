@@ -685,7 +685,7 @@ public class FailoverRegionTest extends TestLogger {
 					new CheckpointMetrics(),
 					taskOperatorSubtaskStates);
 
-				checkpointCoordinator.receiveAcknowledgeMessage(acknowledgeCheckpoint);
+				checkpointCoordinator.receiveAcknowledgeMessage(acknowledgeCheckpoint, "Unknown location");
 			}
 		}
 	}
