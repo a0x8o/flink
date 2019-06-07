@@ -28,6 +28,9 @@ import org.apache.flink.configuration.Configuration;
 import org.apache.flink.table.catalog.exceptions.CatalogException;
 import org.apache.flink.table.catalog.hive.client.HiveMetastoreClientFactory;
 import org.apache.flink.table.catalog.hive.client.HiveMetastoreClientWrapper;
+import org.apache.flink.table.catalog.hive.client.HiveShim;
+import org.apache.flink.table.catalog.hive.client.HiveShimLoader;
+import org.apache.flink.table.types.utils.LegacyTypeInfoDataTypeConverter;
 import org.apache.flink.types.Row;
 import org.apache.flink.util.FlinkRuntimeException;
 import org.apache.flink.util.Preconditions;
@@ -244,7 +247,7 @@ public class HiveTableOutputFormat extends HadoopOutputFormatCommonBase<Row> imp
 
 		List<ObjectInspector> objectInspectors = new ArrayList<>();
 		for (int i = 0; i < rowTypeInfo.getArity() - partitionCols.size(); i++) {
-			objectInspectors.add(HiveTableUtil.getObjectInspector(rowTypeInfo.getTypeAt(i)));
+			objectInspectors.add(HiveTableUtil.getObjectInspector(LegacyTypeInfoDataTypeConverter.toDataType(rowTypeInfo.getTypeAt(i))));
 		}
 
 		if (!isPartitioned) {
@@ -286,8 +289,9 @@ public class HiveTableOutputFormat extends HadoopOutputFormatCommonBase<Row> imp
 				// Note we assume the srcDir is a hidden dir, otherwise it will be deleted if it's a sub-dir of destDir
 				FileStatus[] existingFiles = fs.listStatus(destDir, FileUtils.HIDDEN_FILES_PATH_FILTER);
 				if (existingFiles != null) {
+					HiveShim hiveShim = HiveShimLoader.loadHiveShim();
 					for (FileStatus existingFile : existingFiles) {
-						Preconditions.checkState(FileUtils.moveToTrash(fs, existingFile.getPath(), jobConf, purge),
+						Preconditions.checkState(hiveShim.moveToTrash(fs, existingFile.getPath(), jobConf, purge),
 							"Failed to overwrite existing file " + existingFile);
 					}
 				}

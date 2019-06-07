@@ -661,6 +661,19 @@ abstract class TableEnvImpl(
     */
   private[flink] def writeToSink[T](table: Table, sink: TableSink[T], conf: QueryConfig): Unit
 
+  override def insertInto(
+      table: Table,
+      queryConfig: QueryConfig,
+      sinkPath: String,
+      sinkPathContinued: String*)
+    : Unit = insertInto(table, queryConfig, sinkPath +: sinkPathContinued: _*)
+
+  override def insertInto(
+      table: Table,
+      sinkPath: String,
+      sinkPathContinued: String*)
+    : Unit = insertInto(table, queryConfig, sinkPath +: sinkPathContinued: _*)
+
   /**
     * Writes the [[Table]] to a [[TableSink]] that was registered under the specified name.
     *
@@ -668,7 +681,7 @@ abstract class TableEnvImpl(
     * @param sinkTablePath The name of the registered TableSink.
     * @param conf The query configuration to use.
     */
-  private[flink] def insertInto(table: Table, conf: QueryConfig, sinkTablePath: String*): Unit = {
+  private def insertInto(table: Table, conf: QueryConfig, sinkTablePath: String*): Unit = {
 
     // check that sink table exists
     if (null == sinkTablePath) {
@@ -739,11 +752,6 @@ abstract class TableEnvImpl(
   protected def getCatalogTable(name: String*): Option[CatalogBaseTable] = {
     JavaScalaConversionUtil.toScala(catalogManager.resolveTable(name: _*))
       .flatMap(t => JavaScalaConversionUtil.toScala(t.getCatalogTable))
-  }
-
-  /** Returns a unique temporary attribute name. */
-  private[flink] def createUniqueAttributeName(): String = {
-    "TMP_" + attrNameCntr.getAndIncrement()
   }
 
   /** Returns the [[FlinkRelBuilder]] of this TableEnvironment. */
