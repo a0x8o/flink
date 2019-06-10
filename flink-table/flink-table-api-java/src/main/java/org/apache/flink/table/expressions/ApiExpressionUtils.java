@@ -60,16 +60,12 @@ public final class ApiExpressionUtils {
 		return new TypeLiteralExpression(dataType);
 	}
 
-	public static SymbolExpression symbol(TableSymbol symbol) {
-		return new SymbolExpression(symbol);
-	}
-
 	public static UnresolvedReferenceExpression unresolvedRef(String name) {
 		return new UnresolvedReferenceExpression(name);
 	}
 
 	public static TableReferenceExpression tableRef(String name, Table table) {
-		return new TableReferenceExpression(name, table.getTableOperation());
+		return new TableReferenceExpression(name, table.getQueryOperation());
 	}
 
 	public static LookupCallExpression lookupCall(String name, Expression... args) {

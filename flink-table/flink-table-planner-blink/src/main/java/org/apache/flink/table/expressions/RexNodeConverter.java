@@ -104,7 +104,7 @@ public class RexNodeConverter implements ExpressionVisitor<RexNode> {
 			return relBuilder.getRexBuilder().makeAbstractCast(
 					typeFactory.createTypeFromInternalType(
 							createInternalTypeFromTypeInfo(
-								fromDataTypeToLegacyInfo(type.getDataType())),
+								fromDataTypeToLegacyInfo(type.getOutputDataType())),
 							child.getType().isNullable()),
 					child);
 		} else if (call.getFunctionDefinition().equals(BuiltInFunctionDefinitions.REINTERPRET_CAST)) {
@@ -114,7 +114,7 @@ public class RexNodeConverter implements ExpressionVisitor<RexNode> {
 			return relBuilder.getRexBuilder().makeReinterpretCast(
 					typeFactory.createTypeFromInternalType(
 							createInternalTypeFromTypeInfo(
-								fromDataTypeToLegacyInfo(type.getDataType())),
+								fromDataTypeToLegacyInfo(type.getOutputDataType())),
 							child.getType().isNullable()),
 					child,
 					checkOverflow);
@@ -180,11 +180,6 @@ public class RexNodeConverter implements ExpressionVisitor<RexNode> {
 	}
 
 	@Override
-	public RexNode visitSymbol(SymbolExpression symbolExpression) {
-		throw new UnsupportedOperationException();
-	}
-
-	@Override
 	public RexNode visitValueLiteral(ValueLiteralExpression expr) {
 		InternalType type = createInternalTypeFromTypeInfo(getLiteralTypeInfo(expr));
 		RexBuilder rexBuilder = relBuilder.getRexBuilder();
@@ -244,7 +239,7 @@ public class RexNodeConverter implements ExpressionVisitor<RexNode> {
 	 * This method makes the planner more lenient for new data types defined for literals.
 	 */
 	private static TypeInformation<?> getLiteralTypeInfo(ValueLiteralExpression literal) {
-		final LogicalType logicalType = literal.getDataType().getLogicalType();
+		final LogicalType logicalType = literal.getOutputDataType().getLogicalType();
 
 		if (hasRoot(logicalType, DECIMAL)) {
 			if (literal.isNull()) {
@@ -272,7 +267,7 @@ public class RexNodeConverter implements ExpressionVisitor<RexNode> {
 			}
 		}
 
-		return fromDataTypeToLegacyInfo(literal.getDataType());
+		return fromDataTypeToLegacyInfo(literal.getOutputDataType());
 	}
 
 	/**

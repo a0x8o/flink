@@ -48,6 +48,8 @@ import java.util.stream.Stream;
  *
  * <p>The data type can be extracted automatically from non-null values using value-based extraction
  * (see {@link ValueDataTypeConverter}).
+ *
+ * <p>Symbols (enums extending from {@link TableSymbol}) are considered as literal values.
  */
 @PublicEvolving
 public final class ValueLiteralExpression implements Expression {
@@ -66,7 +68,7 @@ public final class ValueLiteralExpression implements Expression {
 		this.dataType = dataType;
 	}
 
-	public DataType getDataType() {
+	public DataType getOutputDataType() {
 		return dataType;
 	}
 
