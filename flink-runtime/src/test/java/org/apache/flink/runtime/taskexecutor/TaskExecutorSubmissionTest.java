@@ -22,7 +22,7 @@ import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.configuration.NetworkEnvironmentOptions;
+import org.apache.flink.configuration.NettyShuffleEnvironmentOptions;
 import org.apache.flink.configuration.TaskManagerOptions;
 import org.apache.flink.runtime.blob.PermanentBlobKey;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
@@ -37,7 +37,7 @@ import org.apache.flink.runtime.executiongraph.ExecutionGraphException;
 import org.apache.flink.runtime.executiongraph.JobInformation;
 import org.apache.flink.runtime.executiongraph.PartitionInfo;
 import org.apache.flink.runtime.executiongraph.TaskInformation;
-import org.apache.flink.runtime.io.network.NetworkEnvironment;
+import org.apache.flink.runtime.shuffle.ShuffleEnvironment;
 import org.apache.flink.runtime.io.network.partition.PartitionNotFoundException;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionType;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
@@ -276,7 +276,7 @@ public class TaskExecutorSubmissionTest extends TestLogger {
 				.addTaskManagerActionListener(eid2, ExecutionState.FINISHED, task2FinishedFuture)
 				.setJobMasterId(jobMasterId)
 				.setJobMasterGateway(testingJobMasterGateway)
-				.useRealNonMockNetworkEnvironment()
+				.useRealNonMockShuffleEnvironment()
 				.build()) {
 			TaskExecutorGateway tmGateway = env.getTaskExecutorGateway();
 			TaskSlotTable taskSlotTable = env.getTaskSlotTable();
@@ -342,7 +342,7 @@ public class TaskExecutorSubmissionTest extends TestLogger {
 				.addTaskManagerActionListener(eid2, ExecutionState.CANCELED, task2CanceledFuture)
 				.setJobMasterId(jobMasterId)
 				.setJobMasterGateway(testingJobMasterGateway)
-				.useRealNonMockNetworkEnvironment()
+				.useRealNonMockShuffleEnvironment()
 				.build()) {
 			TaskExecutorGateway tmGateway = env.getTaskExecutorGateway();
 			TaskSlotTable taskSlotTable = env.getTaskSlotTable();
@@ -372,9 +372,9 @@ public class TaskExecutorSubmissionTest extends TestLogger {
 	public void testRemotePartitionNotFound() throws Exception {
 		final int dataPort = NetUtils.getAvailablePort();
 		Configuration config = new Configuration();
-		config.setInteger(NetworkEnvironmentOptions.DATA_PORT, dataPort);
-		config.setInteger(NetworkEnvironmentOptions.NETWORK_REQUEST_BACKOFF_INITIAL, 100);
-		config.setInteger(NetworkEnvironmentOptions.NETWORK_REQUEST_BACKOFF_MAX, 200);
+		config.setInteger(NettyShuffleEnvironmentOptions.DATA_PORT, dataPort);
+		config.setInteger(NettyShuffleEnvironmentOptions.NETWORK_REQUEST_BACKOFF_INITIAL, 100);
+		config.setInteger(NettyShuffleEnvironmentOptions.NETWORK_REQUEST_BACKOFF_MAX, 200);
 
 		// Remote location (on the same TM though) for the partition
 		NettyShuffleDescriptor sdd =
@@ -392,7 +392,7 @@ public class TaskExecutorSubmissionTest extends TestLogger {
 				.addTaskManagerActionListener(eid, ExecutionState.FAILED, taskFailedFuture)
 				.setConfiguration(config)
 				.setLocalCommunication(false)
-				.useRealNonMockNetworkEnvironment()
+				.useRealNonMockShuffleEnvironment()
 				.build()) {
 			TaskExecutorGateway tmGateway = env.getTaskExecutorGateway();
 			TaskSlotTable taskSlotTable = env.getTaskSlotTable();
@@ -417,11 +417,11 @@ public class TaskExecutorSubmissionTest extends TestLogger {
 
 		final CompletableFuture<Void> taskRunningFuture = new CompletableFuture<>();
 		final CompletableFuture<Void> taskFailedFuture = new CompletableFuture<>();
-		final NetworkEnvironment networkEnvironment = mock(NetworkEnvironment.class, Mockito.RETURNS_MOCKS);
+		final ShuffleEnvironment<?, ?> shuffleEnvironment = mock(ShuffleEnvironment.class, Mockito.RETURNS_MOCKS);
 
 		try (TaskSubmissionTestEnvironment env =
 			new TaskSubmissionTestEnvironment.Builder(jobId)
-				.setNetworkEnvironment(networkEnvironment)
+				.setShuffleEnvironment(shuffleEnvironment)
 				.setSlotSize(1)
 				.addTaskManagerActionListener(eid, ExecutionState.RUNNING, taskRunningFuture)
 				.addTaskManagerActionListener(eid, ExecutionState.FAILED, taskFailedFuture)
@@ -437,7 +437,7 @@ public class TaskExecutorSubmissionTest extends TestLogger {
 			NettyShuffleDescriptor shuffleDescriptor =
 				createRemoteWithIdAndLocation(new IntermediateResultPartitionID(), producerLocation);
 			final PartitionInfo partitionUpdate = new PartitionInfo(new IntermediateDataSetID(), shuffleDescriptor);
-			doThrow(new IOException()).when(networkEnvironment).updatePartitionInfo(eid, partitionUpdate);
+			doThrow(new IOException()).when(shuffleEnvironment).updatePartitionInfo(eid, partitionUpdate);
 
 			final CompletableFuture<Acknowledge> updateFuture = tmGateway.updatePartitions(
 				eid,
@@ -464,8 +464,8 @@ public class TaskExecutorSubmissionTest extends TestLogger {
 		ExecutionAttemptID eid = tdd.getExecutionAttemptId();
 
 		Configuration config = new Configuration();
-		config.setInteger(NetworkEnvironmentOptions.NETWORK_REQUEST_BACKOFF_INITIAL, 100);
-		config.setInteger(NetworkEnvironmentOptions.NETWORK_REQUEST_BACKOFF_MAX, 200);
+		config.setInteger(NettyShuffleEnvironmentOptions.NETWORK_REQUEST_BACKOFF_INITIAL, 100);
+		config.setInteger(NettyShuffleEnvironmentOptions.NETWORK_REQUEST_BACKOFF_MAX, 200);
 
 		final CompletableFuture<Void> taskRunningFuture = new CompletableFuture<>();
 		final CompletableFuture<Void> taskFailedFuture = new CompletableFuture<>();
@@ -477,7 +477,7 @@ public class TaskExecutorSubmissionTest extends TestLogger {
 				.addTaskManagerActionListener(eid, ExecutionState.RUNNING, taskRunningFuture)
 				.addTaskManagerActionListener(eid, ExecutionState.FAILED, taskFailedFuture)
 				.setConfiguration(config)
-				.useRealNonMockNetworkEnvironment()
+				.useRealNonMockShuffleEnvironment()
 				.build()) {
 			TaskExecutorGateway tmGateway = env.getTaskExecutorGateway();
 			TaskSlotTable taskSlotTable = env.getTaskSlotTable();
@@ -536,7 +536,7 @@ public class TaskExecutorSubmissionTest extends TestLogger {
 				.addTaskManagerActionListener(eid, ExecutionState.RUNNING, taskRunningFuture)
 				.setJobMasterId(jobMasterId)
 				.setJobMasterGateway(testingJobMasterGateway)
-				.useRealNonMockNetworkEnvironment()
+				.useRealNonMockShuffleEnvironment()
 				.build()) {
 			TaskExecutorGateway tmGateway = env.getTaskExecutorGateway();
 			TaskSlotTable taskSlotTable = env.getTaskSlotTable();

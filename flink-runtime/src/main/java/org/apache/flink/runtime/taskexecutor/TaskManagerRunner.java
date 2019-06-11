@@ -356,8 +356,10 @@ public class TaskManagerRunner implements FatalErrorHandler, AutoCloseableAsync 
 		TaskManagerServicesConfiguration taskManagerServicesConfiguration =
 			TaskManagerServicesConfiguration.fromConfiguration(
 				configuration,
-				EnvironmentInformation.getMaxJvmHeapMemory(),
+				resourceID,
 				remoteAddress,
+				EnvironmentInformation.getSizeOfFreeHeapMemoryWithDefrag(),
+				EnvironmentInformation.getMaxJvmHeapMemory(),
 				localCommunicationOnly);
 
 		Tuple2<TaskManagerMetricGroup, MetricGroup> taskManagerMetricGroup = MetricUtils.instantiateTaskManagerMetricGroup(
@@ -369,10 +371,7 @@ public class TaskManagerRunner implements FatalErrorHandler, AutoCloseableAsync 
 		TaskManagerServices taskManagerServices = TaskManagerServices.fromConfiguration(
 			taskManagerServicesConfiguration,
 			taskManagerMetricGroup.f1,
-			resourceID,
-			rpcService.getExecutor(), // TODO replace this later with some dedicated executor for io.
-			EnvironmentInformation.getSizeOfFreeHeapMemoryWithDefrag(),
-			EnvironmentInformation.getMaxJvmHeapMemory());
+			rpcService.getExecutor()); // TODO replace this later with some dedicated executor for io.
 
 		TaskManagerConfiguration taskManagerConfiguration = TaskManagerConfiguration.fromConfiguration(configuration);
 

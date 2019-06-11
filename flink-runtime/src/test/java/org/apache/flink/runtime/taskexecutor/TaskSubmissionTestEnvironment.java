@@ -22,7 +22,7 @@ import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.api.java.tuple.Tuple3;
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.configuration.NetworkEnvironmentOptions;
+import org.apache.flink.configuration.NettyShuffleEnvironmentOptions;
 import org.apache.flink.runtime.blob.BlobCacheService;
 import org.apache.flink.runtime.blob.VoidBlobStore;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
@@ -34,8 +34,8 @@ import org.apache.flink.runtime.execution.librarycache.LibraryCacheManager;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.heartbeat.HeartbeatServices;
 import org.apache.flink.runtime.highavailability.TestingHighAvailabilityServices;
-import org.apache.flink.runtime.io.network.NetworkEnvironment;
-import org.apache.flink.runtime.io.network.NetworkEnvironmentBuilder;
+import org.apache.flink.runtime.io.network.NettyShuffleEnvironmentBuilder;
+import org.apache.flink.runtime.shuffle.ShuffleEnvironment;
 import org.apache.flink.runtime.io.network.netty.NettyConfig;
 import org.apache.flink.runtime.jobmaster.JobMasterGateway;
 import org.apache.flink.runtime.jobmaster.JobMasterId;
@@ -51,7 +51,6 @@ import org.apache.flink.runtime.taskexecutor.rpc.RpcResultPartitionConsumableNot
 import org.apache.flink.runtime.taskexecutor.slot.TaskSlotTable;
 import org.apache.flink.runtime.taskexecutor.slot.TimerService;
 import org.apache.flink.runtime.taskmanager.CheckpointResponder;
-import org.apache.flink.runtime.taskmanager.NetworkEnvironmentConfiguration;
 import org.apache.flink.runtime.taskmanager.NoOpTaskManagerActions;
 import org.apache.flink.runtime.taskmanager.Task;
 import org.apache.flink.runtime.taskmanager.TaskManagerActions;
@@ -105,7 +104,7 @@ class TaskSubmissionTestEnvironment implements AutoCloseable {
 			Configuration configuration,
 			List<Tuple3<ExecutionAttemptID, ExecutionState, CompletableFuture<Void>>> taskManagerActionListeners,
 			TestingRpcService testingRpcService,
-			NetworkEnvironment networkEnvironment) throws Exception {
+			ShuffleEnvironment<?, ?> shuffleEnvironment) throws Exception {
 
 		this.haServices = new TestingHighAvailabilityServices();
 		this.haServices.setResourceManagerLeaderRetriever(new SettableLeaderRetrievalService());
@@ -155,7 +154,7 @@ class TaskSubmissionTestEnvironment implements AutoCloseable {
 			Executors.directExecutor());
 
 		final TaskManagerServices taskManagerServices = new TaskManagerServicesBuilder()
-			.setNetworkEnvironment(networkEnvironment)
+			.setShuffleEnvironment(shuffleEnvironment)
 			.setTaskSlotTable(taskSlotTable)
 			.setJobManagerTable(jobManagerTable)
 			.setTaskStateManager(localStateStoresManager)
@@ -230,33 +229,33 @@ class TaskSubmissionTestEnvironment implements AutoCloseable {
 			partitionProducerStateChecker);
 	}
 
-	private static NetworkEnvironment createNetworkEnvironment(
+	private static ShuffleEnvironment<?, ?> createShuffleEnvironment(
 			ResourceID taskManagerLocation,
 			boolean localCommunication,
 			Configuration configuration,
 			RpcService testingRpcService,
-			boolean mockNetworkEnvironment) throws Exception {
-		final NetworkEnvironment networkEnvironment;
-		if (mockNetworkEnvironment) {
-			networkEnvironment = mock(NetworkEnvironment.class, Mockito.RETURNS_MOCKS);
+			boolean mockShuffleEnvironment) throws Exception {
+		final ShuffleEnvironment<?, ?> shuffleEnvironment;
+		if (mockShuffleEnvironment) {
+			shuffleEnvironment = mock(ShuffleEnvironment.class, Mockito.RETURNS_MOCKS);
 		} else {
 			final InetSocketAddress socketAddress = new InetSocketAddress(
-				InetAddress.getByName(testingRpcService.getAddress()), configuration.getInteger(NetworkEnvironmentOptions.DATA_PORT));
+				InetAddress.getByName(testingRpcService.getAddress()), configuration.getInteger(NettyShuffleEnvironmentOptions.DATA_PORT));
 
 			final NettyConfig nettyConfig = new NettyConfig(socketAddress.getAddress(), socketAddress.getPort(),
-				NetworkEnvironmentConfiguration.getPageSize(configuration), ConfigurationParserUtils.getSlot(configuration), configuration);
+				ConfigurationParserUtils.getPageSize(configuration), ConfigurationParserUtils.getSlot(configuration), configuration);
 
-			networkEnvironment =  new NetworkEnvironmentBuilder()
+			shuffleEnvironment =  new NettyShuffleEnvironmentBuilder()
 				.setTaskManagerLocation(taskManagerLocation)
-				.setPartitionRequestInitialBackoff(configuration.getInteger(NetworkEnvironmentOptions.NETWORK_REQUEST_BACKOFF_INITIAL))
-				.setPartitionRequestMaxBackoff(configuration.getInteger(NetworkEnvironmentOptions.NETWORK_REQUEST_BACKOFF_MAX))
+				.setPartitionRequestInitialBackoff(configuration.getInteger(NettyShuffleEnvironmentOptions.NETWORK_REQUEST_BACKOFF_INITIAL))
+				.setPartitionRequestMaxBackoff(configuration.getInteger(NettyShuffleEnvironmentOptions.NETWORK_REQUEST_BACKOFF_MAX))
 				.setNettyConfig(localCommunication ? null : nettyConfig)
 				.build();
 
-			networkEnvironment.start();
+			shuffleEnvironment.start();
 		}
 
-		return networkEnvironment;
+		return shuffleEnvironment;
 	}
 
 	@Override
@@ -275,14 +274,14 @@ class TaskSubmissionTestEnvironment implements AutoCloseable {
 	public static final class Builder {
 
 		private JobID jobId;
-		private boolean mockNetworkEnvironment = true;
+		private boolean mockShuffleEnvironment = true;
 		private int slotSize;
 		private JobMasterId jobMasterId = JobMasterId.generate();
 		private TestingJobMasterGateway jobMasterGateway;
 		private boolean localCommunication = true;
 		private Configuration configuration = new Configuration();
 		@SuppressWarnings("OptionalUsedAsFieldOrParameterType")
-		private Optional<NetworkEnvironment> optionalNetworkEnvironment = Optional.empty();
+		private Optional<ShuffleEnvironment<?, ?>> optionalShuffleEnvironment = Optional.empty();
 		private ResourceID resourceID = ResourceID.generate();
 
 		private List<Tuple3<ExecutionAttemptID, ExecutionState, CompletableFuture<Void>>> taskManagerActionListeners = new ArrayList<>();
@@ -291,15 +290,15 @@ class TaskSubmissionTestEnvironment implements AutoCloseable {
 			this.jobId = jobId;
 		}
 
-		public Builder useRealNonMockNetworkEnvironment() {
-			this.optionalNetworkEnvironment = Optional.empty();
-			this.mockNetworkEnvironment = false;
+		public Builder useRealNonMockShuffleEnvironment() {
+			this.optionalShuffleEnvironment = Optional.empty();
+			this.mockShuffleEnvironment = false;
 			return this;
 		}
 
-		public Builder setNetworkEnvironment(NetworkEnvironment optionalNetworkEnvironment) {
-			this.mockNetworkEnvironment = false;
-			this.optionalNetworkEnvironment = Optional.of(optionalNetworkEnvironment);
+		public Builder setShuffleEnvironment(ShuffleEnvironment<?, ?> optionalShuffleEnvironment) {
+			this.mockShuffleEnvironment = false;
+			this.optionalShuffleEnvironment = Optional.of(optionalShuffleEnvironment);
 			return this;
 		}
 
@@ -340,14 +339,13 @@ class TaskSubmissionTestEnvironment implements AutoCloseable {
 
 		public TaskSubmissionTestEnvironment build() throws Exception {
 			final TestingRpcService testingRpcService = new TestingRpcService();
-			final NetworkEnvironment network = optionalNetworkEnvironment.orElseGet(() -> {
+			final ShuffleEnvironment<?, ?> network = optionalShuffleEnvironment.orElseGet(() -> {
 				try {
-					return createNetworkEnvironment(
-						resourceID,
+					return createShuffleEnvironment(resourceID,
 						localCommunication,
 						configuration,
 						testingRpcService,
-						mockNetworkEnvironment);
+						mockShuffleEnvironment);
 				} catch (Exception e) {
 					throw new FlinkRuntimeException("Failed to build TaskSubmissionTestEnvironment", e);
 				}

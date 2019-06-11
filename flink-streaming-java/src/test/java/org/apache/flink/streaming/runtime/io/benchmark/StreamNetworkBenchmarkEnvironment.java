@@ -26,8 +26,8 @@ import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.deployment.InputGateDeploymentDescriptor;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.disk.iomanager.IOManagerAsync;
-import org.apache.flink.runtime.io.network.NetworkEnvironment;
-import org.apache.flink.runtime.io.network.NetworkEnvironmentBuilder;
+import org.apache.flink.runtime.io.network.NettyShuffleEnvironment;
+import org.apache.flink.runtime.io.network.NettyShuffleEnvironmentBuilder;
 import org.apache.flink.runtime.io.network.TaskEventDispatcher;
 import org.apache.flink.runtime.io.network.api.writer.RecordWriter;
 import org.apache.flink.runtime.io.network.api.writer.RecordWriterBuilder;
@@ -47,7 +47,6 @@ import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 import org.apache.flink.runtime.shuffle.ShuffleDescriptor;
 import org.apache.flink.runtime.taskmanager.ConsumableNotifyingResultPartitionWriterDecorator;
 import org.apache.flink.runtime.taskmanager.InputGateWithMetrics;
-import org.apache.flink.runtime.taskmanager.NetworkEnvironmentConfiguration;
 import org.apache.flink.runtime.taskmanager.NoOpTaskActions;
 import org.apache.flink.runtime.taskmanager.TaskManagerLocation;
 import org.apache.flink.runtime.util.ConfigurationParserUtils;
@@ -80,8 +79,8 @@ public class StreamNetworkBenchmarkEnvironment<T extends IOReadableWritable> {
 	protected final JobID jobId = new JobID();
 	protected final IntermediateDataSetID dataSetID = new IntermediateDataSetID();
 
-	protected NetworkEnvironment senderEnv;
-	protected NetworkEnvironment receiverEnv;
+	protected NettyShuffleEnvironment senderEnv;
+	protected NettyShuffleEnvironment receiverEnv;
 	protected IOManager ioManager;
 
 	protected int channels;
@@ -145,13 +144,13 @@ public class StreamNetworkBenchmarkEnvironment<T extends IOReadableWritable> {
 
 		ioManager = new IOManagerAsync();
 
-		senderEnv = createNettyNetworkEnvironment(senderBufferPoolSize, config);
+		senderEnv = createShuffleEnvironment(senderBufferPoolSize, config);
 		this.dataPort = senderEnv.start();
 		if (localMode && senderBufferPoolSize == receiverBufferPoolSize) {
 			receiverEnv = senderEnv;
 		}
 		else {
-			receiverEnv = createNettyNetworkEnvironment(receiverBufferPoolSize, config);
+			receiverEnv = createShuffleEnvironment(receiverBufferPoolSize, config);
 			receiverEnv.start();
 		}
 
@@ -167,8 +166,8 @@ public class StreamNetworkBenchmarkEnvironment<T extends IOReadableWritable> {
 	}
 
 	public void tearDown() {
-		suppressExceptions(senderEnv::shutdown);
-		suppressExceptions(receiverEnv::shutdown);
+		suppressExceptions(senderEnv::close);
+		suppressExceptions(receiverEnv::close);
 		suppressExceptions(ioManager::shutdown);
 	}
 
@@ -197,17 +196,17 @@ public class StreamNetworkBenchmarkEnvironment<T extends IOReadableWritable> {
 		}
 	}
 
-	private NetworkEnvironment createNettyNetworkEnvironment(
+	private NettyShuffleEnvironment createShuffleEnvironment(
 			@SuppressWarnings("SameParameterValue") int bufferPoolSize, Configuration config) throws Exception {
 
 		final NettyConfig nettyConfig = new NettyConfig(
 			LOCAL_ADDRESS,
 			0,
-			NetworkEnvironmentConfiguration.getPageSize(config),
+			ConfigurationParserUtils.getPageSize(config),
 			// please note that the number of slots directly influences the number of netty threads!
 			ConfigurationParserUtils.getSlot(config),
 			config);
-		return new NetworkEnvironmentBuilder()
+		return new NettyShuffleEnvironmentBuilder()
 			.setNumNetworkBuffers(bufferPoolSize)
 			.setNettyConfig(nettyConfig)
 			.build();
@@ -216,7 +215,7 @@ public class StreamNetworkBenchmarkEnvironment<T extends IOReadableWritable> {
 	protected ResultPartitionWriter createResultPartition(
 			JobID jobId,
 			ResultPartitionID partitionId,
-			NetworkEnvironment environment,
+			NettyShuffleEnvironment environment,
 			int channels) throws Exception {
 
 		ResultPartitionWriter resultPartitionWriter = new ResultPartitionBuilder()
@@ -225,7 +224,7 @@ public class StreamNetworkBenchmarkEnvironment<T extends IOReadableWritable> {
 			.setNumberOfSubpartitions(channels)
 			.setResultPartitionManager(environment.getResultPartitionManager())
 			.setIOManager(ioManager)
-			.setupBufferPoolFactoryFromNetworkEnvironment(environment)
+			.setupBufferPoolFactoryFromNettyShuffleEnvironment(environment)
 			.build();
 
 		ResultPartitionWriter consumableNotifyingPartitionWriter = new ConsumableNotifyingResultPartitionWriterDecorator(
