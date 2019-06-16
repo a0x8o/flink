@@ -32,27 +32,28 @@ import org.apache.flink.table.dataformat.BaseRow
 import org.apache.flink.table.functions.{AggregateFunction, ScalarFunction, TableFunction}
 import org.apache.flink.table.plan.nodes.exec.ExecNode
 import org.apache.flink.table.plan.optimize.program.{FlinkBatchProgram, FlinkStreamProgram}
-import org.apache.flink.table.plan.schema.{BatchTableSourceTable, StreamTableSourceTable}
-import org.apache.flink.table.plan.stats.FlinkStatistic
+import org.apache.flink.table.plan.schema.TableSourceTable
+import org.apache.flink.table.plan.stats.{FlinkStatistic, TableStats}
 import org.apache.flink.table.plan.util.{ExecNodePlanDumper, FlinkRelOptUtil}
 import org.apache.flink.table.runtime.utils.{BatchTableEnvUtil, TestingAppendTableSink, TestingRetractTableSink, TestingUpsertTableSink}
-import org.apache.flink.table.sinks.{AppendStreamTableSink, CollectRowTableSink, RetractStreamTableSink, TableSink, UpsertStreamTableSink}
-import org.apache.flink.table.sources.{BatchTableSource, StreamTableSource}
+import org.apache.flink.table.sinks._
+import org.apache.flink.table.sources.StreamTableSource
 import org.apache.flink.table.types.TypeInfoLogicalTypeConverter
 import org.apache.flink.table.types.TypeInfoLogicalTypeConverter.fromLogicalTypeToTypeInfo
 import org.apache.flink.table.types.logical.LogicalType
-import org.apache.flink.table.types.utils.TypeConversions.fromLegacyInfoToDataType
+import org.apache.flink.table.types.utils.TypeConversions
 import org.apache.flink.table.typeutils.BaseRowTypeInfo
 import org.apache.flink.types.Row
 
 import org.apache.calcite.rel.RelNode
 import org.apache.calcite.sql.SqlExplainLevel
 import org.apache.commons.lang3.SystemUtils
+
 import org.junit.Assert.{assertEquals, assertTrue}
 import org.junit.Rule
 import org.junit.rules.{ExpectedException, TestName}
 
-import _root_.java.util.{Set => JSet}
+import _root_.java.util.Optional
 
 import _root_.scala.collection.JavaConversions._
 
@@ -132,13 +133,10 @@ abstract class TableTestUtil(test: TableTestBase) {
       case at: AtomicType[_] => Array[TypeInformation[_]](at)
       case _ => throw new TableException(s"Unsupported type info: $typeInfo")
     }
+    val dataType = TypeConversions.fromLegacyInfoToDataType(typeInfo)
     val tableEnv = getTableEnv
-    val (fieldNames, _) = tableEnv.getFieldInfo(
-      fromLegacyInfoToDataType(typeInfo), fields.map(_.name).toArray)
-    val schema = new TableSchema(fieldNames, fieldTypes)
-    val tableSource = new TestTableSource(schema)
-    tableEnv.registerTableSource(name, tableSource)
-    tableEnv.scan(name)
+    val (fieldNames, _) = tableEnv.getFieldInfo(dataType, fields.map(_.name).toArray)
+    addTableSource(name, fieldTypes, fieldNames)
   }
 
   /**
@@ -147,14 +145,14 @@ abstract class TableTestUtil(test: TableTestBase) {
     *
     * @param name table name
     * @param types field types
-    * @param names field names
+    * @param fields field names
     * @param statistic statistic of current table
     * @return returns the registered [[Table]].
     */
   def addTableSource(
       name: String,
       types: Array[TypeInformation[_]],
-      names: Array[String],
+      fields: Array[String],
       statistic: FlinkStatistic = FlinkStatistic.UNKNOWN): Table
 
   /**
@@ -305,6 +303,18 @@ abstract class TableTestUtil(test: TableTestBase) {
     assertEqualsOrExpand("planAfter", actual.toString, expand = false)
   }
 
+  def verifyResource(sql: String): Unit = {
+    assertEqualsOrExpand("sql", sql)
+    val table = getTableEnv.sqlQuery(sql)
+    doVerifyPlan(
+      table,
+      explainLevel = SqlExplainLevel.EXPPLAN_ATTRIBUTES,
+      withRowType = false,
+      withRetractTraits = false,
+      printResource = true,
+      printPlanBefore = false)
+  }
+
   def doVerifyPlan(
       table: Table,
       explainLevel: SqlExplainLevel,
@@ -323,13 +333,15 @@ abstract class TableTestUtil(test: TableTestBase) {
       explainLevel: SqlExplainLevel,
       withRowType: Boolean,
       withRetractTraits: Boolean,
-      printPlanBefore: Boolean): Unit = {
+      printPlanBefore: Boolean,
+      printResource: Boolean = false): Unit = {
     val relNode = table.asInstanceOf[TableImpl].getRelNode
     val optimizedPlan = getOptimizedPlan(
       Array(relNode),
       explainLevel,
       withRetractTraits = withRetractTraits,
-      withRowType = withRowType)
+      withRowType = withRowType,
+      withResource = printResource)
 
     if (printPlanBefore) {
       val planBefore = SystemUtils.LINE_SEPARATOR +
@@ -393,7 +405,8 @@ abstract class TableTestUtil(test: TableTestBase) {
       relNodes: Array[RelNode],
       explainLevel: SqlExplainLevel,
       withRetractTraits: Boolean,
-      withRowType: Boolean): String = {
+      withRowType: Boolean,
+      withResource: Boolean = false): String = {
     require(relNodes.nonEmpty)
     val tEnv = getTableEnv
     val optimizedRels = tEnv.optimize(relNodes)
@@ -405,7 +418,8 @@ abstract class TableTestUtil(test: TableTestBase) {
           optimizedNodes,
           detailLevel = explainLevel,
           withRetractTraits = withRetractTraits,
-          withOutputType = withRowType)
+          withOutputType = withRowType,
+          withResource = withResource)
       case _ =>
         optimizedRels.map { rel =>
           FlinkRelOptUtil.toString(
@@ -483,8 +497,8 @@ case class StreamTableTestUtil(test: TableTestBase) extends TableTestUtil(test) 
       statistic: FlinkStatistic = FlinkStatistic.UNKNOWN): Table = {
     val tableEnv = getTableEnv
     val schema = new TableSchema(names, types)
-    val tableSource = new TestTableSource(schema)
-    val table = new StreamTableSourceTable[BaseRow](tableSource, statistic)
+    val tableSource = new TestTableSource(true, schema)
+    val table = new TableSourceTable[BaseRow](tableSource, true, statistic)
     tableEnv.registerTableInternal(name, table)
     tableEnv.scan(name)
   }
@@ -596,8 +610,8 @@ case class BatchTableTestUtil(test: TableTestBase) extends TableTestUtil(test) {
       statistic: FlinkStatistic = FlinkStatistic.UNKNOWN): Table = {
     val tableEnv = getTableEnv
     val schema = new TableSchema(names, types)
-    val tableSource = new TestTableSource(schema)
-    val table = new BatchTableSourceTable[BaseRow](tableSource, statistic)
+    val tableSource = new TestTableSource(true, schema)
+    val table = new TableSourceTable[BaseRow](tableSource, false, statistic)
     tableEnv.registerTableInternal(name, table)
     tableEnv.scan(name)
   }
@@ -631,14 +645,10 @@ case class BatchTableTestUtil(test: TableTestBase) extends TableTestUtil(test) {
 /**
   * Batch/Stream [[org.apache.flink.table.sources.TableSource]] for testing.
   */
-class TestTableSource(schema: TableSchema)
-  extends BatchTableSource[BaseRow]
-  with StreamTableSource[BaseRow] {
+class TestTableSource(isBatch: Boolean, schema: TableSchema, tableStats: Option[TableStats] = None)
+  extends StreamTableSource[BaseRow] {
 
-  override def getBoundedStream(
-      streamEnv: environment.StreamExecutionEnvironment): DataStream[BaseRow] = {
-    streamEnv.fromCollection(List[BaseRow](), getReturnType)
-  }
+  override def isBounded: Boolean = isBatch
 
   override def getDataStream(
       execEnv: environment.StreamExecutionEnvironment): DataStream[BaseRow] = {
@@ -652,4 +662,9 @@ class TestTableSource(schema: TableSchema)
   }
 
   override def getTableSchema: TableSchema = schema
+
+  /** Returns the statistics of the table, returns null if don't know the statistics. */
+  override def getTableStats: Optional[TableStats] = {
+    Optional.ofNullable(tableStats.orNull)
+  }
 }

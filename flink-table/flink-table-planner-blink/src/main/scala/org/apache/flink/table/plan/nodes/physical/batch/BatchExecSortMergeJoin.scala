@@ -29,6 +29,7 @@ import org.apache.flink.table.plan.`trait`.FlinkRelDistributionTraitDef
 import org.apache.flink.table.plan.cost.{FlinkCost, FlinkCostFactory}
 import org.apache.flink.table.plan.nodes.ExpressionFormat
 import org.apache.flink.table.plan.nodes.exec.ExecNode
+import org.apache.flink.table.plan.nodes.resource.batch.parallelism.NodeResourceConfig
 import org.apache.flink.table.plan.util.{FlinkRelMdUtil, FlinkRelOptUtil, JoinUtil, SortUtil}
 import org.apache.flink.table.runtime.join.{FlinkJoinType, SortMergeJoinOperator}
 import org.apache.flink.table.types.logical.RowType
@@ -225,13 +226,18 @@ class BatchExecSortMergeJoin(
 
     val keyType = RowType.of(leftAllKey.map(leftType.getChildren.get(_)): _*)
 
-    val condFunc = generateCondition(config, leftType, rightType)
+    val condFunc = JoinUtil.generateConditionFunction(
+      config,
+      cluster.getRexBuilder,
+      getJoinInfo,
+      leftType,
+      rightType)
 
     val externalBufferMemory = config.getConf.getInteger(
-      TableConfigOptions.SQL_RESOURCE_EXTERNAL_BUFFER_MEM) * TableConfigOptions.SIZE_IN_MB
+      TableConfigOptions.SQL_RESOURCE_EXTERNAL_BUFFER_MEM) * NodeResourceConfig.SIZE_IN_MB
 
     val sortMemory = config.getConf.getInteger(
-      TableConfigOptions.SQL_RESOURCE_SORT_BUFFER_MEM) * TableConfigOptions.SIZE_IN_MB
+      TableConfigOptions.SQL_RESOURCE_SORT_BUFFER_MEM) * NodeResourceConfig.SIZE_IN_MB
 
     def newSortGen(originalKeys: Array[Int], t: RowType): SortCodeGenerator = {
       val originalOrders = originalKeys.map(_ => true)
@@ -270,7 +276,7 @@ class BatchExecSortMergeJoin(
       getOperatorName,
       operator,
       BaseRowTypeInfo.of(FlinkTypeFactory.toLogicalRowType(getRowType)),
-      tableEnv.getConfig.getConf.getInteger(TableConfigOptions.SQL_RESOURCE_DEFAULT_PARALLELISM))
+      getResource.getParallelism)
   }
 
   private def estimateOutputSize(relNode: RelNode): Double = {

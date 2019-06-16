@@ -70,9 +70,13 @@ import _root_.scala.collection.mutable
 /**
   * The abstract base class for batch and stream TableEnvironments.
   *
+  * @param streamEnv The [[JavaStreamExecEnv]] which is wrapped in this
+  *                [[StreamTableEnvironment]].
   * @param config The configuration of the TableEnvironment
   */
-abstract class TableEnvironment(val config: TableConfig) {
+abstract class TableEnvironment(
+    val streamEnv: JavaStreamExecEnv,
+    val config: TableConfig) {
 
   protected val DEFAULT_JOB_NAME = "Flink Exec Table Job"
 
@@ -741,7 +745,13 @@ abstract class TableEnvironment(val config: TableConfig) {
     */
   def registerTableSource(name: String, tableSource: TableSource[_]): Unit = {
     checkValidTableName(name)
-    registerTableSourceInternal(name, tableSource, FlinkStatistic.UNKNOWN, replace = false)
+    registerTableSourceInternal(
+      name,
+      tableSource,
+      FlinkStatistic.builder()
+        .tableStats(tableSource.getTableStats.orElse(null))
+        .build(),
+      replace = false)
   }
 
   /**
@@ -754,7 +764,13 @@ abstract class TableEnvironment(val config: TableConfig) {
   def registerOrReplaceTableSource(name: String,
       tableSource: TableSource[_]): Unit = {
     checkValidTableName(name)
-    registerTableSourceInternal(name, tableSource, FlinkStatistic.UNKNOWN, replace = true)
+    registerTableSourceInternal(
+      name,
+      tableSource,
+      FlinkStatistic.builder()
+        .tableStats(tableSource.getTableStats.orElse(null))
+        .build(),
+      replace = true)
   }
 
   /**

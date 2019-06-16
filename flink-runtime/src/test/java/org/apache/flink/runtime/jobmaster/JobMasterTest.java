@@ -22,19 +22,15 @@ import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.functions.AggregateFunction;
 import org.apache.flink.api.common.io.DefaultInputSplitAssigner;
-import org.apache.flink.api.common.io.InputFormat;
-import org.apache.flink.api.common.operators.util.UserCodeObjectWrapper;
 import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.api.common.time.Deadline;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.api.java.ClosureCleaner;
-import org.apache.flink.api.java.io.TextInputFormat;
 import org.apache.flink.api.java.tuple.Tuple3;
 import org.apache.flink.configuration.BlobServerOptions;
 import org.apache.flink.configuration.ConfigConstants;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.JobManagerOptions;
-import org.apache.flink.core.fs.Path;
 import org.apache.flink.core.io.InputSplit;
 import org.apache.flink.core.io.InputSplitAssigner;
 import org.apache.flink.core.io.InputSplitSource;
@@ -58,13 +54,11 @@ import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
 import org.apache.flink.runtime.deployment.ResultPartitionDeploymentDescriptor;
 import org.apache.flink.runtime.deployment.TaskDeploymentDescriptor;
 import org.apache.flink.runtime.execution.ExecutionState;
-import org.apache.flink.runtime.executiongraph.ArchivedExecution;
+import org.apache.flink.runtime.executiongraph.AccessExecution;
+import org.apache.flink.runtime.executiongraph.AccessExecutionVertex;
 import org.apache.flink.runtime.executiongraph.ArchivedExecutionGraph;
-import org.apache.flink.runtime.executiongraph.ArchivedExecutionVertex;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
-import org.apache.flink.runtime.executiongraph.TaskInformation;
 import org.apache.flink.runtime.executiongraph.failover.FailoverStrategyLoader;
-import org.apache.flink.runtime.executiongraph.restart.RestartStrategyFactory;
 import org.apache.flink.runtime.heartbeat.HeartbeatServices;
 import org.apache.flink.runtime.heartbeat.TestingHeartbeatServices;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
@@ -72,7 +66,6 @@ import org.apache.flink.runtime.highavailability.TestingHighAvailabilityServices
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionType;
 import org.apache.flink.runtime.jobgraph.DistributionPattern;
-import org.apache.flink.runtime.jobgraph.InputFormatVertex;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.jobgraph.JobStatus;
@@ -92,8 +85,6 @@ import org.apache.flink.runtime.leaderretrieval.SettableLeaderRetrievalService;
 import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.messages.FlinkJobNotFoundException;
 import org.apache.flink.runtime.messages.checkpoint.DeclineCheckpoint;
-import org.apache.flink.runtime.operators.DataSourceTask;
-import org.apache.flink.runtime.operators.util.TaskConfig;
 import org.apache.flink.runtime.query.KvStateLocation;
 import org.apache.flink.runtime.query.UnknownKvStateLocation;
 import org.apache.flink.runtime.registration.RegistrationResponse;
@@ -132,14 +123,10 @@ import org.apache.flink.util.InstantiationUtil;
 import org.apache.flink.util.SerializedThrowable;
 import org.apache.flink.util.TestLogger;
 
-import org.apache.flink.shaded.guava18.com.google.common.collect.Iterables;
-
 import akka.actor.ActorSystem;
-import org.hamcrest.Matcher;
 import org.hamcrest.Matchers;
 import org.junit.After;
 import org.junit.AfterClass;
-import org.junit.Assert;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.ClassRule;
@@ -162,31 +149,29 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
-import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.instanceOf;
 import static org.hamcrest.Matchers.is;
-import static org.hamcrest.Matchers.nullValue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
@@ -352,7 +337,7 @@ public class JobMasterTest extends TestLogger {
 		final CompletableFuture<JobID> disconnectedJobManagerFuture = new CompletableFuture<>();
 		final TaskManagerLocation taskManagerLocation = new LocalTaskManagerLocation();
 		final TestingTaskExecutorGateway taskExecutorGateway = new TestingTaskExecutorGatewayBuilder()
-			.setHeartbeatJobManagerConsumer(heartbeatResourceIdFuture::complete)
+			.setHeartbeatJobManagerConsumer((taskManagerId, ignored) -> heartbeatResourceIdFuture.complete(taskManagerId))
 			.setDisconnectJobManagerConsumer((jobId, throwable) -> disconnectedJobManagerFuture.complete(jobId))
 			.createTestingTaskExecutorGateway();
 
@@ -816,39 +801,59 @@ public class JobMasterTest extends TestLogger {
 		}
 	}
 
-	private JobGraph createDataSourceJobGraph() throws Exception {
-		final TextInputFormat inputFormat = new TextInputFormat(new Path("."));
-		final InputFormatVertex producer = new InputFormatVertex("Producer");
-		new TaskConfig(producer.getConfiguration()).setStubWrapper(new UserCodeObjectWrapper<InputFormat<?, ?>>(inputFormat));
-		producer.setInvokableClass(DataSourceTask.class);
-
-		final JobVertex consumer = new JobVertex("Consumer");
-		consumer.setInvokableClass(NoOpInvokable.class);
-		consumer.connectNewDataSetAsInput(producer, DistributionPattern.POINTWISE, ResultPartitionType.BLOCKING);
-
-		final JobGraph jobGraph = new JobGraph(producer, consumer);
-		jobGraph.setAllowQueuedScheduling(true);
-
-		ExecutionConfig executionConfig = new ExecutionConfig();
-		executionConfig.setRestartStrategy(RestartStrategies.fixedDelayRestart(100, 0));
-		jobGraph.setExecutionConfig(executionConfig);
-
-		return jobGraph;
-	}
-
 	/**
-	 * Tests the {@link JobMaster#requestNextInputSplit(JobVertexID, ExecutionAttemptID)}
-	 * validate that it will get same result for a different retry
+	 * Tests that input splits assigned to an Execution will be returned to the InputSplitAssigner
+	 * if this execution fails.
 	 */
 	@Test
-	public void testRequestNextInputSplitWithDataSourceFailover() throws Exception {
+	public void testRequestNextInputSplitWithLocalFailover() throws Exception {
 
-		final JobGraph dataSourceJobGraph = createDataSourceJobGraph();
 		configuration.setString(JobManagerOptions.EXECUTION_FAILOVER_STRATEGY,
 			FailoverStrategyLoader.PIPELINED_REGION_RESTART_STRATEGY_NAME);
+
+		final Function<List<List<InputSplit>>, Collection<InputSplit>> expectFailedExecutionInputSplits = inputSplitsPerTask -> inputSplitsPerTask.get(0);
+
+		runRequestNextInputSplitTest(expectFailedExecutionInputSplits);
+	}
+
+	@Test
+	public void testRequestNextInputSplitWithGlobalFailover() throws Exception {
+		configuration.setLong(ConfigConstants.RESTART_STRATEGY_FIXED_DELAY_ATTEMPTS, 1);
+		configuration.setString(ConfigConstants.RESTART_STRATEGY_FIXED_DELAY_DELAY, "0 s");
+
+		final Function<List<List<InputSplit>>, Collection<InputSplit>> expectAllRemainingInputSplits = this::flattenCollection;
+
+		runRequestNextInputSplitTest(expectAllRemainingInputSplits);
+	}
+
+	private void runRequestNextInputSplitTest(Function<List<List<InputSplit>>, Collection<InputSplit>> expectedRemainingInputSplits) throws Exception {
+		final int parallelism = 2;
+		final int splitsPerTask = 2;
+
+		final int totalSplits = parallelism * splitsPerTask;
+		final List<TestingInputSplit> allInputSplits = new ArrayList<>(totalSplits);
+
+		for (int i = 0; i < totalSplits; i++) {
+			allInputSplits.add(new TestingInputSplit(i));
+		}
+
+		final InputSplitSource<TestingInputSplit> inputSplitSource = new TestingInputSplitSource(allInputSplits);
+
+		JobVertex source = new JobVertex("source");
+		source.setParallelism(parallelism);
+		source.setInputSplitSource(inputSplitSource);
+		source.setInvokableClass(AbstractInvokable.class);
+
+		final JobGraph inputSplitjobGraph = new JobGraph(source);
+		inputSplitjobGraph.setAllowQueuedScheduling(true);
+
+		final ExecutionConfig executionConfig = new ExecutionConfig();
+		executionConfig.setRestartStrategy(RestartStrategies.fixedDelayRestart(100, 0));
+		inputSplitjobGraph.setExecutionConfig(executionConfig);
+
 		final JobMaster jobMaster = createJobMaster(
 			configuration,
-			dataSourceJobGraph,
+			inputSplitjobGraph,
 			haServices,
 			new TestingJobManagerSharedServicesBuilder().build(),
 			heartbeatServices);
@@ -859,171 +864,85 @@ public class JobMasterTest extends TestLogger {
 			// wait for the start to complete
 			startFuture.get(testingTimeout.toMilliseconds(), TimeUnit.MILLISECONDS);
 
-			final TestingResourceManagerGateway testingResourceManagerGateway = new TestingResourceManagerGateway();
-
-			final CompletableFuture<AllocationID> allocationIdFuture = new CompletableFuture<>();
-			testingResourceManagerGateway.setRequestSlotConsumer(slotRequest -> allocationIdFuture.complete(slotRequest.getAllocationId()));
-
-			rpcService.registerGateway(testingResourceManagerGateway.getAddress(), testingResourceManagerGateway);
-
-			final BlockingQueue<TaskDeploymentDescriptor> taskDeploymentDescriptors = new LinkedBlockingDeque<>();
-			final TestingTaskExecutorGateway testingTaskExecutorGateway = new TestingTaskExecutorGatewayBuilder()
-				.setSubmitTaskConsumer((taskDeploymentDescriptor, jobMasterId) -> {
-					taskDeploymentDescriptors.add(taskDeploymentDescriptor);
-					return CompletableFuture.completedFuture(Acknowledge.get());
-				})
-				.createTestingTaskExecutorGateway();
-			rpcService.registerGateway(testingTaskExecutorGateway.getAddress(), testingTaskExecutorGateway);
-
 			final JobMasterGateway jobMasterGateway = jobMaster.getSelfGateway(JobMasterGateway.class);
 
-			rmLeaderRetrievalService.notifyListener(testingResourceManagerGateway.getAddress(), testingResourceManagerGateway.getFencingToken().toUUID());
+			final JobVertexID sourceId = source.getID();
 
-			final AllocationID allocationId = allocationIdFuture.get();
+			final List<AccessExecution> executions = getExecutions(jobMasterGateway, sourceId);
+			final ExecutionAttemptID initialAttemptId = executions.get(0).getAttemptId();
+			final List<List<InputSplit>> inputSplitsPerTask = new ArrayList<>(parallelism);
 
-			final LocalTaskManagerLocation taskManagerLocation = new LocalTaskManagerLocation();
-			jobMasterGateway.registerTaskManager(testingTaskExecutorGateway.getAddress(), taskManagerLocation, testingTimeout).get();
+			// request all input splits
+			for (AccessExecution execution : executions) {
+				inputSplitsPerTask.add(getInputSplits(splitsPerTask, getInputSplitSupplier(sourceId, jobMasterGateway, execution.getAttemptId())));
+			}
 
-			final SlotOffer slotOffer = new SlotOffer(allocationId, 0, ResourceProfile.UNKNOWN);
+			final List<InputSplit> allRequestedInputSplits = flattenCollection(inputSplitsPerTask);
+			assertThat(allRequestedInputSplits, containsInAnyOrder(allInputSplits.toArray(EMPTY_TESTING_INPUT_SPLITS)));
 
-			final Collection<SlotOffer> slotOffers = jobMasterGateway.offerSlots(taskManagerLocation.getResourceID(), Collections.singleton(slotOffer), testingTimeout).get();
+			waitUntilAllExecutionsAreScheduled(jobMasterGateway);
 
-			assertThat(slotOffers, hasSize(1));
-			assertThat(slotOffers, contains(slotOffer));
+			// fail the first execution to trigger a failover
+			jobMasterGateway.updateTaskExecutionState(new TaskExecutionState(inputSplitjobGraph.getJobID(), initialAttemptId, ExecutionState.FAILED)).get();
 
-			// obtain tdd for the result partition ids
-			final TaskDeploymentDescriptor tdd = checkNotNull(taskDeploymentDescriptors.poll(testingTimeout.toMilliseconds(), TimeUnit.MILLISECONDS));
+			// wait until the job has been recovered
+			waitUntilAllExecutionsAreScheduled(jobMasterGateway);
 
-			final JobMasterGateway gateway = jobMaster.getSelfGateway(JobMasterGateway.class);
+			final ExecutionAttemptID restartedAttemptId = getFirstExecution(jobMasterGateway, sourceId).getAttemptId();
 
-			final TaskInformation taskInformation = tdd.getSerializedTaskInformation()
-				.deserializeValue(getClass().getClassLoader());
-			JobVertexID vertexID = taskInformation.getJobVertexId();
+			final List<InputSplit> inputSplits = getRemainingInputSplits(getInputSplitSupplier(sourceId, jobMasterGateway, restartedAttemptId));
 
-			//get the previous split
-			SerializedInputSplit split1 = gateway.requestNextInputSplit(vertexID, tdd.getExecutionAttemptId()).get();
-
-			//start a new version of this execution
-			gateway.updateTaskExecutionState(new TaskExecutionState(dataSourceJobGraph.getJobID(), tdd.getExecutionAttemptId(), ExecutionState.FAILED)).get();
-			final TaskDeploymentDescriptor newTdd = checkNotNull(taskDeploymentDescriptors.poll(testingTimeout.toMilliseconds(), TimeUnit.MILLISECONDS));
-			final ExecutionAttemptID newExecutionAttemptId = newTdd.getExecutionAttemptId();
-
-			//get the new split
-			SerializedInputSplit split2 = gateway.requestNextInputSplit(vertexID, newExecutionAttemptId).get();
-
-			Assert.assertArrayEquals(split1.getInputSplitData(), split2.getInputSplitData());
-
-			//get the new split3
-			SerializedInputSplit split3 = gateway.requestNextInputSplit(vertexID, newExecutionAttemptId).get();
-
-			Assert.assertNotEquals(split1.getInputSplitData().length, split3.getInputSplitData().length);
-			gateway.requestNextInputSplit(vertexID, newExecutionAttemptId).get();
-			InputSplit nullSplit = InstantiationUtil.deserializeObject(
-				gateway.requestNextInputSplit(vertexID, newExecutionAttemptId).get().getInputSplitData(), ClassLoader.getSystemClassLoader());
-			Assert.assertNull(nullSplit);
-
-			InputSplit nullSplit1 = InstantiationUtil.deserializeObject(
-				gateway.requestNextInputSplit(vertexID, newExecutionAttemptId).get().getInputSplitData(), ClassLoader.getSystemClassLoader());
-			Assert.assertNull(nullSplit1);
-
+			assertThat(inputSplits, containsInAnyOrder(expectedRemainingInputSplits.apply(inputSplitsPerTask).toArray(EMPTY_TESTING_INPUT_SPLITS)));
 		} finally {
 			RpcUtils.terminateRpcEndpoint(jobMaster, testingTimeout);
 		}
 	}
 
-	@Test
-	public void testRequestNextInputSplit() throws Exception {
-		final List<TestingInputSplit> expectedInputSplits = Arrays.asList(
-			new TestingInputSplit(1),
-			new TestingInputSplit(42),
-			new TestingInputSplit(1337));
-
-		// build one node JobGraph
-		InputSplitSource<TestingInputSplit> inputSplitSource = new TestingInputSplitSource(expectedInputSplits);
-
-		JobVertex source = new JobVertex("vertex1");
-		source.setParallelism(1);
-		source.setInputSplitSource(inputSplitSource);
-		source.setInvokableClass(AbstractInvokable.class);
-
-		final JobGraph testJobGraph = new JobGraph(source);
-		testJobGraph.setAllowQueuedScheduling(true);
-
-		configuration.setLong(ConfigConstants.RESTART_STRATEGY_FIXED_DELAY_ATTEMPTS, 1);
-		configuration.setString(ConfigConstants.RESTART_STRATEGY_FIXED_DELAY_DELAY, "0 s");
-
-		final JobManagerSharedServices jobManagerSharedServices =
-			new TestingJobManagerSharedServicesBuilder()
-				.setRestartStrategyFactory(RestartStrategyFactory.createRestartStrategyFactory(configuration))
-				.build();
-
-		final JobMaster jobMaster = createJobMaster(
-			configuration,
-			testJobGraph,
-			haServices,
-			jobManagerSharedServices);
-
-		CompletableFuture<Acknowledge> startFuture = jobMaster.start(jobMasterId);
-
-		try {
-			// wait for the start to complete
-			startFuture.get(testingTimeout.toMilliseconds(), TimeUnit.MILLISECONDS);
-
-			final JobMasterGateway jobMasterGateway = jobMaster.getSelfGateway(JobMasterGateway.class);
-
-			final ExecutionAttemptID initialAttemptId = getOnlyExecution(jobMasterGateway).getAttemptId();
-
-			final Supplier<SerializedInputSplit> inputSplitSupplier = () -> getInputSplit(jobMasterGateway, source.getID());
-
-			List<InputSplit> actualInputSplits;
-			actualInputSplits = getInputSplits(expectedInputSplits.size(), inputSplitSupplier);
-
-			final Matcher<Iterable<? extends InputSplit>> expectedInputSplitsMatcher = containsInAnyOrder(expectedInputSplits.toArray(EMPTY_TESTING_INPUT_SPLITS));
-			assertThat(actualInputSplits, expectedInputSplitsMatcher);
-
-			waitUntilOnlyExecutionIsScheduled(jobMasterGateway);
-			jobMasterGateway.updateTaskExecutionState(new TaskExecutionState(testJobGraph.getJobID(), initialAttemptId, ExecutionState.FAILED)).get();
-			waitUntilOnlyExecutionIsScheduled(jobMasterGateway);
-
-			actualInputSplits = getInputSplits(expectedInputSplits.size(), inputSplitSupplier);
-
-			assertThat(actualInputSplits, expectedInputSplitsMatcher);
-		} finally {
-			RpcUtils.terminateRpcEndpoint(jobMaster, testingTimeout);
-		}
+	@Nonnull
+	private List<InputSplit> flattenCollection(List<List<InputSplit>> inputSplitsPerTask) {
+		return inputSplitsPerTask.stream().flatMap(Collection::stream).collect(Collectors.toList());
 	}
 
-	private void waitUntilOnlyExecutionIsScheduled(final JobMasterGateway jobMasterGateway) throws Exception {
+	@Nonnull
+	private Supplier<SerializedInputSplit> getInputSplitSupplier(JobVertexID jobVertexID, JobMasterGateway jobMasterGateway, ExecutionAttemptID initialAttemptId) {
+		return () -> getInputSplit(jobMasterGateway, jobVertexID, initialAttemptId);
+	}
+
+	private void waitUntilAllExecutionsAreScheduled(final JobMasterGateway jobMasterGateway) throws Exception {
 		final Duration duration = Duration.ofMillis(testingTimeout.toMilliseconds());
 		final Deadline deadline = Deadline.fromNow(duration);
 
 		CommonTestUtils.waitUntilCondition(
-			() -> getOnlyExecution(jobMasterGateway).getState() == ExecutionState.SCHEDULED,
+			() -> getExecutions(jobMasterGateway).stream().allMatch(execution -> execution.getState() == ExecutionState.SCHEDULED),
 			deadline);
 	}
 
-	private static SerializedInputSplit getInputSplit(
-			final JobMasterGateway jobMasterGateway,
-			final JobVertexID jobVertexId) {
+	private static AccessExecution getFirstExecution(final JobMasterGateway jobMasterGateway, final JobVertexID jobVertexId) {
+		final List<AccessExecution> executions = getExecutions(jobMasterGateway, jobVertexId);
 
-		final ArchivedExecution onlyExecution = getOnlyExecution(jobMasterGateway);
-		final ExecutionAttemptID attemptId = onlyExecution.getAttemptId();
-		try {
-			return jobMasterGateway
-				.requestNextInputSplit(jobVertexId, attemptId)
-				.get();
-		} catch (InterruptedException | ExecutionException e) {
-			throw new RuntimeException(e);
-		}
+		assertThat(executions, hasSize(greaterThanOrEqualTo(1)));
+		return executions.get(0);
 	}
 
-	private static ArchivedExecution getOnlyExecution(final JobMasterGateway jobMasterGateway) {
+	private static Collection<AccessExecution> getExecutions(final JobMasterGateway jobMasterGateway) {
 		final ArchivedExecutionGraph archivedExecutionGraph = requestExecutionGraph(jobMasterGateway);
 
-		final Iterable<ArchivedExecutionVertex> allExecutionVertices = archivedExecutionGraph.getAllExecutionVertices();
-		final ArchivedExecutionVertex executionVertex = Iterables.getOnlyElement(allExecutionVertices);
+		return archivedExecutionGraph.getAllVertices().values()
+			.stream()
+			.flatMap(vertex -> Arrays.stream(vertex.getTaskVertices()))
+			.map(AccessExecutionVertex::getCurrentExecutionAttempt)
+			.collect(Collectors.toList());
+	}
 
-		return executionVertex.getCurrentExecutionAttempt();
+	private static List<AccessExecution> getExecutions(final JobMasterGateway jobMasterGateway, final JobVertexID jobVertexId) {
+		final ArchivedExecutionGraph archivedExecutionGraph = requestExecutionGraph(jobMasterGateway);
+
+		return Optional.ofNullable(archivedExecutionGraph.getAllVertices().get(jobVertexId))
+			.map(accessExecutionJobVertex -> Arrays.asList(accessExecutionJobVertex.getTaskVertices()))
+			.orElse(Collections.emptyList())
+			.stream()
+			.map(AccessExecutionVertex::getCurrentExecutionAttempt)
+			.collect(Collectors.toList());
 	}
 
 	private static ArchivedExecutionGraph requestExecutionGraph(final JobMasterGateway jobMasterGateway) {
@@ -1046,14 +965,44 @@ public class JobMasterTest extends TestLogger {
 			actualInputSplits.add(InstantiationUtil.deserializeObject(serializedInputSplit.getInputSplitData(), ClassLoader.getSystemClassLoader()));
 		}
 
-		final SerializedInputSplit serializedInputSplit = nextInputSplit.get();
-
-		if (!serializedInputSplit.isEmpty()) {
-			InputSplit emptyInputSplit = InstantiationUtil.deserializeObject(serializedInputSplit.getInputSplitData(), ClassLoader.getSystemClassLoader());
-
-			assertThat(emptyInputSplit, is(nullValue()));
-		}
 		return actualInputSplits;
+	}
+
+	private List<InputSplit> getRemainingInputSplits(Supplier<SerializedInputSplit> nextInputSplit) throws Exception {
+		final List<InputSplit> actualInputSplits = new ArrayList<>(16);
+		boolean hasMoreInputSplits = true;
+
+		while (hasMoreInputSplits) {
+			final SerializedInputSplit serializedInputSplit = nextInputSplit.get();
+
+			if (serializedInputSplit.isEmpty()) {
+				hasMoreInputSplits = false;
+			} else {
+				final InputSplit inputSplit = InstantiationUtil.deserializeObject(serializedInputSplit.getInputSplitData(), ClassLoader.getSystemClassLoader());
+
+				if (inputSplit == null) {
+					hasMoreInputSplits = false;
+				} else {
+					actualInputSplits.add(inputSplit);
+				}
+			}
+		}
+
+		return actualInputSplits;
+	}
+
+	private static SerializedInputSplit getInputSplit(
+		final JobMasterGateway jobMasterGateway,
+		final JobVertexID jobVertexId,
+		final ExecutionAttemptID attemptId) {
+
+		try {
+			return jobMasterGateway
+				.requestNextInputSplit(jobVertexId, attemptId)
+				.get();
+		} catch (InterruptedException | ExecutionException e) {
+			throw new RuntimeException(e);
+		}
 	}
 
 	private static final class TestingInputSplitSource implements InputSplitSource<TestingInputSplit> {
@@ -1558,7 +1507,7 @@ public class JobMasterTest extends TestLogger {
 
 			AggregateFunction<Integer, Integer, Integer> aggregateFunction = createAggregateFunction();
 
-			ClosureCleaner.clean(aggregateFunction, true);
+			ClosureCleaner.clean(aggregateFunction, ExecutionConfig.ClosureCleanerLevel.RECURSIVE, true);
 			byte[] serializedAggregateFunction = InstantiationUtil.serializeObject(aggregateFunction);
 
 			updateAggregateFuture = jobMasterGateway.updateGlobalAggregate("agg1", 1, serializedAggregateFunction);
@@ -1629,7 +1578,7 @@ public class JobMasterTest extends TestLogger {
 			(localTaskManagerLocation, jobMasterGateway) -> jobMasterGateway.disconnectTaskManager(
 				localTaskManagerLocation.getResourceID(),
 				new FlinkException("Test disconnectTaskManager exception.")),
-			(jobMasterGateway, resourceID) -> ignored -> {});
+			(jobMasterGateway, resourceID) -> (ignoredA, ignoredB) -> {});
 	}
 
 	@Test
@@ -1638,7 +1587,7 @@ public class JobMasterTest extends TestLogger {
 		runJobFailureWhenTaskExecutorTerminatesTest(
 			fastHeartbeatServices,
 			(localTaskManagerLocation, jobMasterGateway) -> respondToHeartbeats.set(false),
-			(jobMasterGateway, taskManagerResourceId) -> resourceId -> {
+			(jobMasterGateway, taskManagerResourceId) -> (resourceId, ignored) -> {
 				if (respondToHeartbeats.get()) {
 					jobMasterGateway.heartbeatFromTaskManager(taskManagerResourceId, new AccumulatorReport(Collections.emptyList()));
 				}
@@ -1649,7 +1598,7 @@ public class JobMasterTest extends TestLogger {
 	private void runJobFailureWhenTaskExecutorTerminatesTest(
 			HeartbeatServices heartbeatServices,
 			BiConsumer<LocalTaskManagerLocation, JobMasterGateway> jobReachedRunningState,
-			BiFunction<JobMasterGateway, ResourceID, Consumer<ResourceID>> heartbeatConsumerFunction) throws Exception {
+			BiFunction<JobMasterGateway, ResourceID, BiConsumer<ResourceID, AllocatedSlotReport>> heartbeatConsumerFunction) throws Exception {
 		final JobGraph jobGraph = createSingleVertexJobGraph();
 		final TestingOnCompletionActions onCompletionActions = new TestingOnCompletionActions();
 		final JobMaster jobMaster = createJobMaster(

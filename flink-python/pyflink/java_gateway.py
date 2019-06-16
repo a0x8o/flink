@@ -17,6 +17,7 @@
 ################################################################################
 import os
 import platform
+import shlex
 import shutil
 import signal
 import struct
@@ -27,6 +28,7 @@ from threading import RLock
 
 from py4j.java_gateway import java_import, JavaGateway, GatewayParameters
 from pyflink.find_flink_home import _find_flink_home
+from pyflink.util.exceptions import install_exception_handler
 
 _gateway = None
 _lock = RLock()
@@ -48,6 +50,7 @@ def get_gateway():
 
             # import the flink view
             import_flink_view(_gateway)
+            install_exception_handler()
     return _gateway
 
 
@@ -64,7 +67,10 @@ def launch_gateway():
         raise Exception("Windows system is not supported currently.")
     script = "./bin/pyflink-gateway-server.sh"
     command = [os.path.join(FLINK_HOME, script)]
-    command += ['-c', 'org.apache.flink.python.client.PythonGatewayServer']
+    command += ['-c', 'org.apache.flink.client.python.PythonGatewayServer']
+
+    submit_args = os.environ.get("SUBMIT_ARGS", "local")
+    command += shlex.split(submit_args)
 
     # Create a temporary directory where the gateway server should write the connection information.
     conn_info_dir = tempfile.mkdtemp()
@@ -111,13 +117,14 @@ def import_flink_view(gateway):
     java_import(gateway.jvm, "org.apache.flink.table.api.*")
     java_import(gateway.jvm, "org.apache.flink.table.api.java.*")
     java_import(gateway.jvm, "org.apache.flink.table.api.dataview.*")
+    java_import(gateway.jvm, "org.apache.flink.table.catalog.*")
     java_import(gateway.jvm, "org.apache.flink.table.descriptors.*")
-    java_import(gateway.jvm, "org.apache.flink.table.sources.*")
     java_import(gateway.jvm, "org.apache.flink.table.sinks.*")
-    java_import(gateway.jvm, "org.apache.flink.table.python.*")
+    java_import(gateway.jvm, "org.apache.flink.table.sources.*")
     java_import(gateway.jvm, "org.apache.flink.table.types.*")
     java_import(gateway.jvm, "org.apache.flink.table.types.logical.*")
-    java_import(gateway.jvm, "org.apache.flink.python.bridge.*")
+    java_import(gateway.jvm, "org.apache.flink.table.util.python.*")
+    java_import(gateway.jvm, "org.apache.flink.api.common.python.*")
     java_import(gateway.jvm, "org.apache.flink.api.common.typeinfo.TypeInformation")
     java_import(gateway.jvm, "org.apache.flink.api.common.typeinfo.Types")
     java_import(gateway.jvm, "org.apache.flink.api.java.ExecutionEnvironment")

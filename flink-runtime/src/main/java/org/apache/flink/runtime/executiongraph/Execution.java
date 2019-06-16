@@ -801,7 +801,7 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 			}
 
 			else if (current == FINISHED || current == FAILED) {
-				// nothing to do any more. finished failed before it could be cancelled.
+				// nothing to do any more. finished/failed before it could be cancelled.
 				// in any case, the task is removed from the TaskManager already
 				sendReleaseIntermediateResultPartitionsRpcCall();
 
@@ -1329,7 +1329,7 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 
 			if (!partitionIds.isEmpty()) {
 				// TODO For some tests this could be a problem when querying too early if all resources were released
-				taskManagerGateway.releasePartitions(partitionIds);
+				taskManagerGateway.releasePartitions(getVertex().getJobId(), partitionIds);
 			}
 		}
 	}

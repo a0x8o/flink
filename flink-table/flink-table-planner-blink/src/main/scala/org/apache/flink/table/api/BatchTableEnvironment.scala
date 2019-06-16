@@ -26,9 +26,11 @@ import org.apache.flink.streaming.api.graph.{StreamGraph, StreamGraphGenerator}
 import org.apache.flink.streaming.api.transformations.StreamTransformation
 import org.apache.flink.table.plan.`trait`.FlinkRelDistributionTraitDef
 import org.apache.flink.table.plan.nodes.exec.{BatchExecNode, ExecNode}
+import org.apache.flink.table.plan.nodes.process.DAGProcessContext
+import org.apache.flink.table.plan.nodes.resource.batch.parallelism.BatchParallelismProcessor
 import org.apache.flink.table.plan.optimize.{BatchCommonSubGraphBasedOptimizer, Optimizer}
 import org.apache.flink.table.plan.reuse.DeadlockBreakupProcessor
-import org.apache.flink.table.plan.schema.{BatchTableSourceTable, TableSourceSinkTable, TableSourceTable}
+import org.apache.flink.table.plan.schema.{TableSourceSinkTable, TableSourceTable}
 import org.apache.flink.table.plan.stats.FlinkStatistic
 import org.apache.flink.table.plan.util.{ExecNodePlanDumper, FlinkRelOptUtil}
 import org.apache.flink.table.sinks._
@@ -50,9 +52,9 @@ import _root_.scala.collection.JavaConversions._
   * @param config The [[TableConfig]] of this [[BatchTableEnvironment]].
   */
 class BatchTableEnvironment(
-    val streamEnv: StreamExecutionEnvironment,
+    val execEnv: StreamExecutionEnvironment,
     config: TableConfig)
-  extends TableEnvironment(config) {
+  extends TableEnvironment(execEnv, config) {
 
   // prefix for unique table names.
   override private[flink] val tableNamePrefix = "_DataStreamTable_"
@@ -120,8 +122,10 @@ class BatchTableEnvironment(
 
   override private[flink] def translateToExecNodeDag(rels: Seq[RelNode]): Seq[ExecNode[_, _]] = {
     val nodeDag = super.translateToExecNodeDag(rels)
+    val context = new DAGProcessContext(this)
     // breakup deadlock
-    new DeadlockBreakupProcessor().process(nodeDag)
+    val postNodeDag = new DeadlockBreakupProcessor().process(nodeDag, context)
+    new BatchParallelismProcessor().process(postNodeDag, context)
   }
 
   /**
@@ -248,8 +252,8 @@ class BatchTableEnvironment(
   }
 
   /**
-    * Registers an internal [[BatchTableSource]] in this [[TableEnvironment]]'s catalog without
-    * name checking. Registered tables can be referenced in SQL queries.
+    * Registers an internal bounded [[StreamTableSource]] in this [[TableEnvironment]]'s catalog
+    * without name checking. Registered tables can be referenced in SQL queries.
     *
     * @param name        The name under which the [[TableSource]] is registered.
     * @param tableSource The [[TableSource]] to register.
@@ -261,40 +265,47 @@ class BatchTableEnvironment(
       statistic: FlinkStatistic,
       replace: Boolean = false): Unit = {
 
+    def register(): Unit = {
+      // check if a table (source or sink) is registered
+      getTable(name) match {
+        // table source and/or sink is registered
+        case Some(table: TableSourceSinkTable[_, _]) => table.tableSourceTable match {
+
+          // wrapper contains source
+          case Some(_: TableSourceTable[_]) if !replace =>
+            throw new TableException(s"Table '$name' already exists. " +
+              s"Please choose a different name.")
+
+          // wrapper contains only sink (not source)
+          case _ =>
+            val enrichedTable = new TableSourceSinkTable(
+              Some(new TableSourceTable(tableSource, false, statistic)),
+              table.tableSinkTable)
+            replaceRegisteredTable(name, enrichedTable)
+        }
+
+        // no table is registered
+        case _ =>
+          val newTable = new TableSourceSinkTable(
+            Some(new TableSourceTable(tableSource, false, statistic)),
+            None)
+          registerTableInternal(name, newTable)
+      }
+    }
+
     tableSource match {
 
       // check for proper batch table source
-      case batchTableSource: BatchTableSource[_] =>
-        // check if a table (source or sink) is registered
-        getTable(name) match {
+      case boundedTableSource: StreamTableSource[_] if boundedTableSource.isBounded =>
+        register()
 
-          // table source and/or sink is registered
-          case Some(table: TableSourceSinkTable[_, _]) => table.tableSourceTable match {
-
-            // wrapper contains source
-            case Some(_: TableSourceTable[_]) if !replace =>
-              throw new TableException(s"Table '$name' already exists. " +
-                s"Please choose a different name.")
-
-            // wrapper contains only sink (not source)
-            case _ =>
-              val enrichedTable = new TableSourceSinkTable(
-                Some(new BatchTableSourceTable(batchTableSource, statistic)),
-                table.tableSinkTable)
-              replaceRegisteredTable(name, enrichedTable)
-          }
-
-          // no table is registered
-          case _ =>
-            val newTable = new TableSourceSinkTable(
-              Some(new BatchTableSourceTable(batchTableSource, statistic)),
-              None)
-            registerTableInternal(name, newTable)
-        }
+      // a lookupable table source can also be registered in the env
+      case _: LookupableTableSource[_] =>
+        register()
 
       // not a batch table source
       case _ =>
-        throw new TableException("Only BatchTableSource can be " +
+        throw new TableException("Only LookupableTableSouce and BatchTableSource can be " +
           "registered in BatchTableEnvironment.")
     }
   }
