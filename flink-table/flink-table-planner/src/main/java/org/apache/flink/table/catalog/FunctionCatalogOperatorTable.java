@@ -20,10 +20,10 @@ package org.apache.flink.table.catalog;
 
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.table.calcite.FlinkTypeFactory;
-import org.apache.flink.table.expressions.AggregateFunctionDefinition;
-import org.apache.flink.table.expressions.FunctionDefinition;
-import org.apache.flink.table.expressions.ScalarFunctionDefinition;
-import org.apache.flink.table.expressions.TableFunctionDefinition;
+import org.apache.flink.table.functions.AggregateFunctionDefinition;
+import org.apache.flink.table.functions.FunctionDefinition;
+import org.apache.flink.table.functions.ScalarFunctionDefinition;
+import org.apache.flink.table.functions.TableFunctionDefinition;
 import org.apache.flink.table.functions.utils.UserDefinedFunctionUtils;
 
 import org.apache.calcite.sql.SqlFunction;
@@ -69,10 +69,10 @@ public class FunctionCatalogOperatorTable implements SqlOperatorTable {
 		}
 
 		String name = opName.getSimple();
-		Optional<FunctionDefinition> candidateFunction = functionCatalog.lookupFunction(name);
+		Optional<FunctionLookup.Result> candidateFunction = functionCatalog.lookupFunction(name);
 
-		candidateFunction.flatMap(functionDefinition ->
-			convertToSqlFunction(category, name, functionDefinition)
+		candidateFunction.flatMap(lookupResult ->
+			convertToSqlFunction(category, name, lookupResult.getFunctionDefinition())
 		).ifPresent(operatorList::add);
 	}
 

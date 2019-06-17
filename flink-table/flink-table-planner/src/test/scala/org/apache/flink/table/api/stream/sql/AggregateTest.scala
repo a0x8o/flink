@@ -24,8 +24,7 @@ import org.apache.flink.api.scala._
 import org.apache.flink.api.scala.typeutils.CaseClassTypeInfo
 import org.apache.flink.table.api.Types
 import org.apache.flink.table.api.scala._
-import org.apache.flink.table.expressions.AggregateFunctionDefinition
-import org.apache.flink.table.functions.AggregateFunction
+import org.apache.flink.table.functions.{AggregateFunction, AggregateFunctionDefinition}
 import org.apache.flink.table.utils.TableTestUtil.{streamTableNode, term, unaryNode}
 import org.apache.flink.table.utils.{StreamTableTestUtil, TableTestBase}
 import org.apache.flink.types.Row
@@ -66,7 +65,9 @@ class AggregateTest extends TableTestBase {
     val aggFunctionDefinition = streamUtil
       .tableEnv
       .functionCatalog
-      .lookupFunction("udag").get()
+      .lookupFunction("udag")
+      .get()
+      .getFunctionDefinition
       .asInstanceOf[AggregateFunctionDefinition]
 
     val typeInfo = aggFunctionDefinition.getAccumulatorTypeInfo
@@ -80,7 +81,9 @@ class AggregateTest extends TableTestBase {
     val aggFunctionDefinition2 = streamUtil
       .tableEnv
       .functionCatalog
-      .lookupFunction("udag2").get()
+      .lookupFunction("udag2")
+      .get()
+      .getFunctionDefinition
       .asInstanceOf[AggregateFunctionDefinition]
 
     val typeInfo2 = aggFunctionDefinition2.getAccumulatorTypeInfo
