@@ -23,20 +23,21 @@ import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.table.api.TableSchema;
 import org.apache.flink.table.api.ValidationException;
 import org.apache.flink.table.expressions.ApiExpressionDefaultVisitor;
-import org.apache.flink.table.expressions.CallExpression;
 import org.apache.flink.table.expressions.Expression;
 import org.apache.flink.table.expressions.ExpressionUtils;
+import org.apache.flink.table.expressions.UnresolvedCallExpression;
 import org.apache.flink.table.functions.FunctionDefinition;
 import org.apache.flink.table.functions.TableFunctionDefinition;
 import org.apache.flink.table.typeutils.FieldInfoUtils;
 
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
 import static java.util.stream.Collectors.toList;
-import static org.apache.flink.table.expressions.ExpressionUtils.isFunctionOfType;
+import static org.apache.flink.table.expressions.ExpressionUtils.isFunctionOfKind;
 import static org.apache.flink.table.functions.BuiltInFunctionDefinitions.AS;
-import static org.apache.flink.table.functions.FunctionDefinition.Type.TABLE_FUNCTION;
+import static org.apache.flink.table.functions.FunctionKind.TABLE;
 
 /**
  * Utility class for creating a valid {@link CalculatedQueryOperation} operation.
@@ -44,48 +45,53 @@ import static org.apache.flink.table.functions.FunctionDefinition.Type.TABLE_FUN
 @Internal
 public class CalculatedTableFactory {
 
-	private FunctionTableCallVisitor calculatedTableCreator = new FunctionTableCallVisitor();
-
 	/**
 	 * Creates a valid {@link CalculatedQueryOperation} operation.
 	 *
 	 * @param callExpr call to table function as expression
 	 * @return valid calculated table
 	 */
-	public QueryOperation create(Expression callExpr) {
+	public QueryOperation create(Expression callExpr, String[] leftTableFieldNames) {
+		FunctionTableCallVisitor calculatedTableCreator = new FunctionTableCallVisitor(leftTableFieldNames);
 		return callExpr.accept(calculatedTableCreator);
 	}
 
 	private class FunctionTableCallVisitor extends ApiExpressionDefaultVisitor<CalculatedQueryOperation<?>> {
 
+		private String[] leftTableFieldNames;
+
+		public FunctionTableCallVisitor(String[] leftTableFieldNames) {
+			this.leftTableFieldNames = leftTableFieldNames;
+		}
+
 		@Override
-		public CalculatedQueryOperation<?> visitCall(CallExpression call) {
-			FunctionDefinition definition = call.getFunctionDefinition();
+		public CalculatedQueryOperation<?> visit(UnresolvedCallExpression unresolvedCall) {
+			FunctionDefinition definition = unresolvedCall.getFunctionDefinition();
 			if (definition.equals(AS)) {
-				return unwrapFromAlias(call);
+				return unwrapFromAlias(unresolvedCall);
 			} else if (definition instanceof TableFunctionDefinition) {
 				return createFunctionCall(
 					(TableFunctionDefinition) definition,
 					Collections.emptyList(),
-					call.getChildren());
+					unresolvedCall.getChildren());
 			} else {
-				return defaultMethod(call);
+				return defaultMethod(unresolvedCall);
 			}
 		}
 
-		private CalculatedQueryOperation<?> unwrapFromAlias(CallExpression call) {
-			List<Expression> children = call.getChildren();
+		private CalculatedQueryOperation<?> unwrapFromAlias(UnresolvedCallExpression unresolvedCall) {
+			List<Expression> children = unresolvedCall.getChildren();
 			List<String> aliases = children.subList(1, children.size())
 				.stream()
 				.map(alias -> ExpressionUtils.extractValue(alias, String.class)
 					.orElseThrow(() -> new ValidationException("Unexpected alias: " + alias)))
 				.collect(toList());
 
-			if (!isFunctionOfType(children.get(0), TABLE_FUNCTION)) {
+			if (!isFunctionOfKind(children.get(0), TABLE)) {
 				throw fail();
 			}
 
-			CallExpression tableCall = (CallExpression) children.get(0);
+			UnresolvedCallExpression tableCall = (UnresolvedCallExpression) children.get(0);
 			TableFunctionDefinition tableFunctionDefinition =
 				(TableFunctionDefinition) tableCall.getFunctionDefinition();
 			return createFunctionCall(tableFunctionDefinition, aliases, tableCall.getChildren());
@@ -102,13 +108,13 @@ public class CalculatedTableFactory {
 
 			String[] fieldNames;
 			if (aliasesSize == 0) {
-				fieldNames = FieldInfoUtils.getFieldNames(resultType);
+				fieldNames = FieldInfoUtils.getFieldNames(resultType, Arrays.asList(leftTableFieldNames));
 			} else if (aliasesSize != callArity) {
 				throw new ValidationException(String.format(
 					"List of column aliases must have same degree as table; " +
 						"the returned table of function '%s' has " +
 						"%d columns, whereas alias list has %d columns",
-					tableFunctionDefinition.getName(),
+					tableFunctionDefinition.toString(),
 					callArity,
 					aliasesSize));
 			} else {

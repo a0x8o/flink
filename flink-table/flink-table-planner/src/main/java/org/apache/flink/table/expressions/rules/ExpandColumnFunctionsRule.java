@@ -19,25 +19,29 @@
 package org.apache.flink.table.expressions.rules;
 
 import org.apache.flink.annotation.Internal;
-import org.apache.flink.table.api.TableException;
 import org.apache.flink.table.api.ValidationException;
 import org.apache.flink.table.expressions.ApiExpressionDefaultVisitor;
-import org.apache.flink.table.expressions.CallExpression;
 import org.apache.flink.table.expressions.Expression;
 import org.apache.flink.table.expressions.ExpressionUtils;
+import org.apache.flink.table.expressions.UnresolvedCallExpression;
 import org.apache.flink.table.expressions.UnresolvedReferenceExpression;
 import org.apache.flink.table.expressions.ValueLiteralExpression;
+import org.apache.flink.table.functions.FunctionDefinition;
 import org.apache.flink.util.Preconditions;
 
 import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
+import static org.apache.flink.table.expressions.ApiExpressionUtils.unresolvedCall;
+import static org.apache.flink.table.expressions.ApiExpressionUtils.unresolvedRef;
 import static org.apache.flink.table.functions.BuiltInFunctionDefinitions.AS;
 import static org.apache.flink.table.functions.BuiltInFunctionDefinitions.RANGE_TO;
 import static org.apache.flink.table.functions.BuiltInFunctionDefinitions.WITHOUT_COLUMNS;
 import static org.apache.flink.table.functions.BuiltInFunctionDefinitions.WITH_COLUMNS;
+
 
 /**
  * Replaces column functions with all available {@link org.apache.flink.table.expressions.UnresolvedReferenceExpression}s
@@ -50,7 +54,7 @@ final class ExpandColumnFunctionsRule implements ResolverRule {
 		ColumnFunctionsExpander columnFunctionsExpander =
 			new ColumnFunctionsExpander(
 				context.referenceLookup().getAllInputFields().stream()
-					.map(p -> new UnresolvedReferenceExpression(p.getName()))
+					.map(p -> unresolvedRef(p.getName()))
 					.collect(Collectors.toList())
 			);
 		return expression.stream()
@@ -72,29 +76,29 @@ final class ExpandColumnFunctionsRule implements ResolverRule {
 		}
 
 		@Override
-		public List<Expression> visitCall(CallExpression call) {
+		public List<Expression> visit(UnresolvedCallExpression unresolvedCall) {
 
 			List<Expression> result;
 
-			String definitionName = call.getFunctionDefinition().getName();
-			if (definitionName.equals(WITH_COLUMNS.getName())) {
-				result = resolveArgsOfColumns(call.getChildren(), false);
-			} else if (definitionName.equals(WITHOUT_COLUMNS.getName())) {
-				result = resolveArgsOfColumns(call.getChildren(), true);
+			final FunctionDefinition definition = unresolvedCall.getFunctionDefinition();
+			if (definition == WITH_COLUMNS) {
+				result = resolveArgsOfColumns(unresolvedCall.getChildren(), false);
+			} else if (definition == WITHOUT_COLUMNS) {
+				result = resolveArgsOfColumns(unresolvedCall.getChildren(), true);
 			} else {
-				List<Expression> args = call.getChildren()
+				Expression[] args = unresolvedCall.getChildren()
 					.stream()
 					.flatMap(c -> c.accept(this).stream())
-					.collect(Collectors.toList());
-				result = Collections.singletonList(new CallExpression(call.getFunctionDefinition(), args));
+					.toArray(Expression[]::new);
+				result = Collections.singletonList(unresolvedCall(unresolvedCall.getFunctionDefinition(), args));
 
-				// validate as.
-				if (definitionName.equals(AS.getName())) {
-					for (int i = 1; i < args.size(); ++i) {
-						if (!(args.get(i) instanceof ValueLiteralExpression)) {
-							String errorMessage = String.join(
-								", ",
-								args.stream().map(e -> e.toString()).collect(Collectors.toList()));
+				// validate alias
+				if (definition == AS) {
+					for (int i = 1; i < args.length; ++i) {
+						if (!(args[i] instanceof ValueLiteralExpression)) {
+							final String errorMessage = Stream.of(args)
+								.map(Object::toString)
+								.collect(Collectors.joining(", "));
 							throw new ValidationException(String.format("Invalid AS, parameters are: [%s].", errorMessage));
 						}
 					}
@@ -144,14 +148,14 @@ final class ExpandColumnFunctionsRule implements ResolverRule {
 		}
 
 		@Override
-		public List<UnresolvedReferenceExpression> visitValueLiteral(ValueLiteralExpression valueLiteralExpression) {
+		public List<UnresolvedReferenceExpression> visit(ValueLiteralExpression valueLiteralExpression) {
 			return ExpressionUtils.extractValue(valueLiteralExpression, Integer.class)
 				.map(i -> Collections.singletonList(inputFieldReferences.get(i - 1)))
 				.orElseGet(() -> defaultMethod(valueLiteralExpression));
 		}
 
 		@Override
-		public List<UnresolvedReferenceExpression> visitUnresolvedReference(
+		public List<UnresolvedReferenceExpression> visit(
 			UnresolvedReferenceExpression unresolvedReference) {
 			if (unresolvedReference.getName().equals("*")) {
 				return inputFieldReferences;
@@ -161,11 +165,11 @@ final class ExpandColumnFunctionsRule implements ResolverRule {
 		}
 
 		@Override
-		public List<UnresolvedReferenceExpression> visitCall(CallExpression call) {
-			if (isIndexRangeCall(call)) {
-				int start = ExpressionUtils.extractValue(call.getChildren().get(0), Integer.class)
+		public List<UnresolvedReferenceExpression> visit(UnresolvedCallExpression unresolvedCall) {
+			if (isIndexRangeCall(unresolvedCall)) {
+				int start = ExpressionUtils.extractValue(unresolvedCall.getChildren().get(0), Integer.class)
 					.orElseThrow(() -> new ValidationException("Constant integer value expected."));
-				int end = ExpressionUtils.extractValue(call.getChildren().get(1), Integer.class)
+				int end = ExpressionUtils.extractValue(unresolvedCall.getChildren().get(1), Integer.class)
 					.orElseThrow(() -> new ValidationException("Constant integer value expected."));
 				Preconditions.checkArgument(
 					start <= end,
@@ -174,9 +178,9 @@ final class ExpandColumnFunctionsRule implements ResolverRule {
 
 				return inputFieldReferences.subList(start - 1, end);
 
-			} else if (isNameRangeCall(call)) {
-				String startName = ((UnresolvedReferenceExpression) call.getChildren().get(0)).getName();
-				String endName = ((UnresolvedReferenceExpression) call.getChildren().get(1)).getName();
+			} else if (isNameRangeCall(unresolvedCall)) {
+				String startName = ((UnresolvedReferenceExpression) unresolvedCall.getChildren().get(0)).getName();
+				String endName = ((UnresolvedReferenceExpression) unresolvedCall.getChildren().get(1)).getName();
 
 				int start = indexOfName(inputFieldReferences, startName);
 				int end = indexOfName(inputFieldReferences, endName);
@@ -187,25 +191,24 @@ final class ExpandColumnFunctionsRule implements ResolverRule {
 
 				return inputFieldReferences.subList(start, end + 1);
 			} else {
-				return defaultMethod(call);
+				return defaultMethod(unresolvedCall);
 			}
 		}
 
 		@Override
 		protected List<UnresolvedReferenceExpression> defaultMethod(Expression expression) {
-			throw new TableException(
-				String.format("The parameters of %s() or %s() only accept column name or column " +
-					"index, but receive %s.",
+			throw new ValidationException(
+				String.format(
+					"The parameters of %s() or %s() only accept column names or column indices.",
 					WITH_COLUMNS.getName(),
-					WITHOUT_COLUMNS.getName(),
-					expression.getClass().getSimpleName()));
+					WITHOUT_COLUMNS.getName()));
 		}
 
 		/**
 		 * Whether the expression is a column index range expression, e.g. withColumns(1 ~ 2).
 		 */
-		private boolean isIndexRangeCall(CallExpression expression) {
-			return expression.getFunctionDefinition().getName().equals(RANGE_TO.getName()) &&
+		private boolean isIndexRangeCall(UnresolvedCallExpression expression) {
+			return expression.getFunctionDefinition() == RANGE_TO &&
 				expression.getChildren().get(0) instanceof ValueLiteralExpression &&
 				expression.getChildren().get(1) instanceof ValueLiteralExpression;
 		}
@@ -213,8 +216,8 @@ final class ExpandColumnFunctionsRule implements ResolverRule {
 		/**
 		 * Whether the expression is a column name range expression, e.g. withColumns(a ~ b).
 		 */
-		private boolean isNameRangeCall(CallExpression expression) {
-			return expression.getFunctionDefinition().getName().equals(RANGE_TO.getName()) &&
+		private boolean isNameRangeCall(UnresolvedCallExpression expression) {
+			return expression.getFunctionDefinition() == RANGE_TO &&
 				expression.getChildren().get(0) instanceof UnresolvedReferenceExpression &&
 				expression.getChildren().get(1) instanceof UnresolvedReferenceExpression;
 		}

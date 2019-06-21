@@ -25,7 +25,7 @@ import unittest
 from abc import abstractmethod
 
 from py4j.java_gateway import JavaObject
-from pyflink.table.table_source import CsvTableSource
+from pyflink.table.sources import CsvTableSource
 
 from pyflink.find_flink_home import _find_flink_home
 from pyflink.table import TableEnvironment, TableConfig
@@ -33,6 +33,9 @@ from pyflink.java_gateway import get_gateway
 
 if sys.version_info[0] >= 3:
     xrange = range
+else:
+    unittest.TestCase.assertRaisesRegex = unittest.TestCase.assertRaisesRegexp
+    unittest.TestCase.assertRegex = unittest.TestCase.assertRegexpMatches
 
 if os.getenv("VERBOSE"):
     log_level = logging.DEBUG

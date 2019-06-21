@@ -82,13 +82,18 @@ public final class FieldReferenceExpression implements Expression {
 	}
 
 	@Override
+	public String asSummaryString() {
+		return name;
+	}
+
+	@Override
 	public List<Expression> getChildren() {
 		return Collections.emptyList();
 	}
 
 	@Override
 	public <R> R accept(ExpressionVisitor<R> visitor) {
-		return visitor.visitFieldReference(this);
+		return visitor.visit(this);
 	}
 
 	@Override
@@ -113,6 +118,6 @@ public final class FieldReferenceExpression implements Expression {
 
 	@Override
 	public String toString() {
-		return name;
+		return asSummaryString();
 	}
 }

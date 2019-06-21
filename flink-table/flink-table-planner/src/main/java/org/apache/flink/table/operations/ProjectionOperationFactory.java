@@ -24,19 +24,18 @@ import org.apache.flink.table.api.TableException;
 import org.apache.flink.table.api.TableSchema;
 import org.apache.flink.table.api.ValidationException;
 import org.apache.flink.table.expressions.ApiExpressionDefaultVisitor;
-import org.apache.flink.table.expressions.CallExpression;
 import org.apache.flink.table.expressions.Expression;
 import org.apache.flink.table.expressions.ExpressionBridge;
 import org.apache.flink.table.expressions.FieldReferenceExpression;
 import org.apache.flink.table.expressions.LocalReferenceExpression;
 import org.apache.flink.table.expressions.PlannerExpression;
 import org.apache.flink.table.expressions.TableReferenceExpression;
+import org.apache.flink.table.expressions.UnresolvedCallExpression;
 import org.apache.flink.table.expressions.ValueLiteralExpression;
 import org.apache.flink.table.functions.BuiltInFunctionDefinitions;
 import org.apache.flink.table.functions.FunctionDefinition;
 import org.apache.flink.table.types.logical.LogicalType;
 
-import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
@@ -44,6 +43,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+import static org.apache.flink.table.expressions.ApiExpressionUtils.unresolvedCall;
 import static org.apache.flink.table.expressions.ApiExpressionUtils.valueLiteral;
 import static org.apache.flink.table.functions.BuiltInFunctionDefinitions.AS;
 import static org.apache.flink.table.functions.BuiltInFunctionDefinitions.CAST;
@@ -139,37 +139,37 @@ public final class ProjectionOperationFactory {
 	private class NamingVisitor extends ApiExpressionDefaultVisitor<Expression> {
 
 		@Override
-		public Expression visitCall(CallExpression call) {
-			FunctionDefinition functionDefinition = call.getFunctionDefinition();
+		public Expression visit(UnresolvedCallExpression unresolvedCall) {
+			FunctionDefinition functionDefinition = unresolvedCall.getFunctionDefinition();
 			final Optional<String> rename;
-			if (functionDefinition.equals(CAST)) {
-				rename = nameForCast(call);
-			} else if (functionDefinition.equals(GET)) {
-				rename = nameForGet(call);
-			} else if (functionDefinition.equals(AS)) {
+			if (functionDefinition == CAST) {
+				rename = nameForCast(unresolvedCall);
+			} else if (functionDefinition == GET) {
+				rename = nameForGet(unresolvedCall);
+			} else if (functionDefinition == AS) {
 				rename = Optional.empty();
 			} else {
 				rename = Optional.of(getUniqueName());
 			}
 
-			return rename.map(name -> new CallExpression(AS, Arrays.asList(call, valueLiteral(name)))).orElse(call);
+			return rename.map(name -> unresolvedCall(AS, unresolvedCall, valueLiteral(name))).orElse(unresolvedCall);
 		}
 
-		private Optional<String> nameForGet(CallExpression call) {
-			return Optional.of(call.accept(extractTransitiveNameVisitor)
+		private Optional<String> nameForGet(UnresolvedCallExpression unresolvedCall) {
+			return Optional.of(unresolvedCall.accept(extractTransitiveNameVisitor)
 				.orElseGet(ProjectionOperationFactory.this::getUniqueName));
 		}
 
-		private Optional<String> nameForCast(CallExpression call) {
-			Optional<String> innerName = call.getChildren().get(0).accept(extractTransitiveNameVisitor);
-			Expression type = call.getChildren().get(1);
+		private Optional<String> nameForCast(UnresolvedCallExpression unresolvedCall) {
+			Optional<String> innerName = unresolvedCall.getChildren().get(0).accept(extractTransitiveNameVisitor);
+			Expression type = unresolvedCall.getChildren().get(1);
 			return Optional.of(innerName.map(n -> String.format("%s-%s", n, type))
 				.orElseGet(ProjectionOperationFactory.this::getUniqueName));
 		}
 
 		@Override
-		public Expression visitValueLiteral(ValueLiteralExpression valueLiteralExpression) {
-			return new CallExpression(AS, Arrays.asList(valueLiteralExpression, valueLiteral(getUniqueName())));
+		public Expression visit(ValueLiteralExpression valueLiteralExpression) {
+			return unresolvedCall(AS, valueLiteralExpression, valueLiteral(getUniqueName()));
 		}
 
 		@Override
@@ -181,11 +181,11 @@ public final class ProjectionOperationFactory {
 	private class StripAliases extends ApiExpressionDefaultVisitor<Expression> {
 
 		@Override
-		public Expression visitCall(CallExpression call) {
-			if (call.getFunctionDefinition().equals(AS)) {
-				return call.getChildren().get(0).accept(this);
+		public Expression visit(UnresolvedCallExpression unresolvedCall) {
+			if (unresolvedCall.getFunctionDefinition() == AS) {
+				return unresolvedCall.getChildren().get(0).accept(this);
 			} else {
-				return call;
+				return unresolvedCall;
 			}
 		}
 
@@ -198,11 +198,11 @@ public final class ProjectionOperationFactory {
 	private class TransitiveExtractNameVisitor extends ApiExpressionDefaultVisitor<Optional<String>> {
 
 		@Override
-		public Optional<String> visitCall(CallExpression call) {
-			if (call.getFunctionDefinition().equals(GET)) {
-				return extractNameFromGet(call);
+		public Optional<String> visit(UnresolvedCallExpression unresolvedCall) {
+			if (unresolvedCall.getFunctionDefinition() == GET) {
+				return extractNameFromGet(unresolvedCall);
 			} else {
-				return defaultMethod(call);
+				return defaultMethod(unresolvedCall);
 			}
 		}
 
@@ -211,9 +211,9 @@ public final class ProjectionOperationFactory {
 			return extractName(expression);
 		}
 
-		private Optional<String> extractNameFromGet(CallExpression call) {
-			Expression child = call.getChildren().get(0);
-			ValueLiteralExpression key = (ValueLiteralExpression) call.getChildren().get(1);
+		private Optional<String> extractNameFromGet(UnresolvedCallExpression unresolvedCall) {
+			Expression child = unresolvedCall.getChildren().get(0);
+			ValueLiteralExpression key = (ValueLiteralExpression) unresolvedCall.getChildren().get(1);
 
 			final LogicalType keyType = key.getOutputDataType().getLogicalType();
 

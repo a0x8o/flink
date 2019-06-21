@@ -30,7 +30,7 @@ import java.util.Objects;
  * Expression that wraps {@link DataType} as a literal.
  *
  * <p>Expressing a type is primarily needed for casting operations. This expression simplifies the
- * {@link Expression} design as it makes {@link CallExpression} the only expression that takes
+ * {@link Expression} design as it makes {@link UnresolvedCallExpression} the only expression that takes
  * subexpressions.
  */
 @PublicEvolving
@@ -47,13 +47,18 @@ public final class TypeLiteralExpression implements Expression {
 	}
 
 	@Override
+	public String asSummaryString() {
+		return dataType.toString();
+	}
+
+	@Override
 	public List<Expression> getChildren() {
 		return Collections.emptyList();
 	}
 
 	@Override
 	public <R> R accept(ExpressionVisitor<R> visitor) {
-		return visitor.visitTypeLiteral(this);
+		return visitor.visit(this);
 	}
 
 	@Override
@@ -75,6 +80,6 @@ public final class TypeLiteralExpression implements Expression {
 
 	@Override
 	public String toString() {
-		return dataType.toString();
+		return asSummaryString();
 	}
 }

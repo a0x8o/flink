@@ -20,7 +20,7 @@ package org.apache.flink.table.codegen.agg
 import org.apache.flink.table.codegen.CodeGenUtils.primitiveTypeTermForType
 import org.apache.flink.table.codegen.agg.AggsHandlerCodeGenerator.DISTINCT_KEY_TERM
 import org.apache.flink.table.codegen.{CodeGeneratorContext, ExprCodeGenerator, GeneratedExpression}
-import org.apache.flink.table.expressions.{ResolvedDistinctKeyReference, _}
+import org.apache.flink.table.expressions.{ApiExpressionUtils, ResolvedDistinctKeyReference, _}
 import org.apache.flink.table.functions.aggfunctions.DeclarativeAggregateFunction
 import org.apache.flink.table.plan.util.AggregateInfo
 import org.apache.flink.table.types.LogicalTypeDataTypeConverter.fromDataTypeToLogicalType
@@ -216,21 +216,21 @@ class DeclarativeAggCodeGen(
       isMerge: Boolean = false,
       isDistinctMerge: Boolean = false) extends ExpressionVisitor[Expression] {
 
-    override def visitCall(call: CallExpression): Expression = {
-      new CallExpression(
+    override def visit(call: UnresolvedCallExpression): Expression = {
+      ApiExpressionUtils.unresolvedCall(
         call.getFunctionDefinition,
-        call.getChildren.asScala.map(_.accept(this)).asJava)
+        call.getChildren.asScala.map(_.accept(this)): _*)
     }
 
-    override def visitValueLiteral(valueLiteralExpression: ValueLiteralExpression): Expression = {
+    override def visit(valueLiteralExpression: ValueLiteralExpression): Expression = {
       valueLiteralExpression
     }
 
-    override def visitFieldReference(input: FieldReferenceExpression): Expression = {
+    override def visit(input: FieldReferenceExpression): Expression = {
       input
     }
 
-    override def visitTypeLiteral(typeLiteral: TypeLiteralExpression): Expression = {
+    override def visit(typeLiteral: TypeLiteralExpression): Expression = {
       typeLiteral
     }
 

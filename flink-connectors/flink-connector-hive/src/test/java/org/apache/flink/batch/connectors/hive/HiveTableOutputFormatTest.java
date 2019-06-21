@@ -46,7 +46,6 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -76,25 +75,6 @@ public class HiveTableOutputFormatTest {
 		if (hiveCatalog != null) {
 			hiveCatalog.close();
 		}
-	}
-
-	@Test
-	public void testInsertIntoNonPartitionTable() throws Exception {
-		String dbName = "default";
-		String tblName = "dest";
-		RowTypeInfo rowTypeInfo = createDestTable(dbName, tblName, 0);
-		ObjectPath tablePath = new ObjectPath(dbName, tblName);
-
-		Table hiveTable = hiveCatalog.getHiveTable(tablePath);
-		HiveTableOutputFormat outputFormat = createHiveTableOutputFormat(tablePath, hiveTable, rowTypeInfo, null, false);
-		outputFormat.open(0, 1);
-		List<Row> toWrite = generateRecords(5);
-		writeRecords(toWrite, outputFormat);
-		outputFormat.close();
-		outputFormat.finalizeGlobal(1);
-
-		verifyWrittenData(new Path(hiveTable.getSd().getLocation(), "0"), toWrite, 0);
-		hiveCatalog.dropTable(tablePath, false);
 	}
 
 	@Test
@@ -148,31 +128,6 @@ public class HiveTableOutputFormatTest {
 		HiveCatalogPartition catalogPartition = (HiveCatalogPartition) hiveCatalog.getPartition(tablePath, new CatalogPartitionSpec(
 				partSpec.entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().toString()))));
 		verifyWrittenData(new Path(catalogPartition.getLocation(), "0"), toWrite, 1);
-
-		hiveCatalog.dropTable(tablePath, false);
-	}
-
-	@Test
-	public void testInsertIntoDynamicPartition() throws Exception {
-		String dbName = "default";
-		String tblName = "dest";
-		RowTypeInfo rowTypeInfo = createDestTable(dbName, tblName, 1);
-		ObjectPath tablePath = new ObjectPath(dbName, tblName);
-		Table hiveTable = hiveCatalog.getHiveTable(tablePath);
-
-		HiveTableOutputFormat outputFormat = createHiveTableOutputFormat(tablePath, hiveTable, rowTypeInfo, Collections.emptyMap(), false);
-		outputFormat.open(0, 1);
-		List<Row> toWrite = generateRecords(5);
-		writeRecords(toWrite, outputFormat);
-		outputFormat.close();
-		outputFormat.finalizeGlobal(1);
-
-		List<CatalogPartitionSpec> partitionSpecs = hiveCatalog.listPartitions(tablePath);
-		assertEquals(toWrite.size(), partitionSpecs.size());
-		for (int i = 0; i < toWrite.size(); i++) {
-			HiveCatalogPartition partition = (HiveCatalogPartition) hiveCatalog.getPartition(tablePath, partitionSpecs.get(i));
-			verifyWrittenData(new Path(partition.getLocation(), "0"), Collections.singletonList(toWrite.get(i)), 1);
-		}
 
 		hiveCatalog.dropTable(tablePath, false);
 	}

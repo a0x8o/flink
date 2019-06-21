@@ -21,15 +21,16 @@ package org.apache.flink.table.operations;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.table.api.ValidationException;
 import org.apache.flink.table.expressions.ApiExpressionDefaultVisitor;
-import org.apache.flink.table.expressions.CallExpression;
 import org.apache.flink.table.expressions.Expression;
+import org.apache.flink.table.expressions.UnresolvedCallExpression;
 
 import java.util.List;
 import java.util.stream.Collectors;
 
-import static java.util.Collections.singletonList;
+import static org.apache.flink.table.expressions.ApiExpressionUtils.unresolvedCall;
 import static org.apache.flink.table.functions.BuiltInFunctionDefinitions.ORDERING;
 import static org.apache.flink.table.functions.BuiltInFunctionDefinitions.ORDER_ASC;
+
 
 /**
  * Utility class for creating a valid {@link SortQueryOperation} operation.
@@ -128,17 +129,17 @@ public class SortOperationFactory {
 	private class OrderWrapper extends ApiExpressionDefaultVisitor<Expression> {
 
 		@Override
-		public Expression visitCall(CallExpression call) {
-			if (ORDERING.contains(call.getFunctionDefinition())) {
-				return call;
+		public Expression visit(UnresolvedCallExpression unresolvedCall) {
+			if (ORDERING.contains(unresolvedCall.getFunctionDefinition())) {
+				return unresolvedCall;
 			} else {
-				return defaultMethod(call);
+				return defaultMethod(unresolvedCall);
 			}
 		}
 
 		@Override
 		protected Expression defaultMethod(Expression expression) {
-			return new CallExpression(ORDER_ASC, singletonList(expression));
+			return unresolvedCall(ORDER_ASC, expression);
 		}
 	}
 }

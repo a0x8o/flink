@@ -1511,10 +1511,30 @@ public abstract class StreamExecutionEnvironment {
 	 */
 	@Internal
 	public StreamGraph getStreamGraph() {
+		return getStreamGraphGenerator().generate();
+	}
+
+	/**
+	 * Getter of the {@link org.apache.flink.streaming.api.graph.StreamGraph} of the streaming job.
+	 *
+	 * @param jobName Desired name of the job
+	 * @return The streamgraph representing the transformations
+	 */
+	@Internal
+	public StreamGraph getStreamGraph(String jobName) {
+		return getStreamGraphGenerator().setJobName(jobName).generate();
+	}
+
+	private StreamGraphGenerator getStreamGraphGenerator() {
 		if (transformations.size() <= 0) {
 			throw new IllegalStateException("No operators defined in streaming topology. Cannot execute.");
 		}
-		return StreamGraphGenerator.generate(this, transformations);
+		return new StreamGraphGenerator(transformations, config, checkpointCfg)
+			.setStateBackend(defaultStateBackend)
+			.setChaining(isChainingEnabled)
+			.setUserArtifacts(cacheFile)
+			.setTimeCharacteristic(timeCharacteristic)
+			.setDefaultBufferTimeout(bufferTimeout);
 	}
 
 	/**

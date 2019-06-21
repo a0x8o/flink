@@ -25,16 +25,17 @@ import org.apache.flink.table.catalog.AbstractCatalogTable;
 import org.apache.flink.table.catalog.AbstractCatalogView;
 import org.apache.flink.table.catalog.CatalogBaseTable;
 import org.apache.flink.table.catalog.CatalogDatabase;
+import org.apache.flink.table.catalog.CatalogDatabaseImpl;
 import org.apache.flink.table.catalog.CatalogFunction;
 import org.apache.flink.table.catalog.CatalogPartition;
 import org.apache.flink.table.catalog.CatalogPartitionSpec;
-import org.apache.flink.table.catalog.GenericCatalogDatabase;
 import org.apache.flink.table.catalog.GenericCatalogFunction;
 import org.apache.flink.table.catalog.GenericCatalogPartition;
 import org.apache.flink.table.catalog.GenericCatalogTable;
 import org.apache.flink.table.catalog.GenericCatalogView;
 import org.apache.flink.table.catalog.GenericInMemoryCatalog;
 import org.apache.flink.table.catalog.ObjectPath;
+import org.apache.flink.table.catalog.config.CatalogTableConfig;
 import org.apache.flink.table.catalog.exceptions.CatalogException;
 import org.apache.flink.table.catalog.exceptions.DatabaseAlreadyExistException;
 import org.apache.flink.table.catalog.exceptions.DatabaseNotEmptyException;
@@ -175,9 +176,10 @@ public class HiveCatalog extends AbstractCatalog {
 		Database hiveDatabase = getHiveDatabase(databaseName);
 
 		Map<String, String> properties = hiveDatabase.getParameters();
-		boolean isGeneric = Boolean.valueOf(properties.get(FLINK_PROPERTY_IS_GENERIC));
-		return !isGeneric ? new HiveCatalogDatabase(properties, hiveDatabase.getLocationUri(), hiveDatabase.getDescription()) :
-			new GenericCatalogDatabase(retrieveFlinkProperties(properties), hiveDatabase.getDescription());
+
+		properties.put(HiveDatabaseConfig.DATABASE_LOCATION_URI, hiveDatabase.getLocationUri());
+
+		return new CatalogDatabaseImpl(properties, hiveDatabase.getDescription());
 	}
 
 	@Override
@@ -200,25 +202,17 @@ public class HiveCatalog extends AbstractCatalog {
 	}
 
 	private static Database instantiateHiveDatabase(String databaseName, CatalogDatabase database) {
-		if (database instanceof HiveCatalogDatabase) {
-			HiveCatalogDatabase db = (HiveCatalogDatabase) database;
-			return new Database(
-				databaseName,
-				db.getComment(),
-				db.getLocation(),
-				db.getProperties());
-		} else if (database instanceof GenericCatalogDatabase) {
-			GenericCatalogDatabase db = (GenericCatalogDatabase) database;
 
-			return new Database(
-				databaseName,
-				db.getComment(),
-				// HDFS location URI which GenericCatalogDatabase shouldn't care
-				null,
-				maskFlinkProperties(db.getProperties()));
-		} else {
-			throw new CatalogException(String.format("Unsupported catalog database type %s", database.getClass()), null);
-		}
+		Map<String, String> properties = database.getProperties();
+
+		String dbLocationUri = properties.remove(HiveDatabaseConfig.DATABASE_LOCATION_URI);
+
+		return new Database(
+			databaseName,
+			database.getComment(),
+			dbLocationUri,
+			properties
+		);
 	}
 
 	@Override
@@ -227,21 +221,13 @@ public class HiveCatalog extends AbstractCatalog {
 		checkArgument(!StringUtils.isNullOrWhitespaceOnly(databaseName), "databaseName cannot be null or empty");
 		checkNotNull(newDatabase, "newDatabase cannot be null");
 
-		CatalogDatabase existingDatabase;
-		try {
-			existingDatabase = getDatabase(databaseName);
-		} catch (DatabaseNotExistException e) {
+		// client.alterDatabase doesn't throw any exception if there is no existing database
+		if (!databaseExists(databaseName)) {
 			if (!ignoreIfNotExists) {
-				throw e;
+				throw new DatabaseNotExistException(getName(), databaseName);
 			}
-			return;
-		}
 
-		if (existingDatabase.getClass() != newDatabase.getClass()) {
-			throw new CatalogException(
-				String.format("Database types don't match. Existing database is '%s' and new database is '%s'.",
-					existingDatabase.getClass().getName(), newDatabase.getClass().getName())
-			);
+			return;
 		}
 
 		Database newHiveDatabase = instantiateHiveDatabase(databaseName, newDatabase);
@@ -488,7 +474,7 @@ public class HiveCatalog extends AbstractCatalog {
 		if (isGeneric) {
 			properties = retrieveFlinkProperties(properties);
 		}
-		String comment = properties.remove(HiveTableConfig.TABLE_COMMENT);
+		String comment = properties.remove(CatalogTableConfig.TABLE_COMMENT);
 
 		// Table schema
 		TableSchema tableSchema =
@@ -535,7 +521,7 @@ public class HiveCatalog extends AbstractCatalog {
 
 		Map<String, String> properties = new HashMap<>(table.getProperties());
 		// Table comment
-		properties.put(HiveTableConfig.TABLE_COMMENT, table.getComment());
+		properties.put(CatalogTableConfig.TABLE_COMMENT, table.getComment());
 		if (table instanceof GenericCatalogTable || table instanceof GenericCatalogView) {
 			properties = maskFlinkProperties(properties);
 		}

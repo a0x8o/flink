@@ -19,10 +19,15 @@
 package org.apache.flink.streaming.api.graph;
 
 import org.apache.flink.annotation.Internal;
+import org.apache.flink.api.common.ExecutionConfig;
+import org.apache.flink.api.common.cache.DistributedCache;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.runtime.jobgraph.ScheduleMode;
 import org.apache.flink.runtime.state.KeyGroupRangeAssignment;
-import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.runtime.state.StateBackend;
+import org.apache.flink.streaming.api.TimeCharacteristic;
+import org.apache.flink.streaming.api.environment.CheckpointConfig;
 import org.apache.flink.streaming.api.operators.InputFormatOperatorFactory;
 import org.apache.flink.streaming.api.operators.OutputFormatOperatorFactory;
 import org.apache.flink.streaming.api.operators.StreamOperatorFactory;
@@ -48,6 +53,8 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
+import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
  * A generator that generates a {@link StreamGraph} from a graph of
@@ -83,10 +90,38 @@ public class StreamGraphGenerator {
 
 	public static final int DEFAULT_LOWER_BOUND_MAX_PARALLELISM = KeyGroupRangeAssignment.DEFAULT_LOWER_BOUND_MAX_PARALLELISM;
 
-	// The StreamGraph that is being built, this is initialized at the beginning.
-	private final StreamGraph streamGraph;
+	public static final ScheduleMode DEFAULT_SCHEDULE_MODE = ScheduleMode.EAGER;
 
-	private final StreamExecutionEnvironment env;
+	public static final TimeCharacteristic DEFAULT_TIME_CHARACTERISTIC = TimeCharacteristic.ProcessingTime;
+
+	public static final String DEFAULT_JOB_NAME = "Flink Streaming Job";
+
+	/** The default buffer timeout (max delay of records in the network stack). */
+	public static final long DEFAULT_NETWORK_BUFFER_TIMEOUT = 100L;
+
+	public static final String DEFAULT_SLOT_SHARING_GROUP = "default";
+
+	private final List<StreamTransformation<?>> transformations;
+
+	private final ExecutionConfig executionConfig;
+
+	private final CheckpointConfig checkpointConfig;
+
+	private StateBackend stateBackend;
+
+	private boolean chaining = true;
+
+	private boolean isSlotSharingEnabled = true;
+
+	private ScheduleMode scheduleMode = DEFAULT_SCHEDULE_MODE;
+
+	private Collection<Tuple2<String, DistributedCache.DistributedCacheEntry>> userArtifacts;
+
+	private TimeCharacteristic timeCharacteristic = DEFAULT_TIME_CHARACTERISTIC;
+
+	private long defaultBufferTimeout = DEFAULT_NETWORK_BUFFER_TIMEOUT;
+
+	private String jobName = DEFAULT_JOB_NAME;
 
 	// This is used to assign a unique ID to iteration source/sink
 	protected static Integer iterationIdCounter = 0;
@@ -95,44 +130,80 @@ public class StreamGraphGenerator {
 		return iterationIdCounter;
 	}
 
+	private StreamGraph streamGraph;
+
 	// Keep track of which Transforms we have already transformed, this is necessary because
 	// we have loops, i.e. feedback edges.
 	private Map<StreamTransformation<?>, Collection<Integer>> alreadyTransformed;
 
-
-	/**
-	 * Private constructor. The generator should only be invoked using {@link #generate}.
-	 */
-	private StreamGraphGenerator(StreamExecutionEnvironment env) {
-		this.streamGraph = new StreamGraph(env);
-		this.streamGraph.setChaining(env.isChainingEnabled());
-		this.streamGraph.setStateBackend(env.getStateBackend());
-		this.env = env;
-		this.alreadyTransformed = new HashMap<>();
+	public StreamGraphGenerator(List<StreamTransformation<?>> transformations, ExecutionConfig executionConfig, CheckpointConfig checkpointConfig) {
+		this.transformations = checkNotNull(transformations);
+		this.executionConfig = checkNotNull(executionConfig);
+		this.checkpointConfig = checkNotNull(checkpointConfig);
 	}
 
-	/**
-	 * Generates a {@code StreamGraph} by traversing the graph of {@code StreamTransformations}
-	 * starting from the given transformations.
-	 *
-	 * @param env The {@code StreamExecutionEnvironment} that is used to set some parameters of the
-	 *            job
-	 * @param transformations The transformations starting from which to transform the graph
-	 *
-	 * @return The generated {@code StreamGraph}
-	 */
-	public static StreamGraph generate(StreamExecutionEnvironment env, List<StreamTransformation<?>> transformations) {
-		return new StreamGraphGenerator(env).generateInternal(transformations);
+	public StreamGraphGenerator setStateBackend(StateBackend stateBackend) {
+		this.stateBackend = stateBackend;
+		return this;
 	}
 
-	/**
-	 * This starts the actual transformation, beginning from the sinks.
-	 */
-	private StreamGraph generateInternal(List<StreamTransformation<?>> transformations) {
+	public StreamGraphGenerator setChaining(boolean chaining) {
+		this.chaining = chaining;
+		return this;
+	}
+
+	public StreamGraphGenerator setSlotSharingEnabled(boolean isSlotSharingEnabled) {
+		this.isSlotSharingEnabled = isSlotSharingEnabled;
+		return this;
+	}
+
+	public StreamGraphGenerator setScheduleMode(ScheduleMode scheduleMode) {
+		this.scheduleMode = scheduleMode;
+		return this;
+	}
+
+	public StreamGraphGenerator setUserArtifacts(Collection<Tuple2<String, DistributedCache.DistributedCacheEntry>> userArtifacts) {
+		this.userArtifacts = userArtifacts;
+		return this;
+	}
+
+	public StreamGraphGenerator setTimeCharacteristic(TimeCharacteristic timeCharacteristic) {
+		this.timeCharacteristic = timeCharacteristic;
+		return this;
+	}
+
+	public StreamGraphGenerator setDefaultBufferTimeout(long defaultBufferTimeout) {
+		this.defaultBufferTimeout = defaultBufferTimeout;
+		return this;
+	}
+
+	public StreamGraphGenerator setJobName(String jobName) {
+		this.jobName = jobName;
+		return this;
+	}
+
+	public StreamGraph generate() {
+		streamGraph = new StreamGraph(executionConfig, checkpointConfig);
+		streamGraph.setStateBackend(stateBackend);
+		streamGraph.setChaining(chaining);
+		streamGraph.setScheduleMode(scheduleMode);
+		streamGraph.setUserArtifacts(userArtifacts);
+		streamGraph.setTimeCharacteristic(timeCharacteristic);
+		streamGraph.setJobName(jobName);
+
+		alreadyTransformed = new HashMap<>();
+
 		for (StreamTransformation<?> transformation: transformations) {
 			transform(transformation);
 		}
-		return streamGraph;
+
+		final StreamGraph builtStreamGraph = streamGraph;
+
+		alreadyTransformed.clear();
+		alreadyTransformed = null;
+		streamGraph = null;
+
+		return builtStreamGraph;
 	}
 
 	/**
@@ -153,7 +224,7 @@ public class StreamGraphGenerator {
 
 			// if the max parallelism hasn't been set, then first use the job wide max parallelism
 			// from the ExecutionConfig.
-			int globalMaxParallelismFromConfig = env.getConfig().getMaxParallelism();
+			int globalMaxParallelismFromConfig = executionConfig.getMaxParallelism();
 			if (globalMaxParallelismFromConfig > 0) {
 				transform.setMaxParallelism(globalMaxParallelismFromConfig);
 			}
@@ -197,7 +268,10 @@ public class StreamGraphGenerator {
 
 		if (transform.getBufferTimeout() >= 0) {
 			streamGraph.setBufferTimeout(transform.getId(), transform.getBufferTimeout());
+		} else {
+			streamGraph.setBufferTimeout(transform.getId(), defaultBufferTimeout);
 		}
+
 		if (transform.getUid() != null) {
 			streamGraph.setTransformationUID(transform.getId(), transform.getUid());
 		}
@@ -377,8 +451,8 @@ public class StreamGraphGenerator {
 		StreamNode itSink = itSourceAndSink.f1;
 
 		// We set the proper serializers for the sink/source
-		streamGraph.setSerializers(itSource.getId(), null, null, iterate.getOutputType().createSerializer(env.getConfig()));
-		streamGraph.setSerializers(itSink.getId(), iterate.getOutputType().createSerializer(env.getConfig()), null, null);
+		streamGraph.setSerializers(itSource.getId(), null, null, iterate.getOutputType().createSerializer(executionConfig));
+		streamGraph.setSerializers(itSink.getId(), iterate.getOutputType().createSerializer(executionConfig), null, null);
 
 		// also add the feedback source ID to the result IDs, so that downstream operators will
 		// add both as input
@@ -403,6 +477,10 @@ public class StreamGraphGenerator {
 		}
 
 		String slotSharingGroup = determineSlotSharingGroup(null, allFeedbackIds);
+		// slot sharing group of iteration node must exist
+		if (slotSharingGroup == null) {
+			slotSharingGroup = "SlotSharingGroup-" + iterate.getId();
+		}
 
 		itSink.setSlotSharingGroup(slotSharingGroup);
 		itSource.setSlotSharingGroup(slotSharingGroup);
@@ -442,8 +520,8 @@ public class StreamGraphGenerator {
 		StreamNode itSink = itSourceAndSink.f1;
 
 		// We set the proper serializers for the sink/source
-		streamGraph.setSerializers(itSource.getId(), null, null, coIterate.getOutputType().createSerializer(env.getConfig()));
-		streamGraph.setSerializers(itSink.getId(), coIterate.getOutputType().createSerializer(env.getConfig()), null, null);
+		streamGraph.setSerializers(itSource.getId(), null, null, coIterate.getOutputType().createSerializer(executionConfig));
+		streamGraph.setSerializers(itSink.getId(), coIterate.getOutputType().createSerializer(executionConfig), null, null);
 
 		Collection<Integer> resultIds = Collections.singleton(itSource.getId());
 
@@ -490,7 +568,9 @@ public class StreamGraphGenerator {
 			streamGraph.setInputFormat(source.getId(),
 					((InputFormatOperatorFactory<T>) source.getOperatorFactory()).getInputFormat());
 		}
-		streamGraph.setParallelism(source.getId(), source.getParallelism());
+		int parallelism = source.getParallelism() != ExecutionConfig.PARALLELISM_DEFAULT ?
+			source.getParallelism() : executionConfig.getParallelism();
+		streamGraph.setParallelism(source.getId(), parallelism);
 		streamGraph.setMaxParallelism(source.getId(), source.getMaxParallelism());
 		return Collections.singleton(source.getId());
 	}
@@ -517,7 +597,9 @@ public class StreamGraphGenerator {
 			streamGraph.setOutputFormat(sink.getId(), ((OutputFormatOperatorFactory) operatorFactory).getOutputFormat());
 		}
 
-		streamGraph.setParallelism(sink.getId(), sink.getParallelism());
+		int parallelism = sink.getParallelism() != ExecutionConfig.PARALLELISM_DEFAULT ?
+			sink.getParallelism() : executionConfig.getParallelism();
+		streamGraph.setParallelism(sink.getId(), parallelism);
 		streamGraph.setMaxParallelism(sink.getId(), sink.getMaxParallelism());
 
 		for (Integer inputId: inputIds) {
@@ -528,7 +610,7 @@ public class StreamGraphGenerator {
 		}
 
 		if (sink.getStateKeySelector() != null) {
-			TypeSerializer<?> keySerializer = sink.getStateKeyType().createSerializer(env.getConfig());
+			TypeSerializer<?> keySerializer = sink.getStateKeyType().createSerializer(executionConfig);
 			streamGraph.setOneInputStateKey(sink.getId(), sink.getStateKeySelector(), keySerializer);
 		}
 
@@ -561,11 +643,13 @@ public class StreamGraphGenerator {
 				transform.getName());
 
 		if (transform.getStateKeySelector() != null) {
-			TypeSerializer<?> keySerializer = transform.getStateKeyType().createSerializer(env.getConfig());
+			TypeSerializer<?> keySerializer = transform.getStateKeyType().createSerializer(executionConfig);
 			streamGraph.setOneInputStateKey(transform.getId(), transform.getStateKeySelector(), keySerializer);
 		}
 
-		streamGraph.setParallelism(transform.getId(), transform.getParallelism());
+		int parallelism = transform.getParallelism() != ExecutionConfig.PARALLELISM_DEFAULT ?
+			transform.getParallelism() : executionConfig.getParallelism();
+		streamGraph.setParallelism(transform.getId(), parallelism);
 		streamGraph.setMaxParallelism(transform.getId(), transform.getMaxParallelism());
 
 		for (Integer inputId: inputIds) {
@@ -608,11 +692,13 @@ public class StreamGraphGenerator {
 				transform.getName());
 
 		if (transform.getStateKeySelector1() != null || transform.getStateKeySelector2() != null) {
-			TypeSerializer<?> keySerializer = transform.getStateKeyType().createSerializer(env.getConfig());
+			TypeSerializer<?> keySerializer = transform.getStateKeyType().createSerializer(executionConfig);
 			streamGraph.setTwoInputStateKey(transform.getId(), transform.getStateKeySelector1(), transform.getStateKeySelector2(), keySerializer);
 		}
 
-		streamGraph.setParallelism(transform.getId(), transform.getParallelism());
+		int parallelism = transform.getParallelism() != ExecutionConfig.PARALLELISM_DEFAULT ?
+			transform.getParallelism() : executionConfig.getParallelism();
+		streamGraph.setParallelism(transform.getId(), parallelism);
 		streamGraph.setMaxParallelism(transform.getId(), transform.getMaxParallelism());
 
 		for (Integer inputId: inputIds1) {
@@ -644,6 +730,10 @@ public class StreamGraphGenerator {
 	 * @param inputIds The IDs of the input operations.
 	 */
 	private String determineSlotSharingGroup(String specifiedGroup, Collection<Integer> inputIds) {
+		if (!isSlotSharingEnabled) {
+			return null;
+		}
+
 		if (specifiedGroup != null) {
 			return specifiedGroup;
 		} else {
@@ -653,10 +743,10 @@ public class StreamGraphGenerator {
 				if (inputGroup == null) {
 					inputGroup = inputGroupCandidate;
 				} else if (!inputGroup.equals(inputGroupCandidate)) {
-					return "default";
+					return DEFAULT_SLOT_SHARING_GROUP;
 				}
 			}
-			return inputGroup == null ? "default" : inputGroup;
+			return inputGroup == null ? DEFAULT_SLOT_SHARING_GROUP : inputGroup;
 		}
 	}
 

@@ -37,7 +37,6 @@ import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.jobgraph.JobVertex;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobgraph.OperatorID;
-import org.apache.flink.runtime.jobgraph.ScheduleMode;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
 import org.apache.flink.runtime.jobgraph.tasks.CheckpointCoordinatorConfiguration;
 import org.apache.flink.runtime.jobgraph.tasks.JobCheckpointingSettings;
@@ -142,7 +141,7 @@ public class StreamingJobGraphGenerator {
 	private JobGraph createJobGraph() {
 
 		// make sure that all vertices start immediately
-		jobGraph.setScheduleMode(ScheduleMode.EAGER);
+		jobGraph.setScheduleMode(streamGraph.getScheduleMode());
 
 		// Generate deterministic hashes for the nodes in order to identify them across
 		// submission iff they didn't change.
@@ -164,7 +163,7 @@ public class StreamingJobGraphGenerator {
 
 		configureCheckpointing();
 
-		JobGraphGenerator.addUserArtifactEntries(streamGraph.getEnvironment().getCachedFiles(), jobGraph);
+		JobGraphGenerator.addUserArtifactEntries(streamGraph.getUserArtifacts(), jobGraph);
 
 		// set the ExecutionConfig last when it has been finalized
 		try {
@@ -464,7 +463,7 @@ public class StreamingJobGraphGenerator {
 		config.setNonChainedOutputs(nonChainableOutputs);
 		config.setChainedOutputs(chainableOutputs);
 
-		config.setTimeCharacteristic(streamGraph.getEnvironment().getStreamTimeCharacteristic());
+		config.setTimeCharacteristic(streamGraph.getTimeCharacteristic());
 
 		final CheckpointConfig checkpointCfg = streamGraph.getCheckpointConfig();
 
@@ -598,29 +597,16 @@ public class StreamingJobGraphGenerator {
 				}
 
 				vertex.updateCoLocationGroup(constraint.f1);
+				constraint.f1.addVertex(vertex);
 			}
 		}
-
-		for (Tuple2<StreamNode, StreamNode> pair : streamGraph.getIterationSourceSinkPairs()) {
-
-			CoLocationGroup ccg = new CoLocationGroup();
-
-			JobVertex source = jobVertices.get(pair.f0.getId());
-			JobVertex sink = jobVertices.get(pair.f1.getId());
-
-			ccg.addVertex(source);
-			ccg.addVertex(sink);
-			source.updateCoLocationGroup(ccg);
-			sink.updateCoLocationGroup(ccg);
-		}
-
 	}
 
 	private void configureCheckpointing() {
 		CheckpointConfig cfg = streamGraph.getCheckpointConfig();
 
 		long interval = cfg.getCheckpointInterval();
-		if (interval > 0) {
+		if (interval >= 10) {
 			ExecutionConfig executionConfig = streamGraph.getExecutionConfig();
 			// propagate the expected behaviour for checkpoint errors to task.
 			executionConfig.setFailTaskOnCheckpointError(cfg.isFailOnCheckpointingErrors());
@@ -738,7 +724,8 @@ public class StreamingJobGraphGenerator {
 				cfg.getMaxConcurrentCheckpoints(),
 				retentionAfterTermination,
 				isExactlyOnce,
-				cfg.isPreferCheckpointForRecovery()),
+				cfg.isPreferCheckpointForRecovery(),
+				cfg.getTolerableCheckpointFailureNumber()),
 			serializedStateBackend,
 			serializedHooks);
 

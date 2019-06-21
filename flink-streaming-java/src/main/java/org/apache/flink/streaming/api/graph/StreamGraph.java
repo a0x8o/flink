@@ -20,6 +20,7 @@ package org.apache.flink.streaming.api.graph;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.JobID;
+import org.apache.flink.api.common.cache.DistributedCache;
 import org.apache.flink.api.common.io.InputFormat;
 import org.apache.flink.api.common.io.OutputFormat;
 import org.apache.flink.api.common.operators.ResourceSpec;
@@ -31,11 +32,12 @@ import org.apache.flink.api.java.tuple.Tuple3;
 import org.apache.flink.api.java.typeutils.MissingTypeInfo;
 import org.apache.flink.optimizer.plan.StreamingPlan;
 import org.apache.flink.runtime.jobgraph.JobGraph;
+import org.apache.flink.runtime.jobgraph.ScheduleMode;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
 import org.apache.flink.runtime.state.StateBackend;
+import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.collector.selector.OutputSelector;
 import org.apache.flink.streaming.api.environment.CheckpointConfig;
-import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.operators.StreamOperatorFactory;
 import org.apache.flink.streaming.api.transformations.ShuffleMode;
 import org.apache.flink.streaming.runtime.partitioner.ForwardPartitioner;
@@ -66,6 +68,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import static org.apache.flink.util.Preconditions.checkNotNull;
+
 /**
  * Class representing the streaming topology. It contains all the information
  * necessary to build the jobgraph for the execution.
@@ -76,13 +80,22 @@ public class StreamGraph extends StreamingPlan {
 
 	private static final Logger LOG = LoggerFactory.getLogger(StreamGraph.class);
 
-	private String jobName = StreamExecutionEnvironment.DEFAULT_JOB_NAME;
+	public static final String ITERATION_SOURCE_NAME_PREFIX = "IterationSource";
 
-	private final StreamExecutionEnvironment environment;
+	public static final String ITERATION_SINK_NAME_PREFIX = "IterationSink";
+
+	private String jobName;
+
 	private final ExecutionConfig executionConfig;
 	private final CheckpointConfig checkpointConfig;
 
+	private ScheduleMode scheduleMode;
+
 	private boolean chaining;
+
+	private Collection<Tuple2<String, DistributedCache.DistributedCacheEntry>> userArtifacts;
+
+	private TimeCharacteristic timeCharacteristic;
 
 	private Map<Integer, StreamNode> streamNodes;
 	private Set<Integer> sources;
@@ -96,10 +109,9 @@ public class StreamGraph extends StreamingPlan {
 	private StateBackend stateBackend;
 	private Set<Tuple2<StreamNode, StreamNode>> iterationSourceSinkPairs;
 
-	public StreamGraph(StreamExecutionEnvironment environment) {
-		this.environment = environment;
-		this.executionConfig = environment.getConfig();
-		this.checkpointConfig = environment.getCheckpointConfig();
+	public StreamGraph(ExecutionConfig executionConfig, CheckpointConfig checkpointConfig) {
+		this.executionConfig = checkNotNull(executionConfig);
+		this.checkpointConfig = checkNotNull(checkpointConfig);
 
 		// create an empty new stream graph.
 		clear();
@@ -118,10 +130,6 @@ public class StreamGraph extends StreamingPlan {
 		iterationSourceSinkPairs = new HashSet<>();
 		sources = new HashSet<>();
 		sinks = new HashSet<>();
-	}
-
-	public StreamExecutionEnvironment getEnvironment() {
-		return environment;
 	}
 
 	public ExecutionConfig getExecutionConfig() {
@@ -152,6 +160,30 @@ public class StreamGraph extends StreamingPlan {
 		return this.stateBackend;
 	}
 
+	public ScheduleMode getScheduleMode() {
+		return scheduleMode;
+	}
+
+	public void setScheduleMode(ScheduleMode scheduleMode) {
+		this.scheduleMode = scheduleMode;
+	}
+
+	public Collection<Tuple2<String, DistributedCache.DistributedCacheEntry>> getUserArtifacts() {
+		return userArtifacts;
+	}
+
+	public void setUserArtifacts(Collection<Tuple2<String, DistributedCache.DistributedCacheEntry>> userArtifacts) {
+		this.userArtifacts = userArtifacts;
+	}
+
+	public TimeCharacteristic getTimeCharacteristic() {
+		return timeCharacteristic;
+	}
+
+	public void setTimeCharacteristic(TimeCharacteristic timeCharacteristic) {
+		this.timeCharacteristic = timeCharacteristic;
+	}
+
 	// Checkpointing
 
 	public boolean isChainingEnabled() {
@@ -163,7 +195,7 @@ public class StreamGraph extends StreamingPlan {
 	}
 
 	public <IN, OUT> void addSource(Integer vertexID,
-		String slotSharingGroup,
+		@Nullable String slotSharingGroup,
 		@Nullable String coLocationGroup,
 		StreamOperatorFactory<OUT> operatorFactory,
 		TypeInformation<IN> inTypeInfo,
@@ -174,7 +206,7 @@ public class StreamGraph extends StreamingPlan {
 	}
 
 	public <IN, OUT> void addSink(Integer vertexID,
-		String slotSharingGroup,
+		@Nullable String slotSharingGroup,
 		@Nullable String coLocationGroup,
 		StreamOperatorFactory<OUT> operatorFactory,
 		TypeInformation<IN> inTypeInfo,
@@ -186,7 +218,7 @@ public class StreamGraph extends StreamingPlan {
 
 	public <IN, OUT> void addOperator(
 			Integer vertexID,
-			String slotSharingGroup,
+			@Nullable String slotSharingGroup,
 			@Nullable String coLocationGroup,
 			StreamOperatorFactory<OUT> operatorFactory,
 			TypeInformation<IN> inTypeInfo,
@@ -250,7 +282,7 @@ public class StreamGraph extends StreamingPlan {
 	}
 
 	protected StreamNode addNode(Integer vertexID,
-		String slotSharingGroup,
+		@Nullable String slotSharingGroup,
 		@Nullable String coLocationGroup,
 		Class<? extends AbstractInvokable> vertexClass,
 		StreamOperatorFactory<?> operatorFactory,
@@ -260,7 +292,7 @@ public class StreamGraph extends StreamingPlan {
 			throw new RuntimeException("Duplicate vertexID " + vertexID);
 		}
 
-		StreamNode vertex = new StreamNode(environment,
+		StreamNode vertex = new StreamNode(
 			vertexID,
 			slotSharingGroup,
 			coLocationGroup,
@@ -603,12 +635,15 @@ public class StreamGraph extends StreamingPlan {
 		int maxParallelism,
 		ResourceSpec minResources,
 		ResourceSpec preferredResources) {
+
+		final String coLocationGroup = "IterationCoLocationGroup-" + loopId;
+
 		StreamNode source = this.addNode(sourceId,
 			null,
-			null,
+			coLocationGroup,
 			StreamIterationHead.class,
 			null,
-			"IterationSource-" + loopId);
+			ITERATION_SOURCE_NAME_PREFIX + "-" + loopId);
 		sources.add(source.getId());
 		setParallelism(source.getId(), parallelism);
 		setMaxParallelism(source.getId(), maxParallelism);
@@ -616,10 +651,10 @@ public class StreamGraph extends StreamingPlan {
 
 		StreamNode sink = this.addNode(sinkId,
 			null,
-			null,
+			coLocationGroup,
 			StreamIterationTail.class,
 			null,
-			"IterationSink-" + loopId);
+			ITERATION_SINK_NAME_PREFIX + "-" + loopId);
 		sinks.add(sink.getId());
 		setParallelism(sink.getId(), parallelism);
 		setMaxParallelism(sink.getId(), parallelism);

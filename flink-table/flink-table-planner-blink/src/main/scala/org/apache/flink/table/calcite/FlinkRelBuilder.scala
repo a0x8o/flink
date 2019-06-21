@@ -20,6 +20,8 @@ package org.apache.flink.table.calcite
 
 import org.apache.flink.table.calcite.FlinkRelFactories.{ExpandFactory, RankFactory, SinkFactory}
 import org.apache.flink.table.expressions.WindowProperty
+import org.apache.flink.table.operations.QueryOperation
+import org.apache.flink.table.plan.QueryOperationConverter
 import org.apache.flink.table.runtime.rank.{RankRange, RankType}
 import org.apache.flink.table.sinks.TableSink
 
@@ -45,6 +47,8 @@ class FlinkRelBuilder(
     relOptSchema) {
 
   require(context != null)
+
+  private val toRelNodeConverter = new QueryOperationConverter(this)
 
   private val expandFactory: ExpandFactory = {
     Util.first(context.unwrap(classOf[ExpandFactory]), FlinkRelFactories.DEFAULT_EXPAND_FACTORY)
@@ -92,6 +96,12 @@ class FlinkRelBuilder(
       rankNumberType, outputRankNumber)
     push(rank)
   }
+
+  def queryOperation(queryOperation: QueryOperation): RelBuilder= {
+    val relNode = queryOperation.accept(toRelNodeConverter)
+    push(relNode)
+    this
+  }
 }
 
 object FlinkRelBuilder {
@@ -106,5 +116,13 @@ object FlinkRelBuilder {
   def proto(context: Context): RelBuilderFactory = new RelBuilderFactory() {
     def create(cluster: RelOptCluster, schema: RelOptSchema): RelBuilder =
       new FlinkRelBuilder(context, cluster, schema)
+  }
+
+  def of(cluster: RelOptCluster, relTable: RelOptTable): FlinkRelBuilder = {
+    val clusterContext = cluster.getPlanner.getContext
+    new FlinkRelBuilder(
+      clusterContext,
+      cluster,
+      relTable.getRelOptSchema)
   }
 }

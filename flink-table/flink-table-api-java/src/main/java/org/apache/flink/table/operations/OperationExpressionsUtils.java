@@ -20,12 +20,12 @@ package org.apache.flink.table.operations;
 
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.table.expressions.ApiExpressionDefaultVisitor;
-import org.apache.flink.table.expressions.CallExpression;
 import org.apache.flink.table.expressions.Expression;
 import org.apache.flink.table.expressions.FieldReferenceExpression;
 import org.apache.flink.table.expressions.LocalReferenceExpression;
 import org.apache.flink.table.expressions.LookupCallExpression;
 import org.apache.flink.table.expressions.TableReferenceExpression;
+import org.apache.flink.table.expressions.UnresolvedCallExpression;
 import org.apache.flink.table.functions.BuiltInFunctionDefinitions;
 import org.apache.flink.table.functions.FunctionDefinition;
 
@@ -35,14 +35,14 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
-import static org.apache.flink.table.expressions.ApiExpressionUtils.call;
+import static org.apache.flink.table.expressions.ApiExpressionUtils.unresolvedCall;
 import static org.apache.flink.table.expressions.ApiExpressionUtils.unresolvedRef;
 import static org.apache.flink.table.expressions.ApiExpressionUtils.valueLiteral;
 import static org.apache.flink.table.expressions.ExpressionUtils.extractValue;
-import static org.apache.flink.table.expressions.ExpressionUtils.isFunctionOfType;
+import static org.apache.flink.table.expressions.ExpressionUtils.isFunctionOfKind;
 import static org.apache.flink.table.functions.BuiltInFunctionDefinitions.AS;
 import static org.apache.flink.table.functions.BuiltInFunctionDefinitions.WINDOW_PROPERTIES;
-import static org.apache.flink.table.functions.FunctionDefinition.Type.AGGREGATE_FUNCTION;
+import static org.apache.flink.table.functions.FunctionKind.AGGREGATE;
 
 /**
  * Utility methods for transforming {@link Expression} to use them in {@link QueryOperation}s.
@@ -140,7 +140,7 @@ public class OperationExpressionsUtils {
 	private static List<Expression> nameExpressions(Map<Expression, String> expressions) {
 		return expressions.entrySet()
 			.stream()
-			.map(entry -> call(AS, entry.getKey(), valueLiteral(entry.getValue())))
+			.map(entry -> unresolvedCall(AS, entry.getKey(), valueLiteral(entry.getValue())))
 			.collect(Collectors.toList());
 	}
 
@@ -151,19 +151,19 @@ public class OperationExpressionsUtils {
 		private final Map<Expression, String> properties = new LinkedHashMap<>();
 
 		@Override
-		public Void visitLookupCall(LookupCallExpression unresolvedCall) {
+		public Void visit(LookupCallExpression unresolvedCall) {
 			throw new IllegalStateException("All calls should be resolved by now. Got: " + unresolvedCall);
 		}
 
 		@Override
-		public Void visitCall(CallExpression call) {
-			FunctionDefinition functionDefinition = call.getFunctionDefinition();
-			if (isFunctionOfType(call, AGGREGATE_FUNCTION)) {
-				aggregates.computeIfAbsent(call, expr -> "EXPR$" + uniqueId++);
+		public Void visit(UnresolvedCallExpression unresolvedCall) {
+			FunctionDefinition functionDefinition = unresolvedCall.getFunctionDefinition();
+			if (isFunctionOfKind(unresolvedCall, AGGREGATE)) {
+				aggregates.computeIfAbsent(unresolvedCall, expr -> "EXPR$" + uniqueId++);
 			} else if (WINDOW_PROPERTIES.contains(functionDefinition)) {
-				properties.computeIfAbsent(call, expr -> "EXPR$" + uniqueId++);
+				properties.computeIfAbsent(unresolvedCall, expr -> "EXPR$" + uniqueId++);
 			} else {
-				call.getChildren().forEach(c -> c.accept(this));
+				unresolvedCall.getChildren().forEach(c -> c.accept(this));
 			}
 			return null;
 		}
@@ -187,23 +187,23 @@ public class OperationExpressionsUtils {
 		}
 
 		@Override
-		public Expression visitLookupCall(LookupCallExpression unresolvedCall) {
+		public Expression visit(LookupCallExpression unresolvedCall) {
 			throw new IllegalStateException("All calls should be resolved by now. Got: " + unresolvedCall);
 		}
 
 		@Override
-		public Expression visitCall(CallExpression call) {
-			if (aggregates.get(call) != null) {
-				return unresolvedRef(aggregates.get(call));
-			} else if (properties.get(call) != null) {
-				return unresolvedRef(properties.get(call));
+		public Expression visit(UnresolvedCallExpression unresolvedCall) {
+			if (aggregates.get(unresolvedCall) != null) {
+				return unresolvedRef(aggregates.get(unresolvedCall));
+			} else if (properties.get(unresolvedCall) != null) {
+				return unresolvedRef(properties.get(unresolvedCall));
 			}
 
-			List<Expression> args = call.getChildren()
+			final Expression[] args = unresolvedCall.getChildren()
 				.stream()
 				.map(c -> c.accept(this))
-				.collect(Collectors.toList());
-			return new CallExpression(call.getFunctionDefinition(), args);
+				.toArray(Expression[]::new);
+			return unresolvedCall(unresolvedCall.getFunctionDefinition(), args);
 		}
 
 		@Override
@@ -214,26 +214,26 @@ public class OperationExpressionsUtils {
 
 	private static class ExtractNameVisitor extends ApiExpressionDefaultVisitor<Optional<String>> {
 		@Override
-		public Optional<String> visitCall(CallExpression call) {
-			if (call.getFunctionDefinition().equals(AS)) {
-				return extractValue(call.getChildren().get(1), String.class);
+		public Optional<String> visit(UnresolvedCallExpression unresolvedCall) {
+			if (unresolvedCall.getFunctionDefinition() == AS) {
+				return extractValue(unresolvedCall.getChildren().get(1), String.class);
 			} else {
 				return Optional.empty();
 			}
 		}
 
 		@Override
-		public Optional<String> visitLocalReference(LocalReferenceExpression localReference) {
+		public Optional<String> visit(LocalReferenceExpression localReference) {
 			return Optional.of(localReference.getName());
 		}
 
 		@Override
-		public Optional<String> visitTableReference(TableReferenceExpression tableReference) {
+		public Optional<String> visit(TableReferenceExpression tableReference) {
 			return Optional.of(tableReference.getName());
 		}
 
 		@Override
-		public Optional<String> visitFieldReference(FieldReferenceExpression fieldReference) {
+		public Optional<String> visit(FieldReferenceExpression fieldReference) {
 			return Optional.of(fieldReference.getName());
 		}
 

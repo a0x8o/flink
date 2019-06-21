@@ -21,10 +21,10 @@ package org.apache.flink.table.expressions.rules;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.table.api.ValidationException;
-import org.apache.flink.table.expressions.CallExpression;
 import org.apache.flink.table.expressions.Expression;
 import org.apache.flink.table.expressions.InputTypeSpec;
 import org.apache.flink.table.expressions.PlannerExpression;
+import org.apache.flink.table.expressions.UnresolvedCallExpression;
 import org.apache.flink.table.functions.BuiltInFunctionDefinitions;
 import org.apache.flink.table.typeutils.TypeCoercion;
 import org.apache.flink.table.validate.ValidationFailure;
@@ -35,13 +35,13 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-import static java.util.Arrays.asList;
 import static org.apache.flink.table.expressions.ApiExpressionUtils.typeLiteral;
+import static org.apache.flink.table.expressions.ApiExpressionUtils.unresolvedCall;
 import static org.apache.flink.table.types.utils.TypeConversions.fromLegacyInfoToDataType;
 import static org.apache.flink.table.util.JavaScalaConversionUtil.toJava;
 
 /**
- * It checks if a {@link CallExpression} can work with given arguments.
+ * It checks if a {@link UnresolvedCallExpression} can work with given arguments.
  * If the call expects different types of arguments, but the given arguments
  * have types that can be casted, a {@link BuiltInFunctionDefinitions#CAST}
  * expression is inserted.
@@ -63,36 +63,36 @@ final class ResolveCallByArgumentsRule implements ResolverRule {
 		}
 
 		@Override
-		public Expression visitCall(CallExpression call) {
-			PlannerExpression plannerCall = resolutionContext.bridge(call);
+		public Expression visit(UnresolvedCallExpression unresolvedCall) {
+			PlannerExpression plannerCall = resolutionContext.bridge(unresolvedCall);
 			if (plannerCall instanceof InputTypeSpec) {
 				List<TypeInformation<?>> expectedTypes = toJava(((InputTypeSpec) plannerCall).expectedTypes());
-				return performTypeResolution(call, expectedTypes);
+				return performTypeResolution(unresolvedCall, expectedTypes);
 			} else {
-				return validateArguments(call, plannerCall);
+				return validateArguments(unresolvedCall, plannerCall);
 			}
 		}
 
-		private Expression performTypeResolution(CallExpression call, List<TypeInformation<?>> expectedTypes) {
-			List<PlannerExpression> args = call.getChildren()
+		private Expression performTypeResolution(UnresolvedCallExpression unresolvedCall, List<TypeInformation<?>> expectedTypes) {
+			List<PlannerExpression> args = unresolvedCall.getChildren()
 				.stream()
 				.map(resolutionContext::bridge)
 				.collect(Collectors.toList());
 
-			List<Expression> newArgs = IntStream.range(0, args.size())
+			final Expression[] newArgs = IntStream.range(0, args.size())
 				.mapToObj(idx -> castIfNeeded(args.get(idx), expectedTypes.get(idx)))
-				.collect(Collectors.toList());
+				.toArray(Expression[]::new);
 
-			return new CallExpression(call.getFunctionDefinition(), newArgs);
+			return unresolvedCall(unresolvedCall.getFunctionDefinition(), newArgs);
 		}
 
-		private Expression validateArguments(CallExpression call, PlannerExpression plannerCall) {
+		private Expression validateArguments(UnresolvedCallExpression unresolvedCall, PlannerExpression plannerCall) {
 			if (!plannerCall.valid()) {
 				throw new ValidationException(
 					getValidationErrorMessage(plannerCall)
 						.orElse("Unexpected behavior, validation failed but can't get error messages!"));
 			}
-			return call;
+			return unresolvedCall;
 		}
 
 		/**
@@ -120,11 +120,10 @@ final class ResolveCallByArgumentsRule implements ResolverRule {
 			if (actualType.equals(expectedType)) {
 				return childExpression;
 			} else if (TypeCoercion.canSafelyCast(actualType, expectedType)) {
-				return new CallExpression(
+				return unresolvedCall(
 					BuiltInFunctionDefinitions.CAST,
-					asList(
-						childExpression,
-						typeLiteral(fromLegacyInfoToDataType(expectedType)))
+					childExpression,
+					typeLiteral(fromLegacyInfoToDataType(expectedType))
 				);
 			} else {
 				throw new ValidationException(String.format("Incompatible type of argument: %s Expected: %s",
