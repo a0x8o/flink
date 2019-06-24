@@ -33,7 +33,8 @@ class StreamTableCalcTests(PyFlinkStreamTableTestCase):
         t = self.t_env.from_elements([(1, 'hi', 'hello')], ['a', 'b', 'c'])
         result = t.select("a + 1, b, c")
         query_operation = result._j_table.getQueryOperation()
-        self.assertEqual('[plus(a, 1), b, c]', query_operation.getProjectList().toString())
+        self.assertEqual('[`default_catalog`.`default_database`.`plus`(a, 1), b, c]',
+                         query_operation.getProjectList().toString())
 
     def test_alias(self):
         t = self.t_env.from_elements([(1, 'Hi', 'Hello')], ['a', 'b', 'c'])
@@ -46,14 +47,18 @@ class StreamTableCalcTests(PyFlinkStreamTableTestCase):
         t = t_env.from_elements([(1, 'Hi', 'Hello')], ['a', 'b', 'c'])
         result = t.where("a > 1 && b = 'Hello'")
         query_operation = result._j_table.getQueryOperation()
-        self.assertEqual("and(greaterThan(a, 1), equals(b, 'Hello'))",
+        self.assertEqual("`default_catalog`.`default_database`.`and`("
+                         "`default_catalog`.`default_database`.`greaterThan`(a, 1), "
+                         "`default_catalog`.`default_database`.`equals`(b, 'Hello'))",
                          query_operation.getCondition().toString())
 
     def test_filter(self):
         t = self.t_env.from_elements([(1, 'Hi', 'Hello')], ['a', 'b', 'c'])
         result = t.filter("a > 1 && b = 'Hello'")
         query_operation = result._j_table.getQueryOperation()
-        self.assertEqual("and(greaterThan(a, 1), equals(b, 'Hello'))",
+        self.assertEqual("`default_catalog`.`default_database`.`and`("
+                         "`default_catalog`.`default_database`.`greaterThan`(a, 1), "
+                         "`default_catalog`.`default_database`.`equals`(b, 'Hello'))",
                          query_operation.getCondition().toString())
 
     def test_from_element(self):
@@ -87,7 +92,7 @@ class StreamTableCalcTests(PyFlinkStreamTableTestCase):
             field_names, field_types, source_sink_utils.TestAppendSink())
 
         t.insert_into("Results")
-        t_env.execute()
+        t_env.exec_env().execute()
         actual = source_sink_utils.results()
 
         expected = ['1,1.0,hi,hello,1970-01-02,01:00:00,1970-01-02 00:00:00.0,[1.0, null],'
