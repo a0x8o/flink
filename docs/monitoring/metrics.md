@@ -1347,8 +1347,8 @@ Certain RocksDB native metrics are available but disabled by default, you can fi
   <tbody>
     <tr>
       <th rowspan="1"><strong>Job (only available on TaskManager)</strong></th>
-      <td>&lt;source_id&gt;.&lt;source_subtask_index&gt;.&lt;operator_id&gt;.&lt;operator_subtask_index&gt;.latency</td>
-      <td>The latency distributions from a given source subtask to an operator subtask (in milliseconds).</td>
+      <td>[&lt;source_id&gt;.[&lt;source_subtask_index&gt;.]]&lt;operator_id&gt;.&lt;operator_subtask_index&gt;.latency</td>
+      <td>The latency distributions from a given source (subtask) to an operator subtask (in milliseconds), depending on the [latency granularity]({{ site.baseurl }}/ops/config.html#metrics-latency-granularity).</td>
       <td>Histogram</td>
     </tr>
     <tr>
@@ -1767,7 +1767,7 @@ logged by `SystemResourcesMetricsInitializer` during the startup.
 
 ## Latency tracking
 
-Flink allows to track the latency of records traveling through the system. This feature is disabled by default.
+Flink allows to track the latency of records travelling through the system. This feature is disabled by default.
 To enable the latency tracking you must set the `latencyTrackingInterval` to a positive number in either the
 [Flink configuration]({{ site.baseurl }}/ops/config.html#metrics-latency-interval) or `ExecutionConfig`.
 

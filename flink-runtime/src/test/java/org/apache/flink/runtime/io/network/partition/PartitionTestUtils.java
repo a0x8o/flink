@@ -71,7 +71,7 @@ public class PartitionTestUtils {
 	}
 
 	public static ResultPartitionDeploymentDescriptor createPartitionDeploymentDescriptor(ResultPartitionType partitionType) {
-		ShuffleDescriptor shuffleDescriptor = NettyShuffleDescriptorBuilder.newBuilder().buildLocal();
+		ShuffleDescriptor shuffleDescriptor = NettyShuffleDescriptorBuilder.newBuilder().setBlocking(partitionType.isBlocking()).buildLocal();
 		PartitionDescriptor partitionDescriptor = new PartitionDescriptor(
 			new IntermediateDataSetID(),
 			shuffleDescriptor.getResultPartitionID().getPartitionId(),
@@ -83,5 +83,22 @@ public class PartitionTestUtils {
 			shuffleDescriptor,
 			1,
 			true);
+	}
+
+	public static ResultPartitionDeploymentDescriptor createPartitionDeploymentDescriptor(ShuffleDescriptor.ReleaseType releaseType) {
+		// set partition to blocking to support all release types
+		ShuffleDescriptor shuffleDescriptor = NettyShuffleDescriptorBuilder.newBuilder().setBlocking(true).buildLocal();
+		PartitionDescriptor partitionDescriptor = new PartitionDescriptor(
+			new IntermediateDataSetID(),
+			shuffleDescriptor.getResultPartitionID().getPartitionId(),
+			ResultPartitionType.BLOCKING,
+			1,
+			0);
+		return new ResultPartitionDeploymentDescriptor(
+			partitionDescriptor,
+			shuffleDescriptor,
+			1,
+			true,
+			releaseType);
 	}
 }
