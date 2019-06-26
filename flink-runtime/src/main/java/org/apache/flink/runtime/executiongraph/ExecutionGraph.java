@@ -269,7 +269,7 @@ public class ExecutionGraph implements AccessExecutionGraph {
 	private volatile JobStatus state = JobStatus.CREATED;
 
 	/** A future that completes once the job has reached a terminal state. */
-	private volatile CompletableFuture<JobStatus> terminationFuture;
+	private final CompletableFuture<JobStatus> terminationFuture = new CompletableFuture<>();
 
 	/** On each global recovery, this version is incremented. The version breaks conflicts
 	 * between concurrent restart attempts by local failover strategies. */
@@ -890,7 +890,6 @@ public class ExecutionGraph implements AccessExecutionGraph {
 			newExecJobVertices.add(ejv);
 		}
 
-		terminationFuture = new CompletableFuture<>();
 		failoverStrategy.notifyNewVertices(newExecJobVertices);
 	}
 
@@ -1079,15 +1078,7 @@ public class ExecutionGraph implements AccessExecutionGraph {
 						ongoingSchedulingFuture.cancel(false);
 					}
 
-					final ArrayList<CompletableFuture<?>> futures = new ArrayList<>(verticesInCreationOrder.size());
-
-					// cancel all tasks (that still need cancelling)
-					for (ExecutionJobVertex ejv : verticesInCreationOrder) {
-						futures.add(ejv.cancelWithFuture());
-					}
-
-					// we build a future that is complete once all vertices have reached a terminal state
-					final ConjunctFuture<Void> allTerminal = FutureUtils.waitForAll(futures);
+					final ConjunctFuture<Void> allTerminal = cancelVerticesAsync();
 					allTerminal.whenComplete(
 						(Void value, Throwable throwable) -> {
 							if (throwable != null) {
@@ -1131,6 +1122,18 @@ public class ExecutionGraph implements AccessExecutionGraph {
 				return;
 			}
 		}
+	}
+
+	private ConjunctFuture<Void> cancelVerticesAsync() {
+		final ArrayList<CompletableFuture<?>> futures = new ArrayList<>(verticesInCreationOrder.size());
+
+		// cancel all tasks (that still need cancelling)
+		for (ExecutionJobVertex ejv : verticesInCreationOrder) {
+			futures.add(ejv.cancelWithFuture());
+		}
+
+		// we build a future that is complete once all vertices have reached a terminal state
+		return FutureUtils.waitForAll(futures);
 	}
 
 	/**
@@ -1221,15 +1224,8 @@ public class ExecutionGraph implements AccessExecutionGraph {
 				}
 
 				// we build a future that is complete once all vertices have reached a terminal state
-				final ArrayList<CompletableFuture<?>> futures = new ArrayList<>(verticesInCreationOrder.size());
-
-				// cancel all tasks (that still need cancelling)
-				for (ExecutionJobVertex ejv : verticesInCreationOrder) {
-					futures.add(ejv.cancelWithFuture());
-				}
-
-				final ConjunctFuture<Void> allTerminal = FutureUtils.waitForAll(futures);
-				allTerminal.whenComplete(
+				final ConjunctFuture<Void> allTerminal = cancelVerticesAsync();
+				FutureUtils.assertNoException(allTerminal.handle(
 					(Void ignored, Throwable throwable) -> {
 						if (throwable != null) {
 							transitionState(
@@ -1239,7 +1235,8 @@ public class ExecutionGraph implements AccessExecutionGraph {
 						} else {
 							allVerticesInTerminalState(globalVersionForRestart);
 						}
-					});
+						return null;
+					}));
 
 				return;
 			}

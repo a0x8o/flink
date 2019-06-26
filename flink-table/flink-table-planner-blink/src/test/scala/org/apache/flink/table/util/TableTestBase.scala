@@ -34,7 +34,7 @@ import org.apache.flink.table.functions.{AggregateFunction, ScalarFunction, Tabl
 import org.apache.flink.table.operations.RichTableSourceQueryOperation
 import org.apache.flink.table.plan.nodes.exec.ExecNode
 import org.apache.flink.table.plan.optimize.program.{FlinkBatchProgram, FlinkStreamProgram}
-import org.apache.flink.table.plan.stats.{FlinkStatistic, TableStats}
+import org.apache.flink.table.plan.stats.FlinkStatistic
 import org.apache.flink.table.plan.util.{ExecNodePlanDumper, FlinkRelOptUtil}
 import org.apache.flink.table.runtime.utils.{BatchTableEnvUtil, TestingAppendTableSink, TestingRetractTableSink, TestingUpsertTableSink}
 import org.apache.flink.table.sinks._
@@ -48,12 +48,11 @@ import org.apache.flink.types.Row
 
 import org.apache.calcite.rel.RelNode
 import org.apache.calcite.sql.SqlExplainLevel
+
 import org.apache.commons.lang3.SystemUtils
 import org.junit.Assert.{assertEquals, assertTrue}
 import org.junit.Rule
 import org.junit.rules.{ExpectedException, TestName}
-
-import _root_.java.util.Optional
 
 import _root_.scala.collection.JavaConversions._
 
@@ -79,8 +78,8 @@ abstract class TableTestBase {
   def batchTestUtil(): BatchTableTestUtil = BatchTableTestUtil(this)
 
   def verifyTableEquals(expected: Table, actual: Table): Unit = {
-    val expectedString = FlinkRelOptUtil.toString(expected.asInstanceOf[TableImpl].getRelNode)
-    val actualString = FlinkRelOptUtil.toString(actual.asInstanceOf[TableImpl].getRelNode)
+    val expectedString = FlinkRelOptUtil.toString(TableTestUtil.toRelNode(expected))
+    val actualString = FlinkRelOptUtil.toString(TableTestUtil.toRelNode(actual))
     assertEquals(
       "Logical plans do not match",
       LogicalPlanFormatUtils.formatTempTableId(expectedString),
@@ -260,7 +259,7 @@ abstract class TableTestUtil(test: TableTestBase) {
 
   def verifyPlanNotExpected(table: Table, notExpected: String*): Unit = {
     require(notExpected.nonEmpty)
-    val relNode = table.asInstanceOf[TableImpl].getRelNode
+    val relNode = TableTestUtil.toRelNode(table)
     val optimizedPlan = getOptimizedPlan(
       Array(relNode),
       explainLevel = SqlExplainLevel.EXPPLAN_ATTRIBUTES,
@@ -308,7 +307,7 @@ abstract class TableTestUtil(test: TableTestBase) {
       withRowType: Boolean,
       printPlanBefore: Boolean): Unit = {
     val table = getTableEnv.sqlQuery(sql)
-    val relNode = table.asInstanceOf[TableImpl].getRelNode
+    val relNode = TableTestUtil.toRelNode(table)
     val optimizedPlan = getOptimizedPlan(
       Array(relNode),
       explainLevel,
@@ -362,7 +361,7 @@ abstract class TableTestUtil(test: TableTestBase) {
       withRetractTraits: Boolean,
       printPlanBefore: Boolean,
       printResource: Boolean = false): Unit = {
-    val relNode = table.asInstanceOf[TableImpl].getRelNode
+    val relNode = TableTestUtil.toRelNode(table)
     val optimizedPlan = getOptimizedPlan(
       Array(relNode),
       explainLevel,
@@ -674,7 +673,7 @@ case class BatchTableTestUtil(
 /**
   * Batch/Stream [[org.apache.flink.table.sources.TableSource]] for testing.
   */
-class TestTableSource(isBatch: Boolean, schema: TableSchema, tableStats: Option[TableStats] = None)
+class TestTableSource(isBatch: Boolean, schema: TableSchema)
   extends StreamTableSource[BaseRow] {
 
   override def isBounded: Boolean = isBatch
@@ -691,11 +690,6 @@ class TestTableSource(isBatch: Boolean, schema: TableSchema, tableStats: Option[
   }
 
   override def getTableSchema: TableSchema = schema
-
-  /** Returns the statistics of the table, returns null if don't know the statistics. */
-  override def getTableStats: Optional[TableStats] = {
-    Optional.ofNullable(tableStats.orNull)
-  }
 }
 
 object TableTestUtil {
@@ -721,4 +715,11 @@ object TableTestUtil {
     config
   }
 
+  /**
+    * Converts operation tree in the given table to a RelNode tree.
+    */
+  def toRelNode(table: Table): RelNode = {
+    table.asInstanceOf[TableImpl].tableEnv
+      .getRelBuilder.queryOperation(table.getQueryOperation).build()
+  }
 }

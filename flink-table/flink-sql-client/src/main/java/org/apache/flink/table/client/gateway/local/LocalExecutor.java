@@ -189,6 +189,22 @@ public class LocalExecutor implements Executor {
 	}
 
 	@Override
+	public List<String> listCatalogs(SessionContext session) throws SqlExecutionException {
+		final TableEnvironment tableEnv = getOrCreateExecutionContext(session)
+			.createEnvironmentInstance()
+			.getTableEnvironment();
+		return Arrays.asList(tableEnv.listCatalogs());
+	}
+
+	@Override
+	public List<String> listDatabases(SessionContext session) throws SqlExecutionException {
+		final TableEnvironment tableEnv = getOrCreateExecutionContext(session)
+			.createEnvironmentInstance()
+			.getTableEnvironment();
+		return Arrays.asList(tableEnv.listDatabases());
+	}
+
+	@Override
 	public List<String> listTables(SessionContext session) throws SqlExecutionException {
 		final ExecutionContext<?> context = getOrCreateExecutionContext(session);
 		final TableEnvironment tableEnv = context
@@ -204,6 +220,32 @@ public class LocalExecutor implements Executor {
 			.createEnvironmentInstance()
 			.getTableEnvironment();
 		return context.wrapClassLoader(() -> Arrays.asList(tableEnv.listUserDefinedFunctions()));
+	}
+
+	@Override
+	public void useCatalog(SessionContext session, String catalogName) throws SqlExecutionException {
+		final ExecutionContext<?> context = getOrCreateExecutionContext(session);
+		final TableEnvironment tableEnv = context
+			.createEnvironmentInstance()
+			.getTableEnvironment();
+
+		context.wrapClassLoader(() -> {
+			tableEnv.useCatalog(catalogName);
+			return null;
+		});
+	}
+
+	@Override
+	public void useDatabase(SessionContext session, String databaseName) throws SqlExecutionException {
+		final ExecutionContext<?> context = getOrCreateExecutionContext(session);
+		final TableEnvironment tableEnv = context
+			.createEnvironmentInstance()
+			.getTableEnvironment();
+
+		context.wrapClassLoader(() -> {
+			tableEnv.useDatabase(databaseName);
+			return null;
+		});
 	}
 
 	@Override

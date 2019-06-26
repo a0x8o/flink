@@ -112,23 +112,16 @@ class TableEnvironment(object):
         """
         self._j_tenv.registerTableSource(name, table_source._j_table_source)
 
-    def register_table_sink(self, name, field_names, field_types, table_sink):
+    def register_table_sink(self, name, table_sink):
         """
         Registers an external :class:`TableSink` with given field names and types in this
         :class:`TableEnvironment`'s catalog.
         Registered sink tables can be referenced in SQL DML statements.
 
         :param name: The name under which the :class:`TableSink` is registered.
-        :param field_names: The field names to register with the :class:`TableSink`.
-        :param field_types: The field types to register with the :class:`TableSink`.
         :param table_sink: The :class:`TableSink` to register.
         """
-        gateway = get_gateway()
-        j_field_names = utils.to_jarray(gateway.jvm.String, field_names)
-        j_field_types = utils.to_jarray(
-            gateway.jvm.TypeInformation,
-            [_to_java_type(field_type) for field_type in field_types])
-        self._j_tenv.registerTableSink(name, j_field_names, j_field_types, table_sink._j_table_sink)
+        self._j_tenv.registerTableSink(name, table_sink._j_table_sink)
 
     def scan(self, *table_path):
         """
@@ -183,11 +176,29 @@ class TableEnvironment(object):
         j_table_path = utils.to_jarray(gateway.jvm.String, table_path_continued)
         self._j_tenv.insertInto(table._j_table, table_path, j_table_path)
 
+    def list_catalogs(self):
+        """
+        Gets the names of all catalogs registered in this environment.
+
+        :return: List of catalog names.
+        """
+        j_catalog_name_array = self._j_tenv.listCatalogs()
+        return [item for item in j_catalog_name_array]
+
+    def list_databases(self):
+        """
+        Gets the names of all databases in the current catalog.
+
+        :return: List of database names in the current catalog.
+        """
+        j_database_name_array = self._j_tenv.listDatabases()
+        return [item for item in j_database_name_array]
+
     def list_tables(self):
         """
-        Gets the names of all tables registered in this environment.
+        Gets the names of all tables in the current database of the current catalog.
 
-        :return: List of table names.
+        :return: List of table names in the current database of the current catalog.
         """
         j_table_name_array = self._j_tenv.listTables()
         return [item for item in j_table_name_array]
@@ -239,7 +250,7 @@ class TableEnvironment(object):
         ::
 
             # register the table sink into which the result is inserted.
-            >>> t_env.register_table_sink("sink_table", field_names, fields_types, table_sink)
+            >>> t_env.register_table_sink("sink_table", table_sink)
             >>> source_table = ...
             # source_table is not registered to the table environment
             >>> tEnv.sql_update(s"INSERT INTO sink_table SELECT * FROM %s" % source_table)
