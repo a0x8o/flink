@@ -26,6 +26,7 @@ import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.api.common.time.Deadline;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.api.java.ClosureCleaner;
+import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.tuple.Tuple3;
 import org.apache.flink.configuration.BlobServerOptions;
 import org.apache.flink.configuration.ConfigConstants;
@@ -64,8 +65,11 @@ import org.apache.flink.runtime.heartbeat.HeartbeatServices;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.highavailability.TestingHighAvailabilityServices;
 import org.apache.flink.runtime.instance.SimpleSlotContext;
+import org.apache.flink.runtime.io.network.partition.NoOpPartitionTracker;
+import org.apache.flink.runtime.io.network.partition.PartitionTrackerFactory;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionType;
+import org.apache.flink.runtime.io.network.partition.TestingPartitionTracker;
 import org.apache.flink.runtime.jobgraph.DistributionPattern;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 import org.apache.flink.runtime.jobgraph.JobGraph;
@@ -307,7 +311,8 @@ public class JobMasterTest extends TestLogger {
 				testingFatalErrorHandler,
 				JobMasterTest.class.getClassLoader(),
 				schedulerNGFactory,
-				NettyShuffleMaster.INSTANCE) {
+				NettyShuffleMaster.INSTANCE,
+				NoOpPartitionTracker.FACTORY) {
 				@Override
 				public void declineCheckpoint(DeclineCheckpoint declineCheckpoint) {
 					declineCheckpointMessageFuture.complete(declineCheckpoint.getReason());
@@ -1623,7 +1628,8 @@ public class JobMasterTest extends TestLogger {
 			testingFatalErrorHandler,
 			JobMasterTest.class.getClassLoader(),
 			schedulerNGFactory,
-			NettyShuffleMaster.INSTANCE) {
+			NettyShuffleMaster.INSTANCE,
+			NoOpPartitionTracker.FACTORY) {
 
 			@Override
 			public CompletableFuture<String> triggerSavepoint(
@@ -1700,6 +1706,63 @@ public class JobMasterTest extends TestLogger {
 			// we should free the slot and then disconnect from the TaskExecutor because we use no longer slots from it
 			assertThat(freedSlotFuture.get(), equalTo(allocationId));
 			assertThat(disconnectTaskExecutorFuture.get(), equalTo(jobGraph.getJobID()));
+		} finally {
+			RpcUtils.terminateRpcEndpoint(jobMaster, testingTimeout);
+		}
+	}
+
+	@Test
+	public void testTaskExecutorNotReleasedOnFailedAllocationIfPartitionIsAllocated() throws Exception {
+		final JobManagerSharedServices jobManagerSharedServices = new TestingJobManagerSharedServicesBuilder().build();
+
+		final JobGraph jobGraph = createSingleVertexJobGraph();
+
+		final LocalTaskManagerLocation taskManagerLocation = new LocalTaskManagerLocation();
+
+		final AtomicBoolean isTrackingPartitions = new AtomicBoolean(true);
+		final TestingPartitionTracker partitionTracker = new TestingPartitionTracker();
+		partitionTracker.setIsTrackingPartitionsForFunction(ignored -> isTrackingPartitions.get());
+
+		final JobMaster jobMaster = new JobMasterBuilder()
+			.withConfiguration(configuration)
+			.withJobGraph(jobGraph)
+			.withHighAvailabilityServices(haServices)
+			.withJobManagerSharedServices(jobManagerSharedServices)
+			.withHeartbeatServices(heartbeatServices)
+			.withOnCompletionActions(new TestingOnCompletionActions())
+			.withPartitionTrackerFactory(ignored -> partitionTracker)
+			.createJobMaster();
+
+		final CompletableFuture<JobID> disconnectTaskExecutorFuture = new CompletableFuture<>();
+		final CompletableFuture<AllocationID> freedSlotFuture = new CompletableFuture<>();
+		final TestingTaskExecutorGateway testingTaskExecutorGateway = new TestingTaskExecutorGatewayBuilder()
+			.setFreeSlotFunction(
+				(allocationID, throwable) -> {
+					freedSlotFuture.complete(allocationID);
+					return CompletableFuture.completedFuture(Acknowledge.get());
+				})
+			.setDisconnectJobManagerConsumer((jobID, throwable) -> disconnectTaskExecutorFuture.complete(jobID))
+			.createTestingTaskExecutorGateway();
+
+		try {
+			jobMaster.start(jobMasterId).get();
+
+			final JobMasterGateway jobMasterGateway = jobMaster.getSelfGateway(JobMasterGateway.class);
+
+			final Collection<SlotOffer> slotOffers = registerSlotsAtJobMaster(1, jobMasterGateway, testingTaskExecutorGateway, taskManagerLocation);
+
+			// check that we accepted the offered slot
+			assertThat(slotOffers, hasSize(1));
+			final AllocationID allocationId = slotOffers.iterator().next().getAllocationId();
+
+			jobMasterGateway.notifyAllocationFailure(allocationId, new FlinkException("Fail allocation test exception"));
+
+			// we should free the slot, but not disconnect from the TaskExecutor as we still have an allocated partition
+			assertThat(freedSlotFuture.get(), equalTo(allocationId));
+
+			// trigger some request to guarantee ensure the slotAllocationFailure processing if complete
+			jobMasterGateway.requestJobStatus(Time.seconds(5)).get();
+			assertThat(disconnectTaskExecutorFuture.isDone(), is(false));
 		} finally {
 			RpcUtils.terminateRpcEndpoint(jobMaster, testingTimeout);
 		}
@@ -1786,6 +1849,102 @@ public class JobMasterTest extends TestLogger {
 		final TestingResourceManagerGateway testingResourceManagerGateway = new TestingResourceManagerGateway();
 		rpcService.registerGateway(testingResourceManagerGateway.getAddress(), testingResourceManagerGateway);
 		return testingResourceManagerGateway;
+	}
+
+	@Test
+	public void testPartitionTableCleanupOnDisconnect() throws Exception {
+		final JobManagerSharedServices jobManagerSharedServices = new TestingJobManagerSharedServicesBuilder().build();
+		final JobGraph jobGraph = createSingleVertexJobGraph();
+
+		final CompletableFuture<ResourceID> partitionCleanupTaskExecutorId = new CompletableFuture<>();
+		final TestingPartitionTracker partitionTracker = new TestingPartitionTracker();
+		partitionTracker.setStopTrackingAllPartitionsConsumer(partitionCleanupTaskExecutorId::complete);
+
+		final JobMaster jobMaster = new JobMasterBuilder()
+			.withConfiguration(configuration)
+			.withJobGraph(jobGraph)
+			.withHighAvailabilityServices(haServices)
+			.withJobManagerSharedServices(jobManagerSharedServices)
+			.withHeartbeatServices(heartbeatServices)
+			.withOnCompletionActions(new TestingOnCompletionActions())
+			.withPartitionTrackerFactory(ignored -> partitionTracker)
+			.createJobMaster();
+
+		final CompletableFuture<JobID> disconnectTaskExecutorFuture = new CompletableFuture<>();
+		final TestingTaskExecutorGateway testingTaskExecutorGateway = new TestingTaskExecutorGatewayBuilder()
+			.setDisconnectJobManagerConsumer((jobID, throwable) -> disconnectTaskExecutorFuture.complete(jobID))
+			.createTestingTaskExecutorGateway();
+
+		try {
+			jobMaster.start(jobMasterId).get();
+
+			final JobMasterGateway jobMasterGateway = jobMaster.getSelfGateway(JobMasterGateway.class);
+
+			// register a slot to establish a connection
+			final LocalTaskManagerLocation taskManagerLocation = new LocalTaskManagerLocation();
+			registerSlotsAtJobMaster(1, jobMasterGateway, testingTaskExecutorGateway, taskManagerLocation);
+
+			jobMasterGateway.disconnectTaskManager(taskManagerLocation.getResourceID(), new Exception("test"));
+			disconnectTaskExecutorFuture.get();
+
+			assertThat(partitionCleanupTaskExecutorId.get(), equalTo(taskManagerLocation.getResourceID()));
+		} finally {
+			RpcUtils.terminateRpcEndpoint(jobMaster, testingTimeout);
+		}
+	}
+
+	@Test
+	public void testPartitionReleaseOnJobTermination() throws Exception {
+		final JobManagerSharedServices jobManagerSharedServices = new TestingJobManagerSharedServicesBuilder().build();
+		final JobGraph jobGraph = createSingleVertexJobGraph();
+
+		final CompletableFuture<ResourceID> partitionCleanupTaskExecutorId = new CompletableFuture<>();
+		final TestingPartitionTracker partitionTracker = new TestingPartitionTracker();
+		partitionTracker.setStopTrackingAndReleaseAllPartitionsConsumer(partitionCleanupTaskExecutorId::complete);
+
+		final JobMaster jobMaster = new JobMasterBuilder()
+			.withConfiguration(configuration)
+			.withJobGraph(jobGraph)
+			.withHighAvailabilityServices(haServices)
+			.withJobManagerSharedServices(jobManagerSharedServices)
+			.withHeartbeatServices(heartbeatServices)
+			.withOnCompletionActions(new TestingOnCompletionActions())
+			.withPartitionTrackerFactory(ignord -> partitionTracker)
+			.createJobMaster();
+
+		final CompletableFuture<TaskDeploymentDescriptor> taskDeploymentDescriptorFuture = new CompletableFuture<>();
+		final CompletableFuture<Tuple2<JobID, Collection<ResultPartitionID>>> releasePartitionsFuture = new CompletableFuture<>();
+		final CompletableFuture<JobID> disconnectTaskExecutorFuture = new CompletableFuture<>();
+		final TestingTaskExecutorGateway testingTaskExecutorGateway = new TestingTaskExecutorGatewayBuilder()
+			.setReleasePartitionsConsumer((jobId, partitions) -> releasePartitionsFuture.complete(Tuple2.of(jobId, partitions)))
+			.setDisconnectJobManagerConsumer((jobID, throwable) -> disconnectTaskExecutorFuture.complete(jobID))
+			.setSubmitTaskConsumer((tdd, ignored) -> {
+				taskDeploymentDescriptorFuture.complete(tdd);
+				return CompletableFuture.completedFuture(Acknowledge.get());
+			})
+			.createTestingTaskExecutorGateway();
+
+		try {
+			jobMaster.start(jobMasterId).get();
+
+			final JobMasterGateway jobMasterGateway = jobMaster.getSelfGateway(JobMasterGateway.class);
+
+			final LocalTaskManagerLocation taskManagerLocation = new LocalTaskManagerLocation();
+			registerSlotsAtJobMaster(1, jobMasterGateway, testingTaskExecutorGateway, taskManagerLocation);
+
+			// update the execution state of the only execution to FINISHED
+			// this should trigger the job to finish
+			final TaskDeploymentDescriptor taskDeploymentDescriptor = taskDeploymentDescriptorFuture.get();
+			jobMasterGateway.updateTaskExecutionState(
+				new TaskExecutionState(
+					taskDeploymentDescriptor.getJobId(),
+					taskDeploymentDescriptor.getExecutionAttemptId(),
+					ExecutionState.FINISHED));
+
+			assertThat(partitionCleanupTaskExecutorId.get(), equalTo(taskManagerLocation.getResourceID()));
+		} finally {
+			RpcUtils.terminateRpcEndpoint(jobMaster, testingTimeout);
+		}
 	}
 
 	/**
@@ -2092,6 +2251,8 @@ public class JobMasterTest extends TestLogger {
 
 		private ShuffleMaster<?> shuffleMaster = NettyShuffleMaster.INSTANCE;
 
+		private PartitionTrackerFactory partitionTrackerFactory = NoOpPartitionTracker.FACTORY;
+
 		private JobMasterBuilder withConfiguration(Configuration configuration) {
 			this.configuration = configuration;
 			return this;
@@ -2132,6 +2293,11 @@ public class JobMasterTest extends TestLogger {
 			return this;
 		}
 
+		private JobMasterBuilder withPartitionTrackerFactory(PartitionTrackerFactory partitionTrackerFactory) {
+			this.partitionTrackerFactory = partitionTrackerFactory;
+			return this;
+		}
+
 		private JobMaster createJobMaster() throws Exception {
 			final JobMasterConfiguration jobMasterConfiguration = JobMasterConfiguration.fromConfiguration(configuration);
 			final SchedulerNGFactory schedulerNGFactory = new LegacySchedulerFactory(
@@ -2152,7 +2318,8 @@ public class JobMasterTest extends TestLogger {
 				testingFatalErrorHandler,
 				JobMasterTest.class.getClassLoader(),
 				schedulerNGFactory,
-				shuffleMaster);
+				shuffleMaster,
+				partitionTrackerFactory);
 		}
 	}
 
