@@ -96,6 +96,11 @@ public abstract class CatalogTestBase extends CatalogTest {
 	}
 
 	@Override
+	public CatalogPartition createPartition() {
+		return new CatalogPartitionImpl(getBatchTableProperties(), TEST_COMMENT);
+	}
+
+	@Override
 	public CatalogView createView() {
 		return new CatalogViewImpl(
 			String.format("select * from %s", t1),
@@ -113,6 +118,22 @@ public abstract class CatalogTestBase extends CatalogTest {
 			createAnotherTableSchema(),
 			getBatchTableProperties(),
 			"This is another view");
+	}
+
+	@Override
+	protected CatalogFunction createFunction() {
+		return new CatalogFunctionImpl(
+			"test.class.name",
+			getGenericFlag(isGeneric())
+		);
+	}
+
+	@Override
+	protected CatalogFunction createAnotherFunction() {
+		return new CatalogFunctionImpl(
+			"test.another.class.name",
+			getGenericFlag(isGeneric())
+		);
 	}
 
 	protected Map<String, String> getBatchTableProperties() {

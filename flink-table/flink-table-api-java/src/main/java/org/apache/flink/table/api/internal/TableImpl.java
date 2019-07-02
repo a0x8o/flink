@@ -36,14 +36,14 @@ import org.apache.flink.table.api.WindowGroupedTable;
 import org.apache.flink.table.catalog.FunctionLookup;
 import org.apache.flink.table.expressions.Expression;
 import org.apache.flink.table.expressions.ExpressionParser;
-import org.apache.flink.table.expressions.LookupCallResolver;
+import org.apache.flink.table.expressions.resolver.LookupCallResolver;
 import org.apache.flink.table.functions.TemporalTableFunction;
 import org.apache.flink.table.functions.TemporalTableFunctionImpl;
 import org.apache.flink.table.operations.JoinQueryOperation.JoinType;
-import org.apache.flink.table.operations.OperationExpressionsUtils;
-import org.apache.flink.table.operations.OperationExpressionsUtils.CategorizedExpressions;
-import org.apache.flink.table.operations.OperationTreeBuilder;
 import org.apache.flink.table.operations.QueryOperation;
+import org.apache.flink.table.operations.utils.OperationExpressionsUtils;
+import org.apache.flink.table.operations.utils.OperationExpressionsUtils.CategorizedExpressions;
+import org.apache.flink.table.operations.utils.OperationTreeBuilder;
 
 import java.util.Arrays;
 import java.util.Collections;

@@ -18,7 +18,6 @@
 
 package org.apache.flink.table.catalog;
 
-import org.apache.flink.table.catalog.exceptions.CatalogException;
 import org.apache.flink.table.catalog.stats.CatalogColumnStatistics;
 import org.apache.flink.table.catalog.stats.CatalogColumnStatisticsDataBase;
 import org.apache.flink.table.catalog.stats.CatalogColumnStatisticsDataBinary;
@@ -29,7 +28,6 @@ import org.apache.flink.table.catalog.stats.CatalogColumnStatisticsDataLong;
 import org.apache.flink.table.catalog.stats.CatalogColumnStatisticsDataString;
 import org.apache.flink.table.catalog.stats.CatalogTableStatistics;
 import org.apache.flink.table.catalog.stats.Date;
-import org.apache.flink.table.functions.ScalarFunction;
 
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -89,26 +87,6 @@ public class GenericInMemoryCatalogTest extends CatalogTestBase {
 		assertFalse(catalog.partitionExists(path1, catalogPartitionSpec));
 	}
 
-	// ------ partitions ------
-
-	@Test
-	public void testAlterPartition_differentTypedPartition() throws Exception {
-		catalog.createDatabase(db1, createDb(), false);
-		catalog.createTable(path1, createPartitionedTable(), false);
-
-		CatalogPartitionSpec partitionSpec = createPartitionSpec();
-		CatalogPartition partition = createPartition();
-		catalog.createPartition(path1, partitionSpec, partition, false);
-
-		exception.expect(CatalogException.class);
-		exception.expectMessage(
-			String.format("Partition types don't match. " +
-				"Existing partition is '%s' and " +
-				"new partition is 'org.apache.flink.table.catalog.CatalogTest$TestPartition'.",
-				partition.getClass().getName()));
-		catalog.alterPartition(path1, partitionSpec, new TestPartition(), false);
-	}
-
 	// ------ statistics ------
 
 	@Test
@@ -157,11 +135,6 @@ public class GenericInMemoryCatalogTest extends CatalogTestBase {
 		return true;
 	}
 
-	@Override
-	public CatalogPartition createPartition() {
-		return new GenericCatalogPartition(getBatchTableProperties(), "Generic batch table");
-	}
-
 	private CatalogColumnStatistics createColumnStats() {
 		CatalogColumnStatisticsDataBoolean booleanColStats = new CatalogColumnStatisticsDataBoolean(55L, 45L, 5L);
 		CatalogColumnStatisticsDataLong longColStats = new CatalogColumnStatisticsDataLong(-123L, 763322L, 23L, 79L);
@@ -179,33 +152,4 @@ public class GenericInMemoryCatalogTest extends CatalogTestBase {
 		colStatsMap.put("bb6", binaryColStats);
 		return new CatalogColumnStatistics(colStatsMap);
 	}
-
-	@Override
-	protected CatalogFunction createFunction() {
-		return new GenericCatalogFunction(MyScalarFunction.class.getName(), new HashMap<>());
-	}
-
-	@Override
-	protected CatalogFunction createAnotherFunction() {
-		return new GenericCatalogFunction(MyOtherScalarFunction.class.getName(), new HashMap<>());
-	}
-
-	/**
-	 * Test UDF.
-	 */
-	public static class MyScalarFunction extends ScalarFunction {
-		public Integer eval(Integer i) {
-			return i + 1;
-		}
-	}
-
-	/**
-	 * Test UDF.
-	 */
-	public static class MyOtherScalarFunction extends ScalarFunction {
-		public String eval(Integer i) {
-			return String.valueOf(i);
-		}
-	}
-
 }

@@ -23,8 +23,7 @@ from pyflink.table.table_schema import TableSchema
 
 __all__ = ['Catalog', 'CatalogDatabase', 'CatalogBaseTable', 'CatalogPartition', 'CatalogFunction',
            'ObjectPath', 'CatalogPartitionSpec', 'CatalogTableStatistics',
-           'CatalogColumnStatistics', 'HiveCatalog', 'HiveCatalogFunction',
-           'HiveCatalogPartition']
+           'CatalogColumnStatistics', 'HiveCatalog']
 
 
 class Catalog(object):
@@ -695,11 +694,7 @@ class CatalogPartition(object):
 
     @staticmethod
     def _get(j_catalog_partition):
-        if j_catalog_partition.getClass().getName() == \
-                "org.apache.flink.table.catalog.hive.HiveCatalogPartition":
-            return HiveCatalogPartition(j_hive_catalog_partition=j_catalog_partition)
-        else:
-            return CatalogPartition(j_catalog_partition)
+        return CatalogPartition(j_catalog_partition)
 
     def get_properties(self):
         """
@@ -752,11 +747,7 @@ class CatalogFunction(object):
 
     @staticmethod
     def _get(j_catalog_function):
-        if j_catalog_function.getClass().getName() == \
-                "org.apache.flink.table.catalog.hive.HiveCatalogFunction":
-            return HiveCatalogFunction(j_hive_catalog_function=j_catalog_function)
-        else:
-            return CatalogFunction(j_catalog_function)
+        return CatalogFunction(j_catalog_function)
 
     def get_class_name(self):
         """
@@ -977,33 +968,3 @@ class HiveCatalog(Catalog):
             j_hive_catalog = gateway.jvm.org.apache.flink.table.catalog.hive.HiveCatalog(
                 catalog_name, default_database, hive_site_url)
         super(HiveCatalog, self).__init__(j_hive_catalog)
-
-
-class HiveCatalogFunction(CatalogFunction):
-    """
-    A catalog function implementation for Hive.
-    """
-
-    def __int__(self, class_name=None, j_hive_catalog_function=None):
-        gateway = get_gateway()
-        if j_hive_catalog_function is None:
-            j_hive_catalog_function = \
-                gateway.jvm.org.apache.flink.table.catalog.hive.HiveCatalogFunction(class_name)
-        super(HiveCatalogFunction, self).__init__(j_hive_catalog_function)
-
-
-class HiveCatalogPartition(CatalogPartition):
-    """
-    A CatalogPartition implementation that represents a Partition in Hive.
-    """
-
-    def __int__(self, properties=None, location=None, j_hive_catalog_partition=None):
-        gateway = get_gateway()
-        if j_hive_catalog_partition is None:
-            j_hive_catalog_partition = \
-                gateway.jvm.org.apache.flink.table.catalog.hive.HiveCatalogPartition(
-                    properties, location)
-        super(HiveCatalogPartition, self).__init__(j_hive_catalog_partition)
-
-    def get_location(self):
-        return self._j_catalog_partition.getLocation()
