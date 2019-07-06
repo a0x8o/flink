@@ -18,6 +18,7 @@
 package org.apache.flink.table.api.scala.internal
 
 import org.apache.flink.annotation.Internal
+import org.apache.flink.api.common.time.Time
 import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.api.dag.Transformation
 import org.apache.flink.api.scala._
@@ -102,7 +103,9 @@ class StreamTableEnvironmentImpl (
       table.getQueryOperation,
       TypeConversions.fromLegacyInfoToDataType(returnType),
       OutputConversionModifyOperation.UpdateMode.APPEND)
-    queryConfigProvider.setConfig(queryConfig)
+    tableConfig.setIdleStateRetentionTime(
+      Time.milliseconds(queryConfig.getMinIdleStateRetentionTime),
+      Time.milliseconds(queryConfig.getMaxIdleStateRetentionTime))
     toDataStream(table, modifyOperation)
   }
 
@@ -121,7 +124,9 @@ class StreamTableEnvironmentImpl (
       TypeConversions.fromLegacyInfoToDataType(returnType),
       OutputConversionModifyOperation.UpdateMode.RETRACT)
 
-    queryConfigProvider.setConfig(queryConfig)
+    tableConfig.setIdleStateRetentionTime(
+        Time.milliseconds(queryConfig.getMinIdleStateRetentionTime),
+        Time.milliseconds(queryConfig.getMaxIdleStateRetentionTime))
     toDataStream(table, modifyOperation)
   }
 
@@ -182,6 +187,8 @@ class StreamTableEnvironmentImpl (
     }
   }
 
+  override protected def isEagerOperationTranslation(): Boolean = true
+
   private def toDataStream[T](
       table: Table,
       modifyOperation: OutputConversionModifyOperation)
@@ -233,6 +240,26 @@ class StreamTableEnvironmentImpl (
       typeInfoSchema.getIndices,
       typeInfoSchema.toTableSchema)
   }
+
+  override def sqlUpdate(stmt: String, config: StreamQueryConfig): Unit = {
+    tableConfig
+      .setIdleStateRetentionTime(
+        Time.milliseconds(config.getMinIdleStateRetentionTime),
+        Time.milliseconds(config.getMaxIdleStateRetentionTime))
+    sqlUpdate(stmt)
+  }
+
+  override def insertInto(
+      table: Table,
+      queryConfig: StreamQueryConfig,
+      sinkPath: String,
+      sinkPathContinued: String*): Unit = {
+    tableConfig
+      .setIdleStateRetentionTime(
+        Time.milliseconds(queryConfig.getMinIdleStateRetentionTime),
+        Time.milliseconds(queryConfig.getMaxIdleStateRetentionTime))
+    insertInto(table, sinkPath, sinkPathContinued: _*)
+  }
 }
 
 object StreamTableEnvironmentImpl {
@@ -242,15 +269,18 @@ object StreamTableEnvironmentImpl {
       settings: EnvironmentSettings,
       tableConfig: TableConfig)
     : StreamTableEnvironmentImpl = {
-    val executorProperties = settings.toExecutorProperties
-    val plannerProperties = settings.toPlannerProperties
-    val executor = lookupExecutor(executorProperties, executionEnvironment)
+
     val functionCatalog = new FunctionCatalog(
       settings.getBuiltInCatalogName,
       settings.getBuiltInDatabaseName)
     val catalogManager = new CatalogManager(
       settings.getBuiltInCatalogName,
       new GenericInMemoryCatalog(settings.getBuiltInCatalogName, settings.getBuiltInDatabaseName))
+
+    val executorProperties = settings.toExecutorProperties
+    val executor = lookupExecutor(executorProperties, executionEnvironment)
+
+    val plannerProperties = settings.toPlannerProperties
     val planner = ComponentFactoryService.find(classOf[PlannerFactory], plannerProperties)
       .create(
         plannerProperties,
@@ -258,6 +288,7 @@ object StreamTableEnvironmentImpl {
         tableConfig,
         functionCatalog,
         catalogManager)
+
     new StreamTableEnvironmentImpl(
       catalogManager,
       functionCatalog,

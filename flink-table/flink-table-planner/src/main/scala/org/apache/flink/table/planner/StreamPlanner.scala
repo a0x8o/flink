@@ -17,23 +17,23 @@
  */
 
 package org.apache.flink.table.planner
-import _root_.java.lang.{Boolean => JBool}
-import _root_.java.util.{Objects, List => JList}
-import java.util
-
-import org.apache.calcite.jdbc.CalciteSchema
-import org.apache.calcite.jdbc.CalciteSchemaBuilder.asRootSchema
-import org.apache.calcite.plan.RelOptUtil
-import org.apache.calcite.rel.RelNode
-import org.apache.calcite.sql.{SqlIdentifier, SqlInsert, SqlKind, SqlNode}
 import org.apache.flink.annotation.VisibleForTesting
 import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.api.dag.Transformation
 import org.apache.flink.api.java.tuple.{Tuple2 => JTuple2}
 import org.apache.flink.streaming.api.datastream.{DataStream, DataStreamSink}
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment
+
+import org.apache.calcite.jdbc.CalciteSchema
+import org.apache.calcite.jdbc.CalciteSchemaBuilder.asRootSchema
+import org.apache.calcite.plan.RelOptUtil
+import org.apache.calcite.rel.RelNode
+import org.apache.calcite.sql.{SqlIdentifier, SqlInsert, SqlKind, SqlNode}
+
+import _root_.java.lang.{Boolean => JBool}
+import _root_.java.util.{Objects, List => JList}
+import java.util
 import org.apache.flink.table.api._
-import org.apache.flink.table.api.internal.QueryConfigProvider
 import org.apache.flink.table.calcite.{CalciteConfig, FlinkPlannerImpl, FlinkRelBuilder, FlinkTypeFactory}
 import org.apache.flink.table.catalog.{CatalogManager, CatalogManagerCalciteSchema, CatalogTable, ConnectorCatalogTable, _}
 import org.apache.flink.table.delegation.{Executor, Planner}
@@ -124,12 +124,13 @@ class StreamPlanner(
     tableOperations.asScala.map(translate).filter(Objects.nonNull).asJava
   }
 
-  override def explain(
-      tableOperations: util.List[QueryOperation],
-      extended: Boolean)
-    : String = {
-    tableOperations.asScala.map(explain(_, unwrapQueryConfig))
-      .mkString(s"${System.lineSeparator}${System.lineSeparator}")
+  override def explain(operations: util.List[Operation], extended: Boolean): String = {
+    operations.asScala.map {
+      case queryOperation: QueryOperation =>
+        explain(queryOperation, unwrapQueryConfig)
+      case operation =>
+        throw new TableException(s"${operation.getClass.getCanonicalName} is not supported")
+    }.mkString(s"${System.lineSeparator}${System.lineSeparator}")
   }
 
   override def getCompletionHints(
@@ -187,7 +188,10 @@ class StreamPlanner(
   }
 
   private def unwrapQueryConfig = {
-    config.getPlannerConfig.unwrap(classOf[QueryConfigProvider]).get().getConfig
+    new StreamQueryConfig(
+      config.getMinIdleStateRetentionTime,
+      config.getMaxIdleStateRetentionTime
+    )
   }
 
   private def explain(tableOperation: QueryOperation, queryConfig: StreamQueryConfig) = {

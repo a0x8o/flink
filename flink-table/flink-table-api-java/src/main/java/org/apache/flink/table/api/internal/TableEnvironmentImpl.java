@@ -20,11 +20,11 @@ package org.apache.flink.table.api.internal;
 
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.annotation.VisibleForTesting;
+import org.apache.flink.api.common.JobExecutionResult;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.dag.Transformation;
 import org.apache.flink.table.api.CatalogNotExistException;
-import org.apache.flink.table.api.QueryConfig;
-import org.apache.flink.table.api.StreamQueryConfig;
+import org.apache.flink.table.api.EnvironmentSettings;
 import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.TableConfig;
 import org.apache.flink.table.api.TableEnvironment;
@@ -36,15 +36,19 @@ import org.apache.flink.table.catalog.CatalogManager;
 import org.apache.flink.table.catalog.ConnectorCatalogTable;
 import org.apache.flink.table.catalog.ExternalCatalog;
 import org.apache.flink.table.catalog.FunctionCatalog;
+import org.apache.flink.table.catalog.GenericInMemoryCatalog;
 import org.apache.flink.table.catalog.ObjectPath;
 import org.apache.flink.table.catalog.QueryOperationCatalogView;
 import org.apache.flink.table.catalog.exceptions.DatabaseNotExistException;
 import org.apache.flink.table.delegation.Executor;
+import org.apache.flink.table.delegation.ExecutorFactory;
 import org.apache.flink.table.delegation.Planner;
+import org.apache.flink.table.delegation.PlannerFactory;
 import org.apache.flink.table.descriptors.ConnectorDescriptor;
 import org.apache.flink.table.descriptors.StreamTableDescriptor;
 import org.apache.flink.table.descriptors.TableDescriptor;
 import org.apache.flink.table.expressions.TableReferenceExpression;
+import org.apache.flink.table.factories.ComponentFactoryService;
 import org.apache.flink.table.functions.ScalarFunction;
 import org.apache.flink.table.operations.CatalogQueryOperation;
 import org.apache.flink.table.operations.CatalogSinkModifyOperation;
@@ -62,7 +66,9 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 /**
  * Implementation of {@link TableEnvironment} that works exclusively with Table API interfaces.
@@ -76,12 +82,12 @@ public class TableEnvironmentImpl implements TableEnvironment {
 
 	private final String defaultCatalogName;
 	private final String defaultDatabaseName;
-	private final TableConfig tableConfig;
 	private final OperationTreeBuilder operationTreeBuilder;
+	private final List<ModifyOperation> bufferedModifyOperations = new ArrayList<>();
 
+	protected final TableConfig tableConfig;
 	protected final Executor execEnv;
 	protected final FunctionCatalog functionCatalog;
-	protected final QueryConfigProvider queryConfigProvider = new QueryConfigProvider();
 	protected final Planner planner;
 
 	protected TableEnvironmentImpl(
@@ -95,7 +101,6 @@ public class TableEnvironmentImpl implements TableEnvironment {
 		this.execEnv = executor;
 
 		this.tableConfig = tableConfig;
-		this.tableConfig.addPlannerConfig(queryConfigProvider);
 		this.defaultCatalogName = catalogManager.getCurrentCatalog();
 		this.defaultDatabaseName = catalogManager.getCurrentDatabase();
 
@@ -108,6 +113,34 @@ public class TableEnvironmentImpl implements TableEnvironment {
 				return catalogTableOperation.map(tableOperation -> new TableReferenceExpression(path, tableOperation));
 			},
 			isStreaming
+		);
+	}
+
+	public static TableEnvironmentImpl create(EnvironmentSettings settings) {
+
+		FunctionCatalog functionCatalog = new FunctionCatalog(
+			settings.getBuiltInCatalogName(),
+			settings.getBuiltInDatabaseName());
+		CatalogManager catalogManager = new CatalogManager(
+			settings.getBuiltInCatalogName(),
+			new GenericInMemoryCatalog(settings.getBuiltInCatalogName(), settings.getBuiltInDatabaseName()));
+
+		Map<String, String> executorProperties = settings.toExecutorProperties();
+		Executor executor = ComponentFactoryService.find(ExecutorFactory.class, executorProperties)
+			.create(executorProperties);
+
+		TableConfig tableConfig = new TableConfig();
+		Map<String, String> plannerProperties = settings.toPlannerProperties();
+		Planner planner = ComponentFactoryService.find(PlannerFactory.class, plannerProperties)
+			.create(plannerProperties, executor, tableConfig, functionCatalog, catalogManager);
+
+		return new TableEnvironmentImpl(
+			catalogManager,
+			tableConfig,
+			executor,
+			functionCatalog,
+			planner,
+			!settings.isBatchMode()
 		);
 	}
 
@@ -237,7 +270,19 @@ public class TableEnvironmentImpl implements TableEnvironment {
 
 	@Override
 	public String explain(Table table) {
-		return planner.explain(Collections.singletonList(table.getQueryOperation()), false);
+		return explain(table, false);
+	}
+
+	@Override
+	public String explain(Table table, boolean extended) {
+		return planner.explain(Collections.singletonList(table.getQueryOperation()), extended);
+	}
+
+	@Override
+	public String explain(boolean extended) {
+		List<Operation> operations = bufferedModifyOperations.stream()
+			.map(o -> (Operation) o).collect(Collectors.toList());
+		return planner.explain(operations, extended);
 	}
 
 	@Override
@@ -266,31 +311,24 @@ public class TableEnvironmentImpl implements TableEnvironment {
 	}
 
 	@Override
-	public void sqlUpdate(String stmt) {
-		sqlUpdate(stmt, new StreamQueryConfig());
-	}
-
-	@Override
-	public void insertInto(Table table, QueryConfig queryConfig, String path, String... pathContinued) {
+	public void insertInto(Table table, String path, String... pathContinued) {
 		List<String> fullPath = new ArrayList<>(Arrays.asList(pathContinued));
 		fullPath.add(0, path);
 
-		queryConfigProvider.setConfig((StreamQueryConfig) queryConfig);
-		List<Transformation<?>> translate = planner.translate(Collections.singletonList(
+		List<ModifyOperation> modifyOperations = Collections.singletonList(
 			new CatalogSinkModifyOperation(
 				fullPath,
-				table.getQueryOperation())));
+				table.getQueryOperation()));
 
-		execEnv.apply(translate);
+		if (isEagerOperationTranslation()) {
+			translate(modifyOperations);
+		} else {
+			buffer(modifyOperations);
+		}
 	}
 
 	@Override
-	public void insertInto(Table table, String path, String... pathContinued) {
-		insertInto(table, new StreamQueryConfig(), path, pathContinued);
-	}
-
-	@Override
-	public void sqlUpdate(String stmt, QueryConfig config) {
+	public void sqlUpdate(String stmt) {
 		List<Operation> operations = planner.parse(stmt);
 
 		if (operations.size() != 1) {
@@ -301,11 +339,12 @@ public class TableEnvironmentImpl implements TableEnvironment {
 		Operation operation = operations.get(0);
 
 		if (operation instanceof ModifyOperation) {
-			queryConfigProvider.setConfig((StreamQueryConfig) config);
-			List<Transformation<?>> transformations =
-				planner.translate(Collections.singletonList((ModifyOperation) operation));
-
-			execEnv.apply(transformations);
+			List<ModifyOperation> modifyOperations = Collections.singletonList((ModifyOperation) operation);
+			if (isEagerOperationTranslation()) {
+				translate(modifyOperations);
+			} else {
+				buffer(modifyOperations);
+			}
 		} else {
 			throw new TableException(
 				"Unsupported SQL query! sqlUpdate() only accepts a single SQL statements of type INSERT.");
@@ -335,6 +374,48 @@ public class TableEnvironmentImpl implements TableEnvironment {
 	@Override
 	public TableConfig getConfig() {
 		return tableConfig;
+	}
+
+	@Override
+	public JobExecutionResult execute(String jobName) throws Exception {
+		translate(bufferedModifyOperations);
+		bufferedModifyOperations.clear();
+		return execEnv.execute(jobName);
+	}
+
+	/**
+	 * Defines the behavior of this {@link TableEnvironment}. If true the queries will
+	 * be translated immediately. If false the {@link ModifyOperation}s will be buffered
+	 * and translated only when {@link #execute(String)} is called.
+	 *
+	 * <p>If the {@link TableEnvironment} works in a lazy manner it is undefined what
+	 * configurations values will be used. It depends on the characteristic of the particular
+	 * parameter. Some might used values current to the time of query construction (e.g. the currentCatalog)
+	 * and some use values from the time when {@link #execute(String)} is called (e.g. timeZone).
+	 *
+	 * @return true if the queries should be translated immediately.
+	 */
+	protected boolean isEagerOperationTranslation() {
+		return false;
+	}
+
+	/**
+	 * Subclasses can override this method to add additional checks.
+	 *
+	 * @param tableSource tableSource to validate
+	 */
+	protected void validateTableSource(TableSource<?> tableSource) {
+		TableSourceValidation.validateTableSource(tableSource);
+	}
+
+	private void translate(List<ModifyOperation> modifyOperations) {
+		List<Transformation<?>> transformations = planner.translate(modifyOperations);
+
+		execEnv.apply(transformations);
+	}
+
+	private void buffer(List<ModifyOperation> modifyOperations) {
+		bufferedModifyOperations.addAll(modifyOperations);
 	}
 
 	protected void registerTableInternal(String name, CatalogBaseTable table) {
@@ -372,15 +453,6 @@ public class TableEnvironmentImpl implements TableEnvironment {
 		if (StringUtils.isNullOrWhitespaceOnly(name)) {
 			throw new ValidationException("A table name cannot be null or consist of only whitespaces.");
 		}
-	}
-
-	/**
-	 * Subclasses can override this method to add additional checks.
-	 *
-	 * @param tableSource tableSource to validate
-	 */
-	protected void validateTableSource(TableSource<?> tableSource) {
-		TableSourceValidation.validateTableSource(tableSource);
 	}
 
 	private void registerTableSourceInternal(String name, TableSource<?> tableSource) {

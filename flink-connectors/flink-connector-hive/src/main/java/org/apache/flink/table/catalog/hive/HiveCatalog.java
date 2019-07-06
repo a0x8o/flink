@@ -59,6 +59,7 @@ import org.apache.flink.table.catalog.stats.CatalogTableStatistics;
 import org.apache.flink.table.factories.TableFactory;
 import org.apache.flink.util.StringUtils;
 
+import org.apache.hadoop.hive.common.StatsSetupConst;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.metastore.MetaStoreUtils;
 import org.apache.hadoop.hive.metastore.TableType;
@@ -85,7 +86,8 @@ import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
 
-import java.net.URL;
+import java.net.MalformedURLException;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -118,7 +120,7 @@ public class HiveCatalog extends AbstractCatalog {
 
 	private HiveMetastoreClientWrapper client;
 
-	public HiveCatalog(String catalogName, @Nullable String defaultDatabase, @Nullable URL hiveConfDir, String hiveVersion) {
+	public HiveCatalog(String catalogName, @Nullable String defaultDatabase, @Nullable String hiveConfDir, String hiveVersion) {
 		this(catalogName,
 			defaultDatabase == null ? DEFAULT_DB : defaultDatabase,
 			createHiveConf(hiveConfDir),
@@ -126,7 +128,7 @@ public class HiveCatalog extends AbstractCatalog {
 	}
 
 	@VisibleForTesting
-	protected HiveCatalog(String catalogName, String defaultDatabase, HiveConf hiveConf, String hiveVersion) {
+	protected HiveCatalog(String catalogName, String defaultDatabase, @Nullable HiveConf hiveConf, String hiveVersion) {
 		super(catalogName, defaultDatabase == null ? DEFAULT_DB : defaultDatabase);
 
 		this.hiveConf = hiveConf == null ? createHiveConf(null) : hiveConf;
@@ -136,10 +138,17 @@ public class HiveCatalog extends AbstractCatalog {
 		LOG.info("Created HiveCatalog '{}'", catalogName);
 	}
 
-	private static HiveConf createHiveConf(URL hiveConfDir) {
-		LOG.info("Setting hive-site location as {}", hiveConfDir);
+	private static HiveConf createHiveConf(@Nullable String hiveConfDir) {
+		LOG.info("Setting hive conf dir as {}", hiveConfDir);
 
-		HiveConf.setHiveSiteLocation(hiveConfDir);
+		try {
+			HiveConf.setHiveSiteLocation(
+				hiveConfDir == null ?
+					null : Paths.get(hiveConfDir, "hive-site.xml").toUri().toURL());
+		} catch (MalformedURLException e) {
+			throw new CatalogException(
+				String.format("Failed to get hive-site.xml from %s", hiveConfDir), e);
+		}
 
 		return new HiveConf();
 	}
@@ -818,7 +827,7 @@ public class HiveCatalog extends AbstractCatalog {
 	}
 
 	private void ensurePartitionedTable(ObjectPath tablePath, Table hiveTable) throws TableNotPartitionedException {
-		if (hiveTable.getPartitionKeysSize() == 0) {
+		if (!isTablePartitioned(hiveTable)) {
 			throw new TableNotPartitionedException(getName(), tablePath);
 		}
 	}
@@ -1069,7 +1078,19 @@ public class HiveCatalog extends AbstractCatalog {
 
 	@Override
 	public void alterTableStatistics(ObjectPath tablePath, CatalogTableStatistics tableStatistics, boolean ignoreIfNotExists) throws TableNotExistException, CatalogException {
-
+		try {
+			Table hiveTable = getHiveTable(tablePath);
+			// Set table stats
+			if (compareAndUpdateStatisticsProperties(tableStatistics, hiveTable.getParameters())) {
+				client.alter_table(tablePath.getDatabaseName(), tablePath.getObjectName(), hiveTable);
+			}
+		} catch (TableNotExistException e) {
+			if (!ignoreIfNotExists) {
+				throw e;
+			}
+		} catch (TException e) {
+			throw new CatalogException(String.format("Failed to alter table stats of table %s", tablePath.getFullName()), e);
+		}
 	}
 
 	@Override
@@ -1091,9 +1112,50 @@ public class HiveCatalog extends AbstractCatalog {
 		}
 	}
 
+	/**
+	 * Determine if statistics is need to be updated, if it needs to be updated and updated its parameters.
+	 * @param statistics original ``hive table statistics.
+	 * @param parameters new catalog table statistics parameters.
+	 * @return needUpdateStatistics flag which indicates whether need to update stats.
+	 */
+	private static boolean compareAndUpdateStatisticsProperties(CatalogTableStatistics statistics, Map<String, String> parameters) {
+		boolean needUpdateStatistics;
+		String oldRowCount = parameters.getOrDefault(StatsSetupConst.ROW_COUNT, HiveStatsUtil.DEFAULT_STATS_ZERO_CONST);
+		String oldTotalSize = parameters.getOrDefault(StatsSetupConst.TOTAL_SIZE, HiveStatsUtil.DEFAULT_STATS_ZERO_CONST);
+		String oldNumFiles = parameters.getOrDefault(StatsSetupConst.NUM_FILES, HiveStatsUtil.DEFAULT_STATS_ZERO_CONST);
+		String oldRawDataSize = parameters.getOrDefault(StatsSetupConst.RAW_DATA_SIZE, HiveStatsUtil.DEFAULT_STATS_ZERO_CONST);
+		needUpdateStatistics = statistics.getRowCount() != Long.parseLong(oldRowCount) || statistics.getTotalSize() != Long.parseLong(oldTotalSize)
+			|| statistics.getFileCount() != Integer.parseInt(oldNumFiles) || statistics.getRawDataSize() != Long.parseLong(oldRawDataSize);
+		if (needUpdateStatistics) {
+			parameters.put(StatsSetupConst.ROW_COUNT, String.valueOf(statistics.getRowCount()));
+			parameters.put(StatsSetupConst.TOTAL_SIZE, String.valueOf(statistics.getTotalSize()));
+			parameters.put(StatsSetupConst.NUM_FILES, String.valueOf(statistics.getFileCount()));
+			parameters.put(StatsSetupConst.RAW_DATA_SIZE, String.valueOf(statistics.getRawDataSize()));
+		}
+		return needUpdateStatistics;
+	}
+
+	private static CatalogTableStatistics createCatalogTableStatistics(Map<String, String> parameters) {
+		long rowRount = Long.parseLong(parameters.getOrDefault(StatsSetupConst.ROW_COUNT, HiveStatsUtil.DEFAULT_STATS_ZERO_CONST));
+		long totalSize = Long.parseLong(parameters.getOrDefault(StatsSetupConst.TOTAL_SIZE, HiveStatsUtil.DEFAULT_STATS_ZERO_CONST));
+		int numFiles = Integer.parseInt(parameters.getOrDefault(StatsSetupConst.NUM_FILES, HiveStatsUtil.DEFAULT_STATS_ZERO_CONST));
+		long rawDataSize = Long.parseLong(parameters.getOrDefault(StatsSetupConst.RAW_DATA_SIZE, HiveStatsUtil.DEFAULT_STATS_ZERO_CONST));
+		return new CatalogTableStatistics(rowRount, numFiles, totalSize, rawDataSize);
+	}
+
 	@Override
 	public void alterPartitionStatistics(ObjectPath tablePath, CatalogPartitionSpec partitionSpec, CatalogTableStatistics partitionStatistics, boolean ignoreIfNotExists) throws PartitionNotExistException, CatalogException {
-
+		try {
+			Partition hivePartition = getHivePartition(tablePath, partitionSpec);
+			// Set table stats
+			if (compareAndUpdateStatisticsProperties(partitionStatistics, hivePartition.getParameters())) {
+				client.alter_partition(tablePath.getDatabaseName(), tablePath.getObjectName(), hivePartition);
+			}
+		} catch (TableNotExistException | PartitionSpecInvalidException e) {
+			throw new PartitionNotExistException(getName(), tablePath, partitionSpec, e);
+		} catch (TException e) {
+			throw new CatalogException(String.format("Failed to alter table stats of table %s 's partition %s", tablePath.getFullName(), String.valueOf(partitionSpec)), e);
+		}
 	}
 
 	@Override
@@ -1124,8 +1186,14 @@ public class HiveCatalog extends AbstractCatalog {
 	}
 
 	@Override
-	public CatalogTableStatistics getTableStatistics(ObjectPath tablePath) throws TableNotExistException, CatalogException {
-		throw new UnsupportedOperationException();
+	public CatalogTableStatistics getTableStatistics(ObjectPath tablePath) throws TableNotExistException,
+			CatalogException {
+		Table hiveTable = getHiveTable(tablePath);
+		if (!isTablePartitioned(hiveTable)) {
+			return createCatalogTableStatistics(hiveTable.getParameters());
+		} else {
+			return CatalogTableStatistics.UNKNOWN;
+		}
 	}
 
 	@Override
@@ -1148,7 +1216,15 @@ public class HiveCatalog extends AbstractCatalog {
 
 	@Override
 	public CatalogTableStatistics getPartitionStatistics(ObjectPath tablePath, CatalogPartitionSpec partitionSpec) throws PartitionNotExistException, CatalogException {
-		throw new UnsupportedOperationException();
+		try {
+			Partition partition = getHivePartition(tablePath, partitionSpec);
+			return createCatalogTableStatistics(partition.getParameters());
+		} catch (TableNotExistException | PartitionSpecInvalidException e) {
+			throw new PartitionNotExistException(getName(), tablePath, partitionSpec, e);
+		} catch (TException e) {
+			throw new CatalogException(String.format("Failed to get partition stats of table %s 's partition %s",
+													tablePath.getFullName(), String.valueOf(partitionSpec)), e);
+		}
 	}
 
 	@Override

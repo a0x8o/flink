@@ -19,7 +19,6 @@
 package org.apache.flink.table.plan.rules.logical
 
 import org.apache.flink.api.scala._
-import org.apache.flink.table.api.TableException
 import org.apache.flink.table.calcite.CalciteConfig
 import org.apache.flink.table.plan.optimize.program.{BatchOptimizeContext, FlinkChainedProgram,
   FlinkHepRuleSetProgramBuilder, HEP_RULES_EXECUTION_TYPE}
@@ -54,11 +53,6 @@ class ReplaceIntersectWithSemiJoinRuleTest extends TableTestBase {
 
     util.addTableSource[(Int, Long, String)]("T1", 'a, 'b, 'c)
     util.addTableSource[(Int, Long, String)]("T2", 'd, 'e, 'f)
-  }
-
-  @Test
-  def testIntersectAll(): Unit = {
-    util.verifyPlanNotExpected("SELECT c FROM T1 INTERSECT ALL SELECT f FROM T2", "joinType=[semi]")
   }
 
   @Test
