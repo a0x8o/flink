@@ -232,8 +232,7 @@ public class FailoverRegion {
 				for (ExecutionVertex ev : connectedExecutionVertexes) {
 					try {
 						ev.scheduleForExecution(
-							executionGraph.getSlotProvider(),
-							executionGraph.isQueuedSchedulingAllowed(),
+							executionGraph.getSlotProviderStrategy(),
 							LocationPreferenceConstraint.ANY,
 							previousAllocationsInRegion); // some inputs not belonging to the failover region might have failed concurrently
 					}

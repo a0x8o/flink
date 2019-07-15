@@ -23,18 +23,18 @@ import org.apache.flink.table.api.scala._
 import org.apache.flink.table.api.{DataTypes, Table, ValidationException}
 import org.apache.flink.table.expressions.utils.{Func1, Func18, FuncWithOpen, RichFunc2}
 import org.apache.flink.table.runtime.utils.JavaUserDefinedTableFunctions.JavaTableFunc0
-import org.apache.flink.table.runtime.utils.{BatchScalaTableEnvUtil, BatchTestBase, CollectionBatchExecTable, UserDefinedFunctionTestUtils}
+import org.apache.flink.table.runtime.utils.{BatchTableEnvUtil, BatchTestBase, CollectionBatchExecTable, UserDefinedFunctionTestUtils}
 import org.apache.flink.table.util.DateTimeTestUtil._
 import org.apache.flink.table.util._
 import org.apache.flink.test.util.TestBaseUtils
 
 import org.junit.{Assert, Ignore, Test}
 
+import java.sql.{Date, Timestamp}
+
 import scala.collection.JavaConverters._
 import scala.collection.mutable
 
-// TODO Enable after TypedFlinkTableFunction take fieldNames into consideration
-@Ignore
 class CorrelateITCase extends BatchTestBase {
 
   @Test
@@ -200,12 +200,11 @@ class CorrelateITCase extends BatchTestBase {
 
     val result = in
         .where('a === 1)
-        .select(UTCDate("1990-10-14") as 'x,
+        .select(Date.valueOf("1990-10-14") as 'x,
                 1000L as 'y,
-                UTCTimestamp("1990-10-14 12:10:10") as 'z)
+                Timestamp.valueOf("1990-10-14 12:10:10") as 'z)
         .joinLateral(func0('x, 'y, 'z) as 's)
         .select('s)
-
 
     val results = executeQuery(result)
     val expected = "1000\n" + "655906210000\n" + "7591\n"
@@ -235,7 +234,7 @@ class CorrelateITCase extends BatchTestBase {
   @Test
   def testUserDefinedTableFunctionWithParameter(): Unit = {
     val richTableFunc1 = new RichTableFunc1
-    tEnv.registerFunction("RichTableFunc1", richTableFunc1)
+    registerFunction("RichTableFunc1", richTableFunc1)
     UserDefinedFunctionTestUtils.setJobParameters(env, Map("word_separator" -> "#"))
 
     val result = testData
@@ -250,9 +249,9 @@ class CorrelateITCase extends BatchTestBase {
   @Test
   def testUserDefinedTableFunctionWithScalarFunctionWithParameters(): Unit = {
     val richTableFunc1 = new RichTableFunc1
-    tEnv.registerFunction("RichTableFunc1", richTableFunc1)
+    registerFunction("RichTableFunc1", richTableFunc1)
     val richFunc2 = new RichFunc2
-    tEnv.registerFunction("RichFunc2", richFunc2)
+    registerFunction("RichFunc2", richFunc2)
     UserDefinedFunctionTestUtils.setJobParameters(
       env,
       Map("word_separator" -> "#", "string.value" -> "test"))
@@ -290,10 +289,12 @@ class CorrelateITCase extends BatchTestBase {
     TestBaseUtils.compareResultAsText(results.asJava, expected)
   }
 
+  // TODO
+  @Ignore("Add a rule to translate a Correlate without correlateSets to Join!")
   @Test
   def testTableFunctionWithVariableArguments(): Unit = {
     val varArgsFunc0 = new VarArgsFunc0
-    tEnv.registerFunction("VarArgsFunc0", varArgsFunc0)
+    registerFunction("VarArgsFunc0", varArgsFunc0)
 
     val result = testData
       .select('c)
@@ -350,21 +351,6 @@ class CorrelateITCase extends BatchTestBase {
     TestBaseUtils.compareResultAsText(results.asJava, expected)
   }
 
-//  @Test
-//  def testCorrelateAfterConcatAggWithConstantParam(): Unit = {
-//    val in = testData.as('a, 'b, 'c)
-//    val in2 = testData.as('a, 'b, 'c)
-//    val func0 = new TableFunc0
-//    val left = in.select('c.concat_agg("#") as 'd)
-//    val result = in2.join(left).as('a, 'b, 'c, 'd)
-//      .joinLateral(func0('c) as ('name, 'age))
-//      .select('a, 'c, 'name, 'age)
-//
-//    val results = executeQuery(result)
-//    val expected = "1,Jack#22,Jack,22\n2,John#19,John,19\n3,Anna#44,Anna,44"
-//    TestBaseUtils.compareResultAsText(results.asJava, expected)
-//  }
-
   @Test
   def testTableFunctionCollectorOpenClose(): Unit = {
     val t = testData.as('a, 'b, 'c)
@@ -397,6 +383,6 @@ class CorrelateITCase extends BatchTestBase {
     data.+=((2, 2L, "John#19"))
     data.+=((3, 2L, "Anna#44"))
     data.+=((4, 3L, "nosharp"))
-    BatchScalaTableEnvUtil.fromCollection(tEnv, data, "a, b, c")
+    BatchTableEnvUtil.fromCollection(tEnv, data, "a, b, c")
   }
 }

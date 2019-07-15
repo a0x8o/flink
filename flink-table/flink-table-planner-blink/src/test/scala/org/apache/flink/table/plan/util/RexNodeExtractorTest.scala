@@ -18,19 +18,18 @@
 
 package org.apache.flink.table.plan.util
 
-import org.apache.flink.table.api.Types
+import org.apache.flink.table.api.{DataTypes, Types}
 import org.apache.flink.table.catalog.FunctionCatalog
+import org.apache.flink.table.expressions._
 import org.apache.flink.table.expressions.utils.ApiExpressionUtils.{unresolvedCall, unresolvedRef, valueLiteral}
 import org.apache.flink.table.expressions.utils.Func1
-import org.apache.flink.table.expressions.{EqualTo, Expression, ExpressionBridge, ExpressionParser, GreaterThan, Literal, PlannerExpression, PlannerExpressionConverter, Sum, UnresolvedFieldReference}
 import org.apache.flink.table.functions.AggregateFunctionDefinition
 import org.apache.flink.table.functions.BuiltInFunctionDefinitions.{EQUALS, GREATER_THAN, LESS_THAN, LESS_THAN_OR_EQUAL}
 import org.apache.flink.table.functions.sql.FlinkSqlOperatorTable
 import org.apache.flink.table.functions.utils.ScalarSqlFunction
 import org.apache.flink.table.plan.util.InputTypeBuilder.inputOf
-import org.apache.flink.table.util.IntSumAggFunction
+import org.apache.flink.table.util.{DateTimeTestUtil, IntSumAggFunction}
 
-import org.apache.calcite.avatica.util.DateTimeUtils
 import org.apache.calcite.rel.`type`.RelDataType
 import org.apache.calcite.rex.{RexBuilder, RexNode}
 import org.apache.calcite.sql.SqlPostfixOperator
@@ -39,12 +38,14 @@ import org.apache.calcite.sql.`type`.SqlTypeName.{BIGINT, INTEGER, VARCHAR}
 import org.apache.calcite.sql.fun.{SqlStdOperatorTable, SqlTrimFunction}
 import org.apache.calcite.util.{DateString, TimeString, TimestampString}
 import org.hamcrest.CoreMatchers.is
-import org.junit.Assert.{assertArrayEquals, assertEquals, assertThat}
+import org.junit.Assert.{assertArrayEquals, assertEquals, assertThat, assertTrue}
 import org.junit.Test
 
 import java.math.BigDecimal
-import java.sql.{Date, Time, Timestamp}
+import java.sql.Timestamp
 import java.util.{List => JList}
+import java.sql.{Date, Time, Timestamp}
+import java.util.{TimeZone, List => JList}
 
 import scala.collection.JavaConverters._
 
@@ -225,7 +226,7 @@ class RexNodeExtractorTest extends RexNodeTestBase {
     val expected: Array[Expression] = Array(firstExp, secondExp)
 
     val (convertedExpressions, unconvertedRexNodes) =
-      RexNodeExtractor.extractConjunctiveConditions(
+      extractConjunctiveConditions(
         expr,
         -1,
         allFieldNames,
@@ -248,7 +249,7 @@ class RexNodeExtractorTest extends RexNodeTestBase {
 
     val relBuilder: RexBuilder = new RexBuilder(typeFactory)
     val (convertedExpressions, unconvertedRexNodes) =
-      RexNodeExtractor.extractConjunctiveConditions(
+      extractConjunctiveConditions(
         a,
         -1,
         allFieldNames,
@@ -297,7 +298,7 @@ class RexNodeExtractorTest extends RexNodeTestBase {
 
     val relBuilder: RexBuilder = new RexBuilder(typeFactory)
     val (convertedExpressions, unconvertedRexNodes) =
-      RexNodeExtractor.extractConjunctiveConditions(
+      extractConjunctiveConditions(
         complexNode,
         -1,
         allFieldNames,
@@ -337,7 +338,7 @@ class RexNodeExtractorTest extends RexNodeTestBase {
 
     val relBuilder: RexBuilder = new RexBuilder(typeFactory)
     val (convertedExpressions, unconvertedRexNodes) =
-      RexNodeExtractor.extractConjunctiveConditions(
+      extractConjunctiveConditions(
         and,
         -1,
         allFieldNames,
@@ -382,7 +383,7 @@ class RexNodeExtractorTest extends RexNodeTestBase {
 
     val relBuilder: RexBuilder = new RexBuilder(typeFactory)
     val (convertedExpressions, unconvertedRexNodes) =
-      RexNodeExtractor.extractConjunctiveConditions(
+      extractConjunctiveConditions(
         and,
         -1,
         allFieldNames,
@@ -425,17 +426,16 @@ class RexNodeExtractorTest extends RexNodeTestBase {
     val and = rexBuilder.makeCall(SqlStdOperatorTable.AND, condition)
 
     val relBuilder: RexBuilder = new RexBuilder(typeFactory)
-    val (converted, _) = RexNodeExtractor.extractConjunctiveConditions(
+    val (converted, _) = extractConjunctiveConditions(
       and,
       -1,
       fieldNames,
       relBuilder,
       functionCatalog)
 
-    val timestamp = new Timestamp(DateTimeUtils.timestampStringToUnixDate("2017-09-10 14:23:01"))
-    val date = new Date(
-      DateTimeUtils.dateStringToUnixDate("2017-09-12") * DateTimeUtils.MILLIS_PER_DAY)
-    val time = new Time(DateTimeUtils.timeStringToUnixDate("14:23:01").longValue())
+    val timestamp = DateTimeTestUtil.localDateTime("2017-09-10 14:23:01")
+    val date = DateTimeTestUtil.localDate("2017-09-12")
+    val time = DateTimeTestUtil.localTime("14:23:01")
 
     {
       val expected = Array[Expression](
@@ -454,7 +454,7 @@ class RexNodeExtractorTest extends RexNodeTestBase {
       val expected = Array[Expression](
         EqualTo(
           UnresolvedFieldReference("timestamp_col"),
-          Literal(timestamp)
+          Literal(Timestamp.valueOf("2017-09-10 14:23:01"))
         ),
         EqualTo(
           UnresolvedFieldReference("date_col"),
@@ -512,7 +512,7 @@ class RexNodeExtractorTest extends RexNodeTestBase {
     val complexExpr = rexBuilder.makeCall(SqlStdOperatorTable.AND, condition)
     val relBuilder: RexBuilder = new RexBuilder(typeFactory)
     val (convertedExpressions, unconvertedRexNodes) =
-      RexNodeExtractor.extractConjunctiveConditions(
+      extractConjunctiveConditions(
         complexExpr,
         -1,
         allFieldNames,
@@ -566,7 +566,7 @@ class RexNodeExtractorTest extends RexNodeTestBase {
     val complexExpr = rexBuilder.makeCall(SqlStdOperatorTable.AND, condition1, condition2)
 
     val relBuilder: RexBuilder = new RexBuilder(typeFactory)
-    val (convertedExpressions, unconvertedRexNodes) = RexNodeExtractor.extractConjunctiveConditions(
+    val (convertedExpressions, unconvertedRexNodes) = extractConjunctiveConditions(
       complexExpr,
       -1,
       allFieldNames,
@@ -624,7 +624,7 @@ class RexNodeExtractorTest extends RexNodeTestBase {
 
     val relBuilder: RexBuilder = new RexBuilder(typeFactory)
     val (convertedExpressions, unconvertedRexNodes) =
-      RexNodeExtractor.extractConjunctiveConditions(
+      extractConjunctiveConditions(
         conditionExpr,
         -1,
         allFieldNames,
@@ -680,7 +680,7 @@ class RexNodeExtractorTest extends RexNodeTestBase {
 
     val relBuilder: RexBuilder = new RexBuilder(typeFactory)
     val (convertedExpressions, unconvertedRexNodes) =
-      RexNodeExtractor.extractConjunctiveConditions(
+      extractConjunctiveConditions(
         and,
         -1,
         allFieldNames,
@@ -705,7 +705,7 @@ class RexNodeExtractorTest extends RexNodeTestBase {
 
     val relBuilder: RexBuilder = new RexBuilder(typeFactory)
     val (convertedExpressions, unconvertedRexNodes) =
-      RexNodeExtractor.extractConjunctiveConditions(
+      extractConjunctiveConditions(
         condition,
         -1,
         allFieldNames,
@@ -716,6 +716,129 @@ class RexNodeExtractorTest extends RexNodeTestBase {
     assertEquals("greaterThan(myUdf(amount), 100)",
       convertedExpressions(0).toString)
     assertEquals(0, unconvertedRexNodes.length)
+  }
+
+  @Test
+  def testExtractPartitionPredicates(): Unit = {
+    // amount
+    val t0 = rexBuilder.makeInputRef(allFieldTypes.get(2), 2)
+    // 100
+    val t1 = rexBuilder.makeExactLiteral(BigDecimal.valueOf(100L))
+    val c1 = rexBuilder.makeCall(SqlStdOperatorTable.GREATER_THAN, t0, t1)
+    // name
+    val t2 = rexBuilder.makeInputRef(allFieldTypes.get(0), 0)
+    // 'test%'
+    val t3 = rexBuilder.makeLiteral("test%")
+    val c2 = rexBuilder.makeCall(SqlStdOperatorTable.LIKE, t2, t3)
+    // amount > 100 and name like 'test%'
+    val c3 = rexBuilder.makeCall(SqlStdOperatorTable.AND, c1, c2)
+
+    val (partitionPredicate1, nonPartitionPredicate1) =
+      RexNodeExtractor.extractPartitionPredicates(
+      c3,
+      -1,
+      allFieldNames.asScala.toArray,
+      rexBuilder,
+      Array("amount", "name")
+    )
+    assertEquals(c3, partitionPredicate1)
+    assertTrue(nonPartitionPredicate1.isAlwaysTrue)
+
+    val (partitionPredicate2, nonPartitionPredicate2) =
+      RexNodeExtractor.extractPartitionPredicates(
+        c3,
+        -1,
+        allFieldNames.asScala.toArray,
+        rexBuilder,
+        Array("amount")
+      )
+    assertEquals(c1, partitionPredicate2)
+    assertEquals(c2, nonPartitionPredicate2)
+
+    val (partitionPredicate3, nonPartitionPredicate3) =
+      RexNodeExtractor.extractPartitionPredicates(
+        c3,
+        -1,
+        allFieldNames.asScala.toArray,
+        rexBuilder,
+        Array("id")
+      )
+    assertTrue(partitionPredicate3.isAlwaysTrue)
+    assertEquals(c3, nonPartitionPredicate3)
+
+    // amount > 100 or name like 'test%'
+    val c4 = rexBuilder.makeCall(SqlStdOperatorTable.OR, c1, c2)
+    val (partitionPredicate4, nonPartitionPredicate4) =
+      RexNodeExtractor.extractPartitionPredicates(
+        c4,
+        -1,
+        allFieldNames.asScala.toArray,
+        rexBuilder,
+        Array("amount", "name")
+      )
+    assertEquals(c4, partitionPredicate4)
+    assertTrue(nonPartitionPredicate4.isAlwaysTrue)
+
+    val (partitionPredicate5, nonPartitionPredicate5) =
+      RexNodeExtractor.extractPartitionPredicates(
+        c4,
+        -1,
+        allFieldNames.asScala.toArray,
+        rexBuilder,
+        Array("amount")
+      )
+    assertTrue(partitionPredicate5.isAlwaysTrue)
+    assertEquals(c4, nonPartitionPredicate5)
+  }
+
+  @Test
+  def testExtractPartitionPredicates_UnsupportedType(): Unit = {
+    // amount
+    val t0 = rexBuilder.makeInputRef(allFieldTypes.get(2), 2)
+    // 100
+    val t1 = rexBuilder.makeExactLiteral(BigDecimal.valueOf(100L))
+    val c1 = rexBuilder.makeCall(SqlStdOperatorTable.GREATER_THAN, t0, t1)
+    // date
+    val t2 = rexBuilder.makeInputRef(
+      typeFactory.createFieldTypeFromLogicalType(DataTypes.DATE().getLogicalType), 1)
+    // 2019-04-14
+    val t3 = rexBuilder.makeDateLiteral(DateString.fromDaysSinceEpoch(18000))
+    val c2 = rexBuilder.makeCall(SqlStdOperatorTable.EQUALS, t2, t3)
+    // amount > 100 and date = 2019-04-14
+    val c3 = rexBuilder.makeCall(SqlStdOperatorTable.AND, c1, c2)
+    val (partitionPredicate1, nonPartitionPredicate1) =
+      RexNodeExtractor.extractPartitionPredicates(
+        c3,
+        -1,
+        Array("date", "amount", "id"),
+        rexBuilder,
+        Array("date")
+      )
+    assertTrue(partitionPredicate1.isAlwaysTrue)
+    assertEquals(c3, nonPartitionPredicate1)
+
+    // date is not supported
+    val (partitionPredicate2, nonPartitionPredicate2) =
+      RexNodeExtractor.extractPartitionPredicates(
+        c3,
+        -1,
+        Array("date", "amount", "id"),
+        rexBuilder,
+        Array("date", "amount")
+      )
+    assertTrue(partitionPredicate2.isAlwaysTrue)
+    assertEquals(c3, nonPartitionPredicate2)
+
+    val (partitionPredicate3, nonPartitionPredicate3) =
+      RexNodeExtractor.extractPartitionPredicates(
+        c3,
+        -1,
+        Array("date", "amount", "id"),
+        rexBuilder,
+        Array("id", "amount")
+      )
+    assertEquals(c1, partitionPredicate3)
+    assertEquals(c2, nonPartitionPredicate3)
   }
 
   private def testExtractSinglePostfixCondition(
@@ -729,7 +852,7 @@ class RexNodeExtractorTest extends RexNodeTestBase {
     val conditionExpr = rexBuilder.makeCall(op, t0)
     val relBuilder: RexBuilder = new RexBuilder(typeFactory)
     val (convertedExpressions, unconvertedRexNodes) =
-      RexNodeExtractor.extractConjunctiveConditions(
+      extractConjunctiveConditions(
         conditionExpr,
         -1,
         allFieldNames,
@@ -764,6 +887,16 @@ class RexNodeExtractorTest extends RexNodeTestBase {
     sortedExpected.zip(sortedActual).foreach {
       case (l, r) => assertEquals(l.toString, r.toString)
     }
+  }
+
+  private def extractConjunctiveConditions(
+      expr: RexNode,
+      maxCnfNodeCount: Int,
+      inputFieldNames: JList[String],
+      rexBuilder: RexBuilder,
+      catalog: FunctionCatalog): (Array[Expression], Array[RexNode]) = {
+    RexNodeExtractor.extractConjunctiveConditions(expr, maxCnfNodeCount,
+      inputFieldNames, rexBuilder, catalog, TimeZone.getDefault)
   }
 
 }

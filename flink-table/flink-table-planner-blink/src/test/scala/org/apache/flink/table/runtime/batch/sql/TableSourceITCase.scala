@@ -20,12 +20,13 @@ package org.apache.flink.table.runtime.batch.sql
 
 import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.api.java.typeutils.RowTypeInfo
-import org.apache.flink.table.api.{DataTypes, TableConfigOptions, TableSchema, Types}
+import org.apache.flink.table.api.{DataTypes, TableSchema, Types}
 import org.apache.flink.table.runtime.utils.BatchTestBase.row
 import org.apache.flink.table.runtime.utils.{BatchTestBase, TestData}
 import org.apache.flink.table.types.TypeInfoDataTypeConverter
-import org.apache.flink.table.util.{TestFilterableTableSource, TestNestedProjectableTableSource, TestProjectableTableSource, TestTableSources}
+import org.apache.flink.table.util.{TestFilterableTableSource, TestNestedProjectableTableSource, TestPartitionableTableSource, TestProjectableTableSource, TestTableSources}
 import org.apache.flink.types.Row
+
 import org.junit.{Before, Ignore, Test}
 
 import java.lang.{Boolean => JBool, Integer => JInt, Long => JLong}
@@ -34,8 +35,8 @@ import java.lang.{Boolean => JBool, Integer => JInt, Long => JLong}
 class TableSourceITCase extends BatchTestBase {
 
   @Before
-  def before(): Unit = {
-    tEnv.getConfig.getConf.setInteger(TableConfigOptions.SQL_RESOURCE_DEFAULT_PARALLELISM, 3)
+  override def before(): Unit = {
+    super.before()
     env.setParallelism(1) // set sink parallelism to 1
     val tableSchema = TableSchema.builder().fields(
       Array("a", "b", "c"),
@@ -147,6 +148,15 @@ class TableSourceITCase extends BatchTestBase {
         row(6, "Record_6"),
         row(7, "Record_7"),
         row(8, "Record_8"))
+    )
+  }
+
+  @Test
+  def testTableSourceWithPartitionable(): Unit = {
+    tEnv.registerTableSource("PartitionableTable", new TestPartitionableTableSource(true))
+    checkResult(
+      "SELECT * FROM PartitionableTable WHERE part2 > 1 and id > 2 AND part1 = 'A'",
+      Seq(row(3, "John", "A", 2), row(4, "nosharp", "A", 2))
     )
   }
 

@@ -19,7 +19,7 @@
 package org.apache.flink.table.plan.common
 
 import org.apache.flink.api.common.typeinfo.TypeInformation
-import org.apache.flink.table.api.{PlannerConfigOptions, Types}
+import org.apache.flink.table.api.{OptimizerConfigOptions, Types}
 import org.apache.flink.table.plan.stats.{ColumnStats, FlinkStatistic, TableStats}
 import org.apache.flink.table.util.{TableTestBase, TableTestUtil}
 
@@ -67,8 +67,8 @@ abstract class JoinReorderTestBase extends TableTestBase {
         "b5" -> new ColumnStats(200L, 0L, 8.0, 8, null, null)
       ))).build())
 
-    util.getTableEnv.getConfig.getConf.setBoolean(
-      PlannerConfigOptions.SQL_OPTIMIZER_JOIN_REORDER_ENABLED, true)
+    util.getTableEnv.getConfig.getConfiguration.setBoolean(
+      OptimizerConfigOptions.SQL_OPTIMIZER_JOIN_REORDER_ENABLED, true)
   }
 
   @Test

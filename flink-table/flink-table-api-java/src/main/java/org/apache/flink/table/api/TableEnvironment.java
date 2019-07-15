@@ -344,7 +344,7 @@ public interface TableEnvironment {
 
 	/**
 	 * Evaluates a SQL statement such as INSERT, UPDATE or DELETE; or a DDL statement;
-	 * NOTE: Currently only SQL INSERT statements are supported.
+	 * NOTE: Currently only SQL INSERT statements and CREATE TABLE statements are supported.
 	 *
 	 * <p>All tables referenced by the query must be registered in the TableEnvironment.
 	 * A {@link Table} is automatically registered when its {@link Table#toString()} method is
@@ -361,6 +361,54 @@ public interface TableEnvironment {
 	 *   tEnv.sqlUpdate(s"INSERT INTO sinkTable SELECT * FROM tableName");
 	 * }
 	 * </pre>
+	 *
+	 * <p>A DDL statement can also be executed to create a table:
+	 * For example, the below DDL statement would create a CSV table named `tbl1`
+	 * into the current catalog:
+	 * <blockquote><pre>
+	 *    create table tbl1(
+	 *      a int,
+	 *      b bigint,
+	 *      c varchar
+	 *    ) with (
+	 *      connector.type = 'filesystem',
+	 *      format.type = 'csv',
+	 *      connector.path = 'xxx'
+	 *    )
+	 * </pre></blockquote>
+	 *
+	 * <p>SQL queries can directly execute as follows:
+	 *
+	 * <blockquote><pre>
+	 *    String sinkDDL = "create table sinkTable(
+	 *                        a int,
+	 *                        b varchar
+	 *                      ) with (
+	 *                        connector.type = 'filesystem',
+	 *                        format.type = 'csv',
+	 *                        connector.path = 'xxx'
+	 *                      )";
+	 *
+	 *    String sourceDDL ="create table sourceTable(
+	 *                        a int,
+	 *                        b varchar
+	 *                      ) with (
+	 *                        connector.type = 'kafka',
+	 *                        `update-mode` = 'append',
+	 *                        connector.topic = 'xxx',
+	 *                        connector.properties.0.key = 'k0',
+	 *                        connector.properties.0.value = 'v0',
+	 *                        ...
+	 *                      )";
+	 *
+	 *    String query = "INSERT INTO sinkTable SELECT * FROM sourceTable";
+	 *
+	 *    tEnv.sqlUpdate(sourceDDL);
+	 *    tEnv.sqlUpdate(sinkDDL);
+	 *    tEnv.sqlUpdate(query);
+	 *    tEnv.execute("MyJob");
+	 * </pre></blockquote>
+	 * This code snippet creates a job to read data from Kafka source into a CSV sink.
 	 *
 	 * @param stmt The SQL statement to evaluate.
 	 */

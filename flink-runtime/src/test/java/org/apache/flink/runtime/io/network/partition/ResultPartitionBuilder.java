@@ -38,6 +38,8 @@ public class ResultPartitionBuilder {
 
 	private ResultPartitionType partitionType = ResultPartitionType.PIPELINED;
 
+	private BoundedBlockingSubpartitionType blockingSubpartitionType = BoundedBlockingSubpartitionType.AUTO;
+
 	private int numberOfSubpartitions = 1;
 
 	private int numTargetKeyGroups = 1;
@@ -51,6 +53,8 @@ public class ResultPartitionBuilder {
 	private int networkBuffersPerChannel = 1;
 
 	private int floatingNetworkBuffersPerGate = 1;
+
+	private int networkBufferSize = 1;
 
 	@SuppressWarnings("OptionalUsedAsFieldOrParameterType")
 	private Optional<FunctionWithException<BufferPoolOwner, BufferPool, IOException>> bufferPoolFactory = Optional.empty();
@@ -90,6 +94,7 @@ public class ResultPartitionBuilder {
 	public ResultPartitionBuilder setupBufferPoolFactoryFromNettyShuffleEnvironment(NettyShuffleEnvironment environment) {
 		return setNetworkBuffersPerChannel(environment.getConfiguration().networkBuffersPerChannel())
 			.setFloatingNetworkBuffersPerGate(environment.getConfiguration().floatingNetworkBuffersPerGate())
+			.setNetworkBufferSize(environment.getConfiguration().networkBufferSize())
 			.setNetworkBufferPool(environment.getNetworkBufferPool());
 	}
 
@@ -108,6 +113,11 @@ public class ResultPartitionBuilder {
 		return this;
 	}
 
+	public ResultPartitionBuilder setNetworkBufferSize(int networkBufferSize) {
+		this.networkBufferSize = networkBufferSize;
+		return this;
+	}
+
 	public ResultPartitionBuilder setBufferPoolFactory(
 			FunctionWithException<BufferPoolOwner, BufferPool, IOException> bufferPoolFactory) {
 		this.bufferPoolFactory = Optional.of(bufferPoolFactory);
@@ -119,13 +129,20 @@ public class ResultPartitionBuilder {
 		return this;
 	}
 
+	public ResultPartitionBuilder setBoundedBlockingSubpartitionType(BoundedBlockingSubpartitionType blockingSubpartitionType) {
+		this.blockingSubpartitionType = blockingSubpartitionType;
+		return this;
+	}
+
 	public ResultPartition build() {
 		ResultPartitionFactory resultPartitionFactory = new ResultPartitionFactory(
 			partitionManager,
 			channelManager,
 			networkBufferPool,
+			blockingSubpartitionType,
 			networkBuffersPerChannel,
-			floatingNetworkBuffersPerGate);
+			floatingNetworkBuffersPerGate,
+			networkBufferSize);
 
 		FunctionWithException<BufferPoolOwner, BufferPool, IOException> factory = bufferPoolFactory.orElseGet(() ->
 			resultPartitionFactory.createBufferPoolFactory(numberOfSubpartitions, partitionType));

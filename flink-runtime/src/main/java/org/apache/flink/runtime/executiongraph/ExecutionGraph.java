@@ -237,8 +237,8 @@ public class ExecutionGraph implements AccessExecutionGraph {
 	/** Strategy to use for restarts. */
 	private final RestartStrategy restartStrategy;
 
-	/** The slot provider to use for allocating slots for tasks as they are needed. */
-	private final SlotProvider slotProvider;
+	/** The slot provider strategy to use for allocating slots for tasks as they are needed. */
+	private final SlotProviderStrategy slotProviderStrategy;
 
 	/** The classloader for the user code. Needed for calls into user code classes. */
 	private final ClassLoader userClassLoader;
@@ -262,12 +262,12 @@ public class ExecutionGraph implements AccessExecutionGraph {
 
 	/** Flag to indicate whether the scheduler may queue tasks for execution, or needs to be able
 	 * to deploy them immediately. */
-	private boolean allowQueuedScheduling = false;
+	private final boolean allowQueuedScheduling;
 
 	/** The mode of scheduling. Decides how to select the initial set of tasks to be deployed.
 	 * May indicate to deploy all sources, or to deploy everything, or to deploy via backtracking
 	 * from results than need to be materialized. */
-	private ScheduleMode scheduleMode = ScheduleMode.LAZY_FROM_SOURCES;
+	private final ScheduleMode scheduleMode;
 
 	/** The maximum number of prior execution attempts kept in history. */
 	private final int maxPriorAttemptsHistoryLength;
@@ -427,7 +427,9 @@ public class ExecutionGraph implements AccessExecutionGraph {
 			new PartitionTrackerImpl(
 				jobInformation.getJobId(),
 				NettyShuffleMaster.INSTANCE,
-				ignored -> Optional.empty()));
+				ignored -> Optional.empty()),
+			ScheduleMode.LAZY_FROM_SOURCES,
+			false);
 	}
 
 	public ExecutionGraph(
@@ -445,7 +447,9 @@ public class ExecutionGraph implements AccessExecutionGraph {
 			PartitionReleaseStrategy.Factory partitionReleaseStrategyFactory,
 			ShuffleMaster<?> shuffleMaster,
 			boolean forcePartitionReleaseOnConsumption,
-			PartitionTracker partitionTracker) throws IOException {
+			PartitionTracker partitionTracker,
+			ScheduleMode scheduleMode,
+			boolean allowQueuedScheduling) throws IOException {
 
 		checkNotNull(futureExecutor);
 
@@ -453,12 +457,20 @@ public class ExecutionGraph implements AccessExecutionGraph {
 
 		this.blobWriter = Preconditions.checkNotNull(blobWriter);
 
+		this.scheduleMode = checkNotNull(scheduleMode);
+
+		this.allowQueuedScheduling = allowQueuedScheduling;
+
 		this.jobInformationOrBlobKey = BlobWriter.serializeAndTryOffload(jobInformation, jobInformation.getJobId(), blobWriter);
 
 		this.futureExecutor = Preconditions.checkNotNull(futureExecutor);
 		this.ioExecutor = Preconditions.checkNotNull(ioExecutor);
 
-		this.slotProvider = Preconditions.checkNotNull(slotProvider, "scheduler");
+		this.slotProviderStrategy = SlotProviderStrategy.from(
+			scheduleMode,
+			slotProvider,
+			allocationTimeout,
+			allowQueuedScheduling);
 		this.userClassLoader = Preconditions.checkNotNull(userClassLoader, "userClassLoader");
 
 		this.tasks = new ConcurrentHashMap<>(16);
@@ -522,14 +534,6 @@ public class ExecutionGraph implements AccessExecutionGraph {
 
 	public boolean isQueuedSchedulingAllowed() {
 		return this.allowQueuedScheduling;
-	}
-
-	public void setQueuedSchedulingAllowed(boolean allowed) {
-		this.allowQueuedScheduling = allowed;
-	}
-
-	public void setScheduleMode(ScheduleMode scheduleMode) {
-		this.scheduleMode = scheduleMode;
 	}
 
 	public ScheduleMode getScheduleMode() {
@@ -671,8 +675,8 @@ public class ExecutionGraph implements AccessExecutionGraph {
 		return jsonPlan;
 	}
 
-	public SlotProvider getSlotProvider() {
-		return slotProvider;
+	public SlotProviderStrategy getSlotProviderStrategy() {
+		return slotProviderStrategy;
 	}
 
 	public Either<SerializedValue<JobInformation>, PermanentBlobKey> getJobInformationOrBlobKey() {
@@ -940,21 +944,10 @@ public class ExecutionGraph implements AccessExecutionGraph {
 
 		if (transitionState(JobStatus.CREATED, JobStatus.RUNNING)) {
 
-			final CompletableFuture<Void> newSchedulingFuture;
-
-			switch (scheduleMode) {
-
-				case LAZY_FROM_SOURCES:
-					newSchedulingFuture = scheduleLazy();
-					break;
-
-				case EAGER:
-					newSchedulingFuture = scheduleEager();
-					break;
-
-				default:
-					throw new JobException("Schedule mode is invalid.");
-			}
+			final CompletableFuture<Void> newSchedulingFuture = SchedulingUtils.schedule(
+				scheduleMode,
+				getAllExecutionVertices(),
+				this);
 
 			if (state == JobStatus.RUNNING && currentGlobalModVersion == globalModVersion) {
 				schedulingFuture = newSchedulingFuture;
@@ -976,18 +969,6 @@ public class ExecutionGraph implements AccessExecutionGraph {
 		else {
 			throw new IllegalStateException("Job may only be scheduled from state " + JobStatus.CREATED);
 		}
-	}
-
-	private CompletableFuture<Void> scheduleLazy() {
-		return SchedulingUtils.scheduleLazy(getAllExecutionVertices(), this);
-	}
-
-	/**
-	 * @return Future which is completed once the {@link ExecutionGraph} has been scheduled.
-	 * The future can also be completed exceptionally if an error happened.
-	 */
-	private CompletableFuture<Void> scheduleEager() {
-		return SchedulingUtils.scheduleEager(getAllExecutionVertices(), this);
 	}
 
 	public void cancel() {

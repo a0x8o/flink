@@ -24,7 +24,7 @@ import org.apache.flink.table.expressions.utils.FuncWithOpen
 import org.apache.flink.table.runtime.batch.sql.join.JoinITCaseHelper.disableOtherJoinOpForJoin
 import org.apache.flink.table.runtime.batch.sql.join.JoinType
 import org.apache.flink.table.runtime.batch.sql.join.JoinType.JoinType
-import org.apache.flink.table.runtime.utils.{BatchScalaTableEnvUtil, BatchTestBase, CollectionBatchExecTable}
+import org.apache.flink.table.runtime.utils.{BatchTableEnvUtil, BatchTestBase, CollectionBatchExecTable}
 import org.apache.flink.table.util.TableFunc2
 import org.apache.flink.test.util.TestBaseUtils
 
@@ -37,7 +37,8 @@ class JoinITCase extends BatchTestBase {
   val expectedJoinType: JoinType = JoinType.SortMergeJoin
 
   @Before
-  def before(): Unit = {
+  override def before(): Unit = {
+    super.before()
     disableOtherJoinOpForJoin(tEnv, expectedJoinType)
   }
 
@@ -53,8 +54,6 @@ class JoinITCase extends BatchTestBase {
     TestBaseUtils.compareResultAsText(results.asJava, expected)
   }
 
-  // TODO
-  @Ignore("Type question, should be fixed later.")
   @Test
   def testJoin1(): Unit = {
     val ds1 = CollectionBatchExecTable.getSmall3TupleDataSet(tEnv, "a, b, c")
@@ -374,7 +373,7 @@ class JoinITCase extends BatchTestBase {
   def testUDTFJoinOnTuples(): Unit = {
     val data = List("hi#world", "how#are#you")
 
-    val ds1 = BatchScalaTableEnvUtil.fromCollection(tEnv, data, "a")
+    val ds1 = BatchTableEnvUtil.fromCollection(tEnv, data, "a")
     val func2 = new TableFunc2
 
     val joinDs = ds1.joinLateral(func2('a) as ('name, 'len))

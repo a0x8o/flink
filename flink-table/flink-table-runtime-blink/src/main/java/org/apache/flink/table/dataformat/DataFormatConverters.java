@@ -53,6 +53,10 @@ import java.math.BigDecimal;
 import java.sql.Date;
 import java.sql.Time;
 import java.sql.Timestamp;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -103,14 +107,20 @@ public class DataFormatConverters {
 		t2C.put(DataTypes.TINYINT().bridgedTo(byte.class), ByteConverter.INSTANCE);
 
 		t2C.put(DataTypes.DATE().bridgedTo(Date.class), DateConverter.INSTANCE);
+		t2C.put(DataTypes.DATE().bridgedTo(LocalDate.class), LocalDateConverter.INSTANCE);
 		t2C.put(DataTypes.DATE().bridgedTo(Integer.class), IntConverter.INSTANCE);
 		t2C.put(DataTypes.DATE().bridgedTo(int.class), IntConverter.INSTANCE);
 
 		t2C.put(DataTypes.TIME().bridgedTo(Time.class), TimeConverter.INSTANCE);
+		t2C.put(DataTypes.TIME().bridgedTo(LocalTime.class), LocalTimeConverter.INSTANCE);
 		t2C.put(DataTypes.TIME().bridgedTo(Integer.class), IntConverter.INSTANCE);
 		t2C.put(DataTypes.TIME().bridgedTo(int.class), IntConverter.INSTANCE);
 
 		t2C.put(DataTypes.TIMESTAMP(3).bridgedTo(Timestamp.class), TimestampConverter.INSTANCE);
+		t2C.put(DataTypes.TIMESTAMP(3).bridgedTo(LocalDateTime.class), LocalDateTimeConverter.INSTANCE);
+
+		t2C.put(DataTypes.TIMESTAMP_WITH_LOCAL_TIME_ZONE(3).bridgedTo(Long.class), LongConverter.INSTANCE);
+		t2C.put(DataTypes.TIMESTAMP_WITH_LOCAL_TIME_ZONE(3).bridgedTo(Instant.class), InstantConverter.INSTANCE);
 
 		t2C.put(DataTypes.INTERVAL(DataTypes.MONTH()).bridgedTo(Integer.class), IntConverter.INSTANCE);
 		t2C.put(DataTypes.INTERVAL(DataTypes.MONTH()).bridgedTo(int.class), IntConverter.INSTANCE);
@@ -128,7 +138,7 @@ public class DataFormatConverters {
 	 *                   lost its specific Java format. Only DataType retains all its
 	 *                   Java format information.
 	 */
-	@SuppressWarnings("unchecked")
+	@Deprecated
 	public static DataFormatConverter getConverterForDataType(DataType originDataType) {
 		DataType dataType = originDataType.nullable();
 		DataFormatConverter converter = TYPE_TO_CONVERTER.get(dataType);
@@ -622,6 +632,114 @@ public class DataFormatConverters {
 		@Override
 		T toExternalImpl(BaseRow row, int column) {
 			return (T) toExternalImpl(row.getGeneric(column));
+		}
+	}
+
+	/**
+	 * Converter for LocalDate.
+	 */
+	public static final class LocalDateConverter extends DataFormatConverter<Integer, LocalDate> {
+
+		private static final long serialVersionUID = 1L;
+
+		public static final LocalDateConverter INSTANCE = new LocalDateConverter();
+
+		private LocalDateConverter() {}
+
+		@Override
+		Integer toInternalImpl(LocalDate value) {
+			return SqlDateTimeUtils.localDateToUnixDate(value);
+		}
+
+		@Override
+		LocalDate toExternalImpl(Integer value) {
+			return SqlDateTimeUtils.unixDateToLocalDate(value);
+		}
+
+		@Override
+		LocalDate toExternalImpl(BaseRow row, int column) {
+			return toExternalImpl(row.getInt(column));
+		}
+	}
+
+	/**
+	 * Converter for LocalTime.
+	 */
+	public static final class LocalTimeConverter extends DataFormatConverter<Integer, LocalTime> {
+
+		private static final long serialVersionUID = 1L;
+
+		public static final LocalTimeConverter INSTANCE = new LocalTimeConverter();
+
+		private LocalTimeConverter() {}
+
+		@Override
+		Integer toInternalImpl(LocalTime value) {
+			return SqlDateTimeUtils.localTimeToUnixDate(value);
+		}
+
+		@Override
+		LocalTime toExternalImpl(Integer value) {
+			return SqlDateTimeUtils.unixTimeToLocalTime(value);
+		}
+
+		@Override
+		LocalTime toExternalImpl(BaseRow row, int column) {
+			return toExternalImpl(row.getInt(column));
+		}
+	}
+
+	/**
+	 * Converter for LocalDateTime.
+	 */
+	public static final class LocalDateTimeConverter extends DataFormatConverter<Long, LocalDateTime> {
+
+		private static final long serialVersionUID = 1L;
+
+		public static final LocalDateTimeConverter INSTANCE = new LocalDateTimeConverter();
+
+		private LocalDateTimeConverter() {}
+
+		@Override
+		Long toInternalImpl(LocalDateTime value) {
+			return SqlDateTimeUtils.localDateTimeToUnixTimestamp(value);
+		}
+
+		@Override
+		LocalDateTime toExternalImpl(Long value) {
+			return SqlDateTimeUtils.unixTimestampToLocalDateTime(value);
+		}
+
+		@Override
+		LocalDateTime toExternalImpl(BaseRow row, int column) {
+			return toExternalImpl(row.getLong(column));
+		}
+	}
+
+	/**
+	 * Converter for Instant.
+	 */
+	public static final class InstantConverter extends DataFormatConverter<Long, Instant> {
+
+		private static final long serialVersionUID = 1L;
+
+		public static final InstantConverter INSTANCE = new InstantConverter();
+
+		private InstantConverter() {}
+
+		@Override
+		Long toInternalImpl(Instant value) {
+			return value.toEpochMilli();
+		}
+
+		@Override
+		Instant toExternalImpl(Long value) {
+			return Instant.ofEpochMilli(value);
+		}
+
+		@Override
+		Instant toExternalImpl(BaseRow row, int column) {
+			return toExternalImpl(row.getLong(column));
 		}
 	}
 

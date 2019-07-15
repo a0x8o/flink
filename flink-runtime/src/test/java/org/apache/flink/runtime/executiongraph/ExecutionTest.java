@@ -137,11 +137,9 @@ public class ExecutionTest extends TestLogger {
 		final LogicalSlot otherSlot = new TestingLogicalSlot();
 
 		CompletableFuture<Execution> allocationFuture = execution.allocateResourcesForExecution(
-			slotProvider,
-			false,
+			executionGraph.getSlotProviderStrategy(),
 			LocationPreferenceConstraint.ALL,
-			Collections.emptySet(),
-			TestingUtils.infiniteTime());
+			Collections.emptySet());
 
 		assertFalse(allocationFuture.isDone());
 
@@ -189,11 +187,9 @@ public class ExecutionTest extends TestLogger {
 		final Execution execution = executionJobVertex.getTaskVertices()[0].getCurrentExecutionAttempt();
 
 		CompletableFuture<Execution> allocationFuture = execution.allocateResourcesForExecution(
-			slotProvider,
-			false,
+			executionGraph.getSlotProviderStrategy(),
 			LocationPreferenceConstraint.ALL,
-			Collections.emptySet(),
-			TestingUtils.infiniteTime());
+			Collections.emptySet());
 
 		assertTrue(allocationFuture.isDone());
 
@@ -239,11 +235,9 @@ public class ExecutionTest extends TestLogger {
 		final Execution execution = executionJobVertex.getTaskVertices()[0].getCurrentExecutionAttempt();
 
 		CompletableFuture<Execution> allocationFuture = execution.allocateResourcesForExecution(
-			slotProvider,
-			false,
+			executionGraph.getSlotProviderStrategy(),
 			LocationPreferenceConstraint.ALL,
-			Collections.emptySet(),
-			TestingUtils.infiniteTime());
+			Collections.emptySet());
 
 		assertTrue(allocationFuture.isDone());
 
@@ -291,11 +285,9 @@ public class ExecutionTest extends TestLogger {
 		final Execution currentExecutionAttempt = executionJobVertex.getTaskVertices()[0].getCurrentExecutionAttempt();
 
 		final CompletableFuture<Execution> allocationFuture = currentExecutionAttempt.allocateResourcesForExecution(
-			slotProvider,
-			false,
+			executionGraph.getSlotProviderStrategy(),
 			LocationPreferenceConstraint.ALL,
-			Collections.emptySet(),
-			TestingUtils.infiniteTime());
+			Collections.emptySet());
 
 		assertThat(allocationFuture.isDone(), is(false));
 
@@ -400,7 +392,10 @@ public class ExecutionTest extends TestLogger {
 
 		ExecutionVertex executionVertex = executionJobVertex.getTaskVertices()[0];
 
-		executionVertex.scheduleForExecution(slotProvider, false, LocationPreferenceConstraint.ANY, Collections.emptySet()).get();
+		executionVertex.scheduleForExecution(
+			executionGraph.getSlotProviderStrategy(),
+			LocationPreferenceConstraint.ANY,
+			Collections.emptySet()).get();
 
 		Execution currentExecutionAttempt = executionVertex.getCurrentExecutionAttempt();
 
@@ -452,7 +447,11 @@ public class ExecutionTest extends TestLogger {
 		assertThat(execution.getTaskRestore(), is(notNullValue()));
 
 		// schedule the execution vertex and wait for its deployment
-		executionVertex.scheduleForExecution(slotProvider, false, LocationPreferenceConstraint.ANY, Collections.emptySet()).get();
+		executionVertex.scheduleForExecution(
+			executionGraph.getSlotProviderStrategy(),
+			LocationPreferenceConstraint.ANY,
+			Collections.emptySet())
+			.get();
 
 		assertThat(execution.getTaskRestore(), is(nullValue()));
 	}
@@ -513,8 +512,7 @@ public class ExecutionTest extends TestLogger {
 
 		final CompletableFuture<Void> schedulingFuture = testMainThreadUtil.execute(
 			() -> execution.scheduleForExecution(
-				slotProvider,
-				false,
+				executionGraph.getSlotProviderStrategy(),
 				LocationPreferenceConstraint.ANY,
 				Collections.emptySet()));
 
@@ -605,11 +603,9 @@ public class ExecutionTest extends TestLogger {
 		final Execution execution = executionVertex.getCurrentExecutionAttempt();
 
 		execution.allocateResourcesForExecution(
-			slotProvider,
-			false,
+			executionGraph.getSlotProviderStrategy(),
 			LocationPreferenceConstraint.ALL,
-			Collections.emptySet(),
-			TestingUtils.infiniteTime());
+			Collections.emptySet());
 
 		assertThat(partitionStartTrackingFuture.isDone(), is(true));
 		final Tuple2<ResourceID, ResultPartitionDeploymentDescriptor> startTrackingCall = partitionStartTrackingFuture.get();

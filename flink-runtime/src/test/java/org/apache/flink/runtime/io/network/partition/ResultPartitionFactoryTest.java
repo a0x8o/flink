@@ -73,9 +73,10 @@ public class ResultPartitionFactoryTest extends TestLogger {
 			new ResultPartitionManager(),
 			fileChannelManager,
 			new NetworkBufferPool(1, 64, 1),
+			BoundedBlockingSubpartitionType.AUTO,
 			1,
-			1
-		);
+			1,
+			64);
 
 		ResultPartitionType partitionType = ResultPartitionType.BLOCKING;
 		final ResultPartitionDeploymentDescriptor descriptor = new ResultPartitionDeploymentDescriptor(

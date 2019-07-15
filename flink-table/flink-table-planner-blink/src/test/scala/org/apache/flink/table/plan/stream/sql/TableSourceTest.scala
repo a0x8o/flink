@@ -27,24 +27,21 @@ import org.apache.flink.types.Row
 
 import org.junit.{Before, Test}
 
-import java.sql.{Date, Time, Timestamp}
-import java.util.TimeZone
-
 class TableSourceTest extends TableTestBase {
 
   private val util = streamTestUtil()
 
   @Before
   def setup(): Unit = {
-    TimeZone.setDefault(TimeZone.getTimeZone("UTC"))
     util.tableEnv.registerTableSource("FilterableTable", TestFilterableTableSource(false))
+    util.tableEnv.registerTableSource("PartitionableTable", new TestPartitionableTableSource(false))
   }
 
   @Test
   def testTableSourceWithLongRowTimeField(): Unit = {
     val tableSchema = new TableSchema(
       Array("id", "rowtime", "val", "name"),
-      Array(Types.INT, Types.SQL_TIMESTAMP, Types.LONG, Types.STRING))
+      Array(Types.INT, Types.LOCAL_DATE_TIME, Types.LONG, Types.STRING))
     val returnType = new RowTypeInfo(
       Array(Types.INT, Types.LONG, Types.LONG, Types.STRING)
         .asInstanceOf[Array[TypeInformation[_]]],
@@ -61,9 +58,9 @@ class TableSourceTest extends TableTestBase {
   def testTableSourceWithTimestampRowTimeField(): Unit = {
     val tableSchema = new TableSchema(
       Array("id", "rowtime", "val", "name"),
-      Array(Types.INT, Types.SQL_TIMESTAMP, Types.LONG, Types.STRING))
+      Array(Types.INT, Types.LOCAL_DATE_TIME, Types.LONG, Types.STRING))
     val returnType = new RowTypeInfo(
-      Array(Types.INT, Types.SQL_TIMESTAMP, Types.LONG, Types.STRING)
+      Array(Types.INT, Types.LOCAL_DATE_TIME, Types.LONG, Types.STRING)
         .asInstanceOf[Array[TypeInformation[_]]],
       Array("id", "rowtime", "val", "name"))
 
@@ -78,9 +75,9 @@ class TableSourceTest extends TableTestBase {
   def testRowTimeTableSourceGroupWindow(): Unit = {
     val tableSchema = new TableSchema(
       Array("id", "rowtime", "val", "name"),
-      Array(Types.INT, Types.SQL_TIMESTAMP, Types.LONG, Types.STRING))
+      Array(Types.INT, Types.LOCAL_DATE_TIME, Types.LONG, Types.STRING))
     val returnType = new RowTypeInfo(
-      Array(Types.INT, Types.SQL_TIMESTAMP, Types.LONG, Types.STRING)
+      Array(Types.INT, Types.LOCAL_DATE_TIME, Types.LONG, Types.STRING)
         .asInstanceOf[Array[TypeInformation[_]]],
       Array("id", "rowtime", "val", "name"))
 
@@ -104,7 +101,7 @@ class TableSourceTest extends TableTestBase {
   def testProcTimeTableSourceSimple(): Unit = {
     val tableSchema = new TableSchema(
       Array("id", "pTime", "val", "name"),
-      Array(Types.INT, Types.SQL_TIMESTAMP, Types.LONG, Types.STRING))
+      Array(Types.INT, Types.LOCAL_DATE_TIME, Types.LONG, Types.STRING))
     val returnType = new RowTypeInfo(
       Array(Types.INT, Types.LONG, Types.STRING).asInstanceOf[Array[TypeInformation[_]]],
       Array("id", "val", "name"))
@@ -120,7 +117,7 @@ class TableSourceTest extends TableTestBase {
   def testProjectWithRowtimeProctime(): Unit = {
     val tableSchema = new TableSchema(
       Array("id", "rtime", "val", "ptime", "name"),
-      Array(Types.INT, Types.SQL_TIMESTAMP, Types.LONG, Types.SQL_TIMESTAMP, Types.STRING))
+      Array(Types.INT, Types.LOCAL_DATE_TIME, Types.LONG, Types.LOCAL_DATE_TIME, Types.STRING))
     val returnType = new RowTypeInfo(
       Array(Types.INT, Types.STRING, Types.LONG, Types.LONG)
         .asInstanceOf[Array[TypeInformation[_]]],
@@ -137,7 +134,7 @@ class TableSourceTest extends TableTestBase {
   def testProjectWithoutRowtime(): Unit = {
     val tableSchema = new TableSchema(
       Array("id", "rtime", "val", "ptime", "name"),
-      Array(Types.INT, Types.SQL_TIMESTAMP, Types.LONG, Types.SQL_TIMESTAMP, Types.STRING))
+      Array(Types.INT, Types.LOCAL_DATE_TIME, Types.LONG, Types.LOCAL_DATE_TIME, Types.STRING))
     val returnType = new RowTypeInfo(
       Array(Types.INT, Types.STRING, Types.LONG, Types.LONG)
         .asInstanceOf[Array[TypeInformation[_]]],
@@ -153,7 +150,7 @@ class TableSourceTest extends TableTestBase {
   def testProjectWithoutProctime(): Unit = {
     val tableSchema = new TableSchema(
       Array("id", "rtime", "val", "ptime", "name"),
-      Array(Types.INT, Types.SQL_TIMESTAMP, Types.LONG, Types.SQL_TIMESTAMP, Types.STRING))
+      Array(Types.INT, Types.LOCAL_DATE_TIME, Types.LONG, Types.LOCAL_DATE_TIME, Types.STRING))
     val returnType = new RowTypeInfo(
       Array(Types.INT, Types.LONG, Types.LONG, Types.STRING)
         .asInstanceOf[Array[TypeInformation[_]]],
@@ -170,7 +167,7 @@ class TableSourceTest extends TableTestBase {
   def testProjectOnlyProctime(): Unit = {
     val tableSchema = new TableSchema(
       Array("id", "rtime", "val", "ptime", "name"),
-      Array(Types.INT, Types.SQL_TIMESTAMP, Types.LONG, Types.SQL_TIMESTAMP, Types.STRING))
+      Array(Types.INT, Types.LOCAL_DATE_TIME, Types.LONG, Types.LOCAL_DATE_TIME, Types.STRING))
     val returnType = new RowTypeInfo(
       Array(Types.INT, Types.LONG, Types.LONG, Types.STRING)
         .asInstanceOf[Array[TypeInformation[_]]],
@@ -186,7 +183,7 @@ class TableSourceTest extends TableTestBase {
   def testProjectOnlyRowtime(): Unit = {
     val tableSchema = new TableSchema(
       Array("id", "rtime", "val", "ptime", "name"),
-      Array(Types.INT, Types.SQL_TIMESTAMP, Types.LONG, Types.SQL_TIMESTAMP, Types.STRING))
+      Array(Types.INT, Types.LOCAL_DATE_TIME, Types.LONG, Types.LOCAL_DATE_TIME, Types.STRING))
     val returnType = new RowTypeInfo(
       Array(Types.INT, Types.LONG, Types.LONG, Types.STRING)
         .asInstanceOf[Array[TypeInformation[_]]],
@@ -203,7 +200,7 @@ class TableSourceTest extends TableTestBase {
   def testProjectWithMapping(): Unit = {
     val tableSchema = new TableSchema(
       Array("id", "rtime", "val", "ptime", "name"),
-      Array(Types.INT, Types.SQL_TIMESTAMP, Types.LONG, Types.SQL_TIMESTAMP, Types.STRING))
+      Array(Types.INT, Types.LOCAL_DATE_TIME, Types.LONG, Types.LOCAL_DATE_TIME, Types.STRING))
     val returnType = new RowTypeInfo(
       Array(Types.LONG, Types.INT, Types.STRING, Types.LONG)
         .asInstanceOf[Array[TypeInformation[_]]],
@@ -321,6 +318,17 @@ class TableSourceTest extends TableTestBase {
   }
 
   @Test
+  def testPartitionTableSource(): Unit = {
+    util.verifyPlan("SELECT * FROM PartitionableTable WHERE part2 > 1 and id > 2 AND part1 = 'A' ")
+  }
+
+  @Test
+  def testPartitionTableSourceWithUdf(): Unit = {
+    util.addFunction("MyUdf", Func1)
+    util.verifyPlan("SELECT * FROM PartitionableTable WHERE id > 2 AND MyUdf(part2) < 3")
+  }
+
+  @Test
   def testTimeLiteralExpressionPushDown(): Unit = {
     val rowTypeInfo = new RowTypeInfo(
       Array[TypeInformation[_]](
@@ -334,9 +342,9 @@ class TableSourceTest extends TableTestBase {
 
     val row = new Row(4)
     row.setField(0, 1)
-    row.setField(1, Date.valueOf("2017-01-23"))
-    row.setField(2, Time.valueOf("14:23:02"))
-    row.setField(3, Timestamp.valueOf("2017-01-24 12:45:01.234"))
+    row.setField(1, DateTimeTestUtil.localDate("2017-01-23"))
+    row.setField(2, DateTimeTestUtil.localTime("14:23:02"))
+    row.setField(3, DateTimeTestUtil.localDateTime("2017-01-24 12:45:01.234"))
 
     val tableSource = TestFilterableTableSource(
       isBatch = false, rowTypeInfo, Seq(row), Set("dv", "tv", "tsv"))

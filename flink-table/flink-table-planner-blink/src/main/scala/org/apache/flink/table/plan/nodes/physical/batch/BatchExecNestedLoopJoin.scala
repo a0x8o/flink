@@ -21,13 +21,15 @@ package org.apache.flink.table.plan.nodes.physical.batch
 import org.apache.flink.api.dag.Transformation
 import org.apache.flink.runtime.operators.DamBehavior
 import org.apache.flink.streaming.api.transformations.TwoInputTransformation
-import org.apache.flink.table.api.BatchTableEnvironment
+import org.apache.flink.table.api.ExecutionConfigOptions
 import org.apache.flink.table.calcite.FlinkTypeFactory
 import org.apache.flink.table.codegen.{CodeGeneratorContext, NestedLoopJoinCodeGenerator}
 import org.apache.flink.table.dataformat.BaseRow
 import org.apache.flink.table.plan.cost.{FlinkCost, FlinkCostFactory}
 import org.apache.flink.table.plan.nodes.ExpressionFormat
 import org.apache.flink.table.plan.nodes.exec.ExecNode
+import org.apache.flink.table.plan.nodes.resource.NodeResourceUtil
+import org.apache.flink.table.planner.BatchPlanner
 import org.apache.flink.table.typeutils.{BaseRowTypeInfo, BinaryRowSerializer}
 
 import org.apache.calcite.plan._
@@ -118,20 +120,20 @@ class BatchExecNestedLoopJoin(
 
   override def getDamBehavior: DamBehavior = DamBehavior.PIPELINED
 
-  override def getInputNodes: util.List[ExecNode[BatchTableEnvironment, _]] =
-    getInputs.map(_.asInstanceOf[ExecNode[BatchTableEnvironment, _]])
+  override def getInputNodes: util.List[ExecNode[BatchPlanner, _]] =
+    getInputs.map(_.asInstanceOf[ExecNode[BatchPlanner, _]])
 
   override def replaceInputNode(
       ordinalInParent: Int,
-      newInputNode: ExecNode[BatchTableEnvironment, _]): Unit = {
+      newInputNode: ExecNode[BatchPlanner, _]): Unit = {
     replaceInput(ordinalInParent, newInputNode.asInstanceOf[RelNode])
   }
 
-  override def translateToPlanInternal(
-      tableEnv: BatchTableEnvironment): Transformation[BaseRow] = {
-    val lInput = getInputNodes.get(0).translateToPlan(tableEnv)
+  override protected def translateToPlanInternal(
+      planner: BatchPlanner): Transformation[BaseRow] = {
+    val lInput = getInputNodes.get(0).translateToPlan(planner)
         .asInstanceOf[Transformation[BaseRow]]
-    val rInput = getInputNodes.get(1).translateToPlan(tableEnv)
+    val rInput = getInputNodes.get(1).translateToPlan(planner)
         .asInstanceOf[Transformation[BaseRow]]
 
     // get type
@@ -140,7 +142,7 @@ class BatchExecNestedLoopJoin(
     val outputType = FlinkTypeFactory.toLogicalRowType(getRowType)
 
     val op = new NestedLoopJoinCodeGenerator(
-      CodeGeneratorContext(tableEnv.getConfig),
+      CodeGeneratorContext(planner.getTableConfig),
       singleRowJoin,
       leftIsBuild,
       lType,
@@ -150,13 +152,23 @@ class BatchExecNestedLoopJoin(
       condition
     ).gen()
 
-    new TwoInputTransformation[BaseRow, BaseRow, BaseRow](
+    val externalBufferMemoryInMb: Int = if (singleRowJoin) {
+      0
+    } else {
+      planner.getTableConfig.getConfiguration.getInteger(
+        ExecutionConfigOptions.SQL_RESOURCE_EXTERNAL_BUFFER_MEM)
+    }
+    val resourceSpec = NodeResourceUtil.fromManagedMem(externalBufferMemoryInMb)
+
+    val ret = new TwoInputTransformation[BaseRow, BaseRow, BaseRow](
       lInput,
       rInput,
       getOperatorName,
       op,
       BaseRowTypeInfo.of(outputType),
       getResource.getParallelism)
+    ret.setResources(resourceSpec, resourceSpec)
+    ret
   }
 
   private def getOperatorName: String = {

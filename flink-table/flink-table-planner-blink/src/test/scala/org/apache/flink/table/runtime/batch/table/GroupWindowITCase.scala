@@ -21,10 +21,9 @@ package org.apache.flink.table.runtime.batch.table
 import org.apache.flink.api.scala._
 import org.apache.flink.table.api.scala._
 import org.apache.flink.table.api.{Session, Slide, TableException, Tumble}
-import org.apache.flink.table.runtime.utils.{BatchScalaTableEnvUtil, BatchTestBase}
+import org.apache.flink.table.runtime.utils.{BatchTableEnvUtil, BatchTestBase}
 import org.apache.flink.table.util.CountAggFunction
 import org.apache.flink.test.util.TestBaseUtils
-import org.apache.flink.types.Row
 
 import org.junit._
 
@@ -45,20 +44,20 @@ class GroupWindowITCase extends BatchTestBase {
 
   @Test(expected = classOf[TableException])
   def testAllEventTimeTumblingWindowOverCount(): Unit = {
-    val table = BatchScalaTableEnvUtil.fromCollection(tEnv, data,
+    val table = BatchTableEnvUtil.fromCollection(tEnv, data,
       "long, int, double, float, bigdec, string")
 
     // Count tumbling non-grouping window on event-time are currently not supported
-    table
+    val result = table
       .window(Tumble over 2.rows on 'long as 'w)
       .groupBy('w)
       .select('int.count)
-      .toDataStream[Row]
+    executeQuery(result)
   }
 
   @Test(expected = classOf[TableException])
   def testEventTimeTumblingGroupWindowOverCount(): Unit = {
-    val table = BatchScalaTableEnvUtil.fromCollection(tEnv, data,
+    val table = BatchTableEnvUtil.fromCollection(tEnv, data,
       "long, int, double, float, bigdec, string")
 
     val windowedTable = table
@@ -77,7 +76,7 @@ class GroupWindowITCase extends BatchTestBase {
 
   @Test
   def testEventTimeTumblingGroupWindowOverTime(): Unit = {
-    val table = BatchScalaTableEnvUtil.fromCollection(tEnv,
+    val table = BatchTableEnvUtil.fromCollection(tEnv,
       data, "long, int, double, float, bigdec, string")
 
     val windowedTable = table
@@ -86,12 +85,12 @@ class GroupWindowITCase extends BatchTestBase {
       .select('string, 'int.sum, 'w.start, 'w.end, 'w.rowtime)
 
     val expected =
-      "Hello world,3,1970-01-01 00:00:00.005,1970-01-01 00:00:00.01,1970-01-01 00:00:00.009\n" +
-      "Hello world,4,1970-01-01 00:00:00.015,1970-01-01 00:00:00.02,1970-01-01 00:00:00.019\n" +
-      "Hello,7,1970-01-01 00:00:00.0,1970-01-01 00:00:00.005,1970-01-01 00:00:00.004\n" +
-      "Hello,3,1970-01-01 00:00:00.005,1970-01-01 00:00:00.01,1970-01-01 00:00:00.009\n" +
-      "Hallo,2,1970-01-01 00:00:00.0,1970-01-01 00:00:00.005,1970-01-01 00:00:00.004\n" +
-      "Hi,1,1970-01-01 00:00:00.0,1970-01-01 00:00:00.005,1970-01-01 00:00:00.004\n"
+      "Hello world,3,1970-01-01T00:00:00.005,1970-01-01T00:00:00.010,1970-01-01T00:00:00.009\n" +
+      "Hello world,4,1970-01-01T00:00:00.015,1970-01-01T00:00:00.020,1970-01-01T00:00:00.019\n" +
+      "Hello,7,1970-01-01T00:00,1970-01-01T00:00:00.005,1970-01-01T00:00:00.004\n" +
+      "Hello,3,1970-01-01T00:00:00.005,1970-01-01T00:00:00.010,1970-01-01T00:00:00.009\n" +
+      "Hallo,2,1970-01-01T00:00,1970-01-01T00:00:00.005,1970-01-01T00:00:00.004\n" +
+      "Hi,1,1970-01-01T00:00,1970-01-01T00:00:00.005,1970-01-01T00:00:00.004\n"
 
     val results = executeQuery(windowedTable)
     TestBaseUtils.compareResultAsText(results.asJava, expected)
@@ -99,7 +98,7 @@ class GroupWindowITCase extends BatchTestBase {
 
   @Test
   def testAllEventTimeTumblingWindowOverTime(): Unit = {
-    val table = BatchScalaTableEnvUtil.fromCollection(
+    val table = BatchTableEnvUtil.fromCollection(
       tEnv, data, "long, int, double, float, bigdec, string")
 
     val windowedTable = table
@@ -108,9 +107,9 @@ class GroupWindowITCase extends BatchTestBase {
       .select('int.sum, 'w.start, 'w.end, 'w.rowtime)
 
     val expected =
-      "10,1970-01-01 00:00:00.0,1970-01-01 00:00:00.005,1970-01-01 00:00:00.004\n" +
-      "6,1970-01-01 00:00:00.005,1970-01-01 00:00:00.01,1970-01-01 00:00:00.009\n" +
-      "4,1970-01-01 00:00:00.015,1970-01-01 00:00:00.02,1970-01-01 00:00:00.019\n"
+      "10,1970-01-01T00:00,1970-01-01T00:00:00.005,1970-01-01T00:00:00.004\n" +
+      "6,1970-01-01T00:00:00.005,1970-01-01T00:00:00.010,1970-01-01T00:00:00.009\n" +
+      "4,1970-01-01T00:00:00.015,1970-01-01T00:00:00.020,1970-01-01T00:00:00.019\n"
 
     val results = executeQuery(windowedTable)
     TestBaseUtils.compareResultAsText(results.asJava, expected)
@@ -118,7 +117,7 @@ class GroupWindowITCase extends BatchTestBase {
 
   @Test(expected = classOf[TableException])
   def testEventTimeSessionGroupWindow(): Unit = {
-    val table = BatchScalaTableEnvUtil.fromCollection(
+    val table = BatchTableEnvUtil.fromCollection(
       tEnv, data, "long, int, double, float, bigdec, string")
     val windowedTable = table
       .window(Session withGap 7.milli on 'long as 'w)
@@ -138,7 +137,7 @@ class GroupWindowITCase extends BatchTestBase {
 
   @Test(expected = classOf[TableException])
   def testAllEventTimeSessionGroupWindow(): Unit = {
-    val table = BatchScalaTableEnvUtil.fromCollection(
+    val table = BatchTableEnvUtil.fromCollection(
       tEnv, data, "long, int, double, float, bigdec, string")
 
     val windowedTable = table
@@ -150,14 +149,14 @@ class GroupWindowITCase extends BatchTestBase {
 
     val expected =
       "4,1970-01-01 00:00:00.001,1970-01-01 00:00:00.006,1970-01-01 00:00:00.005\n" +
-      "2,1970-01-01 00:00:00.007,1970-01-01 00:00:00.01,1970-01-01 00:00:00.009\n" +
+      "2,1970-01-01 00:00:00.007,1970-01-01 00:00:00.010,1970-01-01 00:00:00.009\n" +
       "1,1970-01-01 00:00:00.016,1970-01-01 00:00:00.018,1970-01-01 00:00:00.017"
     TestBaseUtils.compareResultAsText(results.asJava, expected)
   }
 
   @Test
   def testMultiGroupWindow(): Unit = {
-    val table = BatchScalaTableEnvUtil.fromCollection(
+    val table = BatchTableEnvUtil.fromCollection(
       tEnv, data, "long, int, double, float, bigdec, string")
 
     val windowedTable = table
@@ -171,12 +170,12 @@ class GroupWindowITCase extends BatchTestBase {
     val results = executeQuery(windowedTable)
 
     val expected =
-      "Hallo,1,1970-01-01 00:00:00.006\n" +
-      "Hello world,1,1970-01-01 00:00:00.012\n" +
-      "Hello world,1,1970-01-01 00:00:00.018\n" +
-      "Hello,1,1970-01-01 00:00:00.012\n" +
-      "Hello,2,1970-01-01 00:00:00.006\n" +
-      "Hi,1,1970-01-01 00:00:00.006\n"
+      "Hallo,1,1970-01-01T00:00:00.006\n" +
+      "Hello world,1,1970-01-01T00:00:00.012\n" +
+      "Hello world,1,1970-01-01T00:00:00.018\n" +
+      "Hello,1,1970-01-01T00:00:00.012\n" +
+      "Hello,2,1970-01-01T00:00:00.006\n" +
+      "Hi,1,1970-01-01T00:00:00.006\n"
     TestBaseUtils.compareResultAsText(results.asJava, expected)
   }
 
@@ -186,7 +185,7 @@ class GroupWindowITCase extends BatchTestBase {
 
   @Test(expected = classOf[TableException])
   def testAllEventTimeSlidingGroupWindowOverCount(): Unit = {
-    val table = BatchScalaTableEnvUtil.fromCollection(
+    val table = BatchTableEnvUtil.fromCollection(
       tEnv, data, "long, int, double, float, bigdec, string")
 
     // Count sliding group window on event-time are currently not supported
@@ -201,7 +200,7 @@ class GroupWindowITCase extends BatchTestBase {
   @Test
   def testAllEventTimeSlidingGroupWindowOverTime(): Unit = {
     // please keep this test in sync with the DataStream variant
-    val table = BatchScalaTableEnvUtil.fromCollection(
+    val table = BatchTableEnvUtil.fromCollection(
       tEnv, data, "long, int, double, float, bigdec, string")
 
     val windowedTable = table
@@ -210,15 +209,15 @@ class GroupWindowITCase extends BatchTestBase {
       .select('int.count, 'w.start, 'w.end, 'w.rowtime)
 
     val expected =
-      "1,1970-01-01 00:00:00.008,1970-01-01 00:00:00.013,1970-01-01 00:00:00.012\n" +
-      "1,1970-01-01 00:00:00.012,1970-01-01 00:00:00.017,1970-01-01 00:00:00.016\n" +
-      "1,1970-01-01 00:00:00.014,1970-01-01 00:00:00.019,1970-01-01 00:00:00.018\n" +
-      "1,1970-01-01 00:00:00.016,1970-01-01 00:00:00.021,1970-01-01 00:00:00.02\n" +
-      "2,1969-12-31 23:59:59.998,1970-01-01 00:00:00.003,1970-01-01 00:00:00.002\n" +
-      "2,1970-01-01 00:00:00.006,1970-01-01 00:00:00.011,1970-01-01 00:00:00.01\n" +
-      "3,1970-01-01 00:00:00.002,1970-01-01 00:00:00.007,1970-01-01 00:00:00.006\n" +
-      "3,1970-01-01 00:00:00.004,1970-01-01 00:00:00.009,1970-01-01 00:00:00.008\n" +
-      "4,1970-01-01 00:00:00.0,1970-01-01 00:00:00.005,1970-01-01 00:00:00.004"
+      "1,1970-01-01T00:00:00.008,1970-01-01T00:00:00.013,1970-01-01T00:00:00.012\n" +
+      "1,1970-01-01T00:00:00.012,1970-01-01T00:00:00.017,1970-01-01T00:00:00.016\n" +
+      "1,1970-01-01T00:00:00.014,1970-01-01T00:00:00.019,1970-01-01T00:00:00.018\n" +
+      "1,1970-01-01T00:00:00.016,1970-01-01T00:00:00.021,1970-01-01T00:00:00.020\n" +
+      "2,1969-12-31T23:59:59.998,1970-01-01T00:00:00.003,1970-01-01T00:00:00.002\n" +
+      "2,1970-01-01T00:00:00.006,1970-01-01T00:00:00.011,1970-01-01T00:00:00.010\n" +
+      "3,1970-01-01T00:00:00.002,1970-01-01T00:00:00.007,1970-01-01T00:00:00.006\n" +
+      "3,1970-01-01T00:00:00.004,1970-01-01T00:00:00.009,1970-01-01T00:00:00.008\n" +
+      "4,1970-01-01T00:00,1970-01-01T00:00:00.005,1970-01-01T00:00:00.004"
 
     val results = executeQuery(windowedTable)
     TestBaseUtils.compareResultAsText(results.asJava, expected)
@@ -227,7 +226,7 @@ class GroupWindowITCase extends BatchTestBase {
   @Test
   def testEventTimeSlidingGroupWindowOverTimeOverlappingFullPane(): Unit = {
     // please keep this test in sync with the DataStream variant
-    val table = BatchScalaTableEnvUtil.fromCollection(
+    val table = BatchTableEnvUtil.fromCollection(
       tEnv, data, "long, int, double, float, bigdec, string")
       .select('int, 'long, 'string) // keep this select to enforce that the 'string key comes last
 
@@ -237,17 +236,17 @@ class GroupWindowITCase extends BatchTestBase {
       .select('string, 'int.count, 'w.start, 'w.end)
 
     val expected =
-      "Hallo,1,1969-12-31 23:59:59.995,1970-01-01 00:00:00.005\n" +
-      "Hallo,1,1970-01-01 00:00:00.0,1970-01-01 00:00:00.01\n" +
-      "Hello world,1,1970-01-01 00:00:00.0,1970-01-01 00:00:00.01\n" +
-      "Hello world,1,1970-01-01 00:00:00.005,1970-01-01 00:00:00.015\n" +
-      "Hello world,1,1970-01-01 00:00:00.01,1970-01-01 00:00:00.02\n" +
-      "Hello world,1,1970-01-01 00:00:00.015,1970-01-01 00:00:00.025\n" +
-      "Hello,1,1970-01-01 00:00:00.005,1970-01-01 00:00:00.015\n" +
-      "Hello,2,1969-12-31 23:59:59.995,1970-01-01 00:00:00.005\n" +
-      "Hello,3,1970-01-01 00:00:00.0,1970-01-01 00:00:00.01\n" +
-      "Hi,1,1969-12-31 23:59:59.995,1970-01-01 00:00:00.005\n" +
-      "Hi,1,1970-01-01 00:00:00.0,1970-01-01 00:00:00.01"
+      "Hallo,1,1969-12-31T23:59:59.995,1970-01-01T00:00:00.005\n" +
+      "Hallo,1,1970-01-01T00:00,1970-01-01T00:00:00.010\n" +
+      "Hello world,1,1970-01-01T00:00,1970-01-01T00:00:00.010\n" +
+      "Hello world,1,1970-01-01T00:00:00.005,1970-01-01T00:00:00.015\n" +
+      "Hello world,1,1970-01-01T00:00:00.010,1970-01-01T00:00:00.020\n" +
+      "Hello world,1,1970-01-01T00:00:00.015,1970-01-01T00:00:00.025\n" +
+      "Hello,1,1970-01-01T00:00:00.005,1970-01-01T00:00:00.015\n" +
+      "Hello,2,1969-12-31T23:59:59.995,1970-01-01T00:00:00.005\n" +
+      "Hello,3,1970-01-01T00:00,1970-01-01T00:00:00.010\n" +
+      "Hi,1,1969-12-31T23:59:59.995,1970-01-01T00:00:00.005\n" +
+      "Hi,1,1970-01-01T00:00,1970-01-01T00:00:00.010"
 
     val results = executeQuery(windowedTable)
     TestBaseUtils.compareResultAsText(results.asJava, expected)
@@ -256,7 +255,7 @@ class GroupWindowITCase extends BatchTestBase {
   @Test
   def testEventTimeSlidingGroupWindowOverTimeOverlappingSplitPane(): Unit = {
     // please keep this test in sync with the DataStream variant
-    val table = BatchScalaTableEnvUtil.fromCollection(
+    val table = BatchTableEnvUtil.fromCollection(
       tEnv, data, "long, int, double, float, bigdec, string")
 
     val windowedTable = table
@@ -265,14 +264,14 @@ class GroupWindowITCase extends BatchTestBase {
       .select('string, 'int.count, 'w.start, 'w.end)
 
     val expected =
-      "Hallo,1,1970-01-01 00:00:00.0,1970-01-01 00:00:00.005\n" +
-      "Hello world,1,1970-01-01 00:00:00.004,1970-01-01 00:00:00.009\n" +
-      "Hello world,1,1970-01-01 00:00:00.008,1970-01-01 00:00:00.013\n" +
-      "Hello world,1,1970-01-01 00:00:00.012,1970-01-01 00:00:00.017\n" +
-      "Hello world,1,1970-01-01 00:00:00.016,1970-01-01 00:00:00.021\n" +
-      "Hello,2,1970-01-01 00:00:00.0,1970-01-01 00:00:00.005\n" +
-      "Hello,2,1970-01-01 00:00:00.004,1970-01-01 00:00:00.009\n" +
-      "Hi,1,1970-01-01 00:00:00.0,1970-01-01 00:00:00.005"
+      "Hallo,1,1970-01-01T00:00,1970-01-01T00:00:00.005\n" +
+      "Hello world,1,1970-01-01T00:00:00.004,1970-01-01T00:00:00.009\n" +
+      "Hello world,1,1970-01-01T00:00:00.008,1970-01-01T00:00:00.013\n" +
+      "Hello world,1,1970-01-01T00:00:00.012,1970-01-01T00:00:00.017\n" +
+      "Hello world,1,1970-01-01T00:00:00.016,1970-01-01T00:00:00.021\n" +
+      "Hello,2,1970-01-01T00:00,1970-01-01T00:00:00.005\n" +
+      "Hello,2,1970-01-01T00:00:00.004,1970-01-01T00:00:00.009\n" +
+      "Hi,1,1970-01-01T00:00,1970-01-01T00:00:00.005"
 
     val results = executeQuery(windowedTable)
     TestBaseUtils.compareResultAsText(results.asJava, expected)
@@ -281,7 +280,7 @@ class GroupWindowITCase extends BatchTestBase {
   @Test
   def testEventTimeSlidingGroupWindowOverTimeNonOverlappingFullPane(): Unit = {
     // please keep this test in sync with the DataStream variant
-    val table = BatchScalaTableEnvUtil.fromCollection(
+    val table = BatchTableEnvUtil.fromCollection(
       tEnv, data, "long, int, double, float, bigdec, string")
 
     val windowedTable = table
@@ -290,9 +289,9 @@ class GroupWindowITCase extends BatchTestBase {
       .select('string, 'int.count, 'w.start, 'w.end)
 
     val expected =
-      "Hallo,1,1970-01-01 00:00:00.0,1970-01-01 00:00:00.005\n" +
-      "Hello,2,1970-01-01 00:00:00.0,1970-01-01 00:00:00.005\n" +
-      "Hi,1,1970-01-01 00:00:00.0,1970-01-01 00:00:00.005"
+      "Hallo,1,1970-01-01T00:00,1970-01-01T00:00:00.005\n" +
+      "Hello,2,1970-01-01T00:00,1970-01-01T00:00:00.005\n" +
+      "Hi,1,1970-01-01T00:00,1970-01-01T00:00:00.005"
 
     val results = executeQuery(windowedTable)
     TestBaseUtils.compareResultAsText(results.asJava, expected)
@@ -301,7 +300,7 @@ class GroupWindowITCase extends BatchTestBase {
   @Test
   def testEventTimeSlidingGroupWindowOverTimeNonOverlappingSplitPane(): Unit = {
     // please keep this test in sync with the DataStream variant
-    val table = BatchScalaTableEnvUtil.fromCollection(
+    val table = BatchTableEnvUtil.fromCollection(
       tEnv, data, "long, int, double, float, bigdec, string")
 
     val windowedTable = table
@@ -310,8 +309,8 @@ class GroupWindowITCase extends BatchTestBase {
       .select('string, 'int.count, 'w.start, 'w.end)
 
     val expected =
-      "Hallo,1,1970-01-01 00:00:00.0,1970-01-01 00:00:00.003\n" +
-      "Hi,1,1970-01-01 00:00:00.0,1970-01-01 00:00:00.003"
+      "Hallo,1,1970-01-01T00:00,1970-01-01T00:00:00.003\n" +
+      "Hi,1,1970-01-01T00:00,1970-01-01T00:00:00.003"
 
     val results = executeQuery(windowedTable)
     TestBaseUtils.compareResultAsText(results.asJava, expected)
@@ -320,7 +319,7 @@ class GroupWindowITCase extends BatchTestBase {
   @Test
   def testEventTimeSlidingGroupWindowOverTimeNonOverlappingSplitPaneWithUdagg(): Unit = {
     // please keep this test in sync with the DataStream variant
-    val table = BatchScalaTableEnvUtil.fromCollection(
+    val table = BatchTableEnvUtil.fromCollection(
       tEnv, data, "long, int, double, float, bigdec, string")
 
     // UDAGG
@@ -333,8 +332,8 @@ class GroupWindowITCase extends BatchTestBase {
       .select('string, countFunc('int), 'w.start, 'w.end)
 
     val expected =
-      "Hallo,1,1970-01-01 00:00:00.0,1970-01-01 00:00:00.003\n" +
-        "Hi,1,1970-01-01 00:00:00.0,1970-01-01 00:00:00.003"
+      "Hallo,1,1970-01-01T00:00,1970-01-01T00:00:00.003\n" +
+        "Hi,1,1970-01-01T00:00,1970-01-01T00:00:00.003"
 
     val results = executeQuery(windowedTable)
     TestBaseUtils.compareResultAsText(results.asJava, expected)

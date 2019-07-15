@@ -1,6 +1,6 @@
 ---
-title: "Google PubSub"
-nav-title: PubSub
+title: "Google Cloud PubSub"
+nav-title: Google Cloud PubSub
 nav-parent_id: connectors
 nav-pos: 7
 ---
@@ -24,7 +24,7 @@ under the License.
 -->
 
 This connector provides a Source and Sink that can read from and write to
-[Google PubSub](https://cloud.google.com/pubsub). To use this connector, add the
+[Google Cloud PubSub](https://cloud.google.com/pubsub). To use this connector, add the
 following dependency to your project:
 
 {% highlight xml %}
@@ -35,13 +35,17 @@ following dependency to your project:
 </dependency>
 {% endhighlight %}
 
+<p style="border-radius: 5px; padding: 5px" class="bg-danger">
+<b>Note</b>: This connector has been added to Flink recently. It has not received widespread testing yet.
+</p>
+
 Note that the streaming connectors are currently not part of the binary
 distribution. See
 [here]({{ site.baseurl }}/dev/projectsetup/dependencies.html)
 for information about how to package the program with the libraries for
 cluster execution.
- 
-This pubsub connector has not received widespread testing yet.
+
+
 
 ## Consuming or Producing PubSubMessages
 
@@ -90,7 +94,7 @@ DataStream<SomeObject> dataStream = (...);
 
 SerializationSchema<SomeObject> serializationSchema = (...);
 SinkFunction<SomeObject> pubsubSink = PubSubSink.newBuilder()
-                                                .withDeserializationSchema(deserializer)
+                                                .withSerializationSchema(serializationSchema)
                                                 .withProjectName("project")
                                                 .withSubscriptionName("subscription")
                                                 .build()
@@ -116,18 +120,20 @@ The following example shows how you would create a source to read messages from 
 <div class="codetabs" markdown="1">
 <div data-lang="java" markdown="1">
 {% highlight java %}
+String hostAndPort = "localhost:1234";
 DeserializationSchema<SomeObject> deserializationSchema = (...);
 SourceFunction<SomeObject> pubsubSource = PubSubSource.newBuilder()
                                                       .withDeserializationSchema(deserializationSchema)
                                                       .withProjectName("my-fake-project")
                                                       .withSubscriptionName("subscription")
-                                                      .withPubSubSubscriberFactory(new PubSubSubscriberFactoryForEmulator("localhost:1234", "my-fake-project", "subscription", 10, Duration.ofSeconds(15), 100))
+                                                      .withPubSubSubscriberFactory(new PubSubSubscriberFactoryForEmulator(hostAndPort, "my-fake-project", "subscription", 10, Duration.ofSeconds(15), 100))
                                                       .build();
+SerializationSchema<SomeObject> serializationSchema = (...);
 SinkFunction<SomeObject> pubsubSink = PubSubSink.newBuilder()
-                                                .withDeserializationSchema(deserializationSchema)
+                                                .withSerializationSchema(serializationSchema)
                                                 .withProjectName("my-fake-project")
                                                 .withSubscriptionName("subscription")
-                                                .withHostAndPortForEmulator(getPubSubHostPort())
+                                                .withHostAndPortForEmulator(hostAndPort)
                                                 .build()
 
 StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
@@ -143,7 +149,7 @@ env.addSource(pubsubSource)
 
 There are several reasons why a message might be send multiple times, such as failure scenarios on Google PubSub's side.
 
-Another reason is when the acknowledgement deadline has past. This is the time between receiving the message and between acknowledging the message. The PubSubSource will only acknowledge a message on successful checkpoints to guarantee Atleast-Once. This does mean if the time between successful checkpoints is larger than the acknowledgment deadline of your subscription messages will most likely be processed multiple times.
+Another reason is when the acknowledgement deadline has passed. This is the time between receiving the message and between acknowledging the message. The PubSubSource will only acknowledge a message on successful checkpoints to guarantee Atleast-Once. This does mean if the time between successful checkpoints is larger than the acknowledgment deadline of your subscription messages will most likely be processed multiple times.
 
 For this reason it's recommended to have a (much) lower checkpoint interval than acknowledgement deadline.
 

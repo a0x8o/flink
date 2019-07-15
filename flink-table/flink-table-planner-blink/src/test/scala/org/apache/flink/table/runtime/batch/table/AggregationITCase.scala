@@ -24,10 +24,8 @@ import org.apache.flink.api.scala._
 import org.apache.flink.table.api.Types
 import org.apache.flink.table.api.scala._
 import org.apache.flink.table.functions.AggregateFunction
-import org.apache.flink.table.plan.util.JavaUserDefinedAggFunctions
-.{CountDistinctWithMergeAndReset, WeightedAvgWithMergeAndReset}
-import org.apache.flink.table.runtime.utils.{BatchScalaTableEnvUtil, BatchTestBase,
-  CollectionBatchExecTable}
+import org.apache.flink.table.plan.util.JavaUserDefinedAggFunctions.{CountDistinctWithMergeAndReset, WeightedAvgWithMergeAndReset}
+import org.apache.flink.table.runtime.utils.{BatchTableEnvUtil, BatchTestBase, CollectionBatchExecTable}
 import org.apache.flink.table.util.{CountAggFunction, NonMergableCount}
 import org.apache.flink.test.util.TestBaseUtils
 
@@ -68,7 +66,7 @@ class AggregationITCase extends BatchTestBase {
   @Test
   def testWorkingAggregationDataTypes(): Unit = {
 
-    val t = BatchScalaTableEnvUtil.fromElements(tEnv,
+    val t = BatchTableEnvUtil.fromElements(tEnv,
       (1: Byte, 1: Short, 1, 1L, 1.0f, 1.0d, "Hello"),
       (2: Byte, 2: Short, 2, 2L, 2.0f, 2.0d, "Ciao"))
       .select('_1.avg, '_2.avg, '_3.avg, '_4.avg, '_5.avg, '_6.avg, '_7.count)
@@ -80,7 +78,7 @@ class AggregationITCase extends BatchTestBase {
 
   @Test
   def testProjection(): Unit = {
-    val t = BatchScalaTableEnvUtil.fromElements(tEnv,
+    val t = BatchTableEnvUtil.fromElements(tEnv,
       (1: Byte, 1: Short),
       (2: Byte, 2: Short))
       .select('_1.avg, '_1.sum, '_1.count, '_2.avg, '_2.sum)
@@ -92,7 +90,7 @@ class AggregationITCase extends BatchTestBase {
 
   @Test
   def testAggregationWithArithmetic(): Unit = {
-    val t = BatchScalaTableEnvUtil.fromElements(tEnv, (1f, "Hello"), (2f, "Ciao"))
+    val t = BatchTableEnvUtil.fromElements(tEnv, (1f, "Hello"), (2f, "Ciao"))
       .select(('_1 + 2).avg + 2, '_2.count + 5)
 
     val expected = "5.5,7"
@@ -102,7 +100,7 @@ class AggregationITCase extends BatchTestBase {
 
   @Test
   def testAggregationWithTwoCount(): Unit = {
-    val t = BatchScalaTableEnvUtil.fromElements(tEnv, (1f, "Hello"), (2f, "Ciao"))
+    val t = BatchTableEnvUtil.fromElements(tEnv, (1f, "Hello"), (2f, "Ciao"))
       .select('_1.count, '_2.count)
 
     val expected = "2,2"
@@ -112,7 +110,7 @@ class AggregationITCase extends BatchTestBase {
 
   @Test
   def testAggregationAfterProjection(): Unit = {
-    val t = BatchScalaTableEnvUtil.fromElements(tEnv,
+    val t = BatchTableEnvUtil.fromElements(tEnv,
       (1: Byte, 1: Short, 1, 1L, 1.0f, 1.0d, "Hello"),
       (2: Byte, 2: Short, 2, 2L, 2.0f, 2.0d, "Ciao"))
       .select('_1, '_2, '_3)
@@ -141,7 +139,7 @@ class AggregationITCase extends BatchTestBase {
 
   @Test
   def testPojoAggregation(): Unit = {
-    val input = BatchScalaTableEnvUtil.fromElements(tEnv,
+    val input = BatchTableEnvUtil.fromElements(tEnv,
       WC("hello", 1),
       WC("hello", 1),
       WC("ciao", 1),
@@ -224,10 +222,10 @@ class AggregationITCase extends BatchTestBase {
   def testAggregateEmptyDataSets(): Unit = {
     val myAgg = new NonMergableCount
 
-    val t1 = BatchScalaTableEnvUtil.fromCollection(
+    val t1 = BatchTableEnvUtil.fromCollection(
       tEnv, new mutable.MutableList[(Int, String)], "a, b")
       .select('a.sum, 'a.count)
-    val t2 = BatchScalaTableEnvUtil.fromCollection(
+    val t2 = BatchTableEnvUtil.fromCollection(
       tEnv, new mutable.MutableList[(Int, String)], "a, b")
       .select('a.sum, myAgg('b), 'a.count)
 
@@ -244,7 +242,7 @@ class AggregationITCase extends BatchTestBase {
 
   @Test
   def testGroupedAggregateWithLongKeys(): Unit = {
-    val ds = BatchScalaTableEnvUtil.fromCollection(tEnv,
+    val ds = BatchTableEnvUtil.fromCollection(tEnv,
       Seq(
         ("hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhaa", 1, 2),
         ("hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhaa", 1, 2),
@@ -321,7 +319,7 @@ class AggregationITCase extends BatchTestBase {
   @Test
   @Ignore // TODO support it
   def testAnalyticAggregation(): Unit = {
-    val ds = BatchScalaTableEnvUtil.fromElements(tEnv,
+    val ds = BatchTableEnvUtil.fromElements(tEnv,
       (1: Byte, 1: Short, 1, 1L, 1.0f, 1.0d, BigDecimal.ONE),
       (2: Byte, 2: Short, 2, 2L, 2.0f, 2.0d, new BigDecimal(2)))
     val res = ds.select(

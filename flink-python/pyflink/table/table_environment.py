@@ -21,7 +21,6 @@ from abc import ABCMeta, abstractmethod
 
 from pyflink.serializers import BatchedSerializer, PickleSerializer
 from pyflink.table.catalog import Catalog
-from pyflink.table.query_config import QueryConfig
 from pyflink.table.table_config import TableConfig
 from pyflink.table.descriptors import (StreamTableDescriptor, ConnectorDescriptor,
                                        BatchTableDescriptor)
@@ -257,13 +256,13 @@ class TableEnvironment(object):
         j_table = self._j_tenv.sqlQuery(query)
         return Table(j_table)
 
-    def sql_update(self, stmt, query_config=None):
+    def sql_update(self, stmt):
         """
         Evaluates a SQL statement such as INSERT, UPDATE or DELETE or a DDL statement
 
         .. note::
 
-            Currently only SQL INSERT statements are supported.
+            Currently only SQL INSERT statements and CREATE TABLE statements are supported.
 
         All tables referenced by the query must be registered in the TableEnvironment.
         A :class:`Table` is automatically registered when its :func:`~Table.__str__` method is
@@ -277,14 +276,60 @@ class TableEnvironment(object):
             # source_table is not registered to the table environment
             >>> table_env.sql_update("INSERT INTO sink_table SELECT * FROM %s" % source_table)
 
+        A DDL statement can also be executed to create/drop a table:
+        For example, the below DDL statement would create a CSV table named `tbl1`
+        into the current catalog::
+
+            create table tbl1(
+                a int,
+                b bigint,
+                c varchar
+            ) with (
+                connector.type = 'filesystem',
+                format.type = 'csv',
+                connector.path = 'xxx'
+            )
+
+        SQL queries can directly execute as follows:
+        ::
+
+            >>> source_ddl = \\
+            ... '''
+            ... create table sourceTable(
+            ...     a int,
+            ...     b varchar
+            ... ) with (
+            ...     connector.type = 'kafka',
+            ...     `update-mode` = 'append',
+            ...     connector.topic = 'xxx',
+            ...     connector.properties.0.key = 'k0',
+            ...     connector.properties.0.value = 'v0'
+            ... )
+            ... '''
+
+            >>> sink_ddl = \\
+            ... '''
+            ... create table sinkTable(
+            ...     a int,
+            ...     b varchar
+            ... ) with (
+            ...     connector.type = 'filesystem',
+            ...     format.type = 'csv',
+            ...     connector.path = 'xxx'
+            ... )
+            ... '''
+
+            >>> query = "INSERT INTO sinkTable SELECT FROM sourceTable"
+            >>> table_env.sql(source_ddl)
+            >>> table_env.sql(sink_ddl)
+            >>> table_env.sql(query)
+            >>> table_env.execute("MyJob")
+
         :param stmt: The SQL statement to evaluate.
         :param query_config: The :class:`QueryConfig` to use.
         """
-        # type: (str, QueryConfig) -> None
-        if query_config is not None:
-            self._j_tenv.sqlUpdate(stmt, query_config._j_query_config)
-        else:
-            self._j_tenv.sqlUpdate(stmt)
+        # type: (str) -> None
+        self._j_tenv.sqlUpdate(stmt)
 
     def get_current_catalog(self):
         """
@@ -451,17 +496,20 @@ class TableEnvironment(object):
         Triggers the program execution. The environment will execute all parts of
         the program.
 
-        <p>The program execution will be logged and displayed with the provided name
+        The program execution will be logged and displayed with the provided name.
 
-        <p><b>NOTE:</b>It is highly advised to set all parameters in the :class:`TableConfig`
-        on the very beginning of the program. It is undefined what configurations values will
-        be used for the execution if queries are mixed with config changes. It depends on
-        the characteristic of the particular parameter. For some of them the value from the
-        point in time of query construction (e.g. the currentCatalog) will be used. On the
-        other hand some values might be evaluated according to the state from the time when
-        this method is called (e.g. timeZone).
+        .. note::
 
-        :param job_name Desired name of the job
+            It is highly advised to set all parameters in the :class:`TableConfig`
+            on the very beginning of the program. It is undefined what configurations values will
+            be used for the execution if queries are mixed with config changes. It depends on
+            the characteristic of the particular parameter. For some of them the value from the
+            point in time of query construction (e.g. the current catalog) will be used. On the
+            other hand some values might be evaluated according to the state from the time when
+            this method is called (e.g. timezone).
+
+        :param job_name: Desired name of the job.
+        :type job_name: str
         """
         self._j_tenv.execute(job_name)
 
@@ -642,20 +690,6 @@ class StreamTableEnvironment(TableEnvironment):
         return StreamTableDescriptor(
             self._j_tenv.connect(connector_descriptor._j_connector_descriptor))
 
-    def execute(self, job_name):
-        """
-        Triggers the program execution. The environment will execute all parts of
-        the program.
-
-        The program execution will be logged and displayed with the provided name
-
-        It calls the StreamExecutionEnvironment#execute on the underlying
-        :class:`StreamExecutionEnvironment`. This environment translates queries eagerly.
-
-        :param job_name Desired name of the job
-        """
-        self._j_tenv.execute(job_name)
-
     @staticmethod
     def create(stream_execution_environment, table_config=None):
         """
@@ -742,20 +776,6 @@ class BatchTableEnvironment(TableEnvironment):
         # type: (ConnectorDescriptor) -> BatchTableDescriptor
         return BatchTableDescriptor(
             self._j_tenv.connect(connector_descriptor._j_connector_descriptor))
-
-    def execute(self, job_name):
-        """
-        Triggers the program execution. The environment will execute all parts of
-        the program.
-
-        The program execution will be logged and displayed with the provided name
-
-        It calls the ExecutionEnvironment#execute on the underlying
-        :class:`ExecutionEnvironment`. This environment translates queries eagerly.
-
-        :param job_name Desired name of the job
-        """
-        self._j_tenv.execute(job_name)
 
     @staticmethod
     def create(execution_environment, table_config=None):

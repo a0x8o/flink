@@ -332,21 +332,24 @@ public class HiveInspectors {
 			return result;
 		}
 
-		if (inspector instanceof StandardStructObjectInspector) {
-			StandardStructObjectInspector structInspector = (StandardStructObjectInspector) inspector;
+		if (inspector instanceof StructObjectInspector) {
+			StructObjectInspector structInspector = (StructObjectInspector) inspector;
 
 			List<? extends StructField> fields = structInspector.getAllStructFieldRefs();
 
 			Row row = new Row(fields.size());
+			// StandardStructObjectInspector.getStructFieldData in Hive-1.2.1 only accepts array or list as data
+			if (!data.getClass().isArray() && !(data instanceof List) && (inspector instanceof StandardStructObjectInspector)) {
+				data = new Object[]{data};
+			}
 			for (int i = 0; i < row.getArity(); i++) {
 				row.setField(
 					i,
 					toFlinkObject(
-						fields.get(i).getFieldObjectInspector(),
-						structInspector.getStructFieldData(data, fields.get(i)))
+							fields.get(i).getFieldObjectInspector(),
+							structInspector.getStructFieldData(data, fields.get(i)))
 				);
 			}
-
 			return row;
 		}
 
