@@ -42,9 +42,10 @@ import java.util.Objects;
 
 /**
  * This rules is copied from Calcite's {@link org.apache.calcite.rel.rules.FilterJoinRule}.
- * NOTES: This file should be deleted when CALCITE-3170 is fixed.
+ * NOTES: This file should be deleted when CALCITE-3170 is fixed,
+ * and please make sure to synchronize with FlinkFilterJoinRule in flink planner when changing this class.
  * Modification:
- * - Handles the ON condition of anti-join can not be pushed down
+ * - Handles the ON condition of anti-join can not be pushed down, lines added (192-198)
  */
 
 /**

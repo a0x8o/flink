@@ -56,6 +56,14 @@ class PlannerExpressionConverter private extends ApiExpressionVisitor[PlannerExp
           fromDataTypeToLegacyInfo(
             children(1).asInstanceOf[TypeLiteralExpression].getOutputDataType))
 
+      case REINTERPRET_CAST =>
+        assert(children.size == 3)
+        Reinterpret(
+          children.head.accept(this),
+          fromDataTypeToLegacyInfo(
+            children(1).asInstanceOf[TypeLiteralExpression].getOutputDataType),
+          getValue[Boolean](children(2).accept(this)))
+
       case WINDOW_START =>
         assert(children.size == 1)
         val windowReference = translateWindowReference(children.head)
@@ -682,6 +690,10 @@ class PlannerExpressionConverter private extends ApiExpressionVisitor[PlannerExp
           case CURRENT_ROW =>
             assert(args.isEmpty)
             CurrentRow()
+
+          case STREAM_RECORD_TIMESTAMP =>
+            assert(args.isEmpty)
+            StreamRecordTimestamp()
 
           case _ =>
             throw new TableException(s"Unsupported function definition: $fd")
