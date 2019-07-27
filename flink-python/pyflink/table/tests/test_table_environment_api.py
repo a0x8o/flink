@@ -15,7 +15,6 @@
 # #  See the License for the specific language governing permissions and
 # # limitations under the License.
 ################################################################################
-import datetime
 import os
 
 from py4j.compat import unicode
@@ -170,31 +169,18 @@ class StreamTableEnvironmentTests(PyFlinkStreamTableTestCase):
         expected = ['1,Hi,Hello', '2,Hello,Hello']
         self.assert_equals(actual, expected)
 
-    def test_table_config(self):
+    def test_register_java_function(self):
+        t_env = self.t_env
 
-        table_config = TableConfig.get_default()
-        table_config.set_idle_state_retention_time(
-            datetime.timedelta(days=1), datetime.timedelta(days=2))
+        t_env.register_java_function("scalar_func",
+                                     "org.apache.flink.table.expressions.utils.RichFunc0")
+        t_env.register_java_function(
+            "agg_func", "org.apache.flink.table.functions.aggfunctions.ByteMaxAggFunction")
+        t_env.register_java_function("table_func", "org.apache.flink.table.utils.TableFunc1")
 
-        self.assertEqual(2 * 24 * 3600 * 1000, table_config.get_max_idle_state_retention_time())
-        self.assertEqual(24 * 3600 * 1000, table_config.get_min_idle_state_retention_time())
-
-        table_config.set_decimal_context(20, "UNNECESSARY")
-        self.assertEqual((20, "UNNECESSARY"), table_config.get_decimal_context())
-        table_config.set_decimal_context(20, "HALF_EVEN")
-        self.assertEqual((20, "HALF_EVEN"), table_config.get_decimal_context())
-        table_config.set_decimal_context(20, "HALF_DOWN")
-        self.assertEqual((20, "HALF_DOWN"), table_config.get_decimal_context())
-        table_config.set_decimal_context(20, "HALF_UP")
-        self.assertEqual((20, "HALF_UP"), table_config.get_decimal_context())
-        table_config.set_decimal_context(20, "FLOOR")
-        self.assertEqual((20, "FLOOR"), table_config.get_decimal_context())
-        table_config.set_decimal_context(20, "CEILING")
-        self.assertEqual((20, "CEILING"), table_config.get_decimal_context())
-        table_config.set_decimal_context(20, "DOWN")
-        self.assertEqual((20, "DOWN"), table_config.get_decimal_context())
-        table_config.set_decimal_context(20, "UP")
-        self.assertEqual((20, "UP"), table_config.get_decimal_context())
+        actual = t_env.list_user_defined_functions()
+        expected = ['scalar_func', 'agg_func', 'table_func']
+        self.assert_equals(actual, expected)
 
     def test_create_table_environment(self):
         table_config = TableConfig()
@@ -260,16 +246,18 @@ class BatchTableEnvironmentTests(PyFlinkBatchTableTestCase):
         with self.assertRaises(TableException):
             t_env.explain(extended=True)
 
-    def test_table_config(self):
+    def test_register_java_function(self):
+        t_env = self.t_env
 
-        table_config = TableConfig()
-        table_config.set_local_timezone("Asia/Shanghai")
-        table_config.set_max_generated_code_length(64000)
-        table_config.set_null_check(True)
+        t_env.register_java_function("scalar_func",
+                                     "org.apache.flink.table.expressions.utils.RichFunc0")
+        t_env.register_java_function(
+            "agg_func", "org.apache.flink.table.functions.aggfunctions.ByteMaxAggFunction")
+        t_env.register_java_function("table_func", "org.apache.flink.table.utils.TableFunc1")
 
-        self.assertTrue(table_config.get_null_check())
-        self.assertEqual(table_config.get_max_generated_code_length(), 64000)
-        self.assertEqual(table_config.get_local_timezone(), "Asia/Shanghai")
+        actual = t_env.list_user_defined_functions()
+        expected = ['scalar_func', 'agg_func', 'table_func']
+        self.assert_equals(actual, expected)
 
     def test_create_table_environment(self):
         table_config = TableConfig()
