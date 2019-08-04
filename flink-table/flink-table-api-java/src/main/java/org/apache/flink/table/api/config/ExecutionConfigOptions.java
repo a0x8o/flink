@@ -45,8 +45,8 @@ public class ExecutionConfigOptions {
 	// ------------------------------------------------------------------------
 	public static final ConfigOption<Integer> TABLE_EXEC_SORT_DEFAULT_LIMIT =
 		key("table.exec.sort.default-limit")
-			.defaultValue(200)
-			.withDescription("Default limit when user don't set a limit after order by.");
+			.defaultValue(-1)
+			.withDescription("Default limit when user don't set a limit after order by. -1 indicates that this configuration is ignored.");
 
 	public static final ConfigOption<Integer> TABLE_EXEC_SORT_MAX_NUM_FILE_HANDLES =
 		key("table.exec.sort.max-num-file-handles")
@@ -83,18 +83,13 @@ public class ExecutionConfigOptions {
 	public static final ConfigOption<Integer> TABLE_EXEC_RESOURCE_DEFAULT_PARALLELISM =
 		key("table.exec.resource.default-parallelism")
 			.defaultValue(-1)
-			.withDescription("Default parallelism of job operators. If it is <= 0, use parallelism of StreamExecutionEnvironment(" +
-				"its default value is the num of cpu cores in the client host).");
-
-	public static final ConfigOption<Integer> TABLE_EXEC_RESOURCE_SOURCE_PARALLELISM =
-		key("table.exec.resource.source.parallelism")
-			.defaultValue(-1)
-			.withDescription("Sets source parallelism, if it is <= 0, use " + TABLE_EXEC_RESOURCE_DEFAULT_PARALLELISM.key() + " to set source parallelism.");
-
-	public static final ConfigOption<Integer> TABLE_EXEC_RESOURCE_SINK_PARALLELISM =
-		key("table.exec.resource.sink.parallelism")
-			.defaultValue(-1)
-			.withDescription("Sets sink parallelism, if it is <= 0, use " + TABLE_EXEC_RESOURCE_DEFAULT_PARALLELISM.key() + " to set sink parallelism.");
+			.withDescription("Sets default parallelism for all operators " +
+					"(such as aggregate, join, filter) to run with parallel instances. " +
+					"This config has a higher priority than parallelism of " +
+					"StreamExecutionEnvironment (actually, this config overrides the parallelism " +
+					"of StreamExecutionEnvironment). A value of -1 indicates that no " +
+					"default parallelism is set, then it will fallback to use the parallelism " +
+					"of StreamExecutionEnvironment.");
 
 	public static final ConfigOption<String> TABLE_EXEC_RESOURCE_EXTERNAL_BUFFER_MEMORY =
 		key("table.exec.resource.external-buffer-memory")
