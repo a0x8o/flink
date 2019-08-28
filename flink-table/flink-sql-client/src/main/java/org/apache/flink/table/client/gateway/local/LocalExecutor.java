@@ -39,6 +39,7 @@ import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.TableEnvironment;
 import org.apache.flink.table.api.TableSchema;
 import org.apache.flink.table.api.java.StreamTableEnvironment;
+import org.apache.flink.table.catalog.exceptions.CatalogException;
 import org.apache.flink.table.client.SqlClientException;
 import org.apache.flink.table.client.config.Environment;
 import org.apache.flink.table.client.gateway.Executor;
@@ -232,6 +233,15 @@ public class LocalExecutor implements Executor {
 	}
 
 	@Override
+	public List<String> listFunctions(SessionContext session) throws SqlExecutionException {
+		final ExecutionContext<?> context = getOrCreateExecutionContext(session);
+		final TableEnvironment tableEnv = context
+			.createEnvironmentInstance()
+			.getTableEnvironment();
+		return context.wrapClassLoader(() -> Arrays.asList(tableEnv.listFunctions()));
+	}
+
+	@Override
 	public void useCatalog(SessionContext session, String catalogName) throws SqlExecutionException {
 		final ExecutionContext<?> context = getOrCreateExecutionContext(session);
 		final TableEnvironment tableEnv = context
@@ -240,7 +250,11 @@ public class LocalExecutor implements Executor {
 
 		context.wrapClassLoader(() -> {
 			// Rely on TableEnvironment/CatalogManager to validate input
-			tableEnv.useCatalog(catalogName);
+			try {
+				tableEnv.useCatalog(catalogName);
+			} catch (CatalogException e) {
+				throw new SqlExecutionException("Failed to switch to catalog " + catalogName, e);
+			}
 			session.setCurrentCatalog(catalogName);
 			session.setCurrentDatabase(tableEnv.getCurrentDatabase());
 			return null;
@@ -256,7 +270,11 @@ public class LocalExecutor implements Executor {
 
 		context.wrapClassLoader(() -> {
 			// Rely on TableEnvironment/CatalogManager to validate input
-			tableEnv.useDatabase(databaseName);
+			try {
+				tableEnv.useDatabase(databaseName);
+			} catch (CatalogException e) {
+				throw new SqlExecutionException("Failed to switch to database " + databaseName, e);
+			}
 			session.setCurrentDatabase(databaseName);
 			return null;
 		});

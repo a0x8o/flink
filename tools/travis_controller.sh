@@ -80,8 +80,8 @@ function deleteOldCaches() {
 	done
 }
 
-# delete leftover caches from previous builds
-find "$CACHE_DIR" -mindepth 1 -maxdepth 1 | grep -v "$TRAVIS_BUILD_NUMBER" | deleteOldCaches
+# delete leftover caches from previous builds; except the most recent
+find "$CACHE_DIR" -mindepth 1 -maxdepth 1 | grep -v "$TRAVIS_BUILD_NUMBER" | sort -Vr | tail -n +2 | deleteOldCaches
 
 STAGE=$1
 echo "Current stage: \"$STAGE\""
@@ -114,11 +114,11 @@ if [ $STAGE == "$STAGE_COMPILE" ]; then
         EXIT_CODE=$(($EXIT_CODE+$?))
         check_shaded_artifacts_s3_fs presto
         EXIT_CODE=$(($EXIT_CODE+$?))
-        check_shaded_artifacts_connector_elasticsearch ""
-        EXIT_CODE=$(($EXIT_CODE+$?))
         check_shaded_artifacts_connector_elasticsearch 2
         EXIT_CODE=$(($EXIT_CODE+$?))
         check_shaded_artifacts_connector_elasticsearch 5
+        EXIT_CODE=$(($EXIT_CODE+$?))
+        check_shaded_artifacts_connector_elasticsearch 6
         EXIT_CODE=$(($EXIT_CODE+$?))
     else
         echo "=============================================================================="
