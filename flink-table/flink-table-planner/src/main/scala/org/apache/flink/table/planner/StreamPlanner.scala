@@ -167,6 +167,15 @@ class StreamPlanner(
                 partitionableSink.setStaticPartition(catalogSink.getStaticPartitions)
               case _ =>
             }
+            // set whether to overwrite if it's an OverwritableTableSink
+            sink match {
+              case overwritableTableSink: OverwritableTableSink =>
+                overwritableTableSink.setOverwrite(catalogSink.isOverwrite)
+              case _ =>
+                assert(!catalogSink.isOverwrite, "INSERT OVERWRITE requires " +
+                  s"${classOf[OverwritableTableSink].getSimpleName} but actually got " +
+                  sink.getClass.getName)
+            }
             writeToSink(catalogSink.getChild, sink, unwrapQueryConfig)
           }) match {
           case Some(t) => t

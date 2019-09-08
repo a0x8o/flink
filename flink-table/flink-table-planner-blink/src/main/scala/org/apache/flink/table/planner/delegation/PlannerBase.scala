@@ -42,7 +42,7 @@ import org.apache.flink.table.planner.plan.reuse.SubplanReuser
 import org.apache.flink.table.planner.plan.utils.SameRelObjectShuttle
 import org.apache.flink.table.planner.sinks.{DataStreamTableSink, TableSinkUtils}
 import org.apache.flink.table.planner.utils.JavaScalaConversionUtil
-import org.apache.flink.table.sinks.{PartitionableTableSink, TableSink}
+import org.apache.flink.table.sinks.{OverwritableTableSink, PartitionableTableSink, TableSink}
 import org.apache.flink.table.types.utils.LegacyTypeInfoDataTypeConverter
 
 import org.apache.calcite.jdbc.CalciteSchemaBuilder.asRootSchema
@@ -183,6 +183,14 @@ abstract class PlannerBase(
                 && partitionableSink.getPartitionFieldNames.nonEmpty =>
               partitionableSink.setStaticPartition(catalogSink.getStaticPartitions)
             case _ =>
+          }
+          sink match {
+            case overwritableTableSink: OverwritableTableSink =>
+              overwritableTableSink.setOverwrite(catalogSink.isOverwrite)
+            case _ =>
+              assert(!catalogSink.isOverwrite, "INSERT OVERWRITE requires " +
+                s"${classOf[OverwritableTableSink].getSimpleName} but actually got " +
+                sink.getClass.getName)
           }
           LogicalSink.create(input, sink, catalogSink.getTablePath.mkString("."))
         }) match {
