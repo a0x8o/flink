@@ -109,6 +109,7 @@ import org.apache.flink.streaming.api.operators.StreamOperator;
 import org.apache.flink.streaming.api.operators.StreamOperatorStateContext;
 import org.apache.flink.streaming.api.operators.StreamSource;
 import org.apache.flink.streaming.api.operators.StreamTaskStateInitializer;
+import org.apache.flink.streaming.runtime.io.InputStatus;
 import org.apache.flink.streaming.runtime.io.StreamInputProcessor;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.runtime.streamstatus.StreamStatusMaintainer;
@@ -128,6 +129,8 @@ import org.junit.rules.Timeout;
 import org.mockito.ArgumentCaptor;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
+
+import javax.annotation.Nullable;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -151,11 +154,9 @@ import java.util.concurrent.TimeoutException;
 import static org.apache.flink.streaming.util.StreamTaskUtil.waitTaskIsRunning;
 import static org.apache.flink.util.Preconditions.checkState;
 import static org.hamcrest.CoreMatchers.startsWith;
-import static org.hamcrest.Matchers.everyItem;
-import static org.hamcrest.Matchers.greaterThanOrEqualTo;
-import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.instanceOf;
 import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.sameInstance;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThat;
@@ -365,10 +366,11 @@ public class StreamTaskTest extends TestLogger {
 
 		waitTaskIsRunning(streamTask, task.invocationFuture);
 
-		streamTask.triggerCheckpoint(
+		streamTask.triggerCheckpointAsync(
 			new CheckpointMetaData(42L, 1L),
 			CheckpointOptions.forCheckpointWithDefaultLocation(),
-			false);
+			false)
+			.get();
 
 		assertEquals(testException, declineDummyEnvironment.getLastDeclinedCheckpointCause());
 
@@ -405,7 +407,7 @@ public class StreamTaskTest extends TestLogger {
 
 		waitTaskIsRunning(streamTask, task.invocationFuture);
 
-		streamTask.triggerCheckpoint(
+		streamTask.triggerCheckpointAsync(
 			new CheckpointMetaData(42L, 1L),
 			CheckpointOptions.forCheckpointWithDefaultLocation(),
 			false);
@@ -447,10 +449,11 @@ public class StreamTaskTest extends TestLogger {
 			waitTaskIsRunning(streamTask, task.invocationFuture);
 
 			mockEnvironment.setExpectedExternalFailureCause(Throwable.class);
-			streamTask.triggerCheckpoint(
+			streamTask.triggerCheckpointAsync(
 				new CheckpointMetaData(42L, 1L),
 				CheckpointOptions.forCheckpointWithDefaultLocation(),
-				false);
+				false)
+				.get();
 
 			// wait for the completion of the async task
 			ExecutorService executor = streamTask.getAsyncOperationsThreadPool();
@@ -546,7 +549,7 @@ public class StreamTaskTest extends TestLogger {
 			waitTaskIsRunning(streamTask, task.invocationFuture);
 
 			final long checkpointId = 42L;
-			streamTask.triggerCheckpoint(
+			streamTask.triggerCheckpointAsync(
 				new CheckpointMetaData(checkpointId, 1L),
 				CheckpointOptions.forCheckpointWithDefaultLocation(),
 				false);
@@ -627,7 +630,7 @@ public class StreamTaskTest extends TestLogger {
 		waitTaskIsRunning(task.streamTask, task.invocationFuture);
 
 		final long checkpointId = 42L;
-		task.streamTask.triggerCheckpoint(
+		task.streamTask.triggerCheckpointAsync(
 			new CheckpointMetaData(checkpointId, 1L),
 			CheckpointOptions.forCheckpointWithDefaultLocation(),
 			false);
@@ -705,7 +708,7 @@ public class StreamTaskTest extends TestLogger {
 
 			waitTaskIsRunning(task.streamTask, task.invocationFuture);
 
-			task.streamTask.triggerCheckpoint(
+			task.streamTask.triggerCheckpointAsync(
 				new CheckpointMetaData(42L, 1L),
 				CheckpointOptions.forCheckpointWithDefaultLocation(),
 				false);
@@ -760,22 +763,42 @@ public class StreamTaskTest extends TestLogger {
 		}
 	}
 
+	@Test
+	public void testExecuteMailboxActionsAfterLeavingInputProcessorMailboxLoop() throws Exception {
+		OneShotLatch latch = new OneShotLatch();
+		try (MockEnvironment mockEnvironment = new MockEnvironmentBuilder().build()) {
+			RunningTask<StreamTask<?, ?>> task = runTask(() -> new StreamTask<Object, StreamOperator<Object>>(mockEnvironment) {
+				@Override
+				protected void init() throws Exception {
+				}
+
+				@Override
+				protected void processInput(DefaultActionContext context) throws Exception {
+					mailboxProcessor.getMailboxExecutor(0).execute(latch::trigger);
+					context.allActionsCompleted();
+				}
+			});
+			latch.await();
+			task.waitForTaskCompletion(false);
+		}
+	}
+
 	/**
-	 * Test set user code ClassLoader before calling ProcessingTimeCallback.
+	 * Tests that some StreamTask methods are called only in the main task's thread.
+	 * Currently, the main task's thread is the thread that creates the task.
 	 */
 	@Test
-	public void testSetsUserCodeClassLoaderForTimerThreadFactory() throws Throwable {
-		syncLatch = new OneShotLatch();
+	public void testThreadInvariants() throws Throwable {
+		try (MockEnvironment mockEnvironment = new MockEnvironmentBuilder().build()) {
+			ClassLoader taskClassLoader = new TestUserCodeClassLoader();
 
-		try (MockEnvironment mockEnvironment =
-			new MockEnvironmentBuilder()
-				.setUserCodeClassLoader(new TestUserCodeClassLoader())
-				.build()) {
-			RunningTask<TimeServiceTask> task = runTask(() -> new TimeServiceTask(mockEnvironment));
-			task.waitForTaskCompletion(false);
+			RunningTask<ThreadInspectingTask> runningTask = runTask(() -> {
+				Thread.currentThread().setContextClassLoader(taskClassLoader);
+				return new ThreadInspectingTask(mockEnvironment);
+			});
+			runningTask.invocationFuture.get();
 
-			assertThat(task.streamTask.getClassLoaders(), hasSize(greaterThanOrEqualTo(1)));
-			assertThat(task.streamTask.getClassLoaders(), everyItem(instanceOf(TestUserCodeClassLoader.class)));
+			assertThat(runningTask.streamTask.getTaskClassLoader(), is(sameInstance(taskClassLoader)));
 		}
 	}
 
@@ -1128,17 +1151,12 @@ public class StreamTaskTest extends TestLogger {
 		}
 
 		@Override
-		public boolean processInput() throws Exception {
-			return false;
+		public InputStatus processInput() throws Exception {
+			return isFinished ? InputStatus.END_OF_INPUT : InputStatus.NOTHING_AVAILABLE;
 		}
 
 		@Override
 		public void close() throws IOException {
-		}
-
-		@Override
-		public boolean isFinished() {
-			return isFinished;
 		}
 
 		@Override
@@ -1346,37 +1364,61 @@ public class StreamTaskTest extends TestLogger {
 
 	}
 
-	/**
-	 * A task that register a processing time service callback.
-	 */
-	public static class TimeServiceTask extends NoOpStreamTask<String, AbstractStreamOperator<String>> {
+	private static class ThreadInspectingTask extends StreamTask<String, AbstractStreamOperator<String>> {
 
-		private final List<ClassLoader> classLoaders = Collections.synchronizedList(new ArrayList<>());
+		private final long taskThreadId;
+		private final ClassLoader taskClassLoader;
 
-		public TimeServiceTask(Environment env) {
-			super(env);
+		/** Flag to wait until time trigger has been called. */
+		private transient boolean hasTimerTriggered;
+
+		ThreadInspectingTask(Environment env) {
+			super(env, null);
+			Thread currentThread = Thread.currentThread();
+			taskThreadId = currentThread.getId();
+			taskClassLoader = currentThread.getContextClassLoader();
 		}
 
-		public List<ClassLoader> getClassLoaders() {
-			return classLoaders;
+		@Nullable
+		ClassLoader getTaskClassLoader() {
+			return taskClassLoader;
 		}
 
 		@Override
 		protected void init() throws Exception {
-			super.init();
+			checkTaskThreadInfo();
+
+			// Create a time trigger to validate that it would also be invoked in the task's thread.
 			getProcessingTimeService().registerTimer(0, new ProcessingTimeCallback() {
 				@Override
 				public void onProcessingTime(long timestamp) throws Exception {
-					classLoaders.add(Thread.currentThread().getContextClassLoader());
-					syncLatch.trigger();
+					hasTimerTriggered = true;
+					checkTaskThreadInfo();
 				}
 			});
 		}
 
 		@Override
 		protected void processInput(DefaultActionContext context) throws Exception {
-			syncLatch.await();
-			super.processInput(context);
+			checkTaskThreadInfo();
+			if (hasTimerTriggered) {
+				context.allActionsCompleted();
+			}
+		}
+
+		@Override
+		protected void cleanup() throws Exception {
+			checkTaskThreadInfo();
+		}
+
+		private void checkTaskThreadInfo() {
+			Thread currentThread = Thread.currentThread();
+			Preconditions.checkState(
+				taskThreadId == currentThread.getId(),
+				"Task's method was called in non task thread.");
+			Preconditions.checkState(
+				taskClassLoader == currentThread.getContextClassLoader(),
+				"Task's context class loader has been changed during invocation.");
 		}
 	}
 

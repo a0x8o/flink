@@ -56,12 +56,7 @@ public class RestartStrategyOptions {
 						"%s, %s: Failure rate restart strategy. More details can be found %s.",
 						code("failurerate"),
 						code("failure-rate"),
-						link("../dev/task_failure_recovery.html#failure-rate-restart-strategy", "here")),
-					text(
-						"%s: Fully qualified name of %s factory which has has a method %s.",
-						code("org.foobar.MyRestartStrategyFactoryFactory"),
-						code("RestartStrategyFactory"),
-						code("RestartStrategyFactory createFactory(Configuration configuration)"))
+						link("../dev/task_failure_recovery.html#failure-rate-restart-strategy", "here"))
 				)
 				.text(
 					"If checkpointing is disabled, the default value is %s. " +
@@ -92,10 +87,9 @@ public class RestartStrategyOptions {
 					"Delay between two consecutive restart attempts if %s has been set to %s. " +
 						"Delaying the retries can be helpful when the program interacts with external systems where " +
 						"for example connections or pending transactions should reach a timeout before re-execution " +
-						"is attempted. It can be specified using Scala's %s notation: \"1 min\", \"20 s\"",
+						"is attempted. It can be specified using notation: \"1 min\", \"20 s\"",
 					code(RESTART_STRATEGY.key()),
-					code("fixed-delay"),
-					code("FiniteDuration"))
+					code("fixed-delay"))
 				.build());
 
 	public static final ConfigOption<Integer> RESTART_STRATEGY_FAILURE_RATE_MAX_FAILURES_PER_INTERVAL = ConfigOptions
@@ -116,10 +110,9 @@ public class RestartStrategyOptions {
 			Description.builder()
 				.text(
 					"Time interval for measuring failure rate if %s has been set to %s. " +
-						"It can be specified using Scala's %s notation: \"1 min\", \"20 s\"",
+						"It can be specified using notation: \"1 min\", \"20 s\"",
 					code(RESTART_STRATEGY.key()),
-					code("failure-rate"),
-					code("FiniteDuration"))
+					code("failure-rate"))
 				.build());
 
 	public static final ConfigOption<String> RESTART_STRATEGY_FAILURE_RATE_DELAY = ConfigOptions
@@ -129,10 +122,9 @@ public class RestartStrategyOptions {
 			Description.builder()
 				.text(
 					"Delay between two consecutive restart attempts if %s has been set to %s. " +
-						"It can be specified using Scala's %s notation: \"1 min\", \"20 s\"",
+						"It can be specified using notation: \"1 min\", \"20 s\"",
 					code(RESTART_STRATEGY.key()),
-					code("failure-rate"),
-					code("FiniteDuration"))
+					code("failure-rate"))
 				.build());
 
 	private RestartStrategyOptions() {

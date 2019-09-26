@@ -27,12 +27,12 @@ import org.apache.flink.api.common.time.Time;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.client.program.ClusterClient;
 import org.apache.flink.client.program.DetachedJobExecutionResult;
-import org.apache.flink.client.program.NewClusterClient;
 import org.apache.flink.client.program.ProgramInvocationException;
 import org.apache.flink.client.program.rest.retry.ExponentialWaitStrategy;
 import org.apache.flink.client.program.rest.retry.WaitStrategy;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.core.fs.Path;
+import org.apache.flink.runtime.akka.AkkaUtils;
 import org.apache.flink.runtime.client.JobExecutionException;
 import org.apache.flink.runtime.client.JobStatusMessage;
 import org.apache.flink.runtime.client.JobSubmissionException;
@@ -109,6 +109,7 @@ import java.net.MalformedURLException;
 import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -128,9 +129,12 @@ import java.util.stream.Collectors;
 /**
  * A {@link ClusterClient} implementation that communicates via HTTP REST requests.
  */
-public class RestClusterClient<T> extends ClusterClient<T> implements NewClusterClient {
+public class RestClusterClient<T> extends ClusterClient<T> {
 
 	private final RestClusterClientConfiguration restClusterClientConfiguration;
+
+	/** Timeout for futures. */
+	private final Duration timeout;
 
 	private final RestClient restClient;
 
@@ -164,6 +168,9 @@ public class RestClusterClient<T> extends ClusterClient<T> implements NewCluster
 		T clusterId,
 		WaitStrategy waitStrategy) throws Exception {
 		super(configuration);
+
+		this.timeout = AkkaUtils.getClientTimeout(configuration);
+
 		this.restClusterClientConfiguration = RestClusterClientConfiguration.fromConfiguration(configuration);
 
 		if (restClient != null) {

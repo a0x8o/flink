@@ -22,16 +22,11 @@ import org.apache.flink.api.common.JobExecutionResult;
 import org.apache.flink.api.common.Plan;
 import org.apache.flink.api.common.PlanExecutor;
 import org.apache.flink.client.program.ClusterClient;
-import org.apache.flink.client.program.JobWithJars;
 import org.apache.flink.client.program.rest.RestClusterClient;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.JobManagerOptions;
 import org.apache.flink.configuration.RestOptions;
-import org.apache.flink.optimizer.DataStatistics;
-import org.apache.flink.optimizer.Optimizer;
-import org.apache.flink.optimizer.costs.DefaultCostEstimator;
-import org.apache.flink.optimizer.plan.OptimizedPlan;
-import org.apache.flink.optimizer.plandump.PlanJSONDumpGenerator;
+import org.apache.flink.runtime.jobgraph.SavepointRestoreSettings;
 
 import java.net.InetSocketAddress;
 import java.net.URL;
@@ -61,17 +56,23 @@ public class RemoteExecutor extends PlanExecutor {
 	private int defaultParallelism = 1;
 
 	public RemoteExecutor(String hostname, int port) {
-		this(hostname, port, new Configuration(), Collections.<URL>emptyList(),
-				Collections.<URL>emptyList());
+		this(hostname, port, new Configuration(), Collections.emptyList(), Collections.emptyList());
 	}
 
-	public RemoteExecutor(String hostname, int port, Configuration clientConfiguration,
-			List<URL> jarFiles, List<URL> globalClasspaths) {
+	public RemoteExecutor(
+		String hostname,
+		int port,
+		Configuration clientConfiguration,
+		List<URL> jarFiles,
+		List<URL> globalClasspaths) {
 		this(new InetSocketAddress(hostname, port), clientConfiguration, jarFiles, globalClasspaths);
 	}
 
-	public RemoteExecutor(InetSocketAddress inet, Configuration clientConfiguration,
-			List<URL> jarFiles, List<URL> globalClasspaths) {
+	public RemoteExecutor(
+		InetSocketAddress inet,
+		Configuration clientConfiguration,
+		List<URL> jarFiles,
+		List<URL> globalClasspaths) {
 		this.clientConfiguration = clientConfiguration;
 		this.jarFiles = jarFiles;
 		this.globalClasspaths = globalClasspaths;
@@ -116,22 +117,16 @@ public class RemoteExecutor extends PlanExecutor {
 	public JobExecutionResult executePlan(Plan plan) throws Exception {
 		checkNotNull(plan);
 
-		JobWithJars p = new JobWithJars(plan, this.jarFiles, this.globalClasspaths);
-		return executePlanWithJars(p);
-	}
+		try (ClusterClient<?> client = new RestClusterClient<>(clientConfiguration, "RemoteExecutor")) {
+			ClassLoader classLoader = ClientUtils.buildUserCodeClassLoader(jarFiles, globalClasspaths, getClass().getClassLoader());
 
-	private JobExecutionResult executePlanWithJars(JobWithJars program) throws Exception {
-		checkNotNull(program);
-
-		try (ClusterClient<?>  client = new RestClusterClient<>(clientConfiguration, "RemoteExecutor")) {
-			return client.run(program, defaultParallelism).getJobExecutionResult();
+			return client.run(
+				plan,
+				jarFiles,
+				globalClasspaths,
+				classLoader,
+				defaultParallelism,
+				SavepointRestoreSettings.none()).getJobExecutionResult();
 		}
-	}
-
-	@Override
-	public String getOptimizerPlanAsJSON(Plan plan) {
-		Optimizer opt = new Optimizer(new DataStatistics(), new DefaultCostEstimator(), new Configuration());
-		OptimizedPlan optPlan = opt.compile(plan);
-		return new PlanJSONDumpGenerator().getOptimizerPlanAsJSON(optPlan);
 	}
 }

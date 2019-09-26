@@ -33,11 +33,11 @@ import org.apache.flink.optimizer.plan.OptimizedPlan;
 import org.apache.flink.optimizer.plan.StreamingPlan;
 import org.apache.flink.optimizer.plandump.PlanJSONDumpGenerator;
 import org.apache.flink.optimizer.plantranslate.JobGraphGenerator;
-import org.apache.flink.runtime.akka.AkkaUtils;
 import org.apache.flink.runtime.client.JobStatusMessage;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.jobgraph.JobStatus;
 import org.apache.flink.runtime.jobgraph.SavepointRestoreSettings;
+import org.apache.flink.runtime.jobmaster.JobResult;
 import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.util.FlinkException;
 import org.apache.flink.util.OptionalFailure;
@@ -46,6 +46,7 @@ import org.apache.flink.util.Preconditions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
 import java.net.URISyntaxException;
@@ -54,8 +55,6 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-
-import scala.concurrent.duration.FiniteDuration;
 
 /**
  * Encapsulates the functionality necessary to submit a program to a remote cluster.
@@ -70,10 +69,8 @@ public abstract class ClusterClient<T> implements AutoCloseable {
 	final Optimizer compiler;
 
 	/** Configuration of the client. */
-	protected final Configuration flinkConfig;
+	private final Configuration flinkConfig;
 
-	/** Timeout for futures. */
-	protected final FiniteDuration timeout;
 	/**
 	 * For interactive invocations, the job results are only available after the ContextEnvironment has
 	 * been run inside the user JAR. We pass the Client to every instance of the ContextEnvironment
@@ -98,7 +95,6 @@ public abstract class ClusterClient<T> implements AutoCloseable {
 	public ClusterClient(Configuration flinkConfig) {
 		this.flinkConfig = Preconditions.checkNotNull(flinkConfig);
 		this.compiler = new Optimizer(new DataStatistics(), new DefaultCostEstimator(), flinkConfig);
-		this.timeout = AkkaUtils.getClientTimeout(flinkConfig);
 	}
 
 	/**
@@ -197,43 +193,24 @@ public abstract class ClusterClient<T> implements AutoCloseable {
 		}
 	}
 
-	public JobSubmissionResult run(JobWithJars program, int parallelism) throws ProgramInvocationException {
-		return run(program, parallelism, SavepointRestoreSettings.none());
-	}
+	public JobSubmissionResult run(
+		Plan plan,
+		List<URL> libraries,
+		List<URL> classpaths,
+		ClassLoader classLoader,
+		int parallelism,
+		SavepointRestoreSettings savepointSettings) throws CompilerException, ProgramInvocationException {
 
-	/**
-	 * Runs a program on the Flink cluster to which this client is connected. The call blocks until the
-	 * execution is complete, and returns afterwards.
-	 *
-	 * @param jobWithJars The program to be executed.
-	 * @param parallelism The default parallelism to use when running the program. The default parallelism is used
-	 *                    when the program does not set a parallelism by itself.
-	 *
-	 * @throws CompilerException Thrown, if the compiler encounters an illegal situation.
-	 * @throws ProgramInvocationException Thrown, if the program could not be instantiated from its jar file,
-	 *                                    or if the submission failed. That might be either due to an I/O problem,
-	 *                                    i.e. the job-manager is unreachable, or due to the fact that the
-	 *                                    parallel execution failed.
-	 */
-	public JobSubmissionResult run(JobWithJars jobWithJars, int parallelism, SavepointRestoreSettings savepointSettings)
-			throws CompilerException, ProgramInvocationException {
-		ClassLoader classLoader = jobWithJars.getUserCodeClassLoader();
-		if (classLoader == null) {
-			throw new IllegalArgumentException("The given JobWithJars does not provide a usercode class loader.");
-		}
-
-		OptimizedPlan optPlan = getOptimizedPlan(compiler, jobWithJars, parallelism);
-		return run(optPlan, jobWithJars.getJarFiles(), jobWithJars.getClasspaths(), classLoader, savepointSettings);
+		OptimizedPlan optPlan = getOptimizedPlan(compiler, plan, parallelism);
+		return run(optPlan, libraries, classpaths, classLoader, savepointSettings);
 	}
 
 	public JobSubmissionResult run(
-			FlinkPlan compiledPlan, List<URL> libraries, List<URL> classpaths, ClassLoader classLoader) throws ProgramInvocationException {
-		return run(compiledPlan, libraries, classpaths, classLoader, SavepointRestoreSettings.none());
-	}
-
-	public JobSubmissionResult run(FlinkPlan compiledPlan,
-			List<URL> libraries, List<URL> classpaths, ClassLoader classLoader, SavepointRestoreSettings savepointSettings)
-			throws ProgramInvocationException {
+		FlinkPlan compiledPlan,
+		List<URL> libraries,
+		List<URL> classpaths,
+		ClassLoader classLoader,
+		SavepointRestoreSettings savepointSettings) throws ProgramInvocationException {
 		JobGraph job = getJobGraph(flinkConfig, compiledPlan, libraries, classpaths, savepointSettings);
 		return submitJob(job, classLoader);
 	}
@@ -320,18 +297,6 @@ public abstract class ClusterClient<T> implements AutoCloseable {
 	//  Internal translation methods
 	// ------------------------------------------------------------------------
 
-	/**
-	 * Creates the optimized plan for a given program, using this client's compiler.
-	 *
-	 * @param prog The program to be compiled.
-	 * @return The compiled and optimized plan, as returned by the compiler.
-	 * @throws CompilerException Thrown, if the compiler encounters an illegal situation.
-	 */
-	private static OptimizedPlan getOptimizedPlan(Optimizer compiler, JobWithJars prog, int parallelism)
-			throws CompilerException, ProgramInvocationException {
-		return getOptimizedPlan(compiler, prog.getPlan(), parallelism);
-	}
-
 	public static JobGraph getJobGraph(Configuration flinkConfig, PackagedProgram prog, FlinkPlan optPlan, SavepointRestoreSettings savepointSettings) throws ProgramInvocationException {
 		return getJobGraph(flinkConfig, optPlan, prog.getAllLibraries(), prog.getClasspaths(), savepointSettings);
 	}
@@ -406,6 +371,22 @@ public abstract class ClusterClient<T> implements AutoCloseable {
 	 * @return JobSubmissionResult
 	 */
 	public abstract JobSubmissionResult submitJob(JobGraph jobGraph, ClassLoader classLoader) throws ProgramInvocationException;
+
+	/**
+	 * Submit the given {@link JobGraph} to the cluster.
+	 *
+	 * @param jobGraph to submit
+	 * @return Future which is completed with the {@link JobSubmissionResult}
+	 */
+	public abstract CompletableFuture<JobSubmissionResult> submitJob(@Nonnull JobGraph jobGraph);
+
+	/**
+	 * Request the {@link JobResult} for the given {@link JobID}.
+	 *
+	 * @param jobId for which to request the {@link JobResult}
+	 * @return Future which is completed with the {@link JobResult}
+	 */
+	public abstract CompletableFuture<JobResult> requestJobResult(@Nonnull JobID jobId);
 
 	public void shutDownCluster() {
 		throw new UnsupportedOperationException("The " + getClass().getSimpleName() + " does not support shutDownCluster.");

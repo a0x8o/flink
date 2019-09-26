@@ -63,16 +63,6 @@ public abstract class PlanExecutor {
 	 * @throws Exception Thrown, if job submission caused an exception.
 	 */
 	public abstract JobExecutionResult executePlan(Plan plan) throws Exception;
-	
-	/**
-	 * Gets the programs execution plan in a JSON format.
-	 * 
-	 * @param plan The program to get the execution plan for.
-	 * @return The execution plan, as a JSON string.
-	 * 
-	 * @throws Exception Thrown, if the executor could not connect to the compiler.
-	 */
-	public abstract String getOptimizerPlanAsJSON(Plan plan) throws Exception;
 
 	// ------------------------------------------------------------------------
 	//  Executor Factories
