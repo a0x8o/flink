@@ -16,36 +16,14 @@
  * limitations under the License.
  */
 
-package org.apache.flink.runtime.util;
-
-import java.util.UUID;
+package org.apache.flink.streaming.runtime.io.benchmark;
 
 /**
- * Wrapper class for a pair of connection address and leader session ID.
+ * Tests for various network benchmarks based on {@link DataSkewStreamNetworkThroughputBenchmark}.
  */
-public class LeaderConnectionInfo {
-	private final UUID leaderSessionId;
-
-	private final String address;
-
-	LeaderConnectionInfo(UUID leaderSessionId, String address) {
-		this.leaderSessionId = leaderSessionId;
-		this.address = address;
-	}
-
-	public UUID getLeaderSessionId() {
-		return leaderSessionId;
-	}
-
-	public String getAddress() {
-		return address;
-	}
-
+public class DataSkewStreamNetworkThroughputBenchmarkTest extends StreamNetworkThroughputBenchmarkTest {
 	@Override
-	public String toString() {
-		return "LeaderConnectionInfo{" +
-			"leaderSessionId=" + leaderSessionId +
-			", address='" + address + '\'' +
-			'}';
+	protected StreamNetworkThroughputBenchmark createBenchmark() {
+		return new DataSkewStreamNetworkThroughputBenchmark();
 	}
 }

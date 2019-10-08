@@ -7,7 +7,7 @@
  * "License"); you may not use this file except in compliance
  * with the License.  You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,36 +16,15 @@
  * limitations under the License.
  */
 
-package org.apache.flink.runtime.util;
+package org.apache.flink.runtime.dispatcher.runner;
 
-import java.util.UUID;
+import org.apache.flink.runtime.dispatcher.PartialDispatcherServices;
+import org.apache.flink.runtime.rpc.RpcService;
 
 /**
- * Wrapper class for a pair of connection address and leader session ID.
+ * Factory interface for the {@link DispatcherRunner}.
  */
-public class LeaderConnectionInfo {
-	private final UUID leaderSessionId;
+public interface DispatcherRunnerFactory {
 
-	private final String address;
-
-	LeaderConnectionInfo(UUID leaderSessionId, String address) {
-		this.leaderSessionId = leaderSessionId;
-		this.address = address;
-	}
-
-	public UUID getLeaderSessionId() {
-		return leaderSessionId;
-	}
-
-	public String getAddress() {
-		return address;
-	}
-
-	@Override
-	public String toString() {
-		return "LeaderConnectionInfo{" +
-			"leaderSessionId=" + leaderSessionId +
-			", address='" + address + '\'' +
-			'}';
-	}
+	DispatcherRunner createDispatcherRunner(RpcService rpcService, PartialDispatcherServices partialDispatcherServices) throws Exception;
 }

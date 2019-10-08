@@ -7,7 +7,7 @@
  * "License"); you may not use this file except in compliance
  * with the License.  You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,32 +16,28 @@
  * limitations under the License.
  */
 
-package org.apache.flink.runtime.minicluster;
+package org.apache.flink.runtime.dispatcher.runner;
 
-import org.apache.flink.runtime.dispatcher.DefaultJobManagerRunnerFactory;
 import org.apache.flink.runtime.dispatcher.DispatcherFactory;
-import org.apache.flink.runtime.dispatcher.DispatcherServices;
 import org.apache.flink.runtime.dispatcher.PartialDispatcherServices;
 import org.apache.flink.runtime.dispatcher.StandaloneDispatcher;
 import org.apache.flink.runtime.rpc.RpcService;
 
-import javax.annotation.Nonnull;
-
 /**
- * {@link DispatcherFactory} which creates a {@link StandaloneDispatcher} which has an
- * endpoint id with a random UUID suffix.
+ * Factory which creates a {@link DispatcherRunnerImpl} which runs a {@link StandaloneDispatcher}.
  */
-public enum SessionDispatcherWithUUIDFactory implements DispatcherFactory {
-	INSTANCE;
+public class DispatcherRunnerFactoryImpl implements DispatcherRunnerFactory {
+
+	private final DispatcherFactory dispatcherFactory;
+
+	public DispatcherRunnerFactoryImpl(DispatcherFactory dispatcherFactory) {
+		this.dispatcherFactory = dispatcherFactory;
+	}
 
 	@Override
-	public StandaloneDispatcher createDispatcher(
-			@Nonnull RpcService rpcService,
-			@Nonnull PartialDispatcherServices partialDispatcherServices) throws Exception {
-		// create the default dispatcher
-		return new StandaloneDispatcher(
-			rpcService,
-			generateEndpointIdWithUUID(),
-			DispatcherServices.from(partialDispatcherServices, DefaultJobManagerRunnerFactory.INSTANCE));
+	public DispatcherRunnerImpl createDispatcherRunner(
+			RpcService rpcService,
+			PartialDispatcherServices partialDispatcherServices) throws Exception {
+		return new DispatcherRunnerImpl(dispatcherFactory, rpcService, partialDispatcherServices);
 	}
 }

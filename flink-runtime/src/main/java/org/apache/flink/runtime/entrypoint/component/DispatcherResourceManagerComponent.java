@@ -21,6 +21,7 @@ package org.apache.flink.runtime.entrypoint.component;
 import org.apache.flink.runtime.clusterframework.ApplicationStatus;
 import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.dispatcher.Dispatcher;
+import org.apache.flink.runtime.dispatcher.runner.DispatcherRunner;
 import org.apache.flink.runtime.leaderretrieval.LeaderRetrievalService;
 import org.apache.flink.runtime.resourcemanager.ResourceManager;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerGateway;
@@ -40,10 +41,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * Component which starts a {@link Dispatcher}, {@link ResourceManager} and {@link WebMonitorEndpoint}
  * in the same process.
  */
-public class DispatcherResourceManagerComponent<T extends Dispatcher> implements AutoCloseableAsync {
+public class DispatcherResourceManagerComponent implements AutoCloseableAsync {
 
 	@Nonnull
-	private final T dispatcher;
+	private final DispatcherRunner dispatcherRunner;
 
 	@Nonnull
 	private final ResourceManager<?> resourceManager;
@@ -64,13 +65,13 @@ public class DispatcherResourceManagerComponent<T extends Dispatcher> implements
 	private final AtomicBoolean isRunning = new AtomicBoolean(true);
 
 	DispatcherResourceManagerComponent(
-			@Nonnull T dispatcher,
+			@Nonnull DispatcherRunner dispatcherRunner,
 			@Nonnull ResourceManager<?> resourceManager,
 			@Nonnull LeaderRetrievalService dispatcherLeaderRetrievalService,
 			@Nonnull LeaderRetrievalService resourceManagerRetrievalService,
 			@Nonnull WebMonitorEndpoint<?> webMonitorEndpoint) {
+		this.dispatcherRunner = dispatcherRunner;
 		this.resourceManager = resourceManager;
-		this.dispatcher = dispatcher;
 		this.dispatcherLeaderRetrievalService = dispatcherLeaderRetrievalService;
 		this.resourceManagerRetrievalService = resourceManagerRetrievalService;
 		this.webMonitorEndpoint = webMonitorEndpoint;
@@ -81,25 +82,7 @@ public class DispatcherResourceManagerComponent<T extends Dispatcher> implements
 	}
 
 	private void registerShutDownFuture() {
-		terminationFuture.whenComplete(
-			(aVoid, throwable) -> {
-				if (throwable != null) {
-					shutDownFuture.completeExceptionally(throwable);
-				} else {
-					shutDownFuture.complete(ApplicationStatus.SUCCEEDED);
-				}
-			});
-
-		dispatcher
-			.getTerminationFuture()
-			.whenComplete(
-				(aVoid, throwable) -> {
-					if (throwable != null) {
-						shutDownFuture.completeExceptionally(throwable);
-					} else {
-						shutDownFuture.complete(ApplicationStatus.SUCCEEDED);
-					}
-				});
+		FutureUtils.forward(dispatcherRunner.getShutDownFuture(), shutDownFuture);
 	}
 
 	public final CompletableFuture<ApplicationStatus> getShutDownFuture() {
@@ -107,8 +90,8 @@ public class DispatcherResourceManagerComponent<T extends Dispatcher> implements
 	}
 
 	@Nonnull
-	public T getDispatcher() {
-		return dispatcher;
+	public DispatcherRunner getDispatcherRunner() {
+		return dispatcherRunner;
 	}
 
 	@Nonnull
@@ -163,7 +146,7 @@ public class DispatcherResourceManagerComponent<T extends Dispatcher> implements
 			exception = ExceptionUtils.firstOrSuppressed(e, exception);
 		}
 
-		terminationFutures.add(dispatcher.closeAsync());
+		terminationFutures.add(dispatcherRunner.closeAsync());
 
 		terminationFutures.add(resourceManager.closeAsync());
 
