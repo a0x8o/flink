@@ -1,0 +1,42 @@
+[
+  {
+    "name"              : "eth_one",
+    "cwd"               : ".",
+    "script"            : "app.js",
+    "log_date_format"   : "YYYY-MM-DD HH:mm Z",
+    "merge_logs"        : false,
+    "watch"             : false,
+    "min_uptime"        : 1000,
+    "exec_interpreter"  : "node",
+    "exec_mode"         : "fork_mode",
+    "env":
+    {
+      "NODE_ENV"        : "etherway",
+      "RPC_HOST"        : "__subnet__.1",
+      "RPC_PORT"        : "8545",
+      "INSTANCE_NAME"   : "eth_one",
+      "WS_SERVER"       : "http://__subnet__.4:3000",
+      "WS_SECRET"       : "__PW__"
+    }
+  },
+  {
+    "name"              : "eth_two",
+    "cwd"               : ".",
+    "script"            : "app.js",
+    "log_date_format"   : "YYYY-MM-DD HH:mm Z",
+    "merge_logs"        : false,
+    "watch"             : false,
+    "min_uptime"        : 1000,
+    "exec_interpreter"  : "node",
+    "exec_mode"         : "fork_mode",
+    "env":
+    {
+      "NODE_ENV"        : "etherway",
+      "RPC_HOST"        : "__subnet__.2",
+      "RPC_PORT"        : "8545",
+      "INSTANCE_NAME"   : "eth_two",
+      "WS_SERVER"       : "http://__subnet__.4:3000",
+      "WS_SECRET"       : "__PW__"
+    }
+  }
+]

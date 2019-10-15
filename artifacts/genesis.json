@@ -1,0 +1,21 @@
+{
+    "config": {
+        "chainId": 66,
+        "homesteadBlock": 0,
+        "byzantiumBlock": 0,
+        "eip150Block": 0,
+        "eip155Block": 0,
+        "eip158Block": 0
+    },
+    "difficulty": "0x100",
+    "gasLimit": "9000000000",
+    "alloc": {
+        "admin": { "balance": "5000000000000000000000" },
+        "user1": { "balance": "5000000000000000000000" },
+        "user2": { "balance": "5000000000000000000000" },
+        "user3": { "balance": "5000000000000000000000" },
+        "user4": { "balance": "5000000000000000000000" },
+        "user5": { "balance": "5000000000000000000000" },
+        "user6": { "balance": "5000000000000000000000" }
+    }
+}
