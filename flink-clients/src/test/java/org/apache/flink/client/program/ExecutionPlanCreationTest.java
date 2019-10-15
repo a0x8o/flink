@@ -49,6 +49,7 @@ public class ExecutionPlanCreationTest {
 	public void testGetExecutionPlan() {
 		try {
 			PackagedProgram prg = new PackagedProgram(TestOptimizerPlan.class, "/dev/random", "/tmp");
+			assertNotNull(prg.getPreviewPlan());
 
 			InetAddress mockAddress = InetAddress.getLocalHost();
 			InetSocketAddress mockJmAddress = new InetSocketAddress(mockAddress, 12345);

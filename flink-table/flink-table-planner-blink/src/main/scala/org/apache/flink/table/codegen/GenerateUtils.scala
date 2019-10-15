@@ -20,17 +20,13 @@ package org.apache.flink.table.codegen
 
 import org.apache.flink.api.common.ExecutionConfig
 import org.apache.flink.api.common.typeinfo.{AtomicType => AtomicTypeInfo}
-import org.apache.flink.api.java.typeutils.GenericTypeInfo
+import org.apache.flink.table.`type`._
 import org.apache.flink.table.codegen.CodeGenUtils._
 import org.apache.flink.table.codegen.GeneratedExpression.{ALWAYS_NULL, NEVER_NULL, NO_CODE}
 import org.apache.flink.table.codegen.calls.CurrentTimePointCallGen
 import org.apache.flink.table.dataformat._
 import org.apache.flink.table.plan.util.SortUtil
-import org.apache.flink.table.runtime.functions.SqlDateTimeUtils.unixTimestampToLocalDateTime
-import org.apache.flink.table.types.PlannerTypeUtils
-import org.apache.flink.table.types.logical.LogicalTypeRoot._
-import org.apache.flink.table.types.logical._
-import org.apache.flink.table.typeutils.TypeCheckUtils.{isCharacterString, isReference, isTemporal}
+import org.apache.flink.table.typeutils.TypeCheckUtils.{isReference, isTemporal}
 
 import org.apache.calcite.avatica.util.ByteString
 import org.apache.commons.lang3.StringEscapeUtils
@@ -53,7 +49,7 @@ object GenerateUtils {
     */
   def generateCallIfArgsNotNull(
       ctx: CodeGeneratorContext,
-      returnType: LogicalType,
+      returnType: InternalType,
       operands: Seq[GeneratedExpression],
       resultNullable: Boolean = false)
       (call: Seq[String] => String): GeneratedExpression = {
@@ -67,7 +63,7 @@ object GenerateUtils {
     */
   def generateCallWithStmtIfArgsNotNull(
       ctx: CodeGeneratorContext,
-      returnType: LogicalType,
+      returnType: InternalType,
       operands: Seq[GeneratedExpression],
       resultNullable: Boolean = false)
       (call: Seq[String] => (String, String)): GeneratedExpression = {
@@ -127,7 +123,7 @@ object GenerateUtils {
       ctx: CodeGeneratorContext,
       operands: Seq[GeneratedExpression])
       (call: Seq[String] => String): GeneratedExpression = {
-    generateCallIfArgsNotNull(ctx, new VarCharType(VarCharType.MAX_LENGTH), operands) {
+    generateCallIfArgsNotNull(ctx, InternalTypes.STRING, operands) {
       args => s"$BINARY_STRING.fromString(${call(args)})"
     }
   }
@@ -141,7 +137,7 @@ object GenerateUtils {
       ctx: CodeGeneratorContext,
       operands: Seq[GeneratedExpression])
       (call: Seq[String] => (String, String)): GeneratedExpression = {
-    generateCallWithStmtIfArgsNotNull(ctx, new VarCharType(VarCharType.MAX_LENGTH), operands) {
+    generateCallWithStmtIfArgsNotNull(ctx, InternalTypes.STRING, operands) {
       args =>
         val (stmt, result) = call(args)
         (stmt, s"$BINARY_STRING.fromString($result)")
@@ -153,7 +149,7 @@ object GenerateUtils {
     */
   def generateCallIfArgsNullable(
       ctx: CodeGeneratorContext,
-      returnType: LogicalType,
+      returnType: InternalType,
       operands: Seq[GeneratedExpression],
       resultNullable: Boolean = false)
       (call: Seq[String] => String): GeneratedExpression = {
@@ -174,7 +170,7 @@ object GenerateUtils {
 
     // TODO: should we also consider other types?
     val parameters = operands.map(x =>
-      if (isCharacterString(x.resultType)){
+      if (x.resultType.equals(InternalTypes.STRING)){
         "( " + x.nullTerm + " ) ? null : (" + x.resultTerm + ")"
       } else {
         x.resultTerm
@@ -213,7 +209,7 @@ object GenerateUtils {
     * @return the record declaration statement
     */
   def generateRecordStatement(
-      t: LogicalType,
+      t: InternalType,
       clazz: Class[_],
       recordTerm: String,
       recordWriterTerm: Option[String] = None): String = {
@@ -225,12 +221,12 @@ object GenerateUtils {
         val binaryRowWriter = className[BinaryRowWriter]
         val typeTerm = clazz.getCanonicalName
         s"""
-           |final $typeTerm $recordTerm = new $typeTerm(${rt.getFieldCount});
+           |final $typeTerm $recordTerm = new $typeTerm(${rt.getArity});
            |final $binaryRowWriter $writerTerm = new $binaryRowWriter($recordTerm);
            |""".stripMargin.trim
       case rt: RowType if classOf[ObjectArrayRow].isAssignableFrom(clazz) =>
         val typeTerm = clazz.getCanonicalName
-        s"final $typeTerm $recordTerm = new $typeTerm(${rt.getFieldCount});"
+        s"final $typeTerm $recordTerm = new $typeTerm(${rt.getArity});"
       case _: RowType if clazz == classOf[JoinedRow] =>
         val typeTerm = clazz.getCanonicalName
         s"final $typeTerm $recordTerm = new $typeTerm();"
@@ -241,7 +237,7 @@ object GenerateUtils {
   }
 
   def generateNullLiteral(
-      resultType: LogicalType,
+      resultType: InternalType,
       nullCheck: Boolean): GeneratedExpression = {
     val defaultValue = primitiveDefaultValue(resultType)
     val resultTypeTerm = primitiveTypeTermForType(resultType)
@@ -258,7 +254,7 @@ object GenerateUtils {
   }
 
   def generateNonNullLiteral(
-      literalType: LogicalType,
+      literalType: InternalType,
       literalCode: String,
       literalValue: Any): GeneratedExpression = {
     val resultTypeTerm = primitiveTypeTermForType(literalType)
@@ -272,35 +268,35 @@ object GenerateUtils {
 
   def generateLiteral(
       ctx: CodeGeneratorContext,
-      literalType: LogicalType,
+      literalType: InternalType,
       literalValue: Any): GeneratedExpression = {
     if (literalValue == null) {
       return generateNullLiteral(literalType, ctx.nullCheck)
     }
     // non-null values
-    literalType.getTypeRoot match {
+    literalType match {
 
-      case BOOLEAN =>
+      case InternalTypes.BOOLEAN =>
         generateNonNullLiteral(literalType, literalValue.toString, literalValue)
 
-      case TINYINT =>
+      case InternalTypes.BYTE =>
         val decimal = BigDecimal(literalValue.asInstanceOf[JBigDecimal])
         generateNonNullLiteral(literalType, decimal.byteValue().toString, decimal.byteValue())
 
-      case SMALLINT =>
+      case InternalTypes.SHORT =>
         val decimal = BigDecimal(literalValue.asInstanceOf[JBigDecimal])
         generateNonNullLiteral(literalType, decimal.shortValue().toString, decimal.shortValue())
 
-      case INTEGER =>
+      case InternalTypes.INT =>
         val decimal = BigDecimal(literalValue.asInstanceOf[JBigDecimal])
         generateNonNullLiteral(literalType, decimal.intValue().toString, decimal.intValue())
 
-      case BIGINT =>
+      case InternalTypes.LONG =>
         val decimal = BigDecimal(literalValue.asInstanceOf[JBigDecimal])
         generateNonNullLiteral(
           literalType, decimal.longValue().toString + "L", decimal.longValue())
 
-      case FLOAT =>
+      case InternalTypes.FLOAT =>
         val floatValue = literalValue.asInstanceOf[JBigDecimal].floatValue()
         floatValue match {
           case Float.NaN => generateNonNullLiteral(
@@ -318,7 +314,7 @@ object GenerateUtils {
             literalType, floatValue.toString + "f", floatValue)
         }
 
-      case DOUBLE =>
+      case InternalTypes.DOUBLE =>
         val doubleValue = literalValue.asInstanceOf[JBigDecimal].doubleValue()
         doubleValue match {
           case Double.NaN => generateNonNullLiteral(
@@ -336,10 +332,9 @@ object GenerateUtils {
           case _ => generateNonNullLiteral(
             literalType, doubleValue.toString + "d", doubleValue)
         }
-      case DECIMAL =>
-        val dt = literalType.asInstanceOf[DecimalType]
-        val precision = dt.getPrecision
-        val scale = dt.getScale
+      case decimal: DecimalType =>
+        val precision = decimal.precision()
+        val scale = decimal.scale()
         val fieldTerm = newName("decimal")
         val decimalClass = className[Decimal]
         val fieldDecimal =
@@ -352,34 +347,34 @@ object GenerateUtils {
           literalValue.asInstanceOf[JBigDecimal], precision, scale)
         generateNonNullLiteral(literalType, fieldTerm, value)
 
-      case VARCHAR | CHAR =>
+      case InternalTypes.STRING =>
         val escapedValue = StringEscapeUtils.ESCAPE_JAVA.translate(literalValue.toString)
         val field = ctx.addReusableStringConstants(escapedValue)
         generateNonNullLiteral(literalType, field, BinaryString.fromString(escapedValue))
 
-      case VARBINARY | BINARY =>
+      case InternalTypes.BINARY =>
         val bytesVal = literalValue.asInstanceOf[ByteString].getBytes
         val fieldTerm = ctx.addReusableObject(
           bytesVal, "binary", bytesVal.getClass.getCanonicalName)
         generateNonNullLiteral(literalType, fieldTerm, bytesVal)
 
-      case DATE =>
+      case InternalTypes.DATE =>
         generateNonNullLiteral(literalType, literalValue.toString, literalValue)
 
-      case TIME_WITHOUT_TIME_ZONE =>
+      case InternalTypes.TIME =>
         generateNonNullLiteral(literalType, literalValue.toString, literalValue)
 
-      case TIMESTAMP_WITHOUT_TIME_ZONE =>
+      case InternalTypes.TIMESTAMP =>
+        // Hack
+        // Currently, in RexLiteral/SqlLiteral(Calcite), TimestampString has no time zone.
+        // TimeString, DateString TimestampString are treated as UTC time/(unix time)
+        // when they are converted/formatted/validated
+        // Here, we adjust millis before Calcite solve TimeZone perfectly
         val millis = literalValue.asInstanceOf[Long]
-        generateNonNullLiteral(literalType, millis + "L", millis)
+        val adjustedValue = millis - ctx.tableConfig.getTimeZone.getOffset(millis)
+        generateNonNullLiteral(literalType, adjustedValue.toString + "L", adjustedValue)
 
-      case TIMESTAMP_WITH_LOCAL_TIME_ZONE =>
-        val millis = unixTimestampToLocalDateTime(literalValue.asInstanceOf[Long])
-            .atZone(ctx.tableConfig.getLocalTimeZone)
-            .toInstant.toEpochMilli
-        generateNonNullLiteral(literalType, millis + "L", literalValue)
-
-      case INTERVAL_YEAR_MONTH =>
+      case InternalTypes.INTERVAL_MONTHS =>
         val decimal = BigDecimal(literalValue.asInstanceOf[JBigDecimal])
         if (decimal.isValidInt) {
           generateNonNullLiteral(literalType, decimal.intValue().toString, decimal.intValue())
@@ -388,7 +383,7 @@ object GenerateUtils {
             s"Decimal '$decimal' can not be converted to interval of months.")
         }
 
-      case INTERVAL_DAY_TIME =>
+      case InternalTypes.INTERVAL_MILLIS =>
         val decimal = BigDecimal(literalValue.asInstanceOf[JBigDecimal])
         if (decimal.isValidLong) {
           generateNonNullLiteral(
@@ -401,8 +396,7 @@ object GenerateUtils {
         }
 
       // Symbol type for special flags e.g. TRIM's BOTH, LEADING, TRAILING
-      case ANY if literalType.asInstanceOf[TypeInformationAnyType[_]]
-          .getTypeInformation.getTypeClass.isAssignableFrom(classOf[Enum[_]]) =>
+      case symbol: GenericType[_] if symbol.getTypeClass.isAssignableFrom(classOf[Enum[_]]) =>
         generateSymbol(literalValue.asInstanceOf[Enum[_]])
 
       case t@_ =>
@@ -415,8 +409,7 @@ object GenerateUtils {
       qualifyEnum(enum),
       NEVER_NULL,
       NO_CODE,
-      new TypeInformationAnyType[AnyRef](new GenericTypeInfo[AnyRef](
-        enum.getDeclaringClass.asInstanceOf[Class[AnyRef]])),
+      new GenericType(enum.getDeclaringClass),
       literalValue = Some(enum))
   }
 
@@ -428,7 +421,7 @@ object GenerateUtils {
     * @return internal unboxed field representation
     */
   private[flink] def generateNonNullField(
-      fieldType: LogicalType,
+      fieldType: InternalType,
       fieldTerm: String)
     : GeneratedExpression = {
     val resultTypeTerm = primitiveTypeTermForType(fieldType)
@@ -444,12 +437,12 @@ object GenerateUtils {
          |$resultTerm = $contextTerm.timerService().currentProcessingTime();
          |""".stripMargin.trim
     // the proctime has been materialized, so it's TIMESTAMP now, not PROCTIME_INDICATOR
-    GeneratedExpression(resultTerm, NEVER_NULL, resultCode, new TimestampType(3))
+    GeneratedExpression(resultTerm, NEVER_NULL, resultCode, InternalTypes.TIMESTAMP)
   }
 
   def generateCurrentTimestamp(
       ctx: CodeGeneratorContext): GeneratedExpression = {
-    new CurrentTimePointCallGen(false).generate(ctx, Seq(), new TimestampType(3))
+    new CurrentTimePointCallGen(false).generate(ctx, Seq(), InternalTypes.TIMESTAMP)
   }
 
   def generateRowtimeAccess(
@@ -470,11 +463,7 @@ object GenerateUtils {
          |$nullTerm = false;
        """.stripMargin.trim
 
-    GeneratedExpression(
-      resultTerm,
-      nullTerm,
-      accessCode,
-      new TimestampType(true, TimestampKind.ROWTIME, 3))
+    GeneratedExpression(resultTerm, nullTerm, accessCode, InternalTypes.ROWTIME_INDICATOR)
   }
 
   /**
@@ -488,7 +477,7 @@ object GenerateUtils {
     */
   def generateInputAccess(
       ctx: CodeGeneratorContext,
-      inputType: LogicalType,
+      inputType: InternalType,
       inputTerm: String,
       index: Int,
       nullableInput: Boolean,
@@ -516,13 +505,13 @@ object GenerateUtils {
 
   def generateNullableInputFieldAccess(
     ctx: CodeGeneratorContext,
-    inputType: LogicalType,
+    inputType: InternalType,
     inputTerm: String,
     index: Int,
     deepCopy: Boolean = false): GeneratedExpression = {
 
     val fieldType = inputType match {
-      case ct: RowType => ct.getTypeAt(index)
+      case ct: RowType => ct.getFieldTypes()(index)
       case _ => inputType
     }
     val resultTypeTerm = primitiveTypeTermForType(fieldType)
@@ -559,7 +548,7 @@ object GenerateUtils {
     */
   def generateInputFieldUnboxing(
       ctx: CodeGeneratorContext,
-      fieldType: LogicalType,
+      fieldType: InternalType,
       fieldTerm: String): GeneratedExpression = {
 
     val resultTypeTerm = primitiveTypeTermForType(fieldType)
@@ -596,7 +585,7 @@ object GenerateUtils {
     */
   def generateFieldAccess(
     ctx: CodeGeneratorContext,
-    inputType: LogicalType,
+    inputType: InternalType,
     inputTerm: String,
     index: Int,
     deepCopy: Boolean): GeneratedExpression = {
@@ -610,12 +599,12 @@ object GenerateUtils {
 
   def generateFieldAccess(
       ctx: CodeGeneratorContext,
-      inputType: LogicalType,
+      inputType: InternalType,
       inputTerm: String,
       index: Int): GeneratedExpression =
     inputType match {
       case ct: RowType =>
-        val fieldType = ct.getTypeAt(index)
+        val fieldType = ct.getFieldTypes()(index)
         val resultTypeTerm = primitiveTypeTermForType(fieldType)
         val defaultValue = primitiveDefaultValue(fieldType)
         val readCode = baseRowFieldReadAccess(ctx, index.toString, inputTerm, fieldType)
@@ -645,46 +634,42 @@ object GenerateUtils {
         generateInputFieldUnboxing(ctx, inputType, inputCode)
     }
 
+
   /**
     * Generates code for comparing two field.
     */
   def generateCompare(
       ctx: CodeGeneratorContext,
-      t: LogicalType,
+      t: InternalType,
       nullsIsLast: Boolean,
       leftTerm: String,
-      rightTerm: String): String = t.getTypeRoot match {
-    case BOOLEAN => s"($leftTerm == $rightTerm ? 0 : ($leftTerm ? 1 : -1))"
-    case DATE | TIME_WITHOUT_TIME_ZONE | TIMESTAMP_WITHOUT_TIME_ZONE |
-         TIMESTAMP_WITH_LOCAL_TIME_ZONE =>
+      rightTerm: String): String = t match {
+    case InternalTypes.BOOLEAN => s"($leftTerm == $rightTerm ? 0 : ($leftTerm ? 1 : -1))"
+    case _: PrimitiveType | _: DateType | _: TimeType | _: TimestampType =>
       s"($leftTerm > $rightTerm ? 1 : $leftTerm < $rightTerm ? -1 : 0)"
-    case _ if PlannerTypeUtils.isPrimitive(t) =>
-      s"($leftTerm > $rightTerm ? 1 : $leftTerm < $rightTerm ? -1 : 0)"
-    case VARBINARY | BINARY =>
+    case InternalTypes.BINARY =>
       val sortUtil = classOf[org.apache.flink.table.runtime.sort.SortUtil].getCanonicalName
       s"$sortUtil.compareBinary($leftTerm, $rightTerm)"
-    case ARRAY =>
-      val at = t.asInstanceOf[ArrayType]
+    case at: ArrayType =>
       val compareFunc = newName("compareArray")
       val compareCode = generateArrayCompare(
         ctx,
         SortUtil.getNullDefaultOrder(true), at, "a", "b")
       val funcCode: String =
         s"""
-          public int $compareFunc($BASE_ARRAY a, $BASE_ARRAY b) {
+          public int $compareFunc($BINARY_ARRAY a, $BINARY_ARRAY b) {
             $compareCode
             return 0;
           }
         """
       ctx.addReusableMember(funcCode)
       s"$compareFunc($leftTerm, $rightTerm)"
-    case ROW =>
-      val rowType = t.asInstanceOf[RowType]
-      val orders = (0 until rowType.getFieldCount).map(_ => true).toArray
+    case rowType: RowType =>
+      val orders = rowType.getFieldTypes.map(_ => true)
       val comparisons = generateRowCompare(
         ctx,
-        (0 until rowType.getFieldCount).toArray,
-        rowType.getChildren.toArray(Array[LogicalType]()),
+        rowType.getFieldTypes.indices.toArray,
+        rowType.getFieldTypes,
         orders,
         SortUtil.getNullDefaultOrders(orders),
         "a",
@@ -699,13 +684,10 @@ object GenerateUtils {
         """
       ctx.addReusableMember(funcCode)
       s"$compareFunc($leftTerm, $rightTerm)"
-    case ANY =>
-      val anyType = t.asInstanceOf[TypeInformationAnyType[_]]
-      val ser = ctx.addReusableObject(
-        anyType.getTypeInformation.createSerializer(new ExecutionConfig), "serializer")
+    case gt: GenericType[_] =>
+      val ser = ctx.addReusableObject(gt.getSerializer, "serializer")
       val comp = ctx.addReusableObject(
-        anyType.getTypeInformation.asInstanceOf[AtomicTypeInfo[_]]
-            .createComparator(true, new ExecutionConfig),
+        gt.getTypeInfo.asInstanceOf[AtomicTypeInfo[_]].createComparator(true, new ExecutionConfig),
         "comparator")
       s"""
          |$comp.compare(
@@ -713,7 +695,7 @@ object GenerateUtils {
          |  $BINARY_GENERIC.getJavaObjectFromBinaryGeneric($rightTerm, $ser)
          |)
        """.stripMargin
-    case other => s"$leftTerm.compareTo($rightTerm)"
+    case other if other.isInstanceOf[AtomicType] => s"$leftTerm.compareTo($rightTerm)"
   }
 
   /**
@@ -775,7 +757,7 @@ object GenerateUtils {
   def generateRowCompare(
     ctx: CodeGeneratorContext,
     keys: Array[Int],
-    keyTypes: Array[LogicalType],
+    keyTypes: Array[InternalType],
     orders: Array[Boolean],
     nullsIsLast: Array[Boolean],
     leftTerm: String,

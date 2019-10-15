@@ -18,8 +18,6 @@
 
 package org.apache.flink.runtime.leaderelection;
 
-import org.apache.flink.runtime.util.LeaderConnectionInfo;
-
 import javax.annotation.Nonnull;
 
 import java.util.UUID;
@@ -33,7 +31,7 @@ public class TestingLeaderElectionService implements LeaderElectionService {
 
 	private LeaderContender contender = null;
 	private boolean hasLeadership = false;
-	private CompletableFuture<LeaderConnectionInfo> confirmationFuture = null;
+	private CompletableFuture<UUID> confirmationFuture = null;
 	private CompletableFuture<Void> startFuture = new CompletableFuture<>();
 	private UUID issuedLeaderSessionId = null;
 
@@ -42,7 +40,7 @@ public class TestingLeaderElectionService implements LeaderElectionService {
 	 *
 	 * <p>Note: the future is created upon calling {@link #isLeader(UUID)}.
 	 */
-	public synchronized CompletableFuture<LeaderConnectionInfo> getConfirmationFuture() {
+	public synchronized CompletableFuture<UUID> getConfirmationFuture() {
 		return confirmationFuture;
 	}
 
@@ -69,9 +67,9 @@ public class TestingLeaderElectionService implements LeaderElectionService {
 	}
 
 	@Override
-	public synchronized void confirmLeadership(UUID leaderSessionID, String leaderAddress) {
+	public synchronized void confirmLeaderSessionID(UUID leaderSessionID) {
 		if (confirmationFuture != null) {
-			confirmationFuture.complete(new LeaderConnectionInfo(leaderSessionID, leaderAddress));
+			confirmationFuture.complete(leaderSessionID);
 		}
 	}
 
@@ -92,7 +90,7 @@ public class TestingLeaderElectionService implements LeaderElectionService {
 			contender.grantLeadership(leaderSessionID);
 		}
 
-		return confirmationFuture.thenApply(LeaderConnectionInfo::getLeaderSessionId);
+		return confirmationFuture;
 	}
 
 	public synchronized void notLeader() {
@@ -104,8 +102,8 @@ public class TestingLeaderElectionService implements LeaderElectionService {
 	}
 
 	public synchronized String getAddress() {
-		if (confirmationFuture.isDone()) {
-			return confirmationFuture.join().getAddress();
+		if (contender != null) {
+			return contender.getAddress();
 		} else {
 			throw new IllegalStateException("TestingLeaderElectionService has not been started.");
 		}

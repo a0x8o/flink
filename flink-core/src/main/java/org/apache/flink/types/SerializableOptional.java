@@ -59,16 +59,12 @@ public final class SerializableOptional<T extends Serializable> implements Seria
 		}
 	}
 
-	public <R extends Serializable> SerializableOptional<R> map(Function<? super T, ? extends R> mapper) {
+	public <R> Optional<R> map(Function<? super T, ? extends R> mapper) {
 		if (value == null) {
-			return empty();
+			return Optional.empty();
 		} else {
-			return ofNullable(mapper.apply(value));
+			return Optional.ofNullable(mapper.apply(value));
 		}
-	}
-
-	public Optional<T> toOptional() {
-		return Optional.ofNullable(value);
 	}
 
 	public static <T extends Serializable> SerializableOptional<T> of(@Nonnull T value) {

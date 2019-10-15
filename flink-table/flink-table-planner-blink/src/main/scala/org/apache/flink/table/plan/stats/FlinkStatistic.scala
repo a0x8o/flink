@@ -35,7 +35,7 @@ import scala.collection.JavaConversions._
 class FlinkStatistic(
     tableStats: TableStats,
     uniqueKeys: util.Set[_ <: util.Set[String]] = null,
-    relModifiedMonotonicity: RelModifiedMonotonicity = null)
+    monotonicity: RelModifiedMonotonicity = null)
   extends Statistic {
 
   require(uniqueKeys == null || !uniqueKeys.exists(keys => keys == null || keys.isEmpty),
@@ -71,7 +71,7 @@ class FlinkStatistic(
   /**
     * Returns the modified monotonicity of the table
     */
-  def getRelModifiedMonotonicity: RelModifiedMonotonicity = relModifiedMonotonicity
+  def getRelModifiedMonotonicity: RelModifiedMonotonicity = monotonicity
 
   /**
     * Returns the number of rows of the table.
@@ -107,27 +107,6 @@ class FlinkStatistic(
 
   override def getReferentialConstraints: util.List[RelReferentialConstraint] =
     util.Collections.emptyList()
-
-  override def toString: String = {
-    val builder = new StringBuilder
-    if (tableStats != null) {
-      builder.append(s"TableStats: " +
-        s"{rowCount: ${tableStats.getRowCount}, " +
-        s"columnStats: ${tableStats.getColumnStats}}, ")
-    }
-    if (uniqueKeys != null) {
-      builder.append(s"uniqueKeys: $uniqueKeys, ")
-    }
-    if (relModifiedMonotonicity != null) {
-      builder.append(relModifiedMonotonicity.toString).append(", ")
-    }
-
-    if (builder.nonEmpty && builder.length() > 2) {
-      // delete `, ` if build is not empty
-      builder.delete(builder.length() - 2, builder.length())
-    }
-    builder.toString()
-  }
 }
 
 /**
@@ -142,7 +121,6 @@ object FlinkStatistic {
 
     private var tableStats: TableStats = _
     private var uniqueKeys: util.Set[_ <: util.Set[String]] = _
-    private var relModifiedMonotonicity: RelModifiedMonotonicity = _
 
     def tableStats(tableStats: TableStats): Builder = {
       this.tableStats = tableStats
@@ -154,24 +132,18 @@ object FlinkStatistic {
       this
     }
 
-    def relModifiedMonotonicity(monotonicity: RelModifiedMonotonicity): Builder = {
-      this.relModifiedMonotonicity = monotonicity
-      this
-    }
-
     def statistic(statistic: FlinkStatistic): Builder = {
       require(statistic != null, "input statistic cannot be null!")
       this.tableStats = statistic.getTableStats
       this.uniqueKeys = statistic.getUniqueKeys
-      this.relModifiedMonotonicity = statistic.getRelModifiedMonotonicity
       this
     }
 
     def build(): FlinkStatistic = {
-      if (tableStats == null && uniqueKeys == null && relModifiedMonotonicity == null) {
+      if (tableStats == null && uniqueKeys == null) {
         UNKNOWN
       } else {
-        new FlinkStatistic(tableStats, uniqueKeys, relModifiedMonotonicity)
+        new FlinkStatistic(tableStats, uniqueKeys)
       }
     }
   }

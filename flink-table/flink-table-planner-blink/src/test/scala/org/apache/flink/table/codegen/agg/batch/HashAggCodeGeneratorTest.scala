@@ -18,12 +18,13 @@
 
 package org.apache.flink.table.codegen.agg.batch
 
-import org.apache.flink.table.api.DataTypes
+import org.apache.flink.api.common.typeinfo.Types
+import org.apache.flink.streaming.api.operators.OneInputStreamOperator
+import org.apache.flink.table.`type`.{InternalType, InternalTypes, RowType}
 import org.apache.flink.table.dataformat.BaseRow
 import org.apache.flink.table.functions.aggfunctions.AvgAggFunction.IntegralAvgAggFunction
 import org.apache.flink.table.plan.util.{AggregateInfo, AggregateInfoList}
-import org.apache.flink.table.runtime.CodeGenOperatorFactory
-import org.apache.flink.table.types.logical.{BigIntType, DoubleType, LogicalType, RowType, VarCharType}
+import org.apache.flink.table.runtime.OneInputOperatorWrapper
 
 import org.apache.calcite.rel.core.AggregateCall
 import org.junit.Test
@@ -34,12 +35,12 @@ import org.powermock.api.mockito.PowerMockito.{mock, when}
   */
 class HashAggCodeGeneratorTest extends BatchAggTestBase {
 
-  val localOutputType = RowType.of(
-    Array[LogicalType](
-      new VarCharType(VarCharType.MAX_LENGTH), new VarCharType(VarCharType.MAX_LENGTH),
-      new BigIntType(), new BigIntType(),
-      new DoubleType(), new BigIntType(),
-      new BigIntType(), new BigIntType()),
+  val localOutputType = new RowType(
+    Array[InternalType](
+      InternalTypes.STRING, InternalTypes.STRING,
+      InternalTypes.LONG, InternalTypes.LONG,
+      InternalTypes.DOUBLE, InternalTypes.LONG,
+      InternalTypes.LONG, InternalTypes.LONG),
     Array(
       "f0", "f4",
       "agg1Buffer1", "agg1Buffer2",
@@ -53,7 +54,7 @@ class HashAggCodeGeneratorTest extends BatchAggTestBase {
     when(aggInfo, "agg").thenReturn(call)
     when(call, "getName").thenReturn("avg3")
     when(aggInfo, "function").thenReturn(new IntegralAvgAggFunction)
-    when(aggInfo, "externalAccTypes").thenReturn(Array(DataTypes.BIGINT, DataTypes.BIGINT))
+    when(aggInfo, "externalAccTypes").thenReturn(Array(Types.LONG, Types.LONG))
     when(aggInfo, "argIndexes").thenReturn(Array(3))
     when(aggInfo, "aggIndex").thenReturn(2)
     aggInfo
@@ -112,7 +113,7 @@ class HashAggCodeGeneratorTest extends BatchAggTestBase {
   }
 
   private def getOperatorWithKey(isMerge: Boolean, isFinal: Boolean)
-    : (CodeGenOperatorFactory[BaseRow], RowType, RowType) = {
+    : (OneInputStreamOperator[BaseRow, BaseRow], RowType, RowType) = {
     val (iType, oType) = if (isMerge && isFinal) {
       (localOutputType, globalOutputType)
     } else if (!isMerge && isFinal) {
@@ -123,8 +124,8 @@ class HashAggCodeGeneratorTest extends BatchAggTestBase {
     val auxGrouping = if (isMerge) Array(1) else Array(4)
     val generator = new HashAggCodeGenerator(
       ctx, relBuilder, aggInfoList, iType, oType, Array(0), auxGrouping, isMerge, isFinal)
-    val genOp = generator.genWithKeys(100 * 32 * 1024)
-    (new CodeGenOperatorFactory[BaseRow](genOp), iType, oType)
+    val genOp = generator.genWithKeys(100 * 32 * 1024, 0)
+    (new OneInputOperatorWrapper[BaseRow, BaseRow](genOp), iType, oType)
   }
 
 

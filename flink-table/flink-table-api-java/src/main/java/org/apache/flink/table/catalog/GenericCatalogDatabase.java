@@ -22,29 +22,50 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 
+import static org.apache.flink.util.Preconditions.checkNotNull;
+
 /**
  * A generic catalog database implementation.
  */
-public class GenericCatalogDatabase extends AbstractCatalogDatabase {
+public class GenericCatalogDatabase implements CatalogDatabase {
+	private final Map<String, String> properties;
+	private String comment = "This is a generic catalog database.";
+
+	public GenericCatalogDatabase() {
+		this.properties = new HashMap<>();
+	}
+
+	public GenericCatalogDatabase(Map<String, String> properties) {
+		this.properties = checkNotNull(properties, "properties cannot be null");
+	}
 
 	public GenericCatalogDatabase(Map<String, String> properties, String comment) {
-		super(properties, comment);
-		properties.put(GenericInMemoryCatalog.FLINK_IS_GENERIC_KEY, GenericInMemoryCatalog.FLINK_IS_GENERIC_VALUE);
+		this(properties);
+		this.comment = checkNotNull(comment, "comment cannot be null");
+	}
+
+	@Override
+	public Map<String, String> getProperties() {
+		return properties;
+	}
+
+	@Override
+	public String getComment() {
+		return this.comment;
 	}
 
 	@Override
 	public GenericCatalogDatabase copy() {
-		return new GenericCatalogDatabase(new HashMap<>(getProperties()), getComment());
+		return new GenericCatalogDatabase(new HashMap<>(properties), comment);
 	}
 
 	@Override
 	public Optional<String> getDescription() {
-		return Optional.of(getComment());
+		return Optional.of(comment);
 	}
 
 	@Override
 	public Optional<String> getDetailedDescription() {
-		return Optional.of("This is a generic catalog database");
+		return Optional.of("This is a generic catalog database stored in memory only");
 	}
-
 }

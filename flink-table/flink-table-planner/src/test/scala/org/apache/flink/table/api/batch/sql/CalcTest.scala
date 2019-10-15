@@ -29,11 +29,11 @@ class CalcTest extends TableTestBase {
   @Test
   def testMultipleFlattening(): Unit = {
     val util = batchTestUtil()
-    val table = util.addTable[((Int, Long), (String, Boolean), String)]("MyTable", 'a, 'b, 'c)
+    util.addTable[((Int, Long), (String, Boolean), String)]("MyTable", 'a, 'b, 'c)
 
     val expected = unaryNode(
       "DataSetCalc",
-      batchTableNode(table),
+      batchTableNode(0),
       term("select",
         "a._1 AS _1",
         "a._2 AS _2",
@@ -51,38 +51,36 @@ class CalcTest extends TableTestBase {
   @Test
   def testIn(): Unit = {
     val util = batchTestUtil()
-    val table = util.addTable[(Int, Long, String)]("MyTable", 'a, 'b, 'c)
+    util.addTable[(Int, Long, String)]("MyTable", 'a, 'b, 'c)
 
-    val resultStr = (1 to 30).map(i => s"$i:BIGINT").mkString(", ")
+    val resultStr = (1 to 30).mkString(", ")
     val expected = unaryNode(
       "DataSetCalc",
-      batchTableNode(table),
+      batchTableNode(0),
       term("select", "a", "b", "c"),
       term("where", s"IN(b, $resultStr)")
     )
 
-    val inStr = (1 to 30).mkString(", ")
     util.verifySql(
-      s"SELECT * FROM MyTable WHERE b in ($inStr)",
+      s"SELECT * FROM MyTable WHERE b in ($resultStr)",
       expected)
   }
 
   @Test
   def testNotIn(): Unit = {
     val util = batchTestUtil()
-    val table = util.addTable[(Int, Long, String)]("MyTable", 'a, 'b, 'c)
+    util.addTable[(Int, Long, String)]("MyTable", 'a, 'b, 'c)
 
-    val resultStr = (1 to 30).map(i => s"$i:BIGINT").mkString(", ")
+    val resultStr = (1 to 30).mkString(", ")
     val expected = unaryNode(
       "DataSetCalc",
-      batchTableNode(table),
+      batchTableNode(0),
       term("select", "a", "b", "c"),
       term("where", s"NOT IN(b, $resultStr)")
     )
 
-    val notInStr = (1 to 30).mkString(", ")
     util.verifySql(
-      s"SELECT * FROM MyTable WHERE b NOT IN ($notInStr)",
+      s"SELECT * FROM MyTable WHERE b NOT IN ($resultStr)",
       expected)
   }
 }

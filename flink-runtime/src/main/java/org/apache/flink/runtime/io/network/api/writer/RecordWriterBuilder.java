@@ -18,39 +18,37 @@
 
 package org.apache.flink.runtime.io.network.api.writer;
 
-import org.apache.flink.core.io.IOReadableWritable;
-
 /**
  * Utility class to encapsulate the logic of building a {@link RecordWriter} instance.
  */
-public class RecordWriterBuilder<T extends IOReadableWritable> {
+public class RecordWriterBuilder {
 
-	private ChannelSelector<T> selector = new RoundRobinChannelSelector<>();
+	private ChannelSelector selector = new RoundRobinChannelSelector();
 
 	private long timeout = -1;
 
 	private String taskName = "test";
 
-	public RecordWriterBuilder<T> setChannelSelector(ChannelSelector<T> selector) {
+	public RecordWriterBuilder setChannelSelector(ChannelSelector selector) {
 		this.selector = selector;
 		return this;
 	}
 
-	public RecordWriterBuilder<T> setTimeout(long timeout) {
+	public RecordWriterBuilder setTimeout(long timeout) {
 		this.timeout = timeout;
 		return this;
 	}
 
-	public RecordWriterBuilder<T> setTaskName(String taskName) {
+	public RecordWriterBuilder setTaskName(String taskName) {
 		this.taskName = taskName;
 		return this;
 	}
 
-	public RecordWriter<T> build(ResultPartitionWriter writer) {
+	public RecordWriter build(ResultPartitionWriter writer) {
 		if (selector.isBroadcast()) {
-			return new BroadcastRecordWriter<>(writer, timeout, taskName);
+			return new BroadcastRecordWriter(writer, selector, timeout, taskName);
 		} else {
-			return new ChannelSelectorRecordWriter<>(writer, selector, timeout, taskName);
+			return new RecordWriter(writer, selector, timeout, taskName);
 		}
 	}
 }

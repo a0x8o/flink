@@ -37,7 +37,7 @@ final class StandaloneJobClusterConfiguration extends EntrypointClusterConfigura
 	@Nonnull
 	private final SavepointRestoreSettings savepointRestoreSettings;
 
-	@Nullable
+	@Nonnull
 	private final JobID jobId;
 
 	@Nullable
@@ -50,11 +50,11 @@ final class StandaloneJobClusterConfiguration extends EntrypointClusterConfigura
 			@Nullable String hostname,
 			int restPort,
 			@Nonnull SavepointRestoreSettings savepointRestoreSettings,
-			@Nullable JobID jobId,
+			@Nonnull JobID jobId,
 			@Nullable String jobClassName) {
 		super(configDir, dynamicProperties, args, hostname, restPort);
 		this.savepointRestoreSettings = requireNonNull(savepointRestoreSettings, "savepointRestoreSettings");
-		this.jobId = jobId;
+		this.jobId = requireNonNull(jobId, "jobId");
 		this.jobClassName = jobClassName;
 	}
 
@@ -63,7 +63,7 @@ final class StandaloneJobClusterConfiguration extends EntrypointClusterConfigura
 		return savepointRestoreSettings;
 	}
 
-	@Nullable
+	@Nonnull
 	JobID getJobId() {
 		return jobId;
 	}

@@ -58,7 +58,7 @@ class DataStreamTemporalTableJoinRule
       leftRowSchema,
       rightRowSchema,
       new RowSchema(rel.getRowType),
-      "DataStreamTemporalTableJoinRule")
+      description)
   }
 }
 

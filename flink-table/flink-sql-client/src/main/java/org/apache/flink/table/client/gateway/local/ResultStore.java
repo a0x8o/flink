@@ -61,17 +61,16 @@ public class ResultStore {
 
 		final RowTypeInfo outputType = new RowTypeInfo(schema.getFieldTypes(), schema.getFieldNames());
 
-		if (env.getExecution().inStreamingMode()) {
+		if (env.getExecution().isStreamingExecution()) {
 			// determine gateway address (and port if possible)
 			final InetAddress gatewayAddress = getGatewayAddress(env.getDeployment());
 			final int gatewayPort = getGatewayPort(env.getDeployment());
 
 			if (env.getExecution().isChangelogMode()) {
-				return new ChangelogCollectStreamResult<>(outputType, schema, config, gatewayAddress, gatewayPort);
+				return new ChangelogCollectStreamResult<>(outputType, config, gatewayAddress, gatewayPort);
 			} else {
 				return new MaterializedCollectStreamResult<>(
 					outputType,
-					schema,
 					config,
 					gatewayAddress,
 					gatewayPort,
@@ -83,7 +82,7 @@ public class ResultStore {
 			if (!env.getExecution().isTableMode()) {
 				throw new SqlExecutionException("Results of batch queries can only be served in table mode.");
 			}
-			return new MaterializedCollectBatchResult<>(schema, outputType, config);
+			return new MaterializedCollectBatchResult<>(outputType, config);
 		}
 	}
 

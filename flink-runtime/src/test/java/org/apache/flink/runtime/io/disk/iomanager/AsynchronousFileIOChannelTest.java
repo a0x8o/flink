@@ -58,6 +58,7 @@ public class AsynchronousFileIOChannelTest {
 		final int numberOfRequests = 100;
 
 		// -- Setup -----------------------------------------------------------
+		final IOManagerAsync ioManager = new IOManagerAsync();
 
 		final ExecutorService executor = Executors.newFixedThreadPool(3);
 
@@ -70,7 +71,7 @@ public class AsynchronousFileIOChannelTest {
 		final TestNotificationListener listener = new TestNotificationListener();
 
 		// -- The Test --------------------------------------------------------
-		try (final IOManagerAsync ioManager = new IOManagerAsync()) {
+		try {
 			// Repeatedly add requests and process them and have one thread try to register as a
 			// listener until the channel is closed and all requests are processed.
 
@@ -176,6 +177,7 @@ public class AsynchronousFileIOChannelTest {
 			}
 		}
 		finally {
+			ioManager.shutdown();
 			executor.shutdown();
 		}
 	}
@@ -186,6 +188,7 @@ public class AsynchronousFileIOChannelTest {
 		final int numberOfRuns = 1024;
 
 		// -- Setup -----------------------------------------------------------
+		final IOManagerAsync ioManager = new IOManagerAsync();
 
 		final ExecutorService executor = Executors.newFixedThreadPool(2);
 
@@ -197,7 +200,7 @@ public class AsynchronousFileIOChannelTest {
 		final TestNotificationListener listener = new TestNotificationListener();
 
 		// -- The Test --------------------------------------------------------
-		try (final IOManagerAsync ioManager = new IOManagerAsync()) {
+		try {
 			// Repeatedly close the channel and add a request.
 			for (int i = 0; i < numberOfRuns; i++) {
 				final TestAsyncFileIOChannel ioChannel = new TestAsyncFileIOChannel(
@@ -261,13 +264,15 @@ public class AsynchronousFileIOChannelTest {
 			}
 		}
 		finally {
+			ioManager.shutdown();
 			executor.shutdown();
 		}
 	}
 
 	@Test
 	public void testClosingWaits() {
-		try (final IOManagerAsync ioMan = new IOManagerAsync()) {
+		IOManagerAsync ioMan = new IOManagerAsync();
+		try {
 
 			final int NUM_BLOCKS = 100;
 			final MemorySegment seg = MemorySegmentFactory.allocateUnpooledSegment(32 * 1024);
@@ -313,14 +318,20 @@ public class AsynchronousFileIOChannelTest {
 			e.printStackTrace();
 			fail(e.getMessage());
 		}
+		finally {
+			ioMan.shutdown();
+		}
 	}
 
 	@Test
-	public void testExceptionForwardsToClose() throws Exception {
-		try (IOManagerAsync ioMan = new IOManagerAsync()) {
+	public void testExceptionForwardsToClose() {
+		IOManagerAsync ioMan = new IOManagerAsync();
+		try {
 			testExceptionForwardsToClose(ioMan, 100, 1);
 			testExceptionForwardsToClose(ioMan, 100, 50);
 			testExceptionForwardsToClose(ioMan, 100, 100);
+		} finally {
+			ioMan.shutdown();
 		}
 	}
 

@@ -81,9 +81,6 @@ public class StreamOperatorChainingTest {
 	 */
 	private void testMultiChaining(StreamExecutionEnvironment env) throws Exception {
 
-		// set parallelism to 2 to avoid chaining with source in case when available processors is 1.
-		env.setParallelism(2);
-
 		// the actual elements will not be used
 		DataStream<Integer> input = env.fromElements(1, 2, 3);
 
@@ -177,9 +174,6 @@ public class StreamOperatorChainingTest {
 	 * Verify that multi-chaining works with object reuse enabled.
 	 */
 	private void testMultiChainingWithSplit(StreamExecutionEnvironment env) throws Exception {
-
-		// set parallelism to 2 to avoid chaining with source in case when available processors is 1.
-		env.setParallelism(2);
 
 		// the actual elements will not be used
 		DataStream<Integer> input = env.fromElements(1, 2, 3);

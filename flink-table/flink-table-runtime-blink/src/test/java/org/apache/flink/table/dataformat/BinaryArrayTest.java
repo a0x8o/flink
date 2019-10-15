@@ -18,17 +18,13 @@
 
 package org.apache.flink.table.dataformat;
 
+import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.typeutils.base.StringSerializer;
 import org.apache.flink.core.memory.MemorySegment;
 import org.apache.flink.core.memory.MemorySegmentFactory;
-import org.apache.flink.table.api.DataTypes;
-import org.apache.flink.table.runtime.typeutils.BaseArraySerializer;
-import org.apache.flink.table.runtime.typeutils.BaseMapSerializer;
-import org.apache.flink.table.runtime.typeutils.BaseRowSerializer;
-import org.apache.flink.table.runtime.util.SegmentsUtil;
-import org.apache.flink.table.types.logical.IntType;
-import org.apache.flink.table.types.logical.RowType;
-import org.apache.flink.table.types.logical.VarCharType;
+import org.apache.flink.table.type.InternalTypes;
+import org.apache.flink.table.typeutils.BaseRowSerializer;
+import org.apache.flink.table.util.SegmentsUtil;
 
 import org.junit.Assert;
 import org.junit.Test;
@@ -63,10 +59,10 @@ public class BinaryArrayTest {
 		{
 			BinaryRow row2 = new BinaryRow(1);
 			BinaryRowWriter writer2 = new BinaryRowWriter(row2);
-			writer2.writeArray(0, array, new BaseArraySerializer(DataTypes.INT().getLogicalType(), null));
+			writer2.writeArray(0, array);
 			writer2.complete();
 
-			BinaryArray array2 = (BinaryArray) row2.getArray(0);
+			BinaryArray array2 = row2.getArray(0);
 			assertEquals(array2, array);
 			assertEquals(array2.getInt(0), 6);
 			assertTrue(array2.isNullAt(1));
@@ -79,10 +75,10 @@ public class BinaryArrayTest {
 
 			BinaryRow row2 = new BinaryRow(1);
 			BinaryRowWriter writer2 = new BinaryRowWriter(row2);
-			writer2.writeArray(0, array3, new BaseArraySerializer(DataTypes.INT().getLogicalType(), null));
+			writer2.writeArray(0, array3);
 			writer2.complete();
 
-			BinaryArray array2 = (BinaryArray) row2.getArray(0);
+			BinaryArray array2 = row2.getArray(0);
 			assertEquals(array2, array);
 			assertEquals(array2.getInt(0), 6);
 			assertTrue(array2.isNullAt(1));
@@ -282,6 +278,30 @@ public class BinaryArrayTest {
 		}
 
 		{
+			// test char
+			BinaryArray array = new BinaryArray();
+			BinaryArrayWriter writer = new BinaryArrayWriter(array, 2, 2);
+			writer.setNullShort(0);
+			writer.writeChar(1, (char) 25);
+			writer.complete();
+
+			assertTrue(array.isNullAt(0));
+			assertEquals(25, array.getChar(1));
+			array.setChar(0, (char) 5);
+			assertEquals(5, array.getChar(0));
+			array.setNullChar(0);
+			assertTrue(array.isNullAt(0));
+
+			BinaryArray newArray = splitArray(array);
+			assertTrue(newArray.isNullAt(0));
+			assertEquals(25, newArray.getChar(1));
+			newArray.setChar(0, (char) 5);
+			assertEquals(5, newArray.getChar(0));
+			newArray.setNullChar(0);
+			assertTrue(newArray.isNullAt(0));
+		}
+
+		{
 			// test string
 			BinaryArray array = new BinaryArray();
 			BinaryArrayWriter writer = new BinaryArrayWriter(array, 2, 8);
@@ -308,7 +328,7 @@ public class BinaryArrayTest {
 			BinaryArray array = new BinaryArray();
 			BinaryArrayWriter writer = new BinaryArrayWriter(array, 2, 8);
 			writer.setNullAt(0);
-			writer.writeArray(1, subArray, new BaseArraySerializer(DataTypes.INT().getLogicalType(), null));
+			writer.writeArray(1, subArray);
 			writer.complete();
 
 			assertTrue(array.isNullAt(0));
@@ -324,8 +344,7 @@ public class BinaryArrayTest {
 			BinaryArray array = new BinaryArray();
 			BinaryArrayWriter writer = new BinaryArrayWriter(array, 2, 8);
 			writer.setNullAt(0);
-			writer.writeMap(1, BinaryMap.valueOf(subArray, subArray),
-					new BaseMapSerializer(DataTypes.INT().getLogicalType(), DataTypes.INT().getLogicalType(), null));
+			writer.writeMap(1, BinaryMap.valueOf(subArray, subArray));
 			writer.complete();
 
 			assertTrue(array.isNullAt(0));
@@ -357,11 +376,10 @@ public class BinaryArrayTest {
 
 		BinaryRow row = new BinaryRow(1);
 		BinaryRowWriter rowWriter = new BinaryRowWriter(row);
-		rowWriter.writeMap(0, binaryMap,
-				new BaseMapSerializer(DataTypes.INT().getLogicalType(), DataTypes.INT().getLogicalType(), null));
+		rowWriter.writeMap(0, binaryMap);
 		rowWriter.complete();
 
-		BinaryMap map = (BinaryMap) row.getMap(0);
+		BinaryMap map = row.getMap(0);
 		BinaryArray key = map.keyArray();
 		BinaryArray value = map.valueArray();
 
@@ -474,8 +492,9 @@ public class BinaryArrayTest {
 	public void testNested() {
 		BinaryArray array = new BinaryArray();
 		BinaryArrayWriter writer = new BinaryArrayWriter(array, 2, 8);
-		writer.writeRow(0, GenericRow.of(fromString("1"), 1),
-				new BaseRowSerializer(null, RowType.of(new VarCharType(VarCharType.MAX_LENGTH), new IntType())));
+		BaseRowSerializer nestedSer = new BaseRowSerializer(
+				new ExecutionConfig(), InternalTypes.STRING, InternalTypes.INT);
+		writer.writeRow(0, GenericRow.of(fromString("1"), 1), nestedSer);
 		writer.setNullAt(1);
 		writer.complete();
 

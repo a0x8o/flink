@@ -24,6 +24,7 @@ import org.apache.flink.core.testutils.OneShotLatch;
 import org.apache.flink.runtime.checkpoint.CheckpointMetaData;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.checkpoint.CheckpointType;
+import org.apache.flink.runtime.execution.CancelTaskException;
 import org.apache.flink.runtime.io.network.api.CheckpointBarrier;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.state.CheckpointStorageLocationReference;
@@ -32,50 +33,57 @@ import org.apache.flink.streaming.api.graph.StreamConfig;
 import org.apache.flink.streaming.api.operators.StreamSource;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
-import org.apache.flink.util.TestLogger;
 
+import org.junit.After;
 import org.junit.Before;
-import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.Timeout;
 
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 /**
  * A test verifying the termination process
  * (synchronous checkpoint and task termination) at the {@link SourceStreamTask}.
  */
-public class SourceTaskTerminationTest extends TestLogger {
+public class SourceTaskTerminationTest {
 
 	private static OneShotLatch ready;
 	private static MultiShotLatch runLoopStart;
 	private static MultiShotLatch runLoopEnd;
 
-	@Rule
-	public final Timeout timeoutPerTest = Timeout.seconds(20);
+	private static AtomicReference<Throwable> error;
 
 	@Before
 	public void initialize() {
 		ready = new OneShotLatch();
 		runLoopStart = new MultiShotLatch();
 		runLoopEnd = new MultiShotLatch();
+		error = new AtomicReference<>();
+
+		error.set(null);
+	}
+
+	@After
+	public void validate() {
+		validateNoExceptionsWereThrown();
 	}
 
 	@Test
-	public void testStopWithSavepointWithMaxWatermark() throws Exception {
+	public void terminateShouldBlockDuringCheckpointingAndEmitMaxWatermark() throws Exception {
 		stopWithSavepointStreamTaskTestHelper(true);
 	}
 
 	@Test
-	public void testStopWithSavepointWithoutMaxWatermark() throws Exception {
+	public void suspendShouldBlockDuringCheckpointingAndNotEmitMaxWatermark() throws Exception {
 		stopWithSavepointStreamTaskTestHelper(false);
 	}
 
-	private void stopWithSavepointStreamTaskTestHelper(final boolean withMaxWatermark) throws Exception {
+	private void stopWithSavepointStreamTaskTestHelper(final boolean expectMaxWatermark) throws Exception {
 		final long syncSavepointId = 34L;
 
 		final StreamTaskTestHarness<Long> srcTaskTestHarness = getSourceStreamTaskTestHarness();
@@ -88,23 +96,15 @@ public class SourceTaskTerminationTest extends TestLogger {
 		emitAndVerifyWatermarkAndElement(srcTaskTestHarness, 1L);
 		emitAndVerifyWatermarkAndElement(srcTaskTestHarness, 2L);
 
-		srcTask.triggerCheckpointAsync(
-				new CheckpointMetaData(31L, 900),
-				CheckpointOptions.forCheckpointWithDefaultLocation(),
-				false)
-				.get();
-
-		verifyCheckpointBarrier(srcTaskTestHarness.getOutput(), 31L);
+		emitAndVerifyCheckpoint(srcTaskTestHarness, srcTask, 31L);
 
 		emitAndVerifyWatermarkAndElement(srcTaskTestHarness, 3L);
 
-		srcTask.triggerCheckpointAsync(
-				new CheckpointMetaData(syncSavepointId, 900),
-				new CheckpointOptions(CheckpointType.SYNC_SAVEPOINT, CheckpointStorageLocationReference.getDefault()),
-				withMaxWatermark)
-				.get();
+		final Thread syncSavepointThread = triggerSynchronousSavepointFromDifferentThread(srcTask, expectMaxWatermark, syncSavepointId);
 
-		if (withMaxWatermark) {
+		final SynchronousSavepointLatch syncSavepointFuture = waitForSyncSavepointFutureToBeSet(srcTask);
+
+		if (expectMaxWatermark) {
 			// if we are in TERMINATE mode, we expect the source task
 			// to emit MAX_WM before the SYNC_SAVEPOINT barrier.
 			verifyWatermark(srcTaskTestHarness.getOutput(), Watermark.MAX_WATERMARK);
@@ -112,14 +112,52 @@ public class SourceTaskTerminationTest extends TestLogger {
 
 		verifyCheckpointBarrier(srcTaskTestHarness.getOutput(), syncSavepointId);
 
-		waitForSynchronousSavepointIdToBeSet(srcTask);
+		assertFalse(syncSavepointFuture.isCompleted());
+		assertTrue(syncSavepointFuture.isWaiting());
 
-		assertTrue(srcTask.getSynchronousSavepointId().isPresent());
+		srcTask.notifyCheckpointComplete(syncSavepointId);
+		assertTrue(syncSavepointFuture.isCompleted());
 
-		srcTask.notifyCheckpointCompleteAsync(syncSavepointId).get();
-		assertFalse(srcTask.getSynchronousSavepointId().isPresent());
-
+		syncSavepointThread.join();
 		executionThread.join();
+	}
+
+	private void validateNoExceptionsWereThrown() {
+		if (error.get() != null && !(error.get() instanceof CancelTaskException)) {
+			fail(error.get().getMessage());
+		}
+	}
+
+	private Thread triggerSynchronousSavepointFromDifferentThread(
+			final StreamTask<Long, ?> task,
+			final boolean advanceToEndOfEventTime,
+			final long syncSavepointId) {
+		final Thread checkpointingThread = new Thread(() -> {
+			try {
+				task.triggerCheckpoint(
+						new CheckpointMetaData(syncSavepointId, 900),
+						new CheckpointOptions(CheckpointType.SYNC_SAVEPOINT, CheckpointStorageLocationReference.getDefault()),
+						advanceToEndOfEventTime);
+			} catch (Exception e) {
+				error.set(e);
+			}
+		});
+		checkpointingThread.start();
+
+		return checkpointingThread;
+
+	}
+
+	private void emitAndVerifyCheckpoint(
+			final StreamTaskTestHarness<Long> srcTaskTestHarness,
+			final StreamTask<Long, ?> srcTask,
+			final long checkpointId) throws Exception {
+
+		srcTask.triggerCheckpoint(
+				new CheckpointMetaData(checkpointId, 900),
+				CheckpointOptions.forCheckpointWithDefaultLocation(),
+				false);
+		verifyCheckpointBarrier(srcTaskTestHarness.getOutput(), checkpointId);
 	}
 
 	private StreamTaskTestHarness<Long> getSourceStreamTaskTestHarness() {
@@ -139,10 +177,14 @@ public class SourceTaskTerminationTest extends TestLogger {
 		return testHarness;
 	}
 
-	private void waitForSynchronousSavepointIdToBeSet(final StreamTask streamTaskUnderTest) throws InterruptedException {
-		while (!streamTaskUnderTest.getSynchronousSavepointId().isPresent()) {
+	private SynchronousSavepointLatch waitForSyncSavepointFutureToBeSet(final StreamTask streamTaskUnderTest) throws InterruptedException {
+		final SynchronousSavepointLatch syncSavepointFuture = streamTaskUnderTest.getSynchronousSavepointLatch();
+		while (!syncSavepointFuture.isWaiting()) {
 			Thread.sleep(10L);
+
+			validateNoExceptionsWereThrown();
 		}
+		return syncSavepointFuture;
 	}
 
 	private void emitAndVerifyWatermarkAndElement(

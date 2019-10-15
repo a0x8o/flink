@@ -19,66 +19,34 @@
 package org.apache.flink.table.expressions;
 
 import org.apache.flink.annotation.PublicEvolving;
-import org.apache.flink.table.catalog.ObjectIdentifier;
-import org.apache.flink.table.functions.FunctionDefinition;
-import org.apache.flink.table.types.DataType;
 import org.apache.flink.util.Preconditions;
-
-import javax.annotation.Nullable;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
- * Resolved and validated call expression for calling a function.
+ * General expression for calling a function.
  *
- * <p>A call contains:
- * <ul>
- *     <li>an output type</li>
- *     <li>a {@link FunctionDefinition} that identifies the function to be called</li>
- *     <li>an optional {@link ObjectIdentifier} that tracks the origin of a function</li>
- * </ul>
+ * <p>The function can be a built-in function or a user-defined function.
  */
 @PublicEvolving
-public final class CallExpression implements ResolvedExpression {
-
-	private final @Nullable ObjectIdentifier objectIdentifier;
+public final class CallExpression implements Expression {
 
 	private final FunctionDefinition functionDefinition;
 
-	private final List<ResolvedExpression> args;
+	private final List<Expression> args;
 
-	private final DataType dataType;
-
-	public CallExpression(
-			ObjectIdentifier objectIdentifier,
-			FunctionDefinition functionDefinition,
-			List<ResolvedExpression> args,
-			DataType dataType) {
-		this.objectIdentifier =
-			Preconditions.checkNotNull(objectIdentifier, "Object identifier must not be null.");
-		this.functionDefinition =
-			Preconditions.checkNotNull(functionDefinition, "Function definition must not be null.");
-		this.args = new ArrayList<>(Preconditions.checkNotNull(args, "Arguments must not be null."));
-		this.dataType = Preconditions.checkNotNull(dataType, "Data type must not be null.");
+	public CallExpression(FunctionDefinition functionDefinition, List<Expression> args) {
+		this.functionDefinition = Preconditions.checkNotNull(functionDefinition);
+		this.args = Collections.unmodifiableList(new ArrayList<>(Preconditions.checkNotNull(args)));
 	}
 
-	public CallExpression(
-			FunctionDefinition functionDefinition,
-			List<ResolvedExpression> args,
-			DataType dataType) {
-		this.objectIdentifier = null;
-		this.functionDefinition = Preconditions.checkNotNull(functionDefinition, "Function definition must not be null.");
-		this.args = new ArrayList<>(Preconditions.checkNotNull(args, "Arguments must not be null."));
-		this.dataType = Preconditions.checkNotNull(dataType, "Data type must not be null.");
-	}
-
-	public Optional<ObjectIdentifier> getObjectIdentifier() {
-		return Optional.ofNullable(objectIdentifier);
+	@Override
+	public List<Expression> getChildren() {
+		return this.args;
 	}
 
 	public FunctionDefinition getFunctionDefinition() {
@@ -86,39 +54,8 @@ public final class CallExpression implements ResolvedExpression {
 	}
 
 	@Override
-	public DataType getOutputDataType() {
-		return dataType;
-	}
-
-	@Override
-	public List<ResolvedExpression> getResolvedChildren() {
-		return args;
-	}
-
-	@Override
-	public String asSummaryString() {
-		final String functionName;
-		if (objectIdentifier == null) {
-			functionName = functionDefinition.toString();
-		} else {
-			functionName = objectIdentifier.asSerializableString();
-		}
-
-		final String argList = args.stream()
-			.map(Expression::asSummaryString)
-			.collect(Collectors.joining(", ", "(", ")"));
-
-		return functionName + argList;
-	}
-
-	@Override
-	public List<Expression> getChildren() {
-		return Collections.unmodifiableList(this.args);
-	}
-
-	@Override
 	public <R> R accept(ExpressionVisitor<R> visitor) {
-		return visitor.visit(this);
+		return visitor.visitCall(this);
 	}
 
 	@Override
@@ -130,19 +67,18 @@ public final class CallExpression implements ResolvedExpression {
 			return false;
 		}
 		CallExpression that = (CallExpression) o;
-		return Objects.equals(objectIdentifier, that.objectIdentifier) &&
-			functionDefinition.equals(that.functionDefinition) &&
-			args.equals(that.args) &&
-			dataType.equals(that.dataType);
+		return Objects.equals(functionDefinition, that.functionDefinition) &&
+			Objects.equals(args, that.args);
 	}
 
 	@Override
 	public int hashCode() {
-		return Objects.hash(objectIdentifier, functionDefinition, args, dataType);
+		return Objects.hash(functionDefinition, args);
 	}
 
 	@Override
 	public String toString() {
-		return asSummaryString();
+		final List<String> argList = args.stream().map(Object::toString).collect(Collectors.toList());
+		return functionDefinition.getName() + "(" + String.join(", ", argList) + ")";
 	}
 }

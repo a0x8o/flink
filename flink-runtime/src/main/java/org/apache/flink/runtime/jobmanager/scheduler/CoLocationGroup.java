@@ -63,10 +63,6 @@ public class CoLocationGroup implements java.io.Serializable {
 		Preconditions.checkNotNull(vertex);
 		this.vertices.add(vertex);
 	}
-
-	public List<JobVertex> getVertices() {
-		return vertices;
-	}
 	
 	public void mergeInto(CoLocationGroup other) {
 		Preconditions.checkNotNull(other);
@@ -119,6 +115,12 @@ public class CoLocationGroup implements java.io.Serializable {
 	 * executed any more.</p>
 	 */
 	public void resetConstraints() {
+		for (CoLocationConstraint c : this.constraints) {
+			if (c.isAssignedAndAlive()) {
+				throw new IllegalStateException(
+						"Cannot reset co-location group: some constraints still have live tasks");
+			}
+		}
 		this.constraints.clear();
 	}
 }

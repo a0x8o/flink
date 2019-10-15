@@ -41,9 +41,7 @@ public abstract class LazyBinaryFormat<T> extends BinaryFormat {
 
 	protected T javaObject;
 
-	public LazyBinaryFormat() {
-		this(null, -1, -1, null);
-	}
+	public LazyBinaryFormat() {}
 
 	public LazyBinaryFormat(MemorySegment[] segments, int offset, int sizeInBytes, T javaObject) {
 		super(segments, offset, sizeInBytes);

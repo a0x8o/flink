@@ -22,7 +22,6 @@ import org.apache.flink.metrics.Counter;
 import org.apache.flink.runtime.event.TaskEvent;
 import org.apache.flink.runtime.execution.CancelTaskException;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
-import org.apache.flink.runtime.io.network.partition.PartitionException;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.io.network.partition.ResultSubpartitionView;
 
@@ -164,6 +163,8 @@ public abstract class InputChannel {
 
 	abstract boolean isReleased();
 
+	abstract void notifySubpartitionConsumed() throws IOException;
+
 	/**
 	 * Releases all resources of the channel.
 	 */
@@ -175,9 +176,6 @@ public abstract class InputChannel {
 
 	/**
 	 * Checks for an error and rethrows it if one was reported.
-	 *
-	 * <p>Note: Any {@link PartitionException} instances should not be transformed
-	 * and make sure they are always visible in task failure cause.
 	 */
 	protected void checkError() throws IOException {
 		final Throwable t = cause.get();
@@ -244,14 +242,6 @@ public abstract class InputChannel {
 
 		// Reached maximum backoff
 		return false;
-	}
-
-	// ------------------------------------------------------------------------
-	// Metric related method
-	// ------------------------------------------------------------------------
-
-	public int unsynchronizedGetNumberOfQueuedBuffers() {
-		return 0;
 	}
 
 	// ------------------------------------------------------------------------

@@ -110,7 +110,7 @@ public class DocumentingDispatcherRestEndpoint extends DispatcherRestEndpoint im
 		}
 
 		@Override
-		public void confirmLeadership(final UUID leaderSessionID, final String leaderAddress) {
+		public void confirmLeaderSessionID(final UUID leaderSessionID) {
 
 		}
 

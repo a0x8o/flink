@@ -26,9 +26,10 @@ import org.apache.calcite.rel.{RelCollation, RelDistribution, RelReferentialCons
 import org.apache.calcite.schema.Statistic
 import org.apache.calcite.util.ImmutableBitSet
 import org.apache.flink.table.plan.schema.TableSourceTable
+import org.apache.flink.table.plan.schema.InlineTable
 
 /**
-  * The class provides statistics for a [[TableSourceTable]].
+  * The class provides statistics for a [[InlineTable]] or [[TableSourceTable]].
   *
   * @param tableStats The table statistics.
   */
@@ -86,6 +87,6 @@ object FlinkStatistic {
     * @param tableStats The table statistics.
     * @return The generated FlinkStatistic
     */
-  def of(tableStats: TableStats): FlinkStatistic = new FlinkStatistic(Option(tableStats))
+  def of(tableStats: TableStats): FlinkStatistic = new FlinkStatistic(Some(tableStats))
 
 }

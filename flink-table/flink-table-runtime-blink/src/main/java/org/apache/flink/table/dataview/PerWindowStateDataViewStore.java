@@ -23,6 +23,8 @@ import org.apache.flink.api.common.state.ListState;
 import org.apache.flink.api.common.state.ListStateDescriptor;
 import org.apache.flink.api.common.state.MapState;
 import org.apache.flink.api.common.state.MapStateDescriptor;
+import org.apache.flink.api.common.state.State;
+import org.apache.flink.api.common.state.StateDescriptor;
 import org.apache.flink.api.common.state.ValueState;
 import org.apache.flink.api.common.state.ValueStateDescriptor;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
@@ -32,6 +34,8 @@ import org.apache.flink.runtime.state.internal.InternalMapState;
 import org.apache.flink.runtime.state.internal.InternalValueState;
 import org.apache.flink.table.typeutils.ListViewTypeInfo;
 import org.apache.flink.table.typeutils.MapViewTypeInfo;
+
+import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
  * An implementation of StateDataViewStore for window aggregates which forward the state
@@ -53,6 +57,21 @@ public class PerWindowStateDataViewStore implements StateDataViewStore {
 		this.ctx = runtimeContext;
 	}
 
+	/**
+	 * Delegate the state registration to {@link KeyedStateBackend#createInternalState(TypeSerializer, StateDescriptor)}.
+	 * We can't use {@link KeyedStateBackend#getOrCreateKeyedState(TypeSerializer, StateDescriptor)}
+	 * here because it returns the same state instance not always a new instance.
+	 */
+	private <S extends State, V> S createKeyedState(StateDescriptor<S, V> stateDescriptor) throws Exception {
+		checkNotNull(keyedStateBackend.getKeySerializer(),
+			"State key serializer has not been configured in the config. " +
+			"This operation cannot use partitioned state.");
+		if (!stateDescriptor.isSerializerInitialized()) {
+			stateDescriptor.initializeSerializerUnlessSet(ctx.getExecutionConfig());
+		}
+		return keyedStateBackend.createInternalState(windowSerializer, stateDescriptor);
+	}
+
 	@Override
 	public <N, UK, UV> StateMapView<N, UK, UV> getStateMapView(String stateName, MapViewTypeInfo<UK, UV> mapViewTypeInfo) throws Exception {
 		MapStateDescriptor<UK, UV> mapStateDescriptor = new MapStateDescriptor<>(
@@ -60,7 +79,7 @@ public class PerWindowStateDataViewStore implements StateDataViewStore {
 			mapViewTypeInfo.getKeyType(),
 			mapViewTypeInfo.getValueType());
 
-		MapState<UK, UV> mapState = keyedStateBackend.getOrCreateKeyedState(windowSerializer, mapStateDescriptor);
+		MapState<UK, UV> mapState = createKeyedState(mapStateDescriptor);
 		// explict cast to internal state
 		InternalMapState<?, N, UK, UV> internalMapState = (InternalMapState<?, N, UK, UV>) mapState;
 
@@ -68,7 +87,7 @@ public class PerWindowStateDataViewStore implements StateDataViewStore {
 			ValueStateDescriptor<UV> nullStateDescriptor = new ValueStateDescriptor<>(
 				stateName + NULL_STATE_POSTFIX,
 				mapViewTypeInfo.getValueType());
-			ValueState<UV> nullState = keyedStateBackend.getOrCreateKeyedState(windowSerializer, nullStateDescriptor);
+			ValueState<UV> nullState = createKeyedState(nullStateDescriptor);
 			// explict cast to internal state
 			InternalValueState<?, N, UV> internalNullState = (InternalValueState<?, N, UV>) nullState;
 			return new StateMapView.NamespacedStateMapViewWithKeysNullable<>(internalMapState, internalNullState);
@@ -83,7 +102,7 @@ public class PerWindowStateDataViewStore implements StateDataViewStore {
 			stateName,
 			listViewTypeInfo.getElementType());
 
-		ListState<V> listState = keyedStateBackend.getOrCreateKeyedState(windowSerializer, listStateDesc);
+		ListState<V> listState = createKeyedState(listStateDesc);
 		// explict cast to internal state
 		InternalListState<?, N, V> internalListState = (InternalListState<?, N, V>) listState;
 

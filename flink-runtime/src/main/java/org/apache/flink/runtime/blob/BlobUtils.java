@@ -22,9 +22,10 @@ import org.apache.flink.api.common.JobID;
 import org.apache.flink.configuration.BlobServerOptions;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.ConfigurationUtils;
+import org.apache.flink.configuration.HighAvailabilityOptions;
+import org.apache.flink.configuration.IllegalConfigurationException;
 import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.core.fs.Path;
-import org.apache.flink.runtime.highavailability.HighAvailabilityServicesUtils;
 import org.apache.flink.runtime.jobmanager.HighAvailabilityMode;
 import org.apache.flink.util.InstantiationUtil;
 import org.apache.flink.util.StringUtils;
@@ -45,6 +46,8 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Random;
 import java.util.UUID;
+
+import static org.apache.flink.util.StringUtils.isNullOrWhitespaceOnly;
 
 /**
  * Utility class to work with blob data.
@@ -93,18 +96,34 @@ public class BlobUtils {
 	}
 
 	private static BlobStoreService createFileSystemBlobStore(Configuration configuration) throws IOException {
-		final Path clusterStoragePath = HighAvailabilityServicesUtils.getClusterHighAvailableStoragePath(configuration);
+		String storagePath = configuration.getValue(
+			HighAvailabilityOptions.HA_STORAGE_PATH);
+		if (isNullOrWhitespaceOnly(storagePath)) {
+			throw new IllegalConfigurationException("Configuration is missing the mandatory parameter: " +
+				HighAvailabilityOptions.HA_STORAGE_PATH);
+		}
+
+		final Path path;
+		try {
+			path = new Path(storagePath);
+		} catch (Exception e) {
+			throw new IOException("Invalid path for highly available storage (" +
+				HighAvailabilityOptions.HA_STORAGE_PATH.key() + ')', e);
+		}
 
 		final FileSystem fileSystem;
 		try {
-			fileSystem = clusterStoragePath.getFileSystem();
+			fileSystem = path.getFileSystem();
 		} catch (Exception e) {
-			throw new IOException(
-				String.format("Could not create FileSystem for highly available storage path (%s)", clusterStoragePath),
-				e);
+			throw new IOException("Could not create FileSystem for highly available storage (" +
+				HighAvailabilityOptions.HA_STORAGE_PATH.key() + ')', e);
 		}
 
-		return new FileSystemBlobStore(fileSystem, clusterStoragePath.toUri().toString());
+		final String clusterId =
+			configuration.getValue(HighAvailabilityOptions.HA_CLUSTER_ID);
+		storagePath += "/" + clusterId;
+
+		return new FileSystemBlobStore(fileSystem, storagePath);
 	}
 
 	/**

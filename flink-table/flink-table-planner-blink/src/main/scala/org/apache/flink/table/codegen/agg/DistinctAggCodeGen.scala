@@ -18,6 +18,9 @@
 
 package org.apache.flink.table.codegen.agg
 
+import org.apache.flink.api.common.typeinfo.TypeInformation
+import org.apache.flink.table.`type`.TypeConverters.createInternalTypeFromTypeInfo
+import org.apache.flink.table.`type`.{InternalType, RowType}
 import org.apache.flink.table.api.TableException
 import org.apache.flink.table.api.dataview.MapView
 import org.apache.flink.table.codegen.CodeGenUtils.{newName, _}
@@ -28,12 +31,8 @@ import org.apache.flink.table.codegen.{CodeGeneratorContext, ExprCodeGenerator, 
 import org.apache.flink.table.dataformat.GenericRow
 import org.apache.flink.table.expressions.{Expression, RexNodeConverter}
 import org.apache.flink.table.plan.util.DistinctInfo
-import org.apache.flink.table.types.DataType
-import org.apache.flink.table.types.LogicalTypeDataTypeConverter.fromDataTypeToLogicalType
-import org.apache.flink.table.types.logical.{LogicalType, RowType}
 import org.apache.flink.util.Preconditions
 import org.apache.flink.util.Preconditions.checkArgument
-
 import org.apache.calcite.tools.RelBuilder
 
 import java.lang.{Long => JLong}
@@ -79,11 +78,11 @@ class DistinctAggCodeGen(
   val ITERABLE: String = className[java.lang.Iterable[_]]
 
   val aggCount: Int = innerAggCodeGens.length
-  val externalAccType: DataType = distinctInfo.accType
-  val internalAccType: LogicalType = fromDataTypeToLogicalType(externalAccType)
-  val keyType: DataType = distinctInfo.keyType
-  val internalKeyType: LogicalType = fromDataTypeToLogicalType(keyType)
-  val keyTypeTerm: String = keyType.getConversionClass.getCanonicalName
+  val externalAccType: TypeInformation[_] = distinctInfo.accType
+  val internalAccType: InternalType = createInternalTypeFromTypeInfo(externalAccType)
+  val keyType: TypeInformation[_] = distinctInfo.keyType
+  val internalKeyType: InternalType = createInternalTypeFromTypeInfo(keyType)
+  val keyTypeTerm: String = keyType.getTypeClass.getCanonicalName
   val distinctAccTerm: String = s"distinct_view_$distinctIndex"
   val distinctBackupAccTerm: String = s"distinct_backup_view_$distinctIndex"
 
@@ -315,13 +314,14 @@ class DistinctAggCodeGen(
     }
 
     val otherAccTerm = otherAccExpr.resultTerm
-    val otherEntries = newName("otherEntries")
+    val Seq(otherEntries, otherMapView) = newNames("otherEntries", "otherMapView")
     val valueTypeTerm = valueGenerator.valueTypeTerm
     val thisValue = "thisValue"
     val otherValue = "otherValue"
 
     s"""
-       |$ITERABLE<$MAP_ENTRY> $otherEntries = ($ITERABLE<$MAP_ENTRY>) $otherAccTerm.entries();
+       |$MAP_VIEW $otherMapView = ${genToExternal(ctx, externalAccType, otherAccTerm)};
+       |$ITERABLE<$MAP_ENTRY> $otherEntries = ($ITERABLE<$MAP_ENTRY>) $otherMapView.entries();
        |if ($otherEntries != null) {
        |  for ($MAP_ENTRY entry: $otherEntries) {
        |    $keyTypeTerm $keyTerm = ($keyTypeTerm) entry.getKey();
@@ -378,7 +378,7 @@ class DistinctAggCodeGen(
     // the key expression of MapView
     if (fieldExprs.length > 1) {
       val keyTerm = newName(DISTINCT_KEY_TERM)
-      val valueType = RowType.of(
+      val valueType = new RowType(
         fieldExprs.map(_.resultType): _*)
 
       // always create a new result row
@@ -410,7 +410,7 @@ class DistinctAggCodeGen(
     */
   private def generateAccumulatorAccess(
     ctx: CodeGeneratorContext,
-    inputType: LogicalType,
+    inputType: InternalType,
     inputTerm: String,
     index: Int,
     useStateDataView: Boolean,
@@ -461,23 +461,14 @@ class DistinctAggCodeGen(
           val expr = generateFieldAccess(ctx, inputType, inputTerm, index)
           if (useBackupDataView) {
             // this is called in the merge method
-            val otherMapViewTerm = newName("otherMapView")
-            val code =
-              s"""
-                 |${expr.code}
-                 |$MAP_VIEW $otherMapViewTerm = null;
-                 |if (!${expr.nullTerm}) {
-                 | $otherMapViewTerm = ${genToExternal(ctx, externalAccType, expr.resultTerm)};
-                 |}
-               """.stripMargin
-            GeneratedExpression(otherMapViewTerm, expr.nullTerm, code, internalAccType)
+            expr
           } else {
             val code =
               s"""
                  |${expr.code}
                  |$distinctAccTerm = ($MAP_VIEW) ${expr.resultTerm}.getJavaObject();
               """.stripMargin
-            GeneratedExpression(distinctAccTerm, NEVER_NULL, code, internalAccType)
+            GeneratedExpression(distinctAccTerm, NEVER_NULL, code, expr.resultType)
           }
         }
 

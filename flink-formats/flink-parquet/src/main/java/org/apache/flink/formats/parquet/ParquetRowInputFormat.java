@@ -31,14 +31,16 @@ import org.apache.parquet.schema.MessageType;
  */
 public class ParquetRowInputFormat extends ParquetInputFormat<Row> implements ResultTypeQueryable<Row> {
 	private static final long serialVersionUID = 11L;
+	private RowTypeInfo returnType;
 
 	public ParquetRowInputFormat(Path path, MessageType messageType) {
 		super(path, messageType);
+		this.returnType = new RowTypeInfo(getFieldTypes(), getFieldNames());
 	}
 
 	@Override
 	public TypeInformation<Row> getProducedType() {
-		return new RowTypeInfo(getFieldTypes(), getFieldNames());
+		return returnType;
 	}
 
 	@Override

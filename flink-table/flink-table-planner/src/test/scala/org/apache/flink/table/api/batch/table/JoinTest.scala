@@ -42,12 +42,12 @@ class JoinTest extends TableTestBase {
         "DataSetJoin",
         unaryNode(
           "DataSetCalc",
-          batchTableNode(t),
+          batchTableNode(0),
           term("select", "a", "b")
         ),
         unaryNode(
           "DataSetCalc",
-          batchTableNode(s),
+          batchTableNode(1),
           term("select", "y", "z")
         ),
         term("where", "=(a, z)"),
@@ -74,12 +74,12 @@ class JoinTest extends TableTestBase {
         "DataSetJoin",
         unaryNode(
           "DataSetCalc",
-          batchTableNode(t),
+          batchTableNode(0),
           term("select", "a", "b")
         ),
         unaryNode(
           "DataSetCalc",
-          batchTableNode(s),
+          batchTableNode(1),
           term("select", "y", "z")
         ),
         term("where", "AND(=(a, z), <(b, 2))"),
@@ -106,10 +106,10 @@ class JoinTest extends TableTestBase {
         "DataSetJoin",
         unaryNode(
           "DataSetCalc",
-          batchTableNode(t),
+          batchTableNode(0),
           term("select", "a", "b")
         ),
-        batchTableNode(s),
+        batchTableNode(1),
         term("where", "AND(=(a, z), <(b, x))"),
         term("join", "a", "b", "x", "y", "z"),
         term("joinType", "LeftOuterJoin")
@@ -134,12 +134,12 @@ class JoinTest extends TableTestBase {
         "DataSetJoin",
         unaryNode(
           "DataSetCalc",
-          batchTableNode(t),
+          batchTableNode(0),
           term("select", "a", "b")
         ),
         unaryNode(
           "DataSetCalc",
-          batchTableNode(s),
+          batchTableNode(1),
           term("select", "y", "z")
         ),
         term("where", "=(a, z)"),
@@ -166,12 +166,12 @@ class JoinTest extends TableTestBase {
         "DataSetJoin",
         unaryNode(
           "DataSetCalc",
-          batchTableNode(t),
+          batchTableNode(0),
           term("select", "a", "b")
         ),
         unaryNode(
           "DataSetCalc",
-          batchTableNode(s),
+          batchTableNode(1),
           term("select", "x", "z")
         ),
         term("where", "AND(=(a, z), <(x, 2))"),
@@ -198,10 +198,10 @@ class JoinTest extends TableTestBase {
         "DataSetJoin",
         unaryNode(
           "DataSetCalc",
-          batchTableNode(t),
+          batchTableNode(0),
           term("select", "a", "b")
         ),
-        batchTableNode(s),
+        batchTableNode(1),
         term("where", "AND(=(a, z), <(b, x))"),
         term("join", "a", "b", "x", "y", "z"),
         term("joinType", "RightOuterJoin")
@@ -226,12 +226,12 @@ class JoinTest extends TableTestBase {
         "DataSetJoin",
         unaryNode(
           "DataSetCalc",
-          batchTableNode(t),
+          batchTableNode(0),
           term("select", "a", "b")
         ),
         unaryNode(
           "DataSetCalc",
-          batchTableNode(s),
+          batchTableNode(1),
           term("select", "y", "z")
         ),
         term("where", "=(a, z)"),
@@ -258,12 +258,12 @@ class JoinTest extends TableTestBase {
         "DataSetJoin",
         unaryNode(
           "DataSetCalc",
-          batchTableNode(t),
+          batchTableNode(0),
           term("select", "a", "b")
         ),
         unaryNode(
           "DataSetCalc",
-          batchTableNode(s),
+          batchTableNode(1),
           term("select", "y", "z")
         ),
         term("where", "AND(=(a, z), <(b, 2))"),
@@ -290,10 +290,10 @@ class JoinTest extends TableTestBase {
         "DataSetJoin",
         unaryNode(
           "DataSetCalc",
-          batchTableNode(t),
+          batchTableNode(0),
           term("select", "a", "b")
         ),
-        batchTableNode(s),
+        batchTableNode(1),
         term("where", "AND(=(a, z), <(b, x))"),
         term("join", "a", "b", "x", "y", "z"),
         term("joinType", "FullOuterJoin")
@@ -321,12 +321,12 @@ class JoinTest extends TableTestBase {
         "DataSetJoin",
         unaryNode(
           "DataSetCalc",
-          batchTableNode(t1),
+          batchTableNode(0),
           term("select", "b", "c")
         ),
         unaryNode(
           "DataSetCalc",
-          batchTableNode(t2),
+          batchTableNode(1),
           term("select", "e", "f")
         ),
         term("where", "=(b, e)"),

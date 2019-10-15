@@ -25,7 +25,7 @@ import org.apache.flink.api.common.time.Time;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.runtime.state.KeyedStateHandle;
 import org.apache.flink.runtime.state.SnapshotResult;
-import org.apache.flink.runtime.state.heap.CopyOnWriteStateMap;
+import org.apache.flink.runtime.state.heap.CopyOnWriteStateTable;
 import org.apache.flink.runtime.state.internal.InternalKvState;
 import org.apache.flink.util.StateMigrationException;
 
@@ -40,7 +40,6 @@ import java.util.List;
 import java.util.concurrent.RunnableFuture;
 import java.util.function.Consumer;
 
-import static org.apache.flink.runtime.state.ttl.StateBackendTestContext.NUMBER_OF_KEY_GROUPS;
 import static org.hamcrest.CoreMatchers.instanceOf;
 import static org.hamcrest.CoreMatchers.not;
 import static org.junit.Assert.assertEquals;
@@ -52,7 +51,7 @@ import static org.junit.Assume.assumeTrue;
 public abstract class TtlStateTestBase {
 	protected static final long TTL = 100;
 	private static final int INC_CLEANUP_ALL_KEYS =
-		((CopyOnWriteStateMap.DEFAULT_CAPACITY >> 1) + (CopyOnWriteStateMap.DEFAULT_CAPACITY >> 2) + 1) * NUMBER_OF_KEY_GROUPS;
+		(CopyOnWriteStateTable.DEFAULT_CAPACITY >> 1) + (CopyOnWriteStateTable.DEFAULT_CAPACITY >> 2) + 1;
 
 	protected MockTtlTimeProvider timeProvider;
 	protected StateBackendTestContext sbetc;
@@ -146,7 +145,7 @@ public abstract class TtlStateTestBase {
 	}
 
 	private void takeAndRestoreSnapshot() throws Exception {
-		restoreSnapshot(sbetc.takeSnapshot(), NUMBER_OF_KEY_GROUPS);
+		restoreSnapshot(sbetc.takeSnapshot(), StateBackendTestContext.NUMBER_OF_KEY_GROUPS);
 	}
 
 	protected void takeAndRestoreSnapshot(int numberOfKeyGroupsAfterRestore) throws Exception {
@@ -413,7 +412,7 @@ public abstract class TtlStateTestBase {
 		sbetc.setCurrentKey("k2");
 		ctx().update(ctx().updateUnexpired);
 
-		restoreSnapshot(snapshot, NUMBER_OF_KEY_GROUPS);
+		restoreSnapshot(snapshot, StateBackendTestContext.NUMBER_OF_KEY_GROUPS);
 
 		timeProvider.time = 180;
 		sbetc.setCurrentKey("k1");
@@ -444,7 +443,7 @@ public abstract class TtlStateTestBase {
 
 		initTest(getConfBuilder(TTL).cleanupIncrementally(5, true).build());
 
-		final int keysToUpdate = (CopyOnWriteStateMap.DEFAULT_CAPACITY >> 3) * NUMBER_OF_KEY_GROUPS;
+		final int keysToUpdate = CopyOnWriteStateTable.DEFAULT_CAPACITY >> 3;
 
 		timeProvider.time = 0;
 		// create enough keys to trigger incremental rehash
@@ -466,7 +465,7 @@ public abstract class TtlStateTestBase {
 		KeyedStateHandle snapshot = snapshotRunnableFuture.get().getJobManagerOwnedSnapshot();
 		// restore snapshot which should discard concurrent updates
 		timeProvider.time = 50;
-		restoreSnapshot(snapshot, NUMBER_OF_KEY_GROUPS);
+		restoreSnapshot(snapshot, StateBackendTestContext.NUMBER_OF_KEY_GROUPS);
 
 		// check rest unexpired, also after restore which should discard concurrent updates
 		checkUnexpiredKeys(keysToUpdate, INC_CLEANUP_ALL_KEYS, ctx().getUpdateEmpty);
@@ -482,7 +481,7 @@ public abstract class TtlStateTestBase {
 		checkUnexpiredKeys(0, keysToUpdate >> 1, ctx().getUnexpired);
 		triggerMoreIncrementalCleanupByOtherOps();
 		// check that concurrently updated and then restored with original values are expired
-		checkExpiredKeys(keysToUpdate, keysToUpdate * 2);
+		checkExpiredKeys(keysToUpdate, keysToUpdate *2);
 
 		timeProvider.time = 170;
 		// check rest expired and cleanup updated

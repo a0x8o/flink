@@ -44,7 +44,7 @@ public abstract class FencedRpcEndpoint<F extends Serializable> extends RpcEndpo
 	private volatile F fencingToken;
 	private volatile MainThreadExecutor fencedMainThreadExecutor;
 
-	protected FencedRpcEndpoint(RpcService rpcService, String endpointId, @Nullable F fencingToken) {
+	protected FencedRpcEndpoint(RpcService rpcService, String endpointId) {
 		super(rpcService, endpointId);
 
 		Preconditions.checkArgument(
@@ -53,17 +53,17 @@ public abstract class FencedRpcEndpoint<F extends Serializable> extends RpcEndpo
 			FencedMainThreadExecutable.class.getSimpleName());
 
 		// no fencing token == no leadership
-		this.fencingToken = fencingToken;
+		this.fencingToken = null;
 		this.unfencedMainThreadExecutor = new UnfencedMainThreadExecutor((FencedMainThreadExecutable) rpcServer);
 		this.fencedMainThreadExecutor = new MainThreadExecutor(
 			getRpcService().fenceRpcServer(
 				rpcServer,
-				fencingToken),
+				null),
 			this::validateRunsInMainThread);
 	}
 
-	protected FencedRpcEndpoint(RpcService rpcService, @Nullable F fencingToken) {
-		this(rpcService, UUID.randomUUID().toString(), fencingToken);
+	protected FencedRpcEndpoint(RpcService rpcService) {
+		this(rpcService, UUID.randomUUID().toString());
 	}
 
 	public F getFencingToken() {

@@ -113,13 +113,6 @@ public class FsStateBackend extends AbstractFileStateBackend implements Configur
 	 * A value of 'undefined' means not yet configured, in which case the default will be used. */
 	private final TernaryBoolean asynchronousSnapshots;
 
-	/**
-	 * The write buffer size for created checkpoint stream, this should not be less than file state threshold when we want
-	 * state below that threshold stored as part of metadata not files.
-	 * A value of '-1' means not yet configured, in which case the default will be used.
-	 * */
-	private final int writeBufferSize;
-
 	// -----------------------------------------------------------------------
 
 	/**
@@ -211,7 +204,7 @@ public class FsStateBackend extends AbstractFileStateBackend implements Configur
 	 *                          and the path to the checkpoint data directory.
 	 */
 	public FsStateBackend(URI checkpointDataUri) {
-		this(checkpointDataUri, null, -1, -1, TernaryBoolean.UNDEFINED);
+		this(checkpointDataUri, null, -1, TernaryBoolean.UNDEFINED);
 	}
 
 	/**
@@ -232,7 +225,7 @@ public class FsStateBackend extends AbstractFileStateBackend implements Configur
 	 * @param defaultSavepointDirectory The default directory to store savepoints to. May be null.
 	 */
 	public FsStateBackend(URI checkpointDataUri, @Nullable URI defaultSavepointDirectory) {
-		this(checkpointDataUri, defaultSavepointDirectory, -1, -1, TernaryBoolean.UNDEFINED);
+		this(checkpointDataUri, defaultSavepointDirectory, -1, TernaryBoolean.UNDEFINED);
 	}
 
 	/**
@@ -251,7 +244,7 @@ public class FsStateBackend extends AbstractFileStateBackend implements Configur
 	 * @param asynchronousSnapshots Switch to enable asynchronous snapshots.
 	 */
 	public FsStateBackend(URI checkpointDataUri, boolean asynchronousSnapshots) {
-		this(checkpointDataUri, null, -1, -1,
+		this(checkpointDataUri, null, -1,
 				TernaryBoolean.fromBoolean(asynchronousSnapshots));
 	}
 
@@ -272,7 +265,7 @@ public class FsStateBackend extends AbstractFileStateBackend implements Configur
 	 *                             rather than in files
 	 */
 	public FsStateBackend(URI checkpointDataUri, int fileStateSizeThreshold) {
-		this(checkpointDataUri, null, fileStateSizeThreshold, -1, TernaryBoolean.UNDEFINED);
+		this(checkpointDataUri, null, fileStateSizeThreshold, TernaryBoolean.UNDEFINED);
 	}
 
 	/**
@@ -297,7 +290,7 @@ public class FsStateBackend extends AbstractFileStateBackend implements Configur
 			int fileStateSizeThreshold,
 			boolean asynchronousSnapshots) {
 
-		this(checkpointDataUri, null, fileStateSizeThreshold, -1,
+		this(checkpointDataUri, null, fileStateSizeThreshold,
 				TernaryBoolean.fromBoolean(asynchronousSnapshots));
 	}
 
@@ -320,9 +313,6 @@ public class FsStateBackend extends AbstractFileStateBackend implements Configur
 	 *                                   rather than in files. If -1, the value configured in the
 	 *                                   runtime configuration will be used, or the default value (1KB)
 	 *                                   if nothing is configured.
-	 * @param writeBufferSize            Write buffer size used to serialize state. If -1, the value configured in the
-	 *                                   runtime configuration will be used, or the default value (4KB)
-	 *                                   if nothing is configured.
 	 * @param asynchronousSnapshots      Flag to switch between synchronous and asynchronous
 	 *                                   snapshot mode. If UNDEFINED, the value configured in the
 	 *                                   runtime configuration will be used.
@@ -331,7 +321,6 @@ public class FsStateBackend extends AbstractFileStateBackend implements Configur
 			URI checkpointDirectory,
 			@Nullable URI defaultSavepointDirectory,
 			int fileStateSizeThreshold,
-			int writeBufferSize,
 			TernaryBoolean asynchronousSnapshots) {
 
 		super(checkNotNull(checkpointDirectory, "checkpoint directory is null"), defaultSavepointDirectory);
@@ -340,12 +329,8 @@ public class FsStateBackend extends AbstractFileStateBackend implements Configur
 		checkArgument(fileStateSizeThreshold >= -1 && fileStateSizeThreshold <= MAX_FILE_STATE_THRESHOLD,
 				"The threshold for file state size must be in [-1, %s], where '-1' means to use " +
 						"the value from the deployment's configuration.", MAX_FILE_STATE_THRESHOLD);
-		checkArgument(writeBufferSize >= -1 ,
-			"The write buffer size must be not less than '-1', where '-1' means to use " +
-				"the value from the deployment's configuration.");
 
 		this.fileStateThreshold = fileStateSizeThreshold;
-		this.writeBufferSize = writeBufferSize;
 		this.asynchronousSnapshots = asynchronousSnapshots;
 	}
 
@@ -380,12 +365,6 @@ public class FsStateBackend extends AbstractFileStateBackend implements Configur
 					CheckpointingOptions.FS_SMALL_FILE_THRESHOLD.key(), sizeThreshold,
 					CheckpointingOptions.FS_SMALL_FILE_THRESHOLD.defaultValue());
 		}
-
-		final int bufferSize = original.writeBufferSize >= 0 ?
-			original.writeBufferSize :
-			configuration.getInteger(CheckpointingOptions.FS_WRITE_BUFFER_SIZE);
-
-		this.writeBufferSize = Math.max(bufferSize, this.fileStateThreshold);
 	}
 
 	// ------------------------------------------------------------------------
@@ -436,20 +415,6 @@ public class FsStateBackend extends AbstractFileStateBackend implements Configur
 	}
 
 	/**
-	 * Gets the write buffer size for created checkpoint stream.
-	 *
-	 * <p>If not explicitly configured, this is the default value of
-	 * {@link CheckpointingOptions#FS_WRITE_BUFFER_SIZE}.
-	 *
-	 * @return The write buffer size, in bytes.
-	 */
-	public int getWriteBufferSize() {
-		return writeBufferSize >= 0 ?
-			writeBufferSize :
-			CheckpointingOptions.FS_WRITE_BUFFER_SIZE.defaultValue();
-	}
-
-	/**
 	 * Gets whether the key/value data structures are asynchronously snapshotted.
 	 *
 	 * <p>If not explicitly configured, this is the default value of
@@ -482,12 +447,7 @@ public class FsStateBackend extends AbstractFileStateBackend implements Configur
 	@Override
 	public CheckpointStorage createCheckpointStorage(JobID jobId) throws IOException {
 		checkNotNull(jobId, "jobId");
-		return new FsCheckpointStorage(
-			getCheckpointPath(),
-			getSavepointPath(),
-			jobId,
-			getMinFileSizeThreshold(),
-			getWriteBufferSize());
+		return new FsCheckpointStorage(getCheckpointPath(), getSavepointPath(), jobId, getMinFileSizeThreshold());
 	}
 
 	// ------------------------------------------------------------------------

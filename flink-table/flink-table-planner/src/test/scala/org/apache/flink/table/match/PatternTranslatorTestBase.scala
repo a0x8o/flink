@@ -18,17 +18,16 @@
 
 package org.apache.flink.table.`match`
 
+import org.apache.calcite.tools.RelBuilder
 import org.apache.flink.api.common.typeinfo.{BasicTypeInfo, TypeInformation}
 import org.apache.flink.api.java.typeutils.RowTypeInfo
 import org.apache.flink.cep.pattern.Pattern
 import org.apache.flink.streaming.api.datastream.{DataStream => JDataStream}
 import org.apache.flink.streaming.api.scala.{DataStream, StreamExecutionEnvironment}
-import org.apache.flink.table.api.TableConfig
 import org.apache.flink.table.api.scala._
-import org.apache.flink.table.api.scala.internal.StreamTableEnvironmentImpl
-import org.apache.flink.table.operations.QueryOperation
+import org.apache.flink.table.api.TableConfig
+import org.apache.flink.table.calcite.FlinkPlannerImpl
 import org.apache.flink.table.plan.nodes.datastream.{DataStreamMatch, DataStreamScan}
-import org.apache.flink.table.planner.StreamPlanner
 import org.apache.flink.types.Row
 import org.apache.flink.util.TestLogger
 import org.junit.Assert._
@@ -47,42 +46,43 @@ abstract class PatternTranslatorTestBase extends TestLogger{
   private val testTableTypeInfo = new RowTypeInfo(BasicTypeInfo.INT_TYPE_INFO)
   private val tableName = "testTable"
   private val context = prepareContext(testTableTypeInfo)
+  private val planner = new FlinkPlannerImpl(
+    context._2.getFrameworkConfig,
+    context._2.getPlanner,
+    context._2.getTypeFactory)
 
   private def prepareContext(typeInfo: TypeInformation[Row])
-  : (StreamTableEnvironment, StreamExecutionEnvironment, StreamPlanner) = {
+  : (RelBuilder, StreamTableEnvImpl, StreamExecutionEnvironment) = {
     // create DataStreamTable
     val dataStreamMock = mock(classOf[DataStream[Row]])
     val jDataStreamMock = mock(classOf[JDataStream[Row]])
     when(dataStreamMock.javaStream).thenReturn(jDataStreamMock)
     when(jDataStreamMock.getType).thenReturn(typeInfo)
-    when(jDataStreamMock.getId).thenReturn(0)
 
     val env = StreamExecutionEnvironment.getExecutionEnvironment
-    val tEnv = StreamTableEnvironment.create(env).asInstanceOf[StreamTableEnvironmentImpl]
+    val tEnv = StreamTableEnvironment.create(env).asInstanceOf[StreamTableEnvImpl]
     tEnv.registerDataStream(tableName, dataStreamMock, 'f0, 'proctime.proctime)
 
-    val streamPlanner = tEnv.getPlanner.asInstanceOf[StreamPlanner]
+    // prepare RelBuilder
+    val relBuilder = tEnv.getRelBuilder
+    relBuilder.scan(tableName)
 
-    (tEnv, env, streamPlanner)
+    (relBuilder, tEnv, env)
   }
 
   def verifyPattern(matchRecognize: String, expected: Pattern[Row, _ <: Row]): Unit = {
     // create RelNode from SQL expression
-    val parsed = context._3.parse(
+    val parsed = planner.parse(
       s"""
          |SELECT *
          |FROM $tableName
          |$matchRecognize
          |""".stripMargin)
+    val validated = planner.validate(parsed)
+    val converted = planner.rel(validated).rel
 
-    val queryOperation = parsed.get(0).asInstanceOf[QueryOperation]
-    val relNode = context._3.getRelBuilder.tableOperation(queryOperation).build()
-
-    val optimized = context._3.optimizer
-      .optimize(
-        relNode,
-        updatesAsRetraction = false,
-        context._3.getRelBuilder)
+    val env = context._2
+    val optimized = env.optimize(converted, updatesAsRetraction = false)
 
     // throw exception if plan contains more than a match
     if (!optimized.getInput(0).isInstanceOf[DataStreamScan]) {

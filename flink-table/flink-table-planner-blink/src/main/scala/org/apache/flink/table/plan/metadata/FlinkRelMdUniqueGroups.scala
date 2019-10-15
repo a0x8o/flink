@@ -18,16 +18,15 @@
 
 package org.apache.flink.table.plan.metadata
 
-import org.apache.flink.table.calcite.FlinkRelBuilder.PlannerNamedWindowProperty
 import org.apache.flink.table.plan.metadata.FlinkMetadata.UniqueGroups
-import org.apache.flink.table.plan.nodes.calcite.{Expand, Rank, WindowAggregate}
+import org.apache.flink.table.plan.nodes.calcite.{Expand, Rank}
 import org.apache.flink.table.plan.nodes.physical.batch._
-import org.apache.flink.table.plan.util.{AggregateUtil, FlinkRelMdUtil, RankUtil}
+import org.apache.flink.table.plan.util.FlinkRelMdUtil
 
 import org.apache.calcite.plan.volcano.RelSubset
+import org.apache.calcite.rel.RelNode
 import org.apache.calcite.rel.core._
 import org.apache.calcite.rel.metadata._
-import org.apache.calcite.rel.{RelNode, SingleRel}
 import org.apache.calcite.rex._
 import org.apache.calcite.sql.SqlKind
 import org.apache.calcite.util.{Bug, ImmutableBitSet, Util}
@@ -180,7 +179,7 @@ class FlinkRelMdUniqueGroups private extends MetadataHandler[UniqueGroups] {
       columns: ImmutableBitSet): ImmutableBitSet = {
     val columnList = columns.toList
     val fmq = FlinkRelMetadataQuery.reuseOrCreate(mq)
-    val rankFunColumnIndex = RankUtil.getRankNumberColumnIndex(rank).getOrElse(-1)
+    val rankFunColumnIndex = FlinkRelMdUtil.getRankFunctionColumnIndex(rank).getOrElse(-1)
     val columnSkipRankCol = columnList.filter(_ != rankFunColumnIndex)
     if (columnSkipRankCol.isEmpty) {
       return columns
@@ -253,62 +252,7 @@ class FlinkRelMdUniqueGroups private extends MetadataHandler[UniqueGroups] {
     }
   }
 
-  def getUniqueGroups(
-      agg: WindowAggregate,
-      mq: RelMetadataQuery,
-      columns: ImmutableBitSet): ImmutableBitSet = {
-    val grouping = agg.getGroupSet.map(_.toInt).toArray
-    val namedProperties = agg.getNamedProperties
-    val (auxGroupSet, _) = AggregateUtil.checkAndSplitAggCalls(agg)
-    getUniqueGroupsOfWindowAgg(agg, grouping, auxGroupSet, namedProperties, mq, columns)
-  }
-
-  def getUniqueGroups(
-      agg: BatchExecWindowAggregateBase,
-      mq: RelMetadataQuery,
-      columns: ImmutableBitSet): ImmutableBitSet = {
-    val grouping = agg.getGrouping
-    val namedProperties = agg.getNamedProperties
-    getUniqueGroupsOfWindowAgg(agg, grouping, agg.getAuxGrouping, namedProperties, mq, columns)
-  }
-
-  private def getUniqueGroupsOfWindowAgg(
-      windowAgg: SingleRel,
-      grouping: Array[Int],
-      auxGrouping: Array[Int],
-      namedProperties: Seq[PlannerNamedWindowProperty],
-      mq: RelMetadataQuery,
-      columns: ImmutableBitSet): ImmutableBitSet = {
-    val fieldCount = windowAgg.getRowType.getFieldCount
-    val columnList = columns.toList
-    val groupingInToOutMap = new mutable.HashMap[Integer, Integer]()
-    columnList.foreach { column =>
-      require(column < fieldCount)
-      if (column < grouping.length) {
-        groupingInToOutMap.put(grouping(column), column)
-      }
-    }
-    if (groupingInToOutMap.isEmpty) {
-      columns
-    } else {
-      val fmq = FlinkRelMetadataQuery.reuseOrCreate(mq)
-      val inputColumns = ImmutableBitSet.of(groupingInToOutMap.keys.toList)
-      val inputUniqueGroups = fmq.getUniqueGroups(windowAgg.getInput, inputColumns)
-      val uniqueGroupsFromGrouping = inputUniqueGroups.asList.map { i =>
-        groupingInToOutMap.getOrElse(i, throw new IllegalArgumentException(s"Illegal index: $i"))
-      }
-      val fullGroupingOutputIndices =
-        grouping.indices ++ auxGrouping.indices.map(_ + grouping.length)
-      if (columns.equals(ImmutableBitSet.of(fullGroupingOutputIndices: _*))) {
-        return ImmutableBitSet.of(uniqueGroupsFromGrouping)
-      }
-
-      val groupingOutCols = groupingInToOutMap.values
-      // TODO drop some nonGroupingCols base on FlinkRelMdColumnUniqueness#areColumnsUnique(window)
-      val nonGroupingCols = columnList.filterNot(groupingOutCols.contains)
-      ImmutableBitSet.of(uniqueGroupsFromGrouping).union(ImmutableBitSet.of(nonGroupingCols))
-    }
-  }
+  // TODO support window aggregate
 
   def getUniqueGroups(
       over: Window,
@@ -341,17 +285,11 @@ class FlinkRelMdUniqueGroups private extends MetadataHandler[UniqueGroups] {
       mq: RelMetadataQuery,
       columns: ImmutableBitSet): ImmutableBitSet = {
     require(join.getSystemFieldList.isEmpty)
-    val fmq = FlinkRelMetadataQuery.reuseOrCreate(mq)
-    join.getJoinType match {
-      case JoinRelType.SEMI | JoinRelType.ANTI =>
-        return fmq.getUniqueGroups(join.getLeft, columns)
-      case _ => // do nothing
-    }
-
     val leftFieldCount = join.getLeft.getRowType.getFieldCount
     val (leftColumns, rightColumns) =
       FlinkRelMdUtil.splitColumnsIntoLeftAndRight(leftFieldCount, columns)
 
+    val fmq = FlinkRelMetadataQuery.reuseOrCreate(mq)
     val leftUniqueGroups = fmq.getUniqueGroups(join.getLeft, leftColumns)
     val rightUniqueGroups = fmq.getUniqueGroups(join.getRight, rightColumns)
 

@@ -116,11 +116,8 @@ public abstract class CheckpointIDCounterTest extends TestLogger {
 			counter.start();
 
 			assertEquals(1, counter.getAndIncrement());
-			assertEquals(2, counter.get());
 			assertEquals(2, counter.getAndIncrement());
-			assertEquals(3, counter.get());
 			assertEquals(3, counter.getAndIncrement());
-			assertEquals(4, counter.get());
 			assertEquals(4, counter.getAndIncrement());
 		}
 		finally {
@@ -180,7 +177,6 @@ public abstract class CheckpointIDCounterTest extends TestLogger {
 			}
 
 			// The final count
-			assertEquals(expectedTotal + 1, counter.get());
 			assertEquals(expectedTotal + 1, counter.getAndIncrement());
 		}
 		finally {
@@ -202,9 +198,7 @@ public abstract class CheckpointIDCounterTest extends TestLogger {
 
 		// Test setCount
 		counter.setCount(1337);
-		assertEquals(1337, counter.get());
 		assertEquals(1337, counter.getAndIncrement());
-		assertEquals(1338, counter.get());
 		assertEquals(1338, counter.getAndIncrement());
 
 		counter.shutdown(JobStatus.FINISHED);

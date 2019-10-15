@@ -17,25 +17,15 @@
  */
 package org.apache.flink.table.plan.nodes.physical.batch
 
-import org.apache.flink.api.dag.Transformation
 import org.apache.flink.runtime.operators.DamBehavior
-import org.apache.flink.streaming.api.operators.SimpleOperatorFactory
-import org.apache.flink.streaming.api.transformations.TwoInputTransformation
-import org.apache.flink.table.api.ExecutionConfigOptions
-import org.apache.flink.table.calcite.FlinkTypeFactory
-import org.apache.flink.table.codegen.ProjectionCodeGenerator.generateProjection
-import org.apache.flink.table.codegen.{CodeGeneratorContext, LongHashJoinGenerator}
+import org.apache.flink.streaming.api.transformations.StreamTransformation
+import org.apache.flink.table.api.{BatchTableEnvironment, TableException}
 import org.apache.flink.table.dataformat.BaseRow
-import org.apache.flink.table.plan.`trait`.{FlinkRelDistribution, FlinkRelDistributionTraitDef}
 import org.apache.flink.table.plan.cost.{FlinkCost, FlinkCostFactory}
 import org.apache.flink.table.plan.nodes.exec.ExecNode
-import org.apache.flink.table.plan.nodes.resource.NodeResourceUtil
-import org.apache.flink.table.plan.nodes.{ExpressionFormat, FlinkConventions}
 import org.apache.flink.table.plan.util.{FlinkRelMdUtil, JoinUtil}
-import org.apache.flink.table.planner.BatchPlanner
-import org.apache.flink.table.runtime.join.{HashJoinOperator, HashJoinType}
-import org.apache.flink.table.types.logical.RowType
-import org.apache.flink.table.typeutils.{BaseRowTypeInfo, BinaryRowSerializer}
+import org.apache.flink.table.runtime.join.HashJoinType
+import org.apache.flink.table.typeutils.BinaryRowSerializer
 
 import org.apache.calcite.plan._
 import org.apache.calcite.rel.core._
@@ -51,19 +41,14 @@ import scala.collection.JavaConversions._
 /**
   * Batch physical RelNode for hash [[Join]].
   */
-class BatchExecHashJoin(
-    cluster: RelOptCluster,
-    traitSet: RelTraitSet,
-    leftRel: RelNode,
-    rightRel: RelNode,
-    condition: RexNode,
-    joinType: JoinRelType,
-    // true if LHS is build side, else false
-    val leftIsBuild: Boolean,
-    // true if build side is broadcast, else false
-    val isBroadcast: Boolean,
-    val tryDistinctBuildRow: Boolean)
-  extends BatchExecJoinBase(cluster, traitSet, leftRel, rightRel, condition, joinType) {
+trait BatchExecHashJoinBase extends BatchExecJoinBase {
+
+  // true if LHS is build side, else false
+  val leftIsBuild: Boolean
+  // true if build side is broadcast, else false
+  val isBroadcast: Boolean
+  val tryDistinctBuildRow: Boolean
+  var haveInsertRf: Boolean
 
   private val (leftKeys, rightKeys) =
     JoinUtil.checkAndGetJoinKeys(keyPairs, getLeft, getRight, allowEmptyKey = true)
@@ -73,31 +58,8 @@ class BatchExecHashJoin(
   def buildRel: RelNode = if (leftIsBuild) getLeft else getRight
   def probeRel: RelNode = if (leftIsBuild) getRight else getLeft
 
-  val hashJoinType: HashJoinType = HashJoinType.of(
-    leftIsBuild,
-    getJoinType.generatesNullsOnRight(),
-    getJoinType.generatesNullsOnLeft(),
-    getJoinType == JoinRelType.SEMI,
-    getJoinType == JoinRelType.ANTI)
-
-  override def copy(
-      traitSet: RelTraitSet,
-      conditionExpr: RexNode,
-      left: RelNode,
-      right: RelNode,
-      joinType: JoinRelType,
-      semiJoinDone: Boolean): Join = {
-    new BatchExecHashJoin(
-      cluster,
-      traitSet,
-      left,
-      right,
-      conditionExpr,
-      joinType,
-      leftIsBuild,
-      isBroadcast,
-      tryDistinctBuildRow)
-  }
+  val hashJoinType: HashJoinType = HashJoinType.of(leftIsBuild, getJoinType.generatesNullsOnRight(),
+    getJoinType.generatesNullsOnLeft())
 
   override def explainTerms(pw: RelWriter): RelWriter = {
     super.explainTerms(pw)
@@ -141,145 +103,57 @@ class BatchExecHashJoin(
     }
   }
 
-  override def satisfyTraits(requiredTraitSet: RelTraitSet): Option[RelNode] = {
-    if (!isBroadcast) {
-      satisfyTraitsOnNonBroadcastHashJoin(requiredTraitSet)
-    } else {
-      satisfyTraitsOnBroadcastJoin(requiredTraitSet, leftIsBuild)
-    }
-  }
-
-  private def satisfyTraitsOnNonBroadcastHashJoin(
-      requiredTraitSet: RelTraitSet): Option[RelNode] = {
-    val requiredDistribution = requiredTraitSet.getTrait(FlinkRelDistributionTraitDef.INSTANCE)
-    val (canSatisfyDistribution, leftRequiredDistribution, rightRequiredDistribution) =
-      satisfyHashDistributionOnNonBroadcastJoin(requiredDistribution)
-    if (!canSatisfyDistribution) {
-      return None
-    }
-
-    val toRestrictHashDistributionByKeys = (distribution: FlinkRelDistribution) =>
-      getCluster.getPlanner
-        .emptyTraitSet
-        .replace(FlinkConventions.BATCH_PHYSICAL)
-        .replace(distribution)
-    val leftRequiredTraits = toRestrictHashDistributionByKeys(leftRequiredDistribution)
-    val rightRequiredTraits = toRestrictHashDistributionByKeys(rightRequiredDistribution)
-    val newLeft = RelOptRule.convert(getLeft, leftRequiredTraits)
-    val newRight = RelOptRule.convert(getRight, rightRequiredTraits)
-    val providedTraits = getTraitSet.replace(requiredDistribution)
-    // HashJoin can not satisfy collation.
-    Some(copy(providedTraits, Seq(newLeft, newRight)))
-  }
-
   //~ ExecNode methods -----------------------------------------------------------
 
   override def getDamBehavior: DamBehavior = {
     if (hashJoinType.buildLeftSemiOrAnti()) DamBehavior.FULL_DAM else DamBehavior.MATERIALIZING
   }
 
-  override def getInputNodes: util.List[ExecNode[BatchPlanner, _]] =
-    getInputs.map(_.asInstanceOf[ExecNode[BatchPlanner, _]])
+  override def getInputNodes: util.List[ExecNode[BatchTableEnvironment, _]] =
+    getInputs.map(_.asInstanceOf[ExecNode[BatchTableEnvironment, _]])
 
   override def replaceInputNode(
       ordinalInParent: Int,
-      newInputNode: ExecNode[BatchPlanner, _]): Unit = {
+      newInputNode: ExecNode[BatchTableEnvironment, _]): Unit = {
     replaceInput(ordinalInParent, newInputNode.asInstanceOf[RelNode])
   }
 
-  override protected def translateToPlanInternal(
-      planner: BatchPlanner): Transformation[BaseRow] = {
-    val config = planner.getTableConfig
-
-    val lInput = getInputNodes.get(0).translateToPlan(planner)
-        .asInstanceOf[Transformation[BaseRow]]
-    val rInput = getInputNodes.get(1).translateToPlan(planner)
-        .asInstanceOf[Transformation[BaseRow]]
-
-    // get type
-    val lType = lInput.getOutputType.asInstanceOf[BaseRowTypeInfo].toRowType
-    val rType = rInput.getOutputType.asInstanceOf[BaseRowTypeInfo].toRowType
-
-    val keyType = RowType.of(leftKeys.map(lType.getChildren().get(_)): _*)
-    val managedMemoryInMB = config.getConfiguration.getInteger(
-      ExecutionConfigOptions.SQL_RESOURCE_HASH_JOIN_TABLE_MEM)
-    val managedMemory = managedMemoryInMB * NodeResourceUtil.SIZE_IN_MB
-    val condFunc = JoinUtil.generateConditionFunction(
-      config, cluster.getRexBuilder, getJoinInfo, lType, rType)
-
-    // projection for equals
-    val lProj = generateProjection(
-      CodeGeneratorContext(config), "HashJoinLeftProjection", lType, keyType, leftKeys)
-    val rProj = generateProjection(
-      CodeGeneratorContext(config), "HashJoinRightProjection", rType, keyType, rightKeys)
-
-    val (build, probe, bProj, pProj, bType, pType, reverseJoin) =
-      if (leftIsBuild) {
-        (lInput, rInput, lProj, rProj, lType, rType, false)
-      } else {
-        (rInput, lInput, rProj, lProj, rType, lType, true)
-      }
-    val mq = getCluster.getMetadataQuery
-
-    val buildRowSize = Util.first(mq.getAverageRowSize(buildRel), 24).toInt
-    val buildRowCount = Util.first(mq.getRowCount(buildRel), 200000).toLong
-    val probeRowCount = Util.first(mq.getRowCount(probeRel), 200000).toLong
-
-    // operator
-    val operator = if (LongHashJoinGenerator.support(hashJoinType, keyType, filterNulls)) {
-      LongHashJoinGenerator.gen(
-        config,
-        hashJoinType,
-        keyType,
-        bType,
-        pType,
-        buildKeys,
-        probeKeys,
-        managedMemory,
-        0,
-        0,
-        buildRowSize,
-        buildRowCount,
-        reverseJoin,
-        condFunc)
-    } else {
-      SimpleOperatorFactory.of(HashJoinOperator.newHashJoinOperator(
-        managedMemory,
-        0,
-        0,
-        hashJoinType,
-        condFunc,
-        reverseJoin,
-        filterNulls,
-        bProj,
-        pProj,
-        tryDistinctBuildRow,
-        buildRowSize,
-        buildRowCount,
-        probeRowCount,
-        keyType
-      ))
-    }
-
-    val ret = new TwoInputTransformation[BaseRow, BaseRow, BaseRow](
-      build,
-      probe,
-      getOperatorName,
-      operator,
-      BaseRowTypeInfo.of(FlinkTypeFactory.toLogicalRowType(getRowType)),
-      getResource.getParallelism)
-    val resource = NodeResourceUtil.fromManagedMem(managedMemoryInMB)
-    ret.setResources(resource, resource)
-    ret
+  override def translateToPlanInternal(
+      tableEnv: BatchTableEnvironment): StreamTransformation[BaseRow] = {
+    throw new TableException("Implements this")
   }
+}
 
-  private def getOperatorName: String = {
-    val joinExpressionStr = if (getCondition != null) {
-      val inFields = inputRowType.getFieldNames.toList
-      s"where: ${getExpressionString(getCondition, inFields, None, ExpressionFormat.Infix)}, "
-    } else {
-      ""
-    }
-    s"HashJoin($joinExpressionStr${if (leftIsBuild) "buildLeft" else "buildRight"})"
-  }
+class BatchExecHashJoin(
+    cluster: RelOptCluster,
+    traitSet: RelTraitSet,
+    leftRel: RelNode,
+    rightRel: RelNode,
+    condition: RexNode,
+    joinType: JoinRelType,
+    val leftIsBuild: Boolean,
+    val isBroadcast: Boolean,
+    override var haveInsertRf: Boolean = false)
+  extends Join(cluster, traitSet, leftRel, rightRel, condition, Set.empty[CorrelationId], joinType)
+  with BatchExecHashJoinBase {
+
+  override val tryDistinctBuildRow = false
+
+  override def copy(
+      traitSet: RelTraitSet,
+      conditionExpr: RexNode,
+      left: RelNode,
+      right: RelNode,
+      joinType: JoinRelType,
+      semiJoinDone: Boolean): Join =
+    new BatchExecHashJoin(
+      cluster,
+      traitSet,
+      left,
+      right,
+      conditionExpr,
+      joinType,
+      leftIsBuild,
+      isBroadcast,
+      haveInsertRf)
 }

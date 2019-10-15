@@ -22,13 +22,11 @@ import org.apache.flink.runtime.io.network.partition.ResultPartitionType;
 import org.apache.flink.runtime.io.network.partition.consumer.SingleInputGate;
 import org.apache.flink.runtime.jobgraph.DistributionPattern;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
-import org.apache.flink.runtime.shuffle.ShuffleDescriptor;
-
-import javax.annotation.Nonnegative;
 
 import java.io.Serializable;
 import java.util.Arrays;
 
+import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
@@ -56,20 +54,23 @@ public class InputGateDeploymentDescriptor implements Serializable {
 	 * The index of the consumed subpartition of each consumed partition. This index depends on the
 	 * {@link DistributionPattern} and the subtask indices of the producing and consuming task.
 	 */
-	@Nonnegative
 	private final int consumedSubpartitionIndex;
 
 	/** An input channel for each consumed subpartition. */
-	private final ShuffleDescriptor[] inputChannels;
+	private final InputChannelDeploymentDescriptor[] inputChannels;
 
 	public InputGateDeploymentDescriptor(
 			IntermediateDataSetID consumedResultId,
 			ResultPartitionType consumedPartitionType,
-			@Nonnegative int consumedSubpartitionIndex,
-			ShuffleDescriptor[] inputChannels) {
+			int consumedSubpartitionIndex,
+			InputChannelDeploymentDescriptor[] inputChannels) {
+
 		this.consumedResultId = checkNotNull(consumedResultId);
 		this.consumedPartitionType = checkNotNull(consumedPartitionType);
+
+		checkArgument(consumedSubpartitionIndex >= 0);
 		this.consumedSubpartitionIndex = consumedSubpartitionIndex;
+
 		this.inputChannels = checkNotNull(inputChannels);
 	}
 
@@ -86,12 +87,11 @@ public class InputGateDeploymentDescriptor implements Serializable {
 		return consumedPartitionType;
 	}
 
-	@Nonnegative
 	public int getConsumedSubpartitionIndex() {
 		return consumedSubpartitionIndex;
 	}
 
-	public ShuffleDescriptor[] getShuffleDescriptors() {
+	public InputChannelDeploymentDescriptor[] getInputChannelDeploymentDescriptors() {
 		return inputChannels;
 	}
 

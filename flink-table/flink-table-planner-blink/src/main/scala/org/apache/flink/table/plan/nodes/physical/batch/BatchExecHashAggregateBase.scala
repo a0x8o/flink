@@ -17,9 +17,8 @@
  */
 package org.apache.flink.table.plan.nodes.physical.batch
 
-import org.apache.flink.api.dag.Transformation
-import org.apache.flink.streaming.api.transformations.OneInputTransformation
-import org.apache.flink.table.api.ExecutionConfigOptions
+import org.apache.flink.streaming.api.transformations.{OneInputTransformation, StreamTransformation}
+import org.apache.flink.table.api.{BatchTableEnvironment, TableConfig, TableConfigOptions}
 import org.apache.flink.table.calcite.FlinkTypeFactory
 import org.apache.flink.table.codegen.CodeGeneratorContext
 import org.apache.flink.table.codegen.agg.batch.{AggWithoutKeysCodeGenerator, HashAggCodeGenerator}
@@ -28,12 +27,9 @@ import org.apache.flink.table.functions.UserDefinedFunction
 import org.apache.flink.table.plan.cost.FlinkCost._
 import org.apache.flink.table.plan.cost.FlinkCostFactory
 import org.apache.flink.table.plan.nodes.exec.{BatchExecNode, ExecNode}
-import org.apache.flink.table.plan.nodes.resource.NodeResourceUtil
 import org.apache.flink.table.plan.util.AggregateUtil.transformToBatchAggregateInfoList
 import org.apache.flink.table.plan.util.FlinkRelMdUtil
-import org.apache.flink.table.planner.BatchPlanner
-import org.apache.flink.table.runtime.CodeGenOperatorFactory
-import org.apache.flink.table.typeutils.BaseRowTypeInfo
+import org.apache.flink.table.runtime.OneInputOperatorWrapper
 
 import org.apache.calcite.plan.{RelOptCluster, RelOptCost, RelOptPlanner, RelTraitSet}
 import org.apache.calcite.rel.RelNode
@@ -108,50 +104,48 @@ abstract class BatchExecHashAggregateBase(
 
   //~ ExecNode methods -----------------------------------------------------------
 
-  override def getInputNodes: util.List[ExecNode[BatchPlanner, _]] =
-    List(getInput.asInstanceOf[ExecNode[BatchPlanner, _]])
+  override def getInputNodes: util.List[ExecNode[BatchTableEnvironment, _]] =
+    List(getInput.asInstanceOf[ExecNode[BatchTableEnvironment, _]])
 
   override def replaceInputNode(
       ordinalInParent: Int,
-      newInputNode: ExecNode[BatchPlanner, _]): Unit = {
+      newInputNode: ExecNode[BatchTableEnvironment, _]): Unit = {
     replaceInput(ordinalInParent, newInputNode.asInstanceOf[RelNode])
   }
 
   def getOperatorName: String
 
-  override protected def translateToPlanInternal(
-      planner: BatchPlanner): Transformation[BaseRow] = {
-    val config = planner.getTableConfig
-    val input = getInputNodes.get(0).translateToPlan(planner)
-        .asInstanceOf[Transformation[BaseRow]]
-    val ctx = CodeGeneratorContext(config)
-    val outputType = FlinkTypeFactory.toLogicalRowType(getRowType)
-    val inputType = FlinkTypeFactory.toLogicalRowType(inputRowType)
+  def getParallelism(input: StreamTransformation[BaseRow], conf: TableConfig): Int
+
+  override def translateToPlanInternal(
+      tableEnv: BatchTableEnvironment): StreamTransformation[BaseRow] = {
+    val input = getInputNodes.get(0).translateToPlan(tableEnv)
+        .asInstanceOf[StreamTransformation[BaseRow]]
+    val ctx = CodeGeneratorContext(tableEnv.getConfig)
+    val outputType = FlinkTypeFactory.toInternalRowType(getRowType)
+    val inputType = FlinkTypeFactory.toInternalRowType(inputRowType)
 
     val aggInfos = transformToBatchAggregateInfoList(
       aggCallToAggFunction.map(_._1), aggInputRowType)
 
-    var managedMemoryInMB = 0
     val generatedOperator = if (grouping.isEmpty) {
       AggWithoutKeysCodeGenerator.genWithoutKeys(
         ctx, relBuilder, aggInfos, inputType, outputType, isMerge, isFinal, "NoGrouping")
     } else {
-      managedMemoryInMB = config.getConfiguration.getInteger(
-        ExecutionConfigOptions.SQL_RESOURCE_HASH_AGG_TABLE_MEM)
-      val managedMemory = managedMemoryInMB * NodeResourceUtil.SIZE_IN_MB
+      val reservedManagedMem = tableEnv.config.getConf.getInteger(
+        TableConfigOptions.SQL_RESOURCE_HASH_AGG_TABLE_MEM) * TableConfigOptions.SIZE_IN_MB
+      val maxManagedMem = tableEnv.config.getConf.getInteger(
+        TableConfigOptions.SQL_RESOURCE_HASH_AGG_TABLE_MAX_MEM) * TableConfigOptions.SIZE_IN_MB
       new HashAggCodeGenerator(
         ctx, relBuilder, aggInfos, inputType, outputType, grouping, auxGrouping, isMerge, isFinal
-      ).genWithKeys(managedMemory)
+      ).genWithKeys(reservedManagedMem, maxManagedMem)
     }
-    val operator = new CodeGenOperatorFactory[BaseRow](generatedOperator)
-    val ret = new OneInputTransformation(
+    val operator = new OneInputOperatorWrapper[BaseRow, BaseRow](generatedOperator)
+    new OneInputTransformation(
       input,
       getOperatorName,
       operator,
-      BaseRowTypeInfo.of(outputType),
-      getResource.getParallelism)
-    val resource = NodeResourceUtil.fromManagedMem(managedMemoryInMB)
-    ret.setResources(resource, resource)
-    ret
+      outputType.toTypeInfo,
+      getParallelism(input, tableEnv.config))
   }
 }

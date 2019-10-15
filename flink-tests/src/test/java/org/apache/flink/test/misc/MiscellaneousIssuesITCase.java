@@ -66,6 +66,7 @@ public class MiscellaneousIssuesITCase extends TestLogger {
 		try {
 			ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
 			env.setParallelism(1);
+			env.getConfig().disableSysoutLogging();
 
 			DataSet<String> data = env.fromElements("hallo")
 					.map(new MapFunction<String, String>() {
@@ -96,6 +97,7 @@ public class MiscellaneousIssuesITCase extends TestLogger {
 		try {
 			ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
 			env.setParallelism(5);
+			env.getConfig().disableSysoutLogging();
 
 			// generate two different flows
 			env.generateSequence(1, 10).output(new DiscardingOutputFormat<Long>());
@@ -116,6 +118,7 @@ public class MiscellaneousIssuesITCase extends TestLogger {
 		try {
 			ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
 			env.setParallelism(6);
+			env.getConfig().disableSysoutLogging();
 
 			env.generateSequence(1, 1000000)
 					.rebalance()

@@ -32,8 +32,6 @@ import org.apache.flink.core.fs.CloseableRegistry;
 import org.apache.flink.core.memory.DataOutputViewStreamWrapper;
 import org.apache.flink.metrics.Counter;
 import org.apache.flink.metrics.MetricGroup;
-import org.apache.flink.runtime.checkpoint.CheckpointException;
-import org.apache.flink.runtime.checkpoint.CheckpointFailureReason;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.jobgraph.OperatorID;
@@ -73,7 +71,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.Closeable;
-import java.io.IOException;
 import java.io.Serializable;
 import java.util.Locale;
 
@@ -93,7 +90,7 @@ import java.util.Locale;
  */
 @PublicEvolving
 public abstract class AbstractStreamOperator<OUT>
-		implements StreamOperator<OUT>, SetupableStreamOperator<OUT>, Serializable {
+		implements StreamOperator<OUT>, Serializable {
 
 	private static final long serialVersionUID = 1L;
 
@@ -388,14 +385,13 @@ public abstract class AbstractStreamOperator<OUT>
 
 		OperatorSnapshotFutures snapshotInProgress = new OperatorSnapshotFutures();
 
-		StateSnapshotContextSynchronousImpl snapshotContext = new StateSnapshotContextSynchronousImpl(
-			checkpointId,
-			timestamp,
-			factory,
-			keyGroupRange,
-			getContainingTask().getCancelables());
+		try (StateSnapshotContextSynchronousImpl snapshotContext = new StateSnapshotContextSynchronousImpl(
+				checkpointId,
+				timestamp,
+				factory,
+				keyGroupRange,
+				getContainingTask().getCancelables())) {
 
-		try {
 			snapshotState(snapshotContext);
 
 			snapshotInProgress.setKeyedStateRawFuture(snapshotContext.getKeyedStateStreamFuture());
@@ -423,12 +419,7 @@ public abstract class AbstractStreamOperator<OUT>
 			if (!getContainingTask().isCanceled()) {
 				LOG.info(snapshotFailMessage, snapshotException);
 			}
-			try {
-				snapshotContext.closeExceptionally();
-			} catch (IOException e) {
-				snapshotException.addSuppressed(e);
-			}
-			throw new CheckpointException(snapshotFailMessage, CheckpointFailureReason.CHECKPOINT_DECLINED, snapshotException);
+			throw new Exception(snapshotFailMessage, snapshotException);
 		}
 
 		return snapshotInProgress;

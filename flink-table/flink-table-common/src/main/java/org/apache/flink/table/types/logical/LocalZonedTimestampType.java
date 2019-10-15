@@ -43,7 +43,7 @@ import java.util.Set;
  * the current session for computation and visualization.
  *
  * <p>This type fills the gap between time zone free and time zone mandatory timestamp types by allowing
- * the interpretation of UTC timestamps according to the configured session time zone. A conversion
+ * the interpretation of UTC timestamps according to the configured session timezone. A conversion
  * from and to {@code int} describes the number of seconds since epoch. A conversion from and to {@code long}
  * describes the number of milliseconds since epoch.
  *
@@ -53,24 +53,20 @@ import java.util.Set;
 @PublicEvolving
 public final class LocalZonedTimestampType extends LogicalType {
 
-	public static final int MIN_PRECISION = TimestampType.MIN_PRECISION;
+	private static final int MIN_PRECISION = 0;
 
-	public static final int MAX_PRECISION = TimestampType.MAX_PRECISION;
+	private static final int MAX_PRECISION = 9;
 
-	public static final int DEFAULT_PRECISION = TimestampType.DEFAULT_PRECISION;
+	private static final int DEFAULT_PRECISION = 6;
 
 	private static final String FORMAT = "TIMESTAMP(%d) WITH LOCAL TIME ZONE";
 
 	private static final Set<String> NULL_OUTPUT_CONVERSION = conversionSet(
-		java.time.Instant.class.getName(),
-		Integer.class.getName(),
-		Long.class.getName());
+		java.time.Instant.class.getName());
 
 	private static final Set<String> NOT_NULL_INPUT_OUTPUT_CONVERSION = conversionSet(
 		java.time.Instant.class.getName(),
-		Integer.class.getName(),
 		int.class.getName(),
-		Long.class.getName(),
 		long.class.getName());
 
 	private static final Class<?> DEFAULT_CONVERSION = java.time.Instant.class;
@@ -128,14 +124,6 @@ public final class LocalZonedTimestampType extends LogicalType {
 	@Override
 	public String asSerializableString() {
 		return withNullability(FORMAT, precision);
-	}
-
-	@Override
-	public String asSummaryString() {
-		if (kind != TimestampKind.REGULAR) {
-			return String.format("%s *%s*", asSerializableString(), kind);
-		}
-		return asSerializableString();
 	}
 
 	@Override

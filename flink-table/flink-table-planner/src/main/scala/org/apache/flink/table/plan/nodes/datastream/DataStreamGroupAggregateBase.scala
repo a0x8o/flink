@@ -25,13 +25,10 @@ import org.apache.calcite.rel.{RelNode, RelWriter, SingleRel}
 import org.apache.flink.api.java.functions.NullByteKeySelector
 import org.apache.flink.streaming.api.datastream.DataStream
 import org.apache.flink.streaming.api.functions.KeyedProcessFunction
-import org.apache.flink.table.api.{StreamQueryConfig, TableConfig}
+import org.apache.flink.table.api.{StreamQueryConfig, StreamTableEnvImpl, TableConfig}
 import org.apache.flink.table.plan.nodes.CommonAggregate
-import org.apache.flink.table.plan.rules.datastream.DataStreamRetractionRules
 import org.apache.flink.table.plan.schema.RowSchema
-import org.apache.flink.table.planner.StreamPlanner
 import org.apache.flink.table.runtime.CRowKeySelector
-import org.apache.flink.table.runtime.aggregate.AggregateUtil
 import org.apache.flink.table.runtime.aggregate.AggregateUtil.CalcitePair
 import org.apache.flink.table.runtime.types.{CRow, CRowTypeInfo}
 import org.apache.flink.table.util.Logging
@@ -94,27 +91,12 @@ abstract class DataStreamGroupAggregateBase(
         inputSchema.relDataType, groupings, getRowType, namedAggregates, Nil))
   }
 
-  private def createKeyedProcessFunction[K](
+  protected def createKeyedProcessFunction[K](
     tableConfig: TableConfig,
-    queryConfig: StreamQueryConfig): KeyedProcessFunction[K, CRow, CRow] = {
-
-    AggregateUtil.createDataStreamGroupAggregateFunction[K](
-      tableConfig,
-      false,
-      inputSchema.typeInfo,
-      None,
-      namedAggregates,
-      inputSchema.relDataType,
-      inputSchema.fieldTypeInfos,
-      schema.relDataType,
-      groupings,
-      queryConfig,
-      DataStreamRetractionRules.isAccRetract(this),
-      DataStreamRetractionRules.isAccRetract(getInput))
-  }
+    queryConfig: StreamQueryConfig): KeyedProcessFunction[K, CRow, CRow]
 
   override def translateToPlan(
-      planner: StreamPlanner,
+      tableEnv: StreamTableEnvImpl,
       queryConfig: StreamQueryConfig): DataStream[CRow] = {
 
     if (groupings.length > 0 && queryConfig.getMinIdleStateRetentionTime < 0) {
@@ -124,7 +106,7 @@ abstract class DataStreamGroupAggregateBase(
         "state size. You may specify a retention time of 0 to not clean up the state.")
     }
 
-    val inputDS = input.asInstanceOf[DataStreamRel].translateToPlan(planner, queryConfig)
+    val inputDS = input.asInstanceOf[DataStreamRel].translateToPlan(tableEnv, queryConfig)
 
     val outRowType = CRowTypeInfo(schema.typeInfo)
 
@@ -144,7 +126,7 @@ abstract class DataStreamGroupAggregateBase(
       if (groupings.nonEmpty) {
         inputDS
         .keyBy(new CRowKeySelector(groupings, inputSchema.projectedTypeInfo(groupings)))
-        .process(createKeyedProcessFunction[Row](planner.getConfig, queryConfig))
+        .process(createKeyedProcessFunction[Row](tableEnv.getConfig, queryConfig))
         .returns(outRowType)
         .name(keyedAggOpName)
         .asInstanceOf[DataStream[CRow]]
@@ -153,7 +135,7 @@ abstract class DataStreamGroupAggregateBase(
       else {
         inputDS
         .keyBy(new NullByteKeySelector[CRow])
-        .process(createKeyedProcessFunction[JByte](planner.getConfig, queryConfig))
+        .process(createKeyedProcessFunction[JByte](tableEnv.getConfig, queryConfig))
         .setParallelism(1)
         .setMaxParallelism(1)
         .returns(outRowType)

@@ -20,7 +20,7 @@ package org.apache.flink.table.codegen.calls
 
 import org.apache.flink.api.common.typeinfo.Types
 import org.apache.flink.api.java.typeutils.MapTypeInfo
-import org.apache.flink.table.api.DataTypes
+import org.apache.flink.table.`type`.{InternalType, InternalTypes}
 import org.apache.flink.table.codegen.CodeGenUtils._
 import org.apache.flink.table.codegen.GenerateUtils.{generateCallIfArgsNotNull, generateCallIfArgsNullable, generateStringResultCallIfArgsNotNull}
 import org.apache.flink.table.codegen.calls.ScalarOperatorGens._
@@ -28,8 +28,6 @@ import org.apache.flink.table.codegen.{CodeGeneratorContext, GeneratedExpression
 import org.apache.flink.table.dataformat.DataFormatConverters
 import org.apache.flink.table.functions.sql.FlinkSqlOperatorTable._
 import org.apache.flink.table.runtime.functions.SqlFunctionUtils
-import org.apache.flink.table.types.logical.{BooleanType, IntType, LogicalType, MapType, VarBinaryType, VarCharType}
-
 import org.apache.calcite.runtime.SqlFunctions
 import org.apache.calcite.sql.SqlOperator
 import org.apache.calcite.sql.fun.SqlTrimFunction.Flag.{BOTH, LEADING, TRAILING}
@@ -48,14 +46,14 @@ object BinaryStringCallGen {
       ctx: CodeGeneratorContext,
       operator: SqlOperator,
       operands: Seq[GeneratedExpression],
-      returnType: LogicalType): Option[GeneratedExpression] = {
+      returnType: InternalType): Option[GeneratedExpression] = {
     val generator = operator match {
 
       case LIKE =>
-        new LikeCallGen().generate(ctx, operands, new BooleanType())
+        new LikeCallGen().generate(ctx, operands, InternalTypes.BOOLEAN)
 
       case NOT_LIKE =>
-        generateNot(ctx, new LikeCallGen().generate(ctx, operands, new BooleanType()))
+        generateNot(ctx, new LikeCallGen().generate(ctx, operands, InternalTypes.BOOLEAN))
 
       case SUBSTRING | SUBSTR => generateSubString(ctx, operands)
 
@@ -105,7 +103,7 @@ object BinaryStringCallGen {
 
       case KEYVALUE => generateKeyValue(ctx, operands)
 
-      case HASH_CODE if operands.head.resultType.isInstanceOf[VarCharType] =>
+      case HASH_CODE if operands.head.resultType == InternalTypes.STRING =>
         generateHashCode(ctx, operands)
 
       case MD5 => generateMd5(ctx, operands)
@@ -176,7 +174,7 @@ object BinaryStringCallGen {
 
   private def toStringTerms(terms: Seq[String], operands: Seq[GeneratedExpression]) = {
     terms.zipWithIndex.map { case (term, index) =>
-      if (operands(index).resultType.isInstanceOf[VarCharType]) {
+      if (operands(index).resultType == InternalTypes.STRING) {
         s"$term.toString()"
       } else {
         term
@@ -186,7 +184,7 @@ object BinaryStringCallGen {
 
   private def safeToStringTerms(terms: Seq[String], operands: Seq[GeneratedExpression]) = {
     terms.zipWithIndex.map { case (term, index) =>
-      if (operands(index).resultType.isInstanceOf[VarCharType]) {
+      if (operands(index).resultType == InternalTypes.STRING) {
         s"$BINARY_STRING.safeToString($term)"
       } else {
         term
@@ -197,7 +195,7 @@ object BinaryStringCallGen {
   def generateConcat(
       ctx: CodeGeneratorContext,
       operands: Seq[GeneratedExpression]): GeneratedExpression = {
-    generateCallIfArgsNullable(ctx, new VarCharType(VarCharType.MAX_LENGTH), operands) {
+    generateCallIfArgsNullable(ctx, InternalTypes.STRING, operands) {
       terms => s"$BINARY_STRING.concat(${terms.mkString(", ")})"
     }
   }
@@ -205,7 +203,7 @@ object BinaryStringCallGen {
   def generateConcatWs(
       ctx: CodeGeneratorContext,
       operands: Seq[GeneratedExpression]): GeneratedExpression = {
-    generateCallIfArgsNullable(ctx, new VarCharType(VarCharType.MAX_LENGTH), operands) {
+    generateCallIfArgsNullable(ctx, InternalTypes.STRING, operands) {
       terms => s"$BINARY_STRING.concatWs(${terms.mkString(", ")})"
     }
   }
@@ -217,7 +215,7 @@ object BinaryStringCallGen {
       ctx: CodeGeneratorContext,
       left: GeneratedExpression,
       right: GeneratedExpression): GeneratedExpression = {
-    generateCallIfArgsNotNull(ctx, new BooleanType(), Seq(left, right)) {
+    generateCallIfArgsNotNull(ctx, InternalTypes.BOOLEAN, Seq(left, right)) {
       terms => s"(${terms.head}.equals(${terms(1)}))"
     }
   }
@@ -229,7 +227,7 @@ object BinaryStringCallGen {
       ctx: CodeGeneratorContext,
       left: GeneratedExpression,
       right: GeneratedExpression): GeneratedExpression = {
-    generateCallIfArgsNotNull(ctx, new BooleanType(), Seq(left, right)) {
+    generateCallIfArgsNotNull(ctx, InternalTypes.BOOLEAN, Seq(left, right)) {
       terms => s"!(${terms.head}.equals(${terms(1)}))"
     }
   }
@@ -237,7 +235,7 @@ object BinaryStringCallGen {
   def generateSubString(
     ctx: CodeGeneratorContext,
     operands: Seq[GeneratedExpression]): GeneratedExpression = {
-    generateCallIfArgsNotNull(ctx, new VarCharType(VarCharType.MAX_LENGTH), operands) {
+    generateCallIfArgsNotNull(ctx, InternalTypes.STRING, operands) {
       terms => s"${terms.head}.substringSQL(${terms.drop(1).mkString(", ")})"
     }
   }
@@ -246,7 +244,7 @@ object BinaryStringCallGen {
     ctx: CodeGeneratorContext,
     str: GeneratedExpression,
     len: GeneratedExpression): GeneratedExpression = {
-    generateCallIfArgsNotNull(ctx, new VarCharType(VarCharType.MAX_LENGTH), Seq(str, len)) {
+    generateCallIfArgsNotNull(ctx, InternalTypes.STRING, Seq(str, len)) {
       val emptyString = s"$BINARY_STRING.EMPTY_UTF8"
       terms => s"${terms(1)} <= 0 ? $emptyString : ${terms.head}.substringSQL(1, ${terms(1)})"
     }
@@ -256,7 +254,7 @@ object BinaryStringCallGen {
       ctx: CodeGeneratorContext,
       str: GeneratedExpression,
       len: GeneratedExpression): GeneratedExpression = {
-    generateCallIfArgsNotNull(ctx, new VarCharType(VarCharType.MAX_LENGTH), Seq(str, len)) {
+    generateCallIfArgsNotNull(ctx, InternalTypes.STRING, Seq(str, len)) {
       terms =>
         s"""
            |${terms(1)} <= 0 ?
@@ -271,7 +269,7 @@ object BinaryStringCallGen {
   def generateCharLength(
       ctx: CodeGeneratorContext,
       operands: Seq[GeneratedExpression]): GeneratedExpression = {
-    generateCallIfArgsNotNull(ctx, new IntType(), operands) {
+    generateCallIfArgsNotNull(ctx, InternalTypes.INT, operands) {
       terms => s"${terms.head}.numChars()"
     }
   }
@@ -280,7 +278,7 @@ object BinaryStringCallGen {
     ctx: CodeGeneratorContext,
     operands: Seq[GeneratedExpression]): GeneratedExpression = {
     val className = classOf[SqlFunctions].getCanonicalName
-    generateCallIfArgsNotNull(ctx, new BooleanType(), operands) {
+    generateCallIfArgsNotNull(ctx, InternalTypes.BOOLEAN, operands) {
       terms => s"$className.similar(${toStringTerms(terms, operands)})"
     }
   }
@@ -307,7 +305,7 @@ object BinaryStringCallGen {
     ctx: CodeGeneratorContext,
     operands: Seq[GeneratedExpression]): GeneratedExpression = {
     val className = classOf[SqlFunctionUtils].getCanonicalName
-    generateCallIfArgsNullable(ctx, new BooleanType(), operands) {
+    generateCallIfArgsNullable(ctx, InternalTypes.BOOLEAN, operands) {
       terms => s"$className.isDecimal(${safeToStringTerms(terms, operands)})"
     }
   }
@@ -316,7 +314,7 @@ object BinaryStringCallGen {
     ctx: CodeGeneratorContext,
     operands: Seq[GeneratedExpression]): GeneratedExpression = {
     val className = classOf[SqlFunctionUtils].getCanonicalName
-    generateCallIfArgsNullable(ctx, new BooleanType(), operands) {
+    generateCallIfArgsNullable(ctx, InternalTypes.BOOLEAN, operands) {
       terms => s"$className.isDigit(${safeToStringTerms(terms, operands)})"
     }
   }
@@ -324,7 +322,7 @@ object BinaryStringCallGen {
   def generateAscii(
     ctx: CodeGeneratorContext,
     str: GeneratedExpression): GeneratedExpression = {
-    generateCallIfArgsNotNull(ctx, new IntType(), Seq(str)) {
+    generateCallIfArgsNotNull(ctx, InternalTypes.INT, Seq(str)) {
       terms => s"${terms.head}.getSizeInBytes() <= 0 ? 0 : (int) ${terms.head}.getByte(0)"
     }
   }
@@ -333,7 +331,7 @@ object BinaryStringCallGen {
     ctx: CodeGeneratorContext,
     operands: Seq[GeneratedExpression]): GeneratedExpression = {
     val className = classOf[SqlFunctionUtils].getCanonicalName
-    generateCallIfArgsNullable(ctx, new BooleanType(), operands) {
+    generateCallIfArgsNullable(ctx, InternalTypes.BOOLEAN, operands) {
       terms => s"$className.isAlpha(${safeToStringTerms(terms, operands)})"
     }
   }
@@ -341,7 +339,7 @@ object BinaryStringCallGen {
   def generateUpper(
     ctx: CodeGeneratorContext,
     operands: Seq[GeneratedExpression]): GeneratedExpression = {
-    generateCallIfArgsNotNull(ctx, new VarCharType(VarCharType.MAX_LENGTH), operands) {
+    generateCallIfArgsNotNull(ctx, InternalTypes.STRING, operands) {
       terms => s"${terms.head}.toUpperCase()"
     }
   }
@@ -349,7 +347,7 @@ object BinaryStringCallGen {
   def generateLower(
     ctx: CodeGeneratorContext,
     operands: Seq[GeneratedExpression]): GeneratedExpression = {
-    generateCallIfArgsNotNull(ctx, new VarCharType(VarCharType.MAX_LENGTH), operands) {
+    generateCallIfArgsNotNull(ctx, InternalTypes.STRING, operands) {
       terms => s"${terms.head}.toLowerCase()"
     }
   }
@@ -367,7 +365,7 @@ object BinaryStringCallGen {
     ctx: CodeGeneratorContext,
     operands: Seq[GeneratedExpression]): GeneratedExpression = {
     val className = classOf[SqlFunctionUtils].getCanonicalName
-    generateCallIfArgsNotNull(ctx, new IntType(), operands) {
+    generateCallIfArgsNotNull(ctx, InternalTypes.INT, operands) {
       terms => s"$className.position(${terms.mkString(",")})"
     }
   }
@@ -376,7 +374,7 @@ object BinaryStringCallGen {
     ctx: CodeGeneratorContext,
     operands: Seq[GeneratedExpression]): GeneratedExpression = {
     val className = classOf[SqlFunctionUtils].getCanonicalName
-    generateCallIfArgsNotNull(ctx, new IntType(), operands) {
+    generateCallIfArgsNotNull(ctx, InternalTypes.INT, operands) {
       terms => s"$className.position(${terms.mkString(",")})"
     }
   }
@@ -385,7 +383,7 @@ object BinaryStringCallGen {
     ctx: CodeGeneratorContext,
     operands: Seq[GeneratedExpression]): GeneratedExpression = {
     val className = classOf[SqlFunctionUtils].getCanonicalName
-    generateCallIfArgsNotNull(ctx, new IntType(), operands) {
+    generateCallIfArgsNotNull(ctx, InternalTypes.INT, operands) {
       terms =>
         val startPosition = if (operands.length < 3) 1 else terms(2)
         val nthAppearance = if (operands.length < 4) 1 else terms(3)
@@ -444,7 +442,7 @@ object BinaryStringCallGen {
   def generateReverse(
     ctx: CodeGeneratorContext,
     operands: Seq[GeneratedExpression]): GeneratedExpression = {
-    generateCallIfArgsNotNull(ctx, new VarCharType(VarCharType.MAX_LENGTH), operands) {
+    generateCallIfArgsNotNull(ctx, InternalTypes.STRING, operands) {
       terms => s"${terms.head}.reverse()"
     }
   }
@@ -471,7 +469,7 @@ object BinaryStringCallGen {
     ctx: CodeGeneratorContext,
     operands: Seq[GeneratedExpression]): GeneratedExpression = {
     val className = classOf[SqlFunctionUtils].getCanonicalName
-    generateCallIfArgsNullable(ctx, new VarCharType(VarCharType.MAX_LENGTH), operands) {
+    generateCallIfArgsNullable(ctx, InternalTypes.STRING, operands) {
       terms =>
         s"$className.keyValue(${terms.mkString(",")})"
     }
@@ -481,7 +479,7 @@ object BinaryStringCallGen {
     ctx: CodeGeneratorContext,
     operands: Seq[GeneratedExpression]): GeneratedExpression = {
     val className = classOf[SqlFunctionUtils].getCanonicalName
-    generateCallIfArgsNotNull(ctx, new IntType(), operands) {
+    generateCallIfArgsNotNull(ctx, InternalTypes.INT, operands) {
       terms => s"$className.hashCode(${terms.head}.toString())"
     }
   }
@@ -497,7 +495,7 @@ object BinaryStringCallGen {
       operands: Seq[GeneratedExpression]): GeneratedExpression = {
     val digestTerm = ctx.addReusableMessageDigest(algorithm)
     if (operands.length == 1) {
-      generateCallIfArgsNotNull(ctx, new VarCharType(VarCharType.MAX_LENGTH), operands) {
+      generateCallIfArgsNotNull(ctx, InternalTypes.STRING, operands) {
         terms =>s"${terms.head}.hash($digestTerm)"
       }
     } else {
@@ -540,7 +538,7 @@ object BinaryStringCallGen {
     if (operands.last.literal) {
       val digestTerm = ctx.addReusableSha2MessageDigest(operands.last)
       if (operands.length == 2) {
-        generateCallIfArgsNotNull(ctx, new VarCharType(VarCharType.MAX_LENGTH), operands) {
+        generateCallIfArgsNotNull(ctx, InternalTypes.STRING, operands) {
           terms =>s"${terms.head}.hash($digestTerm)"
         }
       } else {
@@ -552,7 +550,7 @@ object BinaryStringCallGen {
       }
     } else {
       if (operands.length == 2) {
-        generateCallIfArgsNotNull(ctx, new VarCharType(VarCharType.MAX_LENGTH), operands) {
+        generateCallIfArgsNotNull(ctx, InternalTypes.STRING, operands) {
           terms =>
             s"""${terms.head}.hash("SHA-" + ${terms.last})"""
         }
@@ -580,7 +578,7 @@ object BinaryStringCallGen {
     ctx: CodeGeneratorContext,
     operands: Seq[GeneratedExpression]): GeneratedExpression = {
     val className = classOf[SqlFunctionUtils].getCanonicalName
-    generateCallIfArgsNotNull(ctx, new VarBinaryType(VarBinaryType.MAX_LENGTH), operands) {
+    generateCallIfArgsNotNull(ctx, InternalTypes.BINARY, operands) {
       terms => s"$className.fromBase64(${terms.head})"
     }
   }
@@ -607,7 +605,7 @@ object BinaryStringCallGen {
     ctx: CodeGeneratorContext,
     operands: Seq[GeneratedExpression]): GeneratedExpression = {
     val className = classOf[SqlFunctionUtils].getCanonicalName
-    generateCallIfArgsNotNull(ctx, new BooleanType(), operands) {
+    generateCallIfArgsNotNull(ctx, InternalTypes.BOOLEAN, operands) {
       terms => s"$className.regExp(${toStringTerms(terms, operands)})"
     }
   }
@@ -633,7 +631,7 @@ object BinaryStringCallGen {
   def generateTrim(
     ctx: CodeGeneratorContext,
     operands: Seq[GeneratedExpression]): GeneratedExpression = {
-    generateCallIfArgsNotNull(ctx, new VarCharType(VarCharType.MAX_LENGTH), operands) {
+    generateCallIfArgsNotNull(ctx, InternalTypes.STRING, operands) {
       terms =>
         val leading = compareEnum(terms.head, BOTH) || compareEnum(terms.head, LEADING)
         val trailing = compareEnum(terms.head, BOTH) || compareEnum(terms.head, TRAILING)
@@ -645,7 +643,7 @@ object BinaryStringCallGen {
   def generateTrimLeft(
     ctx: CodeGeneratorContext,
     operands: Seq[GeneratedExpression]): GeneratedExpression = {
-    generateCallIfArgsNotNull(ctx, new VarCharType(VarCharType.MAX_LENGTH), operands) {
+    generateCallIfArgsNotNull(ctx, InternalTypes.STRING, operands) {
       terms => s"${terms.head}.trimLeft(${terms.drop(1).mkString(", ")})"
     }
   }
@@ -653,7 +651,7 @@ object BinaryStringCallGen {
   def generateTrimRight(
     ctx: CodeGeneratorContext,
     operands: Seq[GeneratedExpression]): GeneratedExpression = {
-    generateCallIfArgsNotNull(ctx, new VarCharType(VarCharType.MAX_LENGTH), operands) {
+    generateCallIfArgsNotNull(ctx, InternalTypes.STRING, operands) {
       terms => s"${terms.head}.trimRight(${terms.drop(1).mkString(", ")})"
     }
   }
@@ -671,10 +669,9 @@ object BinaryStringCallGen {
       ctx: CodeGeneratorContext,
       operands: Seq[GeneratedExpression]): GeneratedExpression = {
     val className = classOf[SqlFunctionUtils].getCanonicalName
-    val t = new MapType(
-      new VarCharType(VarCharType.MAX_LENGTH), new VarCharType(VarCharType.MAX_LENGTH))
-    val converter = DataFormatConverters.getConverterForDataType(
-      DataTypes.MAP(DataTypes.STRING(), DataTypes.STRING()))
+    val t = InternalTypes.createMapType(InternalTypes.STRING, InternalTypes.STRING)
+    val typeInfo = new MapTypeInfo[String, String](Types.STRING, Types.STRING)
+    val converter = DataFormatConverters.getConverterForTypeInfo(typeInfo)
     val converterTerm = ctx.addReusableObject(converter, "mapConverter")
     generateCallIfArgsNotNull(ctx, t, operands) {
       terms =>
@@ -687,8 +684,7 @@ object BinaryStringCallGen {
       ctx: CodeGeneratorContext,
       str: GeneratedExpression,
       charset: GeneratedExpression): GeneratedExpression = {
-    generateCallIfArgsNotNull(
-      ctx, new VarBinaryType(VarBinaryType.MAX_LENGTH), Seq(str, charset)) {
+    generateCallIfArgsNotNull(ctx, InternalTypes.BINARY, Seq(str, charset)) {
       terms => s"${terms.head}.toString().getBytes(${terms(1)}.toString())"
     }
   }

@@ -1,12 +1,12 @@
 == Abstract Syntax Tree ==
 LogicalUnion(all=[true])
-  %logicalSourceNode0%
-  %logicalSourceNode1%
+  LogicalTableScan(table=[[_DataStreamTable_0]])
+  LogicalTableScan(table=[[_DataStreamTable_1]])
 
 == Optimized Logical Plan ==
 DataStreamUnion(all=[true], union all=[count, word])
-  %sourceNode0%
-  %sourceNode1%
+  DataStreamScan(table=[[_DataStreamTable_0]])
+  DataStreamScan(table=[[_DataStreamTable_1]])
 
 == Physical Execution Plan ==
 Stage 1 : Data Source

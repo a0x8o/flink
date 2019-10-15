@@ -28,14 +28,13 @@ under the License.
 	<includeBaseDirectory>true</includeBaseDirectory>
 	<baseDirectory>flink-${project.version}</baseDirectory>
 
-	<dependencySets>
-		<dependencySet>
+	<files>
+		<!-- copy the Hadoop uber jar -->
+		<file>
+			<source>../flink-shaded-hadoop/flink-shaded-hadoop2-uber/target/flink-shaded-hadoop2-uber-${hadoop.version}-${project.version}.jar</source>
 			<outputDirectory>lib/</outputDirectory>
-			<useTransitiveDependencies>true</useTransitiveDependencies>
-			<scope>provided</scope>
-			<includes>
-				<include>org.apache.flink:flink-shaded-hadoop-2-uber</include>
-			</includes>
-		</dependencySet>
-	</dependencySets>
+			<destName>flink-shaded-hadoop2-uber-${project.version}-${hadoop.version}.jar</destName>
+			<fileMode>0644</fileMode>
+		</file>
+	</files>
 </assembly>

@@ -29,8 +29,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 
-import static org.apache.flink.util.Preconditions.checkArgument;
-
 /**
  * Describe the different resource factors of the operator with UDF.
  *
@@ -45,25 +43,15 @@ import static org.apache.flink.util.Preconditions.checkArgument;
  *     <li>Direct Memory Size</li>
  *     <li>Native Memory Size</li>
  *     <li>State Size</li>
- *     <li>Managed Memory Size</li>
  *     <li>Extended resources</li>
  * </ol>
  */
 @Internal
-public final class ResourceSpec implements Serializable {
+public class ResourceSpec implements Serializable {
 
 	private static final long serialVersionUID = 1L;
 
-	/**
-	 * A ResourceSpec that indicates an unknown set of resources.
-	 */
-	public static final ResourceSpec UNKNOWN = new ResourceSpec();
-
-	/**
-	 * The default ResourceSpec used for operators and transformation functions.
-	 * Currently equal to {@link #UNKNOWN}.
-	 */
-	public static final ResourceSpec DEFAULT = UNKNOWN;
+	public static final ResourceSpec DEFAULT = new ResourceSpec(0, 0, 0, 0, 0);
 
 	public static final String GPU_NAME = "GPU";
 
@@ -82,9 +70,6 @@ public final class ResourceSpec implements Serializable {
 	/** How many state size in mb are used. */
 	private final int stateSizeInMB;
 
-	/** The required amount of managed memory (in MB). */
-	private final int managedMemoryInMB;
-
 	private final Map<String, Resource> extendedResources = new HashMap<>(1);
 
 	/**
@@ -95,47 +80,25 @@ public final class ResourceSpec implements Serializable {
 	 * @param directMemoryInMB The size of the java nio direct memory, in megabytes.
 	 * @param nativeMemoryInMB The size of the native memory, in megabytes.
 	 * @param stateSizeInMB The state size for storing in checkpoint.
-	 * @param managedMemoryInMB The size of managed memory, in megabytes.
 	 * @param extendedResources The extended resources, associated with the resource manager used
 	 */
-	private ResourceSpec(
+	protected ResourceSpec(
 			double cpuCores,
 			int heapMemoryInMB,
 			int directMemoryInMB,
 			int nativeMemoryInMB,
 			int stateSizeInMB,
-			int managedMemoryInMB,
 			Resource... extendedResources) {
-		checkArgument(cpuCores >= 0, "The cpu cores of the resource spec should not be negative.");
-		checkArgument(heapMemoryInMB >= 0, "The heap memory of the resource spec should not be negative");
-		checkArgument(directMemoryInMB >= 0, "The direct memory of the resource spec should not be negative");
-		checkArgument(nativeMemoryInMB >= 0, "The native memory of the resource spec should not be negative");
-		checkArgument(stateSizeInMB >= 0, "The state size of the resource spec should not be negative");
-		checkArgument(managedMemoryInMB >= 0, "The managed memory of the resource spec should not be negative");
-
 		this.cpuCores = cpuCores;
 		this.heapMemoryInMB = heapMemoryInMB;
 		this.directMemoryInMB = directMemoryInMB;
 		this.nativeMemoryInMB = nativeMemoryInMB;
 		this.stateSizeInMB = stateSizeInMB;
-		this.managedMemoryInMB = managedMemoryInMB;
 		for (Resource resource : extendedResources) {
 			if (resource != null) {
 				this.extendedResources.put(resource.getName(), resource);
 			}
 		}
-	}
-
-	/**
-	 * Creates a new ResourceSpec with all fields unknown.
-	 */
-	private ResourceSpec() {
-		this.cpuCores = -1;
-		this.heapMemoryInMB = -1;
-		this.directMemoryInMB = -1;
-		this.nativeMemoryInMB = -1;
-		this.stateSizeInMB = -1;
-		this.managedMemoryInMB = -1;
 	}
 
 	/**
@@ -146,17 +109,12 @@ public final class ResourceSpec implements Serializable {
 	 * @return The new resource with merged values.
 	 */
 	public ResourceSpec merge(ResourceSpec other) {
-		if (this.equals(UNKNOWN) || other.equals(UNKNOWN)) {
-			return UNKNOWN;
-		}
-
 		ResourceSpec target = new ResourceSpec(
 				Math.max(this.cpuCores, other.cpuCores),
 				this.heapMemoryInMB + other.heapMemoryInMB,
 				this.directMemoryInMB + other.directMemoryInMB,
 				this.nativeMemoryInMB + other.nativeMemoryInMB,
-				this.stateSizeInMB + other.stateSizeInMB,
-				this.managedMemoryInMB + other.managedMemoryInMB);
+				this.stateSizeInMB + other.stateSizeInMB);
 		target.extendedResources.putAll(extendedResources);
 		for (Resource resource : other.extendedResources.values()) {
 			target.extendedResources.merge(resource.getName(), resource, (v1, v2) -> v1.merge(v2));
@@ -184,10 +142,6 @@ public final class ResourceSpec implements Serializable {
 		return this.stateSizeInMB;
 	}
 
-	public int getManagedMemory() {
-		return this.managedMemoryInMB;
-	}
-
 	public double getGPUResource() {
 		Resource gpuResource = extendedResources.get(GPU_NAME);
 		if (gpuResource != null) {
@@ -208,7 +162,7 @@ public final class ResourceSpec implements Serializable {
 	 */
 	public boolean isValid() {
 		if (this.cpuCores >= 0 && this.heapMemoryInMB >= 0 && this.directMemoryInMB >= 0 &&
-				this.nativeMemoryInMB >= 0 && this.stateSizeInMB >= 0 && managedMemoryInMB >= 0) {
+				this.nativeMemoryInMB >= 0 && this.stateSizeInMB >= 0) {
 			for (Resource resource : extendedResources.values()) {
 				if (resource.getValue() < 0) {
 					return false;
@@ -233,8 +187,7 @@ public final class ResourceSpec implements Serializable {
 		int cmp3 = Integer.compare(this.directMemoryInMB, other.directMemoryInMB);
 		int cmp4 = Integer.compare(this.nativeMemoryInMB, other.nativeMemoryInMB);
 		int cmp5 = Integer.compare(this.stateSizeInMB, other.stateSizeInMB);
-		int cmp6 = Integer.compare(this.managedMemoryInMB, other.managedMemoryInMB);
-		if (cmp1 <= 0 && cmp2 <= 0 && cmp3 <= 0 && cmp4 <= 0 && cmp5 <= 0 && cmp6 <= 0) {
+		if (cmp1 <= 0 && cmp2 <= 0 && cmp3 <= 0 && cmp4 <= 0 && cmp5 <= 0) {
 			for (Resource resource : extendedResources.values()) {
 				if (!other.extendedResources.containsKey(resource.getName()) ||
 					other.extendedResources.get(resource.getName()).getResourceAggregateType() != resource.getResourceAggregateType() ||
@@ -258,7 +211,6 @@ public final class ResourceSpec implements Serializable {
 					this.directMemoryInMB == that.directMemoryInMB &&
 					this.nativeMemoryInMB == that.nativeMemoryInMB &&
 					this.stateSizeInMB == that.stateSizeInMB &&
-					this.managedMemoryInMB == that.managedMemoryInMB &&
 					Objects.equals(this.extendedResources, that.extendedResources);
 		} else {
 			return false;
@@ -273,39 +225,24 @@ public final class ResourceSpec implements Serializable {
 		result = 31 * result + directMemoryInMB;
 		result = 31 * result + nativeMemoryInMB;
 		result = 31 * result + stateSizeInMB;
-		result = 31 * result + managedMemoryInMB;
 		result = 31 * result + extendedResources.hashCode();
 		return result;
 	}
 
 	@Override
 	public String toString() {
-		StringBuilder extend = new StringBuilder();
+		String extend = "";
 		for (Resource resource : extendedResources.values()) {
-			extend.append(", ").append(resource.getName()).append("=").append(resource.getValue());
+			extend += ", " + resource.getName() + "=" + resource.getValue();
 		}
 		return "ResourceSpec{" +
 				"cpuCores=" + cpuCores +
 				", heapMemoryInMB=" + heapMemoryInMB +
 				", directMemoryInMB=" + directMemoryInMB +
 				", nativeMemoryInMB=" + nativeMemoryInMB +
-				", stateSizeInMB=" + stateSizeInMB +
-				", managedMemoryInMB=" + managedMemoryInMB + extend +
+				", stateSizeInMB=" + stateSizeInMB + extend +
 				'}';
 	}
-
-	// ------------------------------------------------------------------------
-	//  serialization
-	// ------------------------------------------------------------------------
-
-	private Object readResolve() {
-		// try to preserve the singleton property for UNKNOWN
-		return this.equals(UNKNOWN) ? UNKNOWN : this;
-	}
-
-	// ------------------------------------------------------------------------
-	//  builder
-	// ------------------------------------------------------------------------
 
 	public static Builder newBuilder() {
 		return new Builder();
@@ -321,7 +258,6 @@ public final class ResourceSpec implements Serializable {
 		private int directMemoryInMB;
 		private int nativeMemoryInMB;
 		private int stateSizeInMB;
-		private int managedMemoryInMB;
 		private GPUResource gpuResource;
 
 		public Builder setCpuCores(double cpuCores) {
@@ -349,11 +285,6 @@ public final class ResourceSpec implements Serializable {
 			return this;
 		}
 
-		public Builder setManagedMemoryInMB(int managedMemory) {
-			this.managedMemoryInMB = managedMemory;
-			return this;
-		}
-
 		public Builder setGPUResource(double gpus) {
 			this.gpuResource = new GPUResource(gpus);
 			return this;
@@ -366,7 +297,6 @@ public final class ResourceSpec implements Serializable {
 				directMemoryInMB,
 				nativeMemoryInMB,
 				stateSizeInMB,
-				managedMemoryInMB,
 				gpuResource);
 		}
 	}

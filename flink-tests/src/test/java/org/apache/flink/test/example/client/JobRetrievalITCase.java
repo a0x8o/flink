@@ -77,7 +77,7 @@ public class JobRetrievalITCase extends TestLogger {
 	@After
 	public void tearDown() {
 		if (client != null) {
-			client.close();
+			client.shutdown();
 		}
 	}
 

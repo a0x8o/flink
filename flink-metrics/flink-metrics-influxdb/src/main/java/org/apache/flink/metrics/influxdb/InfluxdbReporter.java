@@ -27,7 +27,6 @@ import org.apache.flink.metrics.MetricConfig;
 import org.apache.flink.metrics.reporter.MetricReporter;
 import org.apache.flink.metrics.reporter.Scheduled;
 
-import okhttp3.OkHttpClient;
 import org.influxdb.InfluxDB;
 import org.influxdb.InfluxDBFactory;
 import org.influxdb.dto.BatchPoints;
@@ -38,16 +37,12 @@ import java.time.Instant;
 import java.util.ConcurrentModificationException;
 import java.util.Map;
 import java.util.NoSuchElementException;
-import java.util.concurrent.TimeUnit;
 
-import static org.apache.flink.metrics.influxdb.InfluxdbReporterOptions.CONNECT_TIMEOUT;
 import static org.apache.flink.metrics.influxdb.InfluxdbReporterOptions.DB;
 import static org.apache.flink.metrics.influxdb.InfluxdbReporterOptions.HOST;
 import static org.apache.flink.metrics.influxdb.InfluxdbReporterOptions.PASSWORD;
 import static org.apache.flink.metrics.influxdb.InfluxdbReporterOptions.PORT;
-import static org.apache.flink.metrics.influxdb.InfluxdbReporterOptions.RETENTION_POLICY;
 import static org.apache.flink.metrics.influxdb.InfluxdbReporterOptions.USERNAME;
-import static org.apache.flink.metrics.influxdb.InfluxdbReporterOptions.WRITE_TIMEOUT;
 import static org.apache.flink.metrics.influxdb.InfluxdbReporterOptions.getInteger;
 import static org.apache.flink.metrics.influxdb.InfluxdbReporterOptions.getString;
 
@@ -57,7 +52,6 @@ import static org.apache.flink.metrics.influxdb.InfluxdbReporterOptions.getStrin
 public class InfluxdbReporter extends AbstractReporter<MeasurementInfo> implements Scheduled {
 
 	private String database;
-	private String retentionPolicy;
 	private InfluxDB influxDB;
 
 	public InfluxdbReporter() {
@@ -80,21 +74,12 @@ public class InfluxdbReporter extends AbstractReporter<MeasurementInfo> implemen
 		String password = getString(config, PASSWORD);
 
 		this.database = database;
-		this.retentionPolicy = getString(config, RETENTION_POLICY);
-
-		int connectTimeout = getInteger(config, CONNECT_TIMEOUT);
-		int writeTimeout = getInteger(config, WRITE_TIMEOUT);
-		OkHttpClient.Builder client = new OkHttpClient.Builder()
-			.connectTimeout(connectTimeout, TimeUnit.MILLISECONDS)
-			.writeTimeout(writeTimeout, TimeUnit.MILLISECONDS);
-
 		if (username != null && password != null) {
-			influxDB = InfluxDBFactory.connect(url, username, password, client);
+			influxDB = InfluxDBFactory.connect(url, username, password);
 		} else {
-			influxDB = InfluxDBFactory.connect(url, client);
+			influxDB = InfluxDBFactory.connect(url);
 		}
-
-		log.info("Configured InfluxDBReporter with {host:{}, port:{}, db:{}, and retentionPolicy:{}}", host, port, database, retentionPolicy);
+		log.info("Configured InfluxDBReporter with {host:{}, port:{}, db:{}}", host, port, database);
 	}
 
 	@Override
@@ -117,7 +102,7 @@ public class InfluxdbReporter extends AbstractReporter<MeasurementInfo> implemen
 	private BatchPoints buildReport() {
 		Instant timestamp = Instant.now();
 		BatchPoints.Builder report = BatchPoints.database(database);
-		report.retentionPolicy(retentionPolicy);
+		report.retentionPolicy("");
 		try {
 			for (Map.Entry<Gauge<?>, MeasurementInfo> entry : gauges.entrySet()) {
 				report.point(MetricMapper.map(entry.getValue(), timestamp, entry.getKey()));

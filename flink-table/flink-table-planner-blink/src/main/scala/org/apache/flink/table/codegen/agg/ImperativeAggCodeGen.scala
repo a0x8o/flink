@@ -17,20 +17,20 @@
  */
 package org.apache.flink.table.codegen.agg
 
+import org.apache.flink.api.common.typeinfo.TypeInformation
+import org.apache.flink.table.`type`.TypeConverters.createInternalTypeFromTypeInfo
+import org.apache.flink.table.`type`.{InternalType, InternalTypeUtils, RowType}
 import org.apache.flink.table.codegen.CodeGenUtils._
 import org.apache.flink.table.codegen.GenerateUtils.generateFieldAccess
 import org.apache.flink.table.codegen.agg.AggsHandlerCodeGenerator._
 import org.apache.flink.table.codegen.{CodeGenException, CodeGeneratorContext, ExprCodeGenerator, GeneratedExpression}
-import org.apache.flink.table.dataformat.{BaseRow, GenericRow, UpdatableRow}
+import org.apache.flink.table.dataformat.{GenericRow, UpdatableRow}
 import org.apache.flink.table.dataview.DataViewSpec
 import org.apache.flink.table.expressions.{Expression, ResolvedAggInputReference, ResolvedDistinctKeyReference, RexNodeConverter}
 import org.apache.flink.table.functions.AggregateFunction
 import org.apache.flink.table.functions.utils.UserDefinedFunctionUtils.{getAggFunctionUDIMethod, getAggUserDefinedInputTypes, getUserDefinedMethod, internalTypesToClasses, signatureToString}
 import org.apache.flink.table.plan.util.AggregateInfo
-import org.apache.flink.table.types.ClassLogicalTypeConverter.getInternalClassForType
-import org.apache.flink.table.types.LogicalTypeDataTypeConverter.fromDataTypeToLogicalType
-import org.apache.flink.table.types.logical.{LogicalType, RowType}
-import org.apache.flink.table.types.{ClassDataTypeConverter, DataType, PlannerTypeUtils}
+import org.apache.flink.table.typeutils.BaseRowTypeInfo
 import org.apache.flink.table.util.SingleElementIterator
 
 import org.apache.calcite.tools.RelBuilder
@@ -65,12 +65,12 @@ class ImperativeAggCodeGen(
     mergedAccOffset: Int,
     aggBufferOffset: Int,
     aggBufferSize: Int,
-    inputTypes: Seq[LogicalType],
+    inputTypes: Seq[InternalType],
     constantExprs: Seq[GeneratedExpression],
     relBuilder: RelBuilder,
     hasNamespace: Boolean,
     mergedAccOnHeap: Boolean,
-    mergedAccExternalType: DataType,
+    mergedAccExternalType: TypeInformation[_],
     inputFieldCopy: Boolean)
   extends AggCodeGen {
 
@@ -84,29 +84,32 @@ class ImperativeAggCodeGen(
   val aggIndex: Int = aggInfo.aggIndex
 
   val externalAccType = aggInfo.externalAccTypes(0)
-  private val internalAccType = fromDataTypeToLogicalType(externalAccType)
+  private val internalAccType = createInternalTypeFromTypeInfo(externalAccType)
 
   /** whether the acc type is an internal type.
     * Currently we only support GenericRow as internal acc type */
-  val isAccTypeInternal: Boolean =
-    classOf[BaseRow].isAssignableFrom(externalAccType.getConversionClass)
+  val isAccTypeInternal: Boolean = externalAccType match {
+    // current we only support GenericRow as internal ACC type
+    case t: BaseRowTypeInfo => true
+    case _ => false
+  }
 
   val accInternalTerm: String = s"agg${aggIndex}_acc_internal"
   val accExternalTerm: String = s"agg${aggIndex}_acc_external"
   val accTypeInternalTerm: String = if (isAccTypeInternal) {
     GENERIC_ROW
   } else {
-    boxedTypeTermForType(fromDataTypeToLogicalType(externalAccType))
+    boxedTypeTermForType(createInternalTypeFromTypeInfo(externalAccType))
   }
   val accTypeExternalTerm: String = boxedTypeTermForExternalType(externalAccType)
 
-  val argTypes: Array[LogicalType] = {
+  val argTypes: Array[InternalType] = {
     val types = inputTypes ++ constantExprs.map(_.resultType)
     aggInfo.argIndexes.map(types(_))
   }
 
   private val externalResultType = aggInfo.externalResultType
-  private val internalResultType = fromDataTypeToLogicalType(externalResultType)
+  private val internalResultType = createInternalTypeFromTypeInfo(externalResultType)
 
   private val rexNodeGen = new RexNodeConverter(relBuilder)
 
@@ -309,7 +312,7 @@ class ImperativeAggCodeGen(
     */
   def generateAccumulatorAccess(
     ctx: CodeGeneratorContext,
-    inputType: LogicalType,
+    inputType: InternalType,
     inputTerm: String,
     index: Int,
     viewSpecs: Array[DataViewSpec],
@@ -373,7 +376,7 @@ class ImperativeAggCodeGen(
                    |$fieldTerm = null;
                    |if (!${newExpr.nullTerm}) {
                    |  $fieldTerm = new $UPDATABLE_ROW(${newExpr.resultTerm}, ${
-                        PlannerTypeUtils.getArity(fieldType)});
+                        InternalTypeUtils.getArity(fieldType)});
                    |  ${generateDataViewFieldSetter(fieldTerm, viewSpecs, useBackupDataView)}
                    |}
                 """.stripMargin
@@ -464,7 +467,7 @@ class ImperativeAggCodeGen(
     }
 
     if (needMerge) {
-      val iterType = ClassDataTypeConverter.fromClassToDataType(classOf[JIterable[Any]])
+      val iterType = TypeInformation.of(classOf[JIterable[Any]])
       val methods =
         getUserDefinedMethod(function, "merge", Array(externalAccType, iterType))
           .getOrElse(
@@ -481,15 +484,14 @@ class ImperativeAggCodeGen(
         case _ =>
       }
 
-      val clazz = externalAccType.getConversionClass
-      if (iterableTypeClass != externalAccType.getConversionClass &&
+      if (iterableTypeClass != externalAccType.getTypeClass &&
           // iterableTypeClass can be GenericRow, so classOf[BaseRow] is assignable from it.
-          !getInternalClassForType(internalAccType).isAssignableFrom(
+          !InternalTypeUtils.getInternalClassForType(internalAccType).isAssignableFrom(
             iterableTypeClass.asInstanceOf[Class[_]])) {
         throw new CodeGenException(
           s"merge method in AggregateFunction ${function.getClass.getCanonicalName} does not " +
             s"have the correct Iterable type. Actually: $iterableTypeClass. " +
-            s"Expected: $clazz")
+            s"Expected: ${externalAccType.getTypeClass}")
       }
     }
 

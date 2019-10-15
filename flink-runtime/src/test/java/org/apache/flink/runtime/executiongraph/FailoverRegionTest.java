@@ -37,7 +37,6 @@ import org.apache.flink.runtime.checkpoint.PendingCheckpoint;
 import org.apache.flink.runtime.checkpoint.StandaloneCheckpointIDCounter;
 import org.apache.flink.runtime.checkpoint.StandaloneCompletedCheckpointStore;
 import org.apache.flink.runtime.checkpoint.TaskStateSnapshot;
-import org.apache.flink.runtime.concurrent.ComponentMainThreadExecutorServiceAdapter;
 import org.apache.flink.runtime.deployment.TaskDeploymentDescriptor;
 import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.executiongraph.failover.FailoverStrategy;
@@ -115,7 +114,7 @@ public class FailoverRegionTest extends TestLogger {
 
 		// verify checkpoint has been completed successfully.
 		assertEquals(1, eg.getCheckpointCoordinator().getCheckpointStore().getNumberOfRetainedCheckpoints());
-		assertEquals(checkpointId, eg.getCheckpointCoordinator().getCheckpointStore().getLatestCheckpoint(false).getCheckpointID());
+		assertEquals(checkpointId, eg.getCheckpointCoordinator().getCheckpointStore().getLatestCheckpoint().getCheckpointID());
 
 		ev.getCurrentExecutionAttempt().fail(new Exception("Test Exception"));
 		assertEquals(JobStatus.CANCELLING, strategy.getFailoverRegion(ev).getState());
@@ -172,12 +171,18 @@ public class FailoverRegionTest extends TestLogger {
 
 		List<JobVertex> ordered = Arrays.asList(v1, v2, v3, v4);
 
-		final ExecutionGraph eg = new ExecutionGraphTestUtils.TestingExecutionGraphBuilder(jobId, jobName, v1, v2, v3, v4)
-			.setRestartStrategy(new InfiniteDelayRestartStrategy(10))
-			.setFailoverStrategyFactory(new FailoverPipelinedRegionWithDirectExecutor())
-			.setSlotProvider(slotProvider)
-			.allowQueuedScheduling()
-			.build();
+		ExecutionGraph eg = new ExecutionGraph(
+			new DummyJobInformation(
+				jobId,
+				jobName),
+			TestingUtils.defaultExecutor(),
+			TestingUtils.defaultExecutor(),
+			AkkaUtils.getDefaultTimeout(),
+			new InfiniteDelayRestartStrategy(10),
+			new FailoverPipelinedRegionWithDirectExecutor(),
+			slotProvider);
+
+		eg.attachJobGraph(ordered);
 
 		RestartPipelinedRegionStrategy strategy = (RestartPipelinedRegionStrategy) eg.getFailoverStrategy();
 
@@ -196,7 +201,7 @@ public class FailoverRegionTest extends TestLogger {
 
 		enableCheckpointing(eg);
 
-		eg.start(ComponentMainThreadExecutorServiceAdapter.forMainThread());
+		eg.start(TestingComponentMainThreadExecutorServiceAdapter.forMainThread());
 		eg.scheduleForExecution();
 		assertEquals(JobStatus.RUNNING, eg.getState());
 
@@ -208,7 +213,7 @@ public class FailoverRegionTest extends TestLogger {
 
 		acknowledgeAllCheckpoints(eg.getCheckpointCoordinator(), Arrays.asList(ev11, ev21, ev12, ev22, ev31, ev32, ev4).iterator());
 
-		ev21.scheduleForExecution(eg.getSlotProviderStrategy(), LocationPreferenceConstraint.ALL, Collections.emptySet());
+		ev21.scheduleForExecution(slotProvider, true, LocationPreferenceConstraint.ALL, Collections.emptySet());
 		ev21.getCurrentExecutionAttempt().fail(new Exception("New fail"));
 		assertEquals(JobStatus.CANCELLING, strategy.getFailoverRegion(ev11).getState());
 		assertEquals(JobStatus.RUNNING, strategy.getFailoverRegion(ev22).getState());
@@ -223,7 +228,7 @@ public class FailoverRegionTest extends TestLogger {
 
 		ev11.getCurrentExecutionAttempt().markFinished();
 		ev21.getCurrentExecutionAttempt().markFinished();
-		ev22.scheduleForExecution(eg.getSlotProviderStrategy(), LocationPreferenceConstraint.ALL, Collections.emptySet());
+		ev22.scheduleForExecution(slotProvider, true, LocationPreferenceConstraint.ALL, Collections.emptySet());
 		ev22.getCurrentExecutionAttempt().markFinished();
 		assertEquals(JobStatus.RUNNING, strategy.getFailoverRegion(ev11).getState());
 		assertEquals(JobStatus.RUNNING, strategy.getFailoverRegion(ev22).getState());
@@ -316,7 +321,7 @@ public class FailoverRegionTest extends TestLogger {
 			e.printStackTrace();
 			fail("Job failed with exception: " + e.getMessage());
 		}
-		eg.start(ComponentMainThreadExecutorServiceAdapter.forMainThread());
+		eg.start(TestingComponentMainThreadExecutorServiceAdapter.forMainThread());
 		eg.scheduleForExecution();
 		RestartPipelinedRegionStrategy strategy = (RestartPipelinedRegionStrategy)eg.getFailoverStrategy();
 
@@ -364,13 +369,26 @@ public class FailoverRegionTest extends TestLogger {
 
 		v2.connectNewDataSetAsInput(v1, DistributionPattern.ALL_TO_ALL, ResultPartitionType.BLOCKING);
 
-		ExecutionGraph eg = new ExecutionGraphTestUtils.TestingExecutionGraphBuilder(jobId, jobName, v1, v2)
-			.setRestartStrategy(new InfiniteDelayRestartStrategy(10))
-			.setFailoverStrategyFactory(new FailoverPipelinedRegionWithDirectExecutor())
-			.setSlotProvider(slotProvider)
-			.setScheduleMode(ScheduleMode.EAGER)
-			.build();
+		List<JobVertex> ordered = new ArrayList<>(Arrays.asList(v1, v2));
 
+		ExecutionGraph eg = new ExecutionGraph(
+			new DummyJobInformation(
+				jobId,
+				jobName),
+			TestingUtils.defaultExecutor(),
+			TestingUtils.defaultExecutor(),
+			AkkaUtils.getDefaultTimeout(),
+			new InfiniteDelayRestartStrategy(10),
+			new FailoverPipelinedRegionWithDirectExecutor(),
+			slotProvider);
+		try {
+			eg.attachJobGraph(ordered);
+		}
+		catch (JobException e) {
+			e.printStackTrace();
+			fail("Job failed with exception: " + e.getMessage());
+		}
+		eg.setScheduleMode(ScheduleMode.EAGER);
 		eg.scheduleForExecution();
 		RestartPipelinedRegionStrategy strategy = (RestartPipelinedRegionStrategy)eg.getFailoverStrategy();
 
@@ -464,7 +482,7 @@ public class FailoverRegionTest extends TestLogger {
 			slotProvider);
 
 		eg.attachJobGraph(ordered);
-		eg.start(ComponentMainThreadExecutorServiceAdapter.forMainThread());
+		eg.start(TestingComponentMainThreadExecutorServiceAdapter.forMainThread());
 
 		RestartPipelinedRegionStrategy strategy = (RestartPipelinedRegionStrategy)eg.getFailoverStrategy();
 
@@ -517,7 +535,7 @@ public class FailoverRegionTest extends TestLogger {
 
 		// verify checkpoint has been restored successfully.
 		assertEquals(1, eg.getCheckpointCoordinator().getCheckpointStore().getNumberOfRetainedCheckpoints());
-		assertEquals(checkpointId, eg.getCheckpointCoordinator().getCheckpointStore().getLatestCheckpoint(false).getCheckpointID());
+		assertEquals(checkpointId, eg.getCheckpointCoordinator().getCheckpointStore().getLatestCheckpoint().getCheckpointID());
 	}
 
 	private ExecutionGraph createSingleRegionExecutionGraph(RestartStrategy restartStrategy) throws Exception {
@@ -564,7 +582,7 @@ public class FailoverRegionTest extends TestLogger {
 
 		enableCheckpointing(eg);
 
-		eg.start(ComponentMainThreadExecutorServiceAdapter.forMainThread());
+		eg.start(TestingComponentMainThreadExecutorServiceAdapter.forMainThread());
 		eg.scheduleForExecution();
 
 		attachPendingCheckpoints(eg);
@@ -587,17 +605,12 @@ public class FailoverRegionTest extends TestLogger {
 
 	private static void enableCheckpointing(ExecutionGraph eg) {
 		ArrayList<ExecutionJobVertex> jobVertices = new ArrayList<>(eg.getAllVertices().values());
-		CheckpointCoordinatorConfiguration chkConfig = new CheckpointCoordinatorConfiguration(
-			1000,
-			100,
-			0,
-			1,
-			CheckpointRetentionPolicy.RETAIN_ON_CANCELLATION,
-			true,
-			false,
-			0);
 		eg.enableCheckpointing(
-				chkConfig,
+				1000,
+				100,
+				0,
+				1,
+				CheckpointRetentionPolicy.RETAIN_ON_CANCELLATION,
 				jobVertices,
 				jobVertices,
 				jobVertices,
@@ -671,7 +684,7 @@ public class FailoverRegionTest extends TestLogger {
 					new CheckpointMetrics(),
 					taskOperatorSubtaskStates);
 
-				checkpointCoordinator.receiveAcknowledgeMessage(acknowledgeCheckpoint, "Unknown location");
+				checkpointCoordinator.receiveAcknowledgeMessage(acknowledgeCheckpoint);
 			}
 		}
 	}

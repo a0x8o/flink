@@ -40,7 +40,7 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * The {@link BufferSpiller} takes the buffers and events from a data stream and adds them to a spill file.
+ * The buffer spiller takes the buffers and events from a data stream and adds them to a spill file.
  * After a number of elements have been spilled, the spiller can "roll over": It presents the spilled
  * elements as a readable sequence, and opens a new spill file.
  *
@@ -53,7 +53,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 @Internal
 @Deprecated
-public class BufferSpiller extends AbstractBufferStorage {
+public class BufferSpiller implements BufferBlocker {
 
 	/** Size of header in bytes (see add method). */
 	static final int HEADER_SIZE = 9;
@@ -91,25 +91,14 @@ public class BufferSpiller extends AbstractBufferStorage {
 	/** The number of bytes written since the last roll over. */
 	private long bytesWritten;
 
-	public BufferSpiller(IOManager ioManager, int pageSize) throws IOException {
-		this(ioManager, pageSize, -1);
-	}
-
-	public BufferSpiller(IOManager ioManager, int pageSize, long maxBufferedBytes) throws IOException {
-		this(ioManager, pageSize, maxBufferedBytes, "Unknown");
-	}
-
 	/**
-	 * Creates a new {@link BufferSpiller}, spilling to one of the I/O manager's temp directories.
+	 * Creates a new buffer spiller, spilling to one of the I/O manager's temp directories.
 	 *
 	 * @param ioManager The I/O manager for access to the temp directories.
 	 * @param pageSize The page size used to re-create spilled buffers.
-	 * @param maxBufferedBytes The maximum bytes to be buffered before the checkpoint aborts.
-	 * @param taskName The task name for logging.
 	 * @throws IOException Thrown if the temp files for spilling cannot be initialized.
 	 */
-	public BufferSpiller(IOManager ioManager, int pageSize, long maxBufferedBytes, String taskName) throws IOException {
-		super(maxBufferedBytes, taskName);
+	public BufferSpiller(IOManager ioManager, int pageSize) throws IOException {
 		this.pageSize = pageSize;
 
 		this.readBuffer = ByteBuffer.allocateDirect(READ_BUFFER_SIZE);
@@ -129,6 +118,12 @@ public class BufferSpiller extends AbstractBufferStorage {
 		createSpillingChannel();
 	}
 
+	/**
+	 * Adds a buffer or event to the sequence of spilled buffers and events.
+	 *
+	 * @param boe The buffer or event to add and spill.
+	 * @throws IOException Thrown, if the buffer of event could not be spilled.
+	 */
 	@Override
 	public void add(BufferOrEvent boe) throws IOException {
 		try {
@@ -227,7 +222,6 @@ public class BufferSpiller extends AbstractBufferStorage {
 		if (!currentSpillFile.delete()) {
 			throw new IOException("Cannot delete spill file");
 		}
-		super.close();
 	}
 
 	/**
@@ -236,7 +230,7 @@ public class BufferSpiller extends AbstractBufferStorage {
 	 * @return the number of bytes written in the current spill file
 	 */
 	@Override
-	public long getPendingBytes() {
+	public long getBytesBlocked() {
 		return bytesWritten;
 	}
 
@@ -380,7 +374,7 @@ public class BufferSpiller extends AbstractBufferStorage {
 				Buffer buf = new NetworkBuffer(seg, FreeingBufferRecycler.INSTANCE);
 				buf.setSize(length);
 
-				return new BufferOrEvent(buf, channel, true);
+				return new BufferOrEvent(buf, channel);
 			}
 			else {
 				// deserialize event
@@ -405,7 +399,7 @@ public class BufferSpiller extends AbstractBufferStorage {
 				AbstractEvent evt = EventSerializer.fromSerializedEvent(buffer, getClass().getClassLoader());
 				buffer.limit(oldLimit);
 
-				return new BufferOrEvent(evt, channel, true, length);
+				return new BufferOrEvent(evt, channel);
 			}
 		}
 

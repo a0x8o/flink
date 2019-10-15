@@ -78,7 +78,7 @@ public class RedirectingSslHandler extends ByteToMessageDecoder {
 	}
 
 	private void handleSsl(ChannelHandlerContext context) {
-		SslHandler sslHandler = sslHandlerFactory.createNettySSLHandler(context.alloc());
+		SslHandler sslHandler = sslHandlerFactory.createNettySSLHandler();
 		try {
 			context.pipeline().replace(this, SSL_HANDLER_NAME, sslHandler);
 		} catch (Throwable t) {

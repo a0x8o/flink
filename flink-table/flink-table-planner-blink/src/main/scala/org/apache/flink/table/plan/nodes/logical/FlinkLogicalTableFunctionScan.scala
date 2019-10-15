@@ -18,10 +18,10 @@
 
 package org.apache.flink.table.plan.nodes.logical
 
-import org.apache.flink.table.functions.TemporalTableFunction
-import org.apache.flink.table.functions.utils.TableSqlFunction
+import org.apache.flink.table.plan.metadata.FlinkRelMetadataQuery
 import org.apache.flink.table.plan.nodes.FlinkConventions
 
+import com.google.common.collect.ImmutableList
 import org.apache.calcite.plan.{Convention, RelOptCluster, RelOptRuleCall, RelTraitSet}
 import org.apache.calcite.rel.RelNode
 import org.apache.calcite.rel.`type`.RelDataType
@@ -29,7 +29,9 @@ import org.apache.calcite.rel.convert.ConverterRule
 import org.apache.calcite.rel.core.TableFunctionScan
 import org.apache.calcite.rel.logical.LogicalTableFunctionScan
 import org.apache.calcite.rel.metadata.RelColumnMapping
-import org.apache.calcite.rex.{RexCall, RexNode}
+import org.apache.calcite.rex.{RexLiteral, RexNode, RexUtil}
+import org.apache.calcite.sql.SemiJoinType
+import org.apache.calcite.util.ImmutableBitSet
 
 import java.lang.reflect.Type
 import java.util
@@ -84,29 +86,25 @@ class FlinkLogicalTableFunctionScanConverter
     "FlinkLogicalTableFunctionScanConverter") {
 
   override def matches(call: RelOptRuleCall): Boolean = {
-    val logicalTableFunction: LogicalTableFunctionScan = call.rel(0)
-
-    !isTemporalTableFunctionCall(logicalTableFunction)
-  }
-
-  private def isTemporalTableFunctionCall(
-      logicalTableFunction: LogicalTableFunctionScan): Boolean = {
-
-    if (!logicalTableFunction.getCall.isInstanceOf[RexCall]) {
-      return false
-    }
-    val rexCall = logicalTableFunction.getCall.asInstanceOf[RexCall]
-    if (!rexCall.getOperator.isInstanceOf[TableSqlFunction]) {
-      return false
-    }
-    val tableFunction = rexCall.getOperator.asInstanceOf[TableSqlFunction]
-    tableFunction.getTableFunction.isInstanceOf[TemporalTableFunction]
+    // TODO This rule do not match to TemporalTableFunction
+    super.matches(call)
   }
 
   def convert(rel: RelNode): RelNode = {
     val scan = rel.asInstanceOf[LogicalTableFunctionScan]
     val traitSet = rel.getTraitSet.replace(FlinkConventions.LOGICAL).simplify()
 
+    val constantTableFunction = RexUtil.isConstant(scan.getCall) && scan.getInputs.isEmpty
+    if (constantTableFunction) {
+      convertConstantFunctionTableScan(scan, traitSet)
+    } else {
+      createFlinkLogicalTableScan(scan, traitSet)
+    }
+  }
+
+  def createFlinkLogicalTableScan(
+      scan: LogicalTableFunctionScan,
+      traitSet: RelTraitSet): FlinkLogicalTableFunctionScan = {
     new FlinkLogicalTableFunctionScan(
       scan.getCluster,
       traitSet,
@@ -118,6 +116,39 @@ class FlinkLogicalTableFunctionScanConverter
     )
   }
 
+  /**
+    * Converts [[LogicalTableFunctionScan]] with constant RexCall to
+    * {{{
+    *                    [[FlinkLogicalCorrelate]]
+    *                          /       \
+    * empty [[FlinkLogicalValues]]  [[FlinkLogicalTableFunctionScan]]
+    * }}}
+    */
+  def convertConstantFunctionTableScan(
+      scan: LogicalTableFunctionScan,
+      traitSet: RelTraitSet): RelNode = {
+    val cluster = scan.getCluster
+
+    // create correlate left
+    val values = new FlinkLogicalValues(
+      cluster,
+      traitSet,
+      cluster.getTypeFactory.createStructType(ImmutableList.of(), ImmutableList.of()),
+      ImmutableList.of(ImmutableList.of[RexLiteral]())
+    )
+
+    // create correlate right
+    val newScan = createFlinkLogicalTableScan(scan, traitSet)
+
+    new FlinkLogicalCorrelate(
+      cluster,
+      traitSet,
+      values,
+      newScan,
+      cluster.createCorrel(), // a dummy CorrelationId
+      ImmutableBitSet.of(),
+      SemiJoinType.INNER)
+  }
 }
 
 object FlinkLogicalTableFunctionScan {

@@ -27,7 +27,6 @@ import org.apache.flink.streaming.api.operators.async.queue.WatermarkQueueEntry;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.streamrecord.StreamElement;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
-import org.apache.flink.streaming.runtime.tasks.mailbox.execution.MailboxExecutor;
 import org.apache.flink.streaming.util.CollectorOutput;
 import org.apache.flink.util.TestLogger;
 
@@ -37,15 +36,12 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
 
-import javax.annotation.Nonnull;
-
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 
 import static org.mockito.Mockito.mock;
@@ -84,6 +80,7 @@ public class EmitterTest extends TestLogger {
 	 */
 	@Test
 	public void testEmitterWithOrderedQueue() throws Exception {
+		Object lock = new Object();
 		List<StreamElement> list = new ArrayList<>();
 		Output<StreamRecord<Integer>> output = new CollectorOutput<>(list);
 
@@ -102,12 +99,7 @@ public class EmitterTest extends TestLogger {
 
 		StreamElementQueue queue = new OrderedStreamElementQueue(capacity, executor, operatorActions);
 
-		final Emitter<Integer> emitter = new Emitter<>(
-				new Object(),
-				new MockExecutor(),
-				output,
-				queue,
-				operatorActions);
+		final Emitter<Integer> emitter = new Emitter<>(lock, output, queue, operatorActions);
 
 		final Thread emitterThread = new Thread(emitter);
 		emitterThread.start();
@@ -127,8 +119,10 @@ public class EmitterTest extends TestLogger {
 			record1.complete(Arrays.asList(1, 2));
 			record3.complete(Arrays.asList(5, 6));
 
-			while (!queue.isEmpty()) {
-				Thread.sleep(10);
+			synchronized (lock) {
+				while (!queue.isEmpty()) {
+					lock.wait();
+				}
 			}
 
 			Assert.assertEquals(expected, list);
@@ -157,12 +151,7 @@ public class EmitterTest extends TestLogger {
 
 		StreamElementQueue queue = new OrderedStreamElementQueue(capacity, executor, operatorActions);
 
-		final Emitter<Integer> emitter = new Emitter<>(
-			lock,
-			new MockExecutor(),
-			output,
-			queue,
-			operatorActions);
+		final Emitter<Integer> emitter = new Emitter<>(lock, output, queue, operatorActions);
 
 		final Thread emitterThread = new Thread(emitter);
 		emitterThread.start();
@@ -183,7 +172,7 @@ public class EmitterTest extends TestLogger {
 
 			synchronized (lock) {
 				while (!queue.isEmpty()) {
-					lock.wait(1);
+					lock.wait();
 				}
 			}
 
@@ -203,28 +192,6 @@ public class EmitterTest extends TestLogger {
 		} finally {
 			emitter.stop();
 			emitterThread.interrupt();
-		}
-	}
-
-	private static class MockExecutor implements MailboxExecutor {
-		@Override
-		public void execute(@Nonnull Runnable command) throws RejectedExecutionException {
-			executor.execute(command);
-		}
-
-		@Override
-		public void yield() throws InterruptedException, IllegalStateException {
-			throw new UnsupportedOperationException();
-		}
-
-		@Override
-		public boolean tryYield() throws IllegalStateException {
-			throw new UnsupportedOperationException();
-		}
-
-		@Override
-		public boolean isMailboxThread() {
-			return true;
 		}
 	}
 }

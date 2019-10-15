@@ -31,6 +31,8 @@ import org.apache.zookeeper.data.Stat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.annotation.Nullable;
+
 import java.io.IOException;
 import java.io.Serializable;
 import java.util.ArrayList;
@@ -326,6 +328,7 @@ public class ZooKeeperStateHandleStore<T extends Serializable> {
 	 * @return True if the state handle could be released
 	 * @throws Exception If the ZooKeeper operation or discarding the state handle fails
 	 */
+	@Nullable
 	public boolean releaseAndTryRemove(String pathInZooKeeper) throws Exception {
 		checkNotNull(pathInZooKeeper, "Path in ZooKeeper");
 

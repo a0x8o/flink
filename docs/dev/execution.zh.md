@@ -1,5 +1,5 @@
 ---
-title: "管理执行"
+title: "Managing Execution"
 nav-id: execution
 nav-parent_id: dev
 nav-pos: 60

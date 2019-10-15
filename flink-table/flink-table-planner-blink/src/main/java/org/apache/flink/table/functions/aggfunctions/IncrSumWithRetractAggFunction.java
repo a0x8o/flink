@@ -18,12 +18,15 @@
 
 package org.apache.flink.table.functions.aggfunctions;
 
-import org.apache.flink.table.api.DataTypes;
-import org.apache.flink.table.calcite.FlinkTypeSystem;
+import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.table.expressions.Expression;
 import org.apache.flink.table.expressions.UnresolvedReferenceExpression;
-import org.apache.flink.table.types.DataType;
-import org.apache.flink.table.types.logical.DecimalType;
+import org.apache.flink.table.type.DecimalType;
+import org.apache.flink.table.type.InternalType;
+import org.apache.flink.table.type.InternalTypes;
+import org.apache.flink.table.type.TypeConverters;
+import org.apache.flink.table.typeutils.DecimalTypeInfo;
 
 import static org.apache.flink.table.expressions.ExpressionBuilder.equalTo;
 import static org.apache.flink.table.expressions.ExpressionBuilder.ifThenElse;
@@ -34,15 +37,14 @@ import static org.apache.flink.table.expressions.ExpressionBuilder.minus;
 import static org.apache.flink.table.expressions.ExpressionBuilder.nullOf;
 import static org.apache.flink.table.expressions.ExpressionBuilder.or;
 import static org.apache.flink.table.expressions.ExpressionBuilder.plus;
-import static org.apache.flink.table.expressions.utils.ApiExpressionUtils.unresolvedRef;
 
 /**
  * built-in IncrSum with retract aggregate function,
  * negative number is discarded to ensure the monotonicity.
  */
 public abstract class IncrSumWithRetractAggFunction extends DeclarativeAggregateFunction {
-	private UnresolvedReferenceExpression sum = unresolvedRef("sum");
-	private UnresolvedReferenceExpression count = unresolvedRef("count");
+	private UnresolvedReferenceExpression sum = new UnresolvedReferenceExpression("sum");
+	private UnresolvedReferenceExpression count = new UnresolvedReferenceExpression("count");
 
 	@Override
 	public int operandCount() {
@@ -55,10 +57,10 @@ public abstract class IncrSumWithRetractAggFunction extends DeclarativeAggregate
 	}
 
 	@Override
-	public DataType[] getAggBufferTypes() {
-		return new DataType[] {
-				getResultType(),
-				DataTypes.BIGINT() };
+	public InternalType[] getAggBufferTypes() {
+		return new InternalType[] {
+				TypeConverters.createInternalTypeFromTypeInfo(getResultType()),
+				InternalTypes.LONG };
 	}
 
 	@Override
@@ -116,8 +118,8 @@ public abstract class IncrSumWithRetractAggFunction extends DeclarativeAggregate
 	public static class IntIncrSumWithRetractAggFunction extends IncrSumWithRetractAggFunction {
 
 		@Override
-		public DataType getResultType() {
-			return DataTypes.INT();
+		public TypeInformation getResultType() {
+			return Types.INT;
 		}
 
 		@Override
@@ -131,8 +133,8 @@ public abstract class IncrSumWithRetractAggFunction extends DeclarativeAggregate
 	 */
 	public static class ByteIncrSumWithRetractAggFunction extends IncrSumWithRetractAggFunction {
 		@Override
-		public DataType getResultType() {
-			return DataTypes.TINYINT();
+		public TypeInformation getResultType() {
+			return Types.BYTE;
 		}
 
 		@Override
@@ -146,8 +148,8 @@ public abstract class IncrSumWithRetractAggFunction extends DeclarativeAggregate
 	 */
 	public static class ShortIncrSumWithRetractAggFunction extends IncrSumWithRetractAggFunction {
 		@Override
-		public DataType getResultType() {
-			return DataTypes.SMALLINT();
+		public TypeInformation getResultType() {
+			return Types.SHORT;
 		}
 
 		@Override
@@ -161,8 +163,8 @@ public abstract class IncrSumWithRetractAggFunction extends DeclarativeAggregate
 	 */
 	public static class LongIncrSumWithRetractAggFunction extends IncrSumWithRetractAggFunction {
 		@Override
-		public DataType getResultType() {
-			return DataTypes.BIGINT();
+		public TypeInformation getResultType() {
+			return Types.LONG;
 		}
 
 		@Override
@@ -176,8 +178,8 @@ public abstract class IncrSumWithRetractAggFunction extends DeclarativeAggregate
 	 */
 	public static class FloatIncrSumWithRetractAggFunction extends IncrSumWithRetractAggFunction {
 		@Override
-		public DataType getResultType() {
-			return DataTypes.FLOAT();
+		public TypeInformation getResultType() {
+			return Types.FLOAT;
 		}
 
 		@Override
@@ -191,8 +193,8 @@ public abstract class IncrSumWithRetractAggFunction extends DeclarativeAggregate
 	 */
 	public static class DoubleIncrSumWithRetractAggFunction extends IncrSumWithRetractAggFunction {
 		@Override
-		public DataType getResultType() {
-			return DataTypes.DOUBLE();
+		public TypeInformation getResultType() {
+			return Types.DOUBLE;
 		}
 
 		@Override
@@ -205,16 +207,16 @@ public abstract class IncrSumWithRetractAggFunction extends DeclarativeAggregate
 	 * Built-in Decimal IncrSum with retract aggregate function.
 	 */
 	public static class DecimalIncrSumWithRetractAggFunction extends IncrSumWithRetractAggFunction {
-		private DecimalType decimalType;
+		private DecimalTypeInfo decimalType;
 
-		public DecimalIncrSumWithRetractAggFunction(DecimalType decimalType) {
+		public DecimalIncrSumWithRetractAggFunction(DecimalTypeInfo decimalType) {
 			this.decimalType = decimalType;
 		}
 
 		@Override
-		public DataType getResultType() {
-			DecimalType sumType = FlinkTypeSystem.inferAggSumType(decimalType.getScale());
-			return DataTypes.DECIMAL(sumType.getPrecision(), sumType.getScale());
+		public TypeInformation getResultType() {
+			DecimalType sumType = DecimalType.inferAggSumType(decimalType.scale());
+			return new DecimalTypeInfo(sumType.precision(), sumType.scale());
 		}
 
 		@Override

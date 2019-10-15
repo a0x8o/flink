@@ -55,16 +55,29 @@ else
   NUM_SLOTS=$NEW_DOP
 fi
 
-set_config_key "taskmanager.numberOfTaskSlots" "${NUM_SLOTS}"
+change_conf "taskmanager.numberOfTaskSlots" "1" "${NUM_SLOTS}"
 
 if [ $STATE_BACKEND_ROCKS_TIMER_SERVICE_TYPE == 'rocks' ]; then
-  set_config_key "state.backend.rocksdb.timer-service.factory" "rocksdb"
+  set_conf "state.backend.rocksdb.timer-service.factory" "rocksdb"
 fi
-set_config_key "metrics.fetcher.update-interval" "2000"
+set_conf "metrics.fetcher.update-interval" "2000"
 
 setup_flink_slf4j_metric_reporter
 
 start_cluster
+
+# make sure to stop Kafka and ZooKeeper at the end, as well as cleaning up the Flink cluster and our moodifications
+function test_cleanup {
+  # don't call ourselves again for another signal interruption
+  trap "exit -1" INT
+  # don't call ourselves again for normal exit
+  trap "" EXIT
+
+  # revert our modifications to the Flink distribution
+  rm ${FLINK_DIR}/lib/flink-metrics-slf4j-*.jar
+}
+trap test_cleanup INT
+trap test_cleanup EXIT
 
 CHECKPOINT_DIR="file://$TEST_DATA_DIR/savepoint-e2e-test-chckpt-dir"
 
@@ -85,21 +98,10 @@ wait_job_running $DATASTREAM_JOB
 wait_oper_metric_num_in_records SemanticsCheckMapper.0 200
 
 # take a savepoint of the state machine job
-SAVEPOINT_PATH=$(stop_with_savepoint $DATASTREAM_JOB $TEST_DATA_DIR \
+SAVEPOINT_PATH=$(take_savepoint $DATASTREAM_JOB $TEST_DATA_DIR \
   | grep "Savepoint completed. Path:" | sed 's/.* //g')
 
-wait_job_terminal_state "${DATASTREAM_JOB}" "FINISHED"
-
-# isolate the path without the scheme ("file:") and do the necessary checks
-SAVEPOINT_DIR=${SAVEPOINT_PATH#"file:"}
-
-if [ -z "$SAVEPOINT_DIR" ]; then
-  echo "Savepoint location was empty. This may mean that the stop-with-savepoint failed."
-  exit 1
-elif [ ! -d "$SAVEPOINT_DIR" ]; then
-  echo "Savepoint $SAVEPOINT_PATH does not exist."
-  exit 1
-fi
+cancel_job $DATASTREAM_JOB
 
 # Since it is not possible to differentiate reporter output between the first and second execution,
 # we remember the number of metrics sampled in the first execution so that they can be ignored in the following monitorings

@@ -19,7 +19,6 @@
 package org.apache.flink.table.functions;
 
 import org.apache.flink.annotation.PublicEvolving;
-import org.apache.flink.util.Collector;
 
 /**
  * Base class for user-defined table aggregates.
@@ -29,7 +28,7 @@ import org.apache.flink.util.Collector;
  * <ul>
  *     <li>createAccumulator</li>
  *     <li>accumulate</li>
- *     <li>emitValue or emitUpdateWithRetract</li>
+ *     <li>emitValue</li>
  * </ul>
  *
  * <p>There is another method that can be optional to have:
@@ -80,28 +79,6 @@ import org.apache.flink.util.Collector;
  * }
  * </pre>
  *
- * <pre>
- * {@code
- * Called every time when an aggregation result should be materialized. The returned value could
- * be either an early and incomplete result (periodically emitted as data arrive) or the final
- * result of the aggregation.
- *
- * Different from emitValue, emitUpdateWithRetract is used to emit values that have been updated.
- * This method outputs data incrementally in retract mode, i.e., once there is an update, we have
- * to retract old records before sending new updated ones. The emitUpdateWithRetract method will be
- * used in preference to the emitValue method if both methods are defined in the table aggregate
- * function, because the method is treated to be more efficient than emitValue as it can output
- * values incrementally.
- *
- * param: accumulator           the accumulator which contains the current aggregated results
- * param: out                   the retractable collector used to output data. Use collect method
- *                              to output(add) records and use retract method to retract(delete)
- *                              records.
- *
- * public void emitUpdateWithRetract(ACC accumulator, RetractableCollector<T> out)
- * }
- * </pre>
- *
  * @param <T>   the type of the table aggregation result
  * @param <ACC> the type of the table aggregation accumulator. The accumulator is used to keep the
  *              aggregated values which are needed to compute an aggregation result.
@@ -111,22 +88,4 @@ import org.apache.flink.util.Collector;
 @PublicEvolving
 public abstract class TableAggregateFunction<T, ACC> extends UserDefinedAggregateFunction<T, ACC> {
 
-	/**
-	 * Collects a record and forwards it. The collector can output retract messages with the retract
-	 * method. Note: only use it in {@code emitUpdateWithRetract}.
-	 */
-	public interface RetractableCollector<T> extends Collector<T> {
-
-		/**
-		 * Retract a record.
-		 *
-		 * @param record The record to retract.
-		 */
-		void retract(T record);
-	}
-
-	@Override
-	public final FunctionKind getKind() {
-		return FunctionKind.TABLE_AGGREGATE;
-	}
 }

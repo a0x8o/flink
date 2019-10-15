@@ -118,12 +118,7 @@ public class HadoopFsFactory implements FileSystemFactory {
 				initUri = fsUri;
 			}
 			else {
-				if (LOG.isDebugEnabled()) {
-					LOG.debug(
-						"URI {} does not specify file system authority, trying to load default authority (fs.defaultFS)",
-						fsUri
-					);
-				}
+				LOG.debug("URI {} does not specify file system authority, trying to load default authority (fs.defaultFS)");
 
 				String configEntry = hadoopConfig.get("fs.defaultFS", null);
 				if (configEntry == null) {

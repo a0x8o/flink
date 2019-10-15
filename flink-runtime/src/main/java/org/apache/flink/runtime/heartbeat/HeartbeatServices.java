@@ -52,7 +52,7 @@ public class HeartbeatServices {
 	 * @param resourceId Resource Id which identifies the owner of the heartbeat manager
 	 * @param heartbeatListener Listener which will be notified upon heartbeat timeouts for registered
 	 *                          targets
-	 * @param mainThreadExecutor Scheduled executor to be used for scheduling heartbeat timeouts
+	 * @param scheduledExecutor Scheduled executor to be used for scheduling heartbeat timeouts
 	 * @param log Logger to be used for the logging
 	 * @param <I> Type of the incoming payload
 	 * @param <O> Type of the outgoing payload
@@ -61,14 +61,15 @@ public class HeartbeatServices {
 	public <I, O> HeartbeatManager<I, O> createHeartbeatManager(
 		ResourceID resourceId,
 		HeartbeatListener<I, O> heartbeatListener,
-		ScheduledExecutor mainThreadExecutor,
+		ScheduledExecutor scheduledExecutor,
 		Logger log) {
 
 		return new HeartbeatManagerImpl<>(
 			heartbeatTimeout,
 			resourceId,
 			heartbeatListener,
-			mainThreadExecutor,
+			scheduledExecutor,
+			scheduledExecutor,
 			log);
 	}
 
@@ -78,8 +79,7 @@ public class HeartbeatServices {
 	 * @param resourceId Resource Id which identifies the owner of the heartbeat manager
 	 * @param heartbeatListener Listener which will be notified upon heartbeat timeouts for registered
 	 *                          targets
-	 * @param mainThreadExecutor Scheduled executor to be used for scheduling heartbeat timeouts and
-	 *                           periodically send heartbeat requests
+	 * @param scheduledExecutor Scheduled executor to be used for scheduling heartbeat timeouts
 	 * @param log Logger to be used for the logging
 	 * @param <I> Type of the incoming payload
 	 * @param <O> Type of the outgoing payload
@@ -88,7 +88,7 @@ public class HeartbeatServices {
 	public <I, O> HeartbeatManager<I, O> createHeartbeatManagerSender(
 		ResourceID resourceId,
 		HeartbeatListener<I, O> heartbeatListener,
-		ScheduledExecutor mainThreadExecutor,
+		ScheduledExecutor scheduledExecutor,
 		Logger log) {
 
 		return new HeartbeatManagerSenderImpl<>(
@@ -96,7 +96,8 @@ public class HeartbeatServices {
 			heartbeatTimeout,
 			resourceId,
 			heartbeatListener,
-			mainThreadExecutor,
+			scheduledExecutor,
+			scheduledExecutor,
 			log);
 	}
 

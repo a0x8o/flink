@@ -62,7 +62,7 @@ public class BucketingSinkTestProgram {
 
 		StreamExecutionEnvironment sEnv = StreamExecutionEnvironment.getExecutionEnvironment();
 		sEnv.setRestartStrategy(RestartStrategies.fixedDelayRestart(
-				10,
+				3,
 				Time.of(10, TimeUnit.SECONDS)
 			));
 		sEnv.enableCheckpointing(4000);
@@ -71,11 +71,7 @@ public class BucketingSinkTestProgram {
 
 		// define bucketing sink to emit the result
 		BucketingSink<Tuple4<Integer, Long, Integer, String>> sink = new BucketingSink<Tuple4<Integer, Long, Integer, String>>(outputPath)
-				.setBucketer(new KeyBucketer())
-				.setBatchSize(Long.MAX_VALUE)
-				.setBatchRolloverInterval(Long.MAX_VALUE)
-				.setInactiveBucketCheckInterval(Long.MAX_VALUE)
-				.setInactiveBucketThreshold(Long.MAX_VALUE);
+			.setBucketer(new KeyBucketer());
 
 		// generate data, shuffle, perform stateful operation, sink
 		sEnv.addSource(new Generator(10, idlenessMs, 60))
@@ -147,7 +143,6 @@ public class BucketingSinkTestProgram {
 		private final int durationMs;
 
 		private long ms = 0;
-		private volatile boolean canceled = false;
 
 		public Generator(int numKeys, int idlenessMs, int durationSeconds) {
 			this.numKeys = numKeys;
@@ -157,7 +152,7 @@ public class BucketingSinkTestProgram {
 
 		@Override
 		public void run(SourceContext<Tuple3<Integer, Long, String>> ctx) throws Exception {
-			while (ms < durationMs && !canceled) {
+			while (ms < durationMs) {
 				synchronized (ctx.getCheckpointLock()) {
 					for (int i = 0; i < numKeys; i++) {
 						ctx.collect(Tuple3.of(i, ms, "Some payload..."));
@@ -166,16 +161,10 @@ public class BucketingSinkTestProgram {
 				}
 				Thread.sleep(idlenessMs);
 			}
-
-			while (!canceled) {
-				Thread.sleep(50);
-			}
 		}
 
 		@Override
-		public void cancel() {
-			canceled = true;
-		}
+		public void cancel() { }
 
 		@Override
 		public List<Long> snapshotState(long checkpointId, long timestamp) {

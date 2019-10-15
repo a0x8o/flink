@@ -1,5 +1,5 @@
 ---
-title: "Apache NiFi 连接器"
+title: "Apache NiFi Connector"
 nav-title: NiFi
 nav-parent_id: connectors
 nav-pos: 7
@@ -23,8 +23,9 @@ specific language governing permissions and limitations
 under the License.
 -->
 
-[Apache NiFi](https://nifi.apache.org/) 连接器提供了可以读取和写入的 Source 和 Sink。
-使用这个连接器，需要在工程中添加下面的依赖:
+This connector provides a Source and Sink that can read from and write to
+[Apache NiFi](https://nifi.apache.org/). To use this connector, add the
+following dependency to your project:
 
 {% highlight xml %}
 <dependency>
@@ -34,23 +35,30 @@ under the License.
 </dependency>
 {% endhighlight %}
 
-注意这些连接器目前还没有包含在二进制发行版中。添加依赖、打包配置以及集群运行的相关信息请参考 [这里]({{site.baseurl}}/zh/dev/projectsetup/dependencies.html)。
+Note that the streaming connectors are currently not part of the binary
+distribution. See
+[here]({{site.baseurl}}/dev/linking.html)
+for information about how to package the program with the libraries for
+cluster execution.
 
-#### 安装 Apache NiFi
+#### Installing Apache NiFi
 
-安装 Apache NiFi 集群请参考 [这里](https://nifi.apache.org/docs/nifi-docs/html/administration-guide.html#how-to-install-and-start-nifi)。
+Instructions for setting up a Apache NiFi cluster can be found
+[here](https://nifi.apache.org/docs/nifi-docs/html/administration-guide.html#how-to-install-and-start-nifi).
 
 #### Apache NiFi Source
 
-该连接器提供了一个 Source 可以用来从 Apache NiFi 读取数据到 Apache Flink。
+The connector provides a Source for reading data from Apache NiFi to Apache Flink.
 
-`NiFiSource(…)` 类有两个构造方法。
+The class `NiFiSource(…)` provides 2 constructors for reading data from NiFi.
 
-- `NiFiSource(SiteToSiteConfig config)` - 构造一个 `NiFiSource(…)` ，需要指定参数 SiteToSiteConfig ，采用默认的等待时间 1000 ms。
+- `NiFiSource(SiteToSiteConfig config)` - Constructs a `NiFiSource(…)` given the client's SiteToSiteConfig and a
+     default wait time of 1000 ms.
 
-- `NiFiSource(SiteToSiteConfig config, long waitTimeMs)` - 构造一个 `NiFiSource(…)`，需要指定参数 SiteToSiteConfig 和等待时间（单位为毫秒）。
+- `NiFiSource(SiteToSiteConfig config, long waitTimeMs)` - Constructs a `NiFiSource(…)` given the client's
+     SiteToSiteConfig and the specified wait time (in milliseconds).
 
-示例:
+Example:
 
 <div class="codetabs" markdown="1">
 <div data-lang="java" markdown="1">
@@ -81,17 +89,18 @@ val nifiSource = new NiFiSource(clientConfig)
 </div>
 </div>
 
-数据从 Apache NiFi Output Port 读取，Apache NiFi Output Port 也被称为 "Data for Flink"，是 Apache NiFi Site-to-site 协议配置的一部分。
+Here data is read from the Apache NiFi Output Port called "Data for Flink" which is part of Apache NiFi
+Site-to-site protocol configuration.
 
 #### Apache NiFi Sink
 
-该连接器提供了一个 Sink 可以用来把 Apache Flink 的数据写入到 Apache NiFi。
+The connector provides a Sink for writing data from Apache Flink to Apache NiFi.
 
-`NiFiSink(…)` 类只有一个构造方法。
+The class `NiFiSink(…)` provides a constructor for instantiating a `NiFiSink`.
 
-- `NiFiSink(SiteToSiteClientConfig, NiFiDataPacketBuilder<T>)` 构造一个 `NiFiSink(…)`，需要指定 `SiteToSiteConfig` 和  `NiFiDataPacketBuilder` 参数 ，`NiFiDataPacketBuilder` 可以将Flink数据转化成可以被NiFi识别的 `NiFiDataPacket`.
+- `NiFiSink(SiteToSiteClientConfig, NiFiDataPacketBuilder<T>)` constructs a `NiFiSink(…)` given the client's `SiteToSiteConfig` and a `NiFiDataPacketBuilder` that converts data from Flink to `NiFiDataPacket` to be ingested by NiFi.
 
-示例:
+Example:
 
 <div class="codetabs" markdown="1">
 <div data-lang="java" markdown="1">
@@ -126,6 +135,6 @@ streamExecEnv.addSink(nifiSink)
 </div>
 </div>      
 
-更多关于 [Apache NiFi](https://nifi.apache.org) Site-to-Site Protocol 的信息请参考 [这里](https://nifi.apache.org/docs/nifi-docs/html/user-guide.html#site-to-site)。
+More information about [Apache NiFi](https://nifi.apache.org) Site-to-Site Protocol can be found [here](https://nifi.apache.org/docs/nifi-docs/html/user-guide.html#site-to-site)
 
 {% top %}

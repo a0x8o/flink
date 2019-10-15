@@ -18,8 +18,11 @@
 
 package org.apache.flink.runtime.rest.messages;
 
+import org.apache.flink.util.StringUtils;
+
 /**
- * Termination mode query parameter.
+ * Termination mode.
+ * @deprecated Only kept to detect legacy usages of the cancel/stop command. Please use the "stop-with-savepoint" command instead.
  */
 public class TerminationModeQueryParameter extends MessageQueryParameter<TerminationModeQueryParameter.TerminationMode> {
 
@@ -41,19 +44,15 @@ public class TerminationModeQueryParameter extends MessageQueryParameter<Termina
 
 	@Override
 	public String getDescription() {
-		return "String value that specifies the termination mode. The only supported value is: \"" +
-			TerminationMode.CANCEL.name().toLowerCase() + "\".";
+		return "String value that specifies the termination mode. Supported values are: " +
+			StringUtils.toQuotedListString(TerminationMode.values()) + '.';
 	}
 
 	/**
-	 * Termination mode.
+	 * @deprecated Please use the "stop-with-savepoint" command instead.
 	 */
 	public enum TerminationMode {
 		CANCEL,
-
-		/**
-		 * @deprecated Please use the "stop" command instead.
-		 */
 		STOP
 	}
 }

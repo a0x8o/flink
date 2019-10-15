@@ -19,46 +19,79 @@
 package org.apache.flink.streaming.api.operators.async.queue;
 
 import org.apache.flink.annotation.Internal;
-import org.apache.flink.streaming.api.functions.async.ResultFuture;
-import org.apache.flink.streaming.api.operators.TimestampedCollector;
 import org.apache.flink.streaming.runtime.streamrecord.StreamElement;
+import org.apache.flink.util.Preconditions;
 
-import javax.annotation.Nonnull;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+import java.util.function.Consumer;
 
 /**
- * An entry for the {@link StreamElementQueue}. The stream element queue entry stores the {@link StreamElement} for
- * which the stream element queue entry has been instantiated.
- * Furthermore, it allows to set the result of a completed entry through {@link ResultFuture}.
+ * Entry class for the {@link StreamElementQueue}. The stream element queue entry stores the
+ * {@link StreamElement} for which the stream element queue entry has been instantiated.
+ * Furthermore, it allows to register callbacks for when the queue entry is completed.
+ *
+ * @param <T> Type of the result
  */
 @Internal
-interface StreamElementQueueEntry<OUT> extends ResultFuture<OUT> {
+public abstract class StreamElementQueueEntry<T> implements AsyncResult {
+
+	private final StreamElement streamElement;
+
+	public StreamElementQueueEntry(StreamElement streamElement) {
+		this.streamElement = Preconditions.checkNotNull(streamElement);
+	}
+
+	public StreamElement getStreamElement() {
+		return streamElement;
+	}
 
 	/**
 	 * True if the stream element queue entry has been completed; otherwise false.
 	 *
 	 * @return True if the stream element queue entry has been completed; otherwise false.
 	 */
-	boolean isDone();
+	public boolean isDone() {
+		return getFuture().isDone();
+	}
 
 	/**
-	 * Emits the results associated with this queue entry.
+	 * Register the given complete function to be called once this queue entry has been completed.
 	 *
-	 * @param output the output into which to emit.
+	 * @param completeFunction to call when the queue entry has been completed
+	 * @param executor to run the complete function
 	 */
-	void emitResult(TimestampedCollector<OUT> output);
+	public void onComplete(
+			final Consumer<StreamElementQueueEntry<T>> completeFunction,
+			Executor executor) {
+		final StreamElementQueueEntry<T> thisReference = this;
 
-	/**
-	 * The input element for this queue entry, for which the calculation is performed asynchronously.
-	 *
-	 * @return the input element.
-	 */
-	@Nonnull StreamElement getInputElement();
+		getFuture().whenCompleteAsync(
+			// call the complete function for normal completion as well as exceptional completion
+			// see FLINK-6435
+			(value, throwable) -> completeFunction.accept(thisReference),
+			executor);
+	}
 
-	/**
-	 * Not supported. Exceptions must be handled in the AsyncWaitOperator.
-	 */
+	protected abstract CompletableFuture<T> getFuture();
+
 	@Override
-	default void completeExceptionally(Throwable error) {
-		throw new UnsupportedOperationException("This result future should only be used to set completed results.");
+	public final boolean isWatermark() {
+		return AsyncWatermarkResult.class.isAssignableFrom(getClass());
+	}
+
+	@Override
+	public final boolean isResultCollection() {
+		return AsyncCollectionResult.class.isAssignableFrom(getClass());
+	}
+
+	@Override
+	public final AsyncWatermarkResult asWatermark() {
+		return (AsyncWatermarkResult) this;
+	}
+
+	@Override
+	public final <T> AsyncCollectionResult<T> asResultCollection() {
+		return (AsyncCollectionResult<T>) this;
 	}
 }

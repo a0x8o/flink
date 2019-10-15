@@ -22,7 +22,7 @@ import org.apache.flink.api.common.functions.AggregateFunction;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.taskexecutor.GlobalAggregateManager;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.streaming.api.functions.sink.DiscardingSink;
+import org.apache.flink.streaming.api.functions.sink.SinkFunction;
 import org.apache.flink.streaming.api.functions.source.RichSourceFunction;
 import org.apache.flink.streaming.api.operators.StreamingRuntimeContext;
 import org.apache.flink.test.util.AbstractTestBase;
@@ -45,7 +45,7 @@ public class GlobalAggregateITCase extends AbstractTestBase {
 
 		streamExecutionEnvironment
 			.addSource(new TestSourceFunction(new IntegerAggregateFunction(), false))
-			.addSink(new DiscardingSink<>());
+			.addSink(new NoOpSinkFunction());
 
 		streamExecutionEnvironment.execute();
 	}
@@ -56,7 +56,7 @@ public class GlobalAggregateITCase extends AbstractTestBase {
 
 		streamExecutionEnvironment
 			.addSource(new TestSourceFunction(new ExceptionThrowingAggregateFunction(), true))
-			.addSink(new DiscardingSink<>());
+			.addSink(new NoOpSinkFunction());
 
 		streamExecutionEnvironment.execute();
 	}
@@ -164,6 +164,17 @@ public class GlobalAggregateITCase extends AbstractTestBase {
 		@Override
 		public Integer merge(Integer accumulatorA, Integer accumulatorB) {
 			return add(accumulatorA, accumulatorB);
+		}
+	}
+
+	/**
+	 * Sink function that does nothing.
+	 */
+	private static class NoOpSinkFunction implements SinkFunction<Integer> {
+
+		@Override
+		public void invoke(Integer value, Context context) throws Exception {
+
 		}
 	}
 }

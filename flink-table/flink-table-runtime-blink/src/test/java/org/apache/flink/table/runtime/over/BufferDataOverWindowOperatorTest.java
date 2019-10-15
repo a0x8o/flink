@@ -40,15 +40,14 @@ import org.apache.flink.table.runtime.over.frame.RowSlidingOverFrame;
 import org.apache.flink.table.runtime.over.frame.RowUnboundedFollowingOverFrame;
 import org.apache.flink.table.runtime.over.frame.RowUnboundedPrecedingOverFrame;
 import org.apache.flink.table.runtime.over.frame.UnboundedOverWindowFrame;
-import org.apache.flink.table.types.logical.BigIntType;
-import org.apache.flink.table.types.logical.RowType;
+import org.apache.flink.table.type.InternalTypes;
+import org.apache.flink.table.type.RowType;
 
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.function.Consumer;
 
@@ -65,8 +64,7 @@ import static org.mockito.Mockito.when;
 public class BufferDataOverWindowOperatorTest {
 
 	private static final int MEMORY_SIZE = 50 * 1024 * 32;
-	private RowType valueType = new RowType(Collections.singletonList(
-			new RowType.RowField("f0", new BigIntType())));
+	private RowType valueType = new RowType(InternalTypes.LONG);
 
 	private List<GenericRow> collect;
 	private MemoryManager memoryManager = new MemoryManager(MEMORY_SIZE, 1);
@@ -107,7 +105,7 @@ public class BufferDataOverWindowOperatorTest {
 	public void testInsensitiveAndUnbounded() throws Exception {
 		test(new OverWindowFrame[] {
 						new InsensitiveOverFrame(function),
-						new UnboundedOverWindowFrame(function, valueType)},
+						new UnboundedOverWindowFrame(function, new RowType(InternalTypes.LONG))},
 				new GenericRow[] {
 						GenericRow.of(0, 1L, 4L, 1L, 4L),
 						GenericRow.of(0, 1L, 1L, 2L, 4L),

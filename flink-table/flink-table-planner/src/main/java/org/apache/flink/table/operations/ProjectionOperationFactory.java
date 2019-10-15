@@ -20,24 +20,23 @@ package org.apache.flink.table.operations;
 
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.table.api.TableException;
 import org.apache.flink.table.api.TableSchema;
 import org.apache.flink.table.api.ValidationException;
+import org.apache.flink.table.expressions.ApiExpressionDefaultVisitor;
+import org.apache.flink.table.expressions.BuiltInFunctionDefinitions;
 import org.apache.flink.table.expressions.CallExpression;
 import org.apache.flink.table.expressions.Expression;
 import org.apache.flink.table.expressions.ExpressionBridge;
-import org.apache.flink.table.expressions.ExpressionResolver;
 import org.apache.flink.table.expressions.FieldReferenceExpression;
+import org.apache.flink.table.expressions.FunctionDefinition;
 import org.apache.flink.table.expressions.LocalReferenceExpression;
 import org.apache.flink.table.expressions.PlannerExpression;
-import org.apache.flink.table.expressions.ResolvedExpression;
-import org.apache.flink.table.expressions.ResolvedExpressionDefaultVisitor;
 import org.apache.flink.table.expressions.TableReferenceExpression;
 import org.apache.flink.table.expressions.ValueLiteralExpression;
-import org.apache.flink.table.functions.BuiltInFunctionDefinitions;
-import org.apache.flink.table.functions.FunctionDefinition;
-import org.apache.flink.table.types.logical.LogicalType;
 
+import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
@@ -45,21 +44,21 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-import static org.apache.flink.table.functions.BuiltInFunctionDefinitions.AS;
-import static org.apache.flink.table.functions.BuiltInFunctionDefinitions.CAST;
-import static org.apache.flink.table.functions.BuiltInFunctionDefinitions.GET;
+import static org.apache.flink.table.expressions.ApiExpressionUtils.valueLiteral;
+import static org.apache.flink.table.expressions.BuiltInFunctionDefinitions.AS;
+import static org.apache.flink.table.expressions.BuiltInFunctionDefinitions.CAST;
+import static org.apache.flink.table.expressions.BuiltInFunctionDefinitions.GET;
 import static org.apache.flink.table.operations.OperationExpressionsUtils.extractName;
 import static org.apache.flink.table.operations.OperationExpressionsUtils.extractNames;
-import static org.apache.flink.table.types.logical.LogicalTypeRoot.INTEGER;
-import static org.apache.flink.table.types.logical.utils.LogicalTypeChecks.hasRoot;
 
 /**
- * Utility class for creating valid {@link ProjectQueryOperation} operation.
+ * Utility class for creating valid {@link ProjectTableOperation} operation.
  */
 @Internal
 public final class ProjectionOperationFactory {
 
 	private final TransitiveExtractNameVisitor extractTransitiveNameVisitor = new TransitiveExtractNameVisitor();
+	private final NamingVisitor namingVisitor = new NamingVisitor();
 	private final StripAliases stripAliases = new StripAliases();
 	private int currentFieldIndex = 0;
 
@@ -69,18 +68,15 @@ public final class ProjectionOperationFactory {
 		this.expressionBridge = expressionBridge;
 	}
 
-	public QueryOperation create(
-			List<ResolvedExpression> projectList,
-			QueryOperation child,
-			boolean explicitAlias,
-			ExpressionResolver.PostResolverFactory postResolverFactory) {
+	public TableOperation create(
+			List<Expression> projectList,
+			TableOperation child,
+			boolean explicitAlias) {
 
-		final NamingVisitor namingVisitor = new NamingVisitor(postResolverFactory);
-
-		final List<ResolvedExpression> namedExpressions = nameExpressions(namingVisitor, projectList);
+		final List<Expression> namedExpressions = nameExpressions(projectList);
 		String[] fieldNames = validateAndGetUniqueNames(namedExpressions);
 
-		final List<ResolvedExpression> finalExpression;
+		final List<Expression> finalExpression;
 		if (explicitAlias) {
 			finalExpression = namedExpressions;
 		} else {
@@ -96,10 +92,10 @@ public final class ProjectionOperationFactory {
 
 		TableSchema tableSchema = new TableSchema(fieldNames, fieldTypes);
 
-		return new ProjectQueryOperation(finalExpression, child, tableSchema);
+		return new ProjectTableOperation(finalExpression, child, tableSchema);
 	}
 
-	private String[] validateAndGetUniqueNames(List<ResolvedExpression> namedExpressions) {
+	private String[] validateAndGetUniqueNames(List<Expression> namedExpressions) {
 		// we need to maintain field names order to match with types
 		final Set<String> names = new LinkedHashSet<>();
 
@@ -129,7 +125,7 @@ public final class ProjectionOperationFactory {
 	 *     the index within given expressions</li>
 	 * </ul>
 	 */
-	private List<ResolvedExpression> nameExpressions(NamingVisitor namingVisitor, List<ResolvedExpression> expression) {
+	private List<Expression> nameExpressions(List<Expression> expression) {
 		return IntStream.range(0, expression.size())
 			.mapToObj(idx -> {
 				currentFieldIndex = idx;
@@ -138,29 +134,23 @@ public final class ProjectionOperationFactory {
 			.collect(Collectors.toList());
 	}
 
-	private class NamingVisitor extends ResolvedExpressionDefaultVisitor<ResolvedExpression> {
-
-		private ExpressionResolver.PostResolverFactory postResolverFactory;
-
-		public NamingVisitor(ExpressionResolver.PostResolverFactory postResolverFactory) {
-			this.postResolverFactory = postResolverFactory;
-		}
+	private class NamingVisitor extends ApiExpressionDefaultVisitor<Expression> {
 
 		@Override
-		public ResolvedExpression visit(CallExpression call) {
+		public Expression visitCall(CallExpression call) {
 			FunctionDefinition functionDefinition = call.getFunctionDefinition();
 			final Optional<String> rename;
-			if (functionDefinition == CAST) {
+			if (functionDefinition.equals(CAST)) {
 				rename = nameForCast(call);
-			} else if (functionDefinition == GET) {
+			} else if (functionDefinition.equals(GET)) {
 				rename = nameForGet(call);
-			} else if (functionDefinition == AS) {
+			} else if (functionDefinition.equals(AS)) {
 				rename = Optional.empty();
 			} else {
 				rename = Optional.of(getUniqueName());
 			}
 
-			return rename.map(name -> postResolverFactory.as(call, name)).orElse(call);
+			return rename.map(name -> new CallExpression(AS, Arrays.asList(call, valueLiteral(name)))).orElse(call);
 		}
 
 		private Optional<String> nameForGet(CallExpression call) {
@@ -176,38 +166,38 @@ public final class ProjectionOperationFactory {
 		}
 
 		@Override
-		public ResolvedExpression visit(ValueLiteralExpression valueLiteral) {
-			return postResolverFactory.as(valueLiteral, getUniqueName());
+		public Expression visitValueLiteral(ValueLiteralExpression valueLiteralExpression) {
+			return new CallExpression(AS, Arrays.asList(valueLiteralExpression, valueLiteral(getUniqueName())));
 		}
 
 		@Override
-		protected ResolvedExpression defaultMethod(ResolvedExpression expression) {
+		protected Expression defaultMethod(Expression expression) {
 			return expression;
 		}
 	}
 
-	private class StripAliases extends ResolvedExpressionDefaultVisitor<ResolvedExpression> {
+	private class StripAliases extends ApiExpressionDefaultVisitor<Expression> {
 
 		@Override
-		public ResolvedExpression visit(CallExpression call) {
-			if (call.getFunctionDefinition() == AS) {
-				return call.getResolvedChildren().get(0).accept(this);
+		public Expression visitCall(CallExpression call) {
+			if (call.getFunctionDefinition().equals(AS)) {
+				return call.getChildren().get(0).accept(this);
 			} else {
 				return call;
 			}
 		}
 
 		@Override
-		protected ResolvedExpression defaultMethod(ResolvedExpression expression) {
+		protected Expression defaultMethod(Expression expression) {
 			return expression;
 		}
 	}
 
-	private class TransitiveExtractNameVisitor extends ResolvedExpressionDefaultVisitor<Optional<String>> {
+	private class TransitiveExtractNameVisitor extends ApiExpressionDefaultVisitor<Optional<String>> {
 
 		@Override
-		public Optional<String> visit(CallExpression call) {
-			if (call.getFunctionDefinition() == GET) {
+		public Optional<String> visitCall(CallExpression call) {
+			if (call.getFunctionDefinition().equals(GET)) {
 				return extractNameFromGet(call);
 			} else {
 				return defaultMethod(call);
@@ -215,23 +205,18 @@ public final class ProjectionOperationFactory {
 		}
 
 		@Override
-		protected Optional<String> defaultMethod(ResolvedExpression expression) {
+		protected Optional<String> defaultMethod(Expression expression) {
 			return extractName(expression);
 		}
 
 		private Optional<String> extractNameFromGet(CallExpression call) {
 			Expression child = call.getChildren().get(0);
 			ValueLiteralExpression key = (ValueLiteralExpression) call.getChildren().get(1);
-
-			final LogicalType keyType = key.getOutputDataType().getLogicalType();
-
 			final String keySuffix;
-			if (hasRoot(keyType, INTEGER)) {
-				keySuffix = "$_" + key.getValueAs(Integer.class)
-					.orElseThrow(() -> new TableException("Integer constant excepted."));
+			if (key.getType().equals(Types.INT)) {
+				keySuffix = "$_" + key.getValue();
 			} else {
-				keySuffix = "$" + key.getValueAs(String.class)
-					.orElseThrow(() -> new TableException("Integer constant excepted."));
+				keySuffix = "$" + key.getValue();
 			}
 			return child.accept(this).map(p -> p + keySuffix);
 		}

@@ -19,9 +19,6 @@
 package org.apache.flink.runtime.io.network;
 
 import org.apache.flink.metrics.MetricGroup;
-import org.apache.flink.runtime.clusterframework.types.ResourceID;
-import org.apache.flink.runtime.io.disk.iomanager.IOManager;
-import org.apache.flink.runtime.io.disk.iomanager.IOManagerAsync;
 import org.apache.flink.runtime.io.network.netty.NettyConfig;
 import org.apache.flink.runtime.metrics.groups.UnregisteredMetricGroups;
 import org.apache.flink.runtime.taskmanager.NetworkEnvironmentConfiguration;
@@ -45,22 +42,11 @@ public class NetworkEnvironmentBuilder {
 
 	private boolean isCreditBased = true;
 
-	private boolean isNetworkDetailedMetrics = false;
-
-	private ResourceID taskManagerLocation = ResourceID.generate();
-
 	private NettyConfig nettyConfig;
 
 	private TaskEventDispatcher taskEventDispatcher = new TaskEventDispatcher();
 
 	private MetricGroup metricGroup = UnregisteredMetricGroups.createUnregisteredTaskManagerMetricGroup();
-
-	private IOManager ioManager = new IOManagerAsync();
-
-	public NetworkEnvironmentBuilder setTaskManagerLocation(ResourceID taskManagerLocation) {
-		this.taskManagerLocation = taskManagerLocation;
-		return this;
-	}
 
 	public NetworkEnvironmentBuilder setNumNetworkBuffers(int numNetworkBuffers) {
 		this.numNetworkBuffers = numNetworkBuffers;
@@ -112,14 +98,8 @@ public class NetworkEnvironmentBuilder {
 		return this;
 	}
 
-	public NetworkEnvironmentBuilder setIOManager(IOManager ioManager) {
-		this.ioManager = ioManager;
-		return this;
-	}
-
 	public NetworkEnvironment build() {
-		return NetworkEnvironment.create(
-			taskManagerLocation,
+		return new NetworkEnvironment(
 			new NetworkEnvironmentConfiguration(
 				numNetworkBuffers,
 				networkBufferSize,
@@ -128,10 +108,8 @@ public class NetworkEnvironmentBuilder {
 				networkBuffersPerChannel,
 				floatingNetworkBuffersPerGate,
 				isCreditBased,
-				isNetworkDetailedMetrics,
 				nettyConfig),
 			taskEventDispatcher,
-			metricGroup,
-			ioManager);
+			metricGroup);
 	}
 }

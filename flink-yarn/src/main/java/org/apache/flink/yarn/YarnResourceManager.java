@@ -32,14 +32,14 @@ import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.entrypoint.ClusterInformation;
 import org.apache.flink.runtime.heartbeat.HeartbeatServices;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
-import org.apache.flink.runtime.metrics.groups.ResourceManagerMetricGroup;
+import org.apache.flink.runtime.metrics.MetricRegistry;
+import org.apache.flink.runtime.metrics.groups.JobManagerMetricGroup;
 import org.apache.flink.runtime.resourcemanager.JobLeaderIdService;
 import org.apache.flink.runtime.resourcemanager.ResourceManager;
 import org.apache.flink.runtime.resourcemanager.exceptions.ResourceManagerException;
 import org.apache.flink.runtime.resourcemanager.slotmanager.SlotManager;
 import org.apache.flink.runtime.rpc.FatalErrorHandler;
 import org.apache.flink.runtime.rpc.RpcService;
-import org.apache.flink.runtime.webmonitor.history.HistoryServerUtils;
 import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.FlinkException;
 import org.apache.flink.util.Preconditions;
@@ -63,14 +63,13 @@ import org.apache.hadoop.yarn.conf.YarnConfiguration;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
-import java.net.URL;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -94,8 +93,6 @@ public class YarnResourceManager extends ResourceManager<YarnWorkerNode> impleme
 	/** Environment variable name of the hostname given by the YARN.
 	 * In task executor we use the hostnames given by YARN consistently throughout akka */
 	static final String ENV_FLINK_NODE_ID = "_FLINK_NODE_ID";
-
-	static final String ERROR_MASSAGE_ON_SHUTDOWN_REQUEST = "Received shutdown request from YARN ResourceManager.";
 
 	/** Default heartbeat interval between this resource manager and the YARN ResourceManager. */
 	private final int yarnHeartbeatIntervalMillis;
@@ -125,6 +122,8 @@ public class YarnResourceManager extends ResourceManager<YarnWorkerNode> impleme
 	/** The number of containers requested, but not yet granted. */
 	private int numPendingContainerRequests;
 
+	private final Map<ResourceProfile, Integer> resourcePriorities = new HashMap<>();
+
 	private final Collection<ResourceProfile> slotsPerWorker;
 
 	private final Resource resource;
@@ -138,11 +137,12 @@ public class YarnResourceManager extends ResourceManager<YarnWorkerNode> impleme
 			HighAvailabilityServices highAvailabilityServices,
 			HeartbeatServices heartbeatServices,
 			SlotManager slotManager,
+			MetricRegistry metricRegistry,
 			JobLeaderIdService jobLeaderIdService,
 			ClusterInformation clusterInformation,
 			FatalErrorHandler fatalErrorHandler,
 			@Nullable String webInterfaceUrl,
-			ResourceManagerMetricGroup resourceManagerMetricGroup) {
+			JobManagerMetricGroup jobManagerMetricGroup) {
 		super(
 			rpcService,
 			resourceManagerEndpointId,
@@ -150,10 +150,11 @@ public class YarnResourceManager extends ResourceManager<YarnWorkerNode> impleme
 			highAvailabilityServices,
 			heartbeatServices,
 			slotManager,
+			metricRegistry,
 			jobLeaderIdService,
 			clusterInformation,
 			fatalErrorHandler,
-			resourceManagerMetricGroup);
+			jobManagerMetricGroup);
 		this.flinkConfig  = flinkConfig;
 		this.yarnConfig = new YarnConfiguration();
 		this.env = env;
@@ -180,7 +181,7 @@ public class YarnResourceManager extends ResourceManager<YarnWorkerNode> impleme
 		this.defaultCpus = flinkConfig.getInteger(YarnConfigOptions.VCORES, numberOfTaskSlots);
 		this.resource = Resource.newInstance(defaultTaskManagerMemoryMB, defaultCpus);
 
-		this.slotsPerWorker = createWorkerSlotProfiles(flinkConfig);
+		this.slotsPerWorker = createSlotsPerWorker(numberOfTaskSlots);
 	}
 
 	protected AMRMClientAsync<AMRMClient.ContainerRequest> createAndStartResourceManagerClient(
@@ -291,12 +292,8 @@ public class YarnResourceManager extends ResourceManager<YarnWorkerNode> impleme
 		FinalApplicationStatus yarnStatus = getYarnStatus(finalStatus);
 		log.info("Unregister application from the YARN Resource Manager with final status {}.", yarnStatus);
 
-		final Optional<URL> historyServerURL = HistoryServerUtils.getHistoryServerURL(flinkConfig);
-
-		final String appTrackingUrl = historyServerURL.map(URL::toString).orElse("");
-
 		try {
-			resourceManagerClient.unregisterApplicationMaster(yarnStatus, diagnostics, appTrackingUrl);
+			resourceManagerClient.unregisterApplicationMaster(yarnStatus, diagnostics, "");
 		} catch (Throwable t) {
 			log.error("Could not unregister the application master.", t);
 		}
@@ -306,10 +303,11 @@ public class YarnResourceManager extends ResourceManager<YarnWorkerNode> impleme
 
 	@Override
 	public Collection<ResourceProfile> startNewWorker(ResourceProfile resourceProfile) {
-		if (!slotsPerWorker.iterator().next().isMatching(resourceProfile)) {
-			return Collections.emptyList();
-		}
+		Preconditions.checkArgument(
+			ResourceProfile.UNKNOWN.equals(resourceProfile),
+			"The YarnResourceManager does not support custom ResourceProfiles yet. It assumes that all containers have the same resources.");
 		requestYarnContainer();
+
 		return slotsPerWorker;
 	}
 
@@ -451,7 +449,7 @@ public class YarnResourceManager extends ResourceManager<YarnWorkerNode> impleme
 
 	@Override
 	public void onShutdownRequest() {
-		onFatalError(new ResourceManagerException(ERROR_MASSAGE_ON_SHUTDOWN_REQUEST));
+		closeAsync();
 	}
 
 	@Override

@@ -64,13 +64,13 @@ class WindowJoinITCase(mode: StateBackendMode) extends StreamingWithStateTestBas
     data2.+=((1, 1L, "HiHi"))
     data2.+=((2, 2L, "HeHe"))
 
-    val tmp1 = env.fromCollection(data1).toTable(tEnv, 'a, 'b, 'c, 'proctime.proctime)
+    val tmp1 = env.fromCollection(data1).toTable(tEnv, 'a, 'b, 'c, 'proctime)
     tEnv.registerTable("TmpT1", tmp1)
     val subquery1 = "SELECT IF(a = 1, CAST(NULL AS INT), a) as a, b, c, proctime FROM TmpT1"
     val t1 = tEnv.sqlQuery(subquery1)
     tEnv.registerTable("T1", t1)
 
-    val tmp2 = env.fromCollection(data2).toTable(tEnv, 'a, 'b, 'c, 'proctime.proctime)
+    val tmp2 = env.fromCollection(data2).toTable(tEnv, 'a, 'b, 'c, 'proctime)
     tEnv.registerTable("TmpT2", tmp2)
     val subquery2 = "SELECT IF(a = 1, CAST(NULL AS INT), a) as a, b, c, proctime FROM TmpT2"
     val t2 = tEnv.sqlQuery(subquery2)
@@ -113,8 +113,8 @@ class WindowJoinITCase(mode: StateBackendMode) extends StreamingWithStateTestBas
     data1.+=((null.asInstanceOf[String], 20L, "leftNull"))
     data2.+=((null.asInstanceOf[String], 20L, "rightNull"))
 
-    val t1 = env.fromCollection(data1).toTable(tEnv, 'a, 'b, 'c, 'proctime.proctime)
-    val t2 = env.fromCollection(data2).toTable(tEnv, 'a, 'b, 'c, 'proctime.proctime)
+    val t1 = env.fromCollection(data1).toTable(tEnv, 'a, 'b, 'c, 'proctime)
+    val t2 = env.fromCollection(data2).toTable(tEnv, 'a, 'b, 'c, 'proctime)
 
     tEnv.registerTable("T1", t1)
     tEnv.registerTable("T2", t2)
@@ -160,10 +160,10 @@ class WindowJoinITCase(mode: StateBackendMode) extends StreamingWithStateTestBas
 
     val t1 = env.fromCollection(data1)
       .assignTimestampsAndWatermarks(new Row3WatermarkExtractor2)
-      .toTable(tEnv, 'key, 'id, 'rowtime.rowtime)
+      .toTable(tEnv, 'key, 'id, 'rowtime)
     val t2 = env.fromCollection(data2)
       .assignTimestampsAndWatermarks(new Row3WatermarkExtractor2)
-      .toTable(tEnv, 'key, 'id, 'rowtime.rowtime)
+      .toTable(tEnv, 'key, 'id, 'rowtime)
 
     tEnv.registerTable("T1", t1)
     tEnv.registerTable("T2", t2)
@@ -212,10 +212,10 @@ class WindowJoinITCase(mode: StateBackendMode) extends StreamingWithStateTestBas
 
     val t1 = env.fromCollection(data1)
       .assignTimestampsAndWatermarks(new Row3WatermarkExtractor2)
-      .toTable(tEnv, 'key, 'id, 'rowtime.rowtime)
+      .toTable(tEnv, 'key, 'id, 'rowtime)
     val t2 = env.fromCollection(data2)
       .assignTimestampsAndWatermarks(new Row3WatermarkExtractor2)
-      .toTable(tEnv, 'key, 'id, 'rowtime.rowtime)
+      .toTable(tEnv, 'key, 'id, 'rowtime)
 
     tEnv.registerTable("T1", t1)
     tEnv.registerTable("T2", t2)
@@ -310,10 +310,10 @@ class WindowJoinITCase(mode: StateBackendMode) extends StreamingWithStateTestBas
 
     val t1 = env.fromCollection(data1)
       .assignTimestampsAndWatermarks(new Row4WatermarkExtractor)
-      .toTable(tEnv, 'a, 'b, 'c, 'rowtime.rowtime)
+      .toTable(tEnv, 'a, 'b, 'c, 'rowtime)
     val t2 = env.fromCollection(data2)
       .assignTimestampsAndWatermarks(new Row4WatermarkExtractor)
-      .toTable(tEnv, 'a, 'b, 'c, 'rowtime.rowtime)
+      .toTable(tEnv, 'a, 'b, 'c, 'rowtime)
 
     tEnv.registerTable("T1", t1)
     tEnv.registerTable("T2", t2)
@@ -359,10 +359,10 @@ class WindowJoinITCase(mode: StateBackendMode) extends StreamingWithStateTestBas
 
     val t1 = env.fromCollection(data1)
       .assignTimestampsAndWatermarks(new Row4WatermarkExtractor)
-      .toTable(tEnv, 'a, 'b, 'c, 'rowtime.rowtime)
+      .toTable(tEnv, 'a, 'b, 'c, 'rowtime)
     val t2 = env.fromCollection(data2)
       .assignTimestampsAndWatermarks(new Row4WatermarkExtractor)
-      .toTable(tEnv, 'a, 'b, 'c, 'rowtime.rowtime)
+      .toTable(tEnv, 'a, 'b, 'c, 'rowtime)
 
     tEnv.registerTable("T1", t1)
     tEnv.registerTable("T2", t2)
@@ -381,6 +381,7 @@ class WindowJoinITCase(mode: StateBackendMode) extends StreamingWithStateTestBas
   }
 
   /** test rowtime inner join with window aggregation **/
+  @Ignore("Enable after StreamExecWindowAggregate is merged")
   @Test
   def testRowTimeInnerJoinWithWindowAggregateOnFirstTime(): Unit = {
     val sqlQuery =
@@ -411,10 +412,10 @@ class WindowJoinITCase(mode: StateBackendMode) extends StreamingWithStateTestBas
 
     val t1 = env.fromCollection(data1)
       .assignTimestampsAndWatermarks(new Row3WatermarkExtractor2)
-      .toTable(tEnv, 'key, 'id, 'rowtime.rowtime)
+      .toTable(tEnv, 'key, 'id, 'rowtime)
     val t2 = env.fromCollection(data2)
       .assignTimestampsAndWatermarks(new Row3WatermarkExtractor2)
-      .toTable(tEnv, 'key, 'id, 'rowtime.rowtime)
+      .toTable(tEnv, 'key, 'id, 'rowtime)
 
     tEnv.registerTable("T1", t1)
     tEnv.registerTable("T2", t2)
@@ -425,15 +426,16 @@ class WindowJoinITCase(mode: StateBackendMode) extends StreamingWithStateTestBas
     result.addSink(sink)
     env.execute()
     val expected = mutable.MutableList[String](
-      "A,1970-01-01T00:00:04,3",
-      "A,1970-01-01T00:00:12,2",
-      "A,1970-01-01T00:00:16,1",
-      //"B,1970-01-01T00:00:04,1",
-      "B,1970-01-01T00:00:08,1")
+      "A,1970-01-01 00:00:04.0,3",
+      "A,1970-01-01 00:00:12.0,2",
+      "A,1970-01-01 00:00:16.0,1",
+      //"B,1970-01-01 00:00:04.0,1",
+      "B,1970-01-01 00:00:08.0,1")
     assertEquals(expected.toList.sorted, sink.getAppendResults.sorted)
   }
 
   /** test row time inner join with window aggregation **/
+  @Ignore("Enable after StreamExecWindowAggregate is merged")
   @Test
   def testRowTimeInnerJoinWithWindowAggregateOnSecondTime(): Unit = {
     val sqlQuery =
@@ -463,10 +465,10 @@ class WindowJoinITCase(mode: StateBackendMode) extends StreamingWithStateTestBas
 
     val t1 = env.fromCollection(data1)
       .assignTimestampsAndWatermarks(new Row3WatermarkExtractor2)
-      .toTable(tEnv, 'key, 'id, 'rowtime.rowtime)
+      .toTable(tEnv, 'key, 'id, 'rowtime)
     val t2 = env.fromCollection(data2)
       .assignTimestampsAndWatermarks(new Row3WatermarkExtractor2)
-      .toTable(tEnv, 'key, 'id, 'rowtime.rowtime)
+      .toTable(tEnv, 'key, 'id, 'rowtime)
 
     tEnv.registerTable("T1", t1)
     tEnv.registerTable("T2", t2)
@@ -476,9 +478,9 @@ class WindowJoinITCase(mode: StateBackendMode) extends StreamingWithStateTestBas
     result.addSink(sink)
     env.execute()
     val expected = mutable.MutableList[String](
-      "A,1970-01-01T00:00:08,3",
-      "A,1970-01-01T00:00:12,3",
-      "B,1970-01-01T00:00:08,1")
+      "A,1970-01-01 00:00:08.0,3",
+      "A,1970-01-01 00:00:12.0,3",
+      "B,1970-01-01 00:00:08.0,1")
     assertEquals(expected.toList.sorted, sink.getAppendResults.sorted)
   }
 
@@ -507,9 +509,9 @@ class WindowJoinITCase(mode: StateBackendMode) extends StreamingWithStateTestBas
     data2.+=((2, 2L, "HeHe"))
 
     val t1 = env.fromCollection(data1)
-      .toTable(tEnv, 'a, 'b, 'c, 'proctime.proctime)
+      .toTable(tEnv, 'a, 'b, 'c, 'proctime)
     val t2 = env.fromCollection(data2)
-      .toTable(tEnv, 'a, 'b, 'c, 'proctime.proctime)
+      .toTable(tEnv, 'a, 'b, 'c, 'proctime)
 
     tEnv.registerTable("T1", t1)
     tEnv.registerTable("T2", t2)
@@ -554,11 +556,11 @@ class WindowJoinITCase(mode: StateBackendMode) extends StreamingWithStateTestBas
 
     val t1 = env.fromCollection(data1)
       .assignTimestampsAndWatermarks(new Row3WatermarkExtractor2)
-      .toTable(tEnv, 'key, 'id, 'rowtime.rowtime)
+      .toTable(tEnv, 'key, 'id, 'rowtime)
 
     val t2 = env.fromCollection(data2)
       .assignTimestampsAndWatermarks(new Row3WatermarkExtractor2)
-      .toTable(tEnv, 'key, 'id, 'rowtime.rowtime)
+      .toTable(tEnv, 'key, 'id, 'rowtime)
 
     tEnv.registerTable("T1", t1)
     tEnv.registerTable("T2", t2)
@@ -608,10 +610,10 @@ class WindowJoinITCase(mode: StateBackendMode) extends StreamingWithStateTestBas
 
     val t1 = env.fromCollection(data1)
       .assignTimestampsAndWatermarks(new Row3WatermarkExtractor2)
-      .toTable(tEnv, 'key, 'id, 'rowtime.rowtime)
+      .toTable(tEnv, 'key, 'id, 'rowtime)
     val t2 = env.fromCollection(data2)
       .assignTimestampsAndWatermarks(new Row3WatermarkExtractor2)
-      .toTable(tEnv, 'key, 'id, 'rowtime.rowtime)
+      .toTable(tEnv, 'key, 'id, 'rowtime)
 
     tEnv.registerTable("T1", t1)
     tEnv.registerTable("T2", t2)
@@ -653,8 +655,8 @@ class WindowJoinITCase(mode: StateBackendMode) extends StreamingWithStateTestBas
     data2.+=((1, 1L, "HiHi"))
     data2.+=((2, 2L, "HeHe"))
 
-    val t1 = env.fromCollection(data1).toTable(tEnv, 'a, 'b, 'c, 'proctime.proctime)
-    val t2 = env.fromCollection(data2).toTable(tEnv, 'a, 'b, 'c, 'proctime.proctime)
+    val t1 = env.fromCollection(data1).toTable(tEnv, 'a, 'b, 'c, 'proctime)
+    val t2 = env.fromCollection(data2).toTable(tEnv, 'a, 'b, 'c, 'proctime)
 
     tEnv.registerTable("T1", t1)
     tEnv.registerTable("T2", t2)
@@ -697,10 +699,10 @@ class WindowJoinITCase(mode: StateBackendMode) extends StreamingWithStateTestBas
 
     val t1 = env.fromCollection(data1)
       .assignTimestampsAndWatermarks(new Row3WatermarkExtractor2)
-      .toTable(tEnv, 'key, 'id, 'rowtime.rowtime)
+      .toTable(tEnv, 'key, 'id, 'rowtime)
     val t2 = env.fromCollection(data2)
       .assignTimestampsAndWatermarks(new Row3WatermarkExtractor2)
-      .toTable(tEnv, 'key, 'id, 'rowtime.rowtime)
+      .toTable(tEnv, 'key, 'id, 'rowtime)
 
     tEnv.registerTable("T1", t1)
     tEnv.registerTable("T2", t2)
@@ -748,10 +750,10 @@ class WindowJoinITCase(mode: StateBackendMode) extends StreamingWithStateTestBas
 
     val t1 = env.fromCollection(data1)
       .assignTimestampsAndWatermarks(new Row3WatermarkExtractor2)
-      .toTable(tEnv, 'key, 'id, 'rowtime.rowtime)
+      .toTable(tEnv, 'key, 'id, 'rowtime)
     val t2 = env.fromCollection(data2)
       .assignTimestampsAndWatermarks(new Row3WatermarkExtractor2)
-      .toTable(tEnv, 'key, 'id, 'rowtime.rowtime)
+      .toTable(tEnv, 'key, 'id, 'rowtime)
 
     tEnv.registerTable("T1", t1)
     tEnv.registerTable("T2", t2)
@@ -793,8 +795,8 @@ class WindowJoinITCase(mode: StateBackendMode) extends StreamingWithStateTestBas
     data2.+=((1, 1L, "HiHi"))
     data2.+=((2, 2L, "HeHe"))
 
-    val t1 = env.fromCollection(data1).toTable(tEnv, 'a, 'b, 'c, 'proctime.proctime)
-    val t2 = env.fromCollection(data2).toTable(tEnv, 'a, 'b, 'c, 'proctime.proctime)
+    val t1 = env.fromCollection(data1).toTable(tEnv, 'a, 'b, 'c, 'proctime)
+    val t2 = env.fromCollection(data2).toTable(tEnv, 'a, 'b, 'c, 'proctime)
 
     tEnv.registerTable("T1", t1)
     tEnv.registerTable("T2", t2)
@@ -837,10 +839,10 @@ class WindowJoinITCase(mode: StateBackendMode) extends StreamingWithStateTestBas
 
     val t1 = env.fromCollection(data1)
       .assignTimestampsAndWatermarks(new Row3WatermarkExtractor2)
-      .toTable(tEnv, 'key, 'id, 'rowtime.rowtime)
+      .toTable(tEnv, 'key, 'id, 'rowtime)
     val t2 = env.fromCollection(data2)
       .assignTimestampsAndWatermarks(new Row3WatermarkExtractor2)
-      .toTable(tEnv, 'key, 'id, 'rowtime.rowtime)
+      .toTable(tEnv, 'key, 'id, 'rowtime)
 
     tEnv.registerTable("T1", t1)
     tEnv.registerTable("T2", t2)
@@ -890,10 +892,10 @@ class WindowJoinITCase(mode: StateBackendMode) extends StreamingWithStateTestBas
 
     val t1 = env.fromCollection(data1)
       .assignTimestampsAndWatermarks(new Row3WatermarkExtractor2)
-      .toTable(tEnv, 'key, 'id, 'rowtime.rowtime)
+      .toTable(tEnv, 'key, 'id, 'rowtime)
     val t2 = env.fromCollection(data2)
       .assignTimestampsAndWatermarks(new Row3WatermarkExtractor2)
-      .toTable(tEnv, 'key, 'id, 'rowtime.rowtime)
+      .toTable(tEnv, 'key, 'id, 'rowtime)
 
     tEnv.registerTable("T1", t1)
     tEnv.registerTable("T2", t2)

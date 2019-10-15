@@ -32,14 +32,6 @@ import scala.collection.JavaConverters._
 
 object FlinkBatchRuleSets {
 
-  val SEMI_JOIN_RULES: RuleSet = RuleSets.ofList(
-    SimplifyFilterConditionRule.EXTENDED,
-    FlinkRewriteSubQueryRule.FILTER,
-    FlinkSubQueryRemoveRule.FILTER,
-    JoinConditionTypeCoerceRule.INSTANCE,
-    FlinkJoinPushExpressionsRule.INSTANCE
-  )
-
   /**
     * Convert sub-queries before query decorrelation.
     */
@@ -48,18 +40,6 @@ object FlinkBatchRuleSets {
     SubQueryRemoveRule.PROJECT,
     SubQueryRemoveRule.JOIN
   )
-
-  /**
-    * Expand plan by replacing references to tables into a proper plan sub trees. Those rules
-    * can create new plan nodes.
-    */
-  val EXPAND_PLAN_RULES: RuleSet = RuleSets.ofList(
-    LogicalCorrelateToJoinFromTemporalTableRule.WITH_FILTER,
-    LogicalCorrelateToJoinFromTemporalTableRule.WITHOUT_FILTER,
-    TableScanRule.INSTANCE)
-
-  val POST_EXPAND_CLEAN_UP_RULES: RuleSet = RuleSets.ofList(
-    EnumerableToLogicalTableScan.INSTANCE)
 
   /**
     * Convert table references before query decorrelation.
@@ -80,33 +60,10 @@ object FlinkBatchRuleSets {
   )
 
   /**
-    * RuleSet to rewrite coalesce to case when
-    */
-  private val REWRITE_COALESCE_RULES: RuleSet = RuleSets.ofList(
-    // rewrite coalesce to case when
-    RewriteCoalesceRule.FILTER_INSTANCE,
-    RewriteCoalesceRule.PROJECT_INSTANCE,
-    RewriteCoalesceRule.JOIN_INSTANCE,
-    RewriteCoalesceRule.CALC_INSTANCE
-  )
-
-  /**
-    * RuleSet to simplify predicate expressions in filters and joins
-    */
-  private val PREDICATE_SIMPLIFY_EXPRESSION_RULES: RuleSet = RuleSets.ofList(
-    SimplifyFilterConditionRule.INSTANCE,
-    SimplifyJoinConditionRule.INSTANCE,
-    JoinConditionTypeCoerceRule.INSTANCE,
-    JoinPushExpressionsRule.INSTANCE
-  )
-
-  /**
     * RuleSet to normalize plans for batch
     */
   val DEFAULT_REWRITE_RULES: RuleSet = RuleSets.ofList((
-    PREDICATE_SIMPLIFY_EXPRESSION_RULES.asScala ++
-      REWRITE_COALESCE_RULES.asScala ++
-      REDUCE_EXPRESSION_RULES.asScala ++
+    REDUCE_EXPRESSION_RULES.asScala ++
       List(
         // Transform window to LogicalWindowAggregate
         BatchLogicalWindowAggregateRule.INSTANCE,
@@ -117,12 +74,7 @@ object FlinkBatchRuleSets {
         //ensure intersect set operator have the same row type
         new CoerceInputsRule(classOf[LogicalIntersect], false),
         //ensure except set operator have the same row type
-        new CoerceInputsRule(classOf[LogicalMinus], false),
-        ConvertToNotInOrInRule.INSTANCE,
-        // optimize limit 0
-        FlinkLimit0RemoveRule.INSTANCE,
-        // unnest rule
-        LogicalUnnestRule.INSTANCE
+        new CoerceInputsRule(classOf[LogicalMinus], false)
       )).asJava)
 
   /**
@@ -130,9 +82,9 @@ object FlinkBatchRuleSets {
     */
   private val FILTER_RULES: RuleSet = RuleSets.ofList(
     // push a filter into a join
-    FlinkFilterJoinRule.FILTER_ON_JOIN,
+    FilterJoinRule.FILTER_ON_JOIN,
     // push filter into the children of a join
-    FlinkFilterJoinRule.JOIN,
+    FilterJoinRule.JOIN,
     // push filter through an aggregation
     FilterAggregateTransposeRule.INSTANCE,
     // push a filter past a project
@@ -141,31 +93,14 @@ object FlinkBatchRuleSets {
     FilterMergeRule.INSTANCE
   )
 
-  val JOIN_PREDICATE_REWRITE_RULES: RuleSet = RuleSets.ofList(
-    JoinDependentConditionDerivationRule.INSTANCE,
-    JoinDeriveNullFilterRule.INSTANCE
-  )
-
   /**
     * RuleSet to do predicate pushdown
     */
   val FILTER_PREPARE_RULES: RuleSet = RuleSets.ofList((
     FILTER_RULES.asScala
-      // simplify predicate expressions in filters and joins
-      ++ PREDICATE_SIMPLIFY_EXPRESSION_RULES.asScala
       // reduce expressions in filters and joins
       ++ REDUCE_EXPRESSION_RULES.asScala
     ).asJava
-  )
-
-  /**
-    * RuleSet to do push predicate/partition into table scan
-    */
-  val FILTER_TABLESCAN_PUSHDOWN_RULES: RuleSet = RuleSets.ofList(
-    // push a filter down into the table scan
-    PushFilterIntoTableSourceScanRule.INSTANCE,
-    // push partition into the table scan
-    PushPartitionIntoTableSourceScanRule.INSTANCE
   )
 
   /**
@@ -175,7 +110,7 @@ object FlinkBatchRuleSets {
     PruneEmptyRules.AGGREGATE_INSTANCE,
     PruneEmptyRules.FILTER_INSTANCE,
     PruneEmptyRules.JOIN_LEFT_INSTANCE,
-    FlinkPruneEmptyRules.JOIN_RIGHT_INSTANCE,
+    PruneEmptyRules.JOIN_RIGHT_INSTANCE,
     PruneEmptyRules.PROJECT_INSTANCE,
     PruneEmptyRules.SORT_INSTANCE,
     PruneEmptyRules.UNION_INSTANCE
@@ -187,12 +122,9 @@ object FlinkBatchRuleSets {
   val PROJECT_RULES: RuleSet = RuleSets.ofList(
     // push a projection past a filter
     ProjectFilterTransposeRule.INSTANCE,
-    // push a projection to the children of a non semi/anti join
+    // push a projection to the children of a join
     // push all expressions to handle the time indicator correctly
-    new FlinkProjectJoinTransposeRule(
-      PushProjector.ExprCondition.FALSE, RelFactories.LOGICAL_BUILDER),
-    // push a projection to the children of a semi/anti Join
-    ProjectSemiAntiJoinTransposeRule.INSTANCE,
+    new ProjectJoinTransposeRule(PushProjector.ExprCondition.FALSE, RelFactories.LOGICAL_BUILDER),
     // merge projections
     ProjectMergeRule.INSTANCE,
     // remove identity project
@@ -200,41 +132,16 @@ object FlinkBatchRuleSets {
     // reorder sort and projection
     ProjectSortTransposeRule.INSTANCE,
     //removes constant keys from an Agg
-    AggregateProjectPullUpConstantsRule.INSTANCE,
-    // push project through a Union
-    ProjectSetOpTransposeRule.INSTANCE
+    AggregateProjectPullUpConstantsRule.INSTANCE
   )
 
   val WINDOW_RULES: RuleSet = RuleSets.ofList(
     // slices a project into sections which contain window agg functions and sections which do not.
     ProjectToWindowRule.PROJECT,
-    //adjust the sequence of window's groups.
-    WindowGroupReorderRule.INSTANCE,
+    // TODO add ExchangeWindowGroupRule
     // Transform window to LogicalWindowAggregate
     WindowPropertiesRules.WINDOW_PROPERTIES_RULE,
     WindowPropertiesRules.WINDOW_PROPERTIES_HAVING_RULE
-  )
-
-  val JOIN_COND_EQUAL_TRANSFER_RULES: RuleSet = RuleSets.ofList((
-    RuleSets.ofList(JoinConditionEqualityTransferRule.INSTANCE).asScala ++
-      PREDICATE_SIMPLIFY_EXPRESSION_RULES.asScala ++
-      FILTER_RULES.asScala
-    ).asJava)
-
-  val JOIN_REORDER_PERPARE_RULES: RuleSet = RuleSets.ofList(
-    // merge join to MultiJoin
-    JoinToMultiJoinRule.INSTANCE,
-    // merge project to MultiJoin
-    ProjectMultiJoinMergeRule.INSTANCE,
-    // merge filter to MultiJoin
-    FilterMultiJoinMergeRule.INSTANCE
-  )
-
-  val JOIN_REORDER_RULES: RuleSet = RuleSets.ofList(
-    // equi-join predicates transfer
-    RewriteMultiJoinConditionRule.INSTANCE,
-    // join reorder
-    LoptOptimizeJoinRule.INSTANCE
   )
 
   /**
@@ -242,31 +149,24 @@ object FlinkBatchRuleSets {
     * This RuleSet is a sub-set of [[LOGICAL_OPT_RULES]].
     */
   private val LOGICAL_RULES: RuleSet = RuleSets.ofList(
-    // scan optimization
-    PushProjectIntoTableSourceScanRule.INSTANCE,
-    PushFilterIntoTableSourceScanRule.INSTANCE,
-
+    // aggregation and projection rules
+    AggregateProjectMergeRule.INSTANCE,
+    AggregateProjectPullUpConstantsRule.INSTANCE,
     // reorder sort and projection
     SortProjectTransposeRule.INSTANCE,
-    // remove unnecessary sort rule
-    SortRemoveRule.INSTANCE,
 
     // join rules
-    FlinkJoinPushExpressionsRule.INSTANCE,
+    JoinPushExpressionsRule.INSTANCE,
 
     // remove union with only a single child
     UnionEliminatorRule.INSTANCE,
     // convert non-all union into all-union + distinct
     UnionToDistinctRule.INSTANCE,
 
-    // aggregation and projection rules
-    AggregateProjectMergeRule.INSTANCE,
-    AggregateProjectPullUpConstantsRule.INSTANCE,
-
     // remove aggregation if it does not aggregate and input is already distinct
-    FlinkAggregateRemoveRule.INSTANCE,
+    AggregateRemoveRule.INSTANCE,
     // push aggregate through join
-    FlinkAggregateJoinTransposeRule.EXTENDED,
+    AggregateJoinTransposeRule.EXTENDED,
     // aggregate union rule
     AggregateUnionAggregateRule.INSTANCE,
     // expand distinct aggregate to normal aggregate with groupby
@@ -276,39 +176,21 @@ object FlinkBatchRuleSets {
     AggregateReduceFunctionsRule.INSTANCE,
     WindowAggregateReduceFunctionsRule.INSTANCE,
 
-    // reduce group by columns
-    AggregateReduceGroupingRule.INSTANCE,
-    // reduce useless aggCall
-    PruneAggregateCallRule.PROJECT_ON_AGGREGATE,
-    PruneAggregateCallRule.CALC_ON_AGGREGATE,
-
     // expand grouping sets
     DecomposeGroupingSetsRule.INSTANCE,
 
+    // remove unnecessary sort rule
+    SortRemoveRule.INSTANCE,
+
     // rank rules
     FlinkLogicalRankRule.CONSTANT_RANGE_INSTANCE,
-    // transpose calc past rank to reduce rank input fields
-    CalcRankTransposeRule.INSTANCE,
-    // remove output of rank number when it is a constant
-    RankNumberColumnRemoveRule.INSTANCE,
 
     // calc rules
     FilterCalcMergeRule.INSTANCE,
     ProjectCalcMergeRule.INSTANCE,
     FilterToCalcRule.INSTANCE,
     ProjectToCalcRule.INSTANCE,
-    FlinkCalcMergeRule.INSTANCE,
-
-    // semi/anti join transpose rule
-    FlinkSemiAntiJoinJoinTransposeRule.INSTANCE,
-    FlinkSemiAntiJoinProjectTransposeRule.INSTANCE,
-    FlinkSemiAntiJoinFilterTransposeRule.INSTANCE,
-
-    // set operators
-    ReplaceIntersectWithSemiJoinRule.INSTANCE,
-    RewriteIntersectAllRule.INSTANCE,
-    ReplaceMinusWithAntiJoinRule.INSTANCE,
-    RewriteMinusAllRule.INSTANCE
+    CalcMergeRule.INSTANCE
   )
 
   /**
@@ -316,7 +198,7 @@ object FlinkBatchRuleSets {
     */
   private val LOGICAL_CONVERTERS: RuleSet = RuleSets.ofList(
     FlinkLogicalAggregate.BATCH_CONVERTER,
-    FlinkLogicalOverAggregate.CONVERTER,
+    FlinkLogicalOverWindow.CONVERTER,
     FlinkLogicalCalc.CONVERTER,
     FlinkLogicalCorrelate.CONVERTER,
     FlinkLogicalJoin.CONVERTER,
@@ -326,11 +208,9 @@ object FlinkBatchRuleSets {
     FlinkLogicalTableSourceScan.CONVERTER,
     FlinkLogicalTableFunctionScan.CONVERTER,
     FlinkLogicalDataStreamTableScan.CONVERTER,
-    FlinkLogicalIntermediateTableScan.CONVERTER,
     FlinkLogicalExpand.CONVERTER,
     FlinkLogicalRank.CONVERTER,
     FlinkLogicalWindowAggregate.CONVERTER,
-    FlinkLogicalSnapshot.CONVERTER,
     FlinkLogicalSink.CONVERTER
   )
 
@@ -346,59 +226,29 @@ object FlinkBatchRuleSets {
     ).asJava)
 
   /**
-    * RuleSet to do rewrite on FlinkLogicalRel for batch
-    */
-  val LOGICAL_REWRITE: RuleSet = RuleSets.ofList(
-    // transpose calc past snapshot
-    CalcSnapshotTransposeRule.INSTANCE,
-    // merge calc after calc transpose
-    FlinkCalcMergeRule.INSTANCE
-  )
-
-  /**
     * RuleSet to do physical optimize for batch
     */
   val PHYSICAL_OPT_RULES: RuleSet = RuleSets.ofList(
     FlinkExpandConversionRule.BATCH_INSTANCE,
-    // source
     BatchExecBoundedStreamScanRule.INSTANCE,
     BatchExecScanTableSourceRule.INSTANCE,
-    BatchExecIntermediateTableScanRule.INSTANCE,
     BatchExecValuesRule.INSTANCE,
-    // calc
     BatchExecCalcRule.INSTANCE,
-    // union
     BatchExecUnionRule.INSTANCE,
-    // sort
     BatchExecSortRule.INSTANCE,
     BatchExecLimitRule.INSTANCE,
     BatchExecSortLimitRule.INSTANCE,
-    // rank
     BatchExecRankRule.INSTANCE,
-    RemoveRedundantLocalRankRule.INSTANCE,
-    // expand
     BatchExecExpandRule.INSTANCE,
-    // group agg
     BatchExecHashAggRule.INSTANCE,
     BatchExecSortAggRule.INSTANCE,
-    RemoveRedundantLocalSortAggRule.WITHOUT_SORT,
-    RemoveRedundantLocalSortAggRule.WITH_SORT,
-    RemoveRedundantLocalHashAggRule.INSTANCE,
-    // over agg
-    BatchExecOverAggregateRule.INSTANCE,
-    // window agg
-    BatchExecWindowAggregateRule.INSTANCE,
-    // join
     BatchExecHashJoinRule.INSTANCE,
     BatchExecSortMergeJoinRule.INSTANCE,
     BatchExecNestedLoopJoinRule.INSTANCE,
     BatchExecSingleRowJoinRule.INSTANCE,
-    BatchExecLookupJoinRule.SNAPSHOT_ON_TABLESCAN,
-    BatchExecLookupJoinRule.SNAPSHOT_ON_CALC_TABLESCAN,
-    // correlate
-    BatchExecConstantTableFunctionScanRule.INSTANCE,
     BatchExecCorrelateRule.INSTANCE,
-    // sink
+    BatchExecOverWindowAggRule.INSTANCE,
+    BatchExecWindowAggregateRule.INSTANCE,
     BatchExecSinkRule.INSTANCE
   )
 }

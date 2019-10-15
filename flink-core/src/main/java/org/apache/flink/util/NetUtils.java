@@ -69,36 +69,15 @@ public class NetUtils {
 	}
 
 	/**
-	 * Converts a string of the form "host:port" into an {@link URL}.
-	 *
-	 * @param hostPort The "host:port" string.
-	 * @return The converted URL.
-	 */
-	public static URL getCorrectHostnamePort(String hostPort) {
-		return validateHostPortString(hostPort);
-	}
-
-	/**
-	 * Converts a string of the form "host:port" into an {@link InetSocketAddress}.
-	 *
-	 * @param hostPort The "host:port" string.
-	 * @return The converted InetSocketAddress.
-	 */
-	public static InetSocketAddress parseHostPortAddress(String hostPort) {
-		URL url = validateHostPortString(hostPort);
-		return new InetSocketAddress(url.getHost(), url.getPort());
-	}
-
-	/**
-	 * Validates if the given String represents a hostname:port.
+	 * Method to validate if the given String represents a hostname:port.
 	 *
 	 * <p>Works also for ipv6.
 	 *
 	 * <p>See: http://stackoverflow.com/questions/2345063/java-common-way-to-validate-and-convert-hostport-to-inetsocketaddress
 	 *
-	 * @return URL object for accessing host and port
+	 * @return URL object for accessing host and Port
 	 */
-	private static URL validateHostPortString(String hostPort) {
+	public static URL getCorrectHostnamePort(String hostPort) {
 		try {
 			URL u = new URL("http://" + hostPort);
 			if (u.getHost() == null) {
@@ -155,12 +134,6 @@ public class NetUtils {
 			host = InetAddress.getLoopbackAddress().getHostAddress();
 		} else {
 			host = host.trim().toLowerCase();
-			if (host.startsWith("[") && host.endsWith("]")) {
-				String address = host.substring(1, host.length() - 1);
-				if (IPAddressUtil.isIPv6LiteralAddress(address)) {
-					host = address;
-				}
-			}
 		}
 
 		// normalize and valid address

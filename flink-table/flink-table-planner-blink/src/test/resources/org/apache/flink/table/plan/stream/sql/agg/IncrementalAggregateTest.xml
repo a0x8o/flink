@@ -32,7 +32,7 @@ GROUP BY a
       <![CDATA[
 LogicalAggregate(group=[{0}], EXPR$1=[COUNT(DISTINCT $1) FILTER $2], EXPR$2=[SUM($1) FILTER $3], EXPR$3=[SUM($1) FILTER $2])
 +- LogicalProject(a=[$0], b=[$1], $f2=[IS TRUE(<>($1, 2))], $f3=[IS TRUE(<>($1, 5))])
-   +- LogicalTableScan(table=[[default_catalog, default_database, MyTable, source: [TestTableSource(a, b, c)]]])
+   +- LogicalTableScan(table=[[MyTable, source: [TestTableSource(a, b, c)]]])
 ]]>
     </Resource>
     <Resource name="planAfter">
@@ -44,9 +44,9 @@ GlobalGroupAggregate(groupBy=[a], partialFinalType=[FINAL], select=[a, $SUM0(cou
          +- LocalGroupAggregate(groupBy=[a, $f4], partialFinalType=[PARTIAL], select=[a, $f4, COUNT(distinct$0 b) FILTER $g_0 AS count$0, SUM(b) FILTER $g_1 AS sum$1, SUM(b) FILTER $g_10 AS sum$2, DISTINCT(b) AS distinct$0])
             +- Calc(select=[a, b, $f2, $f3, $f4, AND(=($e, 0), $f2) AS $g_0, AND(=($e, 1), $f3) AS $g_1, AND(=($e, 1), $f2) AS $g_10])
                +- Expand(projects=[{a=[$0], b=[$1], $f2=[$2], $f3=[$3], $f4=[$4], $e=[0]}, {a=[$0], b=[$1], $f2=[$2], $f3=[$3], $f4=[null], $e=[1]}])
-                  +- Calc(select=[a, b, IS TRUE(<>(b, 2:BIGINT)) AS $f2, IS TRUE(<>(b, 5:BIGINT)) AS $f3, MOD(HASH_CODE(b), 1024) AS $f4])
-                     +- WatermarkAssigner(fields=[a, b, c], miniBatchInterval=[Proctime, 1000ms])
-                        +- TableSourceScan(table=[[default_catalog, default_database, MyTable, source: [TestTableSource(a, b, c)]]], fields=[a, b, c])
+                  +- Calc(select=[a, b, $f2, $f3, MOD(HASH_CODE(b), 1024) AS $f4])
+                     +- Calc(select=[a, b, IS TRUE(<>(b, 2:BIGINT)) AS $f2, IS TRUE(<>(b, 5:BIGINT)) AS $f3])
+                        +- TableSourceScan(table=[[MyTable, source: [TestTableSource(a, b, c)]]], fields=[a, b, c])
 ]]>
     </Resource>
   </TestCase>
@@ -69,7 +69,7 @@ LogicalAggregate(group=[{0}], EXPR$1=[FIRST_VALUE($1)], EXPR$2=[LAST_VALUE($1)],
 +- LogicalProject(b=[$1], c=[$2])
    +- LogicalAggregate(group=[{0}], b=[COUNT(DISTINCT $1)], c=[MAX($1)])
       +- LogicalProject(a=[$0], b=[$1])
-         +- LogicalTableScan(table=[[default_catalog, default_database, MyTable, source: [TestTableSource(a, b, c)]]])
+         +- LogicalTableScan(table=[[MyTable, source: [TestTableSource(a, b, c)]]])
 ]]>
     </Resource>
     <Resource name="planAfter">
@@ -79,14 +79,15 @@ GroupAggregate(groupBy=[b], partialFinalType=[FINAL], select=[b, FIRST_VALUE_RET
    +- GroupAggregate(groupBy=[b, $f2], partialFinalType=[PARTIAL], select=[b, $f2, FIRST_VALUE_RETRACT(c) AS $f2_0, LAST_VALUE_RETRACT(c) AS $f3, COUNT_RETRACT(DISTINCT c) AS $f4], updateAsRetraction=[true], accMode=[AccRetract])
       +- Exchange(distribution=[hash[b, $f2]], updateAsRetraction=[true], accMode=[AccRetract])
          +- Calc(select=[b, c, MOD(HASH_CODE(c), 1024) AS $f2], updateAsRetraction=[true], accMode=[AccRetract])
-            +- GlobalGroupAggregate(groupBy=[a], partialFinalType=[FINAL], select=[a, $SUM0(count$0) AS $f1, MAX(max$1) AS $f2], updateAsRetraction=[true], accMode=[AccRetract])
-               +- Exchange(distribution=[hash[a]], updateAsRetraction=[true], accMode=[Acc])
-                  +- IncrementalGroupAggregate(partialAggGrouping=[a, $f2], finalAggGrouping=[a], select=[a, COUNT(distinct$0 count$0) AS count$0, MAX(max$1) AS max$1], updateAsRetraction=[true], accMode=[Acc])
-                     +- Exchange(distribution=[hash[a, $f2]], updateAsRetraction=[true], accMode=[Acc])
-                        +- LocalGroupAggregate(groupBy=[a, $f2], partialFinalType=[PARTIAL], select=[a, $f2, COUNT(distinct$0 b) AS count$0, MAX(b) AS max$1, DISTINCT(b) AS distinct$0], updateAsRetraction=[true], accMode=[Acc])
-                           +- Calc(select=[a, b, MOD(HASH_CODE(b), 1024) AS $f2], updateAsRetraction=[true], accMode=[Acc])
-                              +- WatermarkAssigner(fields=[a, b, c], miniBatchInterval=[Proctime, 1000ms], updateAsRetraction=[true], accMode=[Acc])
-                                 +- TableSourceScan(table=[[default_catalog, default_database, MyTable, source: [TestTableSource(a, b, c)]]], fields=[a, b, c], updateAsRetraction=[true], accMode=[Acc])
+            +- Calc(select=[b, c], updateAsRetraction=[true], accMode=[AccRetract])
+               +- GlobalGroupAggregate(groupBy=[a], partialFinalType=[FINAL], select=[a, $SUM0(count$0) AS $f1, MAX(max$1) AS $f2], updateAsRetraction=[true], accMode=[AccRetract])
+                  +- Exchange(distribution=[hash[a]], updateAsRetraction=[true], accMode=[Acc])
+                     +- IncrementalGroupAggregate(partialAggGrouping=[a, $f2], finalAggGrouping=[a], select=[a, COUNT(distinct$0 count$0) AS count$0, MAX(max$1) AS max$1], updateAsRetraction=[true], accMode=[Acc])
+                        +- Exchange(distribution=[hash[a, $f2]], updateAsRetraction=[true], accMode=[Acc])
+                           +- LocalGroupAggregate(groupBy=[a, $f2], partialFinalType=[PARTIAL], select=[a, $f2, COUNT(distinct$0 b) AS count$0, MAX(b) AS max$1, DISTINCT(b) AS distinct$0], updateAsRetraction=[true], accMode=[Acc])
+                              +- Calc(select=[a, b, MOD(HASH_CODE(b), 1024) AS $f2], updateAsRetraction=[true], accMode=[Acc])
+                                 +- Calc(select=[a, b], updateAsRetraction=[true], accMode=[Acc])
+                                    +- TableSourceScan(table=[[MyTable, source: [TestTableSource(a, b, c)]]], fields=[a, b, c], updateAsRetraction=[true], accMode=[Acc])
 ]]>
     </Resource>
   </TestCase>
@@ -108,7 +109,7 @@ FROM(
 LogicalAggregate(group=[{0}], EXPR$1=[MIN($1)], EXPR$2=[MAX($1)], EXPR$3=[SUM($1)], EXPR$4=[COUNT()], EXPR$5=[COUNT(DISTINCT $2)])
 +- LogicalProject(c=[$2], b=[$1], a=[$0])
    +- LogicalAggregate(group=[{0}], b=[AVG($1)], c=[MAX($2)])
-      +- LogicalTableScan(table=[[default_catalog, default_database, MyTable, source: [TestTableSource(a, b, c)]]])
+      +- LogicalTableScan(table=[[MyTable, source: [TestTableSource(a, b, c)]]])
 ]]>
     </Resource>
     <Resource name="planAfter">
@@ -124,8 +125,7 @@ GlobalGroupAggregate(groupBy=[c], partialFinalType=[FINAL], select=[c, MIN_RETRA
                      +- GlobalGroupAggregate(groupBy=[a], select=[a, AVG((sum$0, count$1)) AS b, MAX(max$2) AS c], updateAsRetraction=[true], accMode=[AccRetract])
                         +- Exchange(distribution=[hash[a]], updateAsRetraction=[true], accMode=[Acc])
                            +- LocalGroupAggregate(groupBy=[a], select=[a, AVG(b) AS (sum$0, count$1), MAX(c) AS max$2], updateAsRetraction=[true], accMode=[Acc])
-                              +- WatermarkAssigner(fields=[a, b, c], miniBatchInterval=[Proctime, 1000ms], updateAsRetraction=[true], accMode=[Acc])
-                                 +- TableSourceScan(table=[[default_catalog, default_database, MyTable, source: [TestTableSource(a, b, c)]]], fields=[a, b, c], updateAsRetraction=[true], accMode=[Acc])
+                              +- TableSourceScan(table=[[MyTable, source: [TestTableSource(a, b, c)]]], fields=[a, b, c], updateAsRetraction=[true], accMode=[Acc])
 ]]>
     </Resource>
   </TestCase>
@@ -137,7 +137,7 @@ GlobalGroupAggregate(groupBy=[c], partialFinalType=[FINAL], select=[c, MIN_RETRA
       <![CDATA[
 LogicalAggregate(group=[{}], EXPR$0=[COUNT(DISTINCT $0)], EXPR$1=[SUM(DISTINCT $1)])
 +- LogicalProject(a=[$0], b=[$1])
-   +- LogicalTableScan(table=[[default_catalog, default_database, MyTable, source: [TestTableSource(a, b, c)]]])
+   +- LogicalTableScan(table=[[MyTable, source: [TestTableSource(a, b, c)]]])
 ]]>
     </Resource>
     <Resource name="planAfter">
@@ -150,8 +150,8 @@ GlobalGroupAggregate(partialFinalType=[FINAL], select=[$SUM0(count$0) AS $f0, SU
             +- Calc(select=[a, b, $f2, $f3, =($e, 1) AS $g_1, =($e, 2) AS $g_2])
                +- Expand(projects=[{a=[$0], b=[$1], $f2=[$2], $f3=[null], $e=[1]}, {a=[$0], b=[$1], $f2=[null], $f3=[$3], $e=[2]}])
                   +- Calc(select=[a, b, MOD(HASH_CODE(a), 1024) AS $f2, MOD(HASH_CODE(b), 1024) AS $f3])
-                     +- WatermarkAssigner(fields=[a, b, c], miniBatchInterval=[Proctime, 1000ms])
-                        +- TableSourceScan(table=[[default_catalog, default_database, MyTable, source: [TestTableSource(a, b, c)]]], fields=[a, b, c])
+                     +- Calc(select=[a, b])
+                        +- TableSourceScan(table=[[MyTable, source: [TestTableSource(a, b, c)]]], fields=[a, b, c])
 ]]>
     </Resource>
   </TestCase>
@@ -173,7 +173,7 @@ FROM(
 LogicalAggregate(group=[{0}], EXPR$1=[MIN($1)], EXPR$2=[MAX($1)], EXPR$3=[SUM($1)], EXPR$4=[COUNT()], EXPR$5=[COUNT(DISTINCT $2)])
 +- LogicalProject(c=[$2], b=[$1], a=[$0])
    +- LogicalAggregate(group=[{0}], b=[AVG($1)], c=[MAX($2)])
-      +- LogicalTableScan(table=[[default_catalog, default_database, MyTable, source: [TestTableSource(a, b, c)]]])
+      +- LogicalTableScan(table=[[MyTable, source: [TestTableSource(a, b, c)]]])
 ]]>
     </Resource>
     <Resource name="planAfter">
@@ -189,8 +189,7 @@ GlobalGroupAggregate(groupBy=[c], partialFinalType=[FINAL], select=[c, MIN_RETRA
                      +- GlobalGroupAggregate(groupBy=[a], select=[a, AVG((sum$0, count$1)) AS b, MAX(max$2) AS c])
                         +- Exchange(distribution=[hash[a]])
                            +- LocalGroupAggregate(groupBy=[a], select=[a, AVG(b) AS (sum$0, count$1), MAX(c) AS max$2])
-                              +- WatermarkAssigner(fields=[a, b, c], miniBatchInterval=[Proctime, 1000ms])
-                                 +- TableSourceScan(table=[[default_catalog, default_database, MyTable, source: [TestTableSource(a, b, c)]]], fields=[a, b, c])
+                              +- TableSourceScan(table=[[MyTable, source: [TestTableSource(a, b, c)]]], fields=[a, b, c])
 ]]>
     </Resource>
   </TestCase>
@@ -202,7 +201,7 @@ GlobalGroupAggregate(groupBy=[c], partialFinalType=[FINAL], select=[c, MIN_RETRA
       <![CDATA[
 LogicalAggregate(group=[{0}], EXPR$1=[CONCAT_AGG($1)], EXPR$2=[COUNT(DISTINCT $2)])
 +- LogicalProject(a=[$0], c=[$2], b=[$1])
-   +- LogicalTableScan(table=[[default_catalog, default_database, MyTable, source: [TestTableSource(a, b, c)]]])
+   +- LogicalTableScan(table=[[MyTable, source: [TestTableSource(a, b, c)]]])
 ]]>
     </Resource>
     <Resource name="planAfter">
@@ -215,8 +214,7 @@ GlobalGroupAggregate(groupBy=[a], partialFinalType=[FINAL], select=[a, CONCAT_AG
             +- Calc(select=[a, b, c, $f3, =($e, 1) AS $g_1, =($e, 0) AS $g_0])
                +- Expand(projects=[{a=[$0], b=[$1], c=[$2], $f3=[$3], $e=[0]}, {a=[$0], b=[$1], c=[$2], $f3=[null], $e=[1]}])
                   +- Calc(select=[a, b, c, MOD(HASH_CODE(b), 1024) AS $f3])
-                     +- WatermarkAssigner(fields=[a, b, c], miniBatchInterval=[Proctime, 1000ms])
-                        +- TableSourceScan(table=[[default_catalog, default_database, MyTable, source: [TestTableSource(a, b, c)]]], fields=[a, b, c])
+                     +- TableSourceScan(table=[[MyTable, source: [TestTableSource(a, b, c)]]], fields=[a, b, c])
 ]]>
     </Resource>
   </TestCase>
@@ -228,7 +226,7 @@ GlobalGroupAggregate(groupBy=[a], partialFinalType=[FINAL], select=[a, CONCAT_AG
       <![CDATA[
 LogicalAggregate(group=[{}], EXPR$0=[COUNT(DISTINCT $0)])
 +- LogicalProject(c=[$2])
-   +- LogicalTableScan(table=[[default_catalog, default_database, MyTable, source: [TestTableSource(a, b, c)]]])
+   +- LogicalTableScan(table=[[MyTable, source: [TestTableSource(a, b, c)]]])
 ]]>
     </Resource>
     <Resource name="planAfter">
@@ -239,8 +237,8 @@ GlobalGroupAggregate(partialFinalType=[FINAL], select=[$SUM0(count$0) AS $f0])
       +- Exchange(distribution=[hash[$f1]])
          +- LocalGroupAggregate(groupBy=[$f1], partialFinalType=[PARTIAL], select=[$f1, COUNT(distinct$0 c) AS count$0, DISTINCT(c) AS distinct$0])
             +- Calc(select=[c, MOD(HASH_CODE(c), 1024) AS $f1])
-               +- WatermarkAssigner(fields=[a, b, c], miniBatchInterval=[Proctime, 1000ms])
-                  +- TableSourceScan(table=[[default_catalog, default_database, MyTable, source: [TestTableSource(a, b, c)]]], fields=[a, b, c])
+               +- Calc(select=[c])
+                  +- TableSourceScan(table=[[MyTable, source: [TestTableSource(a, b, c)]]], fields=[a, b, c])
 ]]>
     </Resource>
   </TestCase>
@@ -256,7 +254,7 @@ GROUP BY a
       <![CDATA[
 LogicalAggregate(group=[{0}], EXPR$1=[COUNT(DISTINCT $1)], EXPR$2=[SUM($2)], EXPR$3=[AVG($2)], EXPR$4=[MAX($2)], EXPR$5=[MIN($2)], EXPR$6=[COUNT($2)], EXPR$7=[COUNT()])
 +- LogicalProject(a=[$0], c=[$2], b=[$1])
-   +- LogicalTableScan(table=[[default_catalog, default_database, MyTable, source: [TestTableSource(a, b, c)]]])
+   +- LogicalTableScan(table=[[MyTable, source: [TestTableSource(a, b, c)]]])
 ]]>
     </Resource>
     <Resource name="planAfter">
@@ -270,8 +268,7 @@ Calc(select=[a, EXPR$1, CASE(=($f3, 0), null:BIGINT, EXPR$2) AS EXPR$2, /(CAST(C
                +- Calc(select=[a, b, c, $f3, $f4, =($e, 2) AS $g_2, =($e, 3) AS $g_3, =($e, 1) AS $g_1])
                   +- Expand(projects=[{a=[$0], b=[$1], c=[$2], $f3=[$3], $f4=[null], $e=[1]}, {a=[$0], b=[$1], c=[$2], $f3=[null], $f4=[$4], $e=[2]}, {a=[$0], b=[$1], c=[$2], $f3=[null], $f4=[null], $e=[3]}])
                      +- Calc(select=[a, b, c, MOD(HASH_CODE(b), 1024) AS $f3, MOD(HASH_CODE(c), 1024) AS $f4])
-                        +- WatermarkAssigner(fields=[a, b, c], miniBatchInterval=[Proctime, 1000ms])
-                           +- TableSourceScan(table=[[default_catalog, default_database, MyTable, source: [TestTableSource(a, b, c)]]], fields=[a, b, c])
+                        +- TableSourceScan(table=[[MyTable, source: [TestTableSource(a, b, c)]]], fields=[a, b, c])
 ]]>
     </Resource>
   </TestCase>
@@ -283,22 +280,23 @@ Calc(select=[a, EXPR$1, CASE(=($f3, 0), null:BIGINT, EXPR$2) AS EXPR$2, /(CAST(C
       <![CDATA[
 LogicalAggregate(group=[{0}], EXPR$1=[COUNT(DISTINCT $1)], EXPR$2=[SUM($1)], EXPR$3=[AVG($1)])
 +- LogicalProject(a=[$0], b=[$1])
-   +- LogicalTableScan(table=[[default_catalog, default_database, MyTable, source: [TestTableSource(a, b, c)]]])
+   +- LogicalTableScan(table=[[MyTable, source: [TestTableSource(a, b, c)]]])
 ]]>
     </Resource>
     <Resource name="planAfter">
       <![CDATA[
-Calc(select=[a, $f1, $f2, CAST(/($f3, $f4)) AS $f3])
-+- GlobalGroupAggregate(groupBy=[a], partialFinalType=[FINAL], select=[a, $SUM0(count$0) AS $f1, SUM(sum$1) AS $f2, $SUM0(sum$2) AS $f3, $SUM0(count$3) AS $f4])
-   +- Exchange(distribution=[hash[a]])
-      +- IncrementalGroupAggregate(partialAggGrouping=[a, $f2], finalAggGrouping=[a], select=[a, COUNT(distinct$0 count$0) AS count$0, SUM(sum$1) AS sum$1, $SUM0(sum$2) AS sum$2, COUNT(count$3) AS count$3])
-         +- Exchange(distribution=[hash[a, $f2]])
-            +- LocalGroupAggregate(groupBy=[a, $f2], partialFinalType=[PARTIAL], select=[a, $f2, COUNT(distinct$0 b) FILTER $g_0 AS count$0, SUM(b) FILTER $g_1 AS sum$1, $SUM0(b) FILTER $g_1 AS sum$2, COUNT(b) FILTER $g_1 AS count$3, DISTINCT(b) AS distinct$0])
-               +- Calc(select=[a, b, $f2, =($e, 0) AS $g_0, =($e, 1) AS $g_1])
-                  +- Expand(projects=[{a=[$0], b=[$1], $f2=[$2], $e=[0]}, {a=[$0], b=[$1], $f2=[null], $e=[1]}])
-                     +- Calc(select=[a, b, MOD(HASH_CODE(b), 1024) AS $f2])
-                        +- WatermarkAssigner(fields=[a, b, c], miniBatchInterval=[Proctime, 1000ms])
-                           +- TableSourceScan(table=[[default_catalog, default_database, MyTable, source: [TestTableSource(a, b, c)]]], fields=[a, b, c])
+Calc(select=[a, $f1, $f2, CAST($f3) AS $f3])
++- Calc(select=[a, $f1, $f2, /($f3, $f4) AS $f3])
+   +- GlobalGroupAggregate(groupBy=[a], partialFinalType=[FINAL], select=[a, $SUM0(count$0) AS $f1, SUM(sum$1) AS $f2, $SUM0(sum$2) AS $f3, $SUM0(count$3) AS $f4])
+      +- Exchange(distribution=[hash[a]])
+         +- IncrementalGroupAggregate(partialAggGrouping=[a, $f2], finalAggGrouping=[a], select=[a, COUNT(distinct$0 count$0) AS count$0, SUM(sum$1) AS sum$1, $SUM0(sum$2) AS sum$2, COUNT(count$3) AS count$3])
+            +- Exchange(distribution=[hash[a, $f2]])
+               +- LocalGroupAggregate(groupBy=[a, $f2], partialFinalType=[PARTIAL], select=[a, $f2, COUNT(distinct$0 b) FILTER $g_0 AS count$0, SUM(b) FILTER $g_1 AS sum$1, $SUM0(b) FILTER $g_1 AS sum$2, COUNT(b) FILTER $g_1 AS count$3, DISTINCT(b) AS distinct$0])
+                  +- Calc(select=[a, b, $f2, =($e, 0) AS $g_0, =($e, 1) AS $g_1])
+                     +- Expand(projects=[{a=[$0], b=[$1], $f2=[$2], $e=[0]}, {a=[$0], b=[$1], $f2=[null], $e=[1]}])
+                        +- Calc(select=[a, b, MOD(HASH_CODE(b), 1024) AS $f2])
+                           +- Calc(select=[a, b])
+                              +- TableSourceScan(table=[[MyTable, source: [TestTableSource(a, b, c)]]], fields=[a, b, c])
 ]]>
     </Resource>
   </TestCase>
@@ -310,7 +308,7 @@ Calc(select=[a, $f1, $f2, CAST(/($f3, $f4)) AS $f3])
       <![CDATA[
 LogicalAggregate(group=[{0}], EXPR$1=[COUNT(DISTINCT $1)])
 +- LogicalProject(a=[$0], c=[$2])
-   +- LogicalTableScan(table=[[default_catalog, default_database, MyTable, source: [TestTableSource(a, b, c)]]])
+   +- LogicalTableScan(table=[[MyTable, source: [TestTableSource(a, b, c)]]])
 ]]>
     </Resource>
     <Resource name="planAfter">
@@ -321,8 +319,8 @@ GlobalGroupAggregate(groupBy=[a], partialFinalType=[FINAL], select=[a, $SUM0(cou
       +- Exchange(distribution=[hash[a, $f2]])
          +- LocalGroupAggregate(groupBy=[a, $f2], partialFinalType=[PARTIAL], select=[a, $f2, COUNT(distinct$0 c) AS count$0, DISTINCT(c) AS distinct$0])
             +- Calc(select=[a, c, MOD(HASH_CODE(c), 1024) AS $f2])
-               +- WatermarkAssigner(fields=[a, b, c], miniBatchInterval=[Proctime, 1000ms])
-                  +- TableSourceScan(table=[[default_catalog, default_database, MyTable, source: [TestTableSource(a, b, c)]]], fields=[a, b, c])
+               +- Calc(select=[a, c])
+                  +- TableSourceScan(table=[[MyTable, source: [TestTableSource(a, b, c)]]], fields=[a, b, c])
 ]]>
     </Resource>
   </TestCase>
@@ -343,7 +341,7 @@ LogicalAggregate(group=[{0}], EXPR$1=[COUNT(DISTINCT $1)], EXPR$2=[COUNT()])
 +- LogicalProject(a=[$1], b=[$2], $f2=[1])
    +- LogicalAggregate(group=[{0}], a=[AVG($1)], b=[AVG($2)])
       +- LogicalProject(c=[$2], a=[$0], b=[$1])
-         +- LogicalTableScan(table=[[default_catalog, default_database, MyTable, source: [TestTableSource(a, b, c)]]])
+         +- LogicalTableScan(table=[[MyTable, source: [TestTableSource(a, b, c)]]])
 ]]>
     </Resource>
     <Resource name="planAfter">
@@ -355,12 +353,12 @@ GlobalGroupAggregate(groupBy=[a], partialFinalType=[FINAL], select=[a, $SUM0_RET
          +- LocalGroupAggregate(groupBy=[a, $f3], partialFinalType=[PARTIAL], select=[a, $f3, COUNT_RETRACT(distinct$0 b) FILTER $g_0 AS count$0, COUNT_RETRACT(*) FILTER $g_1 AS count1$1, COUNT_RETRACT(*) AS count1$2, DISTINCT(b) AS distinct$0], updateAsRetraction=[true], accMode=[Acc])
             +- Calc(select=[a, b, $f2, $f3, =($e, 0) AS $g_0, =($e, 1) AS $g_1], updateAsRetraction=[true], accMode=[AccRetract])
                +- Expand(projects=[{a=[$0], b=[$1], $f2=[$2], $f3=[$3], $e=[0]}, {a=[$0], b=[$1], $f2=[$2], $f3=[null], $e=[1]}], updateAsRetraction=[true], accMode=[AccRetract])
-                  +- Calc(select=[a, b, 1 AS $f2, MOD(HASH_CODE(b), 1024) AS $f3], updateAsRetraction=[true], accMode=[AccRetract])
-                     +- GlobalGroupAggregate(groupBy=[c], select=[c, AVG((sum$0, count$1)) AS a, AVG((sum$2, count$3)) AS b], updateAsRetraction=[true], accMode=[AccRetract])
-                        +- Exchange(distribution=[hash[c]], updateAsRetraction=[true], accMode=[Acc])
-                           +- LocalGroupAggregate(groupBy=[c], select=[c, AVG(a) AS (sum$0, count$1), AVG(b) AS (sum$2, count$3)], updateAsRetraction=[true], accMode=[Acc])
-                              +- WatermarkAssigner(fields=[a, b, c], miniBatchInterval=[Proctime, 1000ms], updateAsRetraction=[true], accMode=[Acc])
-                                 +- TableSourceScan(table=[[default_catalog, default_database, MyTable, source: [TestTableSource(a, b, c)]]], fields=[a, b, c], updateAsRetraction=[true], accMode=[Acc])
+                  +- Calc(select=[a, b, $f2, MOD(HASH_CODE(b), 1024) AS $f3], updateAsRetraction=[true], accMode=[AccRetract])
+                     +- Calc(select=[a, b, 1 AS $f2], updateAsRetraction=[true], accMode=[AccRetract])
+                        +- GlobalGroupAggregate(groupBy=[c], select=[c, AVG((sum$0, count$1)) AS a, AVG((sum$2, count$3)) AS b], updateAsRetraction=[true], accMode=[AccRetract])
+                           +- Exchange(distribution=[hash[c]], updateAsRetraction=[true], accMode=[Acc])
+                              +- LocalGroupAggregate(groupBy=[c], select=[c, AVG(a) AS (sum$0, count$1), AVG(b) AS (sum$2, count$3)], updateAsRetraction=[true], accMode=[Acc])
+                                 +- TableSourceScan(table=[[MyTable, source: [TestTableSource(a, b, c)]]], fields=[a, b, c], updateAsRetraction=[true], accMode=[Acc])
 ]]>
     </Resource>
   </TestCase>
@@ -372,7 +370,7 @@ GlobalGroupAggregate(groupBy=[a], partialFinalType=[FINAL], select=[a, $SUM0_RET
       <![CDATA[
 LogicalAggregate(group=[{0}], EXPR$1=[FIRST_VALUE($1)], EXPR$2=[COUNT(DISTINCT $2)])
 +- LogicalProject(a=[$0], c=[$2], b=[$1])
-   +- LogicalTableScan(table=[[default_catalog, default_database, MyTable, source: [TestTableSource(a, b, c)]]])
+   +- LogicalTableScan(table=[[MyTable, source: [TestTableSource(a, b, c)]]])
 ]]>
     </Resource>
     <Resource name="planAfter">
@@ -384,8 +382,7 @@ GroupAggregate(groupBy=[a], partialFinalType=[FINAL], select=[a, FIRST_VALUE_RET
          +- Calc(select=[a, b, c, $f3, $f4, =($e, 2) AS $g_2, =($e, 1) AS $g_1])
             +- Expand(projects=[{a=[$0], b=[$1], c=[$2], $f3=[$3], $f4=[null], $e=[1]}, {a=[$0], b=[$1], c=[$2], $f3=[null], $f4=[$4], $e=[2]}])
                +- Calc(select=[a, b, c, MOD(HASH_CODE(b), 1024) AS $f3, MOD(HASH_CODE(c), 1024) AS $f4])
-                  +- WatermarkAssigner(fields=[a, b, c], miniBatchInterval=[Proctime, 1000ms])
-                     +- TableSourceScan(table=[[default_catalog, default_database, MyTable, source: [TestTableSource(a, b, c)]]], fields=[a, b, c])
+                  +- TableSourceScan(table=[[MyTable, source: [TestTableSource(a, b, c)]]], fields=[a, b, c])
 ]]>
     </Resource>
   </TestCase>
@@ -397,15 +394,14 @@ GroupAggregate(groupBy=[a], partialFinalType=[FINAL], select=[a, FIRST_VALUE_RET
       <![CDATA[
 LogicalAggregate(group=[{0}], EXPR$1=[FIRST_VALUE($1, $2)], EXPR$2=[COUNT(DISTINCT $2)])
 +- LogicalProject(a=[$0], c=[$2], b=[$1])
-   +- LogicalTableScan(table=[[default_catalog, default_database, MyTable, source: [TestTableSource(a, b, c)]]])
+   +- LogicalTableScan(table=[[MyTable, source: [TestTableSource(a, b, c)]]])
 ]]>
     </Resource>
     <Resource name="planAfter">
       <![CDATA[
 GroupAggregate(groupBy=[a], select=[a, FIRST_VALUE(c, b) AS EXPR$1, COUNT(DISTINCT b) AS EXPR$2])
 +- Exchange(distribution=[hash[a]])
-   +- WatermarkAssigner(fields=[a, b, c], miniBatchInterval=[Proctime, 1000ms])
-      +- TableSourceScan(table=[[default_catalog, default_database, MyTable, source: [TestTableSource(a, b, c)]]], fields=[a, b, c])
+   +- TableSourceScan(table=[[MyTable, source: [TestTableSource(a, b, c)]]], fields=[a, b, c])
 ]]>
     </Resource>
   </TestCase>
@@ -417,7 +413,7 @@ GroupAggregate(groupBy=[a], select=[a, FIRST_VALUE(c, b) AS EXPR$1, COUNT(DISTIN
       <![CDATA[
 LogicalAggregate(group=[{0}], EXPR$1=[LAST_VALUE($1)], EXPR$2=[COUNT(DISTINCT $2)])
 +- LogicalProject(a=[$0], c=[$2], b=[$1])
-   +- LogicalTableScan(table=[[default_catalog, default_database, MyTable, source: [TestTableSource(a, b, c)]]])
+   +- LogicalTableScan(table=[[MyTable, source: [TestTableSource(a, b, c)]]])
 ]]>
     </Resource>
     <Resource name="planAfter">
@@ -429,8 +425,7 @@ GroupAggregate(groupBy=[a], partialFinalType=[FINAL], select=[a, LAST_VALUE_RETR
          +- Calc(select=[a, b, c, $f3, $f4, =($e, 2) AS $g_2, =($e, 1) AS $g_1])
             +- Expand(projects=[{a=[$0], b=[$1], c=[$2], $f3=[$3], $f4=[null], $e=[1]}, {a=[$0], b=[$1], c=[$2], $f3=[null], $f4=[$4], $e=[2]}])
                +- Calc(select=[a, b, c, MOD(HASH_CODE(b), 1024) AS $f3, MOD(HASH_CODE(c), 1024) AS $f4])
-                  +- WatermarkAssigner(fields=[a, b, c], miniBatchInterval=[Proctime, 1000ms])
-                     +- TableSourceScan(table=[[default_catalog, default_database, MyTable, source: [TestTableSource(a, b, c)]]], fields=[a, b, c])
+                  +- TableSourceScan(table=[[MyTable, source: [TestTableSource(a, b, c)]]], fields=[a, b, c])
 ]]>
     </Resource>
   </TestCase>
@@ -442,15 +437,14 @@ GroupAggregate(groupBy=[a], partialFinalType=[FINAL], select=[a, LAST_VALUE_RETR
       <![CDATA[
 LogicalAggregate(group=[{0}], EXPR$1=[LAST_VALUE($1, $2)], EXPR$2=[COUNT(DISTINCT $2)])
 +- LogicalProject(a=[$0], c=[$2], b=[$1])
-   +- LogicalTableScan(table=[[default_catalog, default_database, MyTable, source: [TestTableSource(a, b, c)]]])
+   +- LogicalTableScan(table=[[MyTable, source: [TestTableSource(a, b, c)]]])
 ]]>
     </Resource>
     <Resource name="planAfter">
       <![CDATA[
 GroupAggregate(groupBy=[a], select=[a, LAST_VALUE(c, b) AS EXPR$1, COUNT(DISTINCT b) AS EXPR$2])
 +- Exchange(distribution=[hash[a]])
-   +- WatermarkAssigner(fields=[a, b, c], miniBatchInterval=[Proctime, 1000ms])
-      +- TableSourceScan(table=[[default_catalog, default_database, MyTable, source: [TestTableSource(a, b, c)]]], fields=[a, b, c])
+   +- TableSourceScan(table=[[MyTable, source: [TestTableSource(a, b, c)]]], fields=[a, b, c])
 ]]>
     </Resource>
   </TestCase>
@@ -465,7 +459,7 @@ GROUP BY a
     <Resource name="planBefore">
       <![CDATA[
 LogicalAggregate(group=[{0}], EXPR$1=[COUNT(DISTINCT $1)], EXPR$2=[MAX($2)])
-+- LogicalTableScan(table=[[default_catalog, default_database, MyTable, source: [TestTableSource(a, b, c)]]])
++- LogicalTableScan(table=[[MyTable, source: [TestTableSource(a, b, c)]]])
 ]]>
     </Resource>
     <Resource name="planAfter">
@@ -478,8 +472,7 @@ GlobalGroupAggregate(groupBy=[a], partialFinalType=[FINAL], select=[a, $SUM0(cou
             +- Calc(select=[a, b, c, $f3, $f4, =($e, 1) AS $g_1, =($e, 2) AS $g_2])
                +- Expand(projects=[{a=[$0], b=[$1], c=[$2], $f3=[$3], $f4=[null], $e=[1]}, {a=[$0], b=[$1], c=[$2], $f3=[null], $f4=[$4], $e=[2]}])
                   +- Calc(select=[a, b, c, MOD(HASH_CODE(b), 1024) AS $f3, MOD(HASH_CODE(c), 1024) AS $f4])
-                     +- WatermarkAssigner(fields=[a, b, c], miniBatchInterval=[Proctime, 1000ms])
-                        +- TableSourceScan(table=[[default_catalog, default_database, MyTable, source: [TestTableSource(a, b, c)]]], fields=[a, b, c])
+                     +- TableSourceScan(table=[[MyTable, source: [TestTableSource(a, b, c)]]], fields=[a, b, c])
 ]]>
     </Resource>
   </TestCase>
@@ -491,7 +484,7 @@ GlobalGroupAggregate(groupBy=[a], partialFinalType=[FINAL], select=[a, $SUM0(cou
       <![CDATA[
 LogicalAggregate(group=[{0}], EXPR$1=[COUNT(DISTINCT $0)], EXPR$2=[COUNT($1)])
 +- LogicalProject(a=[$0], b=[$1])
-   +- LogicalTableScan(table=[[default_catalog, default_database, MyTable, source: [TestTableSource(a, b, c)]]])
+   +- LogicalTableScan(table=[[MyTable, source: [TestTableSource(a, b, c)]]])
 ]]>
     </Resource>
     <Resource name="planAfter">
@@ -502,8 +495,7 @@ GlobalGroupAggregate(groupBy=[a], partialFinalType=[FINAL], select=[a, $SUM0(cou
       +- Exchange(distribution=[hash[a]])
          +- LocalGroupAggregate(groupBy=[a], partialFinalType=[PARTIAL], select=[a, COUNT(distinct$0 a) AS count$0, COUNT(b) AS count$1, DISTINCT(a) AS distinct$0])
             +- Calc(select=[a, b])
-               +- WatermarkAssigner(fields=[a, b, c], miniBatchInterval=[Proctime, 1000ms])
-                  +- TableSourceScan(table=[[default_catalog, default_database, MyTable, source: [TestTableSource(a, b, c)]]], fields=[a, b, c])
+               +- TableSourceScan(table=[[MyTable, source: [TestTableSource(a, b, c)]]], fields=[a, b, c])
 ]]>
     </Resource>
   </TestCase>

@@ -105,7 +105,6 @@ public class JobVertexTaskManagersInfo implements ResponseBody {
 		public static final String TASK_MANAGERS_FIELD_DURATION = "duration";
 		public static final String TASK_MANAGERS_FIELD_METRICS = "metrics";
 		public static final String TASK_MANAGERS_FIELD_STATUS_COUNTS = "status-counts";
-		public static final String TASK_MANAGERS_FIELD_TASKMANAGER_ID = "taskmanager-id";
 
 		@JsonProperty(TASK_MANAGERS_FIELD_HOST)
 		private final String host;
@@ -128,9 +127,6 @@ public class JobVertexTaskManagersInfo implements ResponseBody {
 		@JsonProperty(TASK_MANAGERS_FIELD_STATUS_COUNTS)
 		private final Map<ExecutionState, Integer> statusCounts;
 
-		@JsonProperty(TASK_MANAGERS_FIELD_TASKMANAGER_ID)
-		private final String taskmanagerId;
-
 		@JsonCreator
 		public TaskManagersInfo(
 				@JsonProperty(TASK_MANAGERS_FIELD_HOST) String host,
@@ -139,8 +135,7 @@ public class JobVertexTaskManagersInfo implements ResponseBody {
 				@JsonProperty(TASK_MANAGERS_FIELD_END_TIME) long endTime,
 				@JsonProperty(TASK_MANAGERS_FIELD_DURATION) long duration,
 				@JsonProperty(TASK_MANAGERS_FIELD_METRICS) IOMetricsInfo metrics,
-				@JsonProperty(TASK_MANAGERS_FIELD_STATUS_COUNTS) Map<ExecutionState, Integer> statusCounts,
-				@JsonProperty(TASK_MANAGERS_FIELD_TASKMANAGER_ID) String taskmanagerId) {
+				@JsonProperty(TASK_MANAGERS_FIELD_STATUS_COUNTS) Map<ExecutionState, Integer> statusCounts) {
 			this.host = checkNotNull(host);
 			this.status = checkNotNull(status);
 			this.startTime = startTime;
@@ -148,7 +143,6 @@ public class JobVertexTaskManagersInfo implements ResponseBody {
 			this.duration = duration;
 			this.metrics = checkNotNull(metrics);
 			this.statusCounts = checkNotNull(statusCounts);
-			this.taskmanagerId = taskmanagerId;
 		}
 
 		@Override
@@ -166,13 +160,12 @@ public class JobVertexTaskManagersInfo implements ResponseBody {
 				endTime == that.endTime &&
 				duration == that.duration &&
 				Objects.equals(metrics, that.metrics) &&
-				Objects.equals(statusCounts, that.statusCounts) &&
-				Objects.equals(taskmanagerId, that.taskmanagerId);
+				Objects.equals(statusCounts, that.statusCounts);
 		}
 
 		@Override
 		public int hashCode() {
-			return Objects.hash(host, status, startTime, endTime, duration, metrics, statusCounts, taskmanagerId);
+			return Objects.hash(host, status, startTime, endTime, duration, metrics, statusCounts);
 		}
 	}
 }

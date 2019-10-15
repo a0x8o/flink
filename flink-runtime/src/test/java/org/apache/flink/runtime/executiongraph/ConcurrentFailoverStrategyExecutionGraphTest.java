@@ -28,8 +28,6 @@ import org.apache.flink.runtime.checkpoint.CheckpointStatsTracker;
 import org.apache.flink.runtime.checkpoint.PendingCheckpoint;
 import org.apache.flink.runtime.checkpoint.StandaloneCheckpointIDCounter;
 import org.apache.flink.runtime.checkpoint.StandaloneCompletedCheckpointStore;
-import org.apache.flink.runtime.concurrent.ComponentMainThreadExecutor;
-import org.apache.flink.runtime.concurrent.ComponentMainThreadExecutorServiceAdapter;
 import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.deployment.TaskDeploymentDescriptor;
 import org.apache.flink.runtime.execution.ExecutionState;
@@ -88,7 +86,7 @@ import static org.mockito.Mockito.when;
  */
 public class ConcurrentFailoverStrategyExecutionGraphTest extends TestLogger {
 
-	private final ComponentMainThreadExecutor mainThreadExecutor = ComponentMainThreadExecutorServiceAdapter.forMainThread();
+	private final TestingComponentMainThreadExecutorServiceAdapter mainThreadExecutor = TestingComponentMainThreadExecutorServiceAdapter.forMainThread();
 
 	/**
 	 * Tests that a cancellation concurrent to a local failover leads to a properly
@@ -364,9 +362,7 @@ public class ConcurrentFailoverStrategyExecutionGraphTest extends TestLogger {
 			1L,
 			3,
 			CheckpointRetentionPolicy.NEVER_RETAIN_AFTER_TERMINATION,
-			true,
-			false,
-			0);
+			true);
 
 		final ExecutionGraph graph = createSampleGraph(
 			jid,
@@ -389,7 +385,11 @@ public class ConcurrentFailoverStrategyExecutionGraphTest extends TestLogger {
 		final StandaloneCheckpointIDCounter standaloneCheckpointIDCounter = new StandaloneCheckpointIDCounter();
 
 		graph.enableCheckpointing(
-			checkpointCoordinatorConfiguration,
+			checkpointCoordinatorConfiguration.getCheckpointInterval(),
+			checkpointCoordinatorConfiguration.getCheckpointTimeout(),
+			checkpointCoordinatorConfiguration.getMinPauseBetweenCheckpoints(),
+			checkpointCoordinatorConfiguration.getMaxConcurrentCheckpoints(),
+			checkpointCoordinatorConfiguration.getCheckpointRetentionPolicy(),
 			allVertices,
 			allVertices,
 			allVertices,
@@ -444,8 +444,7 @@ public class ConcurrentFailoverStrategyExecutionGraphTest extends TestLogger {
 			new AcknowledgeCheckpoint(
 				graph.getJobID(),
 				vertex1.getCurrentExecutionAttempt().getAttemptId(),
-				checkpointToAcknowledge),
-				"Unknown location");
+				checkpointToAcknowledge));
 
 		Map<Long, PendingCheckpoint> oldPendingCheckpoints = new HashMap<>(3);
 

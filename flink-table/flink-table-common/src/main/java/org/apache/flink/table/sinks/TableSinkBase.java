@@ -42,7 +42,6 @@ public abstract class TableSinkBase<T> implements TableSink<T> {
 	/**
 	 * Returns the field names of the table to emit.
 	 */
-	@Override
 	public String[] getFieldNames() {
 		if (fieldNames.isPresent()) {
 			return fieldNames.get();
@@ -55,7 +54,6 @@ public abstract class TableSinkBase<T> implements TableSink<T> {
 	/**
 	 * Returns the field types of the table to emit.
 	 */
-	@Override
 	public TypeInformation<?>[] getFieldTypes() {
 		if (fieldTypes.isPresent()) {
 			return fieldTypes.get();
@@ -74,7 +72,6 @@ public abstract class TableSinkBase<T> implements TableSink<T> {
 	 * @return A copy of this {@link TableSink} configured with the field names and types of the
 	 *         table to emit.
 	 */
-	@Override
 	public final TableSink<T> configure(String[] fieldNames, TypeInformation<?>[] fieldTypes) {
 
 		final TableSinkBase<T> configuredSink = this.copy();

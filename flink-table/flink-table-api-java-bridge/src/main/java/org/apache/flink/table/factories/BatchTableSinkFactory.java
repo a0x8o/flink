@@ -18,7 +18,6 @@
 
 package org.apache.flink.table.factories;
 
-import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.table.sinks.BatchTableSink;
 import org.apache.flink.table.sinks.TableSink;
 
@@ -30,7 +29,6 @@ import java.util.Map;
  *
  * @param <T> type of records that the factory consumes
  */
-@PublicEvolving
 public interface BatchTableSinkFactory<T> extends TableSinkFactory<T> {
 
 	/**

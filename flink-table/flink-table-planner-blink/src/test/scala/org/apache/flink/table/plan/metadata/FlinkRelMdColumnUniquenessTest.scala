@@ -355,57 +355,8 @@ class FlinkRelMdColumnUniquenessTest extends FlinkRelMdHandlerTestBase {
   }
 
   @Test
-  def testAreColumnsUniqueOnWindowAgg(): Unit = {
-    Array(logicalWindowAgg, flinkLogicalWindowAgg, batchGlobalWindowAggWithLocalAgg,
-      batchGlobalWindowAggWithoutLocalAgg, streamWindowAgg).foreach { agg =>
-      assertFalse(mq.areColumnsUnique(agg, ImmutableBitSet.of(0, 1)))
-      assertFalse(mq.areColumnsUnique(agg, ImmutableBitSet.of(0, 2)))
-      assertFalse(mq.areColumnsUnique(agg, ImmutableBitSet.of(0, 3)))
-      assertFalse(mq.areColumnsUnique(agg, ImmutableBitSet.of(0, 1, 2)))
-      assertTrue(mq.areColumnsUnique(agg, ImmutableBitSet.of(0, 1, 3)))
-      assertTrue(mq.areColumnsUnique(agg, ImmutableBitSet.of(0, 1, 4)))
-      assertTrue(mq.areColumnsUnique(agg, ImmutableBitSet.of(0, 1, 5)))
-      assertTrue(mq.areColumnsUnique(agg, ImmutableBitSet.of(0, 1, 6)))
-      assertTrue(mq.areColumnsUnique(agg, ImmutableBitSet.of(0, 1, 3, 4, 5, 6)))
-      assertFalse(mq.areColumnsUnique(agg, ImmutableBitSet.of(0, 2, 3)))
-    }
-    assertNull(mq.areColumnsUnique(batchLocalWindowAgg, ImmutableBitSet.of(0, 1)))
-    assertNull(mq.areColumnsUnique(batchLocalWindowAgg, ImmutableBitSet.of(0, 1, 3)))
-
-    Array(logicalWindowAgg2, flinkLogicalWindowAgg2, batchGlobalWindowAggWithLocalAgg2,
-      batchGlobalWindowAggWithoutLocalAgg2, streamWindowAgg2).foreach { agg =>
-      assertFalse(mq.areColumnsUnique(agg, ImmutableBitSet.of(0, 1)))
-      assertTrue(mq.areColumnsUnique(agg, ImmutableBitSet.of(0, 2)))
-      assertTrue(mq.areColumnsUnique(agg, ImmutableBitSet.of(0, 3)))
-      assertTrue(mq.areColumnsUnique(agg, ImmutableBitSet.of(0, 4)))
-      assertTrue(mq.areColumnsUnique(agg, ImmutableBitSet.of(0, 5)))
-      assertTrue(mq.areColumnsUnique(agg, ImmutableBitSet.of(0, 2, 3, 4, 5)))
-      assertFalse(mq.areColumnsUnique(agg, ImmutableBitSet.of(1, 2)))
-      assertFalse(mq.areColumnsUnique(agg, ImmutableBitSet.of(1, 3)))
-    }
-    assertNull(mq.areColumnsUnique(batchLocalWindowAgg2, ImmutableBitSet.of(0, 1)))
-    assertNull(mq.areColumnsUnique(batchLocalWindowAgg2, ImmutableBitSet.of(0, 2)))
-
-    Array(logicalWindowAggWithAuxGroup, flinkLogicalWindowAggWithAuxGroup,
-      batchGlobalWindowAggWithLocalAggWithAuxGroup, batchGlobalWindowAggWithoutLocalAggWithAuxGroup
-    ).foreach { agg =>
-      assertFalse(mq.areColumnsUnique(agg, ImmutableBitSet.of(0, 1)))
-      assertFalse(mq.areColumnsUnique(agg, ImmutableBitSet.of(0, 2)))
-      assertFalse(mq.areColumnsUnique(agg, ImmutableBitSet.of(0, 1, 2)))
-      assertTrue(mq.areColumnsUnique(agg, ImmutableBitSet.of(0, 3)))
-      assertTrue(mq.areColumnsUnique(agg, ImmutableBitSet.of(0, 4)))
-      assertTrue(mq.areColumnsUnique(agg, ImmutableBitSet.of(0, 5)))
-      assertTrue(mq.areColumnsUnique(agg, ImmutableBitSet.of(0, 6)))
-      assertTrue(mq.areColumnsUnique(agg, ImmutableBitSet.of(0, 3, 4, 5, 6)))
-      assertFalse(mq.areColumnsUnique(agg, ImmutableBitSet.of(1, 3)))
-    }
-    assertNull(mq.areColumnsUnique(batchLocalWindowAggWithAuxGroup, ImmutableBitSet.of(0, 1)))
-    assertNull(mq.areColumnsUnique(batchLocalWindowAggWithAuxGroup, ImmutableBitSet.of(0, 3)))
-  }
-
-  @Test
-  def testAreColumnsUniqueOnOverAgg(): Unit = {
-    Array(flinkLogicalOverAgg, batchOverAgg).foreach { agg =>
+  def testAreColumnsUniqueOnOverWindow(): Unit = {
+    Array(flinkLogicalOverWindow, batchOverWindowAgg).foreach { agg =>
       assertTrue(mq.areColumnsUnique(agg, ImmutableBitSet.of(0)))
       assertFalse(mq.areColumnsUnique(agg, ImmutableBitSet.of(1)))
       assertFalse(mq.areColumnsUnique(agg, ImmutableBitSet.of(2)))
@@ -424,20 +375,20 @@ class FlinkRelMdColumnUniquenessTest extends FlinkRelMdHandlerTestBase {
       assertTrue(mq.areColumnsUnique(agg, ImmutableBitSet.of(0, 10)))
       assertNull(mq.areColumnsUnique(agg, ImmutableBitSet.of(5, 10)))
     }
-    assertTrue(mq.areColumnsUnique(streamOverAgg, ImmutableBitSet.of(0)))
-    assertFalse(mq.areColumnsUnique(streamOverAgg, ImmutableBitSet.of(1)))
-    assertFalse(mq.areColumnsUnique(streamOverAgg, ImmutableBitSet.of(2)))
-    assertFalse(mq.areColumnsUnique(streamOverAgg, ImmutableBitSet.of(3)))
-    assertFalse(mq.areColumnsUnique(streamOverAgg, ImmutableBitSet.of(4)))
-    assertNull(mq.areColumnsUnique(streamOverAgg, ImmutableBitSet.of(5)))
-    assertNull(mq.areColumnsUnique(streamOverAgg, ImmutableBitSet.of(6)))
-    assertNull(mq.areColumnsUnique(streamOverAgg, ImmutableBitSet.of(7)))
-    assertTrue(mq.areColumnsUnique(streamOverAgg, ImmutableBitSet.of(0, 1)))
-    assertTrue(mq.areColumnsUnique(streamOverAgg, ImmutableBitSet.of(0, 2)))
-    assertFalse(mq.areColumnsUnique(streamOverAgg, ImmutableBitSet.of(1, 2)))
-    assertTrue(mq.areColumnsUnique(streamOverAgg, ImmutableBitSet.of(0, 5)))
-    assertTrue(mq.areColumnsUnique(streamOverAgg, ImmutableBitSet.of(0, 7)))
-    assertNull(mq.areColumnsUnique(streamOverAgg, ImmutableBitSet.of(5, 7)))
+    assertTrue(mq.areColumnsUnique(streamOverWindowAgg, ImmutableBitSet.of(0)))
+    assertFalse(mq.areColumnsUnique(streamOverWindowAgg, ImmutableBitSet.of(1)))
+    assertFalse(mq.areColumnsUnique(streamOverWindowAgg, ImmutableBitSet.of(2)))
+    assertFalse(mq.areColumnsUnique(streamOverWindowAgg, ImmutableBitSet.of(3)))
+    assertFalse(mq.areColumnsUnique(streamOverWindowAgg, ImmutableBitSet.of(4)))
+    assertNull(mq.areColumnsUnique(streamOverWindowAgg, ImmutableBitSet.of(5)))
+    assertNull(mq.areColumnsUnique(streamOverWindowAgg, ImmutableBitSet.of(6)))
+    assertNull(mq.areColumnsUnique(streamOverWindowAgg, ImmutableBitSet.of(7)))
+    assertTrue(mq.areColumnsUnique(streamOverWindowAgg, ImmutableBitSet.of(0, 1)))
+    assertTrue(mq.areColumnsUnique(streamOverWindowAgg, ImmutableBitSet.of(0, 2)))
+    assertFalse(mq.areColumnsUnique(streamOverWindowAgg, ImmutableBitSet.of(1, 2)))
+    assertTrue(mq.areColumnsUnique(streamOverWindowAgg, ImmutableBitSet.of(0, 5)))
+    assertTrue(mq.areColumnsUnique(streamOverWindowAgg, ImmutableBitSet.of(0, 7)))
+    assertNull(mq.areColumnsUnique(streamOverWindowAgg, ImmutableBitSet.of(5, 7)))
   }
 
   @Test
@@ -496,43 +447,6 @@ class FlinkRelMdColumnUniquenessTest extends FlinkRelMdHandlerTestBase {
     assertFalse(mq.areColumnsUnique(logicalFullJoinOnUniqueKeys, ImmutableBitSet.of(1, 6)))
     assertFalse(mq.areColumnsUnique(logicalFullJoinOnUniqueKeys, ImmutableBitSet.of(5, 6)))
     assertTrue(mq.areColumnsUnique(logicalFullJoinOnUniqueKeys, ImmutableBitSet.of(0, 1, 5, 6)))
-
-    // semi/anti join
-    Array(logicalSemiJoinOnUniqueKeys, logicalSemiJoinNotOnUniqueKeys,
-      logicalSemiJoinOnDisjointKeys, logicalAntiJoinOnUniqueKeys, logicalAntiJoinNotOnUniqueKeys,
-      logicalAntiJoinOnDisjointKeys).foreach { join =>
-      assertFalse(mq.areColumnsUnique(join, ImmutableBitSet.of(0)))
-      assertTrue(mq.areColumnsUnique(join, ImmutableBitSet.of(1)))
-      assertFalse(mq.areColumnsUnique(join, ImmutableBitSet.of(2)))
-      assertFalse(mq.areColumnsUnique(join, ImmutableBitSet.of(3)))
-      assertFalse(mq.areColumnsUnique(join, ImmutableBitSet.of(4)))
-      assertTrue(mq.areColumnsUnique(join, ImmutableBitSet.of(0, 1)))
-      assertFalse(mq.areColumnsUnique(join, ImmutableBitSet.of(0, 2)))
-    }
-  }
-
-  @Test
-  def testAreColumnsUniqueOnLookupJoin(): Unit = {
-    Array(batchLookupJoin, streamLookupJoin).foreach { join =>
-      assertFalse(mq.areColumnsUnique(join, ImmutableBitSet.of()))
-      assertNull(mq.areColumnsUnique(join, ImmutableBitSet.of(0)))
-      assertNull(mq.areColumnsUnique(join, ImmutableBitSet.of(1)))
-      assertNull(mq.areColumnsUnique(join, ImmutableBitSet.of(2)))
-      assertNull(mq.areColumnsUnique(join, ImmutableBitSet.of(3)))
-      assertNull(mq.areColumnsUnique(join, ImmutableBitSet.of(4)))
-      assertNull(mq.areColumnsUnique(join, ImmutableBitSet.of(5)))
-      assertNull(mq.areColumnsUnique(join, ImmutableBitSet.of(6)))
-      assertNull(mq.areColumnsUnique(join, ImmutableBitSet.of(7)))
-      assertNull(mq.areColumnsUnique(join, ImmutableBitSet.of(8)))
-      assertNull(mq.areColumnsUnique(join, ImmutableBitSet.of(9)))
-      assertNull(mq.areColumnsUnique(join, ImmutableBitSet.of(0, 1)))
-      assertNull(mq.areColumnsUnique(join, ImmutableBitSet.of(1, 2)))
-      assertNull(mq.areColumnsUnique(join, ImmutableBitSet.of(0, 7)))
-      assertNull(mq.areColumnsUnique(join, ImmutableBitSet.of(1, 7)))
-      assertNull(mq.areColumnsUnique(join, ImmutableBitSet.of(0, 8)))
-      assertNull(mq.areColumnsUnique(join, ImmutableBitSet.of(7, 8)))
-      assertNull(mq.areColumnsUnique(join, ImmutableBitSet.of(8, 9)))
-    }
   }
 
   @Test
@@ -551,38 +465,38 @@ class FlinkRelMdColumnUniquenessTest extends FlinkRelMdHandlerTestBase {
 
   @Test
   def testAreColumnsUniqueOnIntersect(): Unit = {
-    assertFalse(mq.areColumnsUnique(logicalIntersectAll, ImmutableBitSet.of(0)))
-    assertTrue(mq.areColumnsUnique(logicalIntersectAll, ImmutableBitSet.of(1)))
-    assertFalse(mq.areColumnsUnique(logicalIntersectAll, ImmutableBitSet.of(2)))
-    assertTrue(mq.areColumnsUnique(logicalIntersectAll, ImmutableBitSet.of(1, 2)))
-    assertFalse(mq.areColumnsUnique(logicalIntersectAll, ImmutableBitSet.of(0, 2)))
-    assertTrue(mq.areColumnsUnique(logicalIntersectAll, ImmutableBitSet.of(1, 2)))
+    assertFalse(mq.areColumnsUnique(logicalIntersectAll, ImmutableBitSet.of (0)))
+    assertTrue(mq.areColumnsUnique(logicalIntersectAll, ImmutableBitSet.of (1)))
+    assertFalse(mq.areColumnsUnique(logicalIntersectAll, ImmutableBitSet.of (2)))
+    assertTrue(mq.areColumnsUnique(logicalIntersectAll, ImmutableBitSet.of (1, 2)))
+    assertFalse(mq.areColumnsUnique(logicalIntersectAll, ImmutableBitSet.of (0, 2)))
+    assertTrue(mq.areColumnsUnique(logicalIntersectAll, ImmutableBitSet.of (1, 2)))
 
-    assertFalse(mq.areColumnsUnique(logicalIntersect, ImmutableBitSet.of(0)))
-    assertTrue(mq.areColumnsUnique(logicalIntersect, ImmutableBitSet.of(1)))
-    assertFalse(mq.areColumnsUnique(logicalIntersect, ImmutableBitSet.of(2)))
-    assertTrue(mq.areColumnsUnique(logicalIntersect, ImmutableBitSet.of(1, 2)))
-    assertFalse(mq.areColumnsUnique(logicalIntersect, ImmutableBitSet.of(0, 2)))
-    assertTrue(mq.areColumnsUnique(logicalIntersect, ImmutableBitSet.of(1, 2)))
+    assertFalse(mq.areColumnsUnique(logicalIntersect, ImmutableBitSet.of (0)))
+    assertTrue(mq.areColumnsUnique(logicalIntersect, ImmutableBitSet.of (1)))
+    assertFalse(mq.areColumnsUnique(logicalIntersect, ImmutableBitSet.of (2)))
+    assertTrue(mq.areColumnsUnique(logicalIntersect, ImmutableBitSet.of (1, 2)))
+    assertFalse(mq.areColumnsUnique(logicalIntersect, ImmutableBitSet.of (0, 2)))
+    assertTrue(mq.areColumnsUnique(logicalIntersect, ImmutableBitSet.of (1, 2)))
     assertTrue(mq.areColumnsUnique(logicalIntersect,
       ImmutableBitSet.range(logicalIntersect.getRowType.getFieldCount)))
   }
 
   @Test
   def testAreColumnsUniqueOnMinus(): Unit = {
-    assertFalse(mq.areColumnsUnique(logicalMinusAll, ImmutableBitSet.of(0)))
-    assertTrue(mq.areColumnsUnique(logicalMinusAll, ImmutableBitSet.of(1)))
-    assertFalse(mq.areColumnsUnique(logicalMinusAll, ImmutableBitSet.of(2)))
-    assertTrue(mq.areColumnsUnique(logicalMinusAll, ImmutableBitSet.of(1, 2)))
-    assertFalse(mq.areColumnsUnique(logicalMinusAll, ImmutableBitSet.of(0, 2)))
-    assertTrue(mq.areColumnsUnique(logicalMinusAll, ImmutableBitSet.of(1, 2)))
+    assertFalse(mq.areColumnsUnique(logicalMinusAll, ImmutableBitSet.of (0)))
+    assertTrue(mq.areColumnsUnique(logicalMinusAll, ImmutableBitSet.of (1)))
+    assertFalse(mq.areColumnsUnique(logicalMinusAll, ImmutableBitSet.of (2)))
+    assertTrue(mq.areColumnsUnique(logicalMinusAll, ImmutableBitSet.of (1, 2)))
+    assertFalse(mq.areColumnsUnique(logicalMinusAll, ImmutableBitSet.of (0, 2)))
+    assertTrue(mq.areColumnsUnique(logicalMinusAll, ImmutableBitSet.of (1, 2)))
 
-    assertFalse(mq.areColumnsUnique(logicalMinus, ImmutableBitSet.of(0)))
-    assertTrue(mq.areColumnsUnique(logicalMinus, ImmutableBitSet.of(1)))
-    assertFalse(mq.areColumnsUnique(logicalMinus, ImmutableBitSet.of(2)))
-    assertTrue(mq.areColumnsUnique(logicalMinus, ImmutableBitSet.of(1, 2)))
-    assertFalse(mq.areColumnsUnique(logicalMinus, ImmutableBitSet.of(0, 2)))
-    assertTrue(mq.areColumnsUnique(logicalMinus, ImmutableBitSet.of(1, 2)))
+    assertFalse(mq.areColumnsUnique(logicalMinus, ImmutableBitSet.of (0)))
+    assertTrue(mq.areColumnsUnique(logicalMinus, ImmutableBitSet.of (1)))
+    assertFalse(mq.areColumnsUnique(logicalMinus, ImmutableBitSet.of (2)))
+    assertTrue(mq.areColumnsUnique(logicalMinus, ImmutableBitSet.of (1, 2)))
+    assertFalse(mq.areColumnsUnique(logicalMinus, ImmutableBitSet.of (0, 2)))
+    assertTrue(mq.areColumnsUnique(logicalMinus, ImmutableBitSet.of (1, 2)))
     assertTrue(mq.areColumnsUnique(logicalMinus,
       ImmutableBitSet.range(logicalMinus.getRowType.getFieldCount)))
 
@@ -591,12 +505,12 @@ class FlinkRelMdColumnUniquenessTest extends FlinkRelMdHandlerTestBase {
       .scan("MyTable2")
       .scan("MyTable1")
       .minus(false).build()
-    assertNull(mq.areColumnsUnique(logicalMinus2, ImmutableBitSet.of(0)))
-    assertNull(mq.areColumnsUnique(logicalMinus2, ImmutableBitSet.of(1)))
-    assertNull(mq.areColumnsUnique(logicalMinus2, ImmutableBitSet.of(2)))
-    assertNull(mq.areColumnsUnique(logicalMinus2, ImmutableBitSet.of(1, 2)))
-    assertNull(mq.areColumnsUnique(logicalMinus2, ImmutableBitSet.of(0, 2)))
-    assertNull(mq.areColumnsUnique(logicalMinus2, ImmutableBitSet.of(1, 2)))
+    assertNull(mq.areColumnsUnique(logicalMinus2, ImmutableBitSet.of (0)))
+    assertNull(mq.areColumnsUnique(logicalMinus2, ImmutableBitSet.of (1)))
+    assertNull(mq.areColumnsUnique(logicalMinus2, ImmutableBitSet.of (2)))
+    assertNull(mq.areColumnsUnique(logicalMinus2, ImmutableBitSet.of (1, 2)))
+    assertNull(mq.areColumnsUnique(logicalMinus2, ImmutableBitSet.of (0, 2)))
+    assertNull(mq.areColumnsUnique(logicalMinus2, ImmutableBitSet.of (1, 2)))
     assertTrue(mq.areColumnsUnique(logicalMinus2,
       ImmutableBitSet.range(logicalMinus2.getRowType.getFieldCount)))
   }
@@ -604,7 +518,7 @@ class FlinkRelMdColumnUniquenessTest extends FlinkRelMdHandlerTestBase {
   @Test
   def testGetColumnNullCountOnDefault(): Unit = {
     (0 until testRel.getRowType.getFieldCount).foreach { idx =>
-      assertNull(mq.areColumnsUnique(testRel, ImmutableBitSet.of(idx)))
+      assertNull(mq.areColumnsUnique(testRel, ImmutableBitSet.of (idx)))
     }
   }
 

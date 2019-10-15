@@ -18,7 +18,9 @@
 
 package org.apache.flink.table.plan.rules.physical.batch
 
-import org.apache.flink.table.api.{OptimizerConfigOptions, TableConfig, TableException}
+import org.apache.flink.table.`type`.TypeConverters.createInternalTypeFromTypeInfo
+import org.apache.flink.table.`type`.{InternalType, InternalTypes}
+import org.apache.flink.table.api.{PlannerConfigOptions, TableConfig, TableException}
 import org.apache.flink.table.calcite.{FlinkContext, FlinkTypeFactory}
 import org.apache.flink.table.functions.aggfunctions.DeclarativeAggregateFunction
 import org.apache.flink.table.functions.{AggregateFunction, UserDefinedFunction}
@@ -28,9 +30,7 @@ import org.apache.flink.table.plan.nodes.FlinkConventions
 import org.apache.flink.table.plan.nodes.logical.FlinkLogicalWindowAggregate
 import org.apache.flink.table.plan.nodes.physical.batch.{BatchExecHashWindowAggregate, BatchExecLocalHashWindowAggregate, BatchExecLocalSortWindowAggregate, BatchExecSortWindowAggregate}
 import org.apache.flink.table.plan.util.AggregateUtil
-import org.apache.flink.table.plan.util.AggregateUtil.hasTimeIntervalType
-import org.apache.flink.table.types.LogicalTypeDataTypeConverter.fromDataTypeToLogicalType
-import org.apache.flink.table.types.logical.{BigIntType, IntType, LogicalType}
+import org.apache.flink.table.plan.util.AggregateUtil.isTimeIntervalType
 
 import org.apache.calcite.plan.RelOptRule._
 import org.apache.calcite.plan.{RelOptRule, RelOptRuleCall}
@@ -52,16 +52,16 @@ import scala.collection.JavaConversions._
   *         +- input of window agg
   * }}}
   * when all aggregate functions are mergeable
-  * and [[OptimizerConfigOptions.SQL_OPTIMIZER_AGG_PHASE_STRATEGY]] is TWO_PHASE, or
+  * and [[PlannerConfigOptions.SQL_OPTIMIZER_AGG_PHASE_ENFORCER]] is TWO_PHASE, or
   * {{{
   *   BatchExecHash(or Sort)WindowAggregate
   *   +- BatchExecExchange (hash by group keys if group keys is not empty, else singleton)
   *      +- input of window agg
   * }}}
   * when some aggregate functions are not mergeable
-  * or [[OptimizerConfigOptions.SQL_OPTIMIZER_AGG_PHASE_STRATEGY]] is ONE_PHASE.
+  * or [[PlannerConfigOptions.SQL_OPTIMIZER_AGG_PHASE_ENFORCER]] is ONE_PHASE.
   *
-  * Notes: if [[OptimizerConfigOptions.SQL_OPTIMIZER_AGG_PHASE_STRATEGY]] is NONE,
+  * Notes: if [[PlannerConfigOptions.SQL_OPTIMIZER_AGG_PHASE_ENFORCER]] is NONE,
   * this rule will try to create two possibilities above, and chooses the best one based on cost.
   * if all aggregate function buffer are fix length, the rule will choose hash window agg.
   */
@@ -100,12 +100,12 @@ class BatchExecWindowAggregateRule
     val (_, aggBufferTypes, aggregates) = AggregateUtil.transformToBatchAggregateFunctions(
       aggCallsWithoutAuxGroupCalls, input.getRowType)
     val aggCallToAggFunction = aggCallsWithoutAuxGroupCalls.zip(aggregates)
-    val internalAggBufferTypes = aggBufferTypes.map(_.map(fromDataTypeToLogicalType))
+    val internalAggBufferTypes = aggBufferTypes.map(_.map(createInternalTypeFromTypeInfo))
     val tableConfig = call.getPlanner.getContext.asInstanceOf[FlinkContext].getTableConfig
 
     window match {
-      case TumblingGroupWindow(_, _, size) if hasTimeIntervalType(size) =>
-        val sizeInLong = size.getValueAs(classOf[java.lang.Long]).get()
+      case TumblingGroupWindow(_, _, size) if isTimeIntervalType(size.getType) =>
+        val sizeInLong = size.getValue.asInstanceOf[java.lang.Long]
         transformTimeSlidingWindow(
           call,
           input,
@@ -118,10 +118,10 @@ class BatchExecWindowAggregateRule
           enableAssignPane = false,
           supportLocalWindowAgg(call, tableConfig, aggregates, sizeInLong, sizeInLong))
 
-      case SlidingGroupWindow(_, _, size, slide) if hasTimeIntervalType(size) =>
+      case SlidingGroupWindow(_, _, size, slide) if isTimeIntervalType(size.getType) =>
         val (sizeInLong, slideInLong) = (
-          size.getValueAs(classOf[java.lang.Long]).get(),
-          slide.getValueAs(classOf[java.lang.Long]).get())
+          size.getValue.asInstanceOf[java.lang.Long],
+          slide.getValue.asInstanceOf[java.lang.Long])
         transformTimeSlidingWindow(
           call,
           input,
@@ -146,7 +146,7 @@ class BatchExecWindowAggregateRule
       window: LogicalWindow,
       auxGroupSet: Array[Int],
       aggCallToAggFunction: Seq[(AggregateCall, UserDefinedFunction)],
-      aggBufferTypes: Array[Array[LogicalType]],
+      aggBufferTypes: Array[Array[InternalType]],
       preferHashExec: Boolean,
       enableAssignPane: Boolean,
       supportLocalAgg: Boolean): Unit = {
@@ -164,7 +164,7 @@ class BatchExecWindowAggregateRule
 
     val config = input.getCluster.getPlanner.getContext.asInstanceOf[FlinkContext].getTableConfig
     if (!isEnforceOnePhaseAgg(config) && supportLocalAgg) {
-      val windowType = if (inputTimeIsDate) new IntType() else new BigIntType()
+      val windowType = if (inputTimeIsDate) InternalTypes.INT else InternalTypes.LONG
       // local
       var localRequiredTraitSet = input.getTraitSet.replace(FlinkConventions.BATCH_PHYSICAL)
       // local win-agg output order: groupSet + assignTs + auxGroupSet + aggCalls
@@ -388,9 +388,9 @@ class BatchExecWindowAggregateRule
       agg: Aggregate,
       groupSet: Array[Int],
       auxGroupSet: Array[Int],
-      windowType: LogicalType,
+      windowType: InternalType,
       aggregates: Array[UserDefinedFunction],
-      aggBufferTypes: Array[Array[LogicalType]]): RelDataType = {
+      aggBufferTypes: Array[Array[InternalType]]): RelDataType = {
     val aggNames = agg.getNamedAggCalls.map(_.right)
 
     val aggBufferFieldNames = new Array[Array[String]](aggregates.length)
@@ -413,13 +413,13 @@ class BatchExecWindowAggregateRule
     val typeFactory = agg.getCluster.getTypeFactory.asInstanceOf[FlinkTypeFactory]
     val aggBufferSqlTypes = aggBufferTypes.flatten.map { t =>
       val nullable = !FlinkTypeFactory.isTimeIndicatorType(t)
-      typeFactory.createFieldTypeFromLogicalType(t)
+      typeFactory.createTypeFromInternalType(t, nullable)
     }
 
     val localAggFieldTypes = (
       groupSet.map(inputType.getFieldList.get(_).getType) ++ // groupSet
         // assignTs
-        Array(typeFactory.createFieldTypeFromLogicalType(windowType)) ++
+        Array(typeFactory.createTypeFromInternalType(windowType, isNullable = true)) ++
         auxGroupSet.map(inputType.getFieldList.get(_).getType) ++ // auxGroupSet
         aggBufferSqlTypes // aggCalls
       ).toList

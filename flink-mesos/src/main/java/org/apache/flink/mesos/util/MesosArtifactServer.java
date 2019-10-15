@@ -126,6 +126,7 @@ public class MesosArtifactServer implements MesosArtifactResolver {
 
 		router = new Router();
 
+		final Configuration sslConfig = config;
 		ChannelInitializer<SocketChannel> initializer = new ChannelInitializer<SocketChannel>() {
 
 			@Override
@@ -134,8 +135,7 @@ public class MesosArtifactServer implements MesosArtifactResolver {
 
 				// SSL should be the first handler in the pipeline
 				if (sslFactory != null) {
-					ch.pipeline().addLast("ssl",
-						sslFactory.createNettySSLHandler(ch.alloc()));
+					ch.pipeline().addLast("ssl", sslFactory.createNettySSLHandler());
 				}
 
 				ch.pipeline()

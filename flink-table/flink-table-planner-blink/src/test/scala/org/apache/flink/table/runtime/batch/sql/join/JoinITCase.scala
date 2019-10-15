@@ -19,41 +19,39 @@
 package org.apache.flink.table.runtime.batch.sql.join
 
 import org.apache.flink.api.common.ExecutionConfig
-import org.apache.flink.api.common.typeinfo.BasicTypeInfo.{INT_TYPE_INFO, LONG_TYPE_INFO}
+import org.apache.flink.api.common.typeinfo.BasicArrayTypeInfo.STRING_ARRAY_TYPE_INFO
+import org.apache.flink.api.common.typeinfo.BasicTypeInfo.{INT_TYPE_INFO, LONG_TYPE_INFO, STRING_TYPE_INFO}
 import org.apache.flink.api.common.typeutils.TypeComparator
-import org.apache.flink.api.java.typeutils.{GenericTypeInfo, RowTypeInfo}
-import org.apache.flink.table.api.{ExecutionConfigOptions, Types}
-import org.apache.flink.table.expressions.utils.FuncWithOpen
-import org.apache.flink.table.runtime.CodeGenOperatorFactory
+import org.apache.flink.api.java.typeutils.{GenericTypeInfo, ObjectArrayTypeInfo, RowTypeInfo}
+import org.apache.flink.table.api.{TableConfigOptions, Types}
+import org.apache.flink.table.runtime.TwoInputOperatorWrapper
 import org.apache.flink.table.runtime.batch.sql.join.JoinType.{BroadcastHashJoin, HashJoin, JoinType, NestedLoopJoin, SortMergeJoin}
 import org.apache.flink.table.runtime.utils.BatchTestBase
 import org.apache.flink.table.runtime.utils.BatchTestBase.row
 import org.apache.flink.table.runtime.utils.TestData._
 import org.apache.flink.table.sinks.CollectRowTableSink
+import org.apache.flink.types.Row
 
-import org.junit.runner.RunWith
-import org.junit.runners.Parameterized
 import org.junit.{Assert, Before, Ignore, Test}
-
-import java.util
 
 import scala.collection.JavaConversions._
 import scala.collection.Seq
 
-@RunWith(classOf[Parameterized])
-class JoinITCase(expectedJoinType: JoinType) extends BatchTestBase {
+// @RunWith(classOf[Parameterized]) TODO
+class JoinITCase() extends BatchTestBase {
+
+  val expectedJoinType: JoinType = SortMergeJoin
 
   @Before
-  override def before(): Unit = {
-    super.before()
-    registerCollection("SmallTable3", smallData3, type3, "a, b, c", nullablesOfSmallData3)
-    registerCollection("Table3", data3, type3, "a, b, c", nullablesOfData3)
-    registerCollection("Table5", data5, type5, "d, e, f, g, h", nullablesOfData5)
-    registerCollection("NullTable3", nullData3, type3, "a, b, c", nullablesOfNullData3)
-    registerCollection("NullTable5", nullData5, type5, "d, e, f, g, h", nullablesOfNullData5)
+  def before(): Unit = {
+    registerCollection("SmallTable3", smallData3, type3, nullablesOfSmallData3, "a, b, c")
+    registerCollection("Table3", data3, type3, nullablesOfData3, "a, b, c")
+    registerCollection("Table5", data5, type5, nullablesOfData5, "d, e, f, g, h")
+    registerCollection("NullTable3", nullData3, type3, nullablesOfNullData3, "a, b, c")
+    registerCollection("NullTable5", nullData5, type5, nullablesOfNullData5, "d, e, f, g, h")
     registerCollection("l", data2_1, INT_DOUBLE, "a, b")
     registerCollection("r", data2_2, INT_DOUBLE, "c, d")
-    registerCollection("t", data2_3, INT_DOUBLE, "c, d", nullablesOfData2_3)
+    registerCollection("t", data2_3, INT_DOUBLE, nullablesOfData2_3, "c, d")
     JoinITCaseHelper.disableOtherJoinOpForJoin(tEnv, expectedJoinType)
   }
 
@@ -68,23 +66,21 @@ class JoinITCase(expectedJoinType: JoinType) extends BatchTestBase {
       ))
   }
 
-  @Ignore // TODO support lazy from source
   @Test
   def testLongHashJoinGenerator(): Unit = {
     if (expectedJoinType == HashJoin) {
       val sink = (new CollectRowTableSink).configure(Array("c"), Array(Types.STRING))
-      tEnv.registerTableSink("collect", sink)
-      tEnv.insertInto(
+      tEnv.writeToSink(
         tEnv.sqlQuery("SELECT c FROM SmallTable3, Table5 WHERE b = e"),
-        "collect"
-      )
+        sink,
+        "collect")
+
       var haveTwoOp = false
-      env.getStreamGraph.getAllOperatorFactory.foreach(o =>
+      env.getStreamGraph.getOperators.foreach(o =>
         o.f1 match {
-          case factory: CodeGenOperatorFactory[_] =>
-            if (factory.getGeneratedClass.getCode.contains("LongHashJoinOperator")) {
-              haveTwoOp = true
-            }
+          case two: TwoInputOperatorWrapper[_, _, _] =>
+            Assert.assertTrue(two.getGeneratedClass.getCode.contains("LongHashJoinOperator"))
+            haveTwoOp = true
           case _ =>
         }
       )
@@ -99,11 +95,11 @@ class JoinITCase(expectedJoinType: JoinType) extends BatchTestBase {
       registerCollection("PojoSmallTable3", smallData3,
         new RowTypeInfo(INT_TYPE_INFO, LONG_TYPE_INFO,
           new GenericTypeInfoWithoutComparator[String](classOf[String])),
-        "a, b, c", nullablesOfSmallData3)
+        nullablesOfSmallData3, "a, b, c")
       registerCollection("PojoTable5", data5,
         new RowTypeInfo(INT_TYPE_INFO, LONG_TYPE_INFO, INT_TYPE_INFO,
           new GenericTypeInfoWithoutComparator[String](classOf[String]), LONG_TYPE_INFO),
-        "d, e, f, g, h", nullablesOfData5)
+        nullablesOfData5, "d, e, f, g, h")
 
       checkResult(
         "SELECT c, g FROM (SELECT h, g, f, e, d FROM PojoSmallTable3, PojoTable5 WHERE b = e)," +
@@ -422,7 +418,6 @@ class JoinITCase(expectedJoinType: JoinType) extends BatchTestBase {
     }
   }
 
-  @Ignore // TODO not support same source until set lazy_from_source
   @Test
   def testFullOuterJoinWithoutEqualCond(): Unit = {
     if (expectedJoinType == NestedLoopJoin) {
@@ -435,7 +430,6 @@ class JoinITCase(expectedJoinType: JoinType) extends BatchTestBase {
     }
   }
 
-  @Ignore // TODO not support same source until set lazy_from_source
   @Test
   def testSingleRowFullOuterJoinWithoutEqualCond(): Unit = {
     if (expectedJoinType == NestedLoopJoin) {
@@ -448,7 +442,6 @@ class JoinITCase(expectedJoinType: JoinType) extends BatchTestBase {
     }
   }
 
-  @Ignore // TODO not support same source until set lazy_from_source
   @Test
   def testSingleRowFullOuterJoinWithoutEqualCondNoMatch(): Unit = {
     if (expectedJoinType == NestedLoopJoin) {
@@ -497,6 +490,45 @@ class JoinITCase(expectedJoinType: JoinType) extends BatchTestBase {
     checkResult(
       "SELECT COUNT(g), COUNT(b) FROM SmallTable3, Table5 WHERE a = d",
       Seq(row(6L, 6L)))
+  }
+
+  @Ignore
+  @Test
+  def testCrossWithUnnest(): Unit = {
+    val data = List(
+      row(1, 1L, Array("Hi", "w")),
+      row(2, 2L, Array("Hello", "k")),
+      row(3, 2L, Array("Hello world", "x"))
+    )
+    registerCollection("T", data,
+      new RowTypeInfo(INT_TYPE_INFO, LONG_TYPE_INFO, STRING_ARRAY_TYPE_INFO),
+      "a, b, c")
+
+    checkResult(
+      "SELECT a, s FROM T, UNNEST(T.c) as A (s)",
+      Seq())
+  }
+
+  @Ignore
+  @Test
+  def testJoinWithUnnestOfTuple(): Unit = {
+    val data = List(
+      row(1, Array(row(12, "45.6"), row(2, "45.612"))),
+      row(2, Array(row(13, "41.6"), row(1, "45.2136"))),
+      row(3, Array(row(18, "42.6"))))
+    registerCollection("T", data,
+      new RowTypeInfo(INT_TYPE_INFO,
+        ObjectArrayTypeInfo.getInfoFor(classOf[Array[Row]],
+          new RowTypeInfo(INT_TYPE_INFO, STRING_TYPE_INFO))),
+      "a, b")
+
+    checkResult(
+      "SELECT a, b, x, y " +
+        "FROM " +
+        "  (SELECT a, b FROM T WHERE a < 3) as tf, " +
+        "  UNNEST(tf.b) as A (x, y) " +
+        "WHERE x > a",
+      Seq())
   }
 
   @Ignore
@@ -605,49 +637,43 @@ class JoinITCase(expectedJoinType: JoinType) extends BatchTestBase {
       row(2, 1.0) :: row(2, 1.0) :: Nil)
   }
 
-  @Ignore // TODO not support same source until set lazy_from_source
   @Test
   def testJoinWithNull(): Unit = {
-    // TODO enable all
-    // TODO not support same source until set lazy_from_source
-    if (expectedJoinType == SortMergeJoin) {
-      checkResult(
-        "SELECT c, g FROM NullTable3, NullTable5 " +
-            "WHERE (a = d OR (a IS NULL AND d IS NULL)) AND b = h",
-        Seq(
-          row("Hi", "Hallo"),
-          row("Hello", "Hallo Welt"),
-          row("Hello world", "Hallo Welt wie gehts?"),
-          row("Hello world", "ABC"),
-          row("I am fine.", "HIJ"),
-          row("I am fine.", "IJK"),
-          row("NullTuple", "NullTuple"),
-          row("NullTuple", "NullTuple"),
-          row("NullTuple", "NullTuple"),
-          row("NullTuple", "NullTuple")
-        ))
+    checkResult(
+      "SELECT c, g FROM NullTable3, NullTable5 " +
+        "WHERE (a = d OR (a IS NULL AND d IS NULL)) AND b = h",
+      Seq(
+        row("Hi", "Hallo"),
+        row("Hello", "Hallo Welt"),
+        row("Hello world", "Hallo Welt wie gehts?"),
+        row("Hello world", "ABC"),
+        row("I am fine.", "HIJ"),
+        row("I am fine.", "IJK"),
+        row("NullTuple", "NullTuple"),
+        row("NullTuple", "NullTuple"),
+        row("NullTuple", "NullTuple"),
+        row("NullTuple", "NullTuple")
+      ))
 
-      checkResult(
-        "SELECT c, g FROM NullTable3, NullTable5 " +
-            "WHERE (a = d OR (a IS NULL AND d IS NULL)) and c = 'NullTuple'",
-        Seq(
-          row("NullTuple", "NullTuple"),
-          row("NullTuple", "NullTuple"),
-          row("NullTuple", "NullTuple"),
-          row("NullTuple", "NullTuple")
-        ))
+    checkResult(
+      "SELECT c, g FROM NullTable3, NullTable5 " +
+        "WHERE (a = d OR (a IS NULL AND d IS NULL)) and c = 'NullTuple'",
+      Seq(
+        row("NullTuple", "NullTuple"),
+        row("NullTuple", "NullTuple"),
+        row("NullTuple", "NullTuple"),
+        row("NullTuple", "NullTuple")
+      ))
 
-      registerCollection(
-        "NullT", Seq(row(null, null, "c")), type3, "a, b, c", allNullablesOfNullData3)
-      checkResult(
-        "SELECT T1.a, T1.b, T1.c FROM NullT T1, NullT T2 WHERE " +
-            "(T1.a = T2.a OR (T1.a IS NULL AND T2.a IS NULL)) " +
-            "AND (T1.b = T2.b OR (T1.b IS NULL AND T2.b IS NULL)) AND T1.c = T2.c",
-        Seq(row("null", "null", "c")))
-    }
+    registerCollection(
+      "NullT", Seq(row(null, null, "c")), type3, allNullablesOfNullData3, "a, b, c")
+    checkResult(
+      "SELECT T1.a, T1.b, T1.c FROM NullT T1, NullT T2 WHERE " +
+        "(T1.a = T2.a OR (T1.a IS NULL AND T2.a IS NULL)) " +
+        "AND (T1.b = T2.b OR (T1.b IS NULL AND T2.b IS NULL)) AND T1.c = T2.c",
+      Seq(row("null", "null", "c")))
   }
 
-  @Ignore // TODO not support same source until set lazy_from_source
   @Test
   def testSingleRowJoin(): Unit = {
     if (expectedJoinType == NestedLoopJoin) {
@@ -689,7 +715,6 @@ class JoinITCase(expectedJoinType: JoinType) extends BatchTestBase {
     }
   }
 
-  @Ignore // TODO not support same source until set lazy_from_source
   @Test
   def testNonEmptyTableJoinEmptyTable(): Unit = {
     if (expectedJoinType == NestedLoopJoin) {
@@ -755,7 +780,7 @@ class JoinITCase(expectedJoinType: JoinType) extends BatchTestBase {
   @Ignore
   @Test
   def testJoinCollation(): Unit = {
-    conf.getConfiguration.setInteger(ExecutionConfigOptions.SQL_RESOURCE_SORT_BUFFER_MEM, 1)
+    conf.getConf.setInteger(TableConfigOptions.SQL_RESOURCE_SORT_BUFFER_MEM, 1)
     checkResult(
       """
         |WITH v1 AS (
@@ -799,29 +824,6 @@ class JoinITCase(expectedJoinType: JoinType) extends BatchTestBase {
         row(2, 2L, 4L, 4L)
       )
     )
-  }
-
-  @Test
-  def testJoinWithUDFFilter(): Unit = {
-    registerFunction("funcWithOpen", new FuncWithOpen)
-    checkResult(
-      "SELECT c, g FROM SmallTable3 join Table5 on funcWithOpen(a + d) where b = e",
-      Seq(
-        row("Hi", "Hallo"),
-        row("Hello", "Hallo Welt"),
-        row("Hello world", "Hallo Welt"))
-    )
-  }
-}
-
-object JoinITCase {
-  @Parameterized.Parameters(name = "{0}")
-  def parameters(): util.Collection[Any] = {
-    util.Arrays.asList(
-      Array(BroadcastHashJoin),
-      Array(HashJoin),
-      Array(SortMergeJoin),
-      Array(NestedLoopJoin))
   }
 }
 

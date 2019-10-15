@@ -76,9 +76,12 @@ public class Int2SortMergeJoinOperatorTest {
 	}
 
 	@After
-	public void tearDown() throws Exception {
+	public void tearDown() {
 		// shut down I/O manager and Memory Manager and verify the correct shutdown
-		this.ioManager.close();
+		this.ioManager.shutdown();
+		if (!this.ioManager.isProperlyShutDown()) {
+			fail("I/O manager was not property shut down.");
+		}
 		if (!this.memManager.verifyEmpty()) {
 			fail("Not all memory was properly released to the memory manager --> Memory Leak.");
 		}
@@ -149,7 +152,7 @@ public class Int2SortMergeJoinOperatorTest {
 		MutableObjectIterator<BinaryRow> probeInput = new UniformBinaryRowGenerator(numKeys2, probeValsPerKey, true);
 
 		StreamOperator operator = newOperator(FlinkJoinType.SEMI, false);
-		joinAndAssert(operator, buildInput, probeInput, 90, 9, 45, true);
+		joinAndAssert(operator, buildInput, probeInput, 90, 9, 45, true, false);
 	}
 
 	@Test
@@ -163,7 +166,7 @@ public class Int2SortMergeJoinOperatorTest {
 		MutableObjectIterator<BinaryRow> probeInput = new UniformBinaryRowGenerator(numKeys2, probeValsPerKey, true);
 
 		StreamOperator operator = newOperator(FlinkJoinType.ANTI, false);
-		joinAndAssert(operator, buildInput, probeInput, 10, 1, 45, true);
+		joinAndAssert(operator, buildInput, probeInput, 10, 1, 45, true, false);
 	}
 
 	private void buildJoin(
@@ -174,7 +177,7 @@ public class Int2SortMergeJoinOperatorTest {
 
 		joinAndAssert(
 				getOperator(type),
-				input1, input2, expertOutSize, expertOutKeySize, expertOutVal, false);
+				input1, input2, expertOutSize, expertOutKeySize, expertOutVal, false, false);
 	}
 
 	private StreamOperator getOperator(FlinkJoinType type) {
@@ -187,7 +190,7 @@ public class Int2SortMergeJoinOperatorTest {
 				new GeneratedJoinCondition("", "", new Object[0]) {
 					@Override
 					public JoinCondition newInstance(ClassLoader classLoader) {
-						return new Int2HashJoinOperatorTest.TrueCondition();
+						return (in1, in2) -> true;
 					}
 				},
 				new GeneratedProjection("", "", new Object[0]) {

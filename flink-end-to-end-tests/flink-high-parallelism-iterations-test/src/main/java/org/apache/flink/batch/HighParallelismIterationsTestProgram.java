@@ -35,6 +35,7 @@ public class HighParallelismIterationsTestProgram {
 
 	public static void main(String[] args) throws Exception {
 		ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
+		env.getConfig().disableSysoutLogging();
 
 		// read vertex and edge data
 		DataSet<Long> vertices = ConnectedComponentsData.getDefaultVertexDataSet(env)

@@ -18,7 +18,7 @@
 
 package org.apache.flink.table.expressions;
 
-import org.apache.flink.table.types.logical.LogicalType;
+import org.apache.flink.table.type.InternalType;
 import org.apache.flink.util.Preconditions;
 
 import java.util.Collections;
@@ -30,9 +30,9 @@ import java.util.List;
 public class ResolvedDistinctKeyReference implements Expression {
 
 	private final String name;
-	private final LogicalType resultType;
+	private final InternalType resultType;
 
-	public ResolvedDistinctKeyReference(String name, LogicalType resultType) {
+	public ResolvedDistinctKeyReference(String name, InternalType resultType) {
 		this.name = Preconditions.checkNotNull(name);
 		this.resultType = resultType;
 	}
@@ -41,13 +41,8 @@ public class ResolvedDistinctKeyReference implements Expression {
 		return name;
 	}
 
-	public LogicalType getResultType() {
+	public InternalType getResultType() {
 		return resultType;
-	}
-
-	@Override
-	public String asSummaryString() {
-		return name;
 	}
 
 	@Override
@@ -83,6 +78,6 @@ public class ResolvedDistinctKeyReference implements Expression {
 
 	@Override
 	public String toString() {
-		return asSummaryString();
+		return name;
 	}
 }

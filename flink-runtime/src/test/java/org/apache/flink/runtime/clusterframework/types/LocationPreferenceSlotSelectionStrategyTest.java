@@ -28,7 +28,6 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Optional;
-import java.util.stream.Collectors;
 
 public class LocationPreferenceSlotSelectionStrategyTest extends SlotSelectionStrategyTestBase {
 
@@ -62,11 +61,7 @@ public class LocationPreferenceSlotSelectionStrategyTest extends SlotSelectionSt
 		SlotProfile slotProfile = new SlotProfile(ResourceProfile.UNKNOWN, Collections.emptyList(), Collections.emptySet());
 		Optional<SlotSelectionStrategy.SlotInfoAndLocality> match = runMatching(slotProfile);
 
-		Assert.assertTrue(
-				candidates.stream()
-						.map(SlotSelectionStrategy.SlotInfoAndResources::getSlotInfo)
-						.collect(Collectors.toList())
-						.contains(match.get().getSlotInfo()));
+		Assert.assertTrue(candidates.contains(match.get().getSlotInfo()));
 	}
 
 	@Test
@@ -75,11 +70,7 @@ public class LocationPreferenceSlotSelectionStrategyTest extends SlotSelectionSt
 		SlotProfile slotProfile = new SlotProfile(resourceProfile, Collections.singletonList(tmlX), Collections.emptySet());
 		Optional<SlotSelectionStrategy.SlotInfoAndLocality> match = runMatching(slotProfile);
 
-		Assert.assertTrue(
-				candidates.stream()
-						.map(SlotSelectionStrategy.SlotInfoAndResources::getSlotInfo)
-						.collect(Collectors.toList())
-						.contains(match.get().getSlotInfo()));
+		Assert.assertTrue(candidates.contains(match.get().getSlotInfo()));
 	}
 
 	@Test

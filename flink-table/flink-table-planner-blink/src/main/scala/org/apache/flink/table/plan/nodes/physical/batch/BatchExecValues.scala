@@ -18,19 +18,20 @@
 
 package org.apache.flink.table.plan.nodes.physical.batch
 
-import org.apache.flink.api.dag.Transformation
 import org.apache.flink.runtime.operators.DamBehavior
+import org.apache.flink.streaming.api.transformations.StreamTransformation
+import org.apache.flink.table.api.BatchTableEnvironment
 import org.apache.flink.table.codegen.ValuesCodeGenerator
 import org.apache.flink.table.dataformat.BaseRow
 import org.apache.flink.table.plan.nodes.exec.{BatchExecNode, ExecNode}
-import org.apache.flink.table.planner.BatchPlanner
 
-import com.google.common.collect.ImmutableList
 import org.apache.calcite.plan.{RelOptCluster, RelTraitSet}
 import org.apache.calcite.rel.`type`.RelDataType
 import org.apache.calcite.rel.core.Values
 import org.apache.calcite.rel.{RelNode, RelWriter}
 import org.apache.calcite.rex.RexLiteral
+
+import com.google.common.collect.ImmutableList
 
 import java.util
 
@@ -63,25 +64,22 @@ class BatchExecValues(
 
   override def getDamBehavior: DamBehavior = DamBehavior.PIPELINED
 
-  override def getInputNodes: util.List[ExecNode[BatchPlanner, _]] = List()
+  override def getInputNodes: util.List[ExecNode[BatchTableEnvironment, _]] = List()
 
   override def replaceInputNode(
       ordinalInParent: Int,
-      newInputNode: ExecNode[BatchPlanner, _]): Unit = {
+      newInputNode: ExecNode[BatchTableEnvironment, _]): Unit = {
     replaceInput(ordinalInParent, newInputNode.asInstanceOf[RelNode])
   }
 
   override protected def translateToPlanInternal(
-      planner: BatchPlanner): Transformation[BaseRow] = {
+      tableEnv: BatchTableEnvironment): StreamTransformation[BaseRow] = {
     val inputFormat = ValuesCodeGenerator.generatorInputFormat(
-      planner.getTableConfig,
+      tableEnv,
       getRowType,
       tuples,
       getRelTypeName)
-    val transformation = planner.getExecEnv.createInput(inputFormat,
-      inputFormat.getProducedType).getTransformation
-    transformation.setParallelism(getResource.getParallelism)
-    transformation
+    tableEnv.streamEnv.createInput(inputFormat, inputFormat.getProducedType).getTransformation
   }
 
 }

@@ -19,13 +19,11 @@
 package org.apache.flink.streaming.api.operators;
 
 import org.apache.flink.annotation.Internal;
-import org.apache.flink.streaming.api.watermark.Watermark;
-import org.apache.flink.streaming.runtime.streamrecord.LatencyMarker;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
-import org.apache.flink.util.OutputTag;
+import org.apache.flink.util.Collector;
 
 /**
- * Wrapper around an {@link Output} for user functions that expect a {@link Output}.
+ * Wrapper around an {@link Output} for user functions that expect a {@link Collector}.
  * Before giving the {@link TimestampedCollector} to a user function you must set
  * the timestamp that should be attached to emitted elements. Most operators
  * would set the timestamp of the incoming
@@ -34,7 +32,7 @@ import org.apache.flink.util.OutputTag;
  * @param <T> The type of the elements that can be emitted.
  */
 @Internal
-public final class TimestampedCollector<T> implements Output<T> {
+public class TimestampedCollector<T> implements Collector<T> {
 
 	private final Output<StreamRecord<T>> output;
 
@@ -72,20 +70,5 @@ public final class TimestampedCollector<T> implements Output<T> {
 	@Override
 	public void close() {
 		output.close();
-	}
-
-	@Override
-	public void emitWatermark(Watermark mark) {
-		output.emitWatermark(mark);
-	}
-
-	@Override
-	public <X> void collect(OutputTag<X> outputTag, StreamRecord<X> record) {
-		output.collect(outputTag, record);
-	}
-
-	@Override
-	public void emitLatencyMarker(LatencyMarker latencyMarker) {
-		output.emitLatencyMarker(latencyMarker);
 	}
 }

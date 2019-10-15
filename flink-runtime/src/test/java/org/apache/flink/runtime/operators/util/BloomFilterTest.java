@@ -63,7 +63,12 @@ public class BloomFilterTest {
 	public void testBloomFilterArguments4() {
 		new BloomFilter(1024, 0);
 	}
-
+	
+	@Test(expected = IllegalArgumentException.class)
+	public void testBloomFilterArguments5() {
+		new BloomFilter(1024, 21);
+	}
+	
 	@Test
 	public void testBloomNumBits() {
 		assertEquals(0, BloomFilter.optimalNumOfBits(0, 0));

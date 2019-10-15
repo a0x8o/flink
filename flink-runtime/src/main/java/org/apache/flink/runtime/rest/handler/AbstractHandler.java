@@ -21,7 +21,6 @@ package org.apache.flink.runtime.rest.handler;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.rest.FileUploadHandler;
-import org.apache.flink.runtime.rest.FlinkHttpObjectAggregator;
 import org.apache.flink.runtime.rest.handler.router.RoutedRequest;
 import org.apache.flink.runtime.rest.handler.util.HandlerUtils;
 import org.apache.flink.runtime.rest.messages.ErrorResponseBody;
@@ -35,7 +34,6 @@ import org.apache.flink.util.AutoCloseableAsync;
 import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.Preconditions;
 
-import org.apache.flink.shaded.guava18.com.google.common.base.Ascii;
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.core.JsonParseException;
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.databind.JsonMappingException;
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.databind.ObjectMapper;
@@ -53,7 +51,6 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -72,12 +69,6 @@ public abstract class AbstractHandler<T extends RestfulGateway, R extends Reques
 	protected final Logger log = LoggerFactory.getLogger(getClass());
 
 	protected static final ObjectMapper MAPPER = RestMapperUtils.getStrictObjectMapper();
-
-	/**
-	 * Other response payload overhead (in bytes).
-	 * If we truncate response payload, we should leave enough buffer for this overhead.
-	 */
-	private static final int OTHER_RESP_PAYLOAD_OVERHEAD = 1024;
 
 	private final UntypedResponseMessageHeaders<R, M> untypedResponseMessageHeaders;
 
@@ -131,7 +122,7 @@ public abstract class AbstractHandler<T extends RestfulGateway, R extends Reques
 				}
 			} else {
 				try {
-					InputStream in = new ByteBufInputStream(msgContent);
+					ByteBufInputStream in = new ByteBufInputStream(msgContent);
 					request = MAPPER.readValue(in, untypedResponseMessageHeaders.getRequestClass());
 				} catch (JsonParseException | JsonMappingException je) {
 					throw new RestHandlerException(
@@ -188,12 +179,8 @@ public abstract class AbstractHandler<T extends RestfulGateway, R extends Reques
 	}
 
 	private CompletableFuture<Void> handleException(Throwable throwable, ChannelHandlerContext ctx, HttpRequest httpRequest) {
-		FlinkHttpObjectAggregator flinkHttpObjectAggregator = ctx.pipeline().get(FlinkHttpObjectAggregator.class);
-		int maxLength = flinkHttpObjectAggregator.maxContentLength() - OTHER_RESP_PAYLOAD_OVERHEAD;
 		if (throwable instanceof RestHandlerException) {
 			RestHandlerException rhe = (RestHandlerException) throwable;
-			String stackTrace = ExceptionUtils.stringifyException(rhe);
-			String truncatedStackTrace = Ascii.truncate(stackTrace, maxLength, "...");
 			if (log.isDebugEnabled()) {
 				log.error("Exception occurred in REST handler.", rhe);
 			} else {
@@ -202,18 +189,17 @@ public abstract class AbstractHandler<T extends RestfulGateway, R extends Reques
 			return HandlerUtils.sendErrorResponse(
 				ctx,
 				httpRequest,
-				new ErrorResponseBody(truncatedStackTrace),
+				new ErrorResponseBody(rhe.getMessage()),
 				rhe.getHttpResponseStatus(),
 				responseHeaders);
 		} else {
 			log.error("Unhandled exception.", throwable);
 			String stackTrace = String.format("<Exception on server side:%n%s%nEnd of exception on server side>",
 				ExceptionUtils.stringifyException(throwable));
-			String truncatedStackTrace = Ascii.truncate(stackTrace, maxLength, "...");
 			return HandlerUtils.sendErrorResponse(
 				ctx,
 				httpRequest,
-				new ErrorResponseBody(Arrays.asList("Internal server error.", truncatedStackTrace)),
+				new ErrorResponseBody(Arrays.asList("Internal server error.", stackTrace)),
 				HttpResponseStatus.INTERNAL_SERVER_ERROR,
 				responseHeaders);
 		}

@@ -18,13 +18,12 @@
 
 package org.apache.flink.table.codegen.calls
 
-import org.apache.flink.table.codegen.CodeGenUtils.{getEnum, primitiveTypeTermForType, qualifyMethod}
-import org.apache.flink.table.codegen.GenerateUtils.generateCallIfArgsNotNull
-import org.apache.flink.table.codegen.{CodeGeneratorContext, GeneratedExpression}
-import org.apache.flink.table.types.logical.{LogicalType, LogicalTypeRoot}
-
 import org.apache.calcite.avatica.util.TimeUnitRange
 import org.apache.calcite.avatica.util.TimeUnitRange._
+import org.apache.flink.table.`type`.{DecimalType, InternalType, InternalTypes}
+import org.apache.flink.table.codegen.CodeGenUtils.{getEnum, primitiveTypeTermForType, qualifyMethod}
+import org.apache.flink.table.codegen.{CodeGeneratorContext, GeneratedExpression}
+import org.apache.flink.table.codegen.GenerateUtils.generateCallIfArgsNotNull
 
 import java.lang.reflect.Method
 import java.util.TimeZone
@@ -40,13 +39,13 @@ class FloorCeilCallGen(
   override def generate(
       ctx: CodeGeneratorContext,
       operands: Seq[GeneratedExpression],
-      returnType: LogicalType): GeneratedExpression = operands.size match {
+      returnType: InternalType): GeneratedExpression = operands.size match {
     // arithmetic
     case 1 =>
-      operands.head.resultType.getTypeRoot match {
-        case LogicalTypeRoot.FLOAT | LogicalTypeRoot.DOUBLE =>
+      operands.head.resultType match {
+        case InternalTypes.FLOAT | InternalTypes.DOUBLE =>
           super.generate(ctx, operands, returnType)
-        case LogicalTypeRoot.DECIMAL =>
+        case _: DecimalType =>
           generateCallIfArgsNotNull(ctx, returnType, operands) {
             operandResultTerms =>
               s"${qualifyMethod(arithmeticMethod)}(${operandResultTerms.mkString(", ")})"

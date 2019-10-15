@@ -43,6 +43,7 @@ import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.UndeclaredThrowableException;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * The entry point for running a TaskManager in a Mesos container.
@@ -86,7 +87,8 @@ public class MesosTaskExecutorRunner {
 		final Map<String, String> envs = System.getenv();
 
 		// configure the filesystems
-		FileSystem.initialize(configuration, PluginUtils.createPluginManagerFromRootFolder(configuration));
+		//TODO provide plugin path.
+		FileSystem.initialize(configuration, PluginUtils.createPluginManagerFromRootFolder(Optional.empty()));
 
 		// tell akka to die in case of an error
 		configuration.setBoolean(AkkaOptions.JVM_EXIT_ON_FATAL_ERROR, true);

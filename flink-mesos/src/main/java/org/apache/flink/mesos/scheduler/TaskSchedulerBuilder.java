@@ -35,16 +35,6 @@ public interface TaskSchedulerBuilder {
 	TaskSchedulerBuilder withLeaseRejectAction(Action1<VirtualMachineLease> action);
 
 	/**
-	 * Set up TaskScheduler to reject all offers on expiry.
-	 */
-	TaskSchedulerBuilder withRejectAllExpiredOffers();
-
-	/**
-	 * Specify the expiration time for unused resource offers.
-	 */
-	TaskSchedulerBuilder withLeaseOfferExpirySecs(long leaseOfferExpirySecs);
-
-	/**
 	 * Build a Fenzo task scheduler.
 	 */
 	TaskScheduler build();

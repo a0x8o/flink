@@ -18,18 +18,14 @@
 package org.apache.flink.table.runtime.stream.sql
 
 import org.apache.flink.api.scala._
-import org.apache.flink.table.api.Types
 import org.apache.flink.table.api.scala._
 import org.apache.flink.table.runtime.utils.JavaUserDefinedScalarFunctions.UdfWithOpen
 import org.apache.flink.table.runtime.utils.JavaUserDefinedTableFunctions.StringSplit
 import org.apache.flink.table.runtime.utils.{StreamingTestBase, TestSinkUtil, TestingAppendSink, TestingAppendTableSink}
-import org.apache.flink.table.util.{RF, TableFunc7}
 import org.apache.flink.types.Row
 
 import org.junit.Assert.assertEquals
-import org.junit.{Before, Test}
-
-import java.lang.{Boolean => JBoolean}
+import org.junit.{Before, Ignore, Test}
 
 import scala.collection.mutable
 
@@ -41,6 +37,7 @@ class CorrelateITCase extends StreamingTestBase {
     tEnv.registerFunction("STRING_SPLIT", new StringSplit())
   }
 
+  @Ignore // TODO support union all.
   @Test
   // BLINK-13614111: Fix IndexOutOfBoundsException when UDTF is used on the
   // same name field of different tables
@@ -84,30 +81,7 @@ class CorrelateITCase extends StreamingTestBase {
     assertEquals(expected.sorted, sink.getAppendResults.sorted)
   }
 
-  @Test
-  def testConstantTableFunc(): Unit = {
-    tEnv.registerFunction("str_split", new StringSplit())
-    val query = "SELECT * FROM LATERAL TABLE(str_split()) as T0(d)"
-    val sink = new TestingAppendSink
-    tEnv.sqlQuery(query).toAppendStream[Row].addSink(sink)
-    env.execute()
-
-    val expected = List("a", "b", "c")
-    assertEquals(expected.sorted, sink.getAppendResults.sorted)
-  }
-
-  @Test
-  def testConstantTableFunc2(): Unit = {
-    tEnv.registerFunction("str_split", new StringSplit())
-    val query = "SELECT * FROM LATERAL TABLE(str_split('Jack,John', ',')) as T0(d)"
-    val sink = new TestingAppendSink
-    tEnv.sqlQuery(query).toAppendStream[Row].addSink(sink)
-    env.execute()
-
-    val expected = List("Jack", "John")
-    assertEquals(expected.sorted, sink.getAppendResults.sorted)
-  }
-
+  @Ignore // TODO like
   @Test
   def testUdfIsOpenedAfterUdtf(): Unit = {
     val data = List(
@@ -173,31 +147,7 @@ class CorrelateITCase extends StreamingTestBase {
       (sink1.getAppendResults ++ sink2.getAppendResults).sorted)
   }
 
-  @Test
-  def testMultipleEvals(): Unit = {
-    val row = Row.of(
-      12.asInstanceOf[Integer],
-      true.asInstanceOf[JBoolean],
-      Row.of(1.asInstanceOf[Integer], 2.asInstanceOf[Integer], 3.asInstanceOf[Integer])
-    )
-
-    val rowType = Types.ROW(Types.INT, Types.BOOLEAN, Types.ROW(Types.INT, Types.INT, Types.INT))
-    val in = env.fromElements(row, row)(rowType).toTable(tEnv, 'a, 'b, 'c)
-
-    val sink = new TestingAppendSink
-
-    tEnv.registerTable("MyTable", in)
-    tEnv.registerFunction("rfFunc", new RF)
-    tEnv.registerFunction("tfFunc", new TableFunc7)
-    tEnv.sqlQuery(
-      "SELECT rfFunc(a) as d, e FROM MyTable, LATERAL TABLE(tfFunc(rfFunc(a))) as T(e)")
-        .toAppendStream[Row].addSink(sink)
-
-    env.execute()
-
-    assertEquals(List(), sink.getAppendResults.sorted)
-  }
-
+  @Ignore // TODO DATE_ADD
   @Test
   def testReUsePerRecord(): Unit = {
     val data = List(
@@ -238,9 +188,8 @@ class CorrelateITCase extends StreamingTestBase {
 
     val result = tEnv.sqlQuery(sql)
     val sink = TestSinkUtil.configureSink(result, new TestingAppendTableSink)
-    tEnv.registerTableSink("MySink", sink)
-    tEnv.insertInto(result, "MySink")
-    tEnv.execute("test")
+    tEnv.writeToSink(result, sink)
+    env.execute()
 
     val expected = List("1,2,,null", "1,3,,null")
     assertEquals(expected.sorted, sink.getAppendResults.sorted)
@@ -260,9 +209,8 @@ class CorrelateITCase extends StreamingTestBase {
 
     val result = tEnv.sqlQuery(sql)
     val sink = TestSinkUtil.configureSink(result, new TestingAppendTableSink)
-    tEnv.registerTableSink("MySink", sink)
-    tEnv.insertInto(result, "MySink")
-    tEnv.execute("test")
+    tEnv.writeToSink(result, sink)
+    env.execute()
 
     val expected = List("3018-06-10", "2018-06-03", "2018-06-01", "2018-06-02")
     assertEquals(expected.sorted, sink.getAppendResults.sorted)
@@ -282,9 +230,8 @@ class CorrelateITCase extends StreamingTestBase {
 
     val result = tEnv.sqlQuery(sql)
     val sink = TestSinkUtil.configureSink(result, new TestingAppendTableSink)
-    tEnv.registerTableSink("MySink", sink)
-    tEnv.insertInto(result, "MySink")
-    tEnv.execute("test")
+    tEnv.writeToSink(result, sink)
+    env.execute()
 
     val expected = List("1,3018-06-10", "1,2018-06-03", "1,2018-06-01", "1,2018-06-02")
     assertEquals(expected.sorted, sink.getAppendResults.sorted)
@@ -303,9 +250,8 @@ class CorrelateITCase extends StreamingTestBase {
 
     val result = tEnv.sqlQuery(sql)
     val sink = TestSinkUtil.configureSink(result, new TestingAppendTableSink)
-    tEnv.registerTableSink("MySink", sink)
-    tEnv.insertInto(result, "MySink")
-    tEnv.execute("test")
+    tEnv.writeToSink(result, sink)
+    env.execute()
 
     val expected = List("a")
     assertEquals(expected.sorted, sink.getAppendResults.sorted)
@@ -324,9 +270,8 @@ class CorrelateITCase extends StreamingTestBase {
 
     val result = tEnv.sqlQuery(sql)
     val sink = TestSinkUtil.configureSink(result, new TestingAppendTableSink)
-    tEnv.registerTableSink("MySink", sink)
-    tEnv.insertInto(result, "MySink")
-    tEnv.execute("test")
+    tEnv.writeToSink(result, sink)
+    env.execute()
 
     // output two null
     val expected = List("null", "null")
@@ -346,9 +291,8 @@ class CorrelateITCase extends StreamingTestBase {
 
     val result = tEnv.sqlQuery(sql)
     val sink = TestSinkUtil.configureSink(result, new TestingAppendTableSink)
-    tEnv.registerTableSink("MySink", sink)
-    tEnv.insertInto(result, "MySink")
-    tEnv.execute("test")
+    tEnv.writeToSink(result, sink)
+    env.execute()
 
     val expected = List("1,a")
     assertEquals(expected.sorted, sink.getAppendResults.sorted)
@@ -367,9 +311,8 @@ class CorrelateITCase extends StreamingTestBase {
 
     val result = tEnv.sqlQuery(sql)
     val sink = TestSinkUtil.configureSink(result, new TestingAppendTableSink)
-    tEnv.registerTableSink("MySink", sink)
-    tEnv.insertInto(result, "MySink")
-    tEnv.execute("test")
+    tEnv.writeToSink(result, sink)
+    env.execute()
 
     val expected = List("2,null", "3,null")
     assertEquals(expected.sorted, sink.getAppendResults.sorted)
@@ -393,7 +336,8 @@ class CorrelateITCase extends StreamingTestBase {
 //
 //    val sink = new TestingUpsertTableSink(Array(0))
 //    tEnv.sqlQuery(sql).writeToSink(sink)
-//    tEnv.execute()
+//    tEnv.compile()
+//    env.execute()
 //
 //    val expected = List("1", "2", "3", "4")
 //    assertEquals(expected.sorted, sink.getUpsertResults.sorted)
@@ -417,7 +361,8 @@ class CorrelateITCase extends StreamingTestBase {
 //
 //    val sink = new TestingUpsertTableSink(Array(0))
 //    tEnv.sqlQuery(sql).writeToSink(sink)
-//    tEnv.execute()
+//    tEnv.compile()
+//    env.execute()
 //
 //    val expected = List("1", "2")
 //    assertEquals(expected.sorted, sink.getUpsertResults.sorted)

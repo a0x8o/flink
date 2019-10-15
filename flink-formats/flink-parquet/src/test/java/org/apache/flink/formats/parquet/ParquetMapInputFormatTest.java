@@ -77,7 +77,7 @@ public class ParquetMapInputFormatTest {
 		List<Map<String, String>> nestedArray = (List<Map<String, String>>) map.get("nestedArray");
 		assertEquals(1, nestedArray.size());
 		assertEquals("color", nestedArray.get(0).get("type"));
-		assertEquals(1L, nestedArray.get(0).get("value"));
+		assertEquals("yellow", nestedArray.get(0).get("value"));
 	}
 
 	@Test

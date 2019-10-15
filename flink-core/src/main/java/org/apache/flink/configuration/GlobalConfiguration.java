@@ -63,23 +63,11 @@ public final class GlobalConfiguration {
 	 * @return Returns the Configuration
 	 */
 	public static Configuration loadConfiguration() {
-		return loadConfiguration(new Configuration());
-	}
-
-	/**
-	 * Loads the global configuration and adds the given dynamic properties
-	 * configuration.
-	 *
-	 * @param dynamicProperties The given dynamic properties
-	 * @return Returns the loaded global configuration with dynamic properties
-	 */
-	public static Configuration loadConfiguration(Configuration dynamicProperties) {
 		final String configDir = System.getenv(ConfigConstants.ENV_FLINK_CONF_DIR);
 		if (configDir == null) {
-			return new Configuration(dynamicProperties);
+			return new Configuration();
 		}
-
-		return loadConfiguration(configDir, dynamicProperties);
+		return loadConfiguration(configDir, null);
 	}
 
 	/**
@@ -130,32 +118,23 @@ public final class GlobalConfiguration {
 			configuration.addAll(dynamicProperties);
 		}
 
-		return enrichWithEnvironmentVariables(configuration);
-	}
-
-	private static Configuration enrichWithEnvironmentVariables(Configuration configuration) {
-		enrichWithEnvironmentVariable(ConfigConstants.ENV_FLINK_PLUGINS_DIR, configuration);
 		return configuration;
 	}
 
-	private static void enrichWithEnvironmentVariable(String environmentVariable, Configuration configuration) {
-		String pluginsDirFromEnv = System.getenv(environmentVariable);
-
-		if (pluginsDirFromEnv == null) {
-			return;
+	/**
+	 * Loads the global configuration and adds the given dynamic properties
+	 * configuration.
+	 *
+	 * @param dynamicProperties The given dynamic properties
+	 * @return Returns the loaded global configuration with dynamic properties
+	 */
+	public static Configuration loadConfigurationWithDynamicProperties(Configuration dynamicProperties) {
+		final String configDir = System.getenv(ConfigConstants.ENV_FLINK_CONF_DIR);
+		if (configDir == null) {
+			return new Configuration(dynamicProperties);
 		}
 
-		String pluginsDirFromConfig = configuration.getString(environmentVariable, pluginsDirFromEnv);
-
-		if (!pluginsDirFromEnv.equals(pluginsDirFromConfig)) {
-			throw new IllegalConfigurationException(
-				"The given configuration file already contains a value (" + pluginsDirFromEnv +
-					") for the key (" + environmentVariable +
-					") that would have been overwritten with (" + pluginsDirFromConfig +
-					") by an environment with the same name.");
-		}
-
-		configuration.setString(environmentVariable, pluginsDirFromEnv);
+		return loadConfiguration(configDir, dynamicProperties);
 	}
 
 	/**

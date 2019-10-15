@@ -20,6 +20,7 @@ package org.apache.flink.table.runtime.values;
 
 import org.apache.flink.api.common.io.GenericInputFormat;
 import org.apache.flink.api.common.io.NonParallelInput;
+import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.java.typeutils.ResultTypeQueryable;
 import org.apache.flink.core.io.GenericInputSplit;
 import org.apache.flink.table.dataformat.BaseRow;
@@ -69,7 +70,7 @@ public class ValuesInputFormat
 	}
 
 	@Override
-	public BaseRowTypeInfo getProducedType() {
+	public TypeInformation<BaseRow> getProducedType() {
 		return returnType;
 	}
 

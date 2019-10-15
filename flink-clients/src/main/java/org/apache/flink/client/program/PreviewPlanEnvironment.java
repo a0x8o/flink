@@ -56,6 +56,10 @@ public final class PreviewPlanEnvironment extends ExecutionEnvironment {
 		throw new OptimizerPlanEnvironment.ProgramAbortException();
 	}
 
+	@Override
+	public void startNewSession() {
+	}
+
 	public void setAsContext() {
 		ExecutionEnvironmentFactory factory = new ExecutionEnvironmentFactory() {
 			@Override

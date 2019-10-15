@@ -23,6 +23,7 @@ import org.apache.flink.runtime.io.network.ConnectionManager;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferBuilderTestUtils;
 import org.apache.flink.runtime.io.network.buffer.BufferConsumer;
+import org.apache.flink.runtime.io.network.partition.consumer.LocalInputChannel;
 import org.apache.flink.runtime.io.network.partition.consumer.RemoteInputChannel;
 import org.apache.flink.runtime.io.network.partition.consumer.SingleInputGate;
 
@@ -62,7 +63,9 @@ public class InputGateConcurrentTest {
 		final SingleInputGate gate = createSingleInputGate(numberOfChannels);
 
 		for (int i = 0; i < numberOfChannels; i++) {
-			createLocalInputChannel(gate, i, resultPartitionManager);
+			LocalInputChannel channel = createLocalInputChannel(gate, i, resultPartitionManager);
+			gate.setInputChannel(channel.getPartitionId().getPartitionId(), channel);
+
 			partitions[i] = new PipelinedSubpartition(0, resultPartition);
 			sources[i] = new PipelinedSubpartitionSource(partitions[i]);
 		}
@@ -89,6 +92,8 @@ public class InputGateConcurrentTest {
 
 		for (int i = 0; i < numberOfChannels; i++) {
 			RemoteInputChannel channel = createRemoteInputChannel(gate, i, connManager);
+			gate.setInputChannel(channel.getPartitionId().getPartitionId(), channel);
+
 			sources[i] = new RemoteChannelSource(channel);
 		}
 
@@ -132,11 +137,14 @@ public class InputGateConcurrentTest {
 				localPartitions[local++] = psp;
 				sources[i] = new PipelinedSubpartitionSource(psp);
 
-				createLocalInputChannel(gate, i, resultPartitionManager);
+				LocalInputChannel channel = createLocalInputChannel(gate, i, resultPartitionManager);
+				gate.setInputChannel(channel.getPartitionId().getPartitionId(), channel);
 			}
 			else {
 				//remote channel
 				RemoteInputChannel channel = createRemoteInputChannel(gate, i, connManager);
+				gate.setInputChannel(channel.getPartitionId().getPartitionId(), channel);
+
 				sources[i] = new RemoteChannelSource(channel);
 			}
 		}
@@ -271,7 +279,7 @@ public class InputGateConcurrentTest {
 		@Override
 		public void go() throws Exception {
 			for (int i = numBuffers; i > 0; --i) {
-				assertNotNull(gate.getNext());
+				assertNotNull(gate.getNextBufferOrEvent());
 			}
 		}
 	}

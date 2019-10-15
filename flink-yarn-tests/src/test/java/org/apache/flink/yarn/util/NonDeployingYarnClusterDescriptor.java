@@ -23,7 +23,7 @@ import org.apache.flink.client.program.ClusterClient;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.util.Preconditions;
-import org.apache.flink.yarn.YarnClusterDescriptor;
+import org.apache.flink.yarn.AbstractYarnClusterDescriptor;
 
 import org.apache.hadoop.yarn.api.records.ApplicationId;
 import org.apache.hadoop.yarn.api.records.ApplicationReport;
@@ -31,9 +31,9 @@ import org.apache.hadoop.yarn.client.api.YarnClient;
 import org.apache.hadoop.yarn.conf.YarnConfiguration;
 
 /**
- * Dummy {@link YarnClusterDescriptor} without an actual deployment for tests.
+ * Dummy {@link AbstractYarnClusterDescriptor} without an actual deployment for tests.
  */
-public class NonDeployingYarnClusterDescriptor extends YarnClusterDescriptor {
+public class NonDeployingYarnClusterDescriptor extends AbstractYarnClusterDescriptor {
 
 	private final ClusterClient<ApplicationId> clusterClient;
 
@@ -45,18 +45,24 @@ public class NonDeployingYarnClusterDescriptor extends YarnClusterDescriptor {
 			ClusterClient<ApplicationId> clusterClient) {
 		super(flinkConfiguration, yarnConfiguration, configurationDirectory, yarnClient, true);
 
+		//noinspection unchecked
 		this.clusterClient = Preconditions.checkNotNull(clusterClient);
 	}
 
 	@Override
 	public String getClusterDescription() {
+		// return parent.getClusterDescription();
 		return "NonDeployingYarnClusterDescriptor";
 	}
 
 	@Override
 	protected ClusterClient<ApplicationId> createYarnClusterClient(
-		ApplicationReport report,
-		Configuration flinkConfiguration) {
+			AbstractYarnClusterDescriptor descriptor,
+			int numberTaskManagers,
+			int slotsPerTaskManager,
+			ApplicationReport report,
+			Configuration flinkConfiguration,
+			boolean perJobCluster) {
 		return clusterClient;
 	}
 
@@ -72,9 +78,21 @@ public class NonDeployingYarnClusterDescriptor extends YarnClusterDescriptor {
 
 	@Override
 	public ClusterClient<ApplicationId> deployJobCluster(
-			ClusterSpecification clusterSpecification,
-			JobGraph jobGraph,
-			boolean detached) {
+			ClusterSpecification clusterSpecification, JobGraph jobGraph, boolean detached) {
 		return clusterClient;
+	}
+
+	@Override
+	public void killCluster(ApplicationId clusterId) {
+	}
+
+	@Override
+	protected String getYarnSessionClusterEntrypoint() {
+		throw new UnsupportedOperationException("Not needed in test.");
+	}
+
+	@Override
+	protected String getYarnJobClusterEntrypoint() {
+		throw new UnsupportedOperationException("Not needed in test.");
 	}
 }

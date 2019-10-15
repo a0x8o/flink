@@ -18,12 +18,15 @@
 
 package org.apache.flink.table.functions.aggfunctions;
 
-import org.apache.flink.table.api.DataTypes;
-import org.apache.flink.table.calcite.FlinkTypeSystem;
+import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.table.expressions.Expression;
 import org.apache.flink.table.expressions.UnresolvedReferenceExpression;
-import org.apache.flink.table.types.DataType;
-import org.apache.flink.table.types.logical.DecimalType;
+import org.apache.flink.table.type.DecimalType;
+import org.apache.flink.table.type.InternalType;
+import org.apache.flink.table.type.InternalTypes;
+import org.apache.flink.table.type.TypeConverters;
+import org.apache.flink.table.typeutils.DecimalTypeInfo;
 
 import java.math.BigDecimal;
 
@@ -35,17 +38,16 @@ import static org.apache.flink.table.expressions.ExpressionBuilder.literal;
 import static org.apache.flink.table.expressions.ExpressionBuilder.minus;
 import static org.apache.flink.table.expressions.ExpressionBuilder.nullOf;
 import static org.apache.flink.table.expressions.ExpressionBuilder.plus;
-import static org.apache.flink.table.expressions.utils.ApiExpressionUtils.unresolvedRef;
 
 /**
  * built-in avg aggregate function.
  */
 public abstract class AvgAggFunction extends DeclarativeAggregateFunction {
 
-	private UnresolvedReferenceExpression sum = unresolvedRef("sum");
-	private UnresolvedReferenceExpression count = unresolvedRef("count");
+	private UnresolvedReferenceExpression sum = new UnresolvedReferenceExpression("sum");
+	private UnresolvedReferenceExpression count = new UnresolvedReferenceExpression("count");
 
-	public abstract DataType getSumType();
+	public abstract TypeInformation getSumType();
 
 	@Override
 	public int operandCount() {
@@ -60,10 +62,10 @@ public abstract class AvgAggFunction extends DeclarativeAggregateFunction {
 	}
 
 	@Override
-	public DataType[] getAggBufferTypes() {
-		return new DataType[] {
-				getSumType(),
-				DataTypes.BIGINT()
+	public InternalType[] getAggBufferTypes() {
+		return new InternalType[] {
+				TypeConverters.createInternalTypeFromTypeInfo(getSumType()),
+				InternalTypes.LONG
 		};
 	}
 
@@ -114,13 +116,13 @@ public abstract class AvgAggFunction extends DeclarativeAggregateFunction {
 	public static class IntegralAvgAggFunction extends AvgAggFunction {
 
 		@Override
-		public DataType getResultType() {
-			return DataTypes.DOUBLE();
+		public TypeInformation getResultType() {
+			return Types.DOUBLE;
 		}
 
 		@Override
-		public DataType getSumType() {
-			return DataTypes.BIGINT();
+		public TypeInformation getSumType() {
+			return Types.LONG;
 		}
 	}
 
@@ -130,13 +132,13 @@ public abstract class AvgAggFunction extends DeclarativeAggregateFunction {
 	public static class DoubleAvgAggFunction extends AvgAggFunction {
 
 		@Override
-		public DataType getResultType() {
-			return DataTypes.DOUBLE();
+		public TypeInformation getResultType() {
+			return Types.DOUBLE;
 		}
 
 		@Override
-		public DataType getSumType() {
-			return DataTypes.DOUBLE();
+		public TypeInformation getSumType() {
+			return Types.DOUBLE;
 		}
 
 		@Override
@@ -150,32 +152,25 @@ public abstract class AvgAggFunction extends DeclarativeAggregateFunction {
 	 */
 	public static class DecimalAvgAggFunction extends AvgAggFunction {
 
-		private final DecimalType type;
+		private final DecimalTypeInfo type;
 
-		public DecimalAvgAggFunction(DecimalType type) {
+		public DecimalAvgAggFunction(DecimalTypeInfo type) {
 			this.type = type;
 		}
 
 		@Override
-		public DataType getResultType() {
-			DecimalType t = FlinkTypeSystem.inferAggAvgType(type.getScale());
-			return DataTypes.DECIMAL(t.getPrecision(), t.getScale());
+		public TypeInformation getResultType() {
+			return DecimalType.inferAggAvgType(type.scale()).toTypeInfo();
 		}
 
 		@Override
-		public DataType getSumType() {
-			DecimalType t = FlinkTypeSystem.inferAggSumType(type.getScale());
-			return DataTypes.DECIMAL(t.getPrecision(), t.getScale());
+		public TypeInformation getSumType() {
+			return DecimalType.inferAggSumType(type.scale()).toTypeInfo();
 		}
 
 		@Override
 		public Expression[] initialValuesExpressions() {
-			return new Expression[] {
-				literal(
-					BigDecimal.ZERO,
-					getSumType()),
-				literal(0L)
-			};
+			return new Expression[] {literal(new BigDecimal(0), getSumType()), literal(0L)};
 		}
 	}
 }

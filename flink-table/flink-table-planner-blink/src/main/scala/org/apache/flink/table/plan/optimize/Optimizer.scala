@@ -28,7 +28,12 @@ trait Optimizer {
 
   /**
     * Generates the optimized [[RelNode]] DAG from the original relational nodes.
-    * <p>NOTES: The reused node in result DAG will be converted to the same RelNode.
+    * <p>NOTES:
+    * <p>1. The reused node in result DAG will be converted to the same RelNode.
+    * <p>2. If a root node requires retract changes on Stream, the node should be
+    * a [[org.apache.flink.table.sinks.RetractStreamTableSink]] or
+    * a regular node with [[org.apache.flink.table.plan.trait.UpdateAsRetractionTrait]]
+    * which `updateAsRetraction` is true.
     *
     * @param roots the original relational nodes.
     * @return a list of RelNode represents an optimized RelNode DAG.

@@ -358,10 +358,10 @@ case class VarSamp(child: PlannerExpression) extends Aggregation {
 }
 
 /**
-  * Expression for calling a user-defined (table)aggregate function.
+  * Expression for calling a user-defined aggregate function.
   */
 case class AggFunctionCall(
-    aggregateFunction: UserDefinedAggregateFunction[_, _],
+    val aggregateFunction: UserDefinedAggregateFunction[_, _],
     resultTypeInfo: TypeInformation[_],
     accTypeInfo: TypeInformation[_],
     args: Seq[PlannerExpression])

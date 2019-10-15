@@ -19,13 +19,12 @@
 package org.apache.flink.table.plan.stream.sql
 
 import org.apache.flink.api.scala._
-import org.apache.flink.table.api.ExecutionConfigOptions
-import org.apache.flink.table.api.scala._
+import org.apache.flink.table.api.{TableConfigOptions, TableImpl}
 import org.apache.flink.table.functions.ScalarFunction
 import org.apache.flink.table.plan.`trait`.RelModifiedMonotonicity
 import org.apache.flink.table.plan.metadata.FlinkRelMetadataQuery
 import org.apache.flink.table.plan.util.JavaUserDefinedAggFunctions.WeightedAvgWithMerge
-import org.apache.flink.table.util.{StreamTableTestUtil, TableTestBase, TableTestUtil}
+import org.apache.flink.table.util.{StreamTableTestUtil, TableTestBase}
 
 import org.apache.calcite.sql.validate.SqlMonotonicity.{CONSTANT, DECREASING, INCREASING, NOT_MONOTONIC}
 import org.junit.Assert.assertEquals
@@ -36,8 +35,7 @@ class ModifiedMonotonicityTest extends TableTestBase {
   val util: StreamTableTestUtil = streamTestUtil()
   util.addDataStream[(Int, Long, Long)]("A", 'a1, 'a2, 'a3)
   util.addDataStream[(Int, Long, Long)]("B", 'b1, 'b2, 'b3)
-  util.addDataStream[(Int, String, Long)](
-    "MyTable", 'a, 'b, 'c, 'proctime.proctime, 'rowtime.rowtime)
+  util.addDataStream[(Int, String, Long)]("MyTable", 'a, 'b, 'c, 'proctime, 'rowtime)
   util.addFunction("weightedAvg", new WeightedAvgWithMerge)
   util.addTableSource[(Int, Long, String)]("AA", 'a1, 'a2, 'a3)
   util.addTableSource[(Int, Long, Int, String, Long)]("BB", 'b1, 'b2, 'b3, 'b4, 'b5)
@@ -65,10 +63,8 @@ class ModifiedMonotonicityTest extends TableTestBase {
 
   @Test
   def testMaxWithRetractOptimizeWithLocalGlobal(): Unit = {
-    util.tableEnv.getConfig.getConfiguration.setBoolean(
-      ExecutionConfigOptions.SQL_EXEC_MINIBATCH_ENABLED, true)
-    util.tableEnv.getConfig.getConfiguration
-      .setString(ExecutionConfigOptions.SQL_EXEC_MINIBATCH_ALLOW_LATENCY, "100 ms")
+    util.tableEnv.getConfig.getConf
+      .setLong(TableConfigOptions.SQL_EXEC_MINIBATCH_ALLOW_LATENCY, 100L)
     val query = "SELECT a1, max(a3) from (SELECT a1, a2, max(a3) as a3 FROM A GROUP BY a1, a2) " +
       "group by a1"
     util.verifyPlanWithTrait(query)
@@ -76,20 +72,16 @@ class ModifiedMonotonicityTest extends TableTestBase {
 
   @Test
   def testMinWithRetractOptimizeWithLocalGlobal(): Unit = {
-    util.tableEnv.getConfig.getConfiguration.setBoolean(
-      ExecutionConfigOptions.SQL_EXEC_MINIBATCH_ENABLED, true)
-    util.tableEnv.getConfig.getConfiguration
-      .setString(ExecutionConfigOptions.SQL_EXEC_MINIBATCH_ALLOW_LATENCY, "100 ms")
+    util.tableEnv.getConfig.getConf
+      .setLong(TableConfigOptions.SQL_EXEC_MINIBATCH_ALLOW_LATENCY, 100L)
     val query = "SELECT min(a3) from (SELECT a1, a2, min(a3) as a3 FROM A GROUP BY a1, a2)"
     util.verifyPlanWithTrait(query)
   }
 
   @Test
   def testMinCanNotOptimizeWithLocalGlobal(): Unit = {
-    util.tableEnv.getConfig.getConfiguration.setBoolean(
-      ExecutionConfigOptions.SQL_EXEC_MINIBATCH_ENABLED, true)
-    util.tableEnv.getConfig.getConfiguration
-      .setString(ExecutionConfigOptions.SQL_EXEC_MINIBATCH_ALLOW_LATENCY, "100 ms")
+    util.tableEnv.getConfig.getConf
+      .setLong(TableConfigOptions.SQL_EXEC_MINIBATCH_ALLOW_LATENCY, 100L)
     val query =
       "SELECT a1, MIN(a3) FROM (SELECT a1, a2, MAX(a3) AS a3 FROM A GROUP BY a1, a2) t GROUP BY a1"
     util.verifyPlanWithTrait(query)
@@ -255,8 +247,8 @@ class ModifiedMonotonicityTest extends TableTestBase {
 
   def verifyMonotonicity(sql: String, expect: RelModifiedMonotonicity): Unit = {
     val table = util.tableEnv.sqlQuery(sql)
-    val relNode = TableTestUtil.toRelNode(table)
-    val optimized = util.getPlanner.optimize(relNode)
+    val relNode = table.asInstanceOf[TableImpl].getRelNode
+    val optimized = util.tableEnv.optimize(relNode)
 
     val actualMono = FlinkRelMetadataQuery.reuseOrCreate(optimized.getCluster.getMetadataQuery)
       .getRelModifiedMonotonicity(optimized)

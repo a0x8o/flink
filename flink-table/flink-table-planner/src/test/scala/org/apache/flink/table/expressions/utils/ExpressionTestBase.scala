@@ -25,7 +25,7 @@ import org.apache.calcite.plan.hep.{HepMatchOrder, HepPlanner, HepProgramBuilder
 import org.apache.calcite.rel.RelNode
 import org.apache.calcite.rex.RexNode
 import org.apache.calcite.sql.`type`.SqlTypeName._
-import org.apache.calcite.tools.Programs
+import org.apache.calcite.tools.{Programs, RelBuilder}
 import org.apache.flink.api.common.TaskInfo
 import org.apache.flink.api.common.accumulators.Accumulator
 import org.apache.flink.api.common.functions._
@@ -37,11 +37,10 @@ import org.apache.flink.api.java.{DataSet => JDataSet}
 import org.apache.flink.api.scala.{DataSet, ExecutionEnvironment}
 import org.apache.flink.configuration.Configuration
 import org.apache.flink.core.fs.Path
+import org.apache.flink.table.api.scala.BatchTableEnvImpl
 import org.apache.flink.table.api.scala.BatchTableEnvironment
-import org.apache.flink.table.api.TableConfig
-import org.apache.flink.table.api.internal.TableEnvImpl
-import org.apache.flink.table.api.scala.internal.BatchTableEnvironmentImpl
-import org.apache.flink.table.calcite.FlinkRelBuilder
+import org.apache.flink.table.api.{TableConfig, TableEnvImpl, TableImpl}
+import org.apache.flink.table.calcite.FlinkPlannerImpl
 import org.apache.flink.table.codegen.{Compiler, FunctionCodeGenerator, GeneratedFunction}
 import org.apache.flink.table.expressions.{Expression, ExpressionParser}
 import org.apache.flink.table.functions.ScalarFunction
@@ -64,7 +63,10 @@ abstract class ExpressionTestBase {
   // setup test utils
   private val tableName = "testTable"
   private val context = prepareContext(typeInfo)
-  private val planner = context._2.getFlinkPlanner
+  private val planner = new FlinkPlannerImpl(
+    context._2.getFrameworkConfig,
+    context._2.getPlanner,
+    context._2.getTypeFactory)
   private val logicalOptProgram = Programs.ofRules(FlinkRuleSets.LOGICAL_OPT_RULES)
   private val dataSetOptProgram = Programs.ofRules(FlinkRuleSets.DATASET_OPT_RULES)
 
@@ -75,11 +77,11 @@ abstract class ExpressionTestBase {
     while (it.hasNext) {
       builder.addRuleInstance(it.next())
     }
-    new HepPlanner(builder.build, context._1.getPlanner.getContext)
+    new HepPlanner(builder.build, context._2.getFrameworkConfig.getContext)
   }
 
   private def prepareContext(typeInfo: TypeInformation[Any])
-    : (FlinkRelBuilder, TableEnvImpl, ExecutionEnvironment) = {
+    : (RelBuilder, TableEnvImpl, ExecutionEnvironment) = {
     // create DataSetTable
     val dataSetMock = mock(classOf[DataSet[Any]])
     val jDataSetMock = mock(classOf[JDataSet[Any]])
@@ -87,7 +89,7 @@ abstract class ExpressionTestBase {
     when(jDataSetMock.getType).thenReturn(typeInfo)
 
     val env = ExecutionEnvironment.getExecutionEnvironment
-    val tEnv = BatchTableEnvironment.create(env).asInstanceOf[BatchTableEnvironmentImpl]
+    val tEnv = BatchTableEnvironment.create(env).asInstanceOf[BatchTableEnvImpl]
     tEnv.registerDataSet(tableName, dataSetMock)
     functions.foreach(f => tEnv.registerFunction(f._1, f._2))
 
@@ -183,8 +185,8 @@ abstract class ExpressionTestBase {
     val validated = planner.validate(parsed)
     val converted = planner.rel(validated).rel
 
-    val env = context._2.asInstanceOf[BatchTableEnvironmentImpl]
-    val optimized = env.optimizer.optimize(converted)
+    val env = context._2.asInstanceOf[BatchTableEnvImpl]
+    val optimized = env.optimize(converted)
 
     // throw exception if plan contains more than a calc
     if (!optimized.getInput(0).isInstanceOf[DataSetScan]) {
@@ -196,13 +198,14 @@ abstract class ExpressionTestBase {
 
   private def addTableApiTestExpr(tableApiExpr: Expression, expected: String): Unit = {
     // create RelNode from Table API expression
-    val env = context._2.asInstanceOf[BatchTableEnvironmentImpl]
-    val table = env
+    val env = context._2.asInstanceOf[BatchTableEnvImpl]
+    val converted = env
       .scan(tableName)
       .select(tableApiExpr)
-    val converted = env.getRelBuilder.tableOperation(table.getQueryOperation).build()
+      .asInstanceOf[TableImpl]
+      .getRelNode
 
-    val optimized = env.optimizer.optimize(converted)
+    val optimized = env.optimize(converted)
 
     testExprs += ((tableApiExpr.toString, extractRexNode(optimized), expected))
   }

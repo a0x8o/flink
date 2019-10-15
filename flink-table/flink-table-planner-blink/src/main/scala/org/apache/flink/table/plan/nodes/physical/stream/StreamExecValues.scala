@@ -18,18 +18,19 @@
 
 package org.apache.flink.table.plan.nodes.physical.stream
 
-import org.apache.flink.api.dag.Transformation
+import org.apache.flink.streaming.api.transformations.StreamTransformation
+import org.apache.flink.table.api.{StreamTableEnvironment, TableConfigOptions, TableException}
 import org.apache.flink.table.codegen.ValuesCodeGenerator
 import org.apache.flink.table.dataformat.BaseRow
 import org.apache.flink.table.plan.nodes.exec.{ExecNode, StreamExecNode}
-import org.apache.flink.table.planner.StreamPlanner
 
-import com.google.common.collect.ImmutableList
 import org.apache.calcite.plan._
+import org.apache.calcite.rel.core.Values
 import org.apache.calcite.rel.RelNode
 import org.apache.calcite.rel.`type`.RelDataType
-import org.apache.calcite.rel.core.Values
 import org.apache.calcite.rex.RexLiteral
+
+import com.google.common.collect.ImmutableList
 
 import java.util
 
@@ -63,30 +64,31 @@ class StreamExecValues(
 
   //~ ExecNode methods -----------------------------------------------------------
 
-  override def getInputNodes: util.List[ExecNode[StreamPlanner, _]] = {
-    new util.ArrayList[ExecNode[StreamPlanner, _]]()
+  override def getInputNodes: util.List[ExecNode[StreamTableEnvironment, _]] = {
+    new util.ArrayList[ExecNode[StreamTableEnvironment, _]]()
   }
 
   override def replaceInputNode(
       ordinalInParent: Int,
-      newInputNode: ExecNode[StreamPlanner, _]): Unit = {
+      newInputNode: ExecNode[StreamTableEnvironment, _]): Unit = {
     replaceInput(ordinalInParent, newInputNode.asInstanceOf[RelNode])
   }
 
   override protected def translateToPlanInternal(
-      planner: StreamPlanner): Transformation[BaseRow] = {
-    val inputFormat = ValuesCodeGenerator.generatorInputFormat(
-      planner.getTableConfig,
-      getRowType,
-      tuples,
-      getRelTypeName)
-    val transformation = planner.getExecEnv.createInput(inputFormat,
-      inputFormat.getProducedType).getTransformation
-    transformation.setParallelism(getResource.getParallelism)
-    if (getResource.getMaxParallelism > 0) {
-      transformation.setMaxParallelism(getResource.getMaxParallelism)
+      tableEnv: StreamTableEnvironment): StreamTransformation[BaseRow] = {
+    if (tableEnv.getConfig.getConf.getBoolean(
+      TableConfigOptions.SQL_EXEC_SOURCE_VALUES_INPUT_ENABLED)) {
+      val inputFormat = ValuesCodeGenerator.generatorInputFormat(
+        tableEnv,
+        getRowType,
+        tuples,
+        getRelTypeName)
+      tableEnv.execEnv.createInput(inputFormat, inputFormat.getProducedType).getTransformation
+    } else {
+      // enable this feature when runtime support do checkpoint when source finished
+      throw new TableException("Values source input is not supported currently. Probably " +
+        "there is a where condition which always returns false in your query.")
     }
-    transformation
   }
 
 }

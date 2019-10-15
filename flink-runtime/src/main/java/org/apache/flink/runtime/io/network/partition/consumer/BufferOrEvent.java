@@ -18,7 +18,6 @@
 
 package org.apache.flink.runtime.io.network.partition.consumer;
 
-import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.runtime.event.AbstractEvent;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 
@@ -44,32 +43,26 @@ public class BufferOrEvent {
 
 	private int channelIndex;
 
-	private final int size;
-
-	public BufferOrEvent(Buffer buffer, int channelIndex, boolean moreAvailable) {
+	BufferOrEvent(Buffer buffer, int channelIndex, boolean moreAvailable) {
 		this.buffer = checkNotNull(buffer);
 		this.event = null;
 		this.channelIndex = channelIndex;
 		this.moreAvailable = moreAvailable;
-		this.size = buffer.getSize();
 	}
 
-	public BufferOrEvent(AbstractEvent event, int channelIndex, boolean moreAvailable, int size) {
+	BufferOrEvent(AbstractEvent event, int channelIndex, boolean moreAvailable) {
 		this.buffer = null;
 		this.event = checkNotNull(event);
 		this.channelIndex = channelIndex;
 		this.moreAvailable = moreAvailable;
-		this.size = size;
 	}
 
-	@VisibleForTesting
 	public BufferOrEvent(Buffer buffer, int channelIndex) {
 		this(buffer, channelIndex, true);
 	}
 
-	@VisibleForTesting
 	public BufferOrEvent(AbstractEvent event, int channelIndex) {
-		this(event, channelIndex, true, 0);
+		this(event, channelIndex, true);
 	}
 
 	public boolean isBuffer() {
@@ -103,15 +96,11 @@ public class BufferOrEvent {
 
 	@Override
 	public String toString() {
-		return String.format("BufferOrEvent [%s, channelIndex = %d, size = %d]",
-				isBuffer() ? buffer : event, channelIndex, size);
+		return String.format("BufferOrEvent [%s, channelIndex = %d]",
+				isBuffer() ? buffer : event, channelIndex);
 	}
 
 	public void setMoreAvailable(boolean moreAvailable) {
 		this.moreAvailable = moreAvailable;
-	}
-
-	public int getSize() {
-		return size;
 	}
 }

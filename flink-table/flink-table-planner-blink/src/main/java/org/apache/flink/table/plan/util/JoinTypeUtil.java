@@ -20,7 +20,9 @@ package org.apache.flink.table.plan.util;
 
 import org.apache.flink.table.runtime.join.FlinkJoinType;
 
+import org.apache.calcite.rel.core.Join;
 import org.apache.calcite.rel.core.JoinRelType;
+import org.apache.calcite.rel.core.SemiJoin;
 
 /**
  * Utility for {@link FlinkJoinType}.
@@ -30,7 +32,7 @@ public class JoinTypeUtil {
 	/**
 	 * Converts {@link JoinRelType} to {@link FlinkJoinType}.
 	 */
-	public static FlinkJoinType getFlinkJoinType(JoinRelType joinRelType) {
+	public static FlinkJoinType toFlinkJoinType(JoinRelType joinRelType) {
 		switch (joinRelType) {
 			case INNER:
 				return FlinkJoinType.INNER;
@@ -40,12 +42,38 @@ public class JoinTypeUtil {
 				return FlinkJoinType.RIGHT;
 			case FULL:
 				return FlinkJoinType.FULL;
-			case SEMI:
-				return FlinkJoinType.SEMI;
-			case ANTI:
-				return FlinkJoinType.ANTI;
 			default:
 				throw new IllegalArgumentException("invalid: " + joinRelType);
+		}
+	}
+
+	/**
+	 * Gets {@link FlinkJoinType} of the input Join RelNode.
+	 */
+	public static FlinkJoinType getFlinkJoinType(Join join) {
+		if (join instanceof SemiJoin) {
+			// TODO supports ANTI
+			return FlinkJoinType.SEMI;
+		} else {
+			return toFlinkJoinType(join.getJoinType());
+		}
+	}
+
+	/**
+	 * Converts {@link FlinkJoinType} to {@link JoinRelType}.
+	 */
+	public static JoinRelType toJoinRelType(FlinkJoinType joinType) {
+		switch (joinType) {
+			case INNER:
+				return JoinRelType.INNER;
+			case LEFT:
+				return JoinRelType.LEFT;
+			case RIGHT:
+				return JoinRelType.RIGHT;
+			case FULL:
+				return JoinRelType.FULL;
+			default:
+				throw new IllegalArgumentException("invalid: " + joinType);
 		}
 	}
 

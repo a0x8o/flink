@@ -26,8 +26,7 @@ import java.util.Locale;
 import java.util.TimeZone;
 
 /*
- * THIS FILE HAS BEEN COPIED FROM THE APACHE CALCITE PROJECT UNTIL CALCITE-1884, CALCITE-3199 IS FIXED.
- * (Modified line: 838)
+ * THIS FILE HAS BEEN COPIED FROM THE APACHE CALCITE PROJECT UNTIL CALCITE-1884 IS FIXED.
  */
 
 /**
@@ -836,7 +835,7 @@ public class DateTimeUtils {
 	}
 
 	public static long unixDateCeil(TimeUnitRange range, long date) {
-		return julianDateFloor(range, (int) date + EPOCH_JULIAN, false);
+		return julianDateFloor(range, (int) date + EPOCH_JULIAN, true);
 	}
 
 	private static int julianDateFloor(TimeUnitRange range, int julian,

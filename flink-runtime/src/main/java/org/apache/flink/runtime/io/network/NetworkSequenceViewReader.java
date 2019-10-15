@@ -61,6 +61,8 @@ public interface NetworkSequenceViewReader {
 	 */
 	void setRegisteredAsAvailable(boolean isRegisteredAvailable);
 
+	void notifySubpartitionConsumed() throws IOException;
+
 	boolean isReleased();
 
 	void releaseAllResources() throws IOException;

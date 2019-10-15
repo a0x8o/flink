@@ -55,16 +55,11 @@ of the Elasticsearch installation:
         <td>1.6.0</td>
         <td>6 and later versions</td>
     </tr>
-    <tr>
-        <td>flink-connector-elasticsearch7{{ site.scala_version_suffix }}</td>
-        <td>1.10.0</td>
-        <td>7 and later versions</td>
-    </tr>
   </tbody>
 </table>
 
 Note that the streaming connectors are currently not part of the binary
-distribution. See [here]({{site.baseurl}}/dev/projectsetup/dependencies.html) for information
+distribution. See [here]({{site.baseurl}}/dev/linking.html) for information
 about how to package the program with the libraries for cluster execution.
 
 ## Installing Elasticsearch
@@ -371,10 +366,10 @@ input.addSink(new ElasticsearchSink<>(
                 int restStatusCode,
                 RequestIndexer indexer) throw Throwable {
 
-            if (ExceptionUtils.findThrowable(failure, EsRejectedExecutionException.class).isPresent()) {
+            if (ExceptionUtils.containsThrowable(failure, EsRejectedExecutionException.class)) {
                 // full queue; re-add document for indexing
                 indexer.add(action);
-            } else if (ExceptionUtils.findThrowable(failure, ElasticsearchParseException.class).isPresent()) {
+            } else if (ExceptionUtils.containsThrowable(failure, ElasticsearchParseException.class)) {
                 // malformed document; simply drop request without failing sink
             } else {
                 // for all other failures, fail the sink
@@ -399,10 +394,10 @@ input.addSink(new ElasticsearchSink(
                 int restStatusCode,
                 RequestIndexer indexer) {
 
-            if (ExceptionUtils.findThrowable(failure, EsRejectedExecutionException.class).isPresent()) {
+            if (ExceptionUtils.containsThrowable(failure, EsRejectedExecutionException.class)) {
                 // full queue; re-add document for indexing
                 indexer.add(action)
-            } else if (ExceptionUtils.findThrowable(failure, ElasticsearchParseException.class).isPresent()) {
+            } else if (ExceptionUtils.containsThrowable(failure, ElasticsearchParseException.class)) {
                 // malformed document; simply drop request without failing sink
             } else {
                 // for all other failures, fail the sink
@@ -467,7 +462,7 @@ More information about Elasticsearch can be found [here](https://elastic.co).
 
 For the execution of your Flink program, it is recommended to build a
 so-called uber-jar (executable jar) containing all your dependencies
-(see [here]({{site.baseurl}}/dev/projectsetup/dependencies.html) for further information).
+(see [here]({{site.baseurl}}/dev/linking.html) for further information).
 
 Alternatively, you can put the connector's jar file into Flink's `lib/` folder to make it available
 system-wide, i.e. for all job being run.

@@ -149,10 +149,6 @@ public abstract class CompositeTypeSerializerSnapshot<T, S extends TypeSerialize
 		this.nestedSerializersSnapshotDelegate = NestedSerializersSnapshotDelegate.readNestedSerializerSnapshots(in, userCodeClassLoader);
 	}
 
-	public TypeSerializerSnapshot<?>[] getNestedSerializerSnapshots() {
-		return nestedSerializersSnapshotDelegate.getNestedSerializerSnapshots();
-	}
-
 	@Override
 	public final TypeSerializerSchemaCompatibility<T> resolveSchemaCompatibility(TypeSerializer<T> newSerializer) {
 		return internalResolveSchemaCompatibility(newSerializer, nestedSerializersSnapshotDelegate.getNestedSerializerSnapshots());

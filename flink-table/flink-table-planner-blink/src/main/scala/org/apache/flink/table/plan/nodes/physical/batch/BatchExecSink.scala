@@ -18,27 +18,21 @@
 
 package org.apache.flink.table.plan.nodes.physical.batch
 
-import org.apache.flink.api.dag.Transformation
 import org.apache.flink.runtime.operators.DamBehavior
 import org.apache.flink.streaming.api.datastream.DataStream
-import org.apache.flink.streaming.api.transformations.OneInputTransformation
-import org.apache.flink.table.api.TableException
+import org.apache.flink.streaming.api.transformations.{OneInputTransformation, StreamTransformation}
+import org.apache.flink.table.api.{BatchTableEnvironment, TableEnvironment, TableException}
 import org.apache.flink.table.codegen.SinkCodeGenerator._
 import org.apache.flink.table.codegen.{CodeGenUtils, CodeGeneratorContext}
 import org.apache.flink.table.dataformat.BaseRow
 import org.apache.flink.table.plan.nodes.calcite.Sink
 import org.apache.flink.table.plan.nodes.exec.{BatchExecNode, ExecNode}
-import org.apache.flink.table.plan.nodes.resource.NodeResourceUtil
-import org.apache.flink.table.planner.BatchPlanner
-import org.apache.flink.table.sinks.{DataStreamTableSink, RetractStreamTableSink, StreamTableSink, TableSink, UpsertStreamTableSink}
-import org.apache.flink.table.types.{ClassLogicalTypeConverter, DataType}
-import org.apache.flink.table.types.utils.TypeConversions.fromDataTypeToLegacyInfo
+import org.apache.flink.table.sinks.{BatchTableSink, DataStreamTableSink, TableSink}
 import org.apache.flink.table.typeutils.BaseRowTypeInfo
 
 import org.apache.calcite.plan.{RelOptCluster, RelTraitSet}
 import org.apache.calcite.rel.RelNode
 
-import java.lang.reflect.Modifier
 import java.util
 
 import scala.collection.JavaConversions._
@@ -69,84 +63,55 @@ class BatchExecSink[T](
     */
   override def getDamBehavior: DamBehavior = DamBehavior.FULL_DAM
 
-  override def getInputNodes: util.List[ExecNode[BatchPlanner, _]] = {
-    List(getInput.asInstanceOf[ExecNode[BatchPlanner, _]])
+  override def getInputNodes: util.List[ExecNode[BatchTableEnvironment, _]] = {
+    List(getInput.asInstanceOf[ExecNode[BatchTableEnvironment, _]])
   }
 
   override def replaceInputNode(
       ordinalInParent: Int,
-      newInputNode: ExecNode[BatchPlanner, _]): Unit = {
+      newInputNode: ExecNode[BatchTableEnvironment, _]): Unit = {
     replaceInput(ordinalInParent, newInputNode.asInstanceOf[RelNode])
   }
 
   override protected def translateToPlanInternal(
-      planner: BatchPlanner): Transformation[Any] = {
+      tableEnv: BatchTableEnvironment): StreamTransformation[Any] = {
     val resultTransformation = sink match {
-      case _: RetractStreamTableSink[T] | _: UpsertStreamTableSink[T] =>
-        throw new TableException("RetractStreamTableSink and UpsertStreamTableSink is not" +
-          " supported in Batch environment.")
+      case batchTableSink: BatchTableSink[T] =>
+        val transformation = translateToStreamTransformation(withChangeFlag = false, tableEnv)
+        val boundedStream = new DataStream(tableEnv.streamEnv, transformation)
+        batchTableSink.emitBoundedStream(
+          boundedStream, tableEnv.getConfig, tableEnv.streamEnv.getConfig).getTransformation
 
-      case streamTableSink: StreamTableSink[T] =>
-        // we can insert the bounded DataStream into a StreamTableSink
-        val transformation = translateToTransformation(withChangeFlag = false, planner)
-        val boundedStream = new DataStream(planner.getExecEnv, transformation)
-        val dsSink = streamTableSink.consumeDataStream(boundedStream)
-        if (dsSink == null) {
-          throw new TableException("The StreamTableSink#consumeDataStream(DataStream) must be " +
-            "implemented and return the sink transformation DataStreamSink. " +
-            s"However, ${sink.getClass.getCanonicalName} doesn't implement this method.")
-        }
-        val sinkTransformation = dsSink.getTransformation
-
-        val configSinkParallelism = NodeResourceUtil.getSinkParallelism(
-          planner.getTableConfig.getConfiguration)
-
-        val maxSinkParallelism = sinkTransformation.getMaxParallelism
-
-        // only set user's parallelism when user defines a sink parallelism
-        if (configSinkParallelism > 0) {
-          // set the parallelism when user's parallelism is not larger than max parallelism
-          // or max parallelism is not set
-          if (maxSinkParallelism < 0 || configSinkParallelism <= maxSinkParallelism) {
-            sinkTransformation.setParallelism(configSinkParallelism)
-          }
-        }
-
-        sinkTransformation
-
-      case dsTableSink: DataStreamTableSink[T] =>
-        // In case of table to bounded stream through Batchplannerironment#toBoundedStream, we
+      case streamTableSink: DataStreamTableSink[T] =>
+        // In case of table to bounded stream through BatchTableEnvironment#toBoundedStream, we
         // insert a DataStreamTableSink then wrap it as a LogicalSink, there is no real batch table
         // sink, so we do not need to invoke TableSink#emitBoundedStream and set resource, just a
-        // translation to Transformation is ok.
-        translateToTransformation(withChangeFlag = dsTableSink.withChangeFlag, planner)
+        // translation to StreamTransformation is ok.
+        translateToStreamTransformation(withChangeFlag = streamTableSink.withChangeFlag, tableEnv)
 
       case _ =>
-        throw new TableException(s"Only Support StreamTableSink! " +
-          s"However ${sink.getClass.getCanonicalName} is not a StreamTableSink.")
+        throw new TableException("Only Support BatchTableSink or DataStreamTableSink!")
     }
-    resultTransformation.asInstanceOf[Transformation[Any]]
+    resultTransformation.asInstanceOf[StreamTransformation[Any]]
   }
 
-  private def translateToTransformation(
+  private def translateToStreamTransformation(
       withChangeFlag: Boolean,
-      planner: BatchPlanner): Transformation[T] = {
-    val config = planner.getTableConfig
-    val resultDataType = sink.getConsumedDataType
-    val resultType = fromDataTypeToLegacyInfo(resultDataType)
-    validateType(resultDataType)
+      tableEnv: BatchTableEnvironment): StreamTransformation[T] = {
+    val resultType = sink.getOutputType
+    TableEnvironment.validateType(resultType)
     val inputNode = getInputNodes.get(0)
     inputNode match {
       // Sink's input must be BatchExecNode[BaseRow] now.
       case node: BatchExecNode[BaseRow] =>
-        val plan = node.translateToPlan(planner)
+        val plan = node.translateToPlan(tableEnv)
         val typeClass = extractTableSinkTypeClass(sink)
-        if (CodeGenUtils.isInternalClass(typeClass, resultDataType)) {
-          plan.asInstanceOf[Transformation[T]]
+        if (CodeGenUtils.isInternalClass(typeClass, resultType)) {
+          plan.asInstanceOf[StreamTransformation[T]]
         } else {
           val (converterOperator, outputTypeInfo) = generateRowConverterOperator[T](
-            CodeGeneratorContext(config),
-            config,
+            CodeGeneratorContext(tableEnv.getConfig),
+            tableEnv.getConfig,
             plan.getOutputType.asInstanceOf[BaseRowTypeInfo],
             "SinkConversion",
             None,
@@ -168,22 +133,4 @@ class BatchExecSink[T](
   }
 
 
-  /**
-    * Validate if class represented by the typeInfo is static and globally accessible
-    * @param dataType type to check
-    * @throws TableException if type does not meet these criteria
-    */
-  private def validateType(dataType: DataType): Unit = {
-    var clazz = dataType.getConversionClass
-    if (clazz == null) {
-      clazz = ClassLogicalTypeConverter.getDefaultExternalClassForType(dataType.getLogicalType)
-    }
-    if ((clazz.isMemberClass && !Modifier.isStatic(clazz.getModifiers)) ||
-      !Modifier.isPublic(clazz.getModifiers) ||
-      clazz.getCanonicalName == null) {
-      throw new TableException(
-        s"Class '$clazz' described in type information '$dataType' must be " +
-          s"static and globally accessible.")
-    }
-  }
 }

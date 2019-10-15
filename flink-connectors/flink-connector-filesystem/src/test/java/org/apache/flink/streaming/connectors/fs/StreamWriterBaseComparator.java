@@ -55,7 +55,6 @@ public class StreamWriterBaseComparator {
 		StringWriter<T> writer1,
 		StringWriter<T> writer2) {
 		return equals((StreamWriterBase) writer1, (StreamWriterBase) writer2) &&
-			Objects.equals(writer1.getCharsetName(), writer2.getCharsetName()) &&
-			Objects.equals(writer1.getRowDelimiter(), writer2.getRowDelimiter());
+			Objects.equals(writer1.getCharsetName(), writer2.getCharsetName());
 	}
 }

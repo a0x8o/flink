@@ -22,21 +22,13 @@ package org.apache.flink.table.functions.utils
 import org.apache.flink.api.common.functions.InvalidTypesException
 import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.api.java.typeutils._
-import org.apache.flink.table.api.{TableException, ValidationException}
+import org.apache.flink.table.`type`.TypeConverters.{createInternalTypeFromTypeInfo, createInternalTypeInfoFromInternalType}
+import org.apache.flink.table.`type`.{InternalType, InternalTypeUtils, RowType, TypeConverters}
+import org.apache.flink.table.api.{TableEnvironment, TableException, ValidationException}
 import org.apache.flink.table.calcite.FlinkTypeFactory
 import org.apache.flink.table.dataformat.{BaseRow, BinaryString, Decimal}
-import org.apache.flink.table.functions._
+import org.apache.flink.table.functions.{AggregateFunction, ScalarFunction, TableFunction, UserDefinedFunction}
 import org.apache.flink.table.plan.schema.DeferredTypeFlinkTableFunction
-import org.apache.flink.table.types.ClassDataTypeConverter.fromClassToDataType
-import org.apache.flink.table.types.ClassLogicalTypeConverter.{getDefaultExternalClassForType, getInternalClassForType}
-import org.apache.flink.table.types.DataType
-import org.apache.flink.table.types.LogicalTypeDataTypeConverter.{fromDataTypeToLogicalType, fromLogicalTypeToDataType}
-import org.apache.flink.table.types.TypeInfoDataTypeConverter.fromDataTypeToTypeInfo
-import org.apache.flink.table.types.TypeInfoLogicalTypeConverter.fromTypeInfoToLogicalType
-import org.apache.flink.table.types.logical.{LogicalType, LogicalTypeRoot, RowType}
-import org.apache.flink.table.types.utils.TypeConversions.fromLegacyInfoToDataType
-import org.apache.flink.table.typeutils.FieldInfoUtils
-import org.apache.flink.table.typeutils.TypeCheckUtils.isAny
 import org.apache.flink.types.Row
 import org.apache.flink.util.InstantiationUtil
 
@@ -50,10 +42,10 @@ import java.lang.reflect.{Method, Modifier}
 import java.lang.{Integer => JInt, Long => JLong}
 import java.sql.{Date, Time, Timestamp}
 
-import scala.collection.JavaConversions._
 import scala.collection.mutable
 import scala.language.postfixOps
 
+import scala.collection.JavaConversions._
 
 object UserDefinedFunctionUtils {
 
@@ -96,7 +88,7 @@ object UserDefinedFunctionUtils {
   def throwValidationException(
       name: String,
       func: UserDefinedFunction,
-      parameters: Array[LogicalType]): Method = {
+      parameters: Array[InternalType]): Method = {
     throw new ValidationException(
       s"Given parameters of function '$name' do not match any signature. \n" +
           s"Actual: ${signatureInternalToString(parameters)} \n" +
@@ -123,24 +115,16 @@ object UserDefinedFunctionUtils {
 
   def getEvalMethodSignature(
       func: ScalarFunction,
-      expectedTypes: Array[LogicalType]): Array[Class[_]] = {
+      expectedTypes: Array[InternalType]): Array[Class[_]] = {
     val method = getEvalUserDefinedMethod(func, expectedTypes).getOrElse(
       throwValidationException(func.getClass.getCanonicalName, func, expectedTypes)
     )
     getParamClassesConsiderVarArgs(method.isVarArgs, method.getParameterTypes, expectedTypes.length)
   }
 
-  def getEvalMethodSignatureOption(
-      func: ScalarFunction,
-      expectedTypes: Array[LogicalType]): Option[Array[Class[_]]] = {
-    getEvalUserDefinedMethod(func, expectedTypes).map( method =>
-      getParamClassesConsiderVarArgs(
-        method.isVarArgs, method.getParameterTypes, expectedTypes.length))
-  }
-
   def getEvalMethodSignature(
       func: TableFunction[_],
-      expectedTypes: Array[LogicalType]): Array[Class[_]] = {
+      expectedTypes: Array[InternalType]): Array[Class[_]] = {
     val method = getEvalUserDefinedMethod(func, expectedTypes).getOrElse(
       throwValidationException(func.getClass.getCanonicalName, func, expectedTypes)
     )
@@ -149,8 +133,8 @@ object UserDefinedFunctionUtils {
 
   def getAggUserDefinedInputTypes(
       func: AggregateFunction[_, _],
-      externalAccType: DataType,
-      expectedTypes: Array[LogicalType]): Array[DataType] = {
+      externalAccType: TypeInformation[_],
+      expectedTypes: Array[InternalType]): Array[TypeInformation[_]] = {
     val accMethod = getAggFunctionUDIMethod(
       func, "accumulate", externalAccType, expectedTypes).getOrElse(
       throwValidationException(func.getClass.getCanonicalName, func, expectedTypes)
@@ -165,13 +149,13 @@ object UserDefinedFunctionUtils {
         accMethod.isVarArgs,
         // drop first, first must be Acc.
         accMethod.getParameterTypes.drop(1),
-        expectedTypes.length).map(fromClassToDataType)
+        expectedTypes.length).map(TypeExtractor.createTypeInfo(_))
 
     udiTypes.zipWithIndex.map {
-      case (t: DataType, i) =>
+      case (t, i) =>
         // we don't trust GenericType.
-        if (fromDataTypeToLogicalType(t).getTypeRoot == LogicalTypeRoot.ANY) {
-          fromLogicalTypeToDataType(expectedTypes(i))
+        if (t.isInstanceOf[GenericTypeInfo[_]]) {
+          TypeConverters.createExternalTypeInfoFromInternalType(expectedTypes(i))
         } else {
           t
         }
@@ -179,12 +163,12 @@ object UserDefinedFunctionUtils {
   }
 
   /**
-    * Returns signatures of accumulate methods matching the given signature of [[LogicalType]].
+    * Returns signatures of accumulate methods matching the given signature of [[InternalType]].
     * Elements of the signature can be null (act as a wildcard).
     */
   def getAccumulateMethodSignature(
       function: AggregateFunction[_, _],
-      expectedTypes: Seq[LogicalType])
+      expectedTypes: Seq[InternalType])
   : Option[Array[Class[_]]] = {
     getAggFunctionUDIMethod(
       function,
@@ -196,10 +180,10 @@ object UserDefinedFunctionUtils {
 
   def getParameterTypes(
       function: UserDefinedFunction,
-      signature: Array[Class[_]]): Array[LogicalType] = {
+      signature: Array[Class[_]]): Array[InternalType] = {
     signature.map { c =>
       try {
-        fromTypeInfoToLogicalType(TypeExtractor.getForClass(c))
+        createInternalTypeFromTypeInfo(TypeExtractor.getForClass(c))
       } catch {
         case ite: InvalidTypesException =>
           throw new ValidationException(
@@ -211,41 +195,41 @@ object UserDefinedFunctionUtils {
 
   def getEvalUserDefinedMethod(
       function: ScalarFunction,
-      expectedTypes: Seq[LogicalType])
+      expectedTypes: Seq[InternalType])
   : Option[Method] = {
     getUserDefinedMethod(
       function,
       "eval",
       internalTypesToClasses(expectedTypes),
       expectedTypes.toArray,
-      (paraClasses) => function.getParameterTypes(paraClasses).map(fromLegacyInfoToDataType))
+      (paraClasses) => function.getParameterTypes(paraClasses))
   }
 
   def getEvalUserDefinedMethod(
       function: TableFunction[_],
-      expectedTypes: Seq[LogicalType])
+      expectedTypes: Seq[InternalType])
   : Option[Method] = {
     getUserDefinedMethod(
       function,
       "eval",
       internalTypesToClasses(expectedTypes),
       expectedTypes.toArray,
-      (paraClasses) => function.getParameterTypes(paraClasses).map(fromLegacyInfoToDataType))
+      (paraClasses) => function.getParameterTypes(paraClasses))
   }
 
   def getAggFunctionUDIMethod(
       function: AggregateFunction[_, _],
       methodName: String,
-      accType: DataType,
-      expectedTypes: Seq[LogicalType])
+      accType: TypeInformation[_],
+      expectedTypes: Seq[InternalType])
   : Option[Method] = {
-    val input = (Array(fromDataTypeToLogicalType(accType)) ++ expectedTypes).toSeq
+    val input = (Array(createInternalTypeFromTypeInfo(accType)) ++ expectedTypes).toSeq
     getUserDefinedMethod(
       function,
       methodName,
       internalTypesToClasses(input),
       input.map{ t => if (t == null) null else t}.toArray,
-      cls => Array(accType) ++ cls.drop(1).map(fromClassToDataType))
+      cls => Array(accType) ++ cls.drop(1).map(TypeExtractor.createTypeInfo(_)))
   }
 
   /**
@@ -254,16 +238,16 @@ object UserDefinedFunctionUtils {
   def getUserDefinedMethod(
       function: UserDefinedFunction,
       methodName: String,
-      signature: Seq[DataType])
+      signature: Seq[TypeInformation[_]])
   : Option[Method] = {
     getUserDefinedMethod(
       function,
       methodName,
       typesToClasses(signature),
-      signature.map{ t => if (t == null) null else fromDataTypeToLogicalType(t)}.toArray,
+      signature.map{ t => if (t == null) null else createInternalTypeFromTypeInfo(t)}.toArray,
       cls => cls.map { clazz =>
         try {
-          fromClassToDataType(clazz)
+          TypeExtractor.createTypeInfo(clazz)
         } catch {
           case _: Exception => null
         }
@@ -294,10 +278,10 @@ object UserDefinedFunctionUtils {
       function: UserDefinedFunction,
       methodName: String,
       methodSignature: Array[Class[_]],
-      internalTypes: Array[LogicalType],
-      parameterTypes: Array[Class[_]] => Array[DataType],
+      internalTypes: Array[InternalType],
+      parameterTypes: Array[Class[_]] => Array[TypeInformation[_]],
       parameterClassEquals: (Class[_], Class[_]) => Boolean = parameterClassEquals,
-      parameterDataTypeEquals: (LogicalType, DataType) =>
+      parameterDataTypeEquals: (InternalType, TypeInformation[_]) =>
           Boolean = parameterDataTypeEquals)
   : Option[Method] = {
 
@@ -465,7 +449,7 @@ object UserDefinedFunctionUtils {
     *
     * The entrance in BatchTableEnvironment.scala and StreamTableEnvironment.scala
     * {{{
-    *   def registerFunction(name: String, tf: TableFunction[T])
+    *   def registerFunction[T: TypeInformation](name: String, tf: TableFunction[T])
     * }}}
     *
     * The implicitResultType would be inferred from type `T`.
@@ -483,7 +467,7 @@ object UserDefinedFunctionUtils {
       name: String,
       displayName: String,
       tableFunction: TableFunction[_],
-      implicitResultType: DataType,
+      implicitResultType: TypeInformation[_],
       typeFactory: FlinkTypeFactory): TableSqlFunction = {
     // we don't know the exact result type yet.
     val function = new DeferredTypeFlinkTableFunction(tableFunction, implicitResultType)
@@ -503,8 +487,8 @@ object UserDefinedFunctionUtils {
       name: String,
       displayName: String,
       aggFunction: AggregateFunction[_, _],
-      externalResultType: DataType,
-      externalAccType: DataType,
+      externalResultType: TypeInformation[_],
+      externalAccType: TypeInformation[_],
       typeFactory: FlinkTypeFactory)
   : SqlFunction = {
     //check if a qualified accumulate method exists before create Sql function
@@ -517,7 +501,7 @@ object UserDefinedFunctionUtils {
       externalResultType,
       externalAccType,
       typeFactory,
-      aggFunction.getRequirements.contains(FunctionRequirement.OVER_WINDOW_ONLY))
+      aggFunction.requiresOver)
   }
 
   // ----------------------------------------------------------------------------------------------
@@ -534,11 +518,11 @@ object UserDefinedFunctionUtils {
     */
   def getResultTypeOfAggregateFunction(
       aggregateFunction: AggregateFunction[_, _],
-      extractedType: DataType = null): DataType = {
+      extractedType: TypeInformation[_] = null): TypeInformation[_] = {
 
     val resultType = aggregateFunction.getResultType
     if (resultType != null) {
-      fromLegacyInfoToDataType(resultType)
+      resultType
     } else if (extractedType != null) {
       extractedType
     } else {
@@ -556,7 +540,7 @@ object UserDefinedFunctionUtils {
   }
 
   /**
-    * Tries to infer the Type of an AggregateFunction's accumulator type.
+    * Tries to infer the InternalType of an AggregateFunction's accumulator type.
     *
     * @param aggregateFunction The AggregateFunction for which the accumulator type is inferred.
     * @param extractedType The implicitly inferred type of the accumulator type.
@@ -565,11 +549,11 @@ object UserDefinedFunctionUtils {
     */
   def getAccumulatorTypeOfAggregateFunction(
       aggregateFunction: AggregateFunction[_, _],
-      extractedType: DataType = null): DataType = {
+      extractedType: TypeInformation[_] = null): TypeInformation[_] = {
 
     val accType = aggregateFunction.getAccumulatorType
     if (accType != null) {
-      fromLegacyInfoToDataType(accType)
+      accType
     } else if (extractedType != null) {
       extractedType
     } else {
@@ -584,7 +568,6 @@ object UserDefinedFunctionUtils {
           )
       }
     }
-
   }
 
   /**
@@ -598,22 +581,24 @@ object UserDefinedFunctionUtils {
   @throws(classOf[InvalidTypesException])
   private def extractTypeFromAggregateFunction(
       aggregateFunction: AggregateFunction[_, _],
-      parameterTypePos: Int): DataType = {
+      parameterTypePos: Int): TypeInformation[_] = {
 
-    fromLegacyInfoToDataType(TypeExtractor.createTypeInfo(
+    TypeExtractor.createTypeInfo(
       aggregateFunction,
       classOf[AggregateFunction[_, _]],
       aggregateFunction.getClass,
-      parameterTypePos))
+      parameterTypePos)
   }
 
   def getResultTypeOfScalarFunction(
       function: ScalarFunction,
       arguments: Array[AnyRef],
-      argTypes: Array[LogicalType]): DataType = {
+      argTypes: Array[InternalType]): TypeInformation[_] = {
+//    val userDefinedTypeInfo = function.getResultType(
+//      arguments, getEvalMethodSignature(function, argTypes))
     val userDefinedTypeInfo = function.getResultType(getEvalMethodSignature(function, argTypes))
     if (userDefinedTypeInfo != null) {
-      fromLegacyInfoToDataType(userDefinedTypeInfo)
+      userDefinedTypeInfo
     } else {
       extractTypeFromScalarFunc(function, argTypes)
     }
@@ -621,9 +606,9 @@ object UserDefinedFunctionUtils {
 
   private[flink] def extractTypeFromScalarFunc(
       function: ScalarFunction,
-      argTypes: Array[LogicalType]): DataType = {
-    try {
-      fromClassToDataType(getResultTypeClassOfScalarFunction(function, argTypes))
+      argTypes: Array[InternalType]): TypeInformation[_] = {
+    try {TypeExtractor.getForClass(
+      getResultTypeClassOfScalarFunction(function, argTypes))
     } catch {
       case _: InvalidTypesException =>
         throw new ValidationException(
@@ -637,7 +622,7 @@ object UserDefinedFunctionUtils {
     */
   def getResultTypeClassOfScalarFunction(
       function: ScalarFunction,
-      argTypes: Array[LogicalType]): Class[_] = {
+      argTypes: Array[InternalType]): Class[_] = {
     // find method for signature
     getEvalUserDefinedMethod(function, argTypes).getOrElse(
       throw new IllegalArgumentException("Given signature is invalid.")).getReturnType
@@ -648,20 +633,19 @@ object UserDefinedFunctionUtils {
   // ----------------------------------------------------------------------------------------------
 
   /**
-    * Returns field names and field positions for a given [[DataType]].
+    * Returns field names and field positions for a given [[TypeInformation[_]]].
     *
     * Field names are automatically extracted for [[RowType]].
     *
     * @param inputType The DataType to extract the field names and positions from.
     * @return A tuple of two arrays holding the field names and corresponding field positions.
     */
-  def getFieldInfo(inputType: DataType)
-    : (Array[String], Array[Int], Array[LogicalType]) = {
-    val inputTypeInfo = fromDataTypeToTypeInfo(inputType)
+  def getFieldInfo(inputType: TypeInformation[_])
+  : (Array[String], Array[Int], Array[InternalType]) = {
     (
-        FieldInfoUtils.getFieldNames(inputTypeInfo),
-        FieldInfoUtils.getFieldIndices(inputTypeInfo),
-        FieldInfoUtils.getFieldTypes(inputTypeInfo).map(fromTypeInfoToLogicalType))
+        TableEnvironment.getFieldNames(inputType),
+        TableEnvironment.getFieldIndices(inputType),
+        TableEnvironment.getFieldTypes(inputType).map(createInternalTypeFromTypeInfo))
   }
 
   /**
@@ -676,14 +660,14 @@ object UserDefinedFunctionUtils {
       }
     }.mkString("(", ", ", ")")
 
-  def signatureInternalToString(signature: Seq[LogicalType]): String = {
+  def signatureInternalToString(signature: Seq[InternalType]): String = {
     signatureToString(internalTypesToClasses(signature))
   }
 
   /**
     * Prints one signature consisting of DataType.
     */
-  def signatureToString(signature: Seq[DataType]): String = {
+  def signatureToString(signature: Seq[TypeInformation[_]]): String = {
     signatureToString(typesToClasses(signature))
   }
 
@@ -695,17 +679,23 @@ object UserDefinedFunctionUtils {
   }
 
   /**
-    * Extracts type classes of [[DataType]] in a null-aware way.
+    * Extracts type classes of [[TypeInformation]] in a null-aware way.
     */
-  def typesToClasses(types: Seq[DataType]): Array[Class[_]] =
-    types.map(t => if (t == null) null else t.getConversionClass).toArray
-
-  def internalTypesToClasses(types: Seq[LogicalType]): Array[Class[_]] =
+  def typesToClasses(types: Seq[TypeInformation[_]]): Array[Class[_]] =
     types.map { t =>
       if (t == null) {
         null
       } else {
-        getDefaultExternalClassForType(t)
+        t.getTypeClass
+      }
+    }.toArray
+
+  def internalTypesToClasses(types: Seq[InternalType]): Array[Class[_]] =
+    types.map { t =>
+      if (t == null) {
+        null
+      } else {
+        InternalTypeUtils.getExternalClassForType(t)
       }
     }.toArray
 
@@ -737,26 +727,23 @@ object UserDefinedFunctionUtils {
             expected.getComponentType == classOf[Object])
 
   private def parameterDataTypeEquals(
-      internal: LogicalType,
-      parameterType: DataType): Boolean = {
-    val paraInternalType = fromDataTypeToLogicalType(parameterType)
-    if (isAny(internal) && isAny(paraInternalType)) {
-      getDefaultExternalClassForType(internal) == getDefaultExternalClassForType(paraInternalType)
-    } else {
-      // There is a special equal to GenericType. We need rewrite type extract to BaseRow etc...
-      paraInternalType == internal ||
-          getInternalClassForType(internal) == getInternalClassForType(paraInternalType)
-    }
+      internal: InternalType,
+      parameterType: TypeInformation[_]): Boolean = {
+    val paraInternalType = createInternalTypeFromTypeInfo(parameterType)
+    // There is a special equal to GenericType. We need rewrite type extract to BaseRow etc...
+    paraInternalType == internal ||
+        createInternalTypeInfoFromInternalType(internal).getTypeClass ==
+            createInternalTypeInfoFromInternalType(paraInternalType).getTypeClass
   }
 
-  def getOperandType(callBinding: SqlOperatorBinding): Seq[LogicalType] = {
+  def getOperandType(callBinding: SqlOperatorBinding): Seq[InternalType] = {
     val operandTypes = for (i <- 0 until callBinding.getOperandCount)
       yield callBinding.getOperandType(i)
     operandTypes.map { operandType =>
       if (operandType.getSqlTypeName == SqlTypeName.NULL) {
         null
       } else {
-        FlinkTypeFactory.toLogicalType(operandType)
+        FlinkTypeFactory.toInternalType(operandType)
       }
     }
   }
@@ -795,7 +782,7 @@ object UserDefinedFunctionUtils {
 
   private[table] def buildRelDataType(
       typeFactory: RelDataTypeFactory,
-      resultType: LogicalType,
+      resultType: InternalType,
       fieldNames: Array[String],
       fieldIndexes: Array[Int]): RelDataType = {
 
@@ -810,12 +797,12 @@ object UserDefinedFunctionUtils {
         "Table field names must be unique.")
     }
 
-    val fieldTypes: Array[LogicalType] =
+    val fieldTypes: Array[InternalType] =
       resultType match {
         case bt: RowType =>
-          if (fieldNames.length != bt.getFieldCount) {
+          if (fieldNames.length != bt.getArity) {
             throw new TableException(
-              s"Arity of type (" + bt.getFieldNames.toArray.deep + ") " +
+              s"Arity of type (" + bt.getFieldNames.deep + ") " +
                   "not equal to number of field names " + fieldNames.deep + ".")
           }
           fieldIndexes.map(i => bt.getTypeAt(i))
@@ -832,7 +819,7 @@ object UserDefinedFunctionUtils {
     fieldNames
         .zip(fieldTypes)
         .foreach { f =>
-          builder.add(f._1, flinkTypeFactory.createFieldTypeFromLogicalType(f._2))
+          builder.add(f._1, flinkTypeFactory.createTypeFromInternalType(f._2, isNullable = true))
         }
     builder.build
   }

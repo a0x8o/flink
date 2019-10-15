@@ -26,7 +26,6 @@ import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.common.operators.ResourceSpec;
 import org.apache.flink.api.java.DataSet;
 import org.apache.flink.api.java.ExecutionEnvironment;
-import org.apache.flink.api.java.io.BlockingShuffleOutputFormat;
 import org.apache.flink.api.java.io.DiscardingOutputFormat;
 import org.apache.flink.api.java.operators.DataSink;
 import org.apache.flink.api.java.operators.DeltaIteration;
@@ -36,15 +35,9 @@ import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.optimizer.Optimizer;
 import org.apache.flink.optimizer.plan.OptimizedPlan;
-import org.apache.flink.optimizer.testfunctions.IdentityMapper;
-import org.apache.flink.runtime.io.network.partition.ResultPartitionType;
-import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.jobgraph.JobVertex;
-import org.apache.flink.util.AbstractID;
 
-import org.hamcrest.Matchers;
-import org.junit.Assert;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -126,7 +119,12 @@ public class JobGraphGeneratorTest {
 		DataSink<Long> sink = startOfIteration.closeWith(feedback).output(new DiscardingOutputFormat<Long>());
 		sinkMethod.invoke(sink, resource7);
 
-		JobGraph jobGraph = compileJob(env);
+		Plan plan = env.createProgramPlan();
+		Optimizer pc = new Optimizer(new Configuration());
+		OptimizedPlan op = pc.compile(plan);
+
+		JobGraphGenerator jgg = new JobGraphGenerator();
+		JobGraph jobGraph = jgg.compileJobGraph(op);
 
 		JobVertex sourceMapFilterVertex = jobGraph.getVerticesSortedTopologicallyFromSources().get(0);
 		JobVertex iterationHeadVertex = jobGraph.getVerticesSortedTopologicallyFromSources().get(1);
@@ -200,7 +198,12 @@ public class JobGraphGeneratorTest {
 				output(new DiscardingOutputFormat<Tuple2<Long, Long>>());
 		sinkMethod.invoke(sink, resource6);
 
-		JobGraph jobGraph = compileJob(env);
+		Plan plan = env.createProgramPlan();
+		Optimizer pc = new Optimizer(new Configuration());
+		OptimizedPlan op = pc.compile(plan);
+
+		JobGraphGenerator jgg = new JobGraphGenerator();
+		JobGraph jobGraph = jgg.compileJobGraph(op);
 
 		JobVertex sourceMapVertex = jobGraph.getVerticesSortedTopologicallyFromSources().get(0);
 		JobVertex iterationHeadVertex = jobGraph.getVerticesSortedTopologicallyFromSources().get(1);
@@ -262,42 +265,6 @@ public class JobGraphGeneratorTest {
 		assertState(nonExecutableDirEntry, false, true);
 	}
 
-	@Test
-	public void testGeneratingJobGraphWithUnconsumedResultPartition() {
-
-		ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
-
-		DataSet<Tuple2<Long, Long>> input = env.fromElements(new Tuple2<>(1L, 2L))
-			.setParallelism(1);
-
-		DataSet<Tuple2<Long, Long>> ds = input.map(new IdentityMapper<>())
-			.setParallelism(3);
-
-		AbstractID intermediateDataSetID = new AbstractID();
-
-		// this output branch will be excluded.
-		ds.output(BlockingShuffleOutputFormat.createOutputFormat(intermediateDataSetID))
-			.setParallelism(1);
-
-		// this is the normal output branch.
-		ds.output(new DiscardingOutputFormat<>())
-			.setParallelism(1);
-
-		JobGraph jobGraph = compileJob(env);
-
-		Assert.assertEquals(3, jobGraph.getVerticesSortedTopologicallyFromSources().size());
-
-		JobVertex mapVertex = jobGraph.getVerticesSortedTopologicallyFromSources().get(1);
-		Assert.assertThat(mapVertex, Matchers.instanceOf(JobVertex.class));
-
-		// there are 2 output result with one of them is ResultPartitionType.BLOCKING_PERSISTENT
-		Assert.assertEquals(2, mapVertex.getProducedDataSets().size());
-
-		Assert.assertTrue(mapVertex.getProducedDataSets().stream()
-			.anyMatch(dataSet -> dataSet.getId().equals(new IntermediateDataSetID(intermediateDataSetID)) &&
-				dataSet.getResultType() == ResultPartitionType.BLOCKING_PERSISTENT));
-	}
-
 	private static void assertState(DistributedCache.DistributedCacheEntry entry, boolean isExecutable, boolean isZipped) throws IOException {
 		assertNotNull(entry);
 		assertEquals(isExecutable, entry.isExecutable);
@@ -305,14 +272,5 @@ public class JobGraphGeneratorTest {
 		org.apache.flink.core.fs.Path filePath = new org.apache.flink.core.fs.Path(entry.filePath);
 		assertTrue(filePath.getFileSystem().exists(filePath));
 		assertFalse(filePath.getFileSystem().getFileStatus(filePath).isDir());
-	}
-
-	private static JobGraph compileJob(ExecutionEnvironment env) {
-		Plan plan = env.createProgramPlan();
-		Optimizer pc = new Optimizer(new Configuration());
-		OptimizedPlan op = pc.compile(plan);
-
-		JobGraphGenerator jgg = new JobGraphGenerator();
-		return jgg.compileJobGraph(op);
 	}
 }

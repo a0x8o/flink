@@ -28,7 +28,6 @@ import java.util.Map;
  */
 @PublicEvolving
 public final class TableStats {
-	public static final TableStats UNKNOWN = new TableStats(-1, new HashMap<>());
 
 	/**
 	 * cardinality of table.

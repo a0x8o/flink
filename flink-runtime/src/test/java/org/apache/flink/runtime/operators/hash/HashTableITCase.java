@@ -100,10 +100,13 @@ public class HashTableITCase extends TestLogger {
 	}
 	
 	@After
-	public void tearDown() throws Exception
+	public void tearDown()
 	{
 		// shut down I/O manager and Memory Manager and verify the correct shutdown
-		this.ioManager.close();
+		this.ioManager.shutdown();
+		if (!this.ioManager.isProperlyShutDown()) {
+			fail("I/O manager was not property shut down.");
+		}
 		if (!this.memManager.verifyEmpty()) {
 			fail("Not all memory was properly released to the memory manager --> Memory Leak.");
 		}

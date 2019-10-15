@@ -24,7 +24,6 @@ import org.apache.flink.metrics.CharacterFilter;
 import org.apache.flink.metrics.Counter;
 import org.apache.flink.metrics.Gauge;
 import org.apache.flink.metrics.Histogram;
-import org.apache.flink.metrics.HistogramStatistics;
 import org.apache.flink.metrics.Meter;
 import org.apache.flink.metrics.Metric;
 import org.apache.flink.metrics.MetricConfig;
@@ -301,11 +300,10 @@ public abstract class AbstractPrometheusReporter implements MetricReporter {
 		private void addSamples(final List<String> labelValues, final Histogram histogram, final List<MetricFamilySamples.Sample> samples) {
 			samples.add(new MetricFamilySamples.Sample(metricName + "_count",
 				labelNamesWithQuantile.subList(0, labelNamesWithQuantile.size() - 1), labelValues, histogram.getCount()));
-			final HistogramStatistics statistics = histogram.getStatistics();
 			for (final Double quantile : QUANTILES) {
 				samples.add(new MetricFamilySamples.Sample(metricName, labelNamesWithQuantile,
 					addToList(labelValues, quantile.toString()),
-					statistics.getQuantile(quantile)));
+					histogram.getStatistics().getQuantile(quantile)));
 			}
 		}
 	}

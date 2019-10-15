@@ -68,9 +68,8 @@ public class StreamIterationTail<IN> extends OneInputStreamTask<IN, IN> {
 
 		LOG.info("Iteration tail {} acquired feedback queue {}", getName(), brokerID);
 
-		RecordPusher<IN> headOperator = new RecordPusher<>();
-		headOperator.setup(this, getConfiguration(), new IterationTailOutput<>(dataChannel, iterationWaitTime));
-		this.headOperator = headOperator;
+		this.headOperator = new RecordPusher<>();
+		this.headOperator.setup(this, getConfiguration(), new IterationTailOutput<>(dataChannel, iterationWaitTime));
 
 		// call super.init() last because that needs this.headOperator to be set up
 		super.init();

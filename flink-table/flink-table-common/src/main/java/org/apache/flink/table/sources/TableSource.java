@@ -20,23 +20,18 @@ package org.apache.flink.table.sources;
 
 import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
-import org.apache.flink.table.api.DataTypes;
-import org.apache.flink.table.api.TableException;
 import org.apache.flink.table.api.TableSchema;
-import org.apache.flink.table.types.DataType;
 import org.apache.flink.table.utils.TableConnectorUtils;
-
-import static org.apache.flink.table.types.utils.TypeConversions.fromLegacyInfoToDataType;
 
 /**
  * Defines an external table with the schema that is provided by {@link TableSource#getTableSchema}.
  *
  * <p>The data of a {@link TableSource} is produced as a {@code DataSet} in case of a {@code BatchTableSource}
  * or as a {@code DataStream} in case of a {@code StreamTableSource}. The type of ths produced
- * {@code DataSet} or {@code DataStream} is specified by the {@link TableSource#getProducedDataType()} method.
+ * {@code DataSet} or {@code DataStream} is specified by the {@link TableSource#getReturnType} method.
  *
  * <p>By default, the fields of the {@link TableSchema} are implicitly mapped by name to the fields of
- * the produced {@link DataType}. An explicit mapping can be defined by implementing the
+ * the return type {@link TypeInformation}. An explicit mapping can be defined by implementing the
  * {@link DefinedFieldMapping} interface.
  *
  * @param <T> The return type of the {@link TableSource}.
@@ -45,29 +40,12 @@ import static org.apache.flink.table.types.utils.TypeConversions.fromLegacyInfoT
 public interface TableSource<T> {
 
 	/**
-	 * Returns the {@link DataType} for the produced data of the {@link TableSource}.
+	 * Returns the {@link TypeInformation} for the return type of the {@link TableSource}.
+	 * The fields of the return type are mapped to the table schema based on their name.
 	 *
-	 * @return The data type of the returned {@code DataSet} or {@code DataStream}.
+	 * @return The type of the returned {@code DataSet} or {@code DataStream}.
 	 */
-	default DataType getProducedDataType() {
-		final TypeInformation<T> legacyType = getReturnType();
-		if (legacyType == null) {
-			throw new TableException("Table source does not implement a produced data type.");
-		}
-		return fromLegacyInfoToDataType(legacyType);
-	}
-
-	/**
-	 * @deprecated This method will be removed in future versions as it uses the old type system. It
-	 *             is recommended to use {@link #getProducedDataType()} instead which uses the new type
-	 *             system based on {@link DataTypes}. Please make sure to use either the old or the new type
-	 *             system consistently to avoid unintended behavior. See the website documentation
-	 *             for more information.
-	 */
-	@Deprecated
-	default TypeInformation<T> getReturnType() {
-		return null;
-	}
+	TypeInformation<T> getReturnType();
 
 	/**
 	 * Returns the schema of the produced table.

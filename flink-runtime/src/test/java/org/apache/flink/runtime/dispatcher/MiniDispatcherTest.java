@@ -30,7 +30,6 @@ import org.apache.flink.runtime.highavailability.TestingHighAvailabilityServices
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.jobgraph.JobStatus;
 import org.apache.flink.runtime.jobmaster.JobResult;
-import org.apache.flink.runtime.jobmaster.TestingJobManagerRunner;
 import org.apache.flink.runtime.leaderelection.TestingLeaderElectionService;
 import org.apache.flink.runtime.metrics.groups.UnregisteredMetricGroups;
 import org.apache.flink.runtime.resourcemanager.utils.TestingResourceManagerGateway;
@@ -86,6 +85,10 @@ public class MiniDispatcherTest extends TestLogger {
 
 	private final ArchivedExecutionGraphStore archivedExecutionGraphStore = new MemoryArchivedExecutionGraphStore();
 
+	private CompletableFuture<JobGraph> jobGraphFuture;
+
+	private CompletableFuture<ArchivedExecutionGraph> resultFuture;
+
 	private TestingLeaderElectionService dispatcherLeaderElectionService;
 
 	private TestingHighAvailabilityServices highAvailabilityServices;
@@ -119,7 +122,10 @@ public class MiniDispatcherTest extends TestLogger {
 
 		highAvailabilityServices.setDispatcherLeaderElectionService(dispatcherLeaderElectionService);
 
-		testingJobManagerRunnerFactory = new TestingJobManagerRunnerFactory();
+		jobGraphFuture = new CompletableFuture<>();
+		resultFuture = new CompletableFuture<>();
+
+		testingJobManagerRunnerFactory = new TestingJobManagerRunnerFactory(jobGraphFuture, resultFuture, CompletableFuture.completedFuture(null));
 	}
 
 	@After
@@ -152,9 +158,9 @@ public class MiniDispatcherTest extends TestLogger {
 			// wait until the Dispatcher is the leader
 			dispatcherLeaderElectionService.isLeader(UUID.randomUUID()).get();
 
-			final TestingJobManagerRunner testingJobManagerRunner = testingJobManagerRunnerFactory.takeCreatedJobManagerRunner();
+			final JobGraph actualJobGraph = jobGraphFuture.get();
 
-			assertThat(testingJobManagerRunner.getJobID(), is(jobGraph.getJobID()));
+			assertThat(actualJobGraph.getJobID(), is(jobGraph.getJobID()));
 		} finally {
 			RpcUtils.terminateRpcEndpoint(miniDispatcher, timeout);
 		}
@@ -175,12 +181,12 @@ public class MiniDispatcherTest extends TestLogger {
 			dispatcherLeaderElectionService.isLeader(UUID.randomUUID()).get();
 
 			// wait until we have submitted the job
-			final TestingJobManagerRunner testingJobManagerRunner = testingJobManagerRunnerFactory.takeCreatedJobManagerRunner();
+			jobGraphFuture.get();
 
-			testingJobManagerRunner.completeResultFuture(archivedExecutionGraph);
+			resultFuture.complete(archivedExecutionGraph);
 
 			// wait until we terminate
-			miniDispatcher.getShutDownFuture().get();
+			miniDispatcher.getJobTerminationFuture().get();
 		} finally {
 			RpcUtils.terminateRpcEndpoint(miniDispatcher, timeout);
 		}
@@ -201,9 +207,9 @@ public class MiniDispatcherTest extends TestLogger {
 			dispatcherLeaderElectionService.isLeader(UUID.randomUUID()).get();
 
 			// wait until we have submitted the job
-			final TestingJobManagerRunner testingJobManagerRunner = testingJobManagerRunnerFactory.takeCreatedJobManagerRunner();
+			jobGraphFuture.get();
 
-			testingJobManagerRunner.completeResultFuture(archivedExecutionGraph);
+			resultFuture.complete(archivedExecutionGraph);
 
 			assertFalse(miniDispatcher.getTerminationFuture().isDone());
 
@@ -229,18 +235,17 @@ public class MiniDispatcherTest extends TestLogger {
 		return new MiniDispatcher(
 			rpcService,
 			UUID.randomUUID().toString(),
-			new DispatcherServices(
-				configuration,
-				highAvailabilityServices,
-				() -> CompletableFuture.completedFuture(resourceManagerGateway),
-				blobServer,
-				heartbeatServices,
-				UnregisteredMetricGroups.createUnregisteredJobManagerMetricGroup(),
-				archivedExecutionGraphStore,
-				testingFatalErrorHandler,
-				VoidHistoryServerArchivist.INSTANCE,
-				null,
-				testingJobManagerRunnerFactory),
+			configuration,
+			highAvailabilityServices,
+			() -> CompletableFuture.completedFuture(resourceManagerGateway),
+			blobServer,
+			heartbeatServices,
+			UnregisteredMetricGroups.createUnregisteredJobManagerMetricGroup(),
+			null,
+			archivedExecutionGraphStore,
+			testingJobManagerRunnerFactory,
+			testingFatalErrorHandler,
+			VoidHistoryServerArchivist.INSTANCE,
 			jobGraph,
 			executionMode);
 	}

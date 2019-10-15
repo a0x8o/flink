@@ -46,13 +46,6 @@ class FlinkRelMdColumnOriginNullCountTest extends FlinkRelMdHandlerTestBase {
   }
 
   @Test
-  def testGetColumnOriginNullCountOnSnapshot(): Unit = {
-    (0 until flinkLogicalSnapshot.getRowType.getFieldCount).foreach { idx =>
-      assertNull(mq.getColumnOriginNullCount(flinkLogicalSnapshot, idx))
-    }
-  }
-
-  @Test
   def testGetColumnOriginNullCountOnProject(): Unit = {
     assertEquals(0.0, mq.getColumnOriginNullCount(logicalProject, 0))
     assertEquals(0.0, mq.getColumnOriginNullCount(logicalProject, 1))
@@ -134,8 +127,7 @@ class FlinkRelMdColumnOriginNullCountTest extends FlinkRelMdHandlerTestBase {
     assertEquals(0.0, mq.getColumnOriginNullCount(innerJoin2, 3))
 
     Array(logicalLeftJoinOnUniqueKeys, logicalRightJoinNotOnUniqueKeys,
-      logicalFullJoinWithEquiAndNonEquiCond, logicalSemiJoinNotOnUniqueKeys,
-      logicalSemiJoinWithEquiAndNonEquiCond).foreach { join =>
+      logicalFullJoinWithEquiAndNonEquiCond).foreach { join =>
       (0 until join.getRowType.getFieldCount).foreach { idx =>
         assertNull(mq.getColumnOriginNullCount(join, idx))
       }

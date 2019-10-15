@@ -119,7 +119,8 @@ public abstract class StreamFaultToleranceTestBase extends TestLogger {
 			StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 			env.setParallelism(PARALLELISM);
 			env.enableCheckpointing(500);
-						env.setRestartStrategy(RestartStrategies.fixedDelayRestart(Integer.MAX_VALUE, 0L));
+			env.getConfig().disableSysoutLogging();
+			env.setRestartStrategy(RestartStrategies.fixedDelayRestart(Integer.MAX_VALUE, 0L));
 
 			testProgram(env);
 

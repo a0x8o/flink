@@ -146,6 +146,10 @@ public class InputChannelTest {
 		}
 
 		@Override
+		void notifySubpartitionConsumed() throws IOException {
+		}
+
+		@Override
 		void releaseAllResources() throws IOException {
 		}
 	}

@@ -21,10 +21,10 @@ package org.apache.flink.runtime.executiongraph;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.runtime.checkpoint.JobManagerTaskRestore;
 import org.apache.flink.runtime.checkpoint.TaskStateSnapshot;
-import org.apache.flink.runtime.concurrent.ComponentMainThreadExecutorServiceAdapter;
 import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.executiongraph.restart.NoRestartStrategy;
 import org.apache.flink.runtime.executiongraph.utils.SimpleAckingTaskManagerGateway;
+import org.apache.flink.runtime.instance.SimpleSlot;
 import org.apache.flink.runtime.jobgraph.JobVertex;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobmanager.scheduler.LocationPreferenceConstraint;
@@ -33,11 +33,11 @@ import org.apache.flink.runtime.jobmaster.LogicalSlot;
 import org.apache.flink.runtime.jobmaster.SlotOwner;
 import org.apache.flink.runtime.jobmaster.SlotRequestId;
 import org.apache.flink.runtime.jobmaster.TestingLogicalSlot;
-import org.apache.flink.runtime.jobmaster.TestingLogicalSlotBuilder;
 import org.apache.flink.runtime.jobmaster.slotpool.SingleLogicalSlot;
 import org.apache.flink.runtime.jobmaster.slotpool.SlotProvider;
 import org.apache.flink.runtime.taskmanager.LocalTaskManagerLocation;
 import org.apache.flink.runtime.taskmanager.TaskManagerLocation;
+import org.apache.flink.runtime.testingUtils.TestingUtils;
 import org.apache.flink.runtime.testtasks.NoOpInvokable;
 import org.apache.flink.util.FlinkException;
 import org.apache.flink.util.TestLogger;
@@ -98,7 +98,7 @@ public class ExecutionTest extends TestLogger {
 			new NoRestartStrategy(),
 			jobVertex);
 
-		executionGraph.start(ComponentMainThreadExecutorServiceAdapter.forMainThread());
+		executionGraph.start(TestingComponentMainThreadExecutorServiceAdapter.forMainThread());
 
 		ExecutionJobVertex executionJobVertex = executionGraph.getJobVertex(jobVertexId);
 
@@ -106,14 +106,20 @@ public class ExecutionTest extends TestLogger {
 
 		final SingleSlotTestingSlotOwner slotOwner = new SingleSlotTestingSlotOwner();
 
-		final LogicalSlot slot = createTestingLogicalSlot(slotOwner);
+		final SimpleSlot slot = new SimpleSlot(
+			slotOwner,
+			new LocalTaskManagerLocation(),
+			0,
+			new SimpleAckingTaskManagerGateway());
 
-		final LogicalSlot otherSlot = new TestingLogicalSlotBuilder().createTestingLogicalSlot();
+		final LogicalSlot otherSlot = new TestingLogicalSlot();
 
-		CompletableFuture<Execution> allocationFuture = execution.allocateResourcesForExecution(
-			executionGraph.getSlotProviderStrategy(),
+		CompletableFuture<Execution> allocationFuture = execution.allocateAndAssignSlotForExecution(
+			slotProvider,
+			false,
 			LocationPreferenceConstraint.ALL,
-			Collections.emptySet());
+			Collections.emptySet(),
+			TestingUtils.infiniteTime());
 
 		assertFalse(allocationFuture.isDone());
 
@@ -128,12 +134,6 @@ public class ExecutionTest extends TestLogger {
 		assertEquals(slot, slotOwner.getReturnedSlotFuture().get());
 	}
 
-	private TestingLogicalSlot createTestingLogicalSlot(SlotOwner slotOwner) {
-		return new TestingLogicalSlotBuilder()
-			.setSlotOwner(slotOwner)
-			.createTestingLogicalSlot();
-	}
-
 	/**
 	 * Tests that the slot is released in case of a execution cancellation when having
 	 * a slot assigned and being in state SCHEDULED.
@@ -145,7 +145,11 @@ public class ExecutionTest extends TestLogger {
 
 		final SingleSlotTestingSlotOwner slotOwner = new SingleSlotTestingSlotOwner();
 
-		final LogicalSlot slot = createTestingLogicalSlot(slotOwner);
+		final SimpleSlot slot = new SimpleSlot(
+			slotOwner,
+			new LocalTaskManagerLocation(),
+			0,
+			new SimpleAckingTaskManagerGateway());
 
 		final ProgrammedSlotProvider slotProvider = new ProgrammedSlotProvider(1);
 		slotProvider.addSlot(jobVertexId, 0, CompletableFuture.completedFuture(slot));
@@ -156,16 +160,18 @@ public class ExecutionTest extends TestLogger {
 			new NoRestartStrategy(),
 			jobVertex);
 
-		executionGraph.start(ComponentMainThreadExecutorServiceAdapter.forMainThread());
+		executionGraph.start(TestingComponentMainThreadExecutorServiceAdapter.forMainThread());
 
 		ExecutionJobVertex executionJobVertex = executionGraph.getJobVertex(jobVertexId);
 
 		final Execution execution = executionJobVertex.getTaskVertices()[0].getCurrentExecutionAttempt();
 
-		CompletableFuture<Execution> allocationFuture = execution.allocateResourcesForExecution(
-			executionGraph.getSlotProviderStrategy(),
+		CompletableFuture<Execution> allocationFuture = execution.allocateAndAssignSlotForExecution(
+			slotProvider,
+			false,
 			LocationPreferenceConstraint.ALL,
-			Collections.emptySet());
+			Collections.emptySet(),
+			TestingUtils.infiniteTime());
 
 		assertTrue(allocationFuture.isDone());
 
@@ -191,7 +197,11 @@ public class ExecutionTest extends TestLogger {
 
 		final SingleSlotTestingSlotOwner slotOwner = new SingleSlotTestingSlotOwner();
 
-		final LogicalSlot slot = createTestingLogicalSlot(slotOwner);
+		final SimpleSlot slot = new SimpleSlot(
+			slotOwner,
+			new LocalTaskManagerLocation(),
+			0,
+			new SimpleAckingTaskManagerGateway());
 
 		final ProgrammedSlotProvider slotProvider = new ProgrammedSlotProvider(1);
 		slotProvider.addSlot(jobVertexId, 0, CompletableFuture.completedFuture(slot));
@@ -206,10 +216,12 @@ public class ExecutionTest extends TestLogger {
 
 		final Execution execution = executionJobVertex.getTaskVertices()[0].getCurrentExecutionAttempt();
 
-		CompletableFuture<Execution> allocationFuture = execution.allocateResourcesForExecution(
-			executionGraph.getSlotProviderStrategy(),
+		CompletableFuture<Execution> allocationFuture = execution.allocateAndAssignSlotForExecution(
+			slotProvider,
+			false,
 			LocationPreferenceConstraint.ALL,
-			Collections.emptySet());
+			Collections.emptySet(),
+			TestingUtils.infiniteTime());
 
 		assertTrue(allocationFuture.isDone());
 
@@ -250,16 +262,18 @@ public class ExecutionTest extends TestLogger {
 			new NoRestartStrategy(),
 			jobVertex);
 
-		executionGraph.start(ComponentMainThreadExecutorServiceAdapter.forMainThread());
+		executionGraph.start(TestingComponentMainThreadExecutorServiceAdapter.forMainThread());
 
 		final ExecutionJobVertex executionJobVertex = executionGraph.getJobVertex(jobVertexId);
 
 		final Execution currentExecutionAttempt = executionJobVertex.getTaskVertices()[0].getCurrentExecutionAttempt();
 
-		final CompletableFuture<Execution> allocationFuture = currentExecutionAttempt.allocateResourcesForExecution(
-			executionGraph.getSlotProviderStrategy(),
+		final CompletableFuture<Execution> allocationFuture = currentExecutionAttempt.allocateAndAssignSlotForExecution(
+			slotProvider,
+			false,
 			LocationPreferenceConstraint.ALL,
-			Collections.emptySet());
+			Collections.emptySet(),
+			TestingUtils.infiniteTime());
 
 		assertThat(allocationFuture.isDone(), is(false));
 
@@ -358,16 +372,13 @@ public class ExecutionTest extends TestLogger {
 			new NoRestartStrategy(),
 			jobVertex);
 
-		executionGraph.start(ComponentMainThreadExecutorServiceAdapter.forMainThread());
+		executionGraph.start(TestingComponentMainThreadExecutorServiceAdapter.forMainThread());
 
 		ExecutionJobVertex executionJobVertex = executionGraph.getJobVertex(jobVertexId);
 
 		ExecutionVertex executionVertex = executionJobVertex.getTaskVertices()[0];
 
-		executionVertex.scheduleForExecution(
-			executionGraph.getSlotProviderStrategy(),
-			LocationPreferenceConstraint.ANY,
-			Collections.emptySet()).get();
+		executionVertex.scheduleForExecution(slotProvider, false, LocationPreferenceConstraint.ANY, Collections.emptySet()).get();
 
 		Execution currentExecutionAttempt = executionVertex.getCurrentExecutionAttempt();
 
@@ -419,11 +430,7 @@ public class ExecutionTest extends TestLogger {
 		assertThat(execution.getTaskRestore(), is(notNullValue()));
 
 		// schedule the execution vertex and wait for its deployment
-		executionVertex.scheduleForExecution(
-			executionGraph.getSlotProviderStrategy(),
-			LocationPreferenceConstraint.ANY,
-			Collections.emptySet())
-			.get();
+		executionVertex.scheduleForExecution(slotProvider, false, LocationPreferenceConstraint.ANY, Collections.emptySet()).get();
 
 		assertThat(execution.getTaskRestore(), is(nullValue()));
 	}
@@ -484,7 +491,8 @@ public class ExecutionTest extends TestLogger {
 
 		final CompletableFuture<Void> schedulingFuture = testMainThreadUtil.execute(
 			() -> execution.scheduleForExecution(
-				executionGraph.getSlotProviderStrategy(),
+				slotProvider,
+				false,
 				LocationPreferenceConstraint.ANY,
 				Collections.emptySet()));
 
@@ -557,7 +565,13 @@ public class ExecutionTest extends TestLogger {
 
 		for (JobVertexID jobVertexId : jobVertexIds) {
 			for (int i = 0; i < parallelism; i++) {
-				final LogicalSlot slot = createTestingLogicalSlot(slotOwner);
+				final SimpleSlot slot = new SimpleSlot(
+					slotOwner,
+					new LocalTaskManagerLocation(),
+					0,
+					new SimpleAckingTaskManagerGateway(),
+					null,
+					null);
 
 				slotProvider.addSlot(jobVertexId, 0, CompletableFuture.completedFuture(slot));
 			}

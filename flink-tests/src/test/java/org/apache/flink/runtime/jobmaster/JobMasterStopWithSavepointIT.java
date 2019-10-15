@@ -36,8 +36,6 @@ import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
 import org.apache.flink.runtime.jobgraph.tasks.CheckpointCoordinatorConfiguration;
 import org.apache.flink.runtime.jobgraph.tasks.JobCheckpointingSettings;
 import org.apache.flink.streaming.runtime.tasks.StreamTask;
-import org.apache.flink.streaming.runtime.tasks.StreamTaskTest.NoOpStreamTask;
-import org.apache.flink.streaming.runtime.tasks.mailbox.execution.DefaultActionContext;
 import org.apache.flink.test.util.AbstractTestBase;
 
 import org.junit.Assume;
@@ -54,7 +52,6 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
@@ -247,9 +244,7 @@ public class JobMasterStopWithSavepointIT extends AbstractTestBase {
 						10,
 						1,
 						CheckpointRetentionPolicy.NEVER_RETAIN_AFTER_TERMINATION,
-						true,
-						false,
-						0),
+						true),
 				null));
 
 		clusterClient.submitJob(jobGraph, ClassLoader.getSystemClassLoader());
@@ -288,14 +283,13 @@ public class JobMasterStopWithSavepointIT extends AbstractTestBase {
 		}
 
 		@Override
-		protected void processInput(DefaultActionContext context) throws Exception {
+		protected void run() throws InterruptedException {
 			final long taskIndex = getEnvironment().getTaskInfo().getIndexOfThisSubtask();
 			if (taskIndex == 0) {
 				numberOfRestarts.countDown();
 			}
 			invokeLatch.countDown();
 			finishLatch.await();
-			context.allActionsCompleted();
 		}
 
 		@Override
@@ -305,7 +299,7 @@ public class JobMasterStopWithSavepointIT extends AbstractTestBase {
 		}
 
 		@Override
-		public Future<Boolean> triggerCheckpointAsync(CheckpointMetaData checkpointMetaData, CheckpointOptions checkpointOptions, boolean advanceToEndOfEventTime) {
+		public boolean triggerCheckpoint(CheckpointMetaData checkpointMetaData, CheckpointOptions checkpointOptions, boolean advanceToEndOfEventTime) throws Exception {
 			final long checkpointId = checkpointMetaData.getCheckpointId();
 			final CheckpointType checkpointType = checkpointOptions.getCheckpointType();
 
@@ -318,17 +312,17 @@ public class JobMasterStopWithSavepointIT extends AbstractTestBase {
 			if (taskIndex == 0) {
 				checkpointsToWaitFor.countDown();
 			}
-			return super.triggerCheckpointAsync(checkpointMetaData, checkpointOptions, advanceToEndOfEventTime);
+			return super.triggerCheckpoint(checkpointMetaData, checkpointOptions, advanceToEndOfEventTime);
 		}
 
 		@Override
-		public Future<Void> notifyCheckpointCompleteAsync(long checkpointId) {
+		public void notifyCheckpointComplete(long checkpointId) throws Exception {
 			final long taskIndex = getEnvironment().getTaskInfo().getIndexOfThisSubtask();
 			if (checkpointId == synchronousSavepointId && taskIndex == 0) {
 				throw new RuntimeException("Expected Exception");
 			}
 
-			return super.notifyCheckpointCompleteAsync(checkpointId);
+			super.notifyCheckpointComplete(checkpointId);
 		}
 	}
 
@@ -345,16 +339,46 @@ public class JobMasterStopWithSavepointIT extends AbstractTestBase {
 		}
 
 		@Override
-		protected void processInput(DefaultActionContext context) throws Exception {
+		protected void run() throws InterruptedException {
 			invokeLatch.countDown();
 			finishLatch.await();
-			context.allActionsCompleted();
 		}
 
 		@Override
 		public void finishTask() throws Exception {
 			finishingLatch.await();
 			finishLatch.trigger();
+		}
+	}
+
+	/**
+	 * A {@link StreamTask} that does nothing.
+	 * This exists only to avoid having to implement all abstract methods in the subclasses above.
+	 */
+	public static class NoOpStreamTask extends StreamTask {
+
+		NoOpStreamTask(final Environment env) {
+			super(env);
+		}
+
+		@Override
+		protected void init() {
+
+		}
+
+		@Override
+		protected void run() throws Exception {
+
+		}
+
+		@Override
+		protected void cleanup() {
+
+		}
+
+		@Override
+		protected void cancelTask() throws Exception {
+
 		}
 	}
 }

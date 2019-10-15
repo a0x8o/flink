@@ -35,9 +35,15 @@ source "$(dirname "$0")"/kafka_sql_common.sh \
 ################################################################################
 
 function sql_cleanup() {
+  # don't call ourselves again for another signal interruption
+  trap "exit -1" INT
+  # don't call ourselves again for normal exit
+  trap "" EXIT
+
   stop_kafka_cluster
 }
-on_exit sql_cleanup
+trap sql_cleanup INT
+trap sql_cleanup EXIT
 
 # prepare Kafka
 echo "Preparing Kafka $KAFKA_VERSION..."

@@ -58,4 +58,5 @@ public interface BufferPoolFactory {
 	 * Destroy callback for updating factory book keeping.
 	 */
 	void destroyBufferPool(BufferPool bufferPool) throws IOException;
+
 }

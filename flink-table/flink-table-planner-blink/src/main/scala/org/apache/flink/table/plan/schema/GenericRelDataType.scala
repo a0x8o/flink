@@ -19,20 +19,19 @@
 package org.apache.flink.table.plan.schema
 
 import org.apache.calcite.rel.`type`.RelDataTypeSystem
-import org.apache.calcite.sql.`type`.{ArraySqlType, BasicSqlType, MapSqlType, SqlTypeName}
-import org.apache.flink.table.types.logical.TypeInformationAnyType
-
-import java.lang
+import org.apache.calcite.sql.`type`.{BasicSqlType, SqlTypeName}
+import org.apache.flink.api.common.typeinfo.TypeInformation
+import org.apache.flink.table.`type`.GenericType
 
 /**
-  * Generic type for encapsulating Flink's [[TypeInformationAnyType]].
+  * Generic type for encapsulating Flink's [[TypeInformation]].
   *
-  * @param genericType LogicalType to encapsulate
+  * @param genericType InternalType to encapsulate
   * @param nullable flag if type can be nullable
   * @param typeSystem Flink's type system
   */
 class GenericRelDataType(
-    val genericType: TypeInformationAnyType[_],
+    val genericType: GenericType[_],
     val nullable: Boolean,
     typeSystem: RelDataTypeSystem)
   extends BasicSqlType(
@@ -40,7 +39,6 @@ class GenericRelDataType(
     SqlTypeName.ANY) {
 
   isNullable = nullable
-  computeDigest()
 
   override def toString = s"ANY($genericType)"
 
@@ -57,12 +55,5 @@ class GenericRelDataType(
 
   override def hashCode(): Int = {
     genericType.hashCode()
-  }
-
-  /**
-    * [[ArraySqlType]], [[MapSqlType]]... use generateTypeString to equals and hashcode.
-    */
-  override def generateTypeString(sb: lang.StringBuilder, withDetail: Boolean): Unit = {
-    sb.append(toString)
   }
 }

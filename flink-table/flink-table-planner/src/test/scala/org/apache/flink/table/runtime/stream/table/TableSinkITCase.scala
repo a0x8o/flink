@@ -27,7 +27,7 @@ import org.apache.flink.api.java.tuple.{Tuple2 => JTuple2}
 import org.apache.flink.api.java.typeutils.RowTypeInfo
 import org.apache.flink.api.scala._
 import org.apache.flink.streaming.api.TimeCharacteristic
-import org.apache.flink.streaming.api.datastream.{DataStream, DataStreamSink}
+import org.apache.flink.streaming.api.datastream.DataStream
 import org.apache.flink.streaming.api.functions.ProcessFunction
 import org.apache.flink.streaming.api.functions.sink.SinkFunction
 import org.apache.flink.streaming.api.scala.StreamExecutionEnvironment
@@ -621,11 +621,7 @@ private[flink] class TestAppendSink extends AppendStreamTableSink[Row] {
   var fTypes: Array[TypeInformation[_]] = _
 
   override def emitDataStream(s: DataStream[Row]): Unit = {
-    consumeDataStream(s)
-  }
-
-  override def consumeDataStream(dataStream: DataStream[Row]): DataStreamSink[_] = {
-    dataStream.map(
+    s.map(
       new MapFunction[Row, JTuple2[JBool, Row]] {
         override def map(value: Row): JTuple2[JBool, Row] = new JTuple2(true, value)
       })
@@ -684,19 +680,18 @@ private[flink] class TestUpsertSink(
 
   override def setKeyFields(keys: Array[String]): Unit =
     if (keys != null) {
-      if (!expectedKeys.sorted.mkString(",").equals(keys.sorted.mkString(","))) {
-        throw new AssertionError("Provided key fields do not match expected keys")
-      }
+      assertEquals("Provided key fields do not match expected keys",
+        expectedKeys.sorted.mkString(","),
+        keys.sorted.mkString(","))
     } else {
-      if (expectedKeys != null) {
-        throw new AssertionError("Provided key fields should not be null.")
-      }
+      assertNull("Provided key fields should not be null.", expectedKeys)
     }
 
   override def setIsAppendOnly(isAppendOnly: JBool): Unit =
-    if (expectedIsAppendOnly != isAppendOnly) {
-      throw new AssertionError("Provided isAppendOnly does not match expected isAppendOnly")
-    }
+    assertEquals(
+      "Provided isAppendOnly does not match expected isAppendOnly",
+      expectedIsAppendOnly,
+      isAppendOnly)
 
   override def getRecordType: TypeInformation[Row] = new RowTypeInfo(fTypes, fNames)
 
@@ -754,9 +749,9 @@ object RowCollector {
         }
       }.filter{ case (_, c: Int) => c != 0 }
 
-    if (retracted.exists{ case (_, c: Int) => c < 0}) {
-      throw new AssertionError("Received retracted rows which have not been accumulated.")
-    }
+    assertFalse(
+      "Received retracted rows which have not been accumulated.",
+      retracted.exists{ case (_, c: Int) => c < 0})
 
     retracted.flatMap { case (r: String, c: Int) => (0 until c).map(_ => r) }.toList
   }

@@ -116,7 +116,7 @@ public class ClassLoaderITCase extends TestLogger {
 				FOLDER.newFolder().getAbsoluteFile().toURI().toString());
 
 		// required as we otherwise run out of memory
-		config.setString(TaskManagerOptions.LEGACY_MANAGED_MEMORY_SIZE, "80m");
+		config.setString(TaskManagerOptions.MANAGED_MEMORY_SIZE, "80m");
 
 		miniClusterResource = new MiniClusterResource(
 			new MiniClusterResourceConfiguration.Builder()
@@ -142,7 +142,7 @@ public class ClassLoaderITCase extends TestLogger {
 	}
 
 	@Test
-	public void testCustomSplitJobWithCustomClassLoaderJar() throws ProgramInvocationException {
+	public void testCustomSplitJobWithCustomClassLoaderJar() throws IOException, ProgramInvocationException {
 
 		PackagedProgram inputSplitTestProg = new PackagedProgram(new File(INPUT_SPLITS_PROG_JAR_FILE));
 
@@ -150,20 +150,20 @@ public class ClassLoaderITCase extends TestLogger {
 			miniClusterResource.getMiniCluster(),
 			parallelism,
 			Collections.singleton(new Path(INPUT_SPLITS_PROG_JAR_FILE)),
-			Collections.emptyList());
+			Collections.<URL>emptyList());
 
 		inputSplitTestProg.invokeInteractiveModeForExecution();
 	}
 
 	@Test
-	public void testStreamingCustomSplitJobWithCustomClassLoader() throws ProgramInvocationException {
+	public void testStreamingCustomSplitJobWithCustomClassLoader() throws IOException, ProgramInvocationException {
 		PackagedProgram streamingInputSplitTestProg = new PackagedProgram(new File(STREAMING_INPUT_SPLITS_PROG_JAR_FILE));
 
 		TestStreamEnvironment.setAsContext(
 			miniClusterResource.getMiniCluster(),
 			parallelism,
 			Collections.singleton(new Path(STREAMING_INPUT_SPLITS_PROG_JAR_FILE)),
-			Collections.emptyList());
+			Collections.<URL>emptyList());
 
 		streamingInputSplitTestProg.invokeInteractiveModeForExecution();
 	}
@@ -176,14 +176,14 @@ public class ClassLoaderITCase extends TestLogger {
 		TestEnvironment.setAsContext(
 			miniClusterResource.getMiniCluster(),
 			parallelism,
-			Collections.emptyList(),
+			Collections.<Path>emptyList(),
 			Collections.singleton(classpath));
 
 		inputSplitTestProg2.invokeInteractiveModeForExecution();
 	}
 
 	@Test
-	public void testStreamingClassloaderJobWithCustomClassLoader() throws ProgramInvocationException {
+	public void testStreamingClassloaderJobWithCustomClassLoader() throws IOException, ProgramInvocationException {
 		// regular streaming job
 		PackagedProgram streamingProg = new PackagedProgram(new File(STREAMING_PROG_JAR_FILE));
 
@@ -191,13 +191,13 @@ public class ClassLoaderITCase extends TestLogger {
 			miniClusterResource.getMiniCluster(),
 			parallelism,
 			Collections.singleton(new Path(STREAMING_PROG_JAR_FILE)),
-			Collections.emptyList());
+			Collections.<URL>emptyList());
 
 		streamingProg.invokeInteractiveModeForExecution();
 	}
 
 	@Test
-	public void testCheckpointedStreamingClassloaderJobWithCustomClassLoader() throws ProgramInvocationException {
+	public void testCheckpointedStreamingClassloaderJobWithCustomClassLoader() throws IOException, ProgramInvocationException {
 		// checkpointed streaming job with custom classes for the checkpoint (FLINK-2543)
 		// the test also ensures that user specific exceptions are serializable between JobManager <--> JobClient.
 		PackagedProgram streamingCheckpointedProg = new PackagedProgram(new File(STREAMING_CHECKPOINTED_PROG_JAR_FILE));
@@ -206,7 +206,7 @@ public class ClassLoaderITCase extends TestLogger {
 			miniClusterResource.getMiniCluster(),
 			parallelism,
 			Collections.singleton(new Path(STREAMING_CHECKPOINTED_PROG_JAR_FILE)),
-			Collections.emptyList());
+			Collections.<URL>emptyList());
 
 		try {
 			streamingCheckpointedProg.invokeInteractiveModeForExecution();
@@ -214,26 +214,25 @@ public class ClassLoaderITCase extends TestLogger {
 			// Program should terminate with a 'SuccessException':
 			// the exception class is contained in the user-jar, but is not present on the maven classpath
 			// the deserialization of the exception should thus fail here
-			Optional<Throwable> exception = ExceptionUtils.findThrowable(e,
-				candidate -> candidate.getClass().getName().equals("org.apache.flink.test.classloading.jar.CheckpointedStreamingProgram$SuccessException"));
-
-			if (!exception.isPresent()) {
-				// if this is achieved, either we failed due to another exception or the user-specific
-				// exception is not serialized between JobManager and JobClient.
-				throw e;
-			}
-
 			try {
-				Class.forName(exception.get().getClass().getName());
-				Assert.fail("Deserialization of user exception should have failed.");
-			} catch (ClassNotFoundException expected) {
+				Optional<Throwable> exception = ExceptionUtils.findThrowable(e,
+					candidate -> candidate.getClass().getCanonicalName().equals("org.apache.flink.test.classloading.jar.CheckpointedStreamingProgram.SuccessException"));
+
+				// if we reach this point we either failed due to another exception,
+				// or the deserialization of the user-exception did not fail
+				if (!exception.isPresent()) {
+					throw e;
+				} else {
+					Assert.fail("Deserialization of user exception should have failed.");
+				}
+			} catch (NoClassDefFoundError expected) {
 				// expected
 			}
 		}
 	}
 
 	@Test
-	public void testKMeansJobWithCustomClassLoader() throws ProgramInvocationException {
+	public void testKMeansJobWithCustomClassLoader() throws IOException, ProgramInvocationException {
 		PackagedProgram kMeansProg = new PackagedProgram(
 			new File(KMEANS_JAR_PATH),
 			new String[] {
@@ -246,20 +245,20 @@ public class ClassLoaderITCase extends TestLogger {
 			miniClusterResource.getMiniCluster(),
 			parallelism,
 			Collections.singleton(new Path(KMEANS_JAR_PATH)),
-			Collections.emptyList());
+			Collections.<URL>emptyList());
 
 		kMeansProg.invokeInteractiveModeForExecution();
 	}
 
 	@Test
-	public void testUserCodeTypeJobWithCustomClassLoader() throws ProgramInvocationException {
+	public void testUserCodeTypeJobWithCustomClassLoader() throws IOException, ProgramInvocationException {
 		PackagedProgram userCodeTypeProg = new PackagedProgram(new File(USERCODETYPE_JAR_PATH));
 
 		TestEnvironment.setAsContext(
 			miniClusterResource.getMiniCluster(),
 			parallelism,
 			Collections.singleton(new Path(USERCODETYPE_JAR_PATH)),
-			Collections.emptyList());
+			Collections.<URL>emptyList());
 
 		userCodeTypeProg.invokeInteractiveModeForExecution();
 	}
@@ -280,10 +279,10 @@ public class ClassLoaderITCase extends TestLogger {
 			miniClusterResource.getMiniCluster(),
 			parallelism,
 			Collections.singleton(new Path(CHECKPOINTING_CUSTOM_KV_STATE_JAR_PATH)),
-			Collections.emptyList());
+			Collections.<URL>emptyList());
 
 		expectedException.expectCause(
-			Matchers.hasProperty("cause", isA(SuccessException.class)));
+			Matchers.<Throwable>hasProperty("cause", isA(SuccessException.class)));
 
 		program.invokeInteractiveModeForExecution();
 	}
@@ -313,17 +312,20 @@ public class ClassLoaderITCase extends TestLogger {
 			miniClusterResource.getMiniCluster(),
 			parallelism,
 			Collections.singleton(new Path(CUSTOM_KV_STATE_JAR_PATH)),
-			Collections.emptyList()
+			Collections.<URL>emptyList()
 		);
 
 		// Execute detached
-		Thread invokeThread = new Thread(() -> {
-			try {
-				program.invokeInteractiveModeForExecution();
-			} catch (ProgramInvocationException ex) {
-				if (ex.getCause() == null ||
-					!(ex.getCause() instanceof JobCancellationException)) {
-					ex.printStackTrace();
+		Thread invokeThread = new Thread(new Runnable() {
+			@Override
+			public void run() {
+				try {
+					program.invokeInteractiveModeForExecution();
+				} catch (ProgramInvocationException ignored) {
+					if (ignored.getCause() == null ||
+						!(ignored.getCause() instanceof JobCancellationException)) {
+						ignored.printStackTrace();
+					}
 				}
 			}
 		});

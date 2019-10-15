@@ -18,6 +18,7 @@
 
 package org.apache.flink.table.catalog;
 
+import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.table.api.CatalogNotExistException;
 import org.apache.flink.table.api.TableNotExistException;
 
@@ -29,10 +30,8 @@ import java.util.List;
  *
  * <p>It provides information about catalogs, databases and tables such as names, schema,
  * statistics, and access information.
- *
- * @deprecated use {@link Catalog} instead.
  */
-@Deprecated
+@PublicEvolving
 public interface ExternalCatalog {
 
 	/**

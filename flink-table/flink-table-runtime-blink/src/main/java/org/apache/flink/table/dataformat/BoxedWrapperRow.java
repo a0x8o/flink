@@ -19,6 +19,7 @@ package org.apache.flink.table.dataformat;
 
 import org.apache.flink.types.BooleanValue;
 import org.apache.flink.types.ByteValue;
+import org.apache.flink.types.CharValue;
 import org.apache.flink.types.DoubleValue;
 import org.apache.flink.types.FloatValue;
 import org.apache.flink.types.IntValue;
@@ -67,6 +68,11 @@ public final class BoxedWrapperRow extends ObjectArrayRow {
 	@Override
 	public double getDouble(int i) {
 		return ((DoubleValue) fields[i]).getValue();
+	}
+
+	@Override
+	public char getChar(int i) {
+		return ((CharValue) fields[i]).getValue();
 	}
 
 	@Override
@@ -134,6 +140,16 @@ public final class BoxedWrapperRow extends ObjectArrayRow {
 		DoubleValue wrap;
 		if ((wrap = (DoubleValue) fields[i]) == null) {
 			wrap = new DoubleValue();
+			fields[i] = wrap;
+		}
+		wrap.setValue(value);
+	}
+
+	@Override
+	public void setChar(int i, char value) {
+		CharValue wrap;
+		if ((wrap = (CharValue) fields[i]) == null) {
+			wrap = new CharValue();
 			fields[i] = wrap;
 		}
 		wrap.setValue(value);

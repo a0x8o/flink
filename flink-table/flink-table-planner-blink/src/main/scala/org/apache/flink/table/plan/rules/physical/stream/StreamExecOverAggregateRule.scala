@@ -21,7 +21,7 @@ package org.apache.flink.table.plan.rules.physical.stream
 import org.apache.flink.table.api.TableException
 import org.apache.flink.table.plan.`trait`.FlinkRelDistribution
 import org.apache.flink.table.plan.nodes.FlinkConventions
-import org.apache.flink.table.plan.nodes.logical.FlinkLogicalOverAggregate
+import org.apache.flink.table.plan.nodes.logical.FlinkLogicalOverWindow
 import org.apache.flink.table.plan.nodes.physical.stream.StreamExecOverAggregate
 
 import org.apache.calcite.plan.RelOptRule
@@ -29,19 +29,19 @@ import org.apache.calcite.rel.RelNode
 import org.apache.calcite.rel.convert.ConverterRule
 
 /**
-  * Rule that converts [[FlinkLogicalOverAggregate]] to [[StreamExecOverAggregate]].
+  * Rule that converts [[FlinkLogicalOverWindow]] to [[StreamExecOverAggregate]].
   * NOTES: StreamExecOverAggregate only supports one [[org.apache.calcite.rel.core.Window.Group]],
   * else throw exception now
   */
 class StreamExecOverAggregateRule
   extends ConverterRule(
-    classOf[FlinkLogicalOverAggregate],
+    classOf[FlinkLogicalOverWindow],
     FlinkConventions.LOGICAL,
     FlinkConventions.STREAM_PHYSICAL,
     "StreamExecOverAggregateRule") {
 
   override def convert(rel: RelNode): RelNode = {
-    val logicWindow: FlinkLogicalOverAggregate = rel.asInstanceOf[FlinkLogicalOverAggregate]
+    val logicWindow: FlinkLogicalOverWindow = rel.asInstanceOf[FlinkLogicalOverWindow]
 
     if (logicWindow.groups.size > 1) {
       throw new TableException(

@@ -17,21 +17,17 @@
  */
 package org.apache.flink.table.plan.nodes.physical.batch
 
-import org.apache.flink.api.dag.Transformation
 import org.apache.flink.runtime.operators.DamBehavior
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator
-import org.apache.flink.streaming.api.transformations.OneInputTransformation
-import org.apache.flink.table.api.ExecutionConfigOptions
+import org.apache.flink.streaming.api.transformations.{OneInputTransformation, StreamTransformation}
+import org.apache.flink.table.api.{BatchTableEnvironment, TableConfigOptions}
 import org.apache.flink.table.calcite.FlinkTypeFactory
 import org.apache.flink.table.codegen.sort.SortCodeGenerator
 import org.apache.flink.table.dataformat.BaseRow
 import org.apache.flink.table.plan.cost.{FlinkCost, FlinkCostFactory}
 import org.apache.flink.table.plan.nodes.exec.{BatchExecNode, ExecNode}
-import org.apache.flink.table.plan.nodes.resource.NodeResourceUtil
 import org.apache.flink.table.plan.util.{FlinkRelMdUtil, RelExplainUtil, SortUtil}
-import org.apache.flink.table.planner.BatchPlanner
 import org.apache.flink.table.runtime.sort.SortOperator
-import org.apache.flink.table.typeutils.BaseRowTypeInfo
 
 import org.apache.calcite.plan.{RelOptCluster, RelOptCost, RelOptPlanner, RelTraitSet}
 import org.apache.calcite.rel.core.Sort
@@ -94,45 +90,48 @@ class BatchExecSort(
 
   override def getDamBehavior = DamBehavior.FULL_DAM
 
-  override def getInputNodes: util.List[ExecNode[BatchPlanner, _]] =
-    List(getInput.asInstanceOf[ExecNode[BatchPlanner, _]])
+  override def getInputNodes: util.List[ExecNode[BatchTableEnvironment, _]] =
+    List(getInput.asInstanceOf[ExecNode[BatchTableEnvironment, _]])
 
   override def replaceInputNode(
       ordinalInParent: Int,
-      newInputNode: ExecNode[BatchPlanner, _]): Unit = {
+      newInputNode: ExecNode[BatchTableEnvironment, _]): Unit = {
     replaceInput(ordinalInParent, newInputNode.asInstanceOf[RelNode])
   }
 
-  override protected def translateToPlanInternal(
-      planner: BatchPlanner): Transformation[BaseRow] = {
-    val input = getInputNodes.get(0).translateToPlan(planner)
-        .asInstanceOf[Transformation[BaseRow]]
+  override def translateToPlanInternal(
+      tableEnv: BatchTableEnvironment): StreamTransformation[BaseRow] = {
+    val input = getInputNodes.get(0).translateToPlan(tableEnv)
+        .asInstanceOf[StreamTransformation[BaseRow]]
 
-    val conf = planner.getTableConfig
-    val inputType = FlinkTypeFactory.toLogicalRowType(getInput.getRowType)
-    val outputType = FlinkTypeFactory.toLogicalRowType(getRowType)
+    val conf = tableEnv.getConfig
+    val inputType = FlinkTypeFactory.toInternalRowType(getInput.getRowType)
+    val outputType = FlinkTypeFactory.toInternalRowType(getRowType)
 
     // sort code gen
     val keyTypes = keys.map(inputType.getTypeAt)
     val codeGen = new SortCodeGenerator(conf, keys, keyTypes, orders, nullsIsLast)
 
-    val managedMemoryInMB = conf.getConfiguration.getInteger(
-      ExecutionConfigOptions.SQL_RESOURCE_SORT_BUFFER_MEM)
-    val managedMemory = managedMemoryInMB * NodeResourceUtil.SIZE_IN_MB
+    val reservedMemorySize = conf.getConf.getInteger(
+      TableConfigOptions.SQL_RESOURCE_SORT_BUFFER_MEM) * TableConfigOptions.SIZE_IN_MB
+
+    val maxMemorySize = conf.getConf.getInteger(
+      TableConfigOptions.SQL_RESOURCE_SORT_BUFFER_MAX_MEM) * TableConfigOptions.SIZE_IN_MB
+    val perRequestSize = conf.getConf.getInteger(
+      TableConfigOptions.SQL_EXEC_PER_REQUEST_MEM) * TableConfigOptions.SIZE_IN_MB
 
     val operator = new SortOperator(
-      managedMemory,
+      reservedMemorySize,
+      maxMemorySize,
+      perRequestSize.toLong,
       codeGen.generateNormalizedKeyComputer("BatchExecSortComputer"),
       codeGen.generateRecordComparator("BatchExecSortComparator"))
 
-    val ret = new OneInputTransformation(
+    new OneInputTransformation(
       input,
       s"Sort(${RelExplainUtil.collationToString(sortCollation, getRowType)})",
       operator.asInstanceOf[OneInputStreamOperator[BaseRow, BaseRow]],
-      BaseRowTypeInfo.of(outputType),
-      getResource.getParallelism)
-    val resource = NodeResourceUtil.fromManagedMem(managedMemoryInMB)
-    ret.setResources(resource, resource)
-    ret
+      outputType.toTypeInfo,
+      input.getParallelism)
   }
 }

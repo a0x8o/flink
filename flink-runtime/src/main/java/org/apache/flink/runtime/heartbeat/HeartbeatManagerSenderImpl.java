@@ -23,6 +23,9 @@ import org.apache.flink.runtime.concurrent.ScheduledExecutor;
 
 import org.slf4j.Logger;
 
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -34,61 +37,56 @@ import java.util.concurrent.TimeUnit;
  */
 public class HeartbeatManagerSenderImpl<I, O> extends HeartbeatManagerImpl<I, O> implements Runnable {
 
-	private final long heartbeatPeriod;
+	private final ScheduledFuture<?> triggerFuture;
 
-	HeartbeatManagerSenderImpl(
+	public HeartbeatManagerSenderImpl(
 			long heartbeatPeriod,
 			long heartbeatTimeout,
 			ResourceID ownResourceID,
 			HeartbeatListener<I, O> heartbeatListener,
-			ScheduledExecutor mainThreadExecutor,
+			Executor executor,
+			ScheduledExecutor scheduledExecutor,
 			Logger log) {
-		this(
-			heartbeatPeriod,
-			heartbeatTimeout,
-			ownResourceID,
-			heartbeatListener,
-			mainThreadExecutor,
-			log,
-			new HeartbeatMonitorImpl.Factory<>());
-	}
-
-	HeartbeatManagerSenderImpl(
-			long heartbeatPeriod,
-			long heartbeatTimeout,
-			ResourceID ownResourceID,
-			HeartbeatListener<I, O> heartbeatListener,
-			ScheduledExecutor mainThreadExecutor,
-			Logger log,
-			HeartbeatMonitor.Factory<O> heartbeatMonitorFactory) {
 		super(
 			heartbeatTimeout,
 			ownResourceID,
 			heartbeatListener,
-			mainThreadExecutor,
-			log,
-			heartbeatMonitorFactory);
+			executor,
+			scheduledExecutor,
+			log);
 
-		this.heartbeatPeriod = heartbeatPeriod;
-		mainThreadExecutor.schedule(this, 0L, TimeUnit.MILLISECONDS);
+		triggerFuture = scheduledExecutor.scheduleAtFixedRate(this, 0L, heartbeatPeriod, TimeUnit.MILLISECONDS);
 	}
 
 	@Override
 	public void run() {
 		if (!stopped) {
 			log.debug("Trigger heartbeat request.");
-			for (HeartbeatMonitor<O> heartbeatMonitor : getHeartbeatTargets().values()) {
-				requestHeartbeat(heartbeatMonitor);
-			}
+			for (HeartbeatMonitor<O> heartbeatMonitor : getHeartbeatTargets()) {
+				CompletableFuture<O> futurePayload = getHeartbeatListener().retrievePayload(heartbeatMonitor.getHeartbeatTargetId());
+				final HeartbeatTarget<O> heartbeatTarget = heartbeatMonitor.getHeartbeatTarget();
 
-			getMainThreadExecutor().schedule(this, heartbeatPeriod, TimeUnit.MILLISECONDS);
+				if (futurePayload != null) {
+					CompletableFuture<Void> requestHeartbeatFuture = futurePayload.thenAcceptAsync(
+						payload -> heartbeatTarget.requestHeartbeat(getOwnResourceID(), payload),
+						getExecutor());
+
+					requestHeartbeatFuture.exceptionally(
+						(Throwable failure) -> {
+							log.warn("Could not request the heartbeat from target {}.", heartbeatTarget, failure);
+
+							return null;
+						});
+				} else {
+					heartbeatTarget.requestHeartbeat(getOwnResourceID(), null);
+				}
+			}
 		}
 	}
 
-	private void requestHeartbeat(HeartbeatMonitor<O> heartbeatMonitor) {
-		O payload = getHeartbeatListener().retrievePayload(heartbeatMonitor.getHeartbeatTargetId());
-		final HeartbeatTarget<O> heartbeatTarget = heartbeatMonitor.getHeartbeatTarget();
-
-		heartbeatTarget.requestHeartbeat(getOwnResourceID(), payload);
+	@Override
+	public void stop() {
+			triggerFuture.cancel(true);
+			super.stop();
 	}
 }

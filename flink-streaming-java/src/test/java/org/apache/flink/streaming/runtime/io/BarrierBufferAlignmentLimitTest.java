@@ -20,10 +20,10 @@ package org.apache.flink.streaming.runtime.io;
 
 import org.apache.flink.core.memory.MemorySegment;
 import org.apache.flink.core.memory.MemorySegmentFactory;
-import org.apache.flink.runtime.checkpoint.CheckpointFailureReason;
 import org.apache.flink.runtime.checkpoint.CheckpointMetaData;
 import org.apache.flink.runtime.checkpoint.CheckpointMetrics;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
+import org.apache.flink.runtime.checkpoint.decline.AlignmentLimitExceededException;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.disk.iomanager.IOManagerAsync;
 import org.apache.flink.runtime.io.network.api.CheckpointBarrier;
@@ -44,8 +44,8 @@ import java.util.Arrays;
 import java.util.Random;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.Mockito.any;
@@ -115,45 +115,44 @@ public class BarrierBufferAlignmentLimitTest {
 
 		// the barrier buffer has a limit that only 1000 bytes may be spilled in alignment
 		MockInputGate gate = new MockInputGate(PAGE_SIZE, 3, Arrays.asList(sequence));
-		BarrierBuffer buffer = new BarrierBuffer(gate, new BufferSpiller(ioManager, gate.getPageSize()), 1000, "Testing");
+		BarrierBuffer buffer = new BarrierBuffer(gate, new BufferSpiller(ioManager, gate.getPageSize()), 1000);
 
 		AbstractInvokable toNotify = mock(AbstractInvokable.class);
 		buffer.registerCheckpointEventHandler(toNotify);
 
 		// validating the sequence of buffers
 
-		check(sequence[0], buffer.pollNext().get());
-		check(sequence[1], buffer.pollNext().get());
-		check(sequence[2], buffer.pollNext().get());
-		check(sequence[3], buffer.pollNext().get());
+		check(sequence[0], buffer.getNextNonBlocked());
+		check(sequence[1], buffer.getNextNonBlocked());
+		check(sequence[2], buffer.getNextNonBlocked());
+		check(sequence[3], buffer.getNextNonBlocked());
 
 		// start of checkpoint
 		long startTs = System.nanoTime();
-		check(sequence[6], buffer.pollNext().get());
-		check(sequence[8], buffer.pollNext().get());
-		check(sequence[10], buffer.pollNext().get());
+		check(sequence[6], buffer.getNextNonBlocked());
+		check(sequence[8], buffer.getNextNonBlocked());
+		check(sequence[10], buffer.getNextNonBlocked());
 
 		// trying to pull the next makes the alignment overflow - so buffered buffers are replayed
-		check(sequence[5], buffer.pollNext().get());
+		check(sequence[5], buffer.getNextNonBlocked());
 		validateAlignmentTime(startTs, buffer);
-		verify(toNotify, times(1)).abortCheckpointOnBarrier(eq(7L),
-			argThat(new BarrierBufferTestBase.CheckpointExceptionMatcher(CheckpointFailureReason.CHECKPOINT_DECLINED_ALIGNMENT_LIMIT_EXCEEDED)));
+		verify(toNotify, times(1)).abortCheckpointOnBarrier(eq(7L), any(AlignmentLimitExceededException.class));
 
 		// playing back buffered events
-		check(sequence[7], buffer.pollNext().get());
-		check(sequence[11], buffer.pollNext().get());
-		check(sequence[12], buffer.pollNext().get());
-		check(sequence[13], buffer.pollNext().get());
-		check(sequence[14], buffer.pollNext().get());
+		check(sequence[7], buffer.getNextNonBlocked());
+		check(sequence[11], buffer.getNextNonBlocked());
+		check(sequence[12], buffer.getNextNonBlocked());
+		check(sequence[13], buffer.getNextNonBlocked());
+		check(sequence[14], buffer.getNextNonBlocked());
 
 		// the additional data
-		check(sequence[15], buffer.pollNext().get());
-		check(sequence[16], buffer.pollNext().get());
-		check(sequence[17], buffer.pollNext().get());
+		check(sequence[15], buffer.getNextNonBlocked());
+		check(sequence[16], buffer.getNextNonBlocked());
+		check(sequence[17], buffer.getNextNonBlocked());
 
-		check(sequence[19], buffer.pollNext().get());
-		check(sequence[20], buffer.pollNext().get());
-		check(sequence[21], buffer.pollNext().get());
+		check(sequence[19], buffer.getNextNonBlocked());
+		check(sequence[20], buffer.getNextNonBlocked());
+		check(sequence[21], buffer.getNextNonBlocked());
 
 		// no call for a completed checkpoint must have happened
 		verify(toNotify, times(0)).triggerCheckpointOnBarrier(
@@ -161,8 +160,8 @@ public class BarrierBufferAlignmentLimitTest {
 			any(CheckpointOptions.class),
 			any(CheckpointMetrics.class));
 
-		assertFalse(buffer.pollNext().isPresent());
-		assertTrue(buffer.isFinished());
+		assertNull(buffer.getNextNonBlocked());
+		assertNull(buffer.getNextNonBlocked());
 
 		buffer.cleanup();
 		checkNoTempFilesRemain();
@@ -210,7 +209,7 @@ public class BarrierBufferAlignmentLimitTest {
 
 		// the barrier buffer has a limit that only 1000 bytes may be spilled in alignment
 		MockInputGate gate = new MockInputGate(PAGE_SIZE, 3, Arrays.asList(sequence));
-		BarrierBuffer buffer = new BarrierBuffer(gate, new BufferSpiller(ioManager, gate.getPageSize()), 500, "Testing");
+		BarrierBuffer buffer = new BarrierBuffer(gate, new BufferSpiller(ioManager, gate.getPageSize()), 500);
 
 		AbstractInvokable toNotify = mock(AbstractInvokable.class);
 		buffer.registerCheckpointEventHandler(toNotify);
@@ -218,52 +217,51 @@ public class BarrierBufferAlignmentLimitTest {
 		// validating the sequence of buffers
 		long startTs;
 
-		check(sequence[0], buffer.pollNext().get());
-		check(sequence[1], buffer.pollNext().get());
+		check(sequence[0], buffer.getNextNonBlocked());
+		check(sequence[1], buffer.getNextNonBlocked());
 
 		// start of checkpoint
 		startTs = System.nanoTime();
-		check(sequence[3], buffer.pollNext().get());
-		check(sequence[7], buffer.pollNext().get());
+		check(sequence[3], buffer.getNextNonBlocked());
+		check(sequence[7], buffer.getNextNonBlocked());
 
 		// next checkpoint also in progress
-		check(sequence[11], buffer.pollNext().get());
+		check(sequence[11], buffer.getNextNonBlocked());
 
 		// checkpoint alignment aborted due to too much data
-		check(sequence[4], buffer.pollNext().get());
+		check(sequence[4], buffer.getNextNonBlocked());
 		validateAlignmentTime(startTs, buffer);
-		verify(toNotify, times(1)).abortCheckpointOnBarrier(eq(3L),
-			argThat(new BarrierBufferTestBase.CheckpointExceptionMatcher(CheckpointFailureReason.CHECKPOINT_DECLINED_ALIGNMENT_LIMIT_EXCEEDED)));
+		verify(toNotify, times(1)).abortCheckpointOnBarrier(eq(3L), any(AlignmentLimitExceededException.class));
 
 		// replay buffered data - in the middle, the alignment for checkpoint 4 starts
-		check(sequence[6], buffer.pollNext().get());
+		check(sequence[6], buffer.getNextNonBlocked());
 		startTs = System.nanoTime();
-		check(sequence[12], buffer.pollNext().get());
+		check(sequence[12], buffer.getNextNonBlocked());
 
 		// only checkpoint 4 is pending now - the last checkpoint 3 barrier will not trigger success
-		check(sequence[17], buffer.pollNext().get());
+		check(sequence[17], buffer.getNextNonBlocked());
 
 		// checkpoint 4 completed - check and validate buffered replay
-		check(sequence[9], buffer.pollNext().get());
+		check(sequence[9], buffer.getNextNonBlocked());
 		validateAlignmentTime(startTs, buffer);
 		verify(toNotify, times(1)).triggerCheckpointOnBarrier(
 			argThat(new CheckpointMatcher(4L)), any(CheckpointOptions.class), any(CheckpointMetrics.class));
 
-		check(sequence[10], buffer.pollNext().get());
-		check(sequence[15], buffer.pollNext().get());
-		check(sequence[16], buffer.pollNext().get());
+		check(sequence[10], buffer.getNextNonBlocked());
+		check(sequence[15], buffer.getNextNonBlocked());
+		check(sequence[16], buffer.getNextNonBlocked());
 
 		// trailing data
-		check(sequence[19], buffer.pollNext().get());
-		check(sequence[20], buffer.pollNext().get());
-		check(sequence[21], buffer.pollNext().get());
+		check(sequence[19], buffer.getNextNonBlocked());
+		check(sequence[20], buffer.getNextNonBlocked());
+		check(sequence[21], buffer.getNextNonBlocked());
 
 		// only checkpoint 4 was successfully completed, not checkpoint 3
 		verify(toNotify, times(0)).triggerCheckpointOnBarrier(
 			argThat(new CheckpointMatcher(3L)), any(CheckpointOptions.class), any(CheckpointMetrics.class));
 
-		assertFalse(buffer.pollNext().isPresent());
-		assertTrue(buffer.isFinished());
+		assertNull(buffer.getNextNonBlocked());
+		assertNull(buffer.getNextNonBlocked());
 
 		buffer.cleanup();
 		checkNoTempFilesRemain();

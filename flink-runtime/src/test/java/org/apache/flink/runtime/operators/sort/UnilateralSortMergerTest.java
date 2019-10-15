@@ -52,9 +52,10 @@ public class UnilateralSortMergerTest extends TestLogger {
 
 		final int numPages = 32;
 		final MemoryManager memoryManager = new MemoryManager(MemoryManager.DEFAULT_PAGE_SIZE * numPages, 1);
+		final IOManagerAsync ioManager = new IOManagerAsync();
 		final DummyInvokable parentTask = new DummyInvokable();
 
-		try (final IOManagerAsync ioManager = new IOManagerAsync()) {
+		try {
 			final List<MemorySegment> memory = memoryManager.allocatePages(parentTask, numPages);
 			final UnilateralSortMerger<Tuple2<Integer, Integer>> unilateralSortMerger = new UnilateralSortMerger<>(
 				memoryManager,
@@ -84,6 +85,7 @@ public class UnilateralSortMergerTest extends TestLogger {
 				assertThat(inMemorySorter.isDisposed(), is(true));
 			}
 		} finally {
+			ioManager.shutdown();
 			memoryManager.shutdown();
 		}
 	}

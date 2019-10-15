@@ -48,11 +48,6 @@ public class ConnectionLimitingFactory implements FileSystemFactory {
 	// ------------------------------------------------------------------------
 
 	@Override
-	public ClassLoader getClassLoader() {
-		return factory.getClassLoader();
-	}
-
-	@Override
 	public String getScheme() {
 		return factory.getScheme();
 	}

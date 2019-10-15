@@ -19,20 +19,19 @@ package org.apache.flink.table.runtime.harness
 
 import java.lang.{Integer => JInt, Long => JLong}
 import java.util.concurrent.ConcurrentLinkedQueue
+
 import org.apache.flink.api.common.time.Time
 import org.apache.flink.api.common.typeinfo.BasicTypeInfo
 import org.apache.flink.api.scala._
 import org.apache.flink.streaming.api.operators.KeyedProcessOperator
 import org.apache.flink.streaming.api.scala.StreamExecutionEnvironment
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord
-import org.apache.flink.table.api.TableConfig
 import org.apache.flink.table.api.scala._
 import org.apache.flink.table.runtime.aggregate._
 import org.apache.flink.table.runtime.harness.HarnessTestBase._
 import org.apache.flink.table.runtime.types.CRow
 import org.apache.flink.table.runtime.utils.JavaUserDefinedAggFunctions.{MultiArgCount, MultiArgSum}
 import org.apache.flink.types.Row
-
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -40,13 +39,8 @@ import scala.collection.mutable
 
 class GroupAggregateHarnessTest extends HarnessTestBase {
 
-  private val queryConfig =
+  protected var queryConfig =
     new TestStreamQueryConfig(Time.seconds(2), Time.seconds(3))
-  private val tableConfig = new TableConfig {
-    override def getMinIdleStateRetentionTime: Long = Time.seconds(2).toMilliseconds
-
-    override def getMaxIdleStateRetentionTime: Long = Time.seconds(2).toMilliseconds
-  }
 
   @Test
   def testAggregate(): Unit = {
@@ -191,7 +185,7 @@ class GroupAggregateHarnessTest extends HarnessTestBase {
   @Test
   def testDistinctAggregateWithRetract(): Unit = {
     val env = StreamExecutionEnvironment.getExecutionEnvironment
-    val tEnv = StreamTableEnvironment.create(env, tableConfig)
+    val tEnv = StreamTableEnvironment.create(env)
 
     val data = new mutable.MutableList[(JLong, JInt)]
     val t = env.fromCollection(data).toTable(tEnv, 'a, 'b)
@@ -208,7 +202,7 @@ class GroupAggregateHarnessTest extends HarnessTestBase {
          |""".stripMargin)
 
     val testHarness = createHarnessTester[String, CRow, CRow](
-      sqlQuery.toRetractStream[Row], "groupBy")
+      sqlQuery.toRetractStream[Row](queryConfig), "groupBy")
 
     testHarness.setStateBackend(getStateBackend)
     testHarness.open()
@@ -279,7 +273,7 @@ class GroupAggregateHarnessTest extends HarnessTestBase {
   @Test
   def testDistinctAggregateWithDifferentArgumentOrder(): Unit = {
     val env = StreamExecutionEnvironment.getExecutionEnvironment
-    val tEnv = StreamTableEnvironment.create(env, tableConfig)
+    val tEnv = StreamTableEnvironment.create(env)
 
     val data = new mutable.MutableList[(JLong, JLong, JLong)]
     val t = env.fromCollection(data).toTable(tEnv, 'a, 'b, 'c)
@@ -298,7 +292,7 @@ class GroupAggregateHarnessTest extends HarnessTestBase {
          |""".stripMargin)
 
     val testHarness = createHarnessTester[String, CRow, CRow](
-      sqlQuery.toRetractStream[Row], "groupBy")
+      sqlQuery.toRetractStream[Row](queryConfig), "groupBy")
 
     testHarness.setStateBackend(getStateBackend)
     testHarness.open()

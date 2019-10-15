@@ -98,9 +98,15 @@ setup_elasticsearch "https://artifacts.elastic.co/downloads/elasticsearch/elasti
 wait_elasticsearch_working
 
 function shutdownAndCleanup {
+    # don't call ourselves again for another signal interruption
+    trap "exit -1" INT
+    # don't call ourselves again for normal exit
+    trap "" EXIT
+
     shutdown_elasticsearch_cluster "$ES_INDEX"
 }
-on_exit shutdownAndCleanup
+trap shutdownAndCleanup INT
+trap shutdownAndCleanup EXIT
 
 TEST_PROGRAM_JAR=${TEST_DATA_DIR}/${ARTIFACT_ID}/target/${ARTIFACT_ID}-${ARTIFACT_VERSION}.jar
 

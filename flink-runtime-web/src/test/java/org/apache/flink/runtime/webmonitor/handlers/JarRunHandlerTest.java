@@ -93,10 +93,10 @@ public class JarRunHandlerTest extends TestLogger {
 						// implies the job was actually submitted
 						assertTrue(expected.get().getMessage().contains("ProgramInvocationException"));
 						// original cause is preserved in stack trace
-						assertThat(expected.get().getMessage(), containsString("ZipException: zip file is empty"));
+						assertThat(expected.get().getMessage(), containsString("ZipException"));
 						// implies the jar was registered for the job graph (otherwise the jar name would not occur in the exception)
 						// implies the jar was uploaded (otherwise the file would not be found at all)
-						assertTrue(expected.get().getMessage().contains("empty.jar"));
+						assertTrue(expected.get().getMessage().contains("empty.jar'. zip file is empty"));
 					} else {
 						throw e;
 					}

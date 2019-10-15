@@ -18,11 +18,9 @@
 
 package org.apache.flink.table.plan.util;
 
-import org.apache.flink.table.api.ExecutionConfigOptions;
-
 /**
  * Some dedicated operator type which is used in
- * {@link ExecutionConfigOptions#SQL_EXEC_DISABLED_OPERATORS}.
+ * {@link org.apache.flink.table.api.TableConfigOptions#SQL_EXEC_DISABLED_OPERATORS}.
  */
 public enum OperatorType {
 

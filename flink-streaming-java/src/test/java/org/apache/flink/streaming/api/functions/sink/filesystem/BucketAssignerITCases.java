@@ -46,7 +46,7 @@ public class BucketAssignerITCases {
 
 		final RollingPolicy<String, String> rollingPolicy =
 			DefaultRollingPolicy
-				.builder()
+				.create()
 				.withMaxPartSize(7L)
 				.build();
 
@@ -56,8 +56,7 @@ public class BucketAssignerITCases {
 			new DefaultBucketFactoryImpl<>(),
 			new RowWisePartWriter.Factory<>(new SimpleStringEncoder<>()),
 			rollingPolicy,
-			0,
-			new PartFileConfig()
+			0
 		);
 
 		Bucket<String, String> bucket =

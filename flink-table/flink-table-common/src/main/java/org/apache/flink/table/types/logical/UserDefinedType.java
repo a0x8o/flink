@@ -19,11 +19,11 @@
 package org.apache.flink.table.types.logical;
 
 import org.apache.flink.annotation.PublicEvolving;
-import org.apache.flink.table.catalog.ObjectIdentifier;
 import org.apache.flink.util.Preconditions;
 
 import javax.annotation.Nullable;
 
+import java.io.Serializable;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -32,7 +32,7 @@ import java.util.Optional;
  * type is either a distinct type or a structured type.
  *
  * <p>A {@link UserDefinedType} instance is the result of a catalog lookup or an explicit definition.
- * Therefore, the serialized string representation is a unique {@link ObjectIdentifier}.
+ * Therefore, the serialized string representation is a unique {@link TypeIdentifier}.
  *
  * <p>NOTE: Compared to the SQL standard, this class and subclasses are incomplete. We might add new
  * features such as method declarations in the future.
@@ -43,7 +43,83 @@ import java.util.Optional;
 @PublicEvolving
 public abstract class UserDefinedType extends LogicalType {
 
-	private final ObjectIdentifier objectIdentifier;
+	/**
+	 * Fully qualifies a user-defined type. Two user-defined types are considered equal if they
+	 * share the same type identifier.
+	 */
+	public static final class TypeIdentifier implements Serializable {
+
+		private @Nullable String catalogName;
+
+		private @Nullable String databaseName;
+
+		private String typeName;
+
+		public TypeIdentifier(
+				@Nullable String catalogName,
+				@Nullable String databaseName,
+				String typeName) {
+			this.catalogName = catalogName;
+			this.databaseName = databaseName;
+			this.typeName = Preconditions.checkNotNull(typeName, "Type name must not be null.");
+		}
+
+		public TypeIdentifier(@Nullable String databaseName, String typeName) {
+			this(null, databaseName, typeName);
+		}
+
+		public TypeIdentifier(String typeName) {
+			this(null, null, typeName);
+		}
+
+		public Optional<String> getCatalogName() {
+			return Optional.ofNullable(catalogName);
+		}
+
+		public Optional<String> getDatabaseName() {
+			return Optional.ofNullable(databaseName);
+		}
+
+		public String getTypeName() {
+			return typeName;
+		}
+
+		@Override
+		public String toString() {
+			final StringBuilder sb = new StringBuilder();
+			if (catalogName != null) {
+				sb.append(escapeIdentifier(catalogName));
+				sb.append('.');
+			}
+			if (databaseName != null) {
+				sb.append(escapeIdentifier(databaseName));
+				sb.append('.');
+			}
+			sb.append(escapeIdentifier(typeName));
+			return sb.toString();
+		}
+
+		@Override
+		public boolean equals(Object o) {
+			if (this == o) {
+				return true;
+			}
+			if (o == null || getClass() != o.getClass()) {
+				return false;
+			}
+			TypeIdentifier that = (TypeIdentifier) o;
+			return Objects.equals(catalogName, that.catalogName) &&
+				Objects.equals(databaseName, that.databaseName) &&
+				typeName.equals(that.typeName);
+		}
+
+		@Override
+		public int hashCode() {
+			return Objects.hash(catalogName, databaseName, typeName);
+		}
+	}
+
+	private final TypeIdentifier typeIdentifier;
 
 	private final boolean isFinal;
 
@@ -52,19 +128,17 @@ public abstract class UserDefinedType extends LogicalType {
 	UserDefinedType(
 			boolean isNullable,
 			LogicalTypeRoot typeRoot,
-			ObjectIdentifier objectIdentifier,
+			TypeIdentifier typeIdentifier,
 			boolean isFinal,
 			@Nullable String description) {
 		super(isNullable, typeRoot);
-		this.objectIdentifier = Preconditions.checkNotNull(
-			objectIdentifier,
-			"Object identifier must not be null.");
+		this.typeIdentifier = Preconditions.checkNotNull(typeIdentifier, "Type identifier must not be null.");
 		this.isFinal = isFinal;
 		this.description = description;
 	}
 
-	public ObjectIdentifier getObjectIdentifier() {
-		return objectIdentifier;
+	public TypeIdentifier getTypeIdentifier() {
+		return typeIdentifier;
 	}
 
 	public boolean isFinal() {
@@ -77,7 +151,7 @@ public abstract class UserDefinedType extends LogicalType {
 
 	@Override
 	public String asSerializableString() {
-		return withNullability(objectIdentifier.asSerializableString());
+		return withNullability(typeIdentifier.toString());
 	}
 
 	@Override
@@ -93,12 +167,12 @@ public abstract class UserDefinedType extends LogicalType {
 		}
 		UserDefinedType that = (UserDefinedType) o;
 		return isFinal == that.isFinal &&
-			objectIdentifier.equals(that.objectIdentifier) &&
+			typeIdentifier.equals(that.typeIdentifier) &&
 			Objects.equals(description, that.description);
 	}
 
 	@Override
 	public int hashCode() {
-		return Objects.hash(super.hashCode(), objectIdentifier, isFinal, description);
+		return Objects.hash(super.hashCode(), typeIdentifier, isFinal, description);
 	}
 }

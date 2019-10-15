@@ -19,15 +19,13 @@
 package org.apache.flink.streaming.api.transformations;
 
 import org.apache.flink.annotation.Internal;
-import org.apache.flink.api.dag.Transformation;
+import org.apache.flink.streaming.api.operators.ChainingStrategy;
 import org.apache.flink.streaming.runtime.partitioner.StreamPartitioner;
 
 import org.apache.flink.shaded.guava18.com.google.common.collect.Lists;
 
 import java.util.Collection;
 import java.util.List;
-
-import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
  * This transformation represents a change of partitioning of the input elements.
@@ -38,70 +36,49 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * @param <T> The type of the elements that result from this {@code PartitionTransformation}
  */
 @Internal
-public class PartitionTransformation<T> extends Transformation<T> {
+public class PartitionTransformation<T> extends StreamTransformation<T> {
 
-	private final Transformation<T> input;
-
+	private final StreamTransformation<T> input;
 	private final StreamPartitioner<T> partitioner;
 
-	private final ShuffleMode shuffleMode;
-
 	/**
 	 * Creates a new {@code PartitionTransformation} from the given input and
 	 * {@link StreamPartitioner}.
 	 *
-	 * @param input The input {@code Transformation}
+	 * @param input The input {@code StreamTransformation}
 	 * @param partitioner The {@code StreamPartitioner}
 	 */
-	public PartitionTransformation(Transformation<T> input, StreamPartitioner<T> partitioner) {
-		this(input, partitioner, ShuffleMode.UNDEFINED);
-	}
-
-	/**
-	 * Creates a new {@code PartitionTransformation} from the given input and
-	 * {@link StreamPartitioner}.
-	 *
-	 * @param input The input {@code Transformation}
-	 * @param partitioner The {@code StreamPartitioner}
-	 * @param shuffleMode The {@code ShuffleMode}
-	 */
-	public PartitionTransformation(
-			Transformation<T> input,
-			StreamPartitioner<T> partitioner,
-			ShuffleMode shuffleMode) {
+	public PartitionTransformation(StreamTransformation<T> input, StreamPartitioner<T> partitioner) {
 		super("Partition", input.getOutputType(), input.getParallelism());
 		this.input = input;
 		this.partitioner = partitioner;
-		this.shuffleMode = checkNotNull(shuffleMode);
 	}
 
 	/**
-	 * Returns the input {@code Transformation} of this {@code SinkTransformation}.
+	 * Returns the input {@code StreamTransformation} of this {@code SinkTransformation}.
 	 */
-	public Transformation<T> getInput() {
+	public StreamTransformation<T> getInput() {
 		return input;
 	}
 
 	/**
 	 * Returns the {@code StreamPartitioner} that must be used for partitioning the elements
-	 * of the input {@code Transformation}.
+	 * of the input {@code StreamTransformation}.
 	 */
 	public StreamPartitioner<T> getPartitioner() {
 		return partitioner;
 	}
 
-	/**
-	 * Returns the {@link ShuffleMode} of this {@link PartitionTransformation}.
-	 */
-	public ShuffleMode getShuffleMode() {
-		return shuffleMode;
-	}
-
 	@Override
-	public Collection<Transformation<?>> getTransitivePredecessors() {
-		List<Transformation<?>> result = Lists.newArrayList();
+	public Collection<StreamTransformation<?>> getTransitivePredecessors() {
+		List<StreamTransformation<?>> result = Lists.newArrayList();
 		result.add(this);
 		result.addAll(input.getTransitivePredecessors());
 		return result;
+	}
+
+	@Override
+	public final void setChainingStrategy(ChainingStrategy strategy) {
+		throw new UnsupportedOperationException("Cannot set chaining strategy on Union Transformation.");
 	}
 }

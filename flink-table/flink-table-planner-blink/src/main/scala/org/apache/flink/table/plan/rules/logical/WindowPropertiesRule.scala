@@ -19,20 +19,19 @@
 package org.apache.flink.table.plan.rules.logical
 
 import org.apache.flink.table.api.{TableException, Types, ValidationException}
-import org.apache.flink.table.calcite.FlinkRelBuilder.PlannerNamedWindowProperty
+import org.apache.flink.table.calcite.FlinkRelBuilder.NamedWindowProperty
 import org.apache.flink.table.expressions._
 import org.apache.flink.table.functions.sql.FlinkSqlOperatorTable
 import org.apache.flink.table.plan.logical.LogicalWindow
 import org.apache.flink.table.plan.nodes.calcite.LogicalWindowAggregate
 import org.apache.flink.table.plan.util.AggregateUtil
+
 import org.apache.calcite.plan.RelOptRule._
 import org.apache.calcite.plan.{RelOptRule, RelOptRuleCall}
 import org.apache.calcite.rel.RelNode
 import org.apache.calcite.rel.logical.{LogicalFilter, LogicalProject}
 import org.apache.calcite.rex.{RexCall, RexNode}
 import org.apache.calcite.tools.RelBuilder
-import org.apache.flink.table.types.logical.LogicalTypeRoot.TIMESTAMP_WITHOUT_TIME_ZONE
-import org.apache.flink.table.types.logical.utils.LogicalTypeChecks.hasRoot
 
 import scala.collection.JavaConversions._
 
@@ -104,23 +103,19 @@ object WindowPropertiesRules {
     val windowType = getWindowType(w)
 
     val startEndProperties = Seq(
-      PlannerNamedWindowProperty(propertyName(w, "start"), PlannerWindowStart(w.aliasAttribute)),
-      PlannerNamedWindowProperty(propertyName(w, "end"), PlannerWindowEnd(w.aliasAttribute)))
+      NamedWindowProperty(propertyName(w, "start"), WindowStart(w.aliasAttribute)),
+      NamedWindowProperty(propertyName(w, "end"), WindowEnd(w.aliasAttribute)))
 
     // allow rowtime/proctime for rowtime windows and proctime for proctime windows
     val timeProperties = windowType match {
       case 'streamRowtime =>
         Seq(
-          PlannerNamedWindowProperty(propertyName(w, "rowtime"),
-            PlannerRowtimeAttribute(w.aliasAttribute)),
-          PlannerNamedWindowProperty(propertyName(w, "proctime"),
-            PlannerProctimeAttribute(w.aliasAttribute)))
+          NamedWindowProperty(propertyName(w, "rowtime"), RowtimeAttribute(w.aliasAttribute)),
+          NamedWindowProperty(propertyName(w, "proctime"), ProctimeAttribute(w.aliasAttribute)))
       case 'streamProctime =>
-        Seq(PlannerNamedWindowProperty(propertyName(w, "proctime"),
-          PlannerProctimeAttribute(w.aliasAttribute)))
+        Seq(NamedWindowProperty(propertyName(w, "proctime"), ProctimeAttribute(w.aliasAttribute)))
       case 'batchRowtime =>
-        Seq(PlannerNamedWindowProperty(propertyName(w, "rowtime"),
-          PlannerRowtimeAttribute(w.aliasAttribute)))
+        Seq(NamedWindowProperty(propertyName(w, "rowtime"), RowtimeAttribute(w.aliasAttribute)))
       case _ =>
         throw new TableException("Unknown window type encountered. Please report this bug.")
     }
@@ -150,13 +145,11 @@ object WindowPropertiesRules {
   }
 
   private def getWindowType(window: LogicalWindow): Symbol = {
-    if (AggregateUtil.isRowtimeAttribute(window.timeAttribute)) {
+    if (AggregateUtil.isRowtimeIndicatorType(window.timeAttribute.getResultType)) {
       'streamRowtime
-    } else if (AggregateUtil.isProctimeAttribute(window.timeAttribute)) {
+    } else if (AggregateUtil.isProctimeIndicatorType(window.timeAttribute.getResultType)) {
       'streamProctime
-    } else if (hasRoot(
-          window.timeAttribute.getOutputDataType.getLogicalType,
-          TIMESTAMP_WITHOUT_TIME_ZONE)) {
+    } else if (Types.SQL_TIMESTAMP == window.timeAttribute.getResultType) {
       'batchRowtime
     } else {
       throw new TableException("Unknown window type encountered. Please report this bug.")
@@ -165,7 +158,7 @@ object WindowPropertiesRules {
 
   /** Generates a property name for a window. */
   private def propertyName(window: LogicalWindow, name: String): String =
-    window.aliasAttribute.asInstanceOf[PlannerWindowReference].name + name
+    window.aliasAttribute.asInstanceOf[WindowReference].name + name
 
   /** Replace group auxiliaries with field references. */
   def replaceGroupAuxiliaries(

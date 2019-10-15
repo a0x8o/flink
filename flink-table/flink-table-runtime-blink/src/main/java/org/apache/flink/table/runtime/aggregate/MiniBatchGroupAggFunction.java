@@ -20,6 +20,7 @@ package org.apache.flink.table.runtime.aggregate;
 
 import org.apache.flink.api.common.state.ValueState;
 import org.apache.flink.api.common.state.ValueStateDescriptor;
+import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.table.dataformat.BaseRow;
 import org.apache.flink.table.dataformat.JoinedRow;
@@ -30,9 +31,9 @@ import org.apache.flink.table.generated.GeneratedRecordEqualiser;
 import org.apache.flink.table.generated.RecordEqualiser;
 import org.apache.flink.table.runtime.bundle.MapBundleFunction;
 import org.apache.flink.table.runtime.context.ExecutionContext;
-import org.apache.flink.table.types.InternalSerializers;
-import org.apache.flink.table.types.logical.LogicalType;
-import org.apache.flink.table.types.logical.RowType;
+import org.apache.flink.table.type.InternalType;
+import org.apache.flink.table.type.RowType;
+import org.apache.flink.table.type.TypeConverters;
 import org.apache.flink.table.typeutils.BaseRowTypeInfo;
 import org.apache.flink.util.Collector;
 
@@ -68,7 +69,7 @@ public class MiniBatchGroupAggFunction extends MapBundleFunction<BaseRow, List<B
 	/**
 	 * The accumulator types.
 	 */
-	private final LogicalType[] accTypes;
+	private final InternalType[] accTypes;
 
 	/**
 	 * The input row type.
@@ -117,7 +118,7 @@ public class MiniBatchGroupAggFunction extends MapBundleFunction<BaseRow, List<B
 	public MiniBatchGroupAggFunction(
 			GeneratedAggsHandleFunction genAggsHandler,
 			GeneratedRecordEqualiser genRecordEqualiser,
-			LogicalType[] accTypes,
+			InternalType[] accTypes,
 			RowType inputType,
 			int indexOfCountStar,
 			boolean generateRetraction) {
@@ -143,8 +144,8 @@ public class MiniBatchGroupAggFunction extends MapBundleFunction<BaseRow, List<B
 		accState = ctx.getRuntimeContext().getState(accDesc);
 
 		//noinspection unchecked
-		inputRowSerializer = (TypeSerializer) InternalSerializers.create(
-				inputType, ctx.getRuntimeContext().getExecutionConfig());
+		TypeInformation<BaseRow> inputTypeInfo = TypeConverters.createInternalTypeInfoFromInternalType(inputType);
+		inputRowSerializer = inputTypeInfo.createSerializer(ctx.getRuntimeContext().getExecutionConfig());
 
 		resultRow = new JoinedRow();
 	}

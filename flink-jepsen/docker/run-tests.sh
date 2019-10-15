@@ -28,7 +28,7 @@ n2
 n3
 EOF
 
-common_jepsen_args+=(
+common_jepsen_args+=(--ha-storage-dir hdfs:///flink
 --tarball ${2}
 --ssh-private-key ~/.ssh/id_rsa
 --nodes-file ${dockerdir}/nodes)

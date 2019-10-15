@@ -510,6 +510,7 @@ public class SavepointITCase extends TestLogger {
 		env.setParallelism(parallelism);
 		env.disableOperatorChaining();
 		env.getConfig().setRestartStrategy(RestartStrategies.fixedDelayRestart(numberOfRetries, restartDelay));
+		env.getConfig().disableSysoutLogging();
 
 		DataStream<Integer> stream = env
 			.addSource(new InfiniteTestSource())
@@ -658,13 +659,14 @@ public class SavepointITCase extends TestLogger {
 
 		iteration.closeWith(iterationBody);
 
-		StreamGraph streamGraph = env.getStreamGraph("Test");
+		StreamGraph streamGraph = env.getStreamGraph();
+		streamGraph.setJobName("Test");
 
 		JobGraph jobGraph = streamGraph.getJobGraph();
 
 		Configuration config = getFileBasedCheckpointsConfig();
 		config.addAll(jobGraph.getJobConfiguration());
-		config.setString(TaskManagerOptions.LEGACY_MANAGED_MEMORY_SIZE, "0");
+		config.setString(TaskManagerOptions.MANAGED_MEMORY_SIZE, "0");
 
 		MiniClusterWithClientResource cluster = new MiniClusterWithClientResource(
 			new MiniClusterResourceConfiguration.Builder()

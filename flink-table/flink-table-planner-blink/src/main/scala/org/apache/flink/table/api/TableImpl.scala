@@ -18,9 +18,14 @@
 
 package org.apache.flink.table.api
 
-import org.apache.flink.table.expressions.{Expression, FieldReferenceExpression}
-import org.apache.flink.table.functions.{TemporalTableFunction, TemporalTableFunctionImpl}
-import org.apache.flink.table.operations.QueryOperation
+import org.apache.flink.table.`type`.TypeConverters.createExternalTypeInfoFromInternalType
+import org.apache.flink.table.calcite.FlinkTypeFactory._
+import org.apache.flink.table.expressions.Expression
+import org.apache.flink.table.functions.TemporalTableFunction
+import org.apache.calcite.rel.RelNode
+import org.apache.flink.table.operations.TableOperation
+
+import _root_.scala.collection.JavaConversions._
 
 /**
   * The implementation of the [[Table]].
@@ -31,13 +36,24 @@ import org.apache.flink.table.operations.QueryOperation
   * implemented when we support full stack Table API for Blink planner.
   *
   * @param tableEnv The [[TableEnvironment]] to which the table is bound.
-  * @param operationTree logical representation
+  * @param relNode  The Calcite RelNode representation
   */
-class TableImpl(val tableEnv: TableEnvironment, operationTree: QueryOperation) extends Table {
+class TableImpl(val tableEnv: TableEnvironment, relNode: RelNode) extends Table {
 
-  private lazy val tableSchema: TableSchema = operationTree.getTableSchema
+  private lazy val tableSchema: TableSchema = {
+    val rowType = relNode.getRowType
+    val fieldNames = rowType.getFieldList.map(_.getName)
+    val fieldTypes = rowType.getFieldList map { tp =>
+      val internalType = toInternalType(tp.getType)
+      createExternalTypeInfoFromInternalType(internalType)
+    }
+    new TableSchema(fieldNames.toArray, fieldTypes.toArray)
+  }
 
-  override def getQueryOperation: QueryOperation = operationTree
+  /**
+    * Returns the Calcite RelNode represent this Table.
+    */
+  def getRelNode: RelNode = relNode
 
   override def getSchema: TableSchema = tableSchema
 
@@ -48,18 +64,8 @@ class TableImpl(val tableEnv: TableEnvironment, operationTree: QueryOperation) e
   override def select(fields: Expression*): Table = ???
 
   override def createTemporalTableFunction(
-      timeAttribute: String,
-      primaryKey: String): TemporalTableFunction = {
-    val resolvedTimeAttribute = resolveExpression(timeAttribute)
-    val resolvedPrimaryKey = resolveExpression(primaryKey)
-    TemporalTableFunctionImpl.create(operationTree, resolvedTimeAttribute, resolvedPrimaryKey)
-  }
-
-  private def resolveExpression(name: String): FieldReferenceExpression = {
-    val idx = tableSchema.getFieldNames.indexOf(name)
-    val fieldType = tableSchema.getFieldDataTypes()(idx)
-    new FieldReferenceExpression(name, fieldType, 0, idx)
-  }
+    timeAttribute: String,
+    primaryKey: String): TemporalTableFunction = ???
 
   override def createTemporalTableFunction(
     timeAttribute: Expression,
@@ -163,12 +169,7 @@ class TableImpl(val tableEnv: TableEnvironment, operationTree: QueryOperation) e
 
   override def fetch(fetch: Int): Table = ???
 
-  override def insertInto(tablePath: String, tablePathContinued: String*): Unit = ???
-
-  override def insertInto(
-    conf: QueryConfig,
-    tablePath: String,
-    tablePathContinued: String*): Unit = ???
+  override def insertInto(tableName: String): Unit = ???
 
   override def insertInto(
     tableName: String,
@@ -201,6 +202,8 @@ class TableImpl(val tableEnv: TableEnvironment, operationTree: QueryOperation) e
   override def flatMap(tableFunction: String): Table = ???
 
   override def flatMap(tableFunction: Expression): Table = ???
+
+  override def getTableOperation: TableOperation = ???
 
   override def aggregate(aggregateFunction: String): AggregatedTable = ???
 

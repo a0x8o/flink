@@ -50,21 +50,17 @@ public class FsCheckpointStorageLocation extends FsCheckpointStreamFactory imple
 
 	private final int fileStateSizeThreshold;
 
-	private final int writeBufferSize;
-
 	public FsCheckpointStorageLocation(
 			FileSystem fileSystem,
 			Path checkpointDir,
 			Path sharedStateDir,
 			Path taskOwnedStateDir,
 			CheckpointStorageLocationReference reference,
-			int fileStateSizeThreshold,
-			int writeBufferSize) {
+			int fileStateSizeThreshold) {
 
-		super(fileSystem, checkpointDir, sharedStateDir, fileStateSizeThreshold, writeBufferSize);
+		super(fileSystem, checkpointDir, sharedStateDir, fileStateSizeThreshold);
 
 		checkArgument(fileStateSizeThreshold >= 0);
-		checkArgument(writeBufferSize >= 0);
 
 		this.fileSystem = checkNotNull(fileSystem);
 		this.checkpointDirectory = checkNotNull(checkpointDir);
@@ -77,7 +73,6 @@ public class FsCheckpointStorageLocation extends FsCheckpointStreamFactory imple
 
 		this.metadataFilePath = new Path(metadataDir, AbstractFsCheckpointStorage.METADATA_FILE_NAME);
 		this.fileStateSizeThreshold = fileStateSizeThreshold;
-		this.writeBufferSize = writeBufferSize;
 	}
 
 	// ------------------------------------------------------------------------
@@ -135,7 +130,6 @@ public class FsCheckpointStorageLocation extends FsCheckpointStreamFactory imple
 				", metadataFilePath=" + metadataFilePath +
 				", reference=" + reference +
 				", fileStateSizeThreshold=" + fileStateSizeThreshold +
-				", writeBufferSize=" + writeBufferSize +
 				'}';
 	}
 

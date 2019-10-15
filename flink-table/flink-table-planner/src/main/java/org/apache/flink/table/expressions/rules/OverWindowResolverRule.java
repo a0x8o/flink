@@ -19,20 +19,21 @@
 package org.apache.flink.table.expressions.rules;
 
 import org.apache.flink.annotation.Internal;
-import org.apache.flink.api.common.typeinfo.BasicTypeInfo;
 import org.apache.flink.table.api.ValidationException;
+import org.apache.flink.table.expressions.BuiltInFunctionDefinitions;
+import org.apache.flink.table.expressions.CallExpression;
 import org.apache.flink.table.expressions.Expression;
 import org.apache.flink.table.expressions.PlannerExpression;
-import org.apache.flink.table.expressions.UnresolvedCallExpression;
-import org.apache.flink.table.functions.BuiltInFunctionDefinitions;
 import org.apache.flink.table.plan.logical.LogicalOverWindow;
+import org.apache.flink.table.typeutils.RowIntervalTypeInfo;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
 import static java.util.Arrays.asList;
-import static org.apache.flink.table.expressions.ApiExpressionUtils.unresolvedCall;
+import static java.util.Collections.emptyList;
+import static java.util.stream.Collectors.toList;
 
 /**
  * Joins call to {@link BuiltInFunctionDefinitions#OVER} with corresponding over window
@@ -55,10 +56,10 @@ final class OverWindowResolverRule implements ResolverRule {
 		}
 
 		@Override
-		public Expression visit(UnresolvedCallExpression unresolvedCall) {
+		public Expression visitCall(CallExpression call) {
 
-			if (unresolvedCall.getFunctionDefinition() == BuiltInFunctionDefinitions.OVER) {
-				List<Expression> children = unresolvedCall.getChildren();
+			if (call.getFunctionDefinition() == BuiltInFunctionDefinitions.OVER) {
+				List<Expression> children = call.getChildren();
 				Expression alias = children.get(1);
 
 				LogicalOverWindow referenceWindow = resolutionContext.getOverWindow(alias)
@@ -72,24 +73,21 @@ final class OverWindowResolverRule implements ResolverRule {
 					following));
 
 				newArgs.addAll(referenceWindow.partitionBy());
-
-				return unresolvedCall(unresolvedCall.getFunctionDefinition(), newArgs.toArray(new Expression[0]));
+				return new CallExpression(call.getFunctionDefinition(), newArgs);
 			} else {
-				return unresolvedCall(
-					unresolvedCall.getFunctionDefinition(),
-					unresolvedCall.getChildren().stream()
-						.map(expr -> expr.accept(this))
-						.toArray(Expression[]::new));
+				return new CallExpression(
+					call.getFunctionDefinition(),
+					call.getChildren().stream().map(expr -> expr.accept(this)).collect(toList()));
 			}
 		}
 
 		private Expression calculateOverWindowFollowing(LogicalOverWindow referenceWindow) {
 			return referenceWindow.following().orElseGet(() -> {
 					PlannerExpression preceding = resolutionContext.bridge(referenceWindow.preceding());
-					if (preceding.resultType() == BasicTypeInfo.LONG_TYPE_INFO) {
-						return unresolvedCall(BuiltInFunctionDefinitions.CURRENT_ROW);
+					if (preceding.resultType() instanceof RowIntervalTypeInfo) {
+						return new CallExpression(BuiltInFunctionDefinitions.CURRENT_ROW, emptyList());
 					} else {
-						return unresolvedCall(BuiltInFunctionDefinitions.CURRENT_RANGE);
+						return new CallExpression(BuiltInFunctionDefinitions.CURRENT_RANGE, emptyList());
 					}
 				}
 			);

@@ -121,11 +121,11 @@ object CorrelateUtil {
       case (_, idx) => !projectableFieldSet.contains(idx)
     }.map {
       case (rex, _) =>
-        FlinkRexUtil.adjustInputRef(rex, reservedFieldsMapping, newInputType)
+        FlinkRexUtil.adjustInputRefs(rex, reservedFieldsMapping, newInputType)
     }.toList
 
     val shiftCondition = if (null != calcProgram.getCondition) {
-      FlinkRexUtil.adjustInputRef(
+      FlinkRexUtil.adjustInputRefs(
         calcProgram.expandLocalRef(calcProgram.getCondition),
         reservedFieldsMapping,
         newInputType)

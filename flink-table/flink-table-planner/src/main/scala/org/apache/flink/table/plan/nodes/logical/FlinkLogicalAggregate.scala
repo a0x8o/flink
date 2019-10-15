@@ -36,19 +36,21 @@ class FlinkLogicalAggregate(
     cluster: RelOptCluster,
     traitSet: RelTraitSet,
     child: RelNode,
+    indicator: Boolean,
     groupSet: ImmutableBitSet,
     groupSets: JList[ImmutableBitSet],
     aggCalls: JList[AggregateCall])
-  extends Aggregate(cluster, traitSet, child, groupSet, groupSets, aggCalls)
+  extends Aggregate(cluster, traitSet, child, indicator, groupSet, groupSets, aggCalls)
   with FlinkLogicalRel {
 
   override def copy(
       traitSet: RelTraitSet,
       input: RelNode,
+      indicator: Boolean,
       groupSet: ImmutableBitSet,
       groupSets: JList[ImmutableBitSet],
       aggCalls: JList[AggregateCall]): Aggregate = {
-    new FlinkLogicalAggregate(cluster, traitSet, input, groupSet, groupSets, aggCalls)
+    new FlinkLogicalAggregate(cluster, traitSet, input, indicator, groupSet, groupSets, aggCalls)
   }
 
   override def computeSelfCost(planner: RelOptPlanner, metadata: RelMetadataQuery): RelOptCost = {
@@ -90,6 +92,7 @@ private class FlinkLogicalAggregateConverter
       rel.getCluster,
       traitSet,
       newInput,
+      agg.indicator,
       agg.getGroupSet,
       agg.getGroupSets,
       agg.getAggCallList)

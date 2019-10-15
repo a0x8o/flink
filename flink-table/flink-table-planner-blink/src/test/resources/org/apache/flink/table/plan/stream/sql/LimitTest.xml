@@ -24,12 +24,15 @@ limitations under the License.
       <![CDATA[
 LogicalSort(fetch=[0])
 +- LogicalProject(a=[$0], c=[$2])
-   +- LogicalTableScan(table=[[default_catalog, default_database, MyTable]])
+   +- LogicalTableScan(table=[[MyTable]])
 ]]>
     </Resource>
     <Resource name="planAfter">
       <![CDATA[
-Values(tuples=[[]])
+Calc(select=[a, c])
++- Limit(offset=[0], fetch=[0])
+   +- Exchange(distribution=[single])
+      +- DataStreamScan(table=[[_DataStreamTable_0]], fields=[a, b, c, proctime, rowtime])
 ]]>
     </Resource>
   </TestCase>
@@ -41,7 +44,7 @@ Values(tuples=[[]])
       <![CDATA[
 LogicalSort(offset=[10], fetch=[10])
 +- LogicalProject(a=[$0], c=[$2])
-   +- LogicalTableScan(table=[[default_catalog, default_database, MyTable]])
+   +- LogicalTableScan(table=[[MyTable]])
 ]]>
     </Resource>
     <Resource name="planAfter">
@@ -49,7 +52,7 @@ LogicalSort(offset=[10], fetch=[10])
 Calc(select=[a, c])
 +- Limit(offset=[10], fetch=[10])
    +- Exchange(distribution=[single])
-      +- DataStreamScan(table=[[default_catalog, default_database, MyTable]], fields=[a, b, c, proctime, rowtime])
+      +- DataStreamScan(table=[[_DataStreamTable_0]], fields=[a, b, c, proctime, rowtime])
 ]]>
     </Resource>
   </TestCase>
@@ -61,7 +64,7 @@ Calc(select=[a, c])
       <![CDATA[
 LogicalSort(fetch=[10])
 +- LogicalProject(a=[$0], c=[$2])
-   +- LogicalTableScan(table=[[default_catalog, default_database, MyTable]])
+   +- LogicalTableScan(table=[[MyTable]])
 ]]>
     </Resource>
     <Resource name="planAfter">
@@ -69,7 +72,7 @@ LogicalSort(fetch=[10])
 Calc(select=[a, c])
 +- Limit(offset=[0], fetch=[10])
    +- Exchange(distribution=[single])
-      +- DataStreamScan(table=[[default_catalog, default_database, MyTable]], fields=[a, b, c, proctime, rowtime])
+      +- DataStreamScan(table=[[_DataStreamTable_0]], fields=[a, b, c, proctime, rowtime])
 ]]>
     </Resource>
   </TestCase>
@@ -81,12 +84,15 @@ Calc(select=[a, c])
       <![CDATA[
 LogicalSort(offset=[10], fetch=[0])
 +- LogicalProject(a=[$0], c=[$2])
-   +- LogicalTableScan(table=[[default_catalog, default_database, MyTable]])
+   +- LogicalTableScan(table=[[MyTable]])
 ]]>
     </Resource>
     <Resource name="planAfter">
       <![CDATA[
-Values(tuples=[[]])
+Calc(select=[a, c])
++- Limit(offset=[10], fetch=[0])
+   +- Exchange(distribution=[single])
+      +- DataStreamScan(table=[[_DataStreamTable_0]], fields=[a, b, c, proctime, rowtime])
 ]]>
     </Resource>
   </TestCase>
@@ -98,12 +104,15 @@ Values(tuples=[[]])
       <![CDATA[
 LogicalSort(offset=[0], fetch=[0])
 +- LogicalProject(a=[$0], c=[$2])
-   +- LogicalTableScan(table=[[default_catalog, default_database, MyTable]])
+   +- LogicalTableScan(table=[[MyTable]])
 ]]>
     </Resource>
     <Resource name="planAfter">
       <![CDATA[
-Values(tuples=[[]])
+Calc(select=[a, c])
++- Limit(offset=[0], fetch=[0])
+   +- Exchange(distribution=[single])
+      +- DataStreamScan(table=[[_DataStreamTable_0]], fields=[a, b, c, proctime, rowtime])
 ]]>
     </Resource>
   </TestCase>
@@ -115,12 +124,15 @@ Values(tuples=[[]])
       <![CDATA[
 LogicalSort(fetch=[0])
 +- LogicalProject(a=[$0], b=[$1], c=[$2], proctime=[$3], rowtime=[$4])
-   +- LogicalTableScan(table=[[default_catalog, default_database, MyTable]])
+   +- LogicalTableScan(table=[[MyTable]])
 ]]>
     </Resource>
     <Resource name="planAfter">
       <![CDATA[
-Values(tuples=[[]])
+Calc(select=[a, b, c, PROCTIME_MATERIALIZE(proctime) AS proctime, rowtime])
++- Limit(offset=[0], fetch=[0])
+   +- Exchange(distribution=[single])
+      +- DataStreamScan(table=[[_DataStreamTable_0]], fields=[a, b, c, proctime, rowtime])
 ]]>
     </Resource>
   </TestCase>
@@ -132,12 +144,15 @@ Values(tuples=[[]])
       <![CDATA[
 LogicalSort(fetch=[0])
 +- LogicalProject(proctime=[$3], c=[$2])
-   +- LogicalTableScan(table=[[default_catalog, default_database, MyTable]])
+   +- LogicalTableScan(table=[[MyTable]])
 ]]>
     </Resource>
     <Resource name="planAfter">
       <![CDATA[
-Values(tuples=[[]])
+Calc(select=[PROCTIME_MATERIALIZE(proctime) AS proctime, c])
++- Limit(offset=[0], fetch=[0])
+   +- Exchange(distribution=[single])
+      +- DataStreamScan(table=[[_DataStreamTable_0]], fields=[a, b, c, proctime, rowtime])
 ]]>
     </Resource>
   </TestCase>
@@ -149,12 +164,15 @@ Values(tuples=[[]])
       <![CDATA[
 LogicalSort(fetch=[0])
 +- LogicalProject(desc=[$3], c=[$2])
-   +- LogicalTableScan(table=[[default_catalog, default_database, MyTable]])
+   +- LogicalTableScan(table=[[MyTable]])
 ]]>
     </Resource>
     <Resource name="planAfter">
       <![CDATA[
-Values(tuples=[[]])
+Calc(select=[PROCTIME_MATERIALIZE(proctime) AS desc, c])
++- Limit(offset=[0], fetch=[0])
+   +- Exchange(distribution=[single])
+      +- DataStreamScan(table=[[_DataStreamTable_0]], fields=[a, b, c, proctime, rowtime])
 ]]>
     </Resource>
   </TestCase>
@@ -166,12 +184,15 @@ Values(tuples=[[]])
       <![CDATA[
 LogicalSort(fetch=[0])
 +- LogicalProject(c=[$2], desc=[$3])
-   +- LogicalTableScan(table=[[default_catalog, default_database, MyTable]])
+   +- LogicalTableScan(table=[[MyTable]])
 ]]>
     </Resource>
     <Resource name="planAfter">
       <![CDATA[
-Values(tuples=[[]])
+Calc(select=[c, PROCTIME_MATERIALIZE(proctime) AS desc])
++- Limit(offset=[0], fetch=[0])
+   +- Exchange(distribution=[single])
+      +- DataStreamScan(table=[[_DataStreamTable_0]], fields=[a, b, c, proctime, rowtime])
 ]]>
     </Resource>
   </TestCase>
@@ -183,12 +204,15 @@ Values(tuples=[[]])
       <![CDATA[
 LogicalSort(fetch=[0])
 +- LogicalProject(c=[$2], proctime=[$3])
-   +- LogicalTableScan(table=[[default_catalog, default_database, MyTable]])
+   +- LogicalTableScan(table=[[MyTable]])
 ]]>
     </Resource>
     <Resource name="planAfter">
       <![CDATA[
-Values(tuples=[[]])
+Calc(select=[c, PROCTIME_MATERIALIZE(proctime) AS proctime])
++- Limit(offset=[0], fetch=[0])
+   +- Exchange(distribution=[single])
+      +- DataStreamScan(table=[[_DataStreamTable_0]], fields=[a, b, c, proctime, rowtime])
 ]]>
     </Resource>
   </TestCase>
@@ -200,12 +224,15 @@ Values(tuples=[[]])
       <![CDATA[
 LogicalSort(fetch=[0])
 +- LogicalProject(rowtime=[$4], c=[$2])
-   +- LogicalTableScan(table=[[default_catalog, default_database, MyTable]])
+   +- LogicalTableScan(table=[[MyTable]])
 ]]>
     </Resource>
     <Resource name="planAfter">
       <![CDATA[
-Values(tuples=[[]])
+Calc(select=[rowtime, c])
++- Limit(offset=[0], fetch=[0])
+   +- Exchange(distribution=[single])
+      +- DataStreamScan(table=[[_DataStreamTable_0]], fields=[a, b, c, proctime, rowtime])
 ]]>
     </Resource>
   </TestCase>
@@ -217,12 +244,15 @@ Values(tuples=[[]])
       <![CDATA[
 LogicalSort(fetch=[0])
 +- LogicalProject(desc=[$4], c=[$2])
-   +- LogicalTableScan(table=[[default_catalog, default_database, MyTable]])
+   +- LogicalTableScan(table=[[MyTable]])
 ]]>
     </Resource>
     <Resource name="planAfter">
       <![CDATA[
-Values(tuples=[[]])
+Calc(select=[rowtime AS desc, c])
++- Limit(offset=[0], fetch=[0])
+   +- Exchange(distribution=[single])
+      +- DataStreamScan(table=[[_DataStreamTable_0]], fields=[a, b, c, proctime, rowtime])
 ]]>
     </Resource>
   </TestCase>
@@ -234,12 +264,15 @@ Values(tuples=[[]])
       <![CDATA[
 LogicalSort(fetch=[0])
 +- LogicalProject(c=[$2], desc=[$4])
-   +- LogicalTableScan(table=[[default_catalog, default_database, MyTable]])
+   +- LogicalTableScan(table=[[MyTable]])
 ]]>
     </Resource>
     <Resource name="planAfter">
       <![CDATA[
-Values(tuples=[[]])
+Calc(select=[c, rowtime AS desc])
++- Limit(offset=[0], fetch=[0])
+   +- Exchange(distribution=[single])
+      +- DataStreamScan(table=[[_DataStreamTable_0]], fields=[a, b, c, proctime, rowtime])
 ]]>
     </Resource>
   </TestCase>
@@ -251,12 +284,15 @@ Values(tuples=[[]])
       <![CDATA[
 LogicalSort(fetch=[0])
 +- LogicalProject(c=[$2], rowtime=[$4])
-   +- LogicalTableScan(table=[[default_catalog, default_database, MyTable]])
+   +- LogicalTableScan(table=[[MyTable]])
 ]]>
     </Resource>
     <Resource name="planAfter">
       <![CDATA[
-Values(tuples=[[]])
+Calc(select=[c, rowtime])
++- Limit(offset=[0], fetch=[0])
+   +- Exchange(distribution=[single])
+      +- DataStreamScan(table=[[_DataStreamTable_0]], fields=[a, b, c, proctime, rowtime])
 ]]>
     </Resource>
   </TestCase>
@@ -268,7 +304,7 @@ Values(tuples=[[]])
       <![CDATA[
 LogicalSort(offset=[1], fetch=[10])
 +- LogicalProject(a=[$0], c=[$2])
-   +- LogicalTableScan(table=[[default_catalog, default_database, MyTable]])
+   +- LogicalTableScan(table=[[MyTable]])
 ]]>
     </Resource>
     <Resource name="planAfter">
@@ -276,7 +312,7 @@ LogicalSort(offset=[1], fetch=[10])
 Calc(select=[a, c])
 +- Limit(offset=[1], fetch=[10])
    +- Exchange(distribution=[single])
-      +- DataStreamScan(table=[[default_catalog, default_database, MyTable]], fields=[a, b, c, proctime, rowtime])
+      +- DataStreamScan(table=[[_DataStreamTable_0]], fields=[a, b, c, proctime, rowtime])
 ]]>
     </Resource>
   </TestCase>
@@ -288,7 +324,7 @@ Calc(select=[a, c])
       <![CDATA[
 LogicalSort(offset=[0], fetch=[10])
 +- LogicalProject(a=[$0], c=[$2])
-   +- LogicalTableScan(table=[[default_catalog, default_database, MyTable]])
+   +- LogicalTableScan(table=[[MyTable]])
 ]]>
     </Resource>
     <Resource name="planAfter">
@@ -296,7 +332,7 @@ LogicalSort(offset=[0], fetch=[10])
 Calc(select=[a, c])
 +- Limit(offset=[0], fetch=[10])
    +- Exchange(distribution=[single])
-      +- DataStreamScan(table=[[default_catalog, default_database, MyTable]], fields=[a, b, c, proctime, rowtime])
+      +- DataStreamScan(table=[[_DataStreamTable_0]], fields=[a, b, c, proctime, rowtime])
 ]]>
     </Resource>
   </TestCase>
@@ -308,7 +344,7 @@ Calc(select=[a, c])
       <![CDATA[
 LogicalSort(fetch=[5])
 +- LogicalProject(a=[$0], b=[$1], c=[$2], proctime=[$3], rowtime=[$4])
-   +- LogicalTableScan(table=[[default_catalog, default_database, MyTable]])
+   +- LogicalTableScan(table=[[MyTable]])
 ]]>
     </Resource>
     <Resource name="planAfter">
@@ -316,7 +352,7 @@ LogicalSort(fetch=[5])
 Calc(select=[a, b, c, PROCTIME_MATERIALIZE(proctime) AS proctime, rowtime])
 +- Limit(offset=[0], fetch=[5])
    +- Exchange(distribution=[single])
-      +- DataStreamScan(table=[[default_catalog, default_database, MyTable]], fields=[a, b, c, proctime, rowtime])
+      +- DataStreamScan(table=[[_DataStreamTable_0]], fields=[a, b, c, proctime, rowtime])
 ]]>
     </Resource>
   </TestCase>
@@ -328,7 +364,7 @@ Calc(select=[a, b, c, PROCTIME_MATERIALIZE(proctime) AS proctime, rowtime])
       <![CDATA[
 LogicalSort(fetch=[2])
 +- LogicalProject(proctime=[$3], c=[$2])
-   +- LogicalTableScan(table=[[default_catalog, default_database, MyTable]])
+   +- LogicalTableScan(table=[[MyTable]])
 ]]>
     </Resource>
     <Resource name="planAfter">
@@ -336,7 +372,7 @@ LogicalSort(fetch=[2])
 Calc(select=[PROCTIME_MATERIALIZE(proctime) AS proctime, c])
 +- Limit(offset=[0], fetch=[2])
    +- Exchange(distribution=[single])
-      +- DataStreamScan(table=[[default_catalog, default_database, MyTable]], fields=[a, b, c, proctime, rowtime])
+      +- DataStreamScan(table=[[_DataStreamTable_0]], fields=[a, b, c, proctime, rowtime])
 ]]>
     </Resource>
   </TestCase>
@@ -348,7 +384,7 @@ Calc(select=[PROCTIME_MATERIALIZE(proctime) AS proctime, c])
       <![CDATA[
 LogicalSort(fetch=[2])
 +- LogicalProject(desc=[$3], c=[$2])
-   +- LogicalTableScan(table=[[default_catalog, default_database, MyTable]])
+   +- LogicalTableScan(table=[[MyTable]])
 ]]>
     </Resource>
     <Resource name="planAfter">
@@ -356,7 +392,7 @@ LogicalSort(fetch=[2])
 Calc(select=[PROCTIME_MATERIALIZE(proctime) AS desc, c])
 +- Limit(offset=[0], fetch=[2])
    +- Exchange(distribution=[single])
-      +- DataStreamScan(table=[[default_catalog, default_database, MyTable]], fields=[a, b, c, proctime, rowtime])
+      +- DataStreamScan(table=[[_DataStreamTable_0]], fields=[a, b, c, proctime, rowtime])
 ]]>
     </Resource>
   </TestCase>
@@ -368,7 +404,7 @@ Calc(select=[PROCTIME_MATERIALIZE(proctime) AS desc, c])
       <![CDATA[
 LogicalSort(fetch=[2])
 +- LogicalProject(c=[$2], desc=[$3])
-   +- LogicalTableScan(table=[[default_catalog, default_database, MyTable]])
+   +- LogicalTableScan(table=[[MyTable]])
 ]]>
     </Resource>
     <Resource name="planAfter">
@@ -376,7 +412,7 @@ LogicalSort(fetch=[2])
 Calc(select=[c, PROCTIME_MATERIALIZE(proctime) AS desc])
 +- Limit(offset=[0], fetch=[2])
    +- Exchange(distribution=[single])
-      +- DataStreamScan(table=[[default_catalog, default_database, MyTable]], fields=[a, b, c, proctime, rowtime])
+      +- DataStreamScan(table=[[_DataStreamTable_0]], fields=[a, b, c, proctime, rowtime])
 ]]>
     </Resource>
   </TestCase>
@@ -388,7 +424,7 @@ Calc(select=[c, PROCTIME_MATERIALIZE(proctime) AS desc])
       <![CDATA[
 LogicalSort(fetch=[2])
 +- LogicalProject(c=[$2], proctime=[$3])
-   +- LogicalTableScan(table=[[default_catalog, default_database, MyTable]])
+   +- LogicalTableScan(table=[[MyTable]])
 ]]>
     </Resource>
     <Resource name="planAfter">
@@ -396,7 +432,7 @@ LogicalSort(fetch=[2])
 Calc(select=[c, PROCTIME_MATERIALIZE(proctime) AS proctime])
 +- Limit(offset=[0], fetch=[2])
    +- Exchange(distribution=[single])
-      +- DataStreamScan(table=[[default_catalog, default_database, MyTable]], fields=[a, b, c, proctime, rowtime])
+      +- DataStreamScan(table=[[_DataStreamTable_0]], fields=[a, b, c, proctime, rowtime])
 ]]>
     </Resource>
   </TestCase>
@@ -408,7 +444,7 @@ Calc(select=[c, PROCTIME_MATERIALIZE(proctime) AS proctime])
       <![CDATA[
 LogicalSort(fetch=[2])
 +- LogicalProject(rowtime=[$4], c=[$2])
-   +- LogicalTableScan(table=[[default_catalog, default_database, MyTable]])
+   +- LogicalTableScan(table=[[MyTable]])
 ]]>
     </Resource>
     <Resource name="planAfter">
@@ -416,7 +452,7 @@ LogicalSort(fetch=[2])
 Calc(select=[rowtime, c])
 +- Limit(offset=[0], fetch=[2])
    +- Exchange(distribution=[single])
-      +- DataStreamScan(table=[[default_catalog, default_database, MyTable]], fields=[a, b, c, proctime, rowtime])
+      +- DataStreamScan(table=[[_DataStreamTable_0]], fields=[a, b, c, proctime, rowtime])
 ]]>
     </Resource>
   </TestCase>
@@ -428,7 +464,7 @@ Calc(select=[rowtime, c])
       <![CDATA[
 LogicalSort(fetch=[2])
 +- LogicalProject(desc=[$4], c=[$2])
-   +- LogicalTableScan(table=[[default_catalog, default_database, MyTable]])
+   +- LogicalTableScan(table=[[MyTable]])
 ]]>
     </Resource>
     <Resource name="planAfter">
@@ -436,7 +472,7 @@ LogicalSort(fetch=[2])
 Calc(select=[rowtime AS desc, c])
 +- Limit(offset=[0], fetch=[2])
    +- Exchange(distribution=[single])
-      +- DataStreamScan(table=[[default_catalog, default_database, MyTable]], fields=[a, b, c, proctime, rowtime])
+      +- DataStreamScan(table=[[_DataStreamTable_0]], fields=[a, b, c, proctime, rowtime])
 ]]>
     </Resource>
   </TestCase>
@@ -448,7 +484,7 @@ Calc(select=[rowtime AS desc, c])
       <![CDATA[
 LogicalSort(fetch=[2])
 +- LogicalProject(c=[$2], desc=[$4])
-   +- LogicalTableScan(table=[[default_catalog, default_database, MyTable]])
+   +- LogicalTableScan(table=[[MyTable]])
 ]]>
     </Resource>
     <Resource name="planAfter">
@@ -456,7 +492,7 @@ LogicalSort(fetch=[2])
 Calc(select=[c, rowtime AS desc])
 +- Limit(offset=[0], fetch=[2])
    +- Exchange(distribution=[single])
-      +- DataStreamScan(table=[[default_catalog, default_database, MyTable]], fields=[a, b, c, proctime, rowtime])
+      +- DataStreamScan(table=[[_DataStreamTable_0]], fields=[a, b, c, proctime, rowtime])
 ]]>
     </Resource>
   </TestCase>
@@ -468,7 +504,7 @@ Calc(select=[c, rowtime AS desc])
       <![CDATA[
 LogicalSort(fetch=[2])
 +- LogicalProject(c=[$2], rowtime=[$4])
-   +- LogicalTableScan(table=[[default_catalog, default_database, MyTable]])
+   +- LogicalTableScan(table=[[MyTable]])
 ]]>
     </Resource>
     <Resource name="planAfter">
@@ -476,7 +512,7 @@ LogicalSort(fetch=[2])
 Calc(select=[c, rowtime])
 +- Limit(offset=[0], fetch=[2])
    +- Exchange(distribution=[single])
-      +- DataStreamScan(table=[[default_catalog, default_database, MyTable]], fields=[a, b, c, proctime, rowtime])
+      +- DataStreamScan(table=[[_DataStreamTable_0]], fields=[a, b, c, proctime, rowtime])
 ]]>
     </Resource>
   </TestCase>
@@ -488,7 +524,7 @@ Calc(select=[c, rowtime])
       <![CDATA[
 LogicalSort(offset=[2])
 +- LogicalProject(proctime=[$3], c=[$2])
-   +- LogicalTableScan(table=[[default_catalog, default_database, MyTable]])
+   +- LogicalTableScan(table=[[MyTable]])
 ]]>
     </Resource>
     <Resource name="planAfter">
@@ -496,7 +532,7 @@ LogicalSort(offset=[2])
 Calc(select=[PROCTIME_MATERIALIZE(proctime) AS proctime, c])
 +- Limit(offset=[2], fetch=[unlimited])
    +- Exchange(distribution=[single])
-      +- DataStreamScan(table=[[default_catalog, default_database, MyTable]], fields=[a, b, c, proctime, rowtime])
+      +- DataStreamScan(table=[[_DataStreamTable_0]], fields=[a, b, c, proctime, rowtime])
 ]]>
     </Resource>
   </TestCase>
@@ -508,7 +544,7 @@ Calc(select=[PROCTIME_MATERIALIZE(proctime) AS proctime, c])
       <![CDATA[
 LogicalSort(offset=[2])
 +- LogicalProject(desc=[$4], c=[$2])
-   +- LogicalTableScan(table=[[default_catalog, default_database, MyTable]])
+   +- LogicalTableScan(table=[[MyTable]])
 ]]>
     </Resource>
     <Resource name="planAfter">
@@ -516,7 +552,7 @@ LogicalSort(offset=[2])
 Calc(select=[rowtime AS desc, c])
 +- Limit(offset=[2], fetch=[unlimited])
    +- Exchange(distribution=[single])
-      +- DataStreamScan(table=[[default_catalog, default_database, MyTable]], fields=[a, b, c, proctime, rowtime])
+      +- DataStreamScan(table=[[_DataStreamTable_0]], fields=[a, b, c, proctime, rowtime])
 ]]>
     </Resource>
   </TestCase>
@@ -528,7 +564,7 @@ Calc(select=[rowtime AS desc, c])
       <![CDATA[
 LogicalSort(offset=[2])
 +- LogicalProject(desc=[$3], c=[$2])
-   +- LogicalTableScan(table=[[default_catalog, default_database, MyTable]])
+   +- LogicalTableScan(table=[[MyTable]])
 ]]>
     </Resource>
     <Resource name="planAfter">
@@ -536,7 +572,7 @@ LogicalSort(offset=[2])
 Calc(select=[PROCTIME_MATERIALIZE(proctime) AS desc, c])
 +- Limit(offset=[2], fetch=[unlimited])
    +- Exchange(distribution=[single])
-      +- DataStreamScan(table=[[default_catalog, default_database, MyTable]], fields=[a, b, c, proctime, rowtime])
+      +- DataStreamScan(table=[[_DataStreamTable_0]], fields=[a, b, c, proctime, rowtime])
 ]]>
     </Resource>
   </TestCase>
@@ -548,7 +584,7 @@ Calc(select=[PROCTIME_MATERIALIZE(proctime) AS desc, c])
       <![CDATA[
 LogicalSort(offset=[2])
 +- LogicalProject(c=[$2], desc=[$3])
-   +- LogicalTableScan(table=[[default_catalog, default_database, MyTable]])
+   +- LogicalTableScan(table=[[MyTable]])
 ]]>
     </Resource>
     <Resource name="planAfter">
@@ -556,7 +592,7 @@ LogicalSort(offset=[2])
 Calc(select=[c, PROCTIME_MATERIALIZE(proctime) AS desc])
 +- Limit(offset=[2], fetch=[unlimited])
    +- Exchange(distribution=[single])
-      +- DataStreamScan(table=[[default_catalog, default_database, MyTable]], fields=[a, b, c, proctime, rowtime])
+      +- DataStreamScan(table=[[_DataStreamTable_0]], fields=[a, b, c, proctime, rowtime])
 ]]>
     </Resource>
   </TestCase>
@@ -568,7 +604,7 @@ Calc(select=[c, PROCTIME_MATERIALIZE(proctime) AS desc])
       <![CDATA[
 LogicalSort(offset=[2])
 +- LogicalProject(c=[$2], proctime=[$3])
-   +- LogicalTableScan(table=[[default_catalog, default_database, MyTable]])
+   +- LogicalTableScan(table=[[MyTable]])
 ]]>
     </Resource>
     <Resource name="planAfter">
@@ -576,7 +612,7 @@ LogicalSort(offset=[2])
 Calc(select=[c, PROCTIME_MATERIALIZE(proctime) AS proctime])
 +- Limit(offset=[2], fetch=[unlimited])
    +- Exchange(distribution=[single])
-      +- DataStreamScan(table=[[default_catalog, default_database, MyTable]], fields=[a, b, c, proctime, rowtime])
+      +- DataStreamScan(table=[[_DataStreamTable_0]], fields=[a, b, c, proctime, rowtime])
 ]]>
     </Resource>
   </TestCase>
@@ -588,7 +624,7 @@ Calc(select=[c, PROCTIME_MATERIALIZE(proctime) AS proctime])
       <![CDATA[
 LogicalSort(offset=[2])
 +- LogicalProject(rowtime=[$4], c=[$2])
-   +- LogicalTableScan(table=[[default_catalog, default_database, MyTable]])
+   +- LogicalTableScan(table=[[MyTable]])
 ]]>
     </Resource>
     <Resource name="planAfter">
@@ -596,7 +632,7 @@ LogicalSort(offset=[2])
 Calc(select=[rowtime, c])
 +- Limit(offset=[2], fetch=[unlimited])
    +- Exchange(distribution=[single])
-      +- DataStreamScan(table=[[default_catalog, default_database, MyTable]], fields=[a, b, c, proctime, rowtime])
+      +- DataStreamScan(table=[[_DataStreamTable_0]], fields=[a, b, c, proctime, rowtime])
 ]]>
     </Resource>
   </TestCase>
@@ -608,7 +644,7 @@ Calc(select=[rowtime, c])
       <![CDATA[
 LogicalSort(offset=[2])
 +- LogicalProject(c=[$2], desc=[$4])
-   +- LogicalTableScan(table=[[default_catalog, default_database, MyTable]])
+   +- LogicalTableScan(table=[[MyTable]])
 ]]>
     </Resource>
     <Resource name="planAfter">
@@ -616,7 +652,7 @@ LogicalSort(offset=[2])
 Calc(select=[c, rowtime AS desc])
 +- Limit(offset=[2], fetch=[unlimited])
    +- Exchange(distribution=[single])
-      +- DataStreamScan(table=[[default_catalog, default_database, MyTable]], fields=[a, b, c, proctime, rowtime])
+      +- DataStreamScan(table=[[_DataStreamTable_0]], fields=[a, b, c, proctime, rowtime])
 ]]>
     </Resource>
   </TestCase>
@@ -628,7 +664,7 @@ Calc(select=[c, rowtime AS desc])
       <![CDATA[
 LogicalSort(offset=[10])
 +- LogicalProject(a=[$0], c=[$2])
-   +- LogicalTableScan(table=[[default_catalog, default_database, MyTable]])
+   +- LogicalTableScan(table=[[MyTable]])
 ]]>
     </Resource>
     <Resource name="planAfter">
@@ -636,7 +672,7 @@ LogicalSort(offset=[10])
 Calc(select=[a, c])
 +- Limit(offset=[10], fetch=[unlimited])
    +- Exchange(distribution=[single])
-      +- DataStreamScan(table=[[default_catalog, default_database, MyTable]], fields=[a, b, c, proctime, rowtime])
+      +- DataStreamScan(table=[[_DataStreamTable_0]], fields=[a, b, c, proctime, rowtime])
 ]]>
     </Resource>
   </TestCase>
@@ -648,7 +684,7 @@ Calc(select=[a, c])
       <![CDATA[
 LogicalSort(offset=[2])
 +- LogicalProject(c=[$2], rowtime=[$4])
-   +- LogicalTableScan(table=[[default_catalog, default_database, MyTable]])
+   +- LogicalTableScan(table=[[MyTable]])
 ]]>
     </Resource>
     <Resource name="planAfter">
@@ -656,7 +692,7 @@ LogicalSort(offset=[2])
 Calc(select=[c, rowtime])
 +- Limit(offset=[2], fetch=[unlimited])
    +- Exchange(distribution=[single])
-      +- DataStreamScan(table=[[default_catalog, default_database, MyTable]], fields=[a, b, c, proctime, rowtime])
+      +- DataStreamScan(table=[[_DataStreamTable_0]], fields=[a, b, c, proctime, rowtime])
 ]]>
     </Resource>
   </TestCase>

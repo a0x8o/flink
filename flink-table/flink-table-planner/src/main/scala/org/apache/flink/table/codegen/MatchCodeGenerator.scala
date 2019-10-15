@@ -20,6 +20,7 @@ package org.apache.flink.table.codegen
 
 import java.lang.{Long => JLong}
 import java.util
+
 import org.apache.calcite.rel.`type`.RelDataType
 import org.apache.calcite.rex._
 import org.apache.calcite.sql.SqlAggFunction
@@ -42,12 +43,10 @@ import org.apache.flink.table.runtime.aggregate.AggregateUtil
 import org.apache.flink.table.typeutils.TimeIndicatorTypeInfo
 import org.apache.flink.table.util.MatchUtil.{ALL_PATTERN_VARIABLE, AggregationPatternVariableFinder}
 import org.apache.flink.table.utils.EncodingUtils
-import org.apache.flink.table.catalog.BasicOperatorTable.{MATCH_PROCTIME, MATCH_ROWTIME}
+import org.apache.flink.table.validate.BasicOperatorTable.{MATCH_PROCTIME, MATCH_ROWTIME}
 import org.apache.flink.types.Row
 import org.apache.flink.util.Collector
 import org.apache.flink.util.MathUtils.checkedDownCast
-
-import org.apache.calcite.util.ImmutableBitSet
 
 import scala.collection.JavaConverters._
 import scala.collection.mutable
@@ -268,7 +267,7 @@ class MatchCodeGenerator(
     */
   def generateOneRowPerMatchExpression(
       returnType: RowSchema,
-      partitionKeys: ImmutableBitSet,
+      partitionKeys: util.List[RexNode],
       measures: util.Map[String, RexNode])
     : PatternProcessFunctionRunner = {
     val resultExpression = generateOneRowPerMatchExpression(
@@ -405,15 +404,15 @@ class MatchCodeGenerator(
     * @return generated code for the given key
     */
   private def generatePartitionKeyAccess(
-      partitionIdx: Int)
+      partitionKey: RexInputRef)
     : GeneratedExpression = {
 
     val keyRow = generateKeyRow()
-    generateFieldAccess(keyRow, partitionIdx)
+    generateFieldAccess(keyRow, partitionKey.getIndex)
   }
 
   private def generateOneRowPerMatchExpression(
-      partitionKeys: ImmutableBitSet,
+      partitionKeys: util.List[RexNode],
       measures: util.Map[String, RexNode],
       returnType: RowSchema)
     : GeneratedExpression = {
@@ -421,10 +420,9 @@ class MatchCodeGenerator(
     // 1) the partition columns;
     // 2) the columns defined in the measures clause.
     val resultExprs =
-      partitionKeys.toList.asScala
-        .map(generatePartitionKeyAccess(_)) ++
-        returnType.fieldNames
-          .filter(measures.containsKey(_)).map { fieldName =>
+      partitionKeys.asScala.map { case inputRef: RexInputRef =>
+        generatePartitionKeyAccess(inputRef)
+      } ++ returnType.fieldNames.filter(measures.containsKey(_)).map { fieldName =>
         generateExpression(measures.get(fieldName))
       }
 

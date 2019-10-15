@@ -18,14 +18,15 @@
 
 package org.apache.flink.streaming.api.operators.async.queue;
 
-import org.apache.flink.streaming.api.datastream.AsyncDataStream;
-import org.apache.flink.streaming.api.functions.async.ResultFuture;
+import org.apache.flink.streaming.api.operators.async.OperatorActions;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.TestLogger;
 
+import org.junit.AfterClass;
 import org.junit.Assert;
+import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
@@ -33,13 +34,19 @@ import org.junit.runners.Parameterized;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
-import static org.apache.flink.streaming.api.operators.async.queue.QueueUtil.popCompleted;
-import static org.apache.flink.streaming.api.operators.async.queue.QueueUtil.putSuccessfully;
-import static org.apache.flink.streaming.api.operators.async.queue.QueueUtil.putUnsuccessfully;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
+import static org.apache.flink.streaming.api.operators.async.queue.StreamElementQueueTest.StreamElementQueueType.OrderedStreamElementQueueType;
+import static org.apache.flink.streaming.api.operators.async.queue.StreamElementQueueTest.StreamElementQueueType.UnorderedStreamElementQueueType;
+import static org.mockito.Matchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 
 /**
  * Tests for the basic functionality of {@link StreamElementQueue}. The basic operations consist
@@ -47,111 +54,217 @@ import static org.junit.Assert.assertTrue;
  */
 @RunWith(Parameterized.class)
 public class StreamElementQueueTest extends TestLogger {
+
+	private static final long timeout = 10000L;
+	private static ExecutorService executor;
+
+	@BeforeClass
+	public static void setup() {
+		executor = Executors.newFixedThreadPool(3);
+	}
+
+	@AfterClass
+	public static void shutdown() {
+		executor.shutdown();
+
+		try {
+			if (!executor.awaitTermination(timeout, TimeUnit.MILLISECONDS)) {
+				executor.shutdownNow();
+			}
+		} catch (InterruptedException interrupted) {
+			executor.shutdownNow();
+
+			Thread.currentThread().interrupt();
+		}
+	}
+
+	enum StreamElementQueueType {
+		OrderedStreamElementQueueType,
+		UnorderedStreamElementQueueType
+	}
+
 	@Parameterized.Parameters
-	public static Collection<AsyncDataStream.OutputMode> outputModes() {
-		return Arrays.asList(AsyncDataStream.OutputMode.ORDERED, AsyncDataStream.OutputMode.UNORDERED);
+	public static Collection<StreamElementQueueType> streamElementQueueTypes() {
+		return Arrays.asList(OrderedStreamElementQueueType, UnorderedStreamElementQueueType);
 	}
 
-	private final AsyncDataStream.OutputMode outputMode;
+	private final StreamElementQueueType streamElementQueueType;
 
-	public StreamElementQueueTest(AsyncDataStream.OutputMode outputMode) {
-		this.outputMode = Preconditions.checkNotNull(outputMode);
+	public StreamElementQueueTest(StreamElementQueueType streamElementQueueType) {
+		this.streamElementQueueType = Preconditions.checkNotNull(streamElementQueueType);
 	}
 
-	private StreamElementQueue<Integer> createStreamElementQueue(int capacity) {
-		switch (outputMode) {
-			case ORDERED:
-				return new OrderedStreamElementQueue<>(capacity);
-			case UNORDERED:
-				return new UnorderedStreamElementQueue<>(capacity);
+	public StreamElementQueue createStreamElementQueue(int capacity, OperatorActions operatorActions) {
+		switch (streamElementQueueType) {
+			case OrderedStreamElementQueueType:
+				return new OrderedStreamElementQueue(capacity, executor, operatorActions);
+			case UnorderedStreamElementQueueType:
+				return new UnorderedStreamElementQueue(capacity, executor, operatorActions);
 			default:
-				throw new IllegalStateException("Unknown output mode: " + outputMode);
+				throw new IllegalStateException("Unknown stream element queue type: " + streamElementQueueType);
 		}
 	}
 
 	@Test
-	public void testPut() {
-		StreamElementQueue<Integer> queue = createStreamElementQueue(2);
+	public void testPut() throws InterruptedException {
+		OperatorActions operatorActions = mock(OperatorActions.class);
+		StreamElementQueue queue = createStreamElementQueue(2, operatorActions);
 
-		Watermark watermark = new Watermark(0L);
-		StreamRecord<Integer> streamRecord = new StreamRecord<>(42, 1L);
+		final Watermark watermark = new Watermark(0L);
+		final StreamRecord<Integer> streamRecord = new StreamRecord<>(42, 1L);
+		final Watermark nextWatermark = new Watermark(2L);
 
-		// add two elements to reach capacity
-		assertTrue(queue.tryPut(watermark).isPresent());
-		assertTrue(queue.tryPut(streamRecord).isPresent());
+		final WatermarkQueueEntry watermarkQueueEntry = new WatermarkQueueEntry(watermark);
+		final StreamRecordQueueEntry<Integer> streamRecordQueueEntry = new StreamRecordQueueEntry<>(streamRecord);
 
-		assertEquals(2, queue.size());
-
-		// queue full, cannot add new element
-		assertFalse(queue.tryPut(new Watermark(2L)).isPresent());
-
-		// check if expected values are returned (for checkpointing)
-		assertEquals(Arrays.asList(watermark, streamRecord), queue.values());
-	}
-
-	@Test
-	public void testPop() {
-		StreamElementQueue<Integer> queue = createStreamElementQueue(2);
-
-		// add two elements to reach capacity
-		putSuccessfully(queue, new Watermark(0L));
-		ResultFuture<Integer> recordResult = putSuccessfully(queue, new StreamRecord<>(42, 1L));
-
-		assertEquals(2, queue.size());
-
-		// remove completed elements (watermarks are always completed)
-		assertEquals(Arrays.asList(new Watermark(0L)), popCompleted(queue));
-		assertEquals(1, queue.size());
-
-		// now complete the stream record
-		recordResult.complete(Collections.singleton(43));
-
-		assertEquals(Arrays.asList(new StreamRecord<>(43, 1L)), popCompleted(queue));
-		assertEquals(0, queue.size());
-		assertTrue(queue.isEmpty());
-	}
-
-	/**
-	 * Tests that a put operation fails if the queue is full.
-	 */
-	@Test
-	public void testPutOnFull() throws Exception {
-		final StreamElementQueue<Integer> queue = createStreamElementQueue(1);
-
-		// fill up queue
-		ResultFuture<Integer> resultFuture = putSuccessfully(queue, new StreamRecord<>(42, 0L));
-		assertEquals(1, queue.size());
-
-		// cannot add more
-		putUnsuccessfully(queue, new StreamRecord<>(43, 1L));
-
-		// popping the completed element frees the queue again
-		resultFuture.complete(Collections.singleton(42 * 42));
-		assertEquals(Arrays.asList(new StreamRecord<Integer>(42 * 42, 0L)), popCompleted(queue));
-
-		// now the put operation should complete
-		putSuccessfully(queue, new StreamRecord<>(43, 1L));
-	}
-
-	/**
-	 * Tests two adjacent watermarks can be processed successfully.
-	 */
-	@Test
-	public void testWatermarkOnly() {
-		final StreamElementQueue<Integer> queue = createStreamElementQueue(2);
-
-		putSuccessfully(queue, new Watermark(2L));
-		putSuccessfully(queue, new Watermark(5L));
+		queue.put(watermarkQueueEntry);
+		queue.put(streamRecordQueueEntry);
 
 		Assert.assertEquals(2, queue.size());
-		Assert.assertFalse(queue.isEmpty());
 
-		Assert.assertEquals(Arrays.asList(
-				new Watermark(2L),
-			new Watermark(5L)),
-			popCompleted(queue));
+		Assert.assertFalse(queue.tryPut(new WatermarkQueueEntry(nextWatermark)));
+
+		Collection<StreamElementQueueEntry<?>> actualValues = queue.values();
+
+		List<StreamElementQueueEntry<?>> expectedValues = Arrays.asList(watermarkQueueEntry, streamRecordQueueEntry);
+
+		Assert.assertEquals(expectedValues, actualValues);
+
+		verify(operatorActions, never()).failOperator(any(Exception.class));
+	}
+
+	@Test
+	public void testPoll() throws InterruptedException {
+		OperatorActions operatorActions = mock(OperatorActions.class);
+		StreamElementQueue queue = createStreamElementQueue(2, operatorActions);
+
+		WatermarkQueueEntry watermarkQueueEntry = new WatermarkQueueEntry(new Watermark(0L));
+		StreamRecordQueueEntry<Integer> streamRecordQueueEntry = new StreamRecordQueueEntry<>(new StreamRecord<>(42, 1L));
+
+		queue.put(watermarkQueueEntry);
+		queue.put(streamRecordQueueEntry);
+
+		Assert.assertEquals(watermarkQueueEntry, queue.peekBlockingly());
+		Assert.assertEquals(2, queue.size());
+
+		Assert.assertEquals(watermarkQueueEntry, queue.poll());
+		Assert.assertEquals(1, queue.size());
+
+		streamRecordQueueEntry.complete(Collections.<Integer>emptyList());
+
+		Assert.assertEquals(streamRecordQueueEntry, queue.poll());
+
 		Assert.assertEquals(0, queue.size());
 		Assert.assertTrue(queue.isEmpty());
-		Assert.assertEquals(Collections.emptyList(), popCompleted(queue));
+
+		verify(operatorActions, never()).failOperator(any(Exception.class));
+	}
+
+	/**
+	 * Tests that a put operation blocks if the queue is full.
+	 */
+	@Test
+	public void testBlockingPut() throws Exception {
+		OperatorActions operatorActions = mock(OperatorActions.class);
+		final StreamElementQueue queue = createStreamElementQueue(1, operatorActions);
+
+		StreamRecordQueueEntry<Integer> streamRecordQueueEntry = new StreamRecordQueueEntry<>(new StreamRecord<>(42, 0L));
+		final StreamRecordQueueEntry<Integer> streamRecordQueueEntry2 = new StreamRecordQueueEntry<>(new StreamRecord<>(43, 1L));
+
+		queue.put(streamRecordQueueEntry);
+
+		Assert.assertEquals(1, queue.size());
+
+		CompletableFuture<Void> putOperation = CompletableFuture.runAsync(
+			() -> {
+				try {
+					queue.put(streamRecordQueueEntry2);
+				} catch (InterruptedException e) {
+					throw new CompletionException(e);
+				}
+			},
+			executor);
+
+		// give the future a chance to complete
+		Thread.sleep(10L);
+
+		// but it shouldn't ;-)
+		Assert.assertFalse(putOperation.isDone());
+
+		streamRecordQueueEntry.complete(Collections.<Integer>emptyList());
+
+		// polling the completed head element frees the queue again
+		Assert.assertEquals(streamRecordQueueEntry, queue.poll());
+
+		// now the put operation should complete
+		putOperation.get();
+
+		verify(operatorActions, never()).failOperator(any(Exception.class));
+	}
+
+	/**
+	 * Test that a poll operation on an empty queue blocks.
+	 */
+	@Test
+	public void testBlockingPoll() throws Exception {
+		OperatorActions operatorActions = mock(OperatorActions.class);
+		final StreamElementQueue queue = createStreamElementQueue(1, operatorActions);
+
+		WatermarkQueueEntry watermarkQueueEntry = new WatermarkQueueEntry(new Watermark(1L));
+		StreamRecordQueueEntry<Integer> streamRecordQueueEntry = new StreamRecordQueueEntry<>(new StreamRecord<>(1, 2L));
+
+		Assert.assertTrue(queue.isEmpty());
+
+		CompletableFuture<AsyncResult> peekOperation = CompletableFuture.supplyAsync(
+			() -> {
+				try {
+					return queue.peekBlockingly();
+				} catch (InterruptedException e) {
+					throw new CompletionException(e);
+				}
+			},
+			executor);
+
+		Thread.sleep(10L);
+
+		Assert.assertFalse(peekOperation.isDone());
+
+		queue.put(watermarkQueueEntry);
+
+		AsyncResult watermarkResult = peekOperation.get();
+
+		Assert.assertEquals(watermarkQueueEntry, watermarkResult);
+		Assert.assertEquals(1, queue.size());
+
+		Assert.assertEquals(watermarkQueueEntry, queue.poll());
+		Assert.assertTrue(queue.isEmpty());
+
+		CompletableFuture<AsyncResult> pollOperation = CompletableFuture.supplyAsync(
+			() -> {
+				try {
+					return queue.poll();
+				} catch (InterruptedException e) {
+					throw new CompletionException(e);
+				}
+			},
+			executor);
+
+		Thread.sleep(10L);
+
+		Assert.assertFalse(pollOperation.isDone());
+
+		queue.put(streamRecordQueueEntry);
+
+		Thread.sleep(10L);
+
+		Assert.assertFalse(pollOperation.isDone());
+
+		streamRecordQueueEntry.complete(Collections.<Integer>emptyList());
+
+		Assert.assertEquals(streamRecordQueueEntry, pollOperation.get());
+
+		Assert.assertTrue(queue.isEmpty());
+
+		verify(operatorActions, never()).failOperator(any(Exception.class));
 	}
 }

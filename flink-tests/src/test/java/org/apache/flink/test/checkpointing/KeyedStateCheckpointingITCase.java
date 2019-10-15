@@ -88,7 +88,7 @@ public class KeyedStateCheckpointingITCase extends TestLogger {
 
 	private static Configuration getConfiguration() {
 		Configuration config = new Configuration();
-		config.setString(TaskManagerOptions.LEGACY_MANAGED_MEMORY_SIZE, "12m");
+		config.setString(TaskManagerOptions.MANAGED_MEMORY_SIZE, "12m");
 		return config;
 	}
 
@@ -145,7 +145,8 @@ public class KeyedStateCheckpointingITCase extends TestLogger {
 		final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 		env.setParallelism(PARALLELISM);
 		env.enableCheckpointing(500);
-				env.setRestartStrategy(RestartStrategies.fixedDelayRestart(Integer.MAX_VALUE, 0L));
+		env.getConfig().disableSysoutLogging();
+		env.setRestartStrategy(RestartStrategies.fixedDelayRestart(Integer.MAX_VALUE, 0L));
 
 		env.setStateBackend(stateBackend);
 

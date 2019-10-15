@@ -19,7 +19,7 @@
 package org.apache.flink.table.expressions;
 
 import org.apache.flink.annotation.PublicEvolving;
-import org.apache.flink.table.types.DataType;
+import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.util.Preconditions;
 
 import java.util.Collections;
@@ -35,11 +35,11 @@ import java.util.Objects;
  * </ul>
  */
 @PublicEvolving
-public final class FieldReferenceExpression implements ResolvedExpression {
+public final class FieldReferenceExpression implements Expression {
 
 	private final String name;
 
-	private final DataType dataType;
+	private final TypeInformation<?> resultType;
 
 	/**
 	 * index of an input the field belongs to.
@@ -54,19 +54,23 @@ public final class FieldReferenceExpression implements ResolvedExpression {
 
 	public FieldReferenceExpression(
 			String name,
-			DataType dataType,
+			TypeInformation<?> resultType,
 			int inputIndex,
 			int fieldIndex) {
 		Preconditions.checkArgument(inputIndex >= 0, "Index of input should be a positive number");
 		Preconditions.checkArgument(fieldIndex >= 0, "Index of field should be a positive number");
-		this.name = Preconditions.checkNotNull(name, "Field name must not be null.");
-		this.dataType = Preconditions.checkNotNull(dataType, "Field data type must not be null.");
+		this.name = Preconditions.checkNotNull(name);
+		this.resultType = Preconditions.checkNotNull(resultType);
 		this.inputIndex = inputIndex;
 		this.fieldIndex = fieldIndex;
 	}
 
 	public String getName() {
 		return name;
+	}
+
+	public TypeInformation<?> getResultType() {
+		return resultType;
 	}
 
 	public int getInputIndex() {
@@ -78,28 +82,13 @@ public final class FieldReferenceExpression implements ResolvedExpression {
 	}
 
 	@Override
-	public DataType getOutputDataType() {
-		return dataType;
-	}
-
-	@Override
-	public List<ResolvedExpression> getResolvedChildren() {
-		return Collections.emptyList();
-	}
-
-	@Override
-	public String asSummaryString() {
-		return name;
-	}
-
-	@Override
 	public List<Expression> getChildren() {
 		return Collections.emptyList();
 	}
 
 	@Override
 	public <R> R accept(ExpressionVisitor<R> visitor) {
-		return visitor.visit(this);
+		return visitor.visitFieldReference(this);
 	}
 
 	@Override
@@ -111,19 +100,19 @@ public final class FieldReferenceExpression implements ResolvedExpression {
 			return false;
 		}
 		FieldReferenceExpression that = (FieldReferenceExpression) o;
-		return name.equals(that.name) &&
-			dataType.equals(that.dataType) &&
+		return Objects.equals(name, that.name) &&
+			Objects.equals(resultType, that.resultType) &&
 			inputIndex == that.inputIndex &&
 			fieldIndex == that.fieldIndex;
 	}
 
 	@Override
 	public int hashCode() {
-		return Objects.hash(name, dataType, inputIndex, fieldIndex);
+		return Objects.hash(name, resultType, inputIndex, fieldIndex);
 	}
 
 	@Override
 	public String toString() {
-		return asSummaryString();
+		return name;
 	}
 }

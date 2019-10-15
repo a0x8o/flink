@@ -17,12 +17,12 @@
  */
 package org.apache.flink.table.codegen
 
-import org.apache.flink.configuration.Configuration
+import org.apache.flink.table.`type`.InternalType
+import org.apache.flink.table.api.TableConfig
 import org.apache.flink.table.codegen.CodeGenUtils._
 import org.apache.flink.table.codegen.Indenter.toISC
 import org.apache.flink.table.generated.GeneratedCollector
 import org.apache.flink.table.runtime.collector.TableFunctionCollector
-import org.apache.flink.table.types.logical.LogicalType
 
 /**
   * A code generator for generating [[org.apache.flink.util.Collector]]s.
@@ -46,33 +46,31 @@ object CollectorCodeGenerator {
       ctx: CodeGeneratorContext,
       name: String,
       bodyCode: String,
-      inputType: LogicalType,
-      collectedType: LogicalType,
+      inputType: InternalType,
+      collectedType: InternalType,
+      config: TableConfig,
       inputTerm: String = CodeGenUtils.DEFAULT_INPUT1_TERM,
       collectedTerm: String = CodeGenUtils.DEFAULT_INPUT2_TERM,
       converter: String => String = (a) => a): GeneratedCollector[TableFunctionCollector[_]] = {
 
-    val funcName = newName(name)
+    val className = newName(name)
     val input1TypeClass = boxedTypeTermForType(inputType)
     val input2TypeClass = boxedTypeTermForType(collectedType)
 
     val funcCode =
       j"""
-      public class $funcName extends ${classOf[TableFunctionCollector[_]].getCanonicalName} {
+      public class $className extends ${classOf[TableFunctionCollector[_]].getCanonicalName} {
 
         ${ctx.reuseMemberCode()}
 
-        public $funcName() throws Exception {
+        public $className() throws Exception {
           ${ctx.reuseInitCode()}
-        }
-
-        @Override
-        public void open(${className[Configuration]} parameters) throws Exception {
           ${ctx.reuseOpenCode()}
         }
 
         @Override
         public void collect(Object record) throws Exception {
+          super.collect(record);
           $input1TypeClass $inputTerm = ($input1TypeClass) getInput();
           $input2TypeClass $collectedTerm = ($input2TypeClass) ${converter("record")};
           ${ctx.reuseLocalVariableCode()}
@@ -83,16 +81,11 @@ object CollectorCodeGenerator {
 
         @Override
         public void close() {
-          try {
-            ${ctx.reuseCloseCode()}
-          } catch (Exception e) {
-            throw new RuntimeException(e);
-          }
         }
       }
     """.stripMargin
 
-    new GeneratedCollector(funcName, funcCode, ctx.references.toArray)
+    new GeneratedCollector(className, funcCode, ctx.references.toArray)
   }
 
 }

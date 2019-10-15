@@ -19,8 +19,7 @@
 package org.apache.flink.table.expressions;
 
 import org.apache.flink.annotation.PublicEvolving;
-import org.apache.flink.table.operations.QueryOperation;
-import org.apache.flink.table.types.DataType;
+import org.apache.flink.table.operations.TableOperation;
 import org.apache.flink.util.Preconditions;
 
 import java.util.Collections;
@@ -33,37 +32,22 @@ import java.util.Objects;
  * <p>This is a pure API expression that is translated into uncorrelated sub-queries by the planner.
  */
 @PublicEvolving
-public final class TableReferenceExpression implements ResolvedExpression {
+public final class TableReferenceExpression implements Expression {
 
 	private final String name;
-	private final QueryOperation queryOperation;
+	private final TableOperation tableOperation;
 
-	public TableReferenceExpression(String name, QueryOperation queryOperation) {
+	public TableReferenceExpression(String name, TableOperation tableOperation) {
 		this.name = Preconditions.checkNotNull(name);
-		this.queryOperation = Preconditions.checkNotNull(queryOperation);
+		this.tableOperation = Preconditions.checkNotNull(tableOperation);
 	}
 
 	public String getName() {
 		return name;
 	}
 
-	public QueryOperation getQueryOperation() {
-		return queryOperation;
-	}
-
-	@Override
-	public DataType getOutputDataType() {
-		return queryOperation.getTableSchema().toRowDataType();
-	}
-
-	@Override
-	public List<ResolvedExpression> getResolvedChildren() {
-		return Collections.emptyList();
-	}
-
-	@Override
-	public String asSummaryString() {
-		return name;
+	public TableOperation getTableOperation() {
+		return tableOperation;
 	}
 
 	@Override
@@ -86,16 +70,16 @@ public final class TableReferenceExpression implements ResolvedExpression {
 		}
 		TableReferenceExpression that = (TableReferenceExpression) o;
 		return Objects.equals(name, that.name) &&
-			Objects.equals(queryOperation, that.queryOperation);
+			Objects.equals(tableOperation, that.tableOperation);
 	}
 
 	@Override
 	public int hashCode() {
-		return Objects.hash(name, queryOperation);
+		return Objects.hash(name, tableOperation);
 	}
 
 	@Override
 	public String toString() {
-		return asSummaryString();
+		return name;
 	}
 }

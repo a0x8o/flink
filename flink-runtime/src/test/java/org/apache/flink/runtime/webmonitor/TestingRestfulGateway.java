@@ -197,12 +197,14 @@ public class TestingRestfulGateway implements RestfulGateway {
 		return hostname;
 	}
 
+	public static Builder newBuilder() {
+		return new Builder();
+	}
+
 	/**
-	 * Abstract builder class for {@link TestingRestfulGateway} and its subclasses.
-	 *
-	 * @param <T> type of sub class
+	 * Builder for the {@link TestingRestfulGateway}.
 	 */
-	protected abstract static class AbstractBuilder<T extends AbstractBuilder> {
+	public static class Builder {
 		protected String address = LOCALHOST;
 		protected String hostname = LOCALHOST;
 		protected Function<JobID, CompletableFuture<Acknowledge>> cancelJobFunction;
@@ -218,7 +220,7 @@ public class TestingRestfulGateway implements RestfulGateway {
 		protected BiFunction<JobID, String, CompletableFuture<String>> triggerSavepointFunction;
 		protected BiFunction<JobID, String, CompletableFuture<String>> stopWithSavepointFunction;
 
-		protected AbstractBuilder() {
+		public Builder() {
 			cancelJobFunction = DEFAULT_CANCEL_JOB_FUNCTION;
 			requestJobFunction = DEFAULT_REQUEST_JOB_FUNCTION;
 			requestJobResultFunction = DEFAULT_REQUEST_JOB_RESULT_FUNCTION;
@@ -232,88 +234,72 @@ public class TestingRestfulGateway implements RestfulGateway {
 			stopWithSavepointFunction = DEFAULT_STOP_WITH_SAVEPOINT_FUNCTION;
 		}
 
-		public T setAddress(String address) {
+		public Builder setAddress(String address) {
 			this.address = address;
-			return self();
-		}
-
-		public T setHostname(String hostname) {
-			this.hostname = hostname;
-			return self();
-		}
-
-		public T setRequestJobFunction(Function<JobID, CompletableFuture<ArchivedExecutionGraph>> requestJobFunction) {
-			this.requestJobFunction = requestJobFunction;
-			return self();
-		}
-
-		public T setRequestJobResultFunction(Function<JobID, CompletableFuture<JobResult>> requestJobResultFunction) {
-			this.requestJobResultFunction = requestJobResultFunction;
-			return self();
-		}
-
-		public T setRequestJobStatusFunction(Function<JobID, CompletableFuture<JobStatus>> requestJobStatusFunction) {
-			this.requestJobStatusFunction = requestJobStatusFunction;
-			return self();
-		}
-
-		public T setRequestMultipleJobDetailsSupplier(Supplier<CompletableFuture<MultipleJobsDetails>> requestMultipleJobDetailsSupplier) {
-			this.requestMultipleJobDetailsSupplier = requestMultipleJobDetailsSupplier;
-			return self();
-		}
-
-		public T setRequestClusterOverviewSupplier(Supplier<CompletableFuture<ClusterOverview>> requestClusterOverviewSupplier) {
-			this.requestClusterOverviewSupplier = requestClusterOverviewSupplier;
-			return self();
-		}
-
-		public T setRequestMetricQueryServiceGatewaysSupplier(Supplier<CompletableFuture<Collection<String>>> requestMetricQueryServiceGatewaysSupplier) {
-			this.requestMetricQueryServiceGatewaysSupplier = requestMetricQueryServiceGatewaysSupplier;
-			return self();
-		}
-
-		public T setRequestTaskManagerMetricQueryServiceGatewaysSupplier(Supplier<CompletableFuture<Collection<Tuple2<ResourceID, String>>>> requestTaskManagerMetricQueryServiceGatewaysSupplier) {
-			this.requestTaskManagerMetricQueryServiceGatewaysSupplier = requestTaskManagerMetricQueryServiceGatewaysSupplier;
-			return self();
-		}
-
-		public T setRequestOperatorBackPressureStatsFunction(BiFunction<JobID, JobVertexID, CompletableFuture<OperatorBackPressureStatsResponse>> requestOeratorBackPressureStatsFunction) {
-			this.requestOperatorBackPressureStatsFunction = requestOeratorBackPressureStatsFunction;
-			return self();
-		}
-
-		public T setCancelJobFunction(Function<JobID, CompletableFuture<Acknowledge>> cancelJobFunction) {
-			this.cancelJobFunction = cancelJobFunction;
-			return self();
-		}
-
-		public T setTriggerSavepointFunction(BiFunction<JobID, String, CompletableFuture<String>> triggerSavepointFunction) {
-			this.triggerSavepointFunction = triggerSavepointFunction;
-			return self();
-		}
-
-		public T setStopWithSavepointFunction(BiFunction<JobID, String, CompletableFuture<String>> stopWithSavepointFunction) {
-			this.stopWithSavepointFunction = stopWithSavepointFunction;
-			return self();
-		}
-
-		protected abstract T self();
-
-		public abstract TestingRestfulGateway build();
-	}
-
-	/**
-	 * Builder for the {@link TestingRestfulGateway}.
-	 */
-	public static class Builder extends AbstractBuilder<Builder> {
-
-		@Override
-		protected Builder self() {
 			return this;
 		}
 
-		@Override
-		public TestingRestfulGateway build()  {
+		public Builder setHostname(String hostname) {
+			this.hostname = hostname;
+			return this;
+		}
+
+		public Builder setRequestJobFunction(Function<JobID, CompletableFuture<ArchivedExecutionGraph>> requestJobFunction) {
+			this.requestJobFunction = requestJobFunction;
+			return this;
+		}
+
+		public Builder setRequestJobResultFunction(Function<JobID, CompletableFuture<JobResult>> requestJobResultFunction) {
+			this.requestJobResultFunction = requestJobResultFunction;
+			return this;
+		}
+
+		public Builder setRequestJobStatusFunction(Function<JobID, CompletableFuture<JobStatus>> requestJobStatusFunction) {
+			this.requestJobStatusFunction = requestJobStatusFunction;
+			return this;
+		}
+
+		public Builder setRequestMultipleJobDetailsSupplier(Supplier<CompletableFuture<MultipleJobsDetails>> requestMultipleJobDetailsSupplier) {
+			this.requestMultipleJobDetailsSupplier = requestMultipleJobDetailsSupplier;
+			return this;
+		}
+
+		public Builder setRequestClusterOverviewSupplier(Supplier<CompletableFuture<ClusterOverview>> requestClusterOverviewSupplier) {
+			this.requestClusterOverviewSupplier = requestClusterOverviewSupplier;
+			return this;
+		}
+
+		public Builder setRequestMetricQueryServiceGatewaysSupplier(Supplier<CompletableFuture<Collection<String>>> requestMetricQueryServiceGatewaysSupplier) {
+			this.requestMetricQueryServiceGatewaysSupplier = requestMetricQueryServiceGatewaysSupplier;
+			return this;
+		}
+
+		public Builder setRequestTaskManagerMetricQueryServiceGatewaysSupplier(Supplier<CompletableFuture<Collection<Tuple2<ResourceID, String>>>> requestTaskManagerMetricQueryServiceGatewaysSupplier) {
+			this.requestTaskManagerMetricQueryServiceGatewaysSupplier = requestTaskManagerMetricQueryServiceGatewaysSupplier;
+			return this;
+		}
+
+		public Builder setRequestOperatorBackPressureStatsFunction(BiFunction<JobID, JobVertexID, CompletableFuture<OperatorBackPressureStatsResponse>> requestOeratorBackPressureStatsFunction) {
+			this.requestOperatorBackPressureStatsFunction = requestOeratorBackPressureStatsFunction;
+			return this;
+		}
+
+		public Builder setCancelJobFunction(Function<JobID, CompletableFuture<Acknowledge>> cancelJobFunction) {
+			this.cancelJobFunction = cancelJobFunction;
+			return this;
+		}
+
+		public Builder setTriggerSavepointFunction(BiFunction<JobID, String, CompletableFuture<String>> triggerSavepointFunction) {
+			this.triggerSavepointFunction = triggerSavepointFunction;
+			return this;
+		}
+
+		public Builder setStopWithSavepointFunction(BiFunction<JobID, String, CompletableFuture<String>> stopWithSavepointFunction) {
+			this.stopWithSavepointFunction = stopWithSavepointFunction;
+			return this;
+		}
+
+		public TestingRestfulGateway build() {
 			return new TestingRestfulGateway(
 				address,
 				hostname,

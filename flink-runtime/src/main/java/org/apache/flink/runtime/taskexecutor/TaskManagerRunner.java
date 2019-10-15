@@ -20,14 +20,12 @@ package org.apache.flink.runtime.taskexecutor;
 
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.time.Time;
-import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.ConfigurationUtils;
 import org.apache.flink.configuration.GlobalConfiguration;
 import org.apache.flink.configuration.TaskManagerOptions;
 import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.core.plugin.PluginUtils;
-import org.apache.flink.metrics.MetricGroup;
 import org.apache.flink.runtime.akka.AkkaUtils;
 import org.apache.flink.runtime.blob.BlobCacheService;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
@@ -51,7 +49,6 @@ import org.apache.flink.runtime.rpc.RpcService;
 import org.apache.flink.runtime.rpc.akka.AkkaRpcServiceUtils;
 import org.apache.flink.runtime.security.SecurityConfiguration;
 import org.apache.flink.runtime.security.SecurityUtils;
-import org.apache.flink.runtime.taskexecutor.partition.PartitionTable;
 import org.apache.flink.runtime.taskmanager.MemoryLogger;
 import org.apache.flink.runtime.taskmanager.TaskManagerLocation;
 import org.apache.flink.runtime.util.EnvironmentInformation;
@@ -69,9 +66,9 @@ import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.UndeclaredThrowableException;
 import java.net.InetAddress;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Optional;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
@@ -286,7 +283,8 @@ public class TaskManagerRunner implements FatalErrorHandler, AutoCloseableAsync 
 
 		final Configuration configuration = loadConfiguration(args);
 
-		FileSystem.initialize(configuration, PluginUtils.createPluginManagerFromRootFolder(configuration));
+		//TODO provide plugin path.
+		FileSystem.initialize(configuration, PluginUtils.createPluginManagerFromRootFolder(Optional.empty()));
 
 		SecurityUtils.install(new SecurityConfiguration(configuration));
 
@@ -356,13 +354,11 @@ public class TaskManagerRunner implements FatalErrorHandler, AutoCloseableAsync 
 		TaskManagerServicesConfiguration taskManagerServicesConfiguration =
 			TaskManagerServicesConfiguration.fromConfiguration(
 				configuration,
-				resourceID,
-				remoteAddress,
-				EnvironmentInformation.getSizeOfFreeHeapMemoryWithDefrag(),
 				EnvironmentInformation.getMaxJvmHeapMemory(),
+				remoteAddress,
 				localCommunicationOnly);
 
-		Tuple2<TaskManagerMetricGroup, MetricGroup> taskManagerMetricGroup = MetricUtils.instantiateTaskManagerMetricGroup(
+		TaskManagerMetricGroup taskManagerMetricGroup = MetricUtils.instantiateTaskManagerMetricGroup(
 			metricRegistry,
 			TaskManagerLocation.getHostName(remoteAddress),
 			resourceID,
@@ -370,8 +366,11 @@ public class TaskManagerRunner implements FatalErrorHandler, AutoCloseableAsync 
 
 		TaskManagerServices taskManagerServices = TaskManagerServices.fromConfiguration(
 			taskManagerServicesConfiguration,
-			taskManagerMetricGroup.f1,
-			rpcService.getExecutor()); // TODO replace this later with some dedicated executor for io.
+			taskManagerMetricGroup,
+			resourceID,
+			rpcService.getExecutor(), // TODO replace this later with some dedicated executor for io.
+			EnvironmentInformation.getSizeOfFreeHeapMemoryWithDefrag(),
+			EnvironmentInformation.getMaxJvmHeapMemory());
 
 		TaskManagerConfiguration taskManagerConfiguration = TaskManagerConfiguration.fromConfiguration(configuration);
 
@@ -383,11 +382,10 @@ public class TaskManagerRunner implements FatalErrorHandler, AutoCloseableAsync 
 			highAvailabilityServices,
 			taskManagerServices,
 			heartbeatServices,
-			taskManagerMetricGroup.f0,
+			taskManagerMetricGroup,
 			metricQueryServiceAddress,
 			blobCacheService,
-			fatalErrorHandler,
-			new PartitionTable<>());
+			fatalErrorHandler);
 	}
 
 	/**
@@ -427,7 +425,7 @@ public class TaskManagerRunner implements FatalErrorHandler, AutoCloseableAsync 
 			final Configuration configuration,
 			final HighAvailabilityServices haServices) throws LeaderRetrievalException {
 
-		final Duration lookupTimeout = AkkaUtils.getLookupTimeout(configuration);
+		final Time lookupTimeout = Time.milliseconds(AkkaUtils.getLookupTimeout(configuration).toMillis());
 
 		final InetAddress taskManagerAddress = LeaderRetrievalUtils.findConnectingAddress(
 			haServices.getResourceManagerLeaderRetriever(),

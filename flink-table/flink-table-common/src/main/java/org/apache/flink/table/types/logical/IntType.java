@@ -27,12 +27,10 @@ import java.util.Set;
 /**
  * Logical type of a 4-byte signed integer with values from -2,147,483,648 to 2,147,483,647.
  *
- * <p>The serialized string representation is {@code INT}. {@code INTEGER} is a synonym for this type.
+ * <p>The serialized string representation is {@code INT}.
  */
 @PublicEvolving
 public final class IntType extends LogicalType {
-
-	public static final int PRECISION = 10;
 
 	private static final String FORMAT = "INT";
 

@@ -89,7 +89,7 @@ public class RestServerSSLAuthITCase extends TestLogger {
 			RestServerEndpointConfiguration restServerConfig = RestServerEndpointConfiguration.fromConfiguration(serverConfig);
 			RestClientConfiguration restClientConfig = RestClientConfiguration.fromConfiguration(clientConfig);
 
-			RestfulGateway restfulGateway = new TestingRestfulGateway.Builder().build();
+			RestfulGateway restfulGateway = TestingRestfulGateway.newBuilder().build();
 			RestServerEndpointITCase.TestVersionHandler testVersionHandler = new RestServerEndpointITCase.TestVersionHandler(
 				() -> CompletableFuture.completedFuture(restfulGateway),
 				RpcUtils.INF_TIMEOUT);

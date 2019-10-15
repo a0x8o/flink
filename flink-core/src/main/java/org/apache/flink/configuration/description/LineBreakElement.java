@@ -21,7 +21,7 @@ package org.apache.flink.configuration.description;
 /**
  * Represents a line break in the {@link Description}.
  */
-public class LineBreakElement implements InlineElement, BlockElement {
+public class LineBreakElement implements BlockElement {
 
 	/**
 	 * Creates a line break in the description.

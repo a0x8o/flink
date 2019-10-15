@@ -20,10 +20,9 @@ package org.apache.flink.table.dataformat;
 
 import org.apache.flink.core.memory.MemorySegment;
 import org.apache.flink.core.memory.MemorySegmentFactory;
-import org.apache.flink.table.runtime.util.SegmentsUtil;
-import org.apache.flink.table.types.logical.LogicalType;
-
-import java.lang.reflect.Array;
+import org.apache.flink.table.type.InternalType;
+import org.apache.flink.table.type.InternalTypes;
+import org.apache.flink.table.util.SegmentsUtil;
 
 import static org.apache.flink.core.memory.MemoryUtils.UNSAFE;
 
@@ -35,7 +34,7 @@ import static org.apache.flink.core.memory.MemoryUtils.UNSAFE;
  *
  * <p>{@code BinaryArray} are influenced by Apache Spark UnsafeArrayData.
  */
-public final class BinaryArray extends BinaryFormat implements BaseArray {
+public final class BinaryArray extends BinaryFormat implements TypeGetterSetters {
 
 	/**
 	 * Offset for Arrays.
@@ -43,6 +42,7 @@ public final class BinaryArray extends BinaryFormat implements BaseArray {
 	private static final int BYTE_ARRAY_BASE_OFFSET = UNSAFE.arrayBaseOffset(byte[].class);
 	private static final int BOOLEAN_ARRAY_OFFSET = UNSAFE.arrayBaseOffset(boolean[].class);
 	private static final int SHORT_ARRAY_OFFSET = UNSAFE.arrayBaseOffset(short[].class);
+	private static final int CHAR_ARRAY_OFFSET = UNSAFE.arrayBaseOffset(char[].class);
 	private static final int INT_ARRAY_OFFSET = UNSAFE.arrayBaseOffset(int[].class);
 	private static final int LONG_ARRAY_OFFSET = UNSAFE.arrayBaseOffset(long[].class);
 	private static final int FLOAT_ARRAY_OFFSET = UNSAFE.arrayBaseOffset(float[].class);
@@ -56,23 +56,27 @@ public final class BinaryArray extends BinaryFormat implements BaseArray {
 	 * It store real value when type is primitive.
 	 * It store the length and offset of variable-length part when type is string, map, etc.
 	 */
-	public static int calculateFixLengthPartSize(LogicalType type) {
-		switch (type.getTypeRoot()) {
-			case BOOLEAN:
-			case TINYINT:
-				return 1;
-			case SMALLINT:
-				return 2;
-			case INTEGER:
-			case FLOAT:
-			case DATE:
-			case TIME_WITHOUT_TIME_ZONE:
-			case INTERVAL_YEAR_MONTH:
-				return 4;
-			default:
-				// long, double is 8 bytes.
-				// It store the length and offset of variable-length part when type is string, map, etc.
-				return 8;
+	public static int calculateFixLengthPartSize(InternalType type) {
+		if (type.equals(InternalTypes.BOOLEAN)) {
+			return 1;
+		} else if (type.equals(InternalTypes.BYTE)) {
+			return 1;
+		} else if (type.equals(InternalTypes.SHORT)) {
+			return 2;
+		} else if (type.equals(InternalTypes.INT)) {
+			return 4;
+		} else if (type.equals(InternalTypes.FLOAT)) {
+			return 4;
+		} else if (type.equals(InternalTypes.CHAR)) {
+			return 2;
+		} else if (type.equals(InternalTypes.DATE)) {
+			return 4;
+		} else if (type.equals(InternalTypes.TIME)) {
+			return 4;
+		} else {
+			// long, double is 8 bytes.
+			// It store the length and offset of variable-length part when type is string, map, etc.
+			return 8;
 		}
 	}
 
@@ -93,7 +97,6 @@ public final class BinaryArray extends BinaryFormat implements BaseArray {
 		return elementOffset + ordinal * elementSize;
 	}
 
-	@Override
 	public int numElements() {
 		return numElements;
 	}
@@ -123,7 +126,6 @@ public final class BinaryArray extends BinaryFormat implements BaseArray {
 		SegmentsUtil.bitSet(segments, offset + 4, pos);
 	}
 
-	@Override
 	public void setNotNullAt(int pos) {
 		assertIndexIsValid(pos);
 		SegmentsUtil.bitUnSet(segments, offset + 4, pos);
@@ -142,7 +144,6 @@ public final class BinaryArray extends BinaryFormat implements BaseArray {
 		SegmentsUtil.setLong(segments, getElementOffset(pos, 8), value);
 	}
 
-	@Override
 	public void setNullLong(int pos) {
 		assertIndexIsValid(pos);
 		SegmentsUtil.bitSet(segments, offset + 4, pos);
@@ -162,7 +163,6 @@ public final class BinaryArray extends BinaryFormat implements BaseArray {
 		SegmentsUtil.setInt(segments, getElementOffset(pos, 4), value);
 	}
 
-	@Override
 	public void setNullInt(int pos) {
 		assertIndexIsValid(pos);
 		SegmentsUtil.bitSet(segments, offset + 4, pos);
@@ -210,13 +210,13 @@ public final class BinaryArray extends BinaryFormat implements BaseArray {
 	}
 
 	@Override
-	public BaseArray getArray(int pos) {
+	public BinaryArray getArray(int pos) {
 		assertIndexIsValid(pos);
 		return BinaryArray.readBinaryArrayFieldFromSegments(segments, offset, getLong(pos));
 	}
 
 	@Override
-	public BaseMap getMap(int pos) {
+	public BinaryMap getMap(int pos) {
 		assertIndexIsValid(pos);
 		return BinaryMap.readBinaryMapFieldFromSegments(segments, offset, getLong(pos));
 	}
@@ -243,7 +243,6 @@ public final class BinaryArray extends BinaryFormat implements BaseArray {
 		SegmentsUtil.setBoolean(segments, getElementOffset(pos, 1), value);
 	}
 
-	@Override
 	public void setNullBoolean(int pos) {
 		assertIndexIsValid(pos);
 		SegmentsUtil.bitSet(segments, offset + 4, pos);
@@ -263,7 +262,6 @@ public final class BinaryArray extends BinaryFormat implements BaseArray {
 		SegmentsUtil.setByte(segments, getElementOffset(pos, 1), value);
 	}
 
-	@Override
 	public void setNullByte(int pos) {
 		assertIndexIsValid(pos);
 		SegmentsUtil.bitSet(segments, offset + 4, pos);
@@ -283,7 +281,6 @@ public final class BinaryArray extends BinaryFormat implements BaseArray {
 		SegmentsUtil.setShort(segments, getElementOffset(pos, 2), value);
 	}
 
-	@Override
 	public void setNullShort(int pos) {
 		assertIndexIsValid(pos);
 		SegmentsUtil.bitSet(segments, offset + 4, pos);
@@ -303,7 +300,6 @@ public final class BinaryArray extends BinaryFormat implements BaseArray {
 		SegmentsUtil.setFloat(segments, getElementOffset(pos, 4), value);
 	}
 
-	@Override
 	public void setNullFloat(int pos) {
 		assertIndexIsValid(pos);
 		SegmentsUtil.bitSet(segments, offset + 4, pos);
@@ -323,11 +319,23 @@ public final class BinaryArray extends BinaryFormat implements BaseArray {
 		SegmentsUtil.setDouble(segments, getElementOffset(pos, 8), value);
 	}
 
-	@Override
 	public void setNullDouble(int pos) {
 		assertIndexIsValid(pos);
 		SegmentsUtil.bitSet(segments, offset + 4, pos);
 		SegmentsUtil.setDouble(segments, getElementOffset(pos, 8), 0.0);
+	}
+
+	@Override
+	public char getChar(int pos) {
+		assertIndexIsValid(pos);
+		return SegmentsUtil.getChar(segments, getElementOffset(pos, 2));
+	}
+
+	@Override
+	public void setChar(int pos, char value) {
+		assertIndexIsValid(pos);
+		setNotNullAt(pos);
+		SegmentsUtil.setChar(segments, getElementOffset(pos, 2), value);
 	}
 
 	@Override
@@ -361,6 +369,12 @@ public final class BinaryArray extends BinaryFormat implements BaseArray {
 		}
 	}
 
+	public void setNullChar(int pos) {
+		assertIndexIsValid(pos);
+		SegmentsUtil.bitSet(segments, offset + 4, pos);
+		SegmentsUtil.setChar(segments, getElementOffset(pos, 2), '\0');
+	}
+
 	public boolean anyNull() {
 		for (int i = offset + 4; i < elementOffset; i += 4) {
 			if (SegmentsUtil.getInt(segments, i) != 0) {
@@ -376,7 +390,6 @@ public final class BinaryArray extends BinaryFormat implements BaseArray {
 		}
 	}
 
-	@Override
 	public boolean[] toBooleanArray() {
 		checkNoNull();
 		boolean[] values = new boolean[numElements];
@@ -385,7 +398,6 @@ public final class BinaryArray extends BinaryFormat implements BaseArray {
 		return values;
 	}
 
-	@Override
 	public byte[] toByteArray() {
 		checkNoNull();
 		byte[] values = new byte[numElements];
@@ -394,7 +406,6 @@ public final class BinaryArray extends BinaryFormat implements BaseArray {
 		return values;
 	}
 
-	@Override
 	public short[] toShortArray() {
 		checkNoNull();
 		short[] values = new short[numElements];
@@ -403,7 +414,14 @@ public final class BinaryArray extends BinaryFormat implements BaseArray {
 		return values;
 	}
 
-	@Override
+	public char[] toCharArray() {
+		checkNoNull();
+		char[] values = new char[numElements];
+		SegmentsUtil.copyToUnsafe(
+				segments, elementOffset, values, CHAR_ARRAY_OFFSET, numElements * 2);
+		return values;
+	}
+
 	public int[] toIntArray() {
 		checkNoNull();
 		int[] values = new int[numElements];
@@ -412,7 +430,6 @@ public final class BinaryArray extends BinaryFormat implements BaseArray {
 		return values;
 	}
 
-	@Override
 	public long[] toLongArray() {
 		checkNoNull();
 		long[] values = new long[numElements];
@@ -421,7 +438,6 @@ public final class BinaryArray extends BinaryFormat implements BaseArray {
 		return values;
 	}
 
-	@Override
 	public float[] toFloatArray() {
 		checkNoNull();
 		float[] values = new float[numElements];
@@ -430,23 +446,11 @@ public final class BinaryArray extends BinaryFormat implements BaseArray {
 		return values;
 	}
 
-	@Override
 	public double[] toDoubleArray() {
 		checkNoNull();
 		double[] values = new double[numElements];
 		SegmentsUtil.copyToUnsafe(
 				segments, elementOffset, values, DOUBLE_ARRAY_OFFSET, numElements * 8);
-		return values;
-	}
-
-	public <T> T[] toClassArray(LogicalType elementType, Class<T> elementClass) {
-		int size = numElements();
-		T[] values = (T[]) Array.newInstance(elementClass, size);
-		for (int i = 0; i < size; i++) {
-			if (!isNullAt(i)) {
-				values[i] = (T) TypeGetterSetters.get(this, i, elementType);
-			}
-		}
 		return values;
 	}
 
@@ -499,6 +503,10 @@ public final class BinaryArray extends BinaryFormat implements BaseArray {
 
 	public static BinaryArray fromPrimitiveArray(short[] arr) {
 		return fromPrimitiveArray(arr, SHORT_ARRAY_OFFSET, arr.length, 2);
+	}
+
+	public static BinaryArray fromPrimitiveArray(char[] arr) {
+		return fromPrimitiveArray(arr, CHAR_ARRAY_OFFSET, arr.length, 2);
 	}
 
 	public static BinaryArray fromPrimitiveArray(int[] arr) {

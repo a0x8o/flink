@@ -73,19 +73,6 @@ public class PlannerConfigOptions {
 							"instance that holds a partition of all data when performing a hash join. " +
 							"Broadcast will be disabled if the value is -1.");
 
-	public static final ConfigOption<Double> SQL_OPTIMIZER_SEMI_JOIN_BUILD_DISTINCT_NDV_RATIO =
-			key("sql.optimizer.semi-anti-join.build-distinct.ndv-ratio")
-					.defaultValue(0.8)
-					.withDescription("When the semi-side of semi/anti join can distinct a lot of data in advance," +
-							" we will add distinct node before semi/anti join.");
-
-	public static final ConfigOption<Long> SQL_OPTIMIZER_JOIN_NULL_FILTER_THRESHOLD =
-			key("sql.optimizer.join.null.filter.threshold")
-					.defaultValue(2000000L)
-					.withDescription("If the source of InnerJoin has nullCount more than this value, " +
-							"it will add a null filter (possibly be pushDowned) before the join, filter" +
-							" null values to avoid the impact of null values on the single join node.");
-
 	public static final ConfigOption<Boolean> SQL_OPTIMIZER_DATA_SKEW_DISTINCT_AGG_ENABLED =
 			key("sql.optimizer.data-skew.distinct-agg.enabled")
 					.defaultValue(false)
@@ -114,33 +101,5 @@ public class PlannerConfigOptions {
 					.defaultValue(true)
 					.withDescription("When true, the optimizer will try to find out duplicated table-source and " +
 							"reuse them. This works only when " + SQL_OPTIMIZER_REUSE_SUB_PLAN_ENABLED + " is true.");
-
-	public static final ConfigOption<Boolean> SQL_OPTIMIZER_REUSE_OPTIMIZE_BLOCK_WITH_DIGEST_ENABLED =
-			key("sql.optimizer.reuse.optimize-block.with-digest.enabled")
-					.defaultValue(false)
-					.withDescription("When true, the optimizer will try to find out duplicated sub-plan by digest " +
-							"to build optimize block. Each optimize block will be optimized independently.");
-
-	public static final ConfigOption<Boolean> SQL_OPTIMIZER_UNIONALL_AS_BREAKPOINT_DISABLED =
-			key("sql.optimizer.unionall-as-breakpoint.disabled")
-					.defaultValue(false)
-					.withDescription("Disable union all as breakpoint when constructing RelNodeBlock");
-
-	public static final ConfigOption<Long> SQL_OPTIMIZER_ROWS_PER_LOCALAGG =
-			key("sql.optimizer.rows-per-localAgg")
-					.defaultValue(1000000L)
-					.withDescription("Sets how many rows one localAgg processes. We will infer agg degree to decide whether " +
-							"to use localAgg according to it.");
-
-	public static final ConfigOption<Boolean> SQL_OPTIMIZER_PREDICATE_PUSHDOWN_ENABLED =
-			key("sql.optimizer.predicate_pushdown.enabled")
-					.defaultValue(true)
-					.withDescription("Allow trying to push predicate down to a FilterableTableSource. " +
-						"the default value is true, means allow the attempt.");
-
-	public static final ConfigOption<Boolean> SQL_OPTIMIZER_JOIN_REORDER_ENABLED =
-			key("sql.optimizer.join-reorder.enabled")
-					.defaultValue(false)
-					.withDescription("Enables join reorder in optimizer cbo. Default is disabled.");
 
 }

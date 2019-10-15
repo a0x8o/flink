@@ -96,6 +96,11 @@ public class TestPooledBufferProvider implements BufferProvider {
 		return false;
 	}
 
+	@Override
+	public int getMemorySegmentSize() {
+		return bufferFactory.getBufferSize();
+	}
+
 	public int getNumberOfAvailableBuffers() {
 		return buffers.size();
 	}

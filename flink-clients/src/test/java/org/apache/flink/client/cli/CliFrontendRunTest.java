@@ -55,25 +55,25 @@ public class CliFrontendRunTest extends CliFrontendTestBase {
 		// test without parallelism
 		{
 			String[] parameters = {"-v", getTestJarPath()};
-			verifyCliFrontend(getCli(configuration), parameters, 1, false);
+			verifyCliFrontend(getCli(configuration), parameters, 1, true, false);
 		}
 
 		// test configure parallelism
 		{
 			String[] parameters = {"-v", "-p", "42",  getTestJarPath()};
-			verifyCliFrontend(getCli(configuration), parameters, 42, false);
+			verifyCliFrontend(getCli(configuration), parameters, 42, true, false);
 		}
 
 		// test configure sysout logging
 		{
 			String[] parameters = {"-p", "2", "-q", getTestJarPath()};
-			verifyCliFrontend(getCli(configuration), parameters, 2, false);
+			verifyCliFrontend(getCli(configuration), parameters, 2, false, false);
 		}
 
 		// test detached mode
 		{
 			String[] parameters = {"-p", "2", "-d", getTestJarPath()};
-			verifyCliFrontend(getCli(configuration), parameters, 2, true);
+			verifyCliFrontend(getCli(configuration), parameters, 2, true, true);
 		}
 
 		// test configure savepoint path (no ignore flag)
@@ -145,34 +145,40 @@ public class CliFrontendRunTest extends CliFrontendTestBase {
 	// --------------------------------------------------------------------------------------------
 
 	public static void verifyCliFrontend(
-		AbstractCustomCommandLine<?> cli,
-		String[] parameters,
-		int expectedParallelism,
-		boolean isDetached) throws Exception {
+			AbstractCustomCommandLine<?> cli,
+			String[] parameters,
+			int expectedParallelism,
+			boolean logging,
+			boolean isDetached) throws Exception {
 		RunTestingCliFrontend testFrontend =
-			new RunTestingCliFrontend(cli, expectedParallelism, isDetached);
+			new RunTestingCliFrontend(cli, expectedParallelism, logging,
+				isDetached);
 		testFrontend.run(parameters); // verifies the expected values (see below)
 	}
 
 	private static final class RunTestingCliFrontend extends CliFrontend {
 
 		private final int expectedParallelism;
+		private final boolean sysoutLogging;
 		private final boolean isDetached;
 
 		private RunTestingCliFrontend(
 				AbstractCustomCommandLine<?> cli,
 				int expectedParallelism,
-				boolean isDetached) {
+				boolean logging,
+				boolean isDetached) throws Exception {
 			super(
 				cli.getConfiguration(),
 				Collections.singletonList(cli));
 			this.expectedParallelism = expectedParallelism;
+			this.sysoutLogging = logging;
 			this.isDetached = isDetached;
 		}
 
 		@Override
 		protected void executeProgram(PackagedProgram program, ClusterClient client, int parallelism) {
 			assertEquals(isDetached, client.isDetached());
+			assertEquals(sysoutLogging, client.getPrintStatusDuringExecution());
 			assertEquals(expectedParallelism, parallelism);
 		}
 	}

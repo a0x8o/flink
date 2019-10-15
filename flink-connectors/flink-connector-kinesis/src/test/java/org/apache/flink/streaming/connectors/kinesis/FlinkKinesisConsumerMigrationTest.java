@@ -96,12 +96,7 @@ public class FlinkKinesisConsumerMigrationTest {
 
 	@Parameterized.Parameters(name = "Migration Savepoint: {0}")
 	public static Collection<MigrationVersion> parameters () {
-		return Arrays.asList(
-			MigrationVersion.v1_3,
-			MigrationVersion.v1_4,
-			MigrationVersion.v1_7,
-			MigrationVersion.v1_8,
-			MigrationVersion.v1_9);
+		return Arrays.asList(MigrationVersion.v1_3, MigrationVersion.v1_4, MigrationVersion.v1_7);
 	}
 
 	public FlinkKinesisConsumerMigrationTest(MigrationVersion testMigrateVersion) {
@@ -332,26 +327,14 @@ public class FlinkKinesisConsumerMigrationTest {
 
 	@SuppressWarnings("unchecked")
 	private void writeSnapshot(String path, HashMap<StreamShardMetadata, SequenceNumber> state) throws Exception {
-		final List<StreamShardHandle> initialDiscoveryShards = new ArrayList<>(state.size());
-		for (StreamShardMetadata shardMetadata : state.keySet()) {
-			Shard shard = new Shard();
-			shard.setShardId(shardMetadata.getShardId());
-
-			SequenceNumberRange sequenceNumberRange = new SequenceNumberRange();
-			sequenceNumberRange.withStartingSequenceNumber("1");
-			shard.setSequenceNumberRange(sequenceNumberRange);
-
-			initialDiscoveryShards.add(new StreamShardHandle(shardMetadata.getStreamName(), shard));
-		}
-
 		final TestFetcher<String> fetcher = new TestFetcher<>(
 			Collections.singletonList(TEST_STREAM_NAME),
 			new TestSourceContext<>(),
 			new TestRuntimeContext(true, 1, 0),
-			TestUtils.getStandardProperties(),
+			new Properties(),
 			new KinesisDeserializationSchemaWrapper<>(new SimpleStringSchema()),
 			state,
-			initialDiscoveryShards);
+			null);
 
 		final DummyFlinkKinesisConsumer<String> consumer = new DummyFlinkKinesisConsumer<>(
 			fetcher, new KinesisDeserializationSchemaWrapper<>(new SimpleStringSchema()));
@@ -435,7 +418,7 @@ public class FlinkKinesisConsumerMigrationTest {
 				HashMap<StreamShardMetadata, SequenceNumber> testStateSnapshot,
 				List<StreamShardHandle> testInitialDiscoveryShards) {
 
-			super(streams, sourceContext, runtimeContext, configProps, deserializationSchema, DEFAULT_SHARD_ASSIGNER, null, null);
+			super(streams, sourceContext, runtimeContext, configProps, deserializationSchema, DEFAULT_SHARD_ASSIGNER, null);
 
 			this.testStateSnapshot = testStateSnapshot;
 			this.testInitialDiscoveryShards = testInitialDiscoveryShards;

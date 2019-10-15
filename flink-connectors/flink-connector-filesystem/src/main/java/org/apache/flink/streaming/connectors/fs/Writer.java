@@ -33,7 +33,6 @@ import java.io.Serializable;
  *
  * @param <T> The type of the elements that are being written by the sink.
  */
-@Deprecated
 public interface Writer<T> extends Serializable {
 
 	/**

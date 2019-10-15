@@ -94,27 +94,13 @@ public class ResourceGuard implements AutoCloseable, Serializable {
 		}
 	}
 
-	public void closeInterruptibly() throws InterruptedException {
-		synchronized (lock) {
-
-			closed = true;
-
-			while (leaseCount > 0) {
-				lock.wait();
-			}
-		}
-	}
-
 	/**
-	 * If the current thread is {@linkplain Thread#interrupt interrupted}
-	 * while waiting for the close method to complete, then it will continue to wait.
-	 * When the thread does return from this method its interrupt
-	 * status will be set.
+	 * Closed the resource guard. This method will block until all calls to {@link #acquireResource()} have seen their
+	 * matching call to {@link #releaseResource()}.
 	 */
-	@SuppressWarnings("WeakerAccess")
-	public void closeUninterruptibly()  {
+	@Override
+	public void close() {
 
-		boolean interrupted = false;
 		synchronized (lock) {
 
 			closed = true;
@@ -123,24 +109,11 @@ public class ResourceGuard implements AutoCloseable, Serializable {
 
 				try {
 					lock.wait();
-				} catch (InterruptedException e) {
-					interrupted = true;
+				} catch (InterruptedException ignore) {
+					// Even on interruption, we cannot terminate the loop until all open leases are closed.
 				}
 			}
 		}
-
-		if (interrupted) {
-			Thread.currentThread().interrupt();
-		}
-	}
-
-	/**
-	 * Closed the resource guard. This method will block until all calls to {@link #acquireResource()} have seen their
-	 * matching call to {@link #releaseResource()}.
-	 */
-	@Override
-	public void close()  {
-		closeUninterruptibly();
 	}
 
 	/**

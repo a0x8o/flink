@@ -18,15 +18,16 @@
 
 package org.apache.flink.table.functions.aggfunctions;
 
-import org.apache.flink.table.api.DataTypes;
+import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.table.expressions.Expression;
 import org.apache.flink.table.expressions.UnresolvedReferenceExpression;
-import org.apache.flink.table.types.DataType;
+import org.apache.flink.table.type.InternalType;
+import org.apache.flink.table.type.InternalTypes;
 
 import static org.apache.flink.table.expressions.ExpressionBuilder.literal;
 import static org.apache.flink.table.expressions.ExpressionBuilder.minus;
 import static org.apache.flink.table.expressions.ExpressionBuilder.plus;
-import static org.apache.flink.table.expressions.utils.ApiExpressionUtils.unresolvedRef;
 
 /**
  * This count1 aggregate function returns the count1 of values
@@ -34,7 +35,7 @@ import static org.apache.flink.table.expressions.utils.ApiExpressionUtils.unreso
  * It differs in that null values are also counted.
  */
 public class Count1AggFunction extends DeclarativeAggregateFunction {
-	private UnresolvedReferenceExpression count1 = unresolvedRef("count1");
+	private UnresolvedReferenceExpression count1 = new UnresolvedReferenceExpression("count1");
 
 	@Override
 	public int operandCount() {
@@ -47,13 +48,13 @@ public class Count1AggFunction extends DeclarativeAggregateFunction {
 	}
 
 	@Override
-	public DataType[] getAggBufferTypes() {
-		return new DataType[] { DataTypes.BIGINT() };
+	public InternalType[] getAggBufferTypes() {
+		return new InternalType[] { InternalTypes.LONG };
 	}
 
 	@Override
-	public DataType getResultType() {
-		return DataTypes.BIGINT();
+	public TypeInformation getResultType() {
+		return Types.LONG;
 	}
 
 	@Override

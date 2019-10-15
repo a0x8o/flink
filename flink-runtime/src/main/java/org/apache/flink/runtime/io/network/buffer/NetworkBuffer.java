@@ -291,6 +291,11 @@ public class NetworkBuffer extends AbstractReferenceCountedByteBuf implements Bu
 	}
 
 	@Override
+	public int getSizeUnsafe() {
+		return writerIndex();
+	}
+
+	@Override
 	public int getSize() {
 		return writerIndex();
 	}

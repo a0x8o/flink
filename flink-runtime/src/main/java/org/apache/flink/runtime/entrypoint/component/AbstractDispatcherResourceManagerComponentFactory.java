@@ -20,6 +20,7 @@ package org.apache.flink.runtime.entrypoint.component;
 
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.ConfigurationUtils;
 import org.apache.flink.configuration.MetricOptions;
 import org.apache.flink.configuration.RestOptions;
 import org.apache.flink.runtime.blob.BlobServer;
@@ -31,14 +32,12 @@ import org.apache.flink.runtime.dispatcher.DispatcherFactory;
 import org.apache.flink.runtime.dispatcher.DispatcherGateway;
 import org.apache.flink.runtime.dispatcher.DispatcherId;
 import org.apache.flink.runtime.dispatcher.HistoryServerArchivist;
-import org.apache.flink.runtime.dispatcher.PartialDispatcherServices;
 import org.apache.flink.runtime.entrypoint.ClusterInformation;
 import org.apache.flink.runtime.heartbeat.HeartbeatServices;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.leaderretrieval.LeaderRetrievalService;
 import org.apache.flink.runtime.metrics.MetricRegistry;
 import org.apache.flink.runtime.metrics.groups.JobManagerMetricGroup;
-import org.apache.flink.runtime.metrics.groups.ResourceManagerMetricGroup;
 import org.apache.flink.runtime.metrics.util.MetricUtils;
 import org.apache.flink.runtime.resourcemanager.ResourceManager;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerFactory;
@@ -50,7 +49,6 @@ import org.apache.flink.runtime.rest.handler.legacy.metrics.MetricFetcherImpl;
 import org.apache.flink.runtime.rest.handler.legacy.metrics.VoidMetricFetcher;
 import org.apache.flink.runtime.rpc.FatalErrorHandler;
 import org.apache.flink.runtime.rpc.RpcService;
-import org.apache.flink.runtime.rpc.RpcUtils;
 import org.apache.flink.runtime.webmonitor.RestfulGateway;
 import org.apache.flink.runtime.webmonitor.WebMonitorEndpoint;
 import org.apache.flink.runtime.webmonitor.retriever.LeaderGatewayRetriever;
@@ -114,7 +112,6 @@ public abstract class AbstractDispatcherResourceManagerComponentFactory<T extend
 		WebMonitorEndpoint<U> webMonitorEndpoint = null;
 		ResourceManager<?> resourceManager = null;
 		JobManagerMetricGroup jobManagerMetricGroup = null;
-		ResourceManagerMetricGroup resourceManagerMetricGroup = null;
 		T dispatcher = null;
 
 		try {
@@ -157,47 +154,45 @@ public abstract class AbstractDispatcherResourceManagerComponentFactory<T extend
 				blobServer,
 				executor,
 				metricFetcher,
-				highAvailabilityServices.getClusterRestEndpointLeaderElectionService(),
+				highAvailabilityServices.getWebMonitorLeaderElectionService(),
 				fatalErrorHandler);
 
 			log.debug("Starting Dispatcher REST endpoint.");
 			webMonitorEndpoint.start();
 
-			final String hostname = RpcUtils.getHostname(rpcService);
+			final String hostname = getHostname(rpcService);
 
-			resourceManagerMetricGroup = ResourceManagerMetricGroup.create(metricRegistry, hostname);
+			jobManagerMetricGroup = MetricUtils.instantiateJobManagerMetricGroup(
+				metricRegistry,
+				hostname,
+				ConfigurationUtils.getSystemResourceMetricsProbingInterval(configuration));
+
 			resourceManager = resourceManagerFactory.createResourceManager(
 				configuration,
 				ResourceID.generate(),
 				rpcService,
 				highAvailabilityServices,
 				heartbeatServices,
+				metricRegistry,
 				fatalErrorHandler,
 				new ClusterInformation(hostname, blobServer.getPort()),
 				webMonitorEndpoint.getRestBaseUrl(),
-				resourceManagerMetricGroup);
+				jobManagerMetricGroup);
 
 			final HistoryServerArchivist historyServerArchivist = HistoryServerArchivist.createHistoryServerArchivist(configuration, webMonitorEndpoint);
 
-			jobManagerMetricGroup = MetricUtils.instantiateJobManagerMetricGroup(
-				metricRegistry,
-				hostname);
-
-			final PartialDispatcherServices partialDispatcherServices = new PartialDispatcherServices(
+			dispatcher = dispatcherFactory.createDispatcher(
 				configuration,
+				rpcService,
 				highAvailabilityServices,
 				resourceManagerGatewayRetriever,
 				blobServer,
 				heartbeatServices,
 				jobManagerMetricGroup,
+				metricRegistry.getMetricQueryServiceGatewayRpcAddress(),
 				archivedExecutionGraphStore,
 				fatalErrorHandler,
-				historyServerArchivist,
-				metricRegistry.getMetricQueryServiceGatewayRpcAddress());
-
-			dispatcher = dispatcherFactory.createDispatcher(
-				rpcService,
-				partialDispatcherServices);
+				historyServerArchivist);
 
 			log.debug("Starting ResourceManager.");
 			resourceManager.start();
@@ -212,7 +207,8 @@ public abstract class AbstractDispatcherResourceManagerComponentFactory<T extend
 				resourceManager,
 				dispatcherLeaderRetrievalService,
 				resourceManagerRetrievalService,
-				webMonitorEndpoint);
+				webMonitorEndpoint,
+				jobManagerMetricGroup);
 
 		} catch (Exception exception) {
 			// clean up all started components
@@ -258,12 +254,13 @@ public abstract class AbstractDispatcherResourceManagerComponentFactory<T extend
 				jobManagerMetricGroup.close();
 			}
 
-			if (resourceManagerMetricGroup != null) {
-				resourceManagerMetricGroup.close();
-			}
-
 			throw new FlinkException("Could not create the DispatcherResourceManagerComponent.", exception);
 		}
+	}
+
+	protected String getHostname(RpcService rpcService) {
+		final String rpcServiceAddress = rpcService.getAddress();
+		return rpcServiceAddress != null && rpcServiceAddress.isEmpty() ? "localhost" : rpcServiceAddress;
 	}
 
 	protected abstract DispatcherResourceManagerComponent<T> createDispatcherResourceManagerComponent(
@@ -271,5 +268,6 @@ public abstract class AbstractDispatcherResourceManagerComponentFactory<T extend
 		ResourceManager<?> resourceManager,
 		LeaderRetrievalService dispatcherLeaderRetrievalService,
 		LeaderRetrievalService resourceManagerRetrievalService,
-		WebMonitorEndpoint<?> webMonitorEndpoint);
+		WebMonitorEndpoint<?> webMonitorEndpoint,
+		JobManagerMetricGroup jobManagerMetricGroup);
 }

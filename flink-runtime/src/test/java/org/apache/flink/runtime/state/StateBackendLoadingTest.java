@@ -28,7 +28,6 @@ import org.apache.flink.runtime.state.filesystem.FsStateBackendFactory;
 import org.apache.flink.runtime.state.memory.MemoryStateBackend;
 import org.apache.flink.runtime.state.memory.MemoryStateBackendFactory;
 import org.apache.flink.util.DynamicCodeLoadingException;
-import org.apache.flink.util.TernaryBoolean;
 
 import org.junit.Rule;
 import org.junit.Test;
@@ -227,7 +226,6 @@ public class StateBackendLoadingTest {
 		final Path expectedCheckpointsPath = new Path(checkpointDir);
 		final Path expectedSavepointsPath = new Path(savepointDir);
 		final int threshold = 1000000;
-		final int minWriteBufferSize = 1024;
 		final boolean async = !CheckpointingOptions.ASYNC_SNAPSHOTS.defaultValue();
 
 		// we configure with the explicit string (rather than AbstractStateBackend#X_STATE_BACKEND_NAME)
@@ -237,7 +235,6 @@ public class StateBackendLoadingTest {
 		config1.setString(CheckpointingOptions.CHECKPOINTS_DIRECTORY, checkpointDir);
 		config1.setString(CheckpointingOptions.SAVEPOINT_DIRECTORY, savepointDir);
 		config1.setInteger(CheckpointingOptions.FS_SMALL_FILE_THRESHOLD, threshold);
-		config1.setInteger(CheckpointingOptions.FS_WRITE_BUFFER_SIZE, minWriteBufferSize);
 		config1.setBoolean(CheckpointingOptions.ASYNC_SNAPSHOTS, async);
 
 		final Configuration config2 = new Configuration();
@@ -245,7 +242,6 @@ public class StateBackendLoadingTest {
 		config2.setString(CheckpointingOptions.CHECKPOINTS_DIRECTORY, checkpointDir);
 		config2.setString(CheckpointingOptions.SAVEPOINT_DIRECTORY, savepointDir);
 		config2.setInteger(CheckpointingOptions.FS_SMALL_FILE_THRESHOLD, threshold);
-		config1.setInteger(CheckpointingOptions.FS_WRITE_BUFFER_SIZE, minWriteBufferSize);
 		config2.setBoolean(CheckpointingOptions.ASYNC_SNAPSHOTS, async);
 
 		StateBackend backend1 = StateBackendLoader.loadStateBackendFromConfig(config1, cl, null);
@@ -263,8 +259,6 @@ public class StateBackendLoadingTest {
 		assertEquals(expectedSavepointsPath, fs2.getSavepointPath());
 		assertEquals(threshold, fs1.getMinFileSizeThreshold());
 		assertEquals(threshold, fs2.getMinFileSizeThreshold());
-		assertEquals(Math.max(threshold, minWriteBufferSize), fs1.getWriteBufferSize());
-		assertEquals(Math.max(threshold, minWriteBufferSize), fs2.getWriteBufferSize());
 		assertEquals(async, fs1.isUsingAsynchronousSnapshots());
 		assertEquals(async, fs2.isUsingAsynchronousSnapshots());
 	}
@@ -284,16 +278,14 @@ public class StateBackendLoadingTest {
 		final Path expectedSavepointsPath = new Path(savepointDir);
 
 		final int threshold = 1000000;
-		final int writeBufferSize = 4000000;
 
-		final FsStateBackend backend = new FsStateBackend(new URI(appCheckpointDir), null, threshold, writeBufferSize, TernaryBoolean.TRUE);
+		final FsStateBackend backend = new FsStateBackend(new URI(appCheckpointDir), threshold);
 
 		final Configuration config = new Configuration();
 		config.setString(backendKey, "jobmanager"); // this should not be picked up 
 		config.setString(CheckpointingOptions.CHECKPOINTS_DIRECTORY, checkpointDir); // this should not be picked up
 		config.setString(CheckpointingOptions.SAVEPOINT_DIRECTORY, savepointDir);
 		config.setInteger(CheckpointingOptions.FS_SMALL_FILE_THRESHOLD, 20); // this should not be picked up
-		config.setInteger(CheckpointingOptions.FS_WRITE_BUFFER_SIZE, 3000000); // this should not be picked up
 
 		final StateBackend loadedBackend =
 				StateBackendLoader.fromApplicationOrConfigOrDefault(backend, config, cl, null);
@@ -303,7 +295,6 @@ public class StateBackendLoadingTest {
 		assertEquals(expectedCheckpointsPath, fs.getCheckpointPath());
 		assertEquals(expectedSavepointsPath, fs.getSavepointPath());
 		assertEquals(threshold, fs.getMinFileSizeThreshold());
-		assertEquals(writeBufferSize, fs.getWriteBufferSize());
 	}
 
 	// ------------------------------------------------------------------------
@@ -350,29 +341,14 @@ public class StateBackendLoadingTest {
 	// ------------------------------------------------------------------------
 
 	/**
-	 * This tests the default behaviour in the case of configured high-availability.
-	 * Specially, if not configured checkpoint directory, the memory state backend
-	 * would not create arbitrary directory under HA persistence directory.
+	 * This tests that in the case of configured high-availability, the memory state backend
+	 * automatically grabs the HA persistence directory.
 	 */
 	@Test
-	public void testHighAvailabilityDefault() throws Exception {
+	public void testHighAvailabilityDefaultFallback() throws Exception {
 		final String haPersistenceDir = new Path(tmp.newFolder().toURI()).toString();
-		testMemoryBackendHighAvailabilityDefault(haPersistenceDir, null);
+		final Path expectedCheckpointPath = new Path(haPersistenceDir);
 
-		final Path checkpointPath = new Path(tmp.newFolder().toURI().toString());
-		testMemoryBackendHighAvailabilityDefault(haPersistenceDir, checkpointPath);
-	}
-
-	@Test
-	public void testHighAvailabilityDefaultLocalPaths() throws Exception {
-		final String haPersistenceDir = new Path(tmp.newFolder().getAbsolutePath()).toString();
-		testMemoryBackendHighAvailabilityDefault(haPersistenceDir, null);
-
-		final Path checkpointPath = new Path(tmp.newFolder().toURI().toString()).makeQualified(FileSystem.getLocalFileSystem());
-		testMemoryBackendHighAvailabilityDefault(haPersistenceDir, checkpointPath);
-	}
-
-	private void testMemoryBackendHighAvailabilityDefault(String haPersistenceDir, Path checkpointPath) throws Exception {
 		final Configuration config1 = new Configuration();
 		config1.setString(HighAvailabilityOptions.HA_MODE, "zookeeper");
 		config1.setString(HighAvailabilityOptions.HA_CLUSTER_ID, "myCluster");
@@ -383,11 +359,6 @@ public class StateBackendLoadingTest {
 		config2.setString(HighAvailabilityOptions.HA_MODE, "zookeeper");
 		config2.setString(HighAvailabilityOptions.HA_CLUSTER_ID, "myCluster");
 		config2.setString(HighAvailabilityOptions.HA_STORAGE_PATH, haPersistenceDir);
-
-		if (checkpointPath != null) {
-			config1.setString(CheckpointingOptions.CHECKPOINTS_DIRECTORY, checkpointPath.toUri().toString());
-			config2.setString(CheckpointingOptions.CHECKPOINTS_DIRECTORY, checkpointPath.toUri().toString());
-		}
 
 		final MemoryStateBackend appBackend = new MemoryStateBackend();
 
@@ -403,23 +374,58 @@ public class StateBackendLoadingTest {
 		final MemoryStateBackend memBackend2 = (MemoryStateBackend) loaded2;
 		final MemoryStateBackend memBackend3 = (MemoryStateBackend) loaded3;
 
+		assertNotNull(memBackend1.getCheckpointPath());
+		assertNotNull(memBackend2.getCheckpointPath());
+		assertNotNull(memBackend3.getCheckpointPath());
 		assertNull(memBackend1.getSavepointPath());
 		assertNull(memBackend2.getSavepointPath());
 		assertNull(memBackend3.getSavepointPath());
 
-		if (checkpointPath != null) {
-			assertNotNull(memBackend1.getCheckpointPath());
-			assertNotNull(memBackend2.getCheckpointPath());
-			assertNotNull(memBackend3.getCheckpointPath());
+		assertEquals(expectedCheckpointPath, memBackend1.getCheckpointPath().getParent());
+		assertEquals(expectedCheckpointPath, memBackend2.getCheckpointPath().getParent());
+		assertEquals(expectedCheckpointPath, memBackend3.getCheckpointPath().getParent());
+	}
 
-			assertEquals(checkpointPath, memBackend1.getCheckpointPath());
-			assertEquals(checkpointPath, memBackend2.getCheckpointPath());
-			assertEquals(checkpointPath, memBackend3.getCheckpointPath());
-		} else {
-			assertNull(memBackend1.getCheckpointPath());
-			assertNull(memBackend2.getCheckpointPath());
-			assertNull(memBackend3.getCheckpointPath());
-		}
+	@Test
+	public void testHighAvailabilityDefaultFallbackLocalPaths() throws Exception {
+		final String haPersistenceDir = new Path(tmp.newFolder().getAbsolutePath()).toString();
+		final Path expectedCheckpointPath = new Path(haPersistenceDir).makeQualified(FileSystem.getLocalFileSystem());
+
+		final Configuration config1 = new Configuration();
+		config1.setString(HighAvailabilityOptions.HA_MODE, "zookeeper");
+		config1.setString(HighAvailabilityOptions.HA_CLUSTER_ID, "myCluster");
+		config1.setString(HighAvailabilityOptions.HA_STORAGE_PATH, haPersistenceDir);
+
+		final Configuration config2 = new Configuration();
+		config2.setString(backendKey, "jobmanager");
+		config2.setString(HighAvailabilityOptions.HA_MODE, "zookeeper");
+		config2.setString(HighAvailabilityOptions.HA_CLUSTER_ID, "myCluster");
+		config2.setString(HighAvailabilityOptions.HA_STORAGE_PATH, haPersistenceDir);
+
+		final MemoryStateBackend appBackend = new MemoryStateBackend();
+
+		final StateBackend loaded1 = StateBackendLoader.fromApplicationOrConfigOrDefault(appBackend, config1, cl, null);
+		final StateBackend loaded2 = StateBackendLoader.fromApplicationOrConfigOrDefault(null, config1, cl, null);
+		final StateBackend loaded3 = StateBackendLoader.fromApplicationOrConfigOrDefault(null, config2, cl, null);
+
+		assertTrue(loaded1 instanceof MemoryStateBackend);
+		assertTrue(loaded2 instanceof MemoryStateBackend);
+		assertTrue(loaded3 instanceof MemoryStateBackend);
+
+		final MemoryStateBackend memBackend1 = (MemoryStateBackend) loaded1;
+		final MemoryStateBackend memBackend2 = (MemoryStateBackend) loaded2;
+		final MemoryStateBackend memBackend3 = (MemoryStateBackend) loaded3;
+
+		assertNotNull(memBackend1.getCheckpointPath());
+		assertNotNull(memBackend2.getCheckpointPath());
+		assertNotNull(memBackend3.getCheckpointPath());
+		assertNull(memBackend1.getSavepointPath());
+		assertNull(memBackend2.getSavepointPath());
+		assertNull(memBackend3.getSavepointPath());
+
+		assertEquals(expectedCheckpointPath, memBackend1.getCheckpointPath().getParent());
+		assertEquals(expectedCheckpointPath, memBackend2.getCheckpointPath().getParent());
+		assertEquals(expectedCheckpointPath, memBackend3.getCheckpointPath().getParent());
 	}
 
 	// ------------------------------------------------------------------------

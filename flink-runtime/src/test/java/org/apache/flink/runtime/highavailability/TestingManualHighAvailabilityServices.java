@@ -24,8 +24,8 @@ import org.apache.flink.runtime.blob.VoidBlobStore;
 import org.apache.flink.runtime.checkpoint.CheckpointRecoveryFactory;
 import org.apache.flink.runtime.checkpoint.StandaloneCheckpointRecoveryFactory;
 import org.apache.flink.runtime.highavailability.nonha.standalone.StandaloneRunningJobsRegistry;
-import org.apache.flink.runtime.jobmanager.JobGraphStore;
-import org.apache.flink.runtime.jobmanager.StandaloneJobGraphStore;
+import org.apache.flink.runtime.jobmanager.StandaloneSubmittedJobGraphStore;
+import org.apache.flink.runtime.jobmanager.SubmittedJobGraphStore;
 import org.apache.flink.runtime.leaderelection.LeaderElectionService;
 import org.apache.flink.runtime.leaderretrieval.LeaderRetrievalService;
 
@@ -47,13 +47,13 @@ public class TestingManualHighAvailabilityServices implements HighAvailabilitySe
 
 	private final ManualLeaderService dispatcherLeaderService;
 
-	private final ManualLeaderService clusterRestEndpointLeaderService;
+	private final ManualLeaderService webMonitorEndpointLeaderService;
 
 	public TestingManualHighAvailabilityServices() {
 		jobManagerLeaderServices = new HashMap<>(4);
 		resourceManagerLeaderService = new ManualLeaderService();
 		dispatcherLeaderService = new ManualLeaderService();
-		clusterRestEndpointLeaderService = new ManualLeaderService();
+		webMonitorEndpointLeaderService = new ManualLeaderService();
 	}
 
 	@Override
@@ -79,8 +79,8 @@ public class TestingManualHighAvailabilityServices implements HighAvailabilitySe
 	}
 
 	@Override
-	public LeaderRetrievalService getClusterRestEndpointLeaderRetriever() {
-		return clusterRestEndpointLeaderService.createLeaderRetrievalService();
+	public LeaderRetrievalService getWebMonitorLeaderRetriever() {
+		return webMonitorEndpointLeaderService.createLeaderRetrievalService();
 	}
 
 	@Override
@@ -101,8 +101,8 @@ public class TestingManualHighAvailabilityServices implements HighAvailabilitySe
 	}
 
 	@Override
-	public LeaderElectionService getClusterRestEndpointLeaderElectionService() {
-		return clusterRestEndpointLeaderService.createLeaderElectionService();
+	public LeaderElectionService getWebMonitorLeaderElectionService() {
+		return webMonitorEndpointLeaderService.createLeaderElectionService();
 	}
 
 	@Override
@@ -111,8 +111,8 @@ public class TestingManualHighAvailabilityServices implements HighAvailabilitySe
 	}
 
 	@Override
-	public JobGraphStore getJobGraphStore() throws Exception {
-		return new StandaloneJobGraphStore();
+	public SubmittedJobGraphStore getSubmittedJobGraphStore() throws Exception {
+		return new StandaloneSubmittedJobGraphStore();
 	}
 
 	@Override

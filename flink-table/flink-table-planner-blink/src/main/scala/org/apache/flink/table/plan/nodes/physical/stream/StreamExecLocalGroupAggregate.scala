@@ -17,9 +17,8 @@
  */
 package org.apache.flink.table.plan.nodes.physical.stream
 
-import org.apache.flink.api.dag.Transformation
-import org.apache.flink.api.java.functions.KeySelector
-import org.apache.flink.streaming.api.transformations.OneInputTransformation
+import org.apache.flink.streaming.api.transformations.{OneInputTransformation, StreamTransformation}
+import org.apache.flink.table.api.StreamTableEnvironment
 import org.apache.flink.table.calcite.FlinkTypeFactory
 import org.apache.flink.table.codegen.CodeGeneratorContext
 import org.apache.flink.table.codegen.agg.AggsHandlerCodeGenerator
@@ -28,15 +27,14 @@ import org.apache.flink.table.plan.PartialFinalType
 import org.apache.flink.table.plan.nodes.exec.{ExecNode, StreamExecNode}
 import org.apache.flink.table.plan.rules.physical.stream.StreamExecRetractionRules
 import org.apache.flink.table.plan.util._
-import org.apache.flink.table.planner.StreamPlanner
 import org.apache.flink.table.runtime.aggregate.MiniBatchLocalGroupAggFunction
 import org.apache.flink.table.runtime.bundle.MapBundleOperator
 import org.apache.flink.table.typeutils.BaseRowTypeInfo
-
 import org.apache.calcite.plan.{RelOptCluster, RelTraitSet}
 import org.apache.calcite.rel.`type`.RelDataType
 import org.apache.calcite.rel.core.AggregateCall
 import org.apache.calcite.rel.{RelNode, RelWriter}
+import org.apache.flink.api.java.functions.KeySelector
 
 import java.util
 
@@ -99,39 +97,33 @@ class StreamExecLocalGroupAggregate(
 
   //~ ExecNode methods -----------------------------------------------------------
 
-  override def getInputNodes: util.List[ExecNode[StreamPlanner, _]] = {
-    getInputs.map(_.asInstanceOf[ExecNode[StreamPlanner, _]])
+  override def getInputNodes: util.List[ExecNode[StreamTableEnvironment, _]] = {
+    getInputs.map(_.asInstanceOf[ExecNode[StreamTableEnvironment, _]])
   }
 
   override def replaceInputNode(
       ordinalInParent: Int,
-      newInputNode: ExecNode[StreamPlanner, _]): Unit = {
+      newInputNode: ExecNode[StreamTableEnvironment, _]): Unit = {
     replaceInput(ordinalInParent, newInputNode.asInstanceOf[RelNode])
   }
 
   override protected def translateToPlanInternal(
-      planner: StreamPlanner): Transformation[BaseRow] = {
-    val inputTransformation = getInputNodes.get(0).translateToPlan(planner)
-      .asInstanceOf[Transformation[BaseRow]]
-    val inRowType = FlinkTypeFactory.toLogicalRowType(getInput.getRowType)
-    val outRowType = FlinkTypeFactory.toLogicalRowType(outputRowType)
+      tableEnv: StreamTableEnvironment): StreamTransformation[BaseRow] = {
+    val inputTransformation = getInputNodes.get(0).translateToPlan(tableEnv)
+      .asInstanceOf[StreamTransformation[BaseRow]]
+    val inRowType = FlinkTypeFactory.toInternalRowType(getInput.getRowType)
+    val outRowType = FlinkTypeFactory.toInternalRowType(outputRowType)
 
     val needRetraction = StreamExecRetractionRules.isAccRetract(getInput)
 
     val generator = new AggsHandlerCodeGenerator(
-      CodeGeneratorContext(planner.getTableConfig),
-      planner.getRelBuilder,
-      inRowType.getChildren,
+      CodeGeneratorContext(tableEnv.getConfig),
+      tableEnv.getRelBuilder,
+      inRowType.getFieldTypes,
+      needRetraction,
       // the local aggregate result will be buffered, so need copy
       copyInputField = true)
-
-    generator
-      .needAccumulate()
-      .needMerge(mergedAccOffset = 0, mergedAccOnHeap = true)
-
-    if (needRetraction) {
-      generator.needRetract()
-    }
+    generator.withMerging(mergedAccOffset = 0, mergedAccOnHeap = true)
 
     val aggsHandler = generator.generateAggsHandler("GroupAggsHandler", aggInfoList)
     val aggFunction = new MiniBatchLocalGroupAggFunction(aggsHandler)
@@ -141,19 +133,15 @@ class StreamExecLocalGroupAggregate(
 
     val operator = new MapBundleOperator(
       aggFunction,
-      AggregateUtil.createMiniBatchTrigger(planner.getTableConfig),
+      AggregateUtil.createMiniBatchTrigger(tableEnv.getConfig),
       selector.asInstanceOf[KeySelector[BaseRow, BaseRow]])
 
     val transformation = new OneInputTransformation(
       inputTransformation,
       "LocalGroupAggregate",
       operator,
-      BaseRowTypeInfo.of(outRowType),
-      getResource.getParallelism)
-
-    if (getResource.getMaxParallelism > 0) {
-      transformation.setMaxParallelism(getResource.getMaxParallelism)
-    }
+      outRowType.toTypeInfo,
+      inputTransformation.getParallelism)
 
     transformation
   }

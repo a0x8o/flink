@@ -22,17 +22,10 @@ import { HumanizeBytesPipe } from 'share/pipes/humanize-bytes.pipe';
 import { HumanizeWatermarkPipe } from 'share/pipes/humanize-watermark.pipe';
 import { HumanizeDurationPipe } from './humanize-duration.pipe';
 import { HumanizeDatePipe } from './humanize-date.pipe';
-import { HumanizeChartNumericPipe } from './humanize-chart-numeric.pipe';
 
 @NgModule({
   imports: [CommonModule],
-  declarations: [
-    HumanizeDurationPipe,
-    HumanizeDatePipe,
-    HumanizeBytesPipe,
-    HumanizeWatermarkPipe,
-    HumanizeChartNumericPipe
-  ],
-  exports: [HumanizeDurationPipe, HumanizeDatePipe, HumanizeBytesPipe, HumanizeWatermarkPipe, HumanizeChartNumericPipe]
+  declarations: [HumanizeDurationPipe, HumanizeDatePipe, HumanizeBytesPipe, HumanizeWatermarkPipe],
+  exports: [HumanizeDurationPipe, HumanizeDatePipe, HumanizeBytesPipe, HumanizeWatermarkPipe]
 })
 export class PipeModule {}

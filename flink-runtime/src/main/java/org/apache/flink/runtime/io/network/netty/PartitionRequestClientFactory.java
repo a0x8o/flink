@@ -20,7 +20,6 @@ package org.apache.flink.runtime.io.network.netty;
 
 import org.apache.flink.runtime.io.network.ConnectionID;
 import org.apache.flink.runtime.io.network.NetworkClientHandler;
-import org.apache.flink.runtime.io.network.PartitionRequestClient;
 import org.apache.flink.runtime.io.network.netty.exception.LocalTransportException;
 import org.apache.flink.runtime.io.network.netty.exception.RemoteTransportException;
 import org.apache.flink.runtime.io.network.partition.consumer.RemoteInputChannel;
@@ -34,7 +33,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
 /**
- * Factory for {@link NettyPartitionRequestClient} instances.
+ * Factory for {@link PartitionRequestClient} instances.
  *
  * <p>Instances of partition requests clients are shared among several {@link RemoteInputChannel}
  * instances.
@@ -51,19 +50,19 @@ class PartitionRequestClientFactory {
 
 	/**
 	 * Atomically establishes a TCP connection to the given remote address and
-	 * creates a {@link NettyPartitionRequestClient} instance for this connection.
+	 * creates a {@link PartitionRequestClient} instance for this connection.
 	 */
-	NettyPartitionRequestClient createPartitionRequestClient(ConnectionID connectionId) throws IOException, InterruptedException {
+	PartitionRequestClient createPartitionRequestClient(ConnectionID connectionId) throws IOException, InterruptedException {
 		Object entry;
-		NettyPartitionRequestClient client = null;
+		PartitionRequestClient client = null;
 
 		while (client == null) {
 			entry = clients.get(connectionId);
 
 			if (entry != null) {
 				// Existing channel or connecting channel
-				if (entry instanceof NettyPartitionRequestClient) {
-					client = (NettyPartitionRequestClient) entry;
+				if (entry instanceof PartitionRequestClient) {
+					client = (PartitionRequestClient) entry;
 				}
 				else {
 					ConnectingChannel future = (ConnectingChannel) entry;
@@ -93,7 +92,7 @@ class PartitionRequestClientFactory {
 					clients.replace(connectionId, old, client);
 				}
 				else {
-					client = (NettyPartitionRequestClient) old;
+					client = (PartitionRequestClient) old;
 				}
 			}
 
@@ -167,7 +166,7 @@ class PartitionRequestClientFactory {
 			synchronized (connectLock) {
 				try {
 					NetworkClientHandler clientHandler = channel.pipeline().get(NetworkClientHandler.class);
-					partitionRequestClient = new NettyPartitionRequestClient(
+					partitionRequestClient = new PartitionRequestClient(
 						channel, clientHandler, connectionId, clientFactory);
 
 					if (disposeRequestClient) {
@@ -182,11 +181,11 @@ class PartitionRequestClientFactory {
 			}
 		}
 
-		private volatile NettyPartitionRequestClient partitionRequestClient;
+		private volatile PartitionRequestClient partitionRequestClient;
 
 		private volatile Throwable error;
 
-		private NettyPartitionRequestClient waitForChannel() throws IOException, InterruptedException {
+		private PartitionRequestClient waitForChannel() throws IOException, InterruptedException {
 			synchronized (connectLock) {
 				while (error == null && partitionRequestClient == null) {
 					connectLock.wait(2000);

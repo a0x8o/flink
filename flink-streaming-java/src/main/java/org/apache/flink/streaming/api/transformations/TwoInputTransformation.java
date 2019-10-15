@@ -19,13 +19,9 @@
 package org.apache.flink.streaming.api.transformations;
 
 import org.apache.flink.annotation.Internal;
-import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
-import org.apache.flink.api.dag.Transformation;
 import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.streaming.api.operators.ChainingStrategy;
-import org.apache.flink.streaming.api.operators.SimpleOperatorFactory;
-import org.apache.flink.streaming.api.operators.StreamOperatorFactory;
 import org.apache.flink.streaming.api.operators.TwoInputStreamOperator;
 
 import org.apache.flink.shaded.guava18.com.google.common.collect.Lists;
@@ -35,20 +31,20 @@ import java.util.List;
 
 /**
  * This Transformation represents the application of a
- * {@link TwoInputStreamOperator} to two input {@code Transformations}.
+ * {@link TwoInputStreamOperator} to two input {@code StreamTransformations}.
  * The result is again only one stream.
  *
- * @param <IN1> The type of the elements in the first input {@code Transformation}
- * @param <IN2> The type of the elements in the second input {@code Transformation}
+ * @param <IN1> The type of the elements in the first input {@code StreamTransformation}
+ * @param <IN2> The type of the elements in the second input {@code StreamTransformation}
  * @param <OUT> The type of the elements that result from this {@code TwoInputTransformation}
  */
 @Internal
-public class TwoInputTransformation<IN1, IN2, OUT> extends PhysicalTransformation<OUT> {
+public class TwoInputTransformation<IN1, IN2, OUT> extends StreamTransformation<OUT> {
 
-	private final Transformation<IN1> input1;
-	private final Transformation<IN2> input2;
+	private final StreamTransformation<IN1> input1;
+	private final StreamTransformation<IN2> input2;
 
-	private final StreamOperatorFactory<OUT> operatorFactory;
+	private final TwoInputStreamOperator<IN1, IN2, OUT> operator;
 
 	private KeySelector<IN1, ?> stateKeySelector1;
 
@@ -59,47 +55,37 @@ public class TwoInputTransformation<IN1, IN2, OUT> extends PhysicalTransformatio
 	/**
 	 * Creates a new {@code TwoInputTransformation} from the given inputs and operator.
 	 *
-	 * @param input1 The first input {@code Transformation}
-	 * @param input2 The second input {@code Transformation}
-	 * @param name The name of the {@code Transformation}, this will be shown in Visualizations and the Log
+	 * @param input1 The first input {@code StreamTransformation}
+	 * @param input2 The second input {@code StreamTransformation}
+	 * @param name The name of the {@code StreamTransformation}, this will be shown in Visualizations and the Log
 	 * @param operator The {@code TwoInputStreamOperator}
 	 * @param outputType The type of the elements produced by this Transformation
 	 * @param parallelism The parallelism of this Transformation
 	 */
 	public TwoInputTransformation(
-			Transformation<IN1> input1,
-			Transformation<IN2> input2,
+			StreamTransformation<IN1> input1,
+			StreamTransformation<IN2> input2,
 			String name,
 			TwoInputStreamOperator<IN1, IN2, OUT> operator,
-			TypeInformation<OUT> outputType,
-			int parallelism) {
-		this(input1, input2, name, SimpleOperatorFactory.of(operator), outputType, parallelism);
-	}
-
-	public TwoInputTransformation(
-			Transformation<IN1> input1,
-			Transformation<IN2> input2,
-			String name,
-			StreamOperatorFactory<OUT> operatorFactory,
 			TypeInformation<OUT> outputType,
 			int parallelism) {
 		super(name, outputType, parallelism);
 		this.input1 = input1;
 		this.input2 = input2;
-		this.operatorFactory = operatorFactory;
+		this.operator = operator;
 	}
 
 	/**
-	 * Returns the first input {@code Transformation} of this {@code TwoInputTransformation}.
+	 * Returns the first input {@code StreamTransformation} of this {@code TwoInputTransformation}.
 	 */
-	public Transformation<IN1> getInput1() {
+	public StreamTransformation<IN1> getInput1() {
 		return input1;
 	}
 
 	/**
-	 * Returns the second input {@code Transformation} of this {@code TwoInputTransformation}.
+	 * Returns the second input {@code StreamTransformation} of this {@code TwoInputTransformation}.
 	 */
-	public Transformation<IN2> getInput2() {
+	public StreamTransformation<IN2> getInput2() {
 		return input2;
 	}
 
@@ -117,16 +103,11 @@ public class TwoInputTransformation<IN1, IN2, OUT> extends PhysicalTransformatio
 		return input2.getOutputType();
 	}
 
-	@VisibleForTesting
-	public TwoInputStreamOperator<IN1, IN2, OUT> getOperator() {
-		return (TwoInputStreamOperator<IN1, IN2, OUT>) ((SimpleOperatorFactory) operatorFactory).getOperator();
-	}
-
 	/**
-	 * Returns the {@code StreamOperatorFactory} of this Transformation.
+	 * Returns the {@code TwoInputStreamOperator} of this Transformation.
 	 */
-	public StreamOperatorFactory<OUT> getOperatorFactory() {
-		return operatorFactory;
+	public TwoInputStreamOperator<IN1, IN2, OUT> getOperator() {
+		return operator;
 	}
 
 	/**
@@ -170,8 +151,8 @@ public class TwoInputTransformation<IN1, IN2, OUT> extends PhysicalTransformatio
 	}
 
 	@Override
-	public Collection<Transformation<?>> getTransitivePredecessors() {
-		List<Transformation<?>> result = Lists.newArrayList();
+	public Collection<StreamTransformation<?>> getTransitivePredecessors() {
+		List<StreamTransformation<?>> result = Lists.newArrayList();
 		result.add(this);
 		result.addAll(input1.getTransitivePredecessors());
 		result.addAll(input2.getTransitivePredecessors());
@@ -180,7 +161,7 @@ public class TwoInputTransformation<IN1, IN2, OUT> extends PhysicalTransformatio
 
 	@Override
 	public final void setChainingStrategy(ChainingStrategy strategy) {
-		operatorFactory.setChainingStrategy(strategy);
+		operator.setChainingStrategy(strategy);
 	}
 
 }

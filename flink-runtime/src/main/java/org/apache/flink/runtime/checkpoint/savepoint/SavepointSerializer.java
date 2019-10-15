@@ -18,8 +18,6 @@
 
 package org.apache.flink.runtime.checkpoint.savepoint;
 
-import org.apache.flink.runtime.checkpoint.Checkpoints;
-
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
@@ -27,7 +25,7 @@ import java.io.IOException;
 /**
  * Serializer for {@link Savepoint} instances.
  *
- * <p>This serializer is used to read/write a savepoint via {@link Checkpoints}.
+ * <p>This serializer is used to read/write a savepoint via {@link SavepointStore}.
  *
  * <p>Version-specific serializers are accessed via the {@link SavepointSerializers} helper.
  *

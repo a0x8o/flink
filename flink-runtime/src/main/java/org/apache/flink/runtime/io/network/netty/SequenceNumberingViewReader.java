@@ -118,6 +118,11 @@ class SequenceNumberingViewReader implements BufferAvailabilityListener, Network
 	}
 
 	@Override
+	public void notifySubpartitionConsumed() throws IOException {
+		subpartitionView.notifySubpartitionConsumed();
+	}
+
+	@Override
 	public boolean isReleased() {
 		return subpartitionView.isReleased();
 	}

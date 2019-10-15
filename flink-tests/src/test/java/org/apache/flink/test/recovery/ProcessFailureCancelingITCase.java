@@ -32,7 +32,6 @@ import org.apache.flink.configuration.AkkaOptions;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.HighAvailabilityOptions;
 import org.apache.flink.configuration.JobManagerOptions;
-import org.apache.flink.configuration.NettyShuffleEnvironmentOptions;
 import org.apache.flink.configuration.RestOptions;
 import org.apache.flink.configuration.TaskManagerOptions;
 import org.apache.flink.runtime.client.JobStatusMessage;
@@ -42,9 +41,8 @@ import org.apache.flink.runtime.dispatcher.Dispatcher;
 import org.apache.flink.runtime.dispatcher.DispatcherGateway;
 import org.apache.flink.runtime.dispatcher.DispatcherId;
 import org.apache.flink.runtime.dispatcher.MemoryArchivedExecutionGraphStore;
-import org.apache.flink.runtime.entrypoint.component.DefaultDispatcherResourceManagerComponentFactory;
 import org.apache.flink.runtime.entrypoint.component.DispatcherResourceManagerComponent;
-import org.apache.flink.runtime.entrypoint.component.DispatcherResourceManagerComponentFactory;
+import org.apache.flink.runtime.entrypoint.component.SessionDispatcherResourceManagerComponentFactory;
 import org.apache.flink.runtime.heartbeat.HeartbeatServices;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServicesUtils;
@@ -115,17 +113,17 @@ public class ProcessFailureCancelingITCase extends TestLogger {
 		config.setString(HighAvailabilityOptions.HA_ZOOKEEPER_QUORUM, zooKeeperResource.getConnectString());
 		config.setString(HighAvailabilityOptions.HA_STORAGE_PATH, temporaryFolder.newFolder().getAbsolutePath());
 		config.setInteger(TaskManagerOptions.NUM_TASK_SLOTS, 2);
-		config.setString(TaskManagerOptions.LEGACY_MANAGED_MEMORY_SIZE, "4m");
-		config.setInteger(NettyShuffleEnvironmentOptions.NETWORK_NUM_BUFFERS, 100);
+		config.setString(TaskManagerOptions.MANAGED_MEMORY_SIZE, "4m");
+		config.setInteger(TaskManagerOptions.NETWORK_NUM_BUFFERS, 100);
 		config.setInteger(RestOptions.PORT, 0);
 
 		final RpcService rpcService = AkkaRpcServiceUtils.createRpcService("localhost", 0, config);
 		final int jobManagerPort = rpcService.getPort();
 		config.setInteger(JobManagerOptions.PORT, jobManagerPort);
 
-		final DispatcherResourceManagerComponentFactory resourceManagerComponentFactory = DefaultDispatcherResourceManagerComponentFactory.createSessionComponentFactory(
+		final SessionDispatcherResourceManagerComponentFactory resourceManagerComponentFactory = new SessionDispatcherResourceManagerComponentFactory(
 			StandaloneResourceManagerFactory.INSTANCE);
-		DispatcherResourceManagerComponent dispatcherResourceManagerComponent = null;
+		DispatcherResourceManagerComponent<?> dispatcherResourceManagerComponent = null;
 
 		final HighAvailabilityServices haServices = HighAvailabilityServicesUtils.createHighAvailabilityServices(
 			config,
@@ -170,6 +168,7 @@ public class ProcessFailureCancelingITCase extends TestLogger {
 						ExecutionEnvironment env = ExecutionEnvironment.createRemoteEnvironment("localhost", 1337, config);
 						env.setParallelism(2);
 						env.setRestartStrategy(RestartStrategies.noRestart());
+						env.getConfig().disableSysoutLogging();
 
 						env.generateSequence(0, Long.MAX_VALUE)
 
@@ -243,7 +242,7 @@ public class ProcessFailureCancelingITCase extends TestLogger {
 				taskManagerProcess.destroy();
 			}
 			if (clusterClient != null) {
-				clusterClient.close();
+				clusterClient.shutdown();
 			}
 			if (dispatcherResourceManagerComponent != null) {
 				dispatcherResourceManagerComponent.deregisterApplicationAndClose(ApplicationStatus.SUCCEEDED, null);
@@ -266,13 +265,11 @@ public class ProcessFailureCancelingITCase extends TestLogger {
 	 * @throws Exception if something goes wrong
 	 */
 	static DispatcherGateway retrieveDispatcherGateway(RpcService rpcService, HighAvailabilityServices haServices) throws Exception {
-		final LeaderConnectionInfo leaderConnectionInfo = LeaderRetrievalUtils.retrieveLeaderConnectionInfo(
-			haServices.getDispatcherLeaderRetriever(),
-			Duration.ofSeconds(10L));
+		final LeaderConnectionInfo leaderConnectionInfo = LeaderRetrievalUtils.retrieveLeaderConnectionInfo(haServices.getDispatcherLeaderRetriever(), Time.seconds(10L));
 
 		return rpcService.connect(
 			leaderConnectionInfo.getAddress(),
-			DispatcherId.fromUuid(leaderConnectionInfo.getLeaderSessionId()),
+			DispatcherId.fromUuid(leaderConnectionInfo.getLeaderSessionID()),
 			DispatcherGateway.class).get();
 	}
 

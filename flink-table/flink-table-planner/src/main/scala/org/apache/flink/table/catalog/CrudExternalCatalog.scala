@@ -22,10 +22,7 @@ import org.apache.flink.table.api._
 
 /**
   * The CrudExternalCatalog provides methods to create, drop, and alter (sub-)catalogs or tables.
-  *
-  * @deprecated use [[Catalog]] instead.
   */
-@deprecated
 trait CrudExternalCatalog extends ExternalCatalog {
 
   /**
@@ -72,11 +69,11 @@ trait CrudExternalCatalog extends ExternalCatalog {
     * @param name           The name of the sub catalog to add.
     * @param catalog        Description of the catalog to add.
     * @param ignoreIfExists Flag to specify behavior if a sub catalog with the given name already
-    *                       exists: if set to false, it throws a CatalogAlreadyExistsException,
+    *                       exists: if set to false, it throws a CatalogAlreadyExistException,
     *                       if set to true, nothing happens.
     * @throws CatalogAlreadyExistException
-    *         thrown if the sub catalog does already exist in the catalog
-    *         and ignoreIfExists is false
+    *                       thrown if the sub catalog does already exist in the catalog
+    *                       and ignoreIfExists is false
     */
   @throws[CatalogAlreadyExistException]
   def createSubCatalog(name: String, catalog: ExternalCatalog, ignoreIfExists: Boolean): Unit

@@ -34,7 +34,6 @@ import java.io.Serializable;
  * path the element should fall in. The {@code Bucketer} can, for example, determine buckets based on
  * system time.
  */
-@Deprecated
 public interface Bucketer<T> extends Serializable {
 	/**
 	 * Returns the {@link Path} of a bucket file.

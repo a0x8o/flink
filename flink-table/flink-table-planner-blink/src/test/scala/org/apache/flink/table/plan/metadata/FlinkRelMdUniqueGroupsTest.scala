@@ -311,47 +311,8 @@ class FlinkRelMdUniqueGroupsTest extends FlinkRelMdHandlerTestBase {
   }
 
   @Test
-  def testGetUniqueGroupsOnWindowAgg(): Unit = {
-    Array(logicalWindowAgg, flinkLogicalWindowAgg,
-      batchGlobalWindowAggWithoutLocalAgg,
-      batchGlobalWindowAggWithLocalAgg).foreach { agg =>
-      assertEquals(ImmutableBitSet.of(0, 1, 2, 3, 4, 5, 6),
-        mq.getUniqueGroups(agg, ImmutableBitSet.of(0, 1, 2, 3, 4, 5, 6)))
-      assertEquals(ImmutableBitSet.of(3, 4, 5, 6),
-        mq.getUniqueGroups(agg, ImmutableBitSet.of(3, 4, 5, 6)))
-      assertEquals(ImmutableBitSet.of(0, 3, 4, 5, 6),
-        mq.getUniqueGroups(agg, ImmutableBitSet.of(0, 3, 4, 5, 6)))
-      assertEquals(ImmutableBitSet.of(0, 1),
-        mq.getUniqueGroups(agg, ImmutableBitSet.of(0, 1)))
-      assertEquals(ImmutableBitSet.of(0, 1, 2),
-        mq.getUniqueGroups(agg, ImmutableBitSet.of(0, 1, 2)))
-    }
-    assertEquals(ImmutableBitSet.of(0, 1, 2, 3),
-      mq.getUniqueGroups(batchLocalWindowAgg, ImmutableBitSet.of(0, 1, 2, 3)))
-
-    Array(logicalWindowAggWithAuxGroup, flinkLogicalWindowAggWithAuxGroup,
-      batchGlobalWindowAggWithoutLocalAggWithAuxGroup,
-      batchGlobalWindowAggWithLocalAggWithAuxGroup).foreach { agg =>
-      assertEquals(ImmutableBitSet.of(1),
-        mq.getUniqueGroups(agg, ImmutableBitSet.of(1)))
-      assertEquals(ImmutableBitSet.of(0),
-        mq.getUniqueGroups(agg, ImmutableBitSet.of(0, 1)))
-      assertEquals(ImmutableBitSet.of(0, 1, 2),
-        mq.getUniqueGroups(agg, ImmutableBitSet.of(0, 1, 2)))
-      assertEquals(ImmutableBitSet.of(0, 1, 2, 3),
-        mq.getUniqueGroups(agg, ImmutableBitSet.of(0, 1, 2, 3)))
-      assertEquals(ImmutableBitSet.of(0, 1, 2, 3, 4, 5, 6),
-        mq.getUniqueGroups(agg, ImmutableBitSet.of(0, 1, 2, 3, 4, 5, 6)))
-    }
-    assertEquals(ImmutableBitSet.of(0),
-      mq.getUniqueGroups(batchLocalWindowAggWithAuxGroup, ImmutableBitSet.of(0, 1)))
-    assertEquals(ImmutableBitSet.of(0, 1, 2),
-      mq.getUniqueGroups(batchLocalWindowAggWithAuxGroup, ImmutableBitSet.of(0, 1, 2)))
-  }
-
-  @Test
-  def testGetUniqueGroupsOnOverAgg(): Unit = {
-    Array(flinkLogicalOverAgg, batchOverAgg).foreach { agg =>
+  def testGetUniqueGroupsOnOverWindow(): Unit = {
+    Array(flinkLogicalOverWindow, batchOverWindowAgg).foreach { agg =>
       assertEquals(ImmutableBitSet.of(0), mq.getUniqueGroups(agg, ImmutableBitSet.of(0, 1)))
       assertEquals(ImmutableBitSet.of(0), mq.getUniqueGroups(agg, ImmutableBitSet.of(0, 1, 2)))
       assertEquals(ImmutableBitSet.of(1, 2), mq.getUniqueGroups(agg, ImmutableBitSet.of(1, 2)))
@@ -578,50 +539,7 @@ class FlinkRelMdUniqueGroupsTest extends FlinkRelMdHandlerTestBase {
 
     // without equi join condition
     assertEquals(ImmutableBitSet.of(1, 5, 6, 7, 8, 9),
-      mq.getUniqueGroups(logicalFullJoinWithoutCond,
-        ImmutableBitSet.of(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)))
-
-    // semi join
-    // both left join keys and right join keys are unique
-    assertEquals(ImmutableBitSet.of(1),
-      mq.getUniqueGroups(logicalSemiJoinOnUniqueKeys, ImmutableBitSet.of(0, 1, 2, 3, 4)))
-
-    // left join keys are not unique and right join keys are unique
-    assertEquals(ImmutableBitSet.of(0, 1, 2, 3, 4),
-      mq.getUniqueGroups(logicalSemiJoinOnRHSUniqueKeys, ImmutableBitSet.of(0, 1, 2, 3, 4)))
-
-    // left join keys are unique and right join keys are not unique
-    assertEquals(ImmutableBitSet.of(1),
-      mq.getUniqueGroups(logicalSemiJoinOnLHSUniqueKeys, ImmutableBitSet.of(0, 1, 2, 3, 4)))
-
-    // neither left join keys nor right join keys are unique (non join columns have unique columns)
-    assertEquals(ImmutableBitSet.of(1),
-      mq.getUniqueGroups(logicalSemiJoinNotOnUniqueKeys, ImmutableBitSet.of(0, 1, 2, 3, 4)))
-
-    // with non-equi join condition
-    assertEquals(ImmutableBitSet.of(1),
-      mq.getUniqueGroups(logicalSemiJoinWithEquiAndNonEquiCond, ImmutableBitSet.of(0, 1, 2, 3, 4)))
-
-    // anti join
-    // both left join keys and right join keys are unique
-    assertEquals(ImmutableBitSet.of(1),
-      mq.getUniqueGroups(logicalAntiJoinOnUniqueKeys, ImmutableBitSet.of(0, 1, 2, 3, 4)))
-
-    // left join keys are not unique and right join keys are unique
-    assertEquals(ImmutableBitSet.of(0, 1, 2, 3, 4),
-      mq.getUniqueGroups(logicalAntiJoinOnRHSUniqueKeys, ImmutableBitSet.of(0, 1, 2, 3, 4)))
-
-    // left join keys are unique and right join keys are not unique
-    assertEquals(ImmutableBitSet.of(1),
-      mq.getUniqueGroups(logicalAntiJoinOnLHSUniqueKeys, ImmutableBitSet.of(0, 1, 2, 3, 4)))
-
-    // neither left join keys nor right join keys are unique (non join columns have unique columns)
-    assertEquals(ImmutableBitSet.of(1),
-      mq.getUniqueGroups(logicalAntiJoinNotOnUniqueKeys, ImmutableBitSet.of(0, 1, 2, 3, 4)))
-
-    // with non-equi join condition
-    assertEquals(ImmutableBitSet.of(1),
-      mq.getUniqueGroups(logicalAntiJoinWithEquiAndNonEquiCond, ImmutableBitSet.of(0, 1, 2, 3, 4)))
+      mq.getUniqueGroups(logicalFullWithoutCond, ImmutableBitSet.of(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)))
   }
 
   @Test

@@ -20,7 +20,6 @@ package org.apache.flink.api.common.typeutils.base;
 
 import org.apache.flink.api.common.typeutils.CompositeTypeSerializerSnapshot;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
-import org.apache.flink.api.common.typeutils.TypeSerializerSnapshot;
 
 import java.util.Map;
 
@@ -64,10 +63,5 @@ public class MapSerializerSnapshot<K, V> extends CompositeTypeSerializerSnapshot
 	@Override
 	protected TypeSerializer<?>[] getNestedSerializers(MapSerializer<K, V> outerSerializer) {
 		return new TypeSerializer<?>[] { outerSerializer.getKeySerializer(), outerSerializer.getValueSerializer() };
-	}
-
-	@SuppressWarnings("unchecked")
-	public TypeSerializerSnapshot<K> getKeySerializerSnapshot() {
-		return (TypeSerializerSnapshot<K>) getNestedSerializerSnapshots()[0];
 	}
 }

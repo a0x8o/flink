@@ -22,10 +22,8 @@ import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.blob.BlobServer;
 import org.apache.flink.runtime.dispatcher.DispatcherGateway;
 import org.apache.flink.runtime.dispatcher.MemoryArchivedExecutionGraphStore;
-import org.apache.flink.runtime.dispatcher.runner.DispatcherRunnerFactoryImpl;
 import org.apache.flink.runtime.entrypoint.component.DispatcherResourceManagerComponent;
-import org.apache.flink.runtime.entrypoint.component.DispatcherResourceManagerComponentFactory;
-import org.apache.flink.runtime.entrypoint.component.TestingDefaultDispatcherResourceManagerComponentFactory;
+import org.apache.flink.runtime.entrypoint.component.SessionDispatcherResourceManagerComponentFactory;
 import org.apache.flink.runtime.heartbeat.HeartbeatServices;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.metrics.MetricRegistry;
@@ -69,7 +67,7 @@ public class TestingMiniCluster extends MiniCluster {
 
 	@Nonnull
 	@Override
-	public Collection<DispatcherResourceManagerComponent> getDispatcherResourceManagerComponents() {
+	public Collection<DispatcherResourceManagerComponent<?>> getDispatcherResourceManagerComponents() {
 		return super.getDispatcherResourceManagerComponents();
 	}
 
@@ -99,7 +97,7 @@ public class TestingMiniCluster extends MiniCluster {
 	}
 
 	@Override
-	protected Collection<? extends DispatcherResourceManagerComponent> createDispatcherResourceManagerComponents(
+	protected Collection<? extends DispatcherResourceManagerComponent<?>> createDispatcherResourceManagerComponents(
 			Configuration configuration,
 			RpcServiceFactory rpcServiceFactory,
 			HighAvailabilityServices haServices,
@@ -108,9 +106,9 @@ public class TestingMiniCluster extends MiniCluster {
 			MetricRegistry metricRegistry,
 			MetricQueryServiceRetriever metricQueryServiceRetriever,
 			FatalErrorHandler fatalErrorHandler) throws Exception {
-		DispatcherResourceManagerComponentFactory dispatcherResourceManagerComponentFactory = createTestingDispatcherResourceManagerComponentFactory();
+		SessionDispatcherResourceManagerComponentFactory dispatcherResourceManagerComponentFactory = createTestingDispatcherResourceManagerComponentFactory();
 
-		final List<DispatcherResourceManagerComponent> result = new ArrayList<>(numberDispatcherResourceManagerComponents);
+		final List<DispatcherResourceManagerComponent<?>> result = new ArrayList<>(numberDispatcherResourceManagerComponents);
 
 		for (int i = 0; i < numberDispatcherResourceManagerComponents; i++) {
 			result.add(
@@ -134,9 +132,9 @@ public class TestingMiniCluster extends MiniCluster {
 		return super.getDispatcherGatewayFuture();
 	}
 
-	private DispatcherResourceManagerComponentFactory createTestingDispatcherResourceManagerComponentFactory() {
-		return TestingDefaultDispatcherResourceManagerComponentFactory.createSessionComponentFactory(
-			new DispatcherRunnerFactoryImpl(SessionDispatcherWithUUIDFactory.INSTANCE),
+	private SessionDispatcherResourceManagerComponentFactory createTestingDispatcherResourceManagerComponentFactory() {
+		return new SessionDispatcherResourceManagerComponentFactory(
+			SessionDispatcherWithUUIDFactory.INSTANCE,
 			StandaloneResourceManagerWithUUIDFactory.INSTANCE);
 	}
 }

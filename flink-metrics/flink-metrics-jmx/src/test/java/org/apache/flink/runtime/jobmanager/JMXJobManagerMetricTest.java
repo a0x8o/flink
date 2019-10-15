@@ -100,9 +100,7 @@ public class JMXJobManagerMetricTest extends TestLogger {
 					50,
 					5,
 					CheckpointRetentionPolicy.NEVER_RETAIN_AFTER_TERMINATION,
-					true,
-					false,
-					0),
+					true),
 				null));
 
 			ClusterClient<?> client = MINI_CLUSTER_RESOURCE.getClusterClient();

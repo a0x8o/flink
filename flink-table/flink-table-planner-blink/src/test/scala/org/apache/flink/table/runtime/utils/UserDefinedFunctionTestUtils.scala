@@ -18,27 +18,22 @@
 
 package org.apache.flink.table.runtime.utils
 
-import org.apache.flink.api.common.typeinfo.TypeInformation
+import java.lang.{Iterable => JIterable}
 import org.apache.flink.api.java.tuple.{Tuple1, Tuple2}
-import org.apache.flink.api.java.typeutils.{ListTypeInfo, PojoField, PojoTypeInfo, RowTypeInfo}
 import org.apache.flink.api.scala.ExecutionEnvironment
-import org.apache.flink.api.scala.typeutils.Types
 import org.apache.flink.configuration.Configuration
 import org.apache.flink.streaming.api.scala.StreamExecutionEnvironment
-import org.apache.flink.table.dataformat.{BaseRow, BinaryString}
-import org.apache.flink.table.functions.{AggregateFunction, FunctionContext, ScalarFunction}
-import org.apache.flink.types.Row
-
+import org.apache.flink.table.functions.{AggregateFunction, ScalarFunction}
 import com.google.common.base.Charsets
 import com.google.common.io.Files
+import org.apache.flink.api.common.typeinfo.{SqlTimeTypeInfo, TypeInformation}
+import org.apache.flink.api.java.typeutils.{ListTypeInfo, PojoField, PojoTypeInfo, RowTypeInfo}
+import org.apache.flink.api.scala.typeutils.Types
+import org.apache.flink.table.dataformat.{BaseRow, BinaryString}
+import org.apache.flink.types.Row
 
 import java.io.File
-import java.lang.{Iterable => JIterable}
-import java.sql.{Date, Timestamp}
-import java.time.{Instant, LocalDate, LocalDateTime, LocalTime}
 import java.util
-import java.util.TimeZone
-import java.util.concurrent.atomic.AtomicInteger
 
 import scala.annotation.varargs
 
@@ -202,33 +197,10 @@ object UserDefinedFunctionTestUtils {
   }
 
   object DateFunction extends ScalarFunction {
-    def eval(d: Date): String = d.toString
-  }
+    def eval(d: Integer): Integer = d
 
-  object LocalDateFunction extends ScalarFunction {
-    def eval(d: LocalDate): String = d.toString
-  }
-
-  object TimestampFunction extends ScalarFunction {
-    def eval(t: java.sql.Timestamp): String = t.toString
-  }
-
-  object DateTimeFunction extends ScalarFunction {
-    def eval(t: LocalDateTime): String = t.toString
-  }
-
-  object TimeFunction extends ScalarFunction {
-    def eval(t: java.sql.Time): String = t.toString
-  }
-
-  object LocalTimeFunction extends ScalarFunction {
-    def eval(t: LocalTime): String = t.toString
-  }
-
-  object InstantFunction extends ScalarFunction {
-    def eval(t: Instant): Instant = t
-
-    override def getResultType(signature: Array[Class[_]]) = Types.INSTANT
+    override def getResultType(signature: Array[Class[_]]): TypeInformation[_] =
+      SqlTimeTypeInfo.DATE
   }
 
   // Understand type: Row wrapped as TypeInfoWrappedDataType.
@@ -284,65 +256,6 @@ object UserDefinedFunctionTestUtils {
 
     def eval(id: Int, name: String, age: Int, point: String): CompositeObj = {
       CompositeObj(id, name, age, point)
-    }
-  }
-
-  object TestWrapperUdf extends ScalarFunction {
-    def eval(id: Int): Int = {
-      id
-    }
-
-    def eval(id: String): String = {
-      id
-    }
-  }
-
-  class TestAddWithOpen extends ScalarFunction {
-
-    var isOpened: Boolean = false
-
-    override def open(context: FunctionContext): Unit = {
-      super.open(context)
-      isOpened = true
-      TestAddWithOpen.aliveCounter.incrementAndGet()
-    }
-
-    def eval(a: Long, b: Long): Long = {
-      if (!isOpened) {
-        throw new IllegalStateException("Open method is not called.")
-      }
-      a + b
-    }
-    
-    def eval(a: Long, b: Int): Long = {
-      eval(a, b.asInstanceOf[Long])
-    }
-
-    override def close(): Unit = {
-      TestAddWithOpen.aliveCounter.decrementAndGet()
-    }
-  }
-
-  object TestAddWithOpen {
-    /** A thread-safe counter to record how many alive TestAddWithOpen UDFs */
-    val aliveCounter = new AtomicInteger(0)
-  }
-
-  object TestMod extends ScalarFunction {
-    def eval(src: Long, mod: Int): Long = {
-      src % mod
-    }
-  }
-
-  object TestExceptionThrown extends ScalarFunction {
-    def eval(src: String): Int = {
-      throw new NumberFormatException("Cannot parse this input.")
-    }
-  }
-
-  class ToMillis extends ScalarFunction {
-    def eval(t: Timestamp): Long = {
-      t.toInstant.toEpochMilli + TimeZone.getDefault.getOffset(t.toInstant.toEpochMilli)
     }
   }
 

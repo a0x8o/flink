@@ -26,12 +26,7 @@ import org.junit.Test
 
 class MatchRecognizeTest extends TableTestBase {
   private val streamUtil: StreamTableTestUtil = streamTestUtil()
-  private val table = streamUtil.addTable[(Int, String, Long)](
-    "MyTable",
-    'a,
-    'b,
-    'c.rowtime,
-    'proctime.proctime)
+  streamUtil.addTable[(Int, String, Long)]("MyTable", 'a, 'b, 'c.rowtime, 'proctime.proctime)
 
   @Test
   def testSimpleWithDefaults(): Unit = {
@@ -50,7 +45,7 @@ class MatchRecognizeTest extends TableTestBase {
 
     val expected = unaryNode(
       "DataStreamMatch",
-      streamTableNode(table),
+      streamTableNode(0),
       term("orderBy", "proctime ASC"),
       term("measures", "FINAL(A.a) AS aa"),
       term("rowsPerMatch", "ONE ROW PER MATCH"),

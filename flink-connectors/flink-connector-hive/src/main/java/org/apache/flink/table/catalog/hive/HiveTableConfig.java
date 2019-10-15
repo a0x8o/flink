@@ -19,10 +19,11 @@
 package org.apache.flink.table.catalog.hive;
 
 /**
- * Configs for tables in Hive metastore.
+ * Configs for Flink tables stored in Hive metastore.
  */
 public class HiveTableConfig {
 
-	public static final String DEFAULT_LIST_COLUMN_TYPES_SEPARATOR = ":";
+	// Description of the Flink table
+	public static final String TABLE_COMMENT = "comment";
 
 }

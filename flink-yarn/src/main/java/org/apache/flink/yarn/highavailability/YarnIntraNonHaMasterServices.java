@@ -177,7 +177,7 @@ public class YarnIntraNonHaMasterServices extends AbstractYarnNonHaServices {
 	}
 
 	@Override
-	public LeaderElectionService getClusterRestEndpointLeaderElectionService() {
+	public LeaderElectionService getWebMonitorLeaderElectionService() {
 		enter();
 		try {
 			throw new UnsupportedOperationException();
@@ -210,7 +210,7 @@ public class YarnIntraNonHaMasterServices extends AbstractYarnNonHaServices {
 	}
 
 	@Override
-	public LeaderRetrievalService getClusterRestEndpointLeaderRetriever() {
+	public LeaderRetrievalService getWebMonitorLeaderRetriever() {
 		enter();
 		try {
 			throw new UnsupportedOperationException();

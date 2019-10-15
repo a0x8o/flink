@@ -18,18 +18,16 @@
 
 package org.apache.flink.table.functions.aggfunctions;
 
+import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.table.expressions.Expression;
 import org.apache.flink.table.expressions.UnresolvedReferenceExpression;
-import org.apache.flink.table.functions.FunctionKind;
 import org.apache.flink.table.functions.UserDefinedFunction;
-import org.apache.flink.table.types.DataType;
+import org.apache.flink.table.type.InternalType;
 import org.apache.flink.util.Preconditions;
 
 import java.util.Arrays;
 import java.util.Set;
 import java.util.stream.Collectors;
-
-import static org.apache.flink.table.expressions.utils.ApiExpressionUtils.unresolvedRef;
 
 /**
  * API for aggregation functions that are expressed in terms of expressions.
@@ -64,12 +62,12 @@ public abstract class DeclarativeAggregateFunction extends UserDefinedFunction {
 	/**
 	 * All types of the aggregate buffer.
 	 */
-	public abstract DataType[] getAggBufferTypes();
+	public abstract InternalType[] getAggBufferTypes();
 
 	/**
 	 * The result type of the function.
 	 */
-	public abstract DataType getResultType();
+	public abstract TypeInformation getResultType();
 
 	/**
 	 * Expressions for initializing empty aggregation buffers.
@@ -125,7 +123,7 @@ public abstract class DeclarativeAggregateFunction extends UserDefinedFunction {
 		for (int i = 0; i < operandCount; i++) {
 			String name = String.valueOf(i);
 			validateOperandName(name);
-			ret[i] = unresolvedRef(name);
+			ret[i] = new UnresolvedReferenceExpression(name);
 		}
 		return ret;
 	}
@@ -139,7 +137,7 @@ public abstract class DeclarativeAggregateFunction extends UserDefinedFunction {
 			throw new IllegalStateException(
 				String.format("Agg buffer name(%s) should not same to operands.", name));
 		}
-		return unresolvedRef(name);
+		return new UnresolvedReferenceExpression(name);
 	}
 
 	/**
@@ -148,7 +146,7 @@ public abstract class DeclarativeAggregateFunction extends UserDefinedFunction {
 	public final UnresolvedReferenceExpression mergeOperand(UnresolvedReferenceExpression aggBuffer) {
 		String name = String.valueOf(Arrays.asList(aggBufferAttributes()).indexOf(aggBuffer));
 		validateOperandName(name);
-		return unresolvedRef(name);
+		return new UnresolvedReferenceExpression(name);
 	}
 
 	/**
@@ -160,13 +158,8 @@ public abstract class DeclarativeAggregateFunction extends UserDefinedFunction {
 		for (int i = 0; i < aggBuffers.length; i++) {
 			String name = String.valueOf(i);
 			validateOperandName(name);
-			ret[i] = unresolvedRef(name);
+			ret[i] = new UnresolvedReferenceExpression(name);
 		}
 		return ret;
-	}
-
-	@Override
-	public final FunctionKind getKind() {
-		return FunctionKind.OTHER;
 	}
 }

@@ -49,10 +49,8 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -108,9 +106,7 @@ public class JobMasterTriggerSavepointITCase extends AbstractTestBase {
 				10,
 				1,
 				CheckpointRetentionPolicy.NEVER_RETAIN_AFTER_TERMINATION,
-				true,
-				false,
-				0),
+				true),
 			null));
 
 		clusterClient.submitJob(jobGraph, ClassLoader.getSystemClassLoader());
@@ -229,7 +225,7 @@ public class JobMasterTriggerSavepointITCase extends AbstractTestBase {
 		}
 
 		@Override
-		public Future<Boolean> triggerCheckpointAsync(final CheckpointMetaData checkpointMetaData, final CheckpointOptions checkpointOptions, final boolean advanceToEndOfEventTime) {
+		public boolean triggerCheckpoint(final CheckpointMetaData checkpointMetaData, final CheckpointOptions checkpointOptions, final boolean advanceToEndOfEventTime) {
 			final TaskStateSnapshot checkpointStateHandles = new TaskStateSnapshot();
 			checkpointStateHandles.putSubtaskStateByOperatorID(
 				OperatorID.fromJobVertexID(getEnvironment().getJobVertexId()),
@@ -242,12 +238,11 @@ public class JobMasterTriggerSavepointITCase extends AbstractTestBase {
 
 			triggerCheckpointLatch.countDown();
 
-			return CompletableFuture.completedFuture(true);
+			return true;
 		}
 
 		@Override
-		public Future<Void> notifyCheckpointCompleteAsync(final long checkpointId) {
-			return CompletableFuture.completedFuture(null);
+		public void notifyCheckpointComplete(final long checkpointId) {
 		}
 	}
 

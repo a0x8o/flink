@@ -59,20 +59,7 @@ public abstract class GeneratedClass<T> implements Serializable {
 		}
 	}
 
-	@SuppressWarnings("unchecked")
-	public T newInstance(ClassLoader classLoader, Object... args) {
-		try {
-			return (T) compile(classLoader).getConstructors()[0].newInstance(args);
-		} catch (Exception e) {
-			throw new RuntimeException(
-					"Could not instantiate generated class '" + className + "'", e);
-		}
-	}
-
-	/**
-	 * Compiles the generated code, the compiled class will be cached in the {@link GeneratedClass}.
-	 */
-	public Class<?> compile(ClassLoader classLoader) {
+	private Class<?> compile(ClassLoader classLoader) {
 		if (compiledClass == null) {
 			// cache the compiled class
 			compiledClass = CompileUtils.compile(classLoader, className, code);
@@ -90,9 +77,5 @@ public abstract class GeneratedClass<T> implements Serializable {
 
 	public Object[] getReferences() {
 		return references;
-	}
-
-	public Class<?> getClass(ClassLoader classLoader) {
-		return compile(classLoader);
 	}
 }

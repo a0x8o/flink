@@ -18,10 +18,8 @@
 
 package org.apache.flink.table.typeutils;
 
-import org.apache.flink.table.types.logical.BooleanType;
-import org.apache.flink.table.types.logical.IntType;
-import org.apache.flink.table.types.logical.LogicalType;
-import org.apache.flink.table.types.logical.VarCharType;
+import org.apache.flink.table.type.InternalType;
+import org.apache.flink.table.type.InternalTypes;
 
 import org.junit.Test;
 
@@ -32,9 +30,9 @@ import static org.junit.Assert.assertNotEquals;
  * Test for {@link BaseRowTypeInfo}.
  */
 public class BinaryRowTypeInfoTest {
-	private static LogicalType[] typeList = new LogicalType[]{
-			new IntType(),
-			new VarCharType(VarCharType.MAX_LENGTH)
+	private static InternalType[] typeList = new InternalType[]{
+			InternalTypes.INT,
+			InternalTypes.STRING
 	};
 
 	@Test(expected = IllegalArgumentException.class)
@@ -52,12 +50,12 @@ public class BinaryRowTypeInfoTest {
 	@Test
 	public void testBinaryRowTypeInfoEquality() {
 		BaseRowTypeInfo typeInfo1 = new BaseRowTypeInfo(
-				new IntType(),
-				new VarCharType(VarCharType.MAX_LENGTH));
+				InternalTypes.INT,
+				InternalTypes.STRING);
 
 		BaseRowTypeInfo typeInfo2 = new BaseRowTypeInfo(
-				new IntType(),
-				new VarCharType(VarCharType.MAX_LENGTH));
+				InternalTypes.INT,
+				InternalTypes.STRING);
 
 		assertEquals(typeInfo1, typeInfo2);
 		assertEquals(typeInfo1.hashCode(), typeInfo2.hashCode());
@@ -66,12 +64,12 @@ public class BinaryRowTypeInfoTest {
 	@Test
 	public void testBinaryRowTypeInfoInequality() {
 		BaseRowTypeInfo typeInfo1 = new BaseRowTypeInfo(
-				new IntType(),
-				new VarCharType(VarCharType.MAX_LENGTH));
+				InternalTypes.INT,
+				InternalTypes.STRING);
 
 		BaseRowTypeInfo typeInfo2 = new BaseRowTypeInfo(
-				new IntType(),
-				new BooleanType());
+				InternalTypes.INT,
+				InternalTypes.BOOLEAN);
 
 		assertNotEquals(typeInfo1, typeInfo2);
 		assertNotEquals(typeInfo1.hashCode(), typeInfo2.hashCode());

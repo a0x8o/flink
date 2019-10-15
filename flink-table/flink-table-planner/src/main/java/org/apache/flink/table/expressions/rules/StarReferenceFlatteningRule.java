@@ -49,7 +49,7 @@ final class StarReferenceFlatteningRule implements ResolverRule {
 		}
 
 		@Override
-		public List<Expression> visit(UnresolvedReferenceExpression unresolvedReference) {
+		public List<Expression> visitUnresolvedReference(UnresolvedReferenceExpression unresolvedReference) {
 			if (unresolvedReference.getName().equals("*")) {
 				return new ArrayList<>(resolutionContext.referenceLookup().getAllInputFields());
 			} else {

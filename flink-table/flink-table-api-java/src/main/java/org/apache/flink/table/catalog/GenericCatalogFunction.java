@@ -18,8 +18,6 @@
 
 package org.apache.flink.table.catalog;
 
-import org.apache.flink.table.catalog.config.CatalogConfig;
-
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -27,28 +25,33 @@ import java.util.Optional;
 /**
  * A generic catalog function implementation.
  */
-public class GenericCatalogFunction extends AbstractCatalogFunction {
+public class GenericCatalogFunction implements CatalogFunction {
+
+	private final String className; // Fully qualified class name of the function
+	private final Map<String, String> properties;
 
 	public GenericCatalogFunction(String className) {
 		this(className, new HashMap<>());
 	}
 
 	public GenericCatalogFunction(String className, Map<String, String> properties) {
-		super(className, properties);
-		properties.put(CatalogConfig.IS_GENERIC, String.valueOf(true));
+		this.className = className;
+		this.properties = properties;
+	}
+
+	@Override
+	public String getClassName() {
+		return this.className;
+	}
+
+	@Override
+	public Map<String, String> getProperties() {
+		return this.properties;
 	}
 
 	@Override
 	public GenericCatalogFunction copy() {
-		return new GenericCatalogFunction(getClassName(), new HashMap<>(getProperties()));
-	}
-
-	@Override
-	public String toString() {
-		return "GenericCatalogFunction{" +
-			", className='" + getClassName() + '\'' +
-			", properties=" + getProperties() +
-			'}';
+		return new GenericCatalogFunction(className, new HashMap<>(properties));
 	}
 
 	@Override
@@ -58,7 +61,15 @@ public class GenericCatalogFunction extends AbstractCatalogFunction {
 
 	@Override
 	public Optional<String> getDetailedDescription() {
-		return Optional.of("This is a user-defined function");
+		return Optional.of("This is a user-defined function in an in-memory catalog implementation");
+	}
+
+	@Override
+	public String toString() {
+		return "GenericCatalogFunction{" +
+			", className='" + className + '\'' +
+			", properties=" + properties +
+			'}';
 	}
 
 }

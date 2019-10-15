@@ -17,7 +17,6 @@
 
 package org.apache.flink.streaming.connectors.kinesis.testutils;
 
-import org.apache.flink.core.testutils.OneShotLatch;
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
 import org.apache.flink.streaming.connectors.kinesis.internals.KinesisDataFetcher;
 import org.apache.flink.streaming.connectors.kinesis.model.KinesisStreamShardState;
@@ -33,8 +32,6 @@ import java.util.Properties;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -42,10 +39,6 @@ import java.util.concurrent.atomic.AtomicReference;
  * {@link #awaitTermination()}.
  */
 public class TestableKinesisDataFetcherForShardConsumerException<T> extends TestableKinesisDataFetcher<T> {
-	public volatile boolean wasInterrupted = false;
-
-	private OneShotLatch awaitTerminationWaiter = new OneShotLatch();
-
 	public TestableKinesisDataFetcherForShardConsumerException(final List<String> fakeStreams,
 			final SourceFunction.SourceContext<T> sourceContext,
 			final Properties fakeConfiguration,
@@ -61,12 +54,7 @@ public class TestableKinesisDataFetcherForShardConsumerException<T> extends Test
 			subscribedStreamsToLastDiscoveredShardIdsStateUnderTest, fakeKinesis);
 	}
 
-	/**
-	 * Block until awaitTermination() has been called on this class.
-	 */
-	public void waitUntilAwaitTermination(long timeout, TimeUnit timeUnit) throws InterruptedException, TimeoutException {
-		awaitTerminationWaiter.await(timeout, timeUnit);
-	}
+	public volatile boolean wasInterrupted = false;
 
 	@Override
 	protected ExecutorService createShardConsumersThreadPool(final String subtaskName) {
@@ -77,7 +65,6 @@ public class TestableKinesisDataFetcherForShardConsumerException<T> extends Test
 
 	@Override
 	public void awaitTermination() throws InterruptedException {
-		awaitTerminationWaiter.trigger();
 		try {
 			// Force this method to only exit by thread getting interrupted.
 			while (true) {

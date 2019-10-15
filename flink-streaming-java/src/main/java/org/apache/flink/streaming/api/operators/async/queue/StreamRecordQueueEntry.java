@@ -21,53 +21,65 @@ package org.apache.flink.streaming.api.operators.async.queue;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.streaming.api.functions.async.AsyncFunction;
 import org.apache.flink.streaming.api.functions.async.ResultFuture;
-import org.apache.flink.streaming.api.operators.TimestampedCollector;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
-import org.apache.flink.util.Preconditions;
-
-import javax.annotation.Nonnull;
 
 import java.util.Collection;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * {@link StreamElementQueueEntry} implementation for {@link StreamRecord}. This class also acts
  * as the {@link ResultFuture} implementation which is given to the {@link AsyncFunction}. The
  * async function completes this class with a collection of results.
  *
- * @param <OUT> Type of the asynchronous collection result.
+ * @param <OUT> Type of the asynchronous collection result
  */
 @Internal
-class StreamRecordQueueEntry<OUT> implements StreamElementQueueEntry<OUT> {
-	@Nonnull
-	private final StreamRecord<?> inputRecord;
+public class StreamRecordQueueEntry<OUT> extends StreamElementQueueEntry<Collection<OUT>>
+	implements AsyncCollectionResult<OUT>, ResultFuture<OUT> {
 
-	private Collection<OUT> completedElements;
+	/** Timestamp information. */
+	private final boolean hasTimestamp;
+	private final long timestamp;
 
-	StreamRecordQueueEntry(StreamRecord<?> inputRecord) {
-		this.inputRecord = Preconditions.checkNotNull(inputRecord);
+	/** Future containing the collection result. */
+	private final CompletableFuture<Collection<OUT>> resultFuture;
+
+	public StreamRecordQueueEntry(StreamRecord<?> streamRecord) {
+		super(streamRecord);
+
+		hasTimestamp = streamRecord.hasTimestamp();
+		timestamp = streamRecord.getTimestamp();
+
+		resultFuture = new CompletableFuture<>();
 	}
 
 	@Override
-	public boolean isDone() {
-		return completedElements != null;
-	}
-
-	@Nonnull
-	@Override
-	public StreamRecord<?> getInputElement() {
-		return inputRecord;
+	public boolean hasTimestamp() {
+		return hasTimestamp;
 	}
 
 	@Override
-	public void emitResult(TimestampedCollector<OUT> output) {
-		output.setTimestamp(inputRecord);
-		for (OUT r : completedElements) {
-			output.collect(r);
-		}
+	public long getTimestamp() {
+		return timestamp;
+	}
+
+	@Override
+	public Collection<OUT> get() throws Exception {
+		return resultFuture.get();
+	}
+
+	@Override
+	protected CompletableFuture<Collection<OUT>> getFuture() {
+		return resultFuture;
 	}
 
 	@Override
 	public void complete(Collection<OUT> result) {
-		this.completedElements = Preconditions.checkNotNull(result);
+		resultFuture.complete(result);
+	}
+
+	@Override
+	public void completeExceptionally(Throwable error) {
+		resultFuture.completeExceptionally(error);
 	}
 }

@@ -36,10 +36,10 @@ import java.io.Serializable;
  *
  *		@Override
  *		void onFailure(ActionRequest action, Throwable failure, int restStatusCode, RequestIndexer indexer) throws Throwable {
- *			if (ExceptionUtils.findThrowable(failure, EsRejectedExecutionException.class).isPresent()) {
+ *			if (ExceptionUtils.containsThrowable(failure, EsRejectedExecutionException.class)) {
  *				// full queue; re-add document for indexing
  *				indexer.add(action);
- *			} else if (ExceptionUtils.findThrowable(failure, ElasticsearchParseException.class).isPresent()) {
+ *			} else if (ExceptionUtils.containsThrowable(failure, ElasticsearchParseException.class)) {
  *				// malformed document; simply drop request without failing sink
  *			} else {
  *				// for all other failures, fail the sink;

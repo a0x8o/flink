@@ -22,9 +22,10 @@ import org.apache.flink.table.api.TableException
 import org.apache.flink.table.calcite.{FlinkContext, FlinkTypeFactory}
 import org.apache.flink.table.plan.`trait`.FlinkRelDistribution
 import org.apache.flink.table.plan.nodes.FlinkConventions
-import org.apache.flink.table.plan.nodes.logical.{FlinkLogicalJoin, FlinkLogicalRel, FlinkLogicalSnapshot}
+import org.apache.flink.table.plan.nodes.logical.{FlinkLogicalJoin, FlinkLogicalRel}
 import org.apache.flink.table.plan.nodes.physical.stream.StreamExecJoin
-import org.apache.flink.table.plan.util.{TemporalJoinUtil, WindowJoinUtil}
+import org.apache.flink.table.plan.util.WindowJoinUtil
+
 import org.apache.calcite.plan.RelOptRule.{any, operand}
 import org.apache.calcite.plan.{RelOptRule, RelOptRuleCall, RelTraitSet}
 import org.apache.calcite.rel.RelNode
@@ -46,25 +47,10 @@ class StreamExecJoinRule
 
   override def matches(call: RelOptRuleCall): Boolean = {
     val join: FlinkLogicalJoin = call.rel(0)
-    if (!join.getJoinType.projectsRight) {
-      // SEMI/ANTI join always converts to StreamExecJoin now
-      return true
-    }
-    val left: FlinkLogicalRel = call.rel(1).asInstanceOf[FlinkLogicalRel]
-    val right: FlinkLogicalRel = call.rel(2).asInstanceOf[FlinkLogicalRel]
     val tableConfig = call.getPlanner.getContext.asInstanceOf[FlinkContext].getTableConfig
     val joinRowType = join.getRowType
 
-    if (left.isInstanceOf[FlinkLogicalSnapshot]) {
-      throw new TableException(
-        "Temporal table join only support apply FOR SYSTEM_TIME AS OF on the right table.")
-    }
-
-    // this rule shouldn't match temporal table join
-    if (right.isInstanceOf[FlinkLogicalSnapshot] ||
-      TemporalJoinUtil.containsTemporalJoinCondition(join.getCondition)) {
-      return false
-    }
+    // TODO check LHS or RHS are FlinkLogicalSnapshot
 
     val (windowBounds, remainingPreds) = WindowJoinUtil.extractWindowBoundsFromPredicate(
       join.getCondition,

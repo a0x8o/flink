@@ -20,10 +20,11 @@ package org.apache.flink.table.runtime.stream.sql
 
 import org.apache.flink.streaming.api.scala._
 import org.apache.flink.table.api.scala._
+import org.apache.flink.table.api.TableConfigOptions
 import org.apache.flink.table.dataformat.BaseRow
 import org.apache.flink.table.runtime.utils.{StreamingTestBase, TestingAppendBaseRowSink}
-import org.apache.flink.table.types.logical.IntType
 import org.apache.flink.table.typeutils.BaseRowTypeInfo
+import org.apache.flink.table.`type`.InternalTypes.INT
 
 import org.junit.Assert._
 import org.junit.Test
@@ -32,10 +33,11 @@ class ValuesITCase extends StreamingTestBase {
 
   @Test
   def testValues(): Unit = {
+    tEnv.getConfig.getConf.setBoolean(TableConfigOptions.SQL_EXEC_SOURCE_VALUES_INPUT_ENABLED, true)
 
     val sqlQuery = "SELECT * FROM (VALUES (1, 2, 3)) T(a, b, c)"
 
-    val outputType = new BaseRowTypeInfo(new IntType(), new IntType(), new IntType())
+    val outputType = new BaseRowTypeInfo(INT, INT, INT)
 
     val result = tEnv.sqlQuery(sqlQuery).toAppendStream[BaseRow]
     val sink = new TestingAppendBaseRowSink(outputType)

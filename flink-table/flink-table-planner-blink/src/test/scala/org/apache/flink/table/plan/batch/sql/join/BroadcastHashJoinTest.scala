@@ -18,7 +18,7 @@
 
 package org.apache.flink.table.plan.batch.sql.join
 
-import org.apache.flink.table.api.{OptimizerConfigOptions, ExecutionConfigOptions, TableException}
+import org.apache.flink.table.api.{PlannerConfigOptions, TableConfigOptions, TableException}
 
 import org.junit.{Before, Test}
 
@@ -26,11 +26,18 @@ class BroadcastHashJoinTest extends JoinTestBase {
 
   @Before
   def before(): Unit = {
-    util.tableEnv.getConfig.getConfiguration.setLong(
-      OptimizerConfigOptions.SQL_OPTIMIZER_BROADCAST_JOIN_THRESHOLD, Long.MaxValue)
-    util.tableEnv.getConfig.getConfiguration.setString(
-      ExecutionConfigOptions.SQL_EXEC_DISABLED_OPERATORS,
+    util.tableEnv.getConfig.getConf.setLong(
+      PlannerConfigOptions.SQL_OPTIMIZER_HASH_JOIN_BROADCAST_THRESHOLD, Long.MaxValue)
+    util.tableEnv.getConfig.getConf.setString(
+      TableConfigOptions.SQL_EXEC_DISABLED_OPERATORS,
       "SortMergeJoin, NestedLoopJoin, ShuffleHashJoin")
+  }
+
+  @Test
+  override def testJoinNonMatchingKeyTypes(): Unit = {
+    thrown.expect(classOf[TableException])
+    thrown.expectMessage("Equality join predicate on incompatible types")
+    super.testJoinNonMatchingKeyTypes()
   }
 
   @Test
@@ -38,6 +45,13 @@ class BroadcastHashJoinTest extends JoinTestBase {
     thrown.expect(classOf[TableException])
     thrown.expectMessage("Cannot generate a valid execution plan for the given query")
     super.testInnerJoinWithoutJoinPred()
+  }
+
+  @Test
+  override def testInnerJoinWithNonEquiPred(): Unit = {
+    thrown.expect(classOf[TableException])
+    thrown.expectMessage("Cannot generate a valid execution plan for the given query")
+    super.testInnerJoinWithNonEquiPred()
   }
 
   @Test
@@ -115,13 +129,6 @@ class BroadcastHashJoinTest extends JoinTestBase {
     thrown.expect(classOf[TableException])
     thrown.expectMessage("Cannot generate a valid execution plan for the given query")
     super.testFullOuterJoinOnFalse()
-  }
-
-  @Test
-  override def testFullOuterWithUsing(): Unit = {
-    thrown.expect(classOf[TableException])
-    thrown.expectMessage("Cannot generate a valid execution plan for the given query")
-    super.testFullOuterWithUsing()
   }
 
   @Test

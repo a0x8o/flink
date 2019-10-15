@@ -17,10 +17,10 @@
  */
 package org.apache.flink.table.plan.nodes.physical.stream
 
-import org.apache.flink.api.dag.Transformation
+import org.apache.flink.table.plan.util.SortUtil
 import org.apache.flink.streaming.api.operators.KeyedProcessOperator
-import org.apache.flink.streaming.api.transformations.OneInputTransformation
-import org.apache.flink.table.api.TableException
+import org.apache.flink.streaming.api.transformations.{OneInputTransformation, StreamTransformation}
+import org.apache.flink.table.api.{StreamTableEnvironment, TableConfigOptions, TableException}
 import org.apache.flink.table.calcite.FlinkTypeFactory
 import org.apache.flink.table.codegen.EqualiserCodeGenerator
 import org.apache.flink.table.codegen.sort.ComparatorCodeGenerator
@@ -28,11 +28,9 @@ import org.apache.flink.table.dataformat.BaseRow
 import org.apache.flink.table.plan.nodes.exec.{ExecNode, StreamExecNode}
 import org.apache.flink.table.plan.rules.physical.stream.StreamExecRetractionRules
 import org.apache.flink.table.plan.util.RelExplainUtil._
-import org.apache.flink.table.plan.util.{RelExplainUtil, SortUtil}
-import org.apache.flink.table.planner.StreamPlanner
+import org.apache.flink.table.plan.util.RelExplainUtil
 import org.apache.flink.table.runtime.keyselector.NullBinaryRowKeySelector
 import org.apache.flink.table.runtime.rank.{AppendOnlyTopNFunction, ConstantRankRange, RankType, RetractableTopNFunction}
-import org.apache.flink.table.typeutils.BaseRowTypeInfo
 
 import org.apache.calcite.plan.{RelOptCluster, RelTraitSet}
 import org.apache.calcite.rel._
@@ -94,26 +92,25 @@ class StreamExecLimit(
 
   //~ ExecNode methods -----------------------------------------------------------
 
-  override def getInputNodes: util.List[ExecNode[StreamPlanner, _]] = {
-    List(getInput.asInstanceOf[ExecNode[StreamPlanner, _]])
+  override def getInputNodes: util.List[ExecNode[StreamTableEnvironment, _]] = {
+    List(getInput.asInstanceOf[ExecNode[StreamTableEnvironment, _]])
   }
 
   override def replaceInputNode(
       ordinalInParent: Int,
-      newInputNode: ExecNode[StreamPlanner, _]): Unit = {
+      newInputNode: ExecNode[StreamTableEnvironment, _]): Unit = {
     replaceInput(ordinalInParent, newInputNode.asInstanceOf[RelNode])
   }
 
   override protected def translateToPlanInternal(
-      planner: StreamPlanner): Transformation[BaseRow] = {
+      tableEnv: StreamTableEnvironment): StreamTransformation[BaseRow] = {
     if (fetch == null) {
       throw new TableException(
         "FETCH is missed, which on streaming table is not supported currently.")
     }
-    val inputRowTypeInfo = BaseRowTypeInfo.of(
-      FlinkTypeFactory.toLogicalRowType(getInput.getRowType))
+    val inputRowTypeInfo = FlinkTypeFactory.toInternalRowType(getInput.getRowType).toTypeInfo
     val generateRetraction = StreamExecRetractionRules.isAccRetract(this)
-    val tableConfig = planner.getTableConfig
+    val tableConfig = tableEnv.getConfig
     val minIdleStateRetentionTime = tableConfig.getMinIdleStateRetentionTime
     val maxIdleStateRetentionTime = tableConfig.getMaxIdleStateRetentionTime
 
@@ -127,7 +124,7 @@ class StreamExecLimit(
       tableConfig, "AlwaysEqualsComparator", Array(), Array(), Array(), Array())
 
     val processFunction = if (generateRetraction) {
-      val cacheSize = tableConfig.getConfiguration.getLong(StreamExecRank.SQL_EXEC_TOPN_CACHE_SIZE)
+      val cacheSize = tableConfig.getConf.getLong(TableConfigOptions.SQL_EXEC_TOPN_CACHE_SIZE)
       new AppendOnlyTopNFunction(
         minIdleStateRetentionTime,
         maxIdleStateRetentionTime,
@@ -140,7 +137,7 @@ class StreamExecLimit(
         outputRankNumber,
         cacheSize)
     } else {
-      val equaliserCodeGen = new EqualiserCodeGenerator(inputRowTypeInfo.getLogicalTypes)
+      val equaliserCodeGen = new EqualiserCodeGenerator(inputRowTypeInfo.getInternalTypes)
       val generatedEqualiser = equaliserCodeGen.generateRecordEqualiser("LimitValueEqualiser")
       new RetractableTopNFunction(
         minIdleStateRetentionTime,
@@ -157,23 +154,19 @@ class StreamExecLimit(
     val operator = new KeyedProcessOperator(processFunction)
     processFunction.setKeyContext(operator)
 
-    val inputTransform = getInputNodes.get(0).translateToPlan(planner)
-      .asInstanceOf[Transformation[BaseRow]]
+    val inputTransform = getInputNodes.get(0).translateToPlan(tableEnv)
+      .asInstanceOf[StreamTransformation[BaseRow]]
 
-    val outputRowTypeInfo = BaseRowTypeInfo.of(
-      FlinkTypeFactory.toLogicalRowType(getRowType))
+    val outputRowTypeInfo = FlinkTypeFactory.toInternalRowType(getRowType).toTypeInfo
 
-    // as input node is singleton exchange, its parallelism is 1.
+    // sets parallelism to 1 since StreamExecLimit could only work in global mode.
     val ret = new OneInputTransformation(
       inputTransform,
       s"Limit(offset: $limitStart, fetch: ${fetchToString(fetch)})",
       operator,
       outputRowTypeInfo,
-      getResource.getParallelism)
-
-    if (getResource.getMaxParallelism > 0) {
-      ret.setMaxParallelism(getResource.getMaxParallelism)
-    }
+      1)
+    ret.setMaxParallelism(1)
 
     val selector = NullBinaryRowKeySelector.INSTANCE
     ret.setStateKeySelector(selector)

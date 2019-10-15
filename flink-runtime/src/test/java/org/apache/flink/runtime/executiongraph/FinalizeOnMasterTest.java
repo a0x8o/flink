@@ -19,7 +19,6 @@
 package org.apache.flink.runtime.executiongraph;
 
 import org.apache.flink.api.common.JobID;
-import org.apache.flink.runtime.concurrent.ComponentMainThreadExecutorServiceAdapter;
 import org.apache.flink.runtime.jobgraph.JobStatus;
 import org.apache.flink.runtime.jobgraph.JobVertex;
 import org.apache.flink.runtime.testtasks.NoOpInvokable;
@@ -55,7 +54,6 @@ public class FinalizeOnMasterTest extends TestLogger {
 		vertex2.setParallelism(2);
 
 		final ExecutionGraph eg = createSimpleTestGraph(jid, vertex1, vertex2);
-		eg.start(ComponentMainThreadExecutorServiceAdapter.forMainThread());
 		eg.scheduleForExecution();
 		assertEquals(JobStatus.RUNNING, eg.getState());
 		
@@ -80,7 +78,7 @@ public class FinalizeOnMasterTest extends TestLogger {
 		vertex.setParallelism(1);
 
 		final ExecutionGraph eg = createSimpleTestGraph(jid, vertex);
-		eg.start(ComponentMainThreadExecutorServiceAdapter.forMainThread());
+		eg.start(TestingComponentMainThreadExecutorServiceAdapter.forMainThread());
 		eg.scheduleForExecution();
 		assertEquals(JobStatus.RUNNING, eg.getState());
 

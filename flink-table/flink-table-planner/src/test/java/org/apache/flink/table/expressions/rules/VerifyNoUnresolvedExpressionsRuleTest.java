@@ -18,10 +18,11 @@
 
 package org.apache.flink.table.expressions.rules;
 
-import org.apache.flink.table.api.DataTypes;
+import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.table.api.TableException;
 import org.apache.flink.table.expressions.Expression;
 import org.apache.flink.table.expressions.FieldReferenceExpression;
+import org.apache.flink.table.expressions.UnresolvedReferenceExpression;
 import org.apache.flink.table.expressions.rules.ResolverRule.ResolutionContext;
 
 import org.junit.Test;
@@ -30,14 +31,14 @@ import java.util.List;
 
 import static java.util.Arrays.asList;
 import static java.util.Collections.singletonList;
+import static org.apache.flink.table.expressions.ApiExpressionUtils.call;
 import static org.apache.flink.table.expressions.ApiExpressionUtils.lookupCall;
-import static org.apache.flink.table.expressions.ApiExpressionUtils.unresolvedCall;
 import static org.apache.flink.table.expressions.ApiExpressionUtils.unresolvedRef;
 import static org.apache.flink.table.expressions.ApiExpressionUtils.valueLiteral;
-import static org.apache.flink.table.functions.BuiltInFunctionDefinitions.AS;
-import static org.apache.flink.table.functions.BuiltInFunctionDefinitions.COUNT;
-import static org.apache.flink.table.functions.BuiltInFunctionDefinitions.FLATTEN;
-import static org.apache.flink.table.functions.BuiltInFunctionDefinitions.OVER;
+import static org.apache.flink.table.expressions.BuiltInFunctionDefinitions.AS;
+import static org.apache.flink.table.expressions.BuiltInFunctionDefinitions.COUNT;
+import static org.apache.flink.table.expressions.BuiltInFunctionDefinitions.FLATTEN;
+import static org.apache.flink.table.expressions.BuiltInFunctionDefinitions.OVER;
 import static org.mockito.Mockito.mock;
 
 /**
@@ -53,22 +54,22 @@ public class VerifyNoUnresolvedExpressionsRuleTest {
 	public void testUnresolvedReferenceIsCatched() {
 		List<Expression> expressions = asList(
 			unresolvedRef("field"),
-			new FieldReferenceExpression("resolvedField", DataTypes.INT(), 0, 0));
+			new FieldReferenceExpression("resolvedField", Types.INT, 0, 0));
 		resolverRule.apply(expressions, resolutionContext);
 	}
 
 	@Test(expected = TableException.class)
 	public void testNestedUnresolvedReferenceIsCatched() {
 		List<Expression> expressions = asList(
-			unresolvedCall(AS, unresolvedRef("field"), valueLiteral("fieldAlias")),
-			new FieldReferenceExpression("resolvedField", DataTypes.INT(), 0, 0));
+			call(AS, unresolvedRef("field"), valueLiteral("fieldAlias")),
+			new FieldReferenceExpression("resolvedField", Types.INT, 0, 0));
 		resolverRule.apply(expressions, resolutionContext);
 	}
 
 	@Test(expected = TableException.class)
 	public void testFlattenCallIsCatched() {
 		List<Expression> expressions = singletonList(
-			unresolvedCall(FLATTEN, new FieldReferenceExpression("resolvedField", DataTypes.INT(), 0, 0))
+			call(FLATTEN, new FieldReferenceExpression("resolvedField", Types.INT, 0, 0))
 		);
 		resolverRule.apply(expressions, resolutionContext);
 	}
@@ -76,9 +77,9 @@ public class VerifyNoUnresolvedExpressionsRuleTest {
 	@Test(expected = TableException.class)
 	public void testUnresolvedOverWindowIsCatched() {
 		List<Expression> expressions = singletonList(
-			unresolvedCall(OVER,
-				unresolvedCall(COUNT, new FieldReferenceExpression("resolvedField", DataTypes.INT(), 0, 0)),
-				unresolvedRef("w")
+			call(OVER,
+				call(COUNT, new FieldReferenceExpression("resolvedField", Types.INT, 0, 0)),
+				new UnresolvedReferenceExpression("w")
 			)
 		);
 		resolverRule.apply(expressions, resolutionContext);
@@ -87,7 +88,7 @@ public class VerifyNoUnresolvedExpressionsRuleTest {
 	@Test(expected = TableException.class)
 	public void testLookupCallIsCatched() {
 		List<Expression> expressions = singletonList(
-			lookupCall("unresolvedCall", new FieldReferenceExpression("resolvedField", DataTypes.INT(), 0, 0))
+			lookupCall("unresolvedCall", new FieldReferenceExpression("resolvedField", Types.INT, 0, 0))
 		);
 		resolverRule.apply(expressions, resolutionContext);
 	}

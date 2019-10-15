@@ -18,12 +18,15 @@
 
 package org.apache.flink.table.functions.aggfunctions;
 
-import org.apache.flink.table.api.DataTypes;
+import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.table.expressions.Expression;
 import org.apache.flink.table.expressions.UnresolvedReferenceExpression;
-import org.apache.flink.table.types.DataType;
-import org.apache.flink.table.types.logical.DecimalType;
-import org.apache.flink.table.types.logical.TimeType;
+import org.apache.flink.table.type.InternalType;
+import org.apache.flink.table.type.InternalTypes;
+import org.apache.flink.table.type.TypeConverters;
+import org.apache.flink.table.typeutils.BinaryStringTypeInfo;
+import org.apache.flink.table.typeutils.DecimalTypeInfo;
 
 import static org.apache.flink.table.expressions.ExpressionBuilder.equalTo;
 import static org.apache.flink.table.expressions.ExpressionBuilder.greaterThan;
@@ -34,7 +37,6 @@ import static org.apache.flink.table.expressions.ExpressionBuilder.nullOf;
 import static org.apache.flink.table.expressions.ExpressionBuilder.or;
 import static org.apache.flink.table.expressions.ExpressionBuilder.plus;
 import static org.apache.flink.table.expressions.ExpressionBuilder.throwException;
-import static org.apache.flink.table.expressions.utils.ApiExpressionUtils.unresolvedRef;
 
 /**
  * Base class for built-in single value aggregate function.
@@ -42,11 +44,11 @@ import static org.apache.flink.table.expressions.utils.ApiExpressionUtils.unreso
 public abstract class SingleValueAggFunction extends DeclarativeAggregateFunction {
 
 	private static final long serialVersionUID = 8850662568341069949L;
-	private static final Expression ZERO = literal(0, DataTypes.INT());
-	private static final Expression ONE = literal(1, DataTypes.INT());
+	private static final Expression ZERO = literal(0, Types.INT);
+	private static final Expression ONE = literal(1, Types.INT);
 	private static final String ERROR_MSG = "SingleValueAggFunction received more than one element.";
-	private UnresolvedReferenceExpression value = unresolvedRef("value");
-	private UnresolvedReferenceExpression count = unresolvedRef("count");
+	private UnresolvedReferenceExpression value = new UnresolvedReferenceExpression("value");
+	private UnresolvedReferenceExpression count = new UnresolvedReferenceExpression("count");
 
 	@Override
 	public int operandCount() {
@@ -59,10 +61,10 @@ public abstract class SingleValueAggFunction extends DeclarativeAggregateFunctio
 	}
 
 	@Override
-	public DataType[] getAggBufferTypes() {
-		return new DataType[]{
-			getResultType(),
-			DataTypes.INT()};
+	public InternalType[] getAggBufferTypes() {
+		return new InternalType[]{
+			TypeConverters.createInternalTypeFromTypeInfo(getResultType()),
+			InternalTypes.INT};
 	}
 
 	@Override
@@ -126,8 +128,8 @@ public abstract class SingleValueAggFunction extends DeclarativeAggregateFunctio
 		private static final long serialVersionUID = 320495723666949978L;
 
 		@Override
-		public DataType getResultType() {
-			return DataTypes.TINYINT();
+		public TypeInformation getResultType() {
+			return Types.BYTE;
 		}
 	}
 
@@ -139,8 +141,8 @@ public abstract class SingleValueAggFunction extends DeclarativeAggregateFunctio
 		private static final long serialVersionUID = 320495723666949978L;
 
 		@Override
-		public DataType getResultType() {
-			return DataTypes.SMALLINT();
+		public TypeInformation getResultType() {
+			return Types.SHORT;
 		}
 	}
 
@@ -152,8 +154,8 @@ public abstract class SingleValueAggFunction extends DeclarativeAggregateFunctio
 		private static final long serialVersionUID = 320495723666949978L;
 
 		@Override
-		public DataType getResultType() {
-			return DataTypes.INT();
+		public TypeInformation getResultType() {
+			return Types.INT;
 		}
 	}
 
@@ -165,8 +167,8 @@ public abstract class SingleValueAggFunction extends DeclarativeAggregateFunctio
 		private static final long serialVersionUID = 320495723666949978L;
 
 		@Override
-		public DataType getResultType() {
-			return DataTypes.BIGINT();
+		public TypeInformation getResultType() {
+			return Types.LONG;
 		}
 	}
 
@@ -178,8 +180,8 @@ public abstract class SingleValueAggFunction extends DeclarativeAggregateFunctio
 		private static final long serialVersionUID = 320495723666949978L;
 
 		@Override
-		public DataType getResultType() {
-			return DataTypes.FLOAT();
+		public TypeInformation getResultType() {
+			return Types.FLOAT;
 		}
 	}
 
@@ -191,8 +193,8 @@ public abstract class SingleValueAggFunction extends DeclarativeAggregateFunctio
 		private static final long serialVersionUID = 320495723666949978L;
 
 		@Override
-		public DataType getResultType() {
-			return DataTypes.DOUBLE();
+		public TypeInformation getResultType() {
+			return Types.DOUBLE;
 		}
 	}
 
@@ -204,8 +206,8 @@ public abstract class SingleValueAggFunction extends DeclarativeAggregateFunctio
 		private static final long serialVersionUID = 320495723666949978L;
 
 		@Override
-		public DataType getResultType() {
-			return DataTypes.BOOLEAN();
+		public TypeInformation getResultType() {
+			return Types.BOOLEAN;
 		}
 	}
 
@@ -216,15 +218,15 @@ public abstract class SingleValueAggFunction extends DeclarativeAggregateFunctio
 
 		private static final long serialVersionUID = 320495723666949978L;
 
-		private final DecimalType type;
+		private final DecimalTypeInfo type;
 
-		public DecimalSingleValueAggFunction(DecimalType type) {
+		public DecimalSingleValueAggFunction(DecimalTypeInfo type) {
 			this.type = type;
 		}
 
 		@Override
-		public DataType getResultType() {
-			return DataTypes.DECIMAL(type.getPrecision(), type.getScale());
+		public TypeInformation getResultType() {
+			return type;
 		}
 	}
 
@@ -236,8 +238,8 @@ public abstract class SingleValueAggFunction extends DeclarativeAggregateFunctio
 		private static final long serialVersionUID = 320495723666949978L;
 
 		@Override
-		public DataType getResultType() {
-			return DataTypes.STRING();
+		public TypeInformation getResultType() {
+			return BinaryStringTypeInfo.INSTANCE;
 		}
 	}
 
@@ -249,8 +251,8 @@ public abstract class SingleValueAggFunction extends DeclarativeAggregateFunctio
 		private static final long serialVersionUID = 320495723666949978L;
 
 		@Override
-		public DataType getResultType() {
-			return DataTypes.DATE();
+		public TypeInformation getResultType() {
+			return Types.SQL_DATE;
 		}
 	}
 
@@ -262,8 +264,8 @@ public abstract class SingleValueAggFunction extends DeclarativeAggregateFunctio
 		private static final long serialVersionUID = 320495723666949978L;
 
 		@Override
-		public DataType getResultType() {
-			return DataTypes.TIME(TimeType.DEFAULT_PRECISION);
+		public TypeInformation getResultType() {
+			return Types.SQL_TIME;
 		}
 	}
 
@@ -275,8 +277,8 @@ public abstract class SingleValueAggFunction extends DeclarativeAggregateFunctio
 		private static final long serialVersionUID = 320495723666949978L;
 
 		@Override
-		public DataType getResultType() {
-			return DataTypes.TIMESTAMP(3);
+		public TypeInformation getResultType() {
+			return Types.SQL_TIMESTAMP;
 		}
 	}
 }

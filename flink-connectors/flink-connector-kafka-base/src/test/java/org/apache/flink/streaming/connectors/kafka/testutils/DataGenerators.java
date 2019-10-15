@@ -24,12 +24,12 @@ import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
 import org.apache.flink.api.common.serialization.TypeInformationSerializationSchema;
 import org.apache.flink.api.common.typeinfo.BasicTypeInfo;
-import org.apache.flink.api.dag.Transformation;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.source.RichParallelSourceFunction;
-import org.apache.flink.streaming.api.graph.StreamGraph;
+import org.apache.flink.streaming.api.operators.ChainingStrategy;
 import org.apache.flink.streaming.api.operators.StreamSink;
+import org.apache.flink.streaming.api.transformations.StreamTransformation;
 import org.apache.flink.streaming.connectors.kafka.FlinkKafkaProducerBase;
 import org.apache.flink.streaming.connectors.kafka.KafkaTestEnvironment;
 import org.apache.flink.streaming.connectors.kafka.internals.KeyedSerializationSchemaWrapper;
@@ -55,7 +55,8 @@ public class DataGenerators {
 			final int numElements,
 			final boolean randomizeOrder) throws Exception {
 		env.setParallelism(numPartitions);
-				env.setRestartStrategy(RestartStrategies.noRestart());
+		env.getConfig().disableSysoutLogging();
+		env.setRestartStrategy(RestartStrategies.noRestart());
 
 		DataStream<Integer> stream = env.addSource(
 				new RichParallelSourceFunction<Integer>() {
@@ -147,7 +148,7 @@ public class DataGenerators {
 			try {
 				Properties producerProperties = FlinkKafkaProducerBase.getPropertiesFromBrokerList(server.getBrokerConnectionString());
 				producerProperties.setProperty("retries", "3");
-				Transformation<String> mockTransform = new MockTransformation();
+				StreamTransformation<String> mockTransform = new MockStreamTransformation();
 				DataStream<String> stream = new DataStream<>(new DummyStreamExecutionEnvironment(), mockTransform);
 
 				StreamSink<String> sink = server.getProducerSink(
@@ -200,13 +201,18 @@ public class DataGenerators {
 			return this.error;
 		}
 
-		private static class MockTransformation extends Transformation<String> {
-			public MockTransformation() {
+		private static class MockStreamTransformation extends StreamTransformation<String> {
+			public MockStreamTransformation() {
 				super("MockTransform", BasicTypeInfo.STRING_TYPE_INFO, 1);
 			}
 
 			@Override
-			public Collection<Transformation<?>> getTransitivePredecessors() {
+			public void setChainingStrategy(ChainingStrategy strategy) {
+
+			}
+
+			@Override
+			public Collection<StreamTransformation<?>> getTransitivePredecessors() {
 				return null;
 			}
 		}
@@ -214,7 +220,7 @@ public class DataGenerators {
 		private static class DummyStreamExecutionEnvironment extends StreamExecutionEnvironment {
 
 			@Override
-			public JobExecutionResult execute(StreamGraph streamGraph) throws Exception {
+			public JobExecutionResult execute(String jobName) throws Exception {
 				return null;
 			}
 		}

@@ -20,7 +20,6 @@ package org.apache.flink.table.catalog;
 
 import org.apache.flink.util.StringUtils;
 
-import java.io.Serializable;
 import java.util.Objects;
 
 import static org.apache.flink.util.Preconditions.checkArgument;
@@ -28,7 +27,7 @@ import static org.apache.flink.util.Preconditions.checkArgument;
 /**
  * A database name and object (table/view/function) name combo in a catalog.
  */
-public class ObjectPath implements Serializable {
+public class ObjectPath {
 	private final String databaseName;
 	private final String objectName;
 
@@ -90,5 +89,4 @@ public class ObjectPath implements Serializable {
 	public String toString() {
 		return String.format("%s.%s", databaseName, objectName);
 	}
-
 }

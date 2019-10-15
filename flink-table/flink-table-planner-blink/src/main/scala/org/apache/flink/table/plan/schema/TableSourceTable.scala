@@ -18,45 +18,17 @@
 
 package org.apache.flink.table.plan.schema
 
-import org.apache.calcite.rel.`type`.{RelDataType, RelDataTypeFactory}
-import org.apache.flink.table.calcite.FlinkTypeFactory
 import org.apache.flink.table.plan.stats.FlinkStatistic
-import org.apache.flink.table.sources.{TableSource, TableSourceUtil}
+import org.apache.flink.table.sources.TableSource
 
 /**
   * Abstract class which define the interfaces required to convert a [[TableSource]] to
   * a Calcite Table
-  *
-  * @param tableSource The [[TableSource]] for which is converted to a Calcite Table.
-  * @param isStreamingMode A flag that tells if the current table is in stream mode.
-  * @param statistic The table statistics.
   */
-class TableSourceTable[T](
+abstract class TableSourceTable[T](
     val tableSource: TableSource[T],
-    val isStreamingMode: Boolean,
-    val statistic: FlinkStatistic)
+    val statistic: FlinkStatistic = FlinkStatistic.UNKNOWN)
   extends FlinkTable {
-
-  // TODO implements this
-  // TableSourceUtil.validateTableSource(tableSource)
-
-  override def getRowType(typeFactory: RelDataTypeFactory): RelDataType = {
-    TableSourceUtil.getRelDataType(
-      tableSource,
-      None,
-      streaming = isStreamingMode,
-      typeFactory.asInstanceOf[FlinkTypeFactory])
-  }
-
-  /**
-    * Creates a copy of this table, changing statistic.
-    *
-    * @param statistic A new FlinkStatistic.
-    * @return Copy of this table, substituting statistic.
-    */
-  override def copy(statistic: FlinkStatistic): TableSourceTable[T] = {
-    new TableSourceTable(tableSource, isStreamingMode, statistic)
-  }
 
   /**
     * Returns statistics of current table.
@@ -69,7 +41,5 @@ class TableSourceTable[T](
     * @param tableSource tableSource to replace.
     * @return new TableSourceTable
     */
-  def replaceTableSource(tableSource: TableSource[T]): TableSourceTable[T] = {
-    new TableSourceTable[T](tableSource, isStreamingMode, statistic)
-  }
+  def replaceTableSource(tableSource: TableSource[T]): TableSourceTable[T]
 }

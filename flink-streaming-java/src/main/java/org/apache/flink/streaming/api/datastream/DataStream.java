@@ -36,7 +36,6 @@ import org.apache.flink.api.common.state.MapStateDescriptor;
 import org.apache.flink.api.common.typeinfo.BasicArrayTypeInfo;
 import org.apache.flink.api.common.typeinfo.PrimitiveArrayTypeInfo;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
-import org.apache.flink.api.dag.Transformation;
 import org.apache.flink.api.java.Utils;
 import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.api.java.io.CsvOutputFormat;
@@ -60,16 +59,14 @@ import org.apache.flink.streaming.api.functions.sink.SocketClientSink;
 import org.apache.flink.streaming.api.functions.timestamps.AscendingTimestampExtractor;
 import org.apache.flink.streaming.api.functions.timestamps.BoundedOutOfOrdernessTimestampExtractor;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
-import org.apache.flink.streaming.api.operators.OneInputStreamOperatorFactory;
 import org.apache.flink.streaming.api.operators.ProcessOperator;
-import org.apache.flink.streaming.api.operators.SimpleOperatorFactory;
 import org.apache.flink.streaming.api.operators.StreamFilter;
 import org.apache.flink.streaming.api.operators.StreamFlatMap;
 import org.apache.flink.streaming.api.operators.StreamMap;
-import org.apache.flink.streaming.api.operators.StreamOperatorFactory;
 import org.apache.flink.streaming.api.operators.StreamSink;
 import org.apache.flink.streaming.api.transformations.OneInputTransformation;
 import org.apache.flink.streaming.api.transformations.PartitionTransformation;
+import org.apache.flink.streaming.api.transformations.StreamTransformation;
 import org.apache.flink.streaming.api.transformations.UnionTransformation;
 import org.apache.flink.streaming.api.windowing.assigners.GlobalWindows;
 import org.apache.flink.streaming.api.windowing.assigners.SlidingEventTimeWindows;
@@ -117,7 +114,7 @@ public class DataStream<T> {
 
 	protected final StreamExecutionEnvironment environment;
 
-	protected final Transformation<T> transformation;
+	protected final StreamTransformation<T> transformation;
 
 	/**
 	 * Create a new {@link DataStream} in the given execution environment with
@@ -125,7 +122,7 @@ public class DataStream<T> {
 	 *
 	 * @param environment The StreamExecutionEnvironment
 	 */
-	public DataStream(StreamExecutionEnvironment environment, Transformation<T> transformation) {
+	public DataStream(StreamExecutionEnvironment environment, StreamTransformation<T> transformation) {
 		this.environment = Preconditions.checkNotNull(environment, "Execution Environment must not be null.");
 		this.transformation = Preconditions.checkNotNull(transformation, "Stream Transformation must not be null.");
 	}
@@ -213,7 +210,7 @@ public class DataStream<T> {
 	 */
 	@SafeVarargs
 	public final DataStream<T> union(DataStream<T>... streams) {
-		List<Transformation<T>> unionedTransforms = new ArrayList<>();
+		List<StreamTransformation<T>> unionedTransforms = new ArrayList<>();
 		unionedTransforms.add(this.transformation);
 
 		for (DataStream<T> newStream : streams) {
@@ -1175,41 +1172,9 @@ public class DataStream<T> {
 	 * @param <R>
 	 *            type of the return stream
 	 * @return the data stream constructed
-	 * @see #transform(String, TypeInformation, OneInputStreamOperatorFactory)
 	 */
 	@PublicEvolving
-	public <R> SingleOutputStreamOperator<R> transform(
-			String operatorName,
-			TypeInformation<R> outTypeInfo,
-			OneInputStreamOperator<T, R> operator) {
-
-		return doTransform(operatorName, outTypeInfo, SimpleOperatorFactory.of(operator));
-	}
-
-	/**
-	 * Method for passing user defined operators created by the given factory along with the type information that will
-	 * transform the DataStream.
-	 *
-	 * <p>This method uses the rather new operator factories and should only be used when custom factories are needed.
-	 *
-	 * @param operatorName name of the operator, for logging purposes
-	 * @param outTypeInfo the output type of the operator
-	 * @param operatorFactory the factory for the operator.
-	 * @param <R> type of the return stream
-	 * @return the data stream constructed.
-	 */
-	@PublicEvolving
-	public <R> SingleOutputStreamOperator<R> transform(
-			String operatorName,
-			TypeInformation<R> outTypeInfo,
-			OneInputStreamOperatorFactory<T, R> operatorFactory) {
-		return doTransform(operatorName, outTypeInfo, operatorFactory);
-	}
-
-	private <R> SingleOutputStreamOperator<R> doTransform(
-			String operatorName,
-			TypeInformation<R> outTypeInfo,
-			StreamOperatorFactory<R> operatorFactory) {
+	public <R> SingleOutputStreamOperator<R> transform(String operatorName, TypeInformation<R> outTypeInfo, OneInputStreamOperator<T, R> operator) {
 
 		// read the output type of the input Transform to coax out errors about MissingTypeInfo
 		transformation.getOutputType();
@@ -1217,11 +1182,11 @@ public class DataStream<T> {
 		OneInputTransformation<T, R> resultTransform = new OneInputTransformation<>(
 				this.transformation,
 				operatorName,
-				operatorFactory,
+				operator,
 				outTypeInfo,
 				environment.getParallelism());
 
-		@SuppressWarnings({"unchecked", "rawtypes"})
+		@SuppressWarnings({ "unchecked", "rawtypes" })
 		SingleOutputStreamOperator<R> returnStream = new SingleOutputStreamOperator(environment, resultTransform);
 
 		getExecutionEnvironment().addOperator(resultTransform);
@@ -1268,13 +1233,13 @@ public class DataStream<T> {
 	}
 
 	/**
-	 * Returns the {@link Transformation} that represents the operation that logically creates
+	 * Returns the {@link StreamTransformation} that represents the operation that logically creates
 	 * this {@link DataStream}.
 	 *
 	 * @return The Transformation
 	 */
 	@Internal
-	public Transformation<T> getTransformation() {
+	public StreamTransformation<T> getTransformation() {
 		return transformation;
 	}
 }

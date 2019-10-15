@@ -51,14 +51,14 @@ public class EmbeddedHaServices extends AbstractNonHaServices {
 
 	private final HashMap<JobID, EmbeddedLeaderService> jobManagerLeaderServices;
 
-	private final EmbeddedLeaderService clusterRestEndpointLeaderService;
+	private final EmbeddedLeaderService webMonitorLeaderService;
 
 	public EmbeddedHaServices(Executor executor) {
 		this.executor = Preconditions.checkNotNull(executor);
 		this.resourceManagerLeaderService = createEmbeddedLeaderService(executor);
 		this.dispatcherLeaderService = createEmbeddedLeaderService(executor);
 		this.jobManagerLeaderServices = new HashMap<>();
-		this.clusterRestEndpointLeaderService = createEmbeddedLeaderService(executor);
+		this.webMonitorLeaderService = createEmbeddedLeaderService(executor);
 	}
 
 	// ------------------------------------------------------------------------
@@ -102,8 +102,8 @@ public class EmbeddedHaServices extends AbstractNonHaServices {
 	}
 
 	@Override
-	public LeaderRetrievalService getClusterRestEndpointLeaderRetriever() {
-		return clusterRestEndpointLeaderService.createLeaderRetrievalService();
+	public LeaderRetrievalService getWebMonitorLeaderRetriever() {
+		return webMonitorLeaderService.createLeaderRetrievalService();
 	}
 
 	@Override
@@ -118,8 +118,8 @@ public class EmbeddedHaServices extends AbstractNonHaServices {
 	}
 
 	@Override
-	public LeaderElectionService getClusterRestEndpointLeaderElectionService() {
-		return clusterRestEndpointLeaderService.createLeaderElectionService();
+	public LeaderElectionService getWebMonitorLeaderElectionService() {
+		return webMonitorLeaderService.createLeaderElectionService();
 	}
 
 	// ------------------------------------------------------------------------
@@ -169,7 +169,7 @@ public class EmbeddedHaServices extends AbstractNonHaServices {
 
 				resourceManagerLeaderService.shutdown();
 
-				clusterRestEndpointLeaderService.shutdown();
+				webMonitorLeaderService.shutdown();
 			}
 
 			super.close();

@@ -32,10 +32,8 @@ import org.apache.flink.table.runtime.util.BinaryRowKeySelector;
 import org.apache.flink.table.runtime.window.assigners.MergingWindowAssigner;
 import org.apache.flink.table.runtime.window.assigners.WindowAssigner;
 import org.apache.flink.table.runtime.window.triggers.Trigger;
-import org.apache.flink.table.types.logical.BigIntType;
-import org.apache.flink.table.types.logical.IntType;
-import org.apache.flink.table.types.logical.LogicalType;
-import org.apache.flink.table.types.logical.VarCharType;
+import org.apache.flink.table.type.InternalType;
+import org.apache.flink.table.type.InternalTypes;
 
 import org.junit.Rule;
 import org.junit.Test;
@@ -168,13 +166,13 @@ public class WindowOperatorContractTest {
 			NamespaceAggsHandleFunction<W> aggregationsFunction,
 			long allowedLateness) throws Exception {
 
-		LogicalType[] inputTypes = new LogicalType[]{new VarCharType(VarCharType.MAX_LENGTH), new IntType()};
+		InternalType[] inputTypes = new InternalType[]{InternalTypes.STRING, InternalTypes.INT};
 		BinaryRowKeySelector keySelector = new BinaryRowKeySelector(new int[]{0}, inputTypes);
 		TypeInformation<BaseRow> keyType = keySelector.getProducedType();
-		LogicalType[] accTypes = new LogicalType[]{new BigIntType(), new BigIntType()};
-		LogicalType[] windowTypes = new LogicalType[]{new BigIntType(), new BigIntType()};
-		LogicalType[] outputTypeWithoutKeys = new LogicalType[]{
-				new BigIntType(), new BigIntType(), new BigIntType(), new BigIntType()};
+		InternalType[] accTypes = new InternalType[]{InternalTypes.LONG, InternalTypes.LONG};
+		InternalType[] windowTypes = new InternalType[]{InternalTypes.LONG, InternalTypes.LONG};
+		InternalType[] outputTypeWithoutKeys = new InternalType[]{
+				InternalTypes.LONG, InternalTypes.LONG, InternalTypes.LONG, InternalTypes.LONG};
 
 		boolean sendRetraction = allowedLateness > 0;
 

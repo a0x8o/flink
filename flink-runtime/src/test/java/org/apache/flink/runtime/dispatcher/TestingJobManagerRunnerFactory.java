@@ -19,68 +19,75 @@
 package org.apache.flink.runtime.dispatcher;
 
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.runtime.executiongraph.ArchivedExecutionGraph;
 import org.apache.flink.runtime.heartbeat.HeartbeatServices;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.jobgraph.JobGraph;
+import org.apache.flink.runtime.jobmaster.JobManagerRunner;
 import org.apache.flink.runtime.jobmaster.JobManagerSharedServices;
-import org.apache.flink.runtime.jobmaster.TestingJobManagerRunner;
 import org.apache.flink.runtime.jobmaster.factories.JobManagerJobMetricGroupFactory;
 import org.apache.flink.runtime.rpc.FatalErrorHandler;
 import org.apache.flink.runtime.rpc.RpcService;
 
-import javax.annotation.Nonnull;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.BlockingQueue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 /**
- * Testing implementation of {@link JobManagerRunnerFactory} which returns a {@link TestingJobManagerRunner}.
+ * {@link JobManagerRunnerFactory} implementation for
+ * testing purposes.
  */
 class TestingJobManagerRunnerFactory implements JobManagerRunnerFactory {
 
-	private final BlockingQueue<TestingJobManagerRunner> createdJobManagerRunner = new ArrayBlockingQueue<>(16);
+	private final CompletableFuture<JobGraph> jobGraphFuture;
+	private final CompletableFuture<ArchivedExecutionGraph> resultFuture;
+	private final CompletableFuture<Void> terminationFuture;
+	private final AtomicReference<Supplier<Exception>> failJobMasterCreationWith;
 
-	private int numBlockingJobManagerRunners;
-
-	public TestingJobManagerRunnerFactory() {
-		this(0);
+	TestingJobManagerRunnerFactory(
+			CompletableFuture<JobGraph> jobGraphFuture,
+			CompletableFuture<ArchivedExecutionGraph> resultFuture,
+			CompletableFuture<Void> terminationFuture) {
+		this(jobGraphFuture, resultFuture, terminationFuture, new AtomicReference<>());
 	}
 
-	public TestingJobManagerRunnerFactory(int numBlockingJobManagerRunners) {
-		this.numBlockingJobManagerRunners = numBlockingJobManagerRunners;
+	TestingJobManagerRunnerFactory(
+			CompletableFuture<JobGraph> jobGraphFuture,
+			CompletableFuture<ArchivedExecutionGraph> resultFuture,
+			CompletableFuture<Void> terminationFuture,
+			AtomicReference<Supplier<Exception>> failJobMasterCreationWith) {
+		this.jobGraphFuture = jobGraphFuture;
+		this.resultFuture = resultFuture;
+		this.terminationFuture = terminationFuture;
+		this.failJobMasterCreationWith = failJobMasterCreationWith;
 	}
 
 	@Override
-	public TestingJobManagerRunner createJobManagerRunner(
+	public JobManagerRunner createJobManagerRunner(
 			JobGraph jobGraph,
 			Configuration configuration,
 			RpcService rpcService,
 			HighAvailabilityServices highAvailabilityServices,
 			HeartbeatServices heartbeatServices,
-			JobManagerSharedServices jobManagerServices,
+			JobManagerSharedServices jobManagerSharedServices,
 			JobManagerJobMetricGroupFactory jobManagerJobMetricGroupFactory,
 			FatalErrorHandler fatalErrorHandler) throws Exception {
-		final TestingJobManagerRunner testingJobManagerRunner = createTestingJobManagerRunner(jobGraph);
-		createdJobManagerRunner.offer(testingJobManagerRunner);
+		final Supplier<Exception> exceptionSupplier = failJobMasterCreationWith.get();
 
-		return testingJobManagerRunner;
-	}
-
-	@Nonnull
-	private TestingJobManagerRunner createTestingJobManagerRunner(JobGraph jobGraph) {
-		final boolean blockingTermination;
-
-		if (numBlockingJobManagerRunners > 0) {
-			numBlockingJobManagerRunners--;
-			blockingTermination = true;
+		if (exceptionSupplier != null) {
+			throw exceptionSupplier.get();
 		} else {
-			blockingTermination = false;
+			jobGraphFuture.complete(jobGraph);
+
+			final JobManagerRunner mock = mock(JobManagerRunner.class);
+			when(mock.getResultFuture()).thenReturn(resultFuture);
+			when(mock.closeAsync()).thenReturn(terminationFuture);
+			when(mock.getJobGraph()).thenReturn(jobGraph);
+
+			return mock;
 		}
-
-		return new TestingJobManagerRunner(jobGraph.getJobID(), blockingTermination);
-	}
-
-	public TestingJobManagerRunner takeCreatedJobManagerRunner() throws InterruptedException {
-		return createdJobManagerRunner.take();
 	}
 }

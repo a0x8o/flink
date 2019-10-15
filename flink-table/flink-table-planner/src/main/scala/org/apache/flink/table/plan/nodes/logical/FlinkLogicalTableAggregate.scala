@@ -22,23 +22,25 @@ import java.util
 import java.util.{List => JList}
 
 import org.apache.calcite.plan._
-import org.apache.calcite.rel.RelNode
+import org.apache.calcite.rel.`type`.RelDataType
+import org.apache.calcite.rel.{RelNode, SingleRel}
 import org.apache.calcite.rel.convert.ConverterRule
 import org.apache.calcite.rel.core.AggregateCall
 import org.apache.calcite.util.ImmutableBitSet
-import org.apache.flink.table.plan.logical.rel.{LogicalTableAggregate, TableAggregate}
-import org.apache.flink.table.plan.nodes.FlinkConventions
+import org.apache.flink.table.plan.logical.rel.LogicalTableAggregate
+import org.apache.flink.table.plan.nodes.{CommonTableAggregate, FlinkConventions}
 
 class FlinkLogicalTableAggregate(
   cluster: RelOptCluster,
   traitSet: RelTraitSet,
-  input: RelNode,
-  indicator: Boolean,
-  groupSet: ImmutableBitSet,
+  child: RelNode,
+  val indicator: Boolean,
+  val groupSet: ImmutableBitSet,
   groupSets: util.List[ImmutableBitSet],
-  aggCalls: util.List[AggregateCall])
-  extends TableAggregate(cluster, traitSet, input, indicator, groupSet, groupSets, aggCalls)
-    with FlinkLogicalRel {
+  val aggCalls: util.List[AggregateCall])
+  extends SingleRel(cluster, traitSet, child)
+    with FlinkLogicalRel
+    with CommonTableAggregate {
 
   override def copy(traitSet: RelTraitSet, inputs: JList[RelNode]): RelNode = {
     new FlinkLogicalTableAggregate(
@@ -50,6 +52,10 @@ class FlinkLogicalTableAggregate(
       groupSets,
       aggCalls
     )
+  }
+
+  override def deriveRowType(): RelDataType = {
+    deriveTableAggRowType(cluster, child, groupSet, aggCalls)
   }
 }
 
@@ -69,9 +75,9 @@ private class FlinkLogicalTableAggregateConverter
       rel.getCluster,
       traitSet,
       newInput,
-      agg.getIndicator,
-      agg.getGroupSet,
-      agg.getGroupSets,
+      agg.indicator,
+      agg.groupSet,
+      agg.groupSets,
       agg.aggCalls)
   }
 }

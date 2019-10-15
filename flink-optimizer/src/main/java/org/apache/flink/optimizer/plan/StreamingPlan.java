@@ -18,13 +18,17 @@
 
 package org.apache.flink.optimizer.plan;
 
+import java.io.File;
+import java.io.IOException;
+
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 
 import javax.annotation.Nullable;
 
 /**
- * Abstract class representing Flink Streaming plans.
+ * Abstract class representing Flink Streaming plans
+ * 
  */
 public abstract class StreamingPlan implements FlinkPlan {
 
@@ -42,4 +46,7 @@ public abstract class StreamingPlan implements FlinkPlan {
 	public abstract JobGraph getJobGraph(@Nullable JobID jobID);
 
 	public abstract String getStreamingPlanAsJSON();
+
+	public abstract void dumpStreamingPlanAsJSON(File file) throws IOException;
+
 }

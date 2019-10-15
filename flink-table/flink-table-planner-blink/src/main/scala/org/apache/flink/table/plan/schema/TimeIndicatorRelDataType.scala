@@ -28,17 +28,20 @@ import java.lang
   * as a basic SQL type.
   */
 class TimeIndicatorRelDataType(
-    val typeSystem: RelDataTypeSystem,
-    val originalType: BasicSqlType,
-    val nullable: Boolean,
+    typeSystem: RelDataTypeSystem,
+    originalType: BasicSqlType,
     val isEventTime: Boolean)
   extends BasicSqlType(
     typeSystem,
     originalType.getSqlTypeName,
     originalType.getPrecision) {
 
-  this.isNullable = nullable
-  computeDigest()
+  override def equals(other: Any): Boolean = other match {
+    case that: TimeIndicatorRelDataType =>
+      super.equals(that) &&
+        isEventTime == that.isEventTime
+    case _ => false
+  }
 
   override def hashCode(): Int = {
     super.hashCode() + 42 // we change the hash code to differentiate from regular timestamps

@@ -29,6 +29,7 @@ import org.apache.flink.core.memory.DataOutputView;
 import org.apache.flink.core.memory.MemorySegment;
 import org.apache.flink.core.memory.MemorySegmentFactory;
 import org.apache.flink.table.dataformat.BinaryGeneric;
+import org.apache.flink.table.type.GenericType;
 import org.apache.flink.table.util.SegmentsUtil;
 import org.apache.flink.util.InstantiationUtil;
 
@@ -42,10 +43,10 @@ public final class BinaryGenericSerializer<T> extends TypeSerializer<BinaryGener
 
 	private static final long serialVersionUID = 1L;
 
-	private final TypeSerializer<T> serializer;
+	private final GenericType<T> type;
 
-	public BinaryGenericSerializer(TypeSerializer<T> serializer) {
-		this.serializer = serializer;
+	public BinaryGenericSerializer(GenericType<T> type) {
+		this.type = type;
 	}
 
 	@Override
@@ -55,7 +56,7 @@ public final class BinaryGenericSerializer<T> extends TypeSerializer<BinaryGener
 
 	@Override
 	public BinaryGeneric<T> createInstance() {
-		return new BinaryGeneric<>(serializer.createInstance(), serializer);
+		return new BinaryGeneric<>(type.getSerializer().createInstance(), type.getSerializer());
 	}
 
 	@Override
@@ -86,7 +87,7 @@ public final class BinaryGenericSerializer<T> extends TypeSerializer<BinaryGener
 		source.readFully(bytes);
 		return new BinaryGeneric<>(
 				new MemorySegment[] {MemorySegmentFactory.wrap(bytes)},
-				0, bytes.length, serializer);
+				0, bytes.length, type.getSerializer());
 	}
 
 	@Override
@@ -117,17 +118,17 @@ public final class BinaryGenericSerializer<T> extends TypeSerializer<BinaryGener
 
 		BinaryGenericSerializer that = (BinaryGenericSerializer) o;
 
-		return serializer.equals(that.serializer);
+		return type.equals(that.type);
 	}
 
 	@Override
 	public int hashCode() {
-		return serializer.hashCode();
+		return type.hashCode();
 	}
 
 	@Override
 	public TypeSerializerSnapshot<BinaryGeneric<T>> snapshotConfiguration() {
-		return new BinaryGenericSerializerSnapshot<>(serializer);
+		return new BinaryGenericSerializerSnapshot<>(type);
 	}
 
 	/**
@@ -136,15 +137,15 @@ public final class BinaryGenericSerializer<T> extends TypeSerializer<BinaryGener
 	public static final class BinaryGenericSerializerSnapshot<T> implements TypeSerializerSnapshot<BinaryGeneric<T>> {
 		private static final int CURRENT_VERSION = 3;
 
-		private TypeSerializer<T> previousSerializer;
+		private GenericType<T> previousType;
 
 		@SuppressWarnings("unused")
 		public BinaryGenericSerializerSnapshot() {
 			// this constructor is used when restoring from a checkpoint/savepoint.
 		}
 
-		BinaryGenericSerializerSnapshot(TypeSerializer<T> serializer) {
-			this.previousSerializer = serializer;
+		BinaryGenericSerializerSnapshot(GenericType<T> type) {
+			this.previousType = type;
 		}
 
 		@Override
@@ -154,13 +155,13 @@ public final class BinaryGenericSerializer<T> extends TypeSerializer<BinaryGener
 
 		@Override
 		public void writeSnapshot(DataOutputView out) throws IOException {
-			InstantiationUtil.serializeObject(new DataOutputViewStream(out), previousSerializer);
+			InstantiationUtil.serializeObject(new DataOutputViewStream(out), previousType);
 		}
 
 		@Override
 		public void readSnapshot(int readVersion, DataInputView in, ClassLoader userCodeClassLoader) throws IOException {
 			try {
-				this.previousSerializer = InstantiationUtil.deserializeObject(
+				this.previousType = InstantiationUtil.deserializeObject(
 						new DataInputViewStream(in), userCodeClassLoader);
 			} catch (ClassNotFoundException e) {
 				throw new IOException(e);
@@ -169,7 +170,7 @@ public final class BinaryGenericSerializer<T> extends TypeSerializer<BinaryGener
 
 		@Override
 		public TypeSerializer<BinaryGeneric<T>> restoreSerializer() {
-			return new BinaryGenericSerializer<>(previousSerializer);
+			return new BinaryGenericSerializer<>(previousType);
 		}
 
 		@Override
@@ -179,7 +180,7 @@ public final class BinaryGenericSerializer<T> extends TypeSerializer<BinaryGener
 			}
 
 			BinaryGenericSerializer newBinaryGenericSerializer = (BinaryGenericSerializer) newSerializer;
-			if (!previousSerializer.equals(newBinaryGenericSerializer.serializer)) {
+			if (!previousType.equals(newBinaryGenericSerializer.type)) {
 				return TypeSerializerSchemaCompatibility.incompatible();
 			} else {
 				return TypeSerializerSchemaCompatibility.compatibleAsIs();

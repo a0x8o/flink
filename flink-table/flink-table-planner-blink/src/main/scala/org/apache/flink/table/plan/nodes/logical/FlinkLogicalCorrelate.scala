@@ -23,8 +23,9 @@ import org.apache.flink.table.plan.nodes.FlinkConventions
 import org.apache.calcite.plan.{Convention, RelOptCluster, RelOptRule, RelTraitSet}
 import org.apache.calcite.rel.RelNode
 import org.apache.calcite.rel.convert.ConverterRule
-import org.apache.calcite.rel.core.{Correlate, CorrelationId, JoinRelType}
+import org.apache.calcite.rel.core.{Correlate, CorrelationId}
 import org.apache.calcite.rel.logical.LogicalCorrelate
+import org.apache.calcite.sql.SemiJoinType
 import org.apache.calcite.util.ImmutableBitSet
 
 /**
@@ -38,7 +39,7 @@ class FlinkLogicalCorrelate(
     right: RelNode,
     correlationId: CorrelationId,
     requiredColumns: ImmutableBitSet,
-    joinType: JoinRelType)
+    joinType: SemiJoinType)
   extends Correlate(cluster, traitSet, left, right, correlationId, requiredColumns, joinType)
   with FlinkLogicalRel {
 
@@ -48,7 +49,7 @@ class FlinkLogicalCorrelate(
       right: RelNode,
       correlationId: CorrelationId,
       requiredColumns: ImmutableBitSet,
-      joinType: JoinRelType): Correlate = {
+      joinType: SemiJoinType): Correlate = {
 
     new FlinkLogicalCorrelate(
       cluster,
@@ -90,7 +91,7 @@ object FlinkLogicalCorrelate {
       right: RelNode,
       correlationId: CorrelationId,
       requiredColumns: ImmutableBitSet,
-      joinType: JoinRelType): FlinkLogicalCorrelate = {
+      joinType: SemiJoinType): FlinkLogicalCorrelate = {
     val cluster = left.getCluster
     val traitSet = cluster.traitSetOf(FlinkConventions.LOGICAL).simplify()
     new FlinkLogicalCorrelate(

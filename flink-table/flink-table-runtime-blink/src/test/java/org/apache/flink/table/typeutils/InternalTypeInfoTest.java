@@ -19,10 +19,13 @@
 package org.apache.flink.table.typeutils;
 
 import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.api.common.typeutils.TypeInformationTestBase;
+import org.apache.flink.table.type.GenericType;
+import org.apache.flink.table.type.InternalTypes;
 
 /**
- * Test for {@link BinaryStringTypeInfo}, {@link DecimalTypeInfo}.
+ * Test for {@link BinaryStringTypeInfo}, {@link BinaryArrayTypeInfo}, {@link BinaryMapTypeInfo}.
  */
 public class InternalTypeInfoTest extends TypeInformationTestBase<TypeInformation<?>> {
 
@@ -30,7 +33,12 @@ public class InternalTypeInfoTest extends TypeInformationTestBase<TypeInformatio
 	protected TypeInformation[] getTestData() {
 		return new TypeInformation[] {
 				BinaryStringTypeInfo.INSTANCE,
-				new DecimalTypeInfo(5, 2)
+				new BinaryArrayTypeInfo(InternalTypes.INT),
+				new BinaryArrayTypeInfo(InternalTypes.STRING),
+				new BinaryMapTypeInfo(InternalTypes.STRING, InternalTypes.INT),
+				new BinaryMapTypeInfo(InternalTypes.DOUBLE, InternalTypes.INT),
+				new DecimalTypeInfo(5, 2),
+				new BinaryGenericTypeInfo<>(new GenericType<>(Types.STRING))
 		};
 	}
 }

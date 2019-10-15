@@ -20,13 +20,8 @@ package org.apache.flink.table.dataformat;
 
 import org.apache.flink.core.memory.MemorySegment;
 import org.apache.flink.core.memory.MemorySegmentFactory;
-import org.apache.flink.table.runtime.util.SegmentsUtil;
-import org.apache.flink.table.types.logical.LogicalType;
+import org.apache.flink.table.util.SegmentsUtil;
 
-import java.util.HashMap;
-import java.util.Map;
-
-import static org.apache.flink.table.runtime.types.ClassLogicalTypeConverter.getInternalClassForType;
 import static org.apache.flink.util.Preconditions.checkArgument;
 
 /**
@@ -34,7 +29,7 @@ import static org.apache.flink.util.Preconditions.checkArgument;
  *
  * <p>{@code BinaryMap} are influenced by Apache Spark UnsafeMapData.
  */
-public final class BinaryMap extends BinaryFormat implements BaseMap {
+public final class BinaryMap extends BinaryFormat {
 
 	private final BinaryArray keys;
 	private final BinaryArray values;
@@ -72,18 +67,6 @@ public final class BinaryMap extends BinaryFormat implements BaseMap {
 
 	public BinaryArray valueArray() {
 		return values;
-	}
-
-	@Override
-	public Map<Object, Object> toJavaMap(LogicalType keyType, LogicalType valueType) {
-		Object[] keyArray = keys.toClassArray(keyType, getInternalClassForType(keyType));
-		Object[] valueArray = values.toClassArray(valueType, getInternalClassForType(valueType));
-
-		Map<Object, Object> map = new HashMap<>();
-		for (int i = 0; i < keyArray.length; i++) {
-			map.put(keyArray[i], valueArray[i]);
-		}
-		return map;
 	}
 
 	public BinaryMap copy() {

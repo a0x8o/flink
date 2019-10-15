@@ -17,15 +17,13 @@
  */
 package org.apache.flink.table.codegen
 
-import org.apache.flink.streaming.api.graph.StreamConfig
-import org.apache.flink.streaming.api.operators.{BoundedMultiInput, BoundedOneInput, InputSelectable, InputSelection, OneInputStreamOperator, Output, StreamOperator, TwoInputStreamOperator}
+import org.apache.flink.streaming.api.operators.{OneInputStreamOperator, StreamOperator, TwoInputStreamOperator}
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord
-import org.apache.flink.streaming.runtime.tasks.StreamTask
+import org.apache.flink.table.`type`.InternalType
 import org.apache.flink.table.api.TableConfig
 import org.apache.flink.table.codegen.CodeGenUtils._
 import org.apache.flink.table.codegen.Indenter.toISC
 import org.apache.flink.table.generated.GeneratedOperator
-import org.apache.flink.table.types.logical.LogicalType
 import org.apache.flink.table.util.Logging
 
 /**
@@ -36,8 +34,7 @@ object OperatorCodeGenerator extends Logging {
   val ELEMENT = "element"
   val OUT_ELEMENT = "outElement"
 
-  val STREAM_RECORD: String = className[StreamRecord[_]]
-  val INPUT_SELECTION: String = className[InputSelection]
+  val STREAM_RECORD: String = classOf[StreamRecord[_]].getCanonicalName
 
   def addReuseOutElement(ctx: CodeGeneratorContext): Unit = {
     ctx.addReusableMember(s"private final $STREAM_RECORD $OUT_ELEMENT = new $STREAM_RECORD(null);")
@@ -48,7 +45,7 @@ object OperatorCodeGenerator extends Logging {
       name: String,
       processCode: String,
       endInputCode: String,
-      inputType: LogicalType,
+      inputType: InternalType,
       config: TableConfig,
       inputTerm: String = CodeGenUtils.DEFAULT_INPUT1_TERM,
       lazyInputUnboxingCode: Boolean = false,
@@ -61,19 +58,14 @@ object OperatorCodeGenerator extends Logging {
     val operatorCode =
       j"""
       public class $operatorName extends ${abstractBaseClass.getCanonicalName}
-          implements ${baseClass.getCanonicalName}, ${className[BoundedOneInput]} {
+          implements ${baseClass.getCanonicalName} {
 
         private final Object[] references;
         ${ctx.reuseMemberCode()}
 
-        public $operatorName(
-            Object[] references,
-            ${className[StreamTask[_, _]]} task,
-            ${className[StreamConfig]} config,
-            ${className[Output[_]]} output) throws Exception {
+        public $operatorName(Object[] references) throws Exception {
           this.references = references;
           ${ctx.reuseInitCode()}
-          this.setup(task, config, output);
         }
 
         @Override
@@ -91,7 +83,7 @@ object OperatorCodeGenerator extends Logging {
           $processCode
         }
 
-        @Override
+        // TODO @Override
         public void endInput() throws Exception {
           ${
             if (endInputCode.nonEmpty) {
@@ -108,6 +100,8 @@ object OperatorCodeGenerator extends Logging {
 
         @Override
         public void close() throws Exception {
+           // TODO remove it after introduce endInput in runtime.
+           endInput();
            super.close();
           ${ctx.reuseCloseCode()}
         }
@@ -127,9 +121,8 @@ object OperatorCodeGenerator extends Logging {
       endInputCode1: String,
       processCode2: String,
       endInputCode2: String,
-      nextSelection: String,
-      input1Type: LogicalType,
-      input2Type: LogicalType,
+      input1Type: InternalType,
+      input2Type: InternalType,
       input1Term: String = CodeGenUtils.DEFAULT_INPUT1_TERM,
       input2Term: String = CodeGenUtils.DEFAULT_INPUT2_TERM,
       useTimeCollect: Boolean = false)
@@ -144,22 +137,16 @@ object OperatorCodeGenerator extends Logging {
     val operatorCode =
       j"""
       public class $operatorName extends ${abstractBaseClass.getCanonicalName}
-          implements ${baseClass.getCanonicalName},
-           ${className[BoundedMultiInput]}, ${className[InputSelectable]} {
+          implements ${baseClass.getCanonicalName} {
 
         public static org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger("$operatorName");
 
         private final Object[] references;
         ${ctx.reuseMemberCode()}
 
-        public $operatorName(
-            Object[] references,
-            ${className[StreamTask[_, _]]} task,
-            ${className[StreamConfig]} config,
-            ${className[Output[_]]} output) throws Exception {
+        public $operatorName(Object[] references) throws Exception {
           this.references = references;
           ${ctx.reuseInitCode()}
-          this.setup(task, config, output);
         }
 
         @Override
@@ -176,7 +163,7 @@ object OperatorCodeGenerator extends Logging {
           $processCode1
         }
 
-        private void endInput1() throws Exception {
+        public void endInput1() throws Exception {
           $endInputCode1
         }
 
@@ -188,25 +175,8 @@ object OperatorCodeGenerator extends Logging {
           $processCode2
         }
 
-        private void endInput2() throws Exception {
+        public void endInput2() throws Exception {
           $endInputCode2
-        }
-
-        @Override
-        public void endInput(int inputId) throws Exception {
-          switch (inputId) {
-            case 1:
-              endInput1();
-              break;
-            case 2:
-              endInput2();
-              break;
-          }
-        }
-
-        @Override
-        public $INPUT_SELECTION nextSelection() {
-          $nextSelection
         }
 
         @Override

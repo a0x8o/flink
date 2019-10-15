@@ -21,21 +21,17 @@ package org.apache.flink.table.codegen
 import org.apache.flink.api.common.ExecutionConfig
 import org.apache.flink.api.common.functions.{Function, RuntimeContext}
 import org.apache.flink.api.common.typeutils.TypeSerializer
+import org.apache.flink.table.`type`.{InternalType, InternalTypes, RowType, TypeConverters}
 import org.apache.flink.table.api.TableConfig
 import org.apache.flink.table.codegen.CodeGenUtils._
 import org.apache.flink.table.codegen.GenerateUtils.generateRecordStatement
-import org.apache.flink.table.dataformat.{DataFormatConverters, GenericRow}
+import org.apache.flink.table.dataformat.GenericRow
 import org.apache.flink.table.functions.{FunctionContext, UserDefinedFunction}
 import org.apache.flink.table.runtime.TableStreamOperator
 import org.apache.flink.table.runtime.util.collections._
-import org.apache.flink.table.types.InternalSerializers
-import org.apache.flink.table.types.logical.LogicalTypeRoot._
-import org.apache.flink.table.types.logical._
 import org.apache.flink.util.InstantiationUtil
 
 import org.apache.calcite.avatica.util.DateTimeUtils
-
-import java.util.TimeZone
 
 import scala.collection.mutable
 
@@ -103,9 +99,9 @@ class CodeGeneratorContext(val tableConfig: TableConfig) {
   private val reusableStringConstants: mutable.Map[String, String] = mutable.Map[String,  String]()
 
   // map of type serializer that will be added only once
-  // LogicalType -> reused_term
-  private val reusableTypeSerializers: mutable.Map[LogicalType, String] =
-    mutable.Map[LogicalType,  String]()
+  // InternalType -> reused_term
+  private val reusableTypeSerializers: mutable.Map[InternalType, String] =
+    mutable.Map[InternalType,  String]()
 
   /**
     * The current method name for [[reusableLocalVariableStatements]]. You can start a new
@@ -367,7 +363,7 @@ class CodeGeneratorContext(val tableConfig: TableConfig) {
     * Adds a reusable output record statement to member area.
     */
   def addReusableOutputRecord(
-      t: LogicalType,
+      t: InternalType,
       clazz: Class[_],
       outRecordTerm: String,
       outRecordWriterTerm: Option[String] = None): Unit = {
@@ -380,7 +376,7 @@ class CodeGeneratorContext(val tableConfig: TableConfig) {
     */
   def addReusableNullRow(rowTerm: String, arity: Int): Unit = {
     addReusableOutputRecord(
-      RowType.of((0 until arity).map(_ => new IntType()): _*),
+      new RowType((0 until arity).map(_ => InternalTypes.INT): _*),
       classOf[GenericRow],
       rowTerm)
   }
@@ -388,21 +384,21 @@ class CodeGeneratorContext(val tableConfig: TableConfig) {
   /**
     * Adds a reusable internal hash set to the member area of the generated class.
     */
-  def addReusableHashSet(elements: Seq[GeneratedExpression], elementType: LogicalType): String = {
+  def addReusableHashSet(elements: Seq[GeneratedExpression], elementType: InternalType): String = {
     val fieldTerm = newName("set")
 
-    val setTypeTerm = elementType.getTypeRoot match {
-      case TINYINT => className[ByteHashSet]
-      case SMALLINT => className[ShortHashSet]
-      case INTEGER => className[IntHashSet]
-      case BIGINT => className[LongHashSet]
-      case FLOAT => className[FloatHashSet]
-      case DOUBLE => className[DoubleHashSet]
+    val setTypeTerm = elementType match {
+      case InternalTypes.BYTE => className[ByteHashSet]
+      case InternalTypes.SHORT => className[ShortHashSet]
+      case InternalTypes.INT => className[IntHashSet]
+      case InternalTypes.LONG => className[LongHashSet]
+      case InternalTypes.FLOAT => className[FloatHashSet]
+      case InternalTypes.DOUBLE => className[DoubleHashSet]
       case _ => className[ObjectHashSet[_]]
     }
 
     addReusableMember(
-      s"final $setTypeTerm $fieldTerm = new $setTypeTerm(${elements.size});")
+      s"final $setTypeTerm $fieldTerm = new $setTypeTerm(${elements.size})")
 
     elements.foreach { element =>
       val content =
@@ -435,44 +431,25 @@ class CodeGeneratorContext(val tableConfig: TableConfig) {
   }
 
   /**
-    * Adds a reusable time to the beginning of the SAM of the generated [[Function]].
+    * Adds a reusable local timestamp to the beginning of the SAM of the generated class.
     */
-  def addReusableTime(): String = {
-    val fieldTerm = s"time"
-
-    val timestamp = addReusableTimestamp()
-
-    // declaration
-    reusableMemberStatements.add(s"private int $fieldTerm;")
-
-    // assignment
-    // adopted from org.apache.calcite.runtime.SqlFunctions.currentTime()
-    val field =
-      s"""
-         |$fieldTerm = (int) ($timestamp % ${DateTimeUtils.MILLIS_PER_DAY});
-         |if (time < 0) {
-         |  time += ${DateTimeUtils.MILLIS_PER_DAY};
-         |}
-         |""".stripMargin
-    reusablePerRecordStatements.add(field)
-    fieldTerm
+  def addReusableLocalTimestamp(): String = {
+    addReusableTimestamp()
   }
 
   /**
-    * Adds a reusable local date time to the beginning of the SAM of the generated class.
+    * Adds a reusable time to the beginning of the SAM of the generated class.
     */
-  def addReusableLocalDateTime(): String = {
-    val fieldTerm = s"localtimestamp"
-
+  def addReusableTime(): String = {
+    val fieldTerm = s"time"
     val timestamp = addReusableTimestamp()
-
-    // declaration
-    reusableMemberStatements.add(s"private long $fieldTerm;")
-
-    // assignment
+    // adopted from org.apache.calcite.runtime.SqlFunctions.currentTime()
     val field =
       s"""
-         |$fieldTerm = $timestamp + java.util.TimeZone.getDefault().getOffset($timestamp);
+         |final int $fieldTerm = (int) ($timestamp % ${DateTimeUtils.MILLIS_PER_DAY});
+         |if (time < 0) {
+         |  time += ${DateTimeUtils.MILLIS_PER_DAY};
+         |}
          |""".stripMargin
     reusablePerRecordStatements.add(field)
     fieldTerm
@@ -483,18 +460,14 @@ class CodeGeneratorContext(val tableConfig: TableConfig) {
     */
   def addReusableLocalTime(): String = {
     val fieldTerm = s"localtime"
-
-    val localtimestamp = addReusableLocalDateTime()
-
-    // declaration
-    reusableMemberStatements.add(s"private int $fieldTerm;")
-
-    // assignment
+    val timeZone = addReusableTimeZone()
+    val localtimestamp = addReusableLocalTimestamp()
     // adopted from org.apache.calcite.runtime.SqlFunctions.localTime()
     val field =
-    s"""
-       |$fieldTerm = (int) ($localtimestamp % ${DateTimeUtils.MILLIS_PER_DAY});
-       |""".stripMargin
+      s"""
+         |final int $fieldTerm = (int) ( ($localtimestamp + $timeZone.getOffset($localtimestamp))
+         |                              % ${DateTimeUtils.MILLIS_PER_DAY});
+         |""".stripMargin
     reusablePerRecordStatements.add(field)
     fieldTerm
   }
@@ -504,18 +477,15 @@ class CodeGeneratorContext(val tableConfig: TableConfig) {
     */
   def addReusableDate(): String = {
     val fieldTerm = s"date"
-
     val timestamp = addReusableTimestamp()
     val time = addReusableTime()
+    val timeZone = addReusableTimeZone()
 
-    // declaration
-    reusableMemberStatements.add(s"private int $fieldTerm;")
-
-    // assignment
     // adopted from org.apache.calcite.runtime.SqlFunctions.currentDate()
     val field =
       s"""
-         |$fieldTerm = (int) ($timestamp / ${DateTimeUtils.MILLIS_PER_DAY});
+         |final int $fieldTerm = (int) (($timestamp + $timeZone.getOffset($timestamp))
+         |                              / ${DateTimeUtils.MILLIS_PER_DAY});
          |if ($time < 0) {
          |  $fieldTerm -= 1;
          |}
@@ -528,7 +498,7 @@ class CodeGeneratorContext(val tableConfig: TableConfig) {
     * Adds a reusable TimeZone to the member area of the generated class.
     */
   def addReusableTimeZone(): String = {
-    val zoneID = TimeZone.getTimeZone(tableConfig.getLocalTimeZone).getID
+    val zoneID = tableConfig.getTimeZone.getID
     val stmt =
       s"""private static final java.util.TimeZone $DEFAULT_TIMEZONE_TERM =
          |                 java.util.TimeZone.getTimeZone("$zoneID");""".stripMargin
@@ -536,16 +506,6 @@ class CodeGeneratorContext(val tableConfig: TableConfig) {
     DEFAULT_TIMEZONE_TERM
   }
 
-  /**
-    * Adds a reusable Time ZoneId to the member area of the generated class.
-    */
-  def addReusableTimeZoneID(): String = {
-    val zoneID = tableConfig.getLocalTimeZone.getId
-    val stmt =
-      s"""private static final java.time.ZoneId $DEFAULT_TIMEZONE_TERM =
-         |                 java.time.ZoneId.of("$zoneID");""".stripMargin
-    DEFAULT_TIMEZONE_ID_TERM
-  }
 
   /**
     * Adds a reusable [[java.util.Random]] to the member area of the generated class.
@@ -647,11 +607,11 @@ class CodeGeneratorContext(val tableConfig: TableConfig) {
 
     val openFunction = if (contextTerm != null) {
       s"""
-         |$fieldTerm.open(new ${functionContextClass.getCanonicalName}($contextTerm));
+         |$fieldTerm.open(new ${classOf[FunctionContext].getCanonicalName}($contextTerm));
        """.stripMargin
     } else {
       s"""
-         |$fieldTerm.open(new ${functionContextClass.getCanonicalName}(getRuntimeContext()));
+         |$fieldTerm.open(new ${classOf[FunctionContext].getCanonicalName}(getRuntimeContext()));
        """.stripMargin
     }
     reusableOpenStatements.add(openFunction)
@@ -671,7 +631,7 @@ class CodeGeneratorContext(val tableConfig: TableConfig) {
     * @param t the internal type which used to generate internal type serializer
     * @return member variable term
     */
-  def addReusableTypeSerializer(t: LogicalType): String = {
+  def addReusableTypeSerializer(t: InternalType): String = {
     // if type serializer has been used before, we can reuse the code that
     // has already been generated
     reusableTypeSerializers.get(t) match {
@@ -679,7 +639,8 @@ class CodeGeneratorContext(val tableConfig: TableConfig) {
 
       case None =>
         val term = newName("typeSerializer")
-        val ser = InternalSerializers.create(t, new ExecutionConfig)
+        val ser = TypeConverters.createInternalTypeInfoFromInternalType(t)
+          .createSerializer(new ExecutionConfig)
         addReusableObjectInternal(ser, term, ser.getClass.getCanonicalName)
         reusableTypeSerializers(t) = term
         term

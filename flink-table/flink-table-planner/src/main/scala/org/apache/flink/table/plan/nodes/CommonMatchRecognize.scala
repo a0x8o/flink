@@ -18,7 +18,8 @@
 
 package org.apache.flink.table.plan.nodes
 
-import java.util.{SortedSet => JSortedSet}
+import java.util.{List => JList, SortedSet => JSortedSet}
+
 import com.google.common.collect.ImmutableMap
 import org.apache.calcite.rel.{RelCollation, RelWriter}
 import org.apache.calcite.rex.{RexCall, RexLiteral, RexNode}
@@ -27,17 +28,16 @@ import org.apache.calcite.sql.SqlMatchRecognize.AfterOption
 import org.apache.flink.table.plan.logical.MatchRecognize
 import org.apache.flink.table.runtime.aggregate.SortUtil.directionToOrder
 
-import org.apache.calcite.util.ImmutableBitSet
-
 import scala.collection.JavaConverters._
 
 trait CommonMatchRecognize {
 
   private def partitionKeysToString(
-      keys: ImmutableBitSet,
-      fieldNames: Seq[String])
+      keys: JList[RexNode],
+      fieldNames: Seq[String],
+      expression: (RexNode, Seq[String], Option[Seq[RexNode]]) => String)
     : String =
-    keys.toArray.map(k => fieldNames(k)).mkString(", ")
+    keys.asScala.map(k => expression(k, fieldNames, None)).mkString(", ")
 
   private def orderingToString(orders: RelCollation, fieldNames: Seq[String]): String =
     orders.getFieldCollations.asScala.map {
@@ -88,7 +88,7 @@ trait CommonMatchRecognize {
     : String = {
     val partitionBy = if (!logicalMatch.partitionKeys.isEmpty) {
       s"PARTITION BY: ${
-        partitionKeysToString(logicalMatch.partitionKeys, fieldNames)
+        partitionKeysToString(logicalMatch.partitionKeys, fieldNames, expression)
       }"
     } else {
       ""
@@ -136,7 +136,7 @@ trait CommonMatchRecognize {
       expression: (RexNode, Seq[String], Option[Seq[RexNode]]) => String)
     : RelWriter = {
     pw.itemIf("partitionBy",
-      partitionKeysToString(logicalMatch.partitionKeys, fieldNames),
+      partitionKeysToString(logicalMatch.partitionKeys, fieldNames, expression),
       !logicalMatch.partitionKeys.isEmpty)
       .itemIf("orderBy",
         orderingToString(logicalMatch.orderKeys, fieldNames),

@@ -18,17 +18,15 @@
 package org.apache.flink.streaming.api.graph;
 
 import org.apache.flink.annotation.Internal;
-import org.apache.flink.annotation.VisibleForTesting;
+import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.io.InputFormat;
-import org.apache.flink.api.common.io.OutputFormat;
 import org.apache.flink.api.common.operators.ResourceSpec;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
 import org.apache.flink.streaming.api.collector.selector.OutputSelector;
-import org.apache.flink.streaming.api.operators.SimpleOperatorFactory;
+import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.operators.StreamOperator;
-import org.apache.flink.streaming.api.operators.StreamOperatorFactory;
 
 import javax.annotation.Nullable;
 
@@ -44,8 +42,10 @@ public class StreamNode implements Serializable {
 
 	private static final long serialVersionUID = 1L;
 
+	private transient StreamExecutionEnvironment env;
+
 	private final int id;
-	private int parallelism;
+	private Integer parallelism = null;
 	/**
 	 * Maximum parallelism for this stream node. The maximum parallelism is the upper limit for
 	 * dynamic scaling and the number of key groups used for partitioned state.
@@ -53,15 +53,15 @@ public class StreamNode implements Serializable {
 	private int maxParallelism;
 	private ResourceSpec minResources = ResourceSpec.DEFAULT;
 	private ResourceSpec preferredResources = ResourceSpec.DEFAULT;
-	private long bufferTimeout;
+	private Long bufferTimeout = null;
 	private final String operatorName;
-	private @Nullable String slotSharingGroup;
+	private String slotSharingGroup;
 	private @Nullable String coLocationGroup;
 	private KeySelector<?, ?> statePartitioner1;
 	private KeySelector<?, ?> statePartitioner2;
 	private TypeSerializer<?> stateKeySerializer;
 
-	private transient StreamOperatorFactory<?> operatorFactory;
+	private transient StreamOperator<?> operator;
 	private List<OutputSelector<?>> outputSelectors;
 	private TypeSerializer<?> typeSerializerIn1;
 	private TypeSerializer<?> typeSerializerIn2;
@@ -73,36 +73,23 @@ public class StreamNode implements Serializable {
 	private final Class<? extends AbstractInvokable> jobVertexClass;
 
 	private InputFormat<?, ?> inputFormat;
-	private OutputFormat<?> outputFormat;
 
 	private String transformationUID;
 	private String userHash;
 
-	@VisibleForTesting
-	public StreamNode(
-			Integer id,
-			@Nullable String slotSharingGroup,
-			@Nullable String coLocationGroup,
-			StreamOperator<?> operator,
-			String operatorName,
-			List<OutputSelector<?>> outputSelector,
-			Class<? extends AbstractInvokable> jobVertexClass) {
-		this(id, slotSharingGroup, coLocationGroup, SimpleOperatorFactory.of(operator),
-				operatorName, outputSelector, jobVertexClass);
-	}
-
-	public StreamNode(
+	public StreamNode(StreamExecutionEnvironment env,
 		Integer id,
-		@Nullable String slotSharingGroup,
+		String slotSharingGroup,
 		@Nullable String coLocationGroup,
-		StreamOperatorFactory<?> operatorFactory,
+		StreamOperator<?> operator,
 		String operatorName,
 		List<OutputSelector<?>> outputSelector,
 		Class<? extends AbstractInvokable> jobVertexClass) {
 
+		this.env = env;
 		this.id = id;
 		this.operatorName = operatorName;
-		this.operatorFactory = operatorFactory;
+		this.operator = operator;
 		this.outputSelectors = outputSelector;
 		this.jobVertexClass = jobVertexClass;
 		this.slotSharingGroup = slotSharingGroup;
@@ -158,7 +145,11 @@ public class StreamNode implements Serializable {
 	}
 
 	public int getParallelism() {
-		return parallelism;
+		if (parallelism == ExecutionConfig.PARALLELISM_DEFAULT) {
+			return env.getParallelism();
+		} else {
+			return parallelism;
+		}
 	}
 
 	public void setParallelism(Integer parallelism) {
@@ -196,21 +187,20 @@ public class StreamNode implements Serializable {
 		this.preferredResources = preferredResources;
 	}
 
-	public long getBufferTimeout() {
-		return bufferTimeout;
+	public Long getBufferTimeout() {
+		return bufferTimeout != null ? bufferTimeout : env.getBufferTimeout();
 	}
 
 	public void setBufferTimeout(Long bufferTimeout) {
 		this.bufferTimeout = bufferTimeout;
 	}
 
-	@VisibleForTesting
 	public StreamOperator<?> getOperator() {
-		return (StreamOperator<?>) ((SimpleOperatorFactory) operatorFactory).getOperator();
+		return operator;
 	}
 
-	public StreamOperatorFactory<?> getOperatorFactory() {
-		return operatorFactory;
+	public void setOperator(StreamOperator<?> operator) {
+		this.operator = operator;
 	}
 
 	public String getOperatorName() {
@@ -261,19 +251,10 @@ public class StreamNode implements Serializable {
 		this.inputFormat = inputFormat;
 	}
 
-	public OutputFormat<?> getOutputFormat() {
-		return outputFormat;
-	}
-
-	public void setOutputFormat(OutputFormat<?> outputFormat) {
-		this.outputFormat = outputFormat;
-	}
-
-	public void setSlotSharingGroup(@Nullable String slotSharingGroup) {
+	public void setSlotSharingGroup(String slotSharingGroup) {
 		this.slotSharingGroup = slotSharingGroup;
 	}
 
-	@Nullable
 	public String getSlotSharingGroup() {
 		return slotSharingGroup;
 	}

@@ -19,8 +19,6 @@
 package org.apache.flink.runtime.state;
 
 import org.apache.flink.util.Preconditions;
-import org.apache.flink.util.ResourceGuard;
-import org.apache.flink.util.ResourceGuard.Lease;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -33,8 +31,6 @@ import java.io.OutputStream;
 public abstract class NonClosingCheckpointOutputStream<T extends StreamStateHandle> extends OutputStream {
 
 	protected final CheckpointStreamFactory.CheckpointStateOutputStream delegate;
-	private final ResourceGuard resourceGuard = new ResourceGuard();
-	
 
 	public NonClosingCheckpointOutputStream(
 			CheckpointStreamFactory.CheckpointStateOutputStream delegate) {
@@ -67,13 +63,6 @@ public abstract class NonClosingCheckpointOutputStream<T extends StreamStateHand
 		// TODO if we want to support async writes, this call could trigger a callback to the snapshot context that a handle is available.
 	}
 
-	/**
-	 * Returns a {@link org.apache.flink.util.ResourceGuard.Lease} that prevents closing this stream. To allow the system
-	 * to close this stream, each of the acquired leases need to call {@link Lease#close()}, on their acquired leases.
-	 */
-	public final ResourceGuard.Lease acquireLease() throws IOException {
-		return resourceGuard.acquireResource();
-	}
 
 	/**
 	 * This method should not be public so as to not expose internals to user code.
@@ -88,15 +77,4 @@ public abstract class NonClosingCheckpointOutputStream<T extends StreamStateHand
 	 */
 	abstract T closeAndGetHandle() throws IOException;
 
-	StreamStateHandle closeAndGetHandleAfterLeasesReleased() throws IOException {
-		try {
-			resourceGuard.closeInterruptibly();
-			return delegate.closeAndGetHandle();
-		}
-		catch (InterruptedException e) {
-			Thread.currentThread().interrupt();
-			delegate.closeAndGetHandle();
-			throw new IOException("Interrupted while awaiting handle.", e);
-		}
-	}
 }

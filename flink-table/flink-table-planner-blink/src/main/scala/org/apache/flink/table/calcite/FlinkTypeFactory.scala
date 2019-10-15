@@ -18,193 +18,213 @@
 
 package org.apache.flink.table.calcite
 
-import org.apache.flink.api.common.typeinfo.{NothingTypeInfo, TypeInformation}
-import org.apache.flink.api.java.typeutils.TypeExtractor
-import org.apache.flink.table.api.{DataTypes, TableException}
-import org.apache.flink.table.calcite.FlinkTypeFactory.toLogicalType
+import org.apache.flink.api.common.typeinfo.TypeInformation
+import org.apache.flink.table.`type`.TypeConverters.createInternalTypeFromTypeInfo
+import org.apache.flink.table.`type`._
+import org.apache.flink.table.api.{TableException, TableSchema}
 import org.apache.flink.table.plan.schema.{GenericRelDataType, _}
-import org.apache.flink.table.types.logical._
 import org.apache.flink.table.typeutils.TimeIndicatorTypeInfo
-import org.apache.flink.types.Nothing
-import org.apache.flink.util.Preconditions.checkArgument
 
 import org.apache.calcite.avatica.util.TimeUnit
 import org.apache.calcite.jdbc.JavaTypeFactoryImpl
-import org.apache.calcite.rel.RelNode
 import org.apache.calcite.rel.`type`._
 import org.apache.calcite.sql.SqlIntervalQualifier
 import org.apache.calcite.sql.`type`.SqlTypeName._
-import org.apache.calcite.sql.`type`.{BasicSqlType, MapSqlType, SqlTypeName, SqlTypeUtil}
+import org.apache.calcite.sql.`type`.{BasicSqlType, SqlTypeName, SqlTypeUtil}
 import org.apache.calcite.sql.parser.SqlParserPos
 import org.apache.calcite.util.ConversionUtil
 
 import java.nio.charset.Charset
 import java.util
 
-import scala.collection.JavaConversions._
 import scala.collection.JavaConverters._
 import scala.collection.mutable
 
 /**
-  * Flink specific type factory that represents the interface between Flink's [[LogicalType]]
+  * Flink specific type factory that represents the interface between Flink's [[InternalType]]
   * and Calcite's [[RelDataType]].
   */
 class FlinkTypeFactory(typeSystem: RelDataTypeSystem) extends JavaTypeFactoryImpl(typeSystem) {
 
-  private val seenTypes = mutable.HashMap[LogicalType, RelDataType]()
+  // NOTE: for future data types it might be necessary to
+  // override more methods of RelDataTypeFactoryImpl
 
-  /**
-    * Create a calcite field type in table schema from [[LogicalType]]. It use
-    * PEEK_FIELDS_NO_EXPAND when type is a nested struct type (Flink [[RowType]]).
-    *
-    * @param t flink logical type.
-    * @return calcite [[RelDataType]].
-    */
-  def createFieldTypeFromLogicalType(t: LogicalType): RelDataType = {
-    def newRelDataType(): RelDataType = t.getTypeRoot match {
-      case LogicalTypeRoot.BOOLEAN => createSqlType(BOOLEAN)
-      case LogicalTypeRoot.TINYINT => createSqlType(TINYINT)
-      case LogicalTypeRoot.SMALLINT => createSqlType(SMALLINT)
-      case LogicalTypeRoot.INTEGER => createSqlType(INTEGER)
-      case LogicalTypeRoot.BIGINT => createSqlType(BIGINT)
-      case LogicalTypeRoot.FLOAT => createSqlType(FLOAT)
-      case LogicalTypeRoot.DOUBLE => createSqlType(DOUBLE)
-      case LogicalTypeRoot.VARCHAR => createSqlType(VARCHAR, t.asInstanceOf[VarCharType].getLength)
-      case LogicalTypeRoot.CHAR => createSqlType(CHAR, t.asInstanceOf[CharType].getLength)
+  private val seenTypes = mutable.HashMap[(InternalType, Boolean), RelDataType]()
 
-      // temporal types
-      case LogicalTypeRoot.DATE => createSqlType(DATE)
-      case LogicalTypeRoot.TIME_WITHOUT_TIME_ZONE => createSqlType(TIME)
-      case LogicalTypeRoot.TIMESTAMP_WITH_LOCAL_TIME_ZONE =>
-        createSqlType(TIMESTAMP_WITH_LOCAL_TIME_ZONE)
+  def createTypeFromInternalType(
+      tp: InternalType,
+      isNullable: Boolean): RelDataType = {
 
-      // interval types
-      case LogicalTypeRoot.INTERVAL_YEAR_MONTH =>
-        createSqlIntervalType(
-          new SqlIntervalQualifier(TimeUnit.YEAR, TimeUnit.MONTH, SqlParserPos.ZERO))
-      case LogicalTypeRoot.INTERVAL_DAY_TIME =>
-        createSqlIntervalType(
-          new SqlIntervalQualifier(TimeUnit.DAY, TimeUnit.SECOND, SqlParserPos.ZERO))
+    val relType = seenTypes.get((tp, isNullable)) match {
+      case Some(retType: RelDataType) => retType
+      case None =>
+        val refType = tp match {
+          case InternalTypes.BOOLEAN => createSqlType(BOOLEAN)
+          case InternalTypes.BYTE => createSqlType(TINYINT)
+          case InternalTypes.SHORT => createSqlType(SMALLINT)
+          case InternalTypes.INT => createSqlType(INTEGER)
+          case InternalTypes.LONG => createSqlType(BIGINT)
+          case InternalTypes.FLOAT => createSqlType(FLOAT)
+          case InternalTypes.DOUBLE => createSqlType(DOUBLE)
+          case InternalTypes.STRING => createSqlType(VARCHAR)
 
-      case LogicalTypeRoot.BINARY => createSqlType(BINARY, t.asInstanceOf[BinaryType].getLength)
-      case LogicalTypeRoot.VARBINARY =>
-        createSqlType(VARBINARY, t.asInstanceOf[VarBinaryType].getLength)
+          // temporal types
+          case InternalTypes.DATE => createSqlType(DATE)
+          case InternalTypes.TIME => createSqlType(TIME)
+          case InternalTypes.TIMESTAMP => createSqlType(TIMESTAMP)
+          case InternalTypes.PROCTIME_INDICATOR => createProctimeIndicatorType()
+          case InternalTypes.ROWTIME_INDICATOR => createRowtimeIndicatorType()
 
-      case LogicalTypeRoot.DECIMAL =>
-        val decimalType = t.asInstanceOf[DecimalType]
-        createSqlType(DECIMAL, decimalType.getPrecision, decimalType.getScale)
+          // interval types
+          case InternalTypes.INTERVAL_MONTHS =>
+            createSqlIntervalType(
+              new SqlIntervalQualifier(TimeUnit.YEAR, TimeUnit.MONTH, SqlParserPos.ZERO))
+          case InternalTypes.INTERVAL_MILLIS =>
+            createSqlIntervalType(
+              new SqlIntervalQualifier(TimeUnit.DAY, TimeUnit.SECOND, SqlParserPos.ZERO))
 
-      case LogicalTypeRoot.ROW =>
-        val rowType = t.asInstanceOf[RowType]
-        buildStructType(
-          rowType.getFieldNames,
-          rowType.getChildren,
-          // fields are not expanded in "SELECT *"
-          StructKind.PEEK_FIELDS_NO_EXPAND)
+          case InternalTypes.BINARY => createSqlType(VARBINARY)
 
-      case LogicalTypeRoot.ARRAY =>
-        val arrayType = t.asInstanceOf[ArrayType]
-        createArrayType(createFieldTypeFromLogicalType(arrayType.getElementType), -1)
+          case InternalTypes.CHAR =>
+            throw new TableException("Character type is not supported.")
 
-      case LogicalTypeRoot.MAP =>
-        val mapType = t.asInstanceOf[MapType]
-        createMapType(
-          createFieldTypeFromLogicalType(mapType.getKeyType),
-          createFieldTypeFromLogicalType(mapType.getValueType))
+          case decimal: DecimalType =>
+            createSqlType(DECIMAL, decimal.precision(), decimal.scale())
 
-      case LogicalTypeRoot.MULTISET =>
-        val multisetType = t.asInstanceOf[MultisetType]
-        createMultisetType(createFieldTypeFromLogicalType(multisetType.getElementType), -1)
+          case rowType: RowType => new RowRelDataType(rowType, isNullable, this)
 
-      case LogicalTypeRoot.ANY =>
-        new GenericRelDataType(
-          t.asInstanceOf[TypeInformationAnyType[_]],
-          true,
-          getTypeSystem)
+          case arrayType: ArrayType => new ArrayRelDataType(arrayType,
+            createTypeFromInternalType(arrayType.getElementType, isNullable = true), isNullable)
 
-      case _@t =>
-        throw new TableException(s"Type is not supported: $t")
+          case mapType: MapType => new MapRelDataType(
+            mapType,
+            createTypeFromInternalType(mapType.getKeyType, isNullable = true),
+            createTypeFromInternalType(mapType.getValueType, isNullable = true),
+            isNullable)
+
+          case multisetType: MultisetType => new MultisetRelDataType(
+            multisetType,
+            createTypeFromInternalType(multisetType.getElementType, isNullable = true),
+            isNullable)
+
+          case generic: GenericType[_] =>
+            new GenericRelDataType(generic, isNullable, getTypeSystem)
+
+          case _@t =>
+            throw new TableException(s"Type is not supported: $t")
+        }
+        seenTypes.put((tp, isNullable), refType)
+        refType
     }
 
-    // Kind in TimestampType do not affect the hashcode and equals, So we can't put it to seenTypes
-    val relType = t.getTypeRoot match {
-      case LogicalTypeRoot.TIMESTAMP_WITHOUT_TIME_ZONE =>
-        val timestampType = t.asInstanceOf[TimestampType]
-        timestampType.getKind match {
-          case TimestampKind.PROCTIME => createProctimeIndicatorType(true)
-          case TimestampKind.ROWTIME => createRowtimeIndicatorType(true)
-          case TimestampKind.REGULAR => createSqlType(TIMESTAMP)
-        }
-      case _ =>
-        seenTypes.get(t) match {
-          case Some(retType: RelDataType) => retType
-          case None =>
-            val refType = newRelDataType()
-            seenTypes.put(t, refType)
-            refType
-        }
-    }
-
-    createTypeWithNullability(relType, t.isNullable)
+    createTypeWithNullability(relType, isNullable)
   }
 
   /**
     * Creates a indicator type for processing-time, but with similar properties as SQL timestamp.
     */
-  def createProctimeIndicatorType(isNullable: Boolean): RelDataType = {
-    val originalType = createFieldTypeFromLogicalType(new TimestampType(isNullable, 3))
-    canonize(new TimeIndicatorRelDataType(
-      getTypeSystem,
-      originalType.asInstanceOf[BasicSqlType],
-      isNullable,
-      isEventTime = false))
+  def createProctimeIndicatorType(): RelDataType = {
+    val originalType = createTypeFromInternalType(InternalTypes.TIMESTAMP, isNullable = false)
+    canonize(
+      new TimeIndicatorRelDataType(
+        getTypeSystem,
+        originalType.asInstanceOf[BasicSqlType],
+        isEventTime = false)
+    )
   }
 
   /**
     * Creates a indicator type for event-time, but with similar properties as SQL timestamp.
     */
-  def createRowtimeIndicatorType(isNullable: Boolean): RelDataType = {
-    val originalType = createFieldTypeFromLogicalType(new TimestampType(isNullable, 3))
-    canonize(new TimeIndicatorRelDataType(
-      getTypeSystem,
-      originalType.asInstanceOf[BasicSqlType],
-      isNullable,
-      isEventTime = true))
+  def createRowtimeIndicatorType(): RelDataType = {
+    val originalType = createTypeFromInternalType(InternalTypes.TIMESTAMP, isNullable = false)
+    canonize(
+      new TimeIndicatorRelDataType(
+        getTypeSystem,
+        originalType.asInstanceOf[BasicSqlType],
+        isEventTime = true)
+    )
   }
 
   /**
-    * Creates a table row type with the input fieldNames and input fieldTypes using
-    * FlinkTypeFactory. Table row type is table schema for Calcite RelNode. See getRowType of
-    * [[RelNode]]. Use FULLY_QUALIFIED to let each field must be referenced explicitly.
+    * Creates a struct type with the input fieldNames and input fieldTypes using FlinkTypeFactory
     *
     * @param fieldNames field names
-    * @param fieldTypes field types, every element is Flink's [[LogicalType]]
-    * @return a table row type with the input fieldNames, input fieldTypes.
+    * @param fieldTypes field types, every element is Flink's [[InternalType]]
+    * @return a struct type with the input fieldNames, input fieldTypes, and system fields
     */
-  def buildRelNodeRowType(
+  def buildLogicalRowType(
       fieldNames: Seq[String],
-      fieldTypes: Seq[LogicalType]): RelDataType = {
-    buildStructType(fieldNames, fieldTypes, StructKind.FULLY_QUALIFIED)
+      fieldTypes: Seq[InternalType]): RelDataType = {
+    buildLogicalRowType(
+      fieldNames,
+      fieldTypes,
+      fieldTypes.map(_ => true))
   }
 
   /**
-    * Creates a struct type with the input fieldNames and input fieldTypes using FlinkTypeFactory.
+    * Creates a struct type with the input fieldNames, input fieldTypes and input fieldNullables
+    * using FlinkTypeFactory
     *
-    * @param fieldNames field names
-    * @param fieldTypes field types, every element is Flink's [[LogicalType]].
-    * @param structKind Name resolution policy. See more information in [[StructKind]].
-    * @return a struct type with the input fieldNames, input fieldTypes.
+    * @param fieldNames     field names
+    * @param fieldTypes     field types, every element is Flink's [[InternalType]]
+    * @param fieldNullables field nullable properties
+    * @return a struct type with the input fieldNames, input fieldTypes, and system fields
     */
-  private def buildStructType(
+  def buildLogicalRowType(
       fieldNames: Seq[String],
-      fieldTypes: Seq[LogicalType],
-      structKind: StructKind): RelDataType = {
-    val b = builder
-    b.kind(structKind)
-    val fields = fieldNames.zip(fieldTypes)
+      fieldTypes: Seq[InternalType],
+      fieldNullables: Seq[Boolean]): RelDataType = {
+    val logicalRowTypeBuilder = builder
+    val fields = fieldNames.zip(fieldTypes).zip(fieldNullables)
     fields foreach {
-      case (fieldName, fieldType) =>
-        b.add(fieldName, createFieldTypeFromLogicalType(fieldType))
+      case ((fieldName, fieldType), fieldNullable) =>
+        logicalRowTypeBuilder.add(fieldName, createTypeFromInternalType(fieldType, fieldNullable))
+    }
+    logicalRowTypeBuilder.build
+  }
+
+  /**
+    * Created a struct type with the input table schema using FlinkTypeFactory
+    * @param tableSchema  the table schema
+    * @return a struct type with the input fieldNames, input fieldTypes, and system fields
+    */
+  def buildLogicalRowType(tableSchema: TableSchema, isStreaming: Option[Boolean]): RelDataType = {
+    buildRelDataType(
+      tableSchema.getFieldNames.toSeq,
+      tableSchema.getFieldTypes map {
+        case TimeIndicatorTypeInfo.PROCTIME_INDICATOR
+          if isStreaming.isDefined && !isStreaming.get =>
+          InternalTypes.TIMESTAMP
+        case TimeIndicatorTypeInfo.ROWTIME_INDICATOR
+          if isStreaming.isDefined && !isStreaming.get =>
+          InternalTypes.TIMESTAMP
+        case tpe: TypeInformation[_] => createInternalTypeFromTypeInfo(tpe)
+      })
+  }
+
+  def buildRelDataType(
+      fieldNames: Seq[String],
+      fieldTypes: Seq[InternalType]): RelDataType = {
+    buildRelDataType(
+      fieldNames,
+      fieldTypes,
+      fieldTypes.map(!FlinkTypeFactory.isTimeIndicatorType(_)))
+  }
+
+  def buildRelDataType(
+      fieldNames: Seq[String],
+      fieldTypes: Seq[InternalType],
+      fieldNullables: Seq[Boolean]): RelDataType = {
+    val b = builder
+    val fields = fieldNames.zip(fieldTypes).zip(fieldNullables)
+    fields foreach {
+      case ((fieldName, fieldType), fieldNullable) =>
+        if (FlinkTypeFactory.isTimeIndicatorType(fieldType) && fieldNullable) {
+          throw new TableException(
+            s"$fieldName can not be nullable because it is TimeIndicatorType!")
+        }
+        b.add(fieldName, createTypeFromInternalType(fieldType, fieldNullable))
     }
     b.build
   }
@@ -233,23 +253,35 @@ class FlinkTypeFactory(typeSystem: RelDataTypeSystem) extends JavaTypeFactoryImp
     }
   }
 
+
   override def createArrayType(elementType: RelDataType, maxCardinality: Long): RelDataType = {
-    // Just validate type, make sure there is a failure in validate phase.
-    toLogicalType(elementType)
-    super.createArrayType(elementType, maxCardinality)
+    val arrayType = InternalTypes.createArrayType(FlinkTypeFactory.toInternalType(elementType))
+    val relType = new ArrayRelDataType(
+      arrayType,
+      elementType,
+      isNullable = false)
+    canonize(relType)
   }
 
   override def createMapType(keyType: RelDataType, valueType: RelDataType): RelDataType = {
-    // Just validate type, make sure there is a failure in validate phase.
-    toLogicalType(keyType)
-    toLogicalType(valueType)
-    super.createMapType(keyType, valueType)
+    val internalKeyType = FlinkTypeFactory.toInternalType(keyType)
+    val internalValueType = FlinkTypeFactory.toInternalType(valueType)
+    val internalMapType = InternalTypes.createMapType(internalKeyType, internalValueType)
+    val relType = new MapRelDataType(
+      internalMapType,
+      keyType,
+      valueType,
+      isNullable = false)
+    canonize(relType)
   }
 
   override def createMultisetType(elementType: RelDataType, maxCardinality: Long): RelDataType = {
-    // Just validate type, make sure there is a failure in validate phase.
-    toLogicalType(elementType)
-    super.createMultisetType(elementType, maxCardinality)
+    val internalElementType = FlinkTypeFactory.toInternalType(elementType)
+    val relType = new MultisetRelDataType(
+      InternalTypes.createMultisetType(internalElementType),
+      elementType,
+      isNullable = false)
+    canonize(relType)
   }
 
   override def createSqlType(typeName: SqlTypeName): RelDataType = {
@@ -257,7 +289,8 @@ class FlinkTypeFactory(typeSystem: RelDataTypeSystem) extends JavaTypeFactoryImp
       // if we got here, the precision and scale are not specified, here we
       // keep precision/scale in sync with our type system's default value,
       // see DecimalType.USER_DEFAULT.
-      createSqlType(typeName, DecimalType.DEFAULT_PRECISION, DecimalType.DEFAULT_SCALE)
+      createSqlType(typeName, DecimalType.USER_DEFAULT.precision(),
+        DecimalType.USER_DEFAULT.scale())
     } else {
       super.createSqlType(typeName)
     }
@@ -274,11 +307,20 @@ class FlinkTypeFactory(typeSystem: RelDataTypeSystem) extends JavaTypeFactoryImp
 
     // change nullability
     val newType = relDataType match {
+      case array: ArrayRelDataType =>
+        new ArrayRelDataType(array.arrayType, array.getComponentType, isNullable)
+
+      case map: MapRelDataType =>
+        new MapRelDataType(map.mapType, map.keyType, map.valueType, isNullable)
+
+      case multiSet: MultisetRelDataType =>
+        new MultisetRelDataType(multiSet.multisetType, multiSet.getComponentType, isNullable)
+
       case generic: GenericRelDataType =>
         new GenericRelDataType(generic.genericType, isNullable, typeSystem)
 
-      case it: TimeIndicatorRelDataType =>
-        new TimeIndicatorRelDataType(it.typeSystem, it.originalType, isNullable, it.isEventTime)
+      case timeIndicator: TimeIndicatorRelDataType =>
+        timeIndicator
 
       case _ =>
         super.createTypeWithNullability(relDataType, isNullable)
@@ -339,10 +381,10 @@ class FlinkTypeFactory(typeSystem: RelDataTypeSystem) extends JavaTypeFactoryImp
   override def createDecimalQuotient(type1: RelDataType, type2: RelDataType): RelDataType = {
     if (SqlTypeUtil.isExactNumeric(type1) && SqlTypeUtil.isExactNumeric(type2) &&
         (SqlTypeUtil.isDecimal(type1) || SqlTypeUtil.isDecimal(type2))) {
-      val result = FlinkTypeSystem.inferDivisionType(
+      val result = DecimalType.inferDivisionType(
         type1.getPrecision, type1.getScale,
         type2.getPrecision, type2.getScale)
-      createSqlType(SqlTypeName.DECIMAL, result.getPrecision, result.getScale)
+      createSqlType(SqlTypeName.DECIMAL, result.precision, result.scale)
     } else {
       null
     }
@@ -351,9 +393,8 @@ class FlinkTypeFactory(typeSystem: RelDataTypeSystem) extends JavaTypeFactoryImp
 
 object FlinkTypeFactory {
 
-  def isTimeIndicatorType(t: LogicalType): Boolean = t match {
-    case t: TimestampType
-      if t.getKind == TimestampKind.ROWTIME || t.getKind == TimestampKind.PROCTIME => true
+  def isTimeIndicatorType(t: InternalType): Boolean = t match {
+    case InternalTypes.ROWTIME_INDICATOR | InternalTypes.PROCTIME_INDICATOR => true
     case _ => false
   }
 
@@ -372,147 +413,78 @@ object FlinkTypeFactory {
     case _ => false
   }
 
-  @Deprecated
-  def isProctimeIndicatorType(typeInfo: TypeInformation[_]): Boolean = typeInfo match {
-    case ti: TimeIndicatorTypeInfo if !ti.isEventTime => true
-    case _ => false
+  def toInternalType(relDataType: RelDataType): InternalType = relDataType.getSqlTypeName match {
+    case BOOLEAN => InternalTypes.BOOLEAN
+    case TINYINT => InternalTypes.BYTE
+    case SMALLINT => InternalTypes.SHORT
+    case INTEGER => InternalTypes.INT
+    case BIGINT => InternalTypes.LONG
+    case FLOAT => InternalTypes.FLOAT
+    case DOUBLE => InternalTypes.DOUBLE
+    case VARCHAR | CHAR => InternalTypes.STRING
+    case VARBINARY | BINARY => InternalTypes.BINARY
+    case DECIMAL => InternalTypes.createDecimalType(relDataType.getPrecision, relDataType.getScale)
+
+    // time indicators
+    case TIMESTAMP if relDataType.isInstanceOf[TimeIndicatorRelDataType] =>
+      val indicator = relDataType.asInstanceOf[TimeIndicatorRelDataType]
+      if (indicator.isEventTime) {
+        InternalTypes.ROWTIME_INDICATOR
+      } else {
+        InternalTypes.PROCTIME_INDICATOR
+      }
+
+    // temporal types
+    case DATE => InternalTypes.DATE
+    case TIME => InternalTypes.TIME
+    case TIMESTAMP => InternalTypes.TIMESTAMP
+    case typeName if YEAR_INTERVAL_TYPES.contains(typeName) => InternalTypes.INTERVAL_MONTHS
+    case typeName if DAY_INTERVAL_TYPES.contains(typeName) => InternalTypes.INTERVAL_MILLIS
+
+    case NULL =>
+      throw new TableException(
+        "Type NULL is not supported. Null values must have a supported type.")
+
+    // symbol for special flags e.g. TRIM's BOTH, LEADING, TRAILING
+    // are represented as Enum
+    case SYMBOL => InternalTypes.createGenericType(classOf[Enum[_]])
+
+    // extract encapsulated Type
+    case ANY if relDataType.isInstanceOf[GenericRelDataType] =>
+      val genericRelDataType = relDataType.asInstanceOf[GenericRelDataType]
+      genericRelDataType.genericType
+
+    case ROW if relDataType.isInstanceOf[RowRelDataType] =>
+      val compositeRelDataType = relDataType.asInstanceOf[RowRelDataType]
+      compositeRelDataType.rowType
+
+    case ROW if relDataType.isInstanceOf[RelRecordType] =>
+      val relRecordType = relDataType.asInstanceOf[RelRecordType]
+      new RowSchema(relRecordType).internalType
+
+    case MULTISET if relDataType.isInstanceOf[MultisetRelDataType] =>
+      val multisetRelDataType = relDataType.asInstanceOf[MultisetRelDataType]
+      multisetRelDataType.multisetType
+
+    case ARRAY if relDataType.isInstanceOf[ArrayRelDataType] =>
+      val arrayRelDataType = relDataType.asInstanceOf[ArrayRelDataType]
+      arrayRelDataType.arrayType
+
+    case MAP if relDataType.isInstanceOf[MapRelDataType] =>
+      val mapRelDataType = relDataType.asInstanceOf[MapRelDataType]
+      mapRelDataType.mapType
+
+    case _@t =>
+      throw new TableException(s"Type is not supported: $t")
   }
 
-  @Deprecated
-  def isRowtimeIndicatorType(typeInfo: TypeInformation[_]): Boolean = typeInfo match {
-    case ti: TimeIndicatorTypeInfo if ti.isEventTime => true
-    case _ => false
-  }
-
-  @Deprecated
-  def isTimeIndicatorType(typeInfo: TypeInformation[_]): Boolean = typeInfo match {
-    case ti: TimeIndicatorTypeInfo => true
-    case _ => false
-  }
-
-  def toLogicalType(relDataType: RelDataType): LogicalType = {
-    val logicalType = relDataType.getSqlTypeName match {
-      case BOOLEAN => new BooleanType()
-      case TINYINT => new TinyIntType()
-      case SMALLINT => new SmallIntType()
-      case INTEGER => new IntType()
-      case BIGINT => new BigIntType()
-      case FLOAT => new FloatType()
-      case DOUBLE => new DoubleType()
-      case CHAR =>
-        if (relDataType.getPrecision == 0) {
-          CharType.ofEmptyLiteral
-        } else {
-          new CharType(relDataType.getPrecision)
-        }
-      case VARCHAR =>
-        if (relDataType.getPrecision == 0) {
-          VarCharType.ofEmptyLiteral
-        } else {
-          new VarCharType(relDataType.getPrecision)
-        }
-      case BINARY =>
-        if (relDataType.getPrecision == 0) {
-          BinaryType.ofEmptyLiteral
-        } else {
-          new BinaryType(relDataType.getPrecision)
-        }
-      case VARBINARY =>
-        if (relDataType.getPrecision == 0) {
-          VarBinaryType.ofEmptyLiteral
-        } else {
-          new VarBinaryType(relDataType.getPrecision)
-        }
-      case DECIMAL => new DecimalType(relDataType.getPrecision, relDataType.getScale)
-
-      // time indicators
-      case TIMESTAMP if relDataType.isInstanceOf[TimeIndicatorRelDataType] =>
-        val indicator = relDataType.asInstanceOf[TimeIndicatorRelDataType]
-        if (indicator.isEventTime) {
-          new TimestampType(true, TimestampKind.ROWTIME, 3)
-        } else {
-          new TimestampType(true, TimestampKind.PROCTIME, 3)
-        }
-
-      // temporal types
-      case DATE => new DateType()
-      case TIME =>
-        if (relDataType.getPrecision > 3) {
-          throw new TableException(
-            s"TIME precision is not supported: ${relDataType.getPrecision}")
-        }
-        // blink runner support precision 3, but for consistent with flink runner, we set to 0.
-        new TimeType()
-      case TIMESTAMP =>
-        if (relDataType.getPrecision > 3) {
-          throw new TableException(
-            s"TIMESTAMP precision is not supported: ${relDataType.getPrecision}")
-        }
-        new TimestampType(3)
-      case TIMESTAMP_WITH_LOCAL_TIME_ZONE =>
-        if (relDataType.getPrecision > 3) {
-          throw new TableException(
-            s"TIMESTAMP_WITH_LOCAL_TIME_ZONE precision is not supported:" +
-                s" ${relDataType.getPrecision}")
-        }
-        new LocalZonedTimestampType(3)
-      case typeName if YEAR_INTERVAL_TYPES.contains(typeName) =>
-        DataTypes.INTERVAL(DataTypes.MONTH).getLogicalType
-      case typeName if DAY_INTERVAL_TYPES.contains(typeName) =>
-        if (relDataType.getPrecision > 3) {
-          throw new TableException(
-            s"DAY_INTERVAL_TYPES precision is not supported: ${relDataType.getPrecision}")
-        }
-        DataTypes.INTERVAL(DataTypes.SECOND(3)).getLogicalType
-
-      case NULL =>
-        throw new TableException(
-          "Type NULL is not supported. Null values must have a supported type.")
-
-      // symbol for special flags e.g. TRIM's BOTH, LEADING, TRAILING
-      // are represented as Enum
-      case SYMBOL => new TypeInformationAnyType[Enum[_]](
-        TypeExtractor.createTypeInfo(classOf[Enum[_]]))
-
-      // extract encapsulated Type
-      case ANY if relDataType.isInstanceOf[GenericRelDataType] =>
-        val genericRelDataType = relDataType.asInstanceOf[GenericRelDataType]
-        genericRelDataType.genericType
-
-      case ROW if relDataType.isInstanceOf[RelRecordType] =>
-        val recordType = relDataType.asInstanceOf[RelRecordType]
-        RowType.of(
-          recordType.getFieldList.map(_.getType).map(toLogicalType).toArray,
-          recordType.getFieldNames.toSeq.toArray)
-
-      case ROW if relDataType.isInstanceOf[RelRecordType] =>
-        toLogicalRowType(relDataType.asInstanceOf[RelRecordType])
-
-      case MULTISET => new MultisetType(toLogicalType(relDataType.getComponentType))
-
-      case ARRAY => new ArrayType(toLogicalType(relDataType.getComponentType))
-
-      case MAP if relDataType.isInstanceOf[MapSqlType] =>
-        val mapRelDataType = relDataType.asInstanceOf[MapSqlType]
-        new MapType(
-          toLogicalType(mapRelDataType.getKeyType),
-          toLogicalType(mapRelDataType.getValueType))
-
-      // CURSOR for UDTF case, whose type info will never be used, just a placeholder
-      case CURSOR => new TypeInformationAnyType[Nothing](new NothingTypeInfo)
-
-      case _@t =>
-        throw new TableException(s"Type is not supported: $t")
+  def toInternalRowType(logicalRowType: RelDataType): RowType = {
+    // convert to InternalType
+    val logicalFieldTypes = logicalRowType.getFieldList.asScala map {
+      relDataType => FlinkTypeFactory.toInternalType(relDataType.getType)
     }
-    logicalType.copy(relDataType.isNullable)
-  }
-
-  def toLogicalRowType(relType: RelDataType): RowType = {
-    checkArgument(relType.isStruct)
-    RowType.of(
-      relType.getFieldList.asScala
-          .map(fieldType => toLogicalType(fieldType.getType))
-          .toArray[LogicalType],
-      relType.getFieldNames.asScala.toArray)
+    // field names
+    val logicalFieldNames = logicalRowType.getFieldNames.asScala
+    new RowType(logicalFieldTypes.toArray[InternalType], logicalFieldNames.toArray)
   }
 }

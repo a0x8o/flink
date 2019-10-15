@@ -19,7 +19,7 @@
 package org.apache.flink.table.plan.stream.sql.join
 
 import org.apache.flink.api.scala._
-import org.apache.flink.table.api.scala._
+import org.apache.flink.table.api.TableConfigOptions
 import org.apache.flink.table.util.{StreamTableTestUtil, TableTestBase}
 
 import org.junit.Test
@@ -35,6 +35,13 @@ class JoinTest extends TableTestBase {
   @Test
   def testInnerJoin(): Unit = {
     util.verifyPlan("SELECT a1, b1 FROM A JOIN B ON a1 = b1")
+  }
+
+  @Test
+  def testInnerJoinWithMiniBatch(): Unit = {
+    util.tableEnv.getConfig.getConf
+      .setLong(TableConfigOptions.SQL_EXEC_MINIBATCH_ALLOW_LATENCY, 1000L)
+    util.verifyPlanWithTrait( "SELECT a1, b1 FROM A JOIN B ON a1 = b1")
   }
 
   @Test

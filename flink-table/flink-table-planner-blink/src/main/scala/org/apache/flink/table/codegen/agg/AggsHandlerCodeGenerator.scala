@@ -17,6 +17,9 @@
  */
 package org.apache.flink.table.codegen.agg
 
+import org.apache.flink.api.common.typeinfo.TypeInformation
+import org.apache.flink.table.`type`.TypeConverters.createInternalTypeFromTypeInfo
+import org.apache.flink.table.`type`.{InternalType, InternalTypes, RowType}
 import org.apache.flink.table.api.TableException
 import org.apache.flink.table.codegen.CodeGenUtils.{BASE_ROW, _}
 import org.apache.flink.table.codegen.Indenter.toISC
@@ -29,13 +32,6 @@ import org.apache.flink.table.functions.AggregateFunction
 import org.apache.flink.table.functions.aggfunctions.DeclarativeAggregateFunction
 import org.apache.flink.table.generated.{AggsHandleFunction, GeneratedAggsHandleFunction, GeneratedNamespaceAggsHandleFunction, NamespaceAggsHandleFunction}
 import org.apache.flink.table.plan.util.AggregateInfoList
-import org.apache.flink.table.types.LogicalTypeDataTypeConverter.fromDataTypeToLogicalType
-import org.apache.flink.table.types.{DataType, LogicalTypeDataTypeConverter}
-import org.apache.flink.table.types.TypeInfoLogicalTypeConverter.fromTypeInfoToLogicalType
-import org.apache.flink.table.types.logical.{BooleanType, IntType, LogicalType, RowType}
-import org.apache.flink.table.types.utils.TypeConversions
-import org.apache.flink.table.types.utils.TypeConversions.fromLegacyInfoToDataType
-
 import org.apache.calcite.rex.RexLiteral
 import org.apache.calcite.tools.RelBuilder
 
@@ -48,32 +44,32 @@ import org.apache.calcite.tools.RelBuilder
 class AggsHandlerCodeGenerator(
     ctx: CodeGeneratorContext,
     relBuilder: RelBuilder,
-    inputFieldTypes: Seq[LogicalType],
-    copyInputField: Boolean) {
+    inputFieldTypes: Seq[InternalType],
+    needRetract: Boolean,
+    copyInputField: Boolean,
+    needAccumulate: Boolean = true) {
 
-  private val inputType = RowType.of(inputFieldTypes: _*)
+  private val inputType = new RowType(inputFieldTypes: _*)
 
   /** constant expressions that act like a second input in the parameter indices. */
   private var constantExprs: Seq[GeneratedExpression] = Seq()
 
   /** window properties like window_start and window_end, only used in window aggregates */
   private var namespaceClassName: String = _
-  private var windowProperties: Seq[PlannerWindowProperty] = Seq()
+  private var windowProperties: Seq[WindowProperty] = Seq()
   private var hasNamespace: Boolean = false
 
   /** Aggregates informations */
   private var accTypeInfo: RowType = _
   private var aggBufferSize: Int = _
 
-  private var mergedAccExternalTypes: Array[DataType] = _
+  private var mergedAccExternalTypes: Array[TypeInformation[_]] = _
   private var mergedAccOffset: Int = 0
   private var mergedAccOnHeap: Boolean = false
 
   private var ignoreAggValues: Array[Int] = Array()
 
-  private var isAccumulateNeeded = false
-  private var isRetractNeeded = false
-  private var isMergeNeeded = false
+  private var needMerge = false
 
   var valueType: RowType = _
 
@@ -136,45 +132,22 @@ class AggsHandlerCodeGenerator(
     this
   }
 
-
   /**
-    * Tells the generator to generate `accumulate(..)` method for the [[AggsHandleFunction]] and
-    * [[NamespaceAggsHandleFunction]]. Default not generate `accumulate(..)` method.
-    */
-  def needAccumulate(): AggsHandlerCodeGenerator = {
-    this.isAccumulateNeeded = true
-    this
-  }
-
-  /**
-    * Tells the generator to generate `retract(..)` method for the [[AggsHandleFunction]] and
-    * [[NamespaceAggsHandleFunction]]. Default not generate `retract(..)` method.
-    *
-    * @return
-    */
-  def needRetract(): AggsHandlerCodeGenerator = {
-    this.isRetractNeeded = true
-    this
-  }
-
-  /**
-    * Tells the generator to generate `merge(..)` method with the merged accumulator information
-    * for the [[AggsHandleFunction]] and [[NamespaceAggsHandleFunction]].
-    * Default not generate `merge(..)` method.
+    * Sets merged accumulator information.
     *
     * @param mergedAccOffset the mergedAcc may come from local aggregate,
     *                         this is the first buffer offset in the row
     * @param mergedAccOnHeap true if the mergedAcc is on heap, otherwise
     * @param mergedAccExternalTypes the merged acc types
     */
-  def needMerge(
+  def withMerging(
       mergedAccOffset: Int,
       mergedAccOnHeap: Boolean,
-      mergedAccExternalTypes: Array[DataType] = null): AggsHandlerCodeGenerator = {
+      mergedAccExternalTypes: Array[TypeInformation[_]] = null): AggsHandlerCodeGenerator = {
     this.mergedAccOffset = mergedAccOffset
     this.mergedAccOnHeap = mergedAccOnHeap
     this.mergedAccExternalTypes = mergedAccExternalTypes
-    this.isMergeNeeded = true
+    this.needMerge = true
     this
   }
 
@@ -182,7 +155,7 @@ class AggsHandlerCodeGenerator(
     * Adds window properties such as window_start, window_end
     */
   private def initialWindowProperties(
-      windowProperties: Seq[PlannerWindowProperty],
+      windowProperties: Seq[WindowProperty],
       windowClass: Class[_]): Unit = {
     this.windowProperties = windowProperties
     this.namespaceClassName = windowClass.getCanonicalName
@@ -194,9 +167,9 @@ class AggsHandlerCodeGenerator(
     */
   private def initialAggregateInformation(aggInfoList: AggregateInfoList): Unit = {
 
-    this.accTypeInfo = RowType.of(
-      aggInfoList.getAccTypes.map(fromDataTypeToLogicalType): _*)
-    this.aggBufferSize = accTypeInfo.getFieldCount
+    this.accTypeInfo = new RowType(
+      aggInfoList.getAccTypes.map(createInternalTypeFromTypeInfo): _*)
+    this.aggBufferSize = accTypeInfo.getArity
     var aggBufferOffset: Int = 0
 
     if (mergedAccExternalTypes == null) {
@@ -257,7 +230,7 @@ class AggsHandlerCodeGenerator(
           aggBufferOffset,
           aggBufferSize,
           hasNamespace,
-          isMergeNeeded,
+          needMerge,
           mergedAccOnHeap,
           distinctInfo.consumeRetraction,
           copyInputField,
@@ -296,7 +269,7 @@ class AggsHandlerCodeGenerator(
     if (filterArg > 0) {
       val name = s"agg_${aggIndex}_filter"
       val filterType = inputFieldTypes(filterArg)
-      if (!filterType.isInstanceOf[BooleanType]) {
+      if (filterType != InternalTypes.BOOLEAN) {
         throw new TableException(s"filter arg must be boolean, but is $filterType, " +
             s"the aggregate is $aggName.")
       }
@@ -404,7 +377,7 @@ class AggsHandlerCodeGenerator(
   def generateNamespaceAggsHandler[N](
       name: String,
       aggInfoList: AggregateInfoList,
-      windowProperties: Seq[PlannerWindowProperty],
+      windowProperties: Seq[WindowProperty],
       windowClass: Class[N]): GeneratedNamespaceAggsHandleFunction[N] = {
 
     initialWindowProperties(windowProperties, windowClass)
@@ -567,7 +540,7 @@ class AggsHandlerCodeGenerator(
   }
 
   private def genAccumulate(): String = {
-    if (isAccumulateNeeded) {
+    if (needAccumulate) {
       // validation check
       checkNeededMethods(needAccumulate = true)
 
@@ -590,7 +563,7 @@ class AggsHandlerCodeGenerator(
   }
 
   private def genRetract(): String = {
-    if (isRetractNeeded) {
+    if (needRetract) {
       // validation check
       checkNeededMethods(needRetract = true)
 
@@ -613,7 +586,7 @@ class AggsHandlerCodeGenerator(
   }
 
   private def genMerge(): String = {
-    if (isMergeNeeded) {
+    if (needMerge) {
       // validation check
       checkNeededMethods(needMerge = true)
 
@@ -621,14 +594,14 @@ class AggsHandlerCodeGenerator(
       ctx.startNewLocalVariableStatement(methodName)
 
       // the mergedAcc is partial of mergedInput, such as <key, acc> in local-global, ignore keys
-      val internalAccTypes = mergedAccExternalTypes.map(fromDataTypeToLogicalType)
+      val internalAccTypes = mergedAccExternalTypes.map(createInternalTypeFromTypeInfo)
       val mergedAccType = if (mergedAccOffset > 0) {
         // concat padding types and acc types, use int type as padding
         // the padding types will be ignored
-        val padding = Array.range(0, mergedAccOffset).map(_ => new IntType())
-        RowType.of(padding ++ internalAccTypes: _*)
+        val padding = Array.range(0, mergedAccOffset).map(_ => InternalTypes.INT)
+        new RowType(padding ++ internalAccTypes: _*)
       } else {
-        RowType.of(internalAccTypes: _*)
+        new RowType(internalAccTypes: _*)
       }
 
       // bind input1 as otherAcc
@@ -663,19 +636,19 @@ class AggsHandlerCodeGenerator(
     if (hasNamespace) {
       // append window property results
       val windowExprs = windowProperties.map {
-        case w: PlannerWindowStart =>
+        case w: WindowStart =>
           // return a Timestamp(Internal is long)
           GeneratedExpression(
             s"$NAMESPACE_TERM.getStart()", "false", "", w.resultType)
-        case w: PlannerWindowEnd =>
+        case w: WindowEnd =>
           // return a Timestamp(Internal is long)
           GeneratedExpression(
             s"$NAMESPACE_TERM.getEnd()", "false", "", w.resultType)
-        case r: PlannerRowtimeAttribute =>
+        case r: RowtimeAttribute =>
           // return a rowtime, use long as internal type
           GeneratedExpression(
             s"$NAMESPACE_TERM.getEnd() - 1", "false", "", r.resultType)
-        case p: PlannerProctimeAttribute =>
+        case p: ProctimeAttribute =>
           // ignore this property, it will be null at the position later
           GeneratedExpression("-1L", "true", "", p.resultType)
       }
@@ -683,7 +656,7 @@ class AggsHandlerCodeGenerator(
     }
 
     val aggValueTerm = newName("aggValue")
-    valueType = RowType.of(valueExprs.map(_.resultType): _*)
+    valueType = new RowType(valueExprs.map(_.resultType): _*)
 
     // always create a new result row
     val resultExpr = exprGenerator.generateResultExpression(
@@ -787,8 +760,7 @@ object AggsHandlerCodeGenerator {
       val openCode =
         s"""
            |$viewFieldTerm = ($viewTypeTerm) $STORE_TERM.$registerCall($parameters);
-           |$viewFieldInternalTerm = ${genToInternal(
-                ctx, fromLegacyInfoToDataType(spec.dataViewTypeInfo), viewFieldTerm)};
+           |$viewFieldInternalTerm = ${genToInternal(ctx, spec.dataViewTypeInfo, viewFieldTerm)};
          """.stripMargin
       ctx.addReusableOpenStatement(openCode)
 
@@ -816,7 +788,7 @@ object AggsHandlerCodeGenerator {
           s"""
              |$backupViewTerm = ($viewTypeTerm) $STORE_TERM.$registerCall($parameters);
              |$backupViewInternalTerm = ${genToInternal(
-                ctx, fromLegacyInfoToDataType(spec.dataViewTypeInfo), backupViewTerm)};
+                ctx, spec.dataViewTypeInfo, backupViewTerm)};
            """.stripMargin
         ctx.addReusableOpenStatement(backupOpenCode)
       }

@@ -215,8 +215,7 @@ public class WebMonitorEndpoint<T extends RestfulGateway> extends RestServerEndp
 			timeout,
 			responseHeaders,
 			DashboardConfigurationHeaders.getInstance(),
-			restConfiguration.getRefreshInterval(),
-			restConfiguration.isWebSubmitEnabled());
+			restConfiguration.getRefreshInterval());
 
 		JobIdsHandler jobIdsHandler = new JobIdsHandler(
 			leaderRetriever,
@@ -710,7 +709,7 @@ public class WebMonitorEndpoint<T extends RestfulGateway> extends RestServerEndp
 	@Override
 	public void grantLeadership(final UUID leaderSessionID) {
 		log.info("{} was granted leadership with leaderSessionID={}", getRestBaseUrl(), leaderSessionID);
-		leaderElectionService.confirmLeadership(leaderSessionID, getRestBaseUrl());
+		leaderElectionService.confirmLeaderSessionID(leaderSessionID);
 	}
 
 	@Override
@@ -719,7 +718,7 @@ public class WebMonitorEndpoint<T extends RestfulGateway> extends RestServerEndp
 	}
 
 	@Override
-	public String getDescription() {
+	public String getAddress() {
 		return getRestBaseUrl();
 	}
 

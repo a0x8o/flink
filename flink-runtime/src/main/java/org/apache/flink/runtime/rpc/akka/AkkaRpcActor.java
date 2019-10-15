@@ -506,7 +506,7 @@ class AkkaRpcActor<T extends RpcEndpoint & RpcGateway> extends AbstractActor {
 
 			CompletableFuture<Void> terminationFuture;
 			try {
-				terminationFuture = akkaRpcActor.rpcEndpoint.internalCallOnStop();
+				terminationFuture = akkaRpcActor.rpcEndpoint.onStop();
 			} catch (Throwable t) {
 				terminationFuture = FutureUtils.completedExceptionally(
 					new AkkaRpcException(
@@ -541,7 +541,7 @@ class AkkaRpcActor<T extends RpcEndpoint & RpcGateway> extends AbstractActor {
 			akkaRpcActor.mainThreadValidator.enterMainThread();
 
 			try {
-				akkaRpcActor.rpcEndpoint.internalCallOnStart();
+				akkaRpcActor.rpcEndpoint.onStart();
 			} catch (Throwable throwable) {
 				akkaRpcActor.stop(
 					RpcEndpointTerminationResult.failure(

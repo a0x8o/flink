@@ -20,26 +20,25 @@ package org.apache.flink.table.runtime.batch.sql.join
 
 import org.apache.flink.api.common.typeinfo.BasicTypeInfo.INT_TYPE_INFO
 import org.apache.flink.api.java.typeutils.RowTypeInfo
-import org.apache.flink.table.api.ExecutionConfigOptions
+import org.apache.flink.table.api.TableConfigOptions
 import org.apache.flink.table.runtime.batch.sql.join.JoinITCaseHelper.disableOtherJoinOpForJoin
-import org.apache.flink.table.runtime.batch.sql.join.JoinType.{BroadcastHashJoin, HashJoin, JoinType, NestedLoopJoin, SortMergeJoin}
+import org.apache.flink.table.runtime.batch.sql.join.JoinType.{JoinType, NestedLoopJoin, SortMergeJoin}
 import org.apache.flink.table.runtime.utils.BatchTestBase
 import org.apache.flink.table.runtime.utils.BatchTestBase.row
 import org.apache.flink.table.runtime.utils.TestData._
 import org.apache.flink.table.typeutils.BigDecimalTypeInfo
 
-import org.junit.runner.RunWith
-import org.junit.runners.Parameterized
 import org.junit.{Before, Test}
 
 import java.math.{BigDecimal => JBigDecimal}
-import java.util
 
 import scala.collection.Seq
 import scala.util.Random
 
-@RunWith(classOf[Parameterized])
-class InnerJoinITCase(expectedJoinType: JoinType) extends BatchTestBase {
+// @RunWith(classOf[Parameterized]) TODO
+class InnerJoinITCase extends BatchTestBase {
+
+  val expectedJoinType: JoinType = JoinType.SortMergeJoin
 
   private lazy val myUpperCaseData = Seq(
     row(1, "A"),
@@ -77,12 +76,12 @@ class InnerJoinITCase(expectedJoinType: JoinType) extends BatchTestBase {
   )
 
   @Before
-  override def before(): Unit = {
-    super.before()
-    registerCollection("myUpperCaseData", myUpperCaseData, INT_STRING, "N, L", Array(true, false))
-    registerCollection("myLowerCaseData", myLowerCaseData, INT_STRING, "n, l", Array(true, false))
-    registerCollection("myTestData1", myTestData1, INT_INT, "a, b", Array(false, false))
-    registerCollection("myTestData2", myTestData2, INT_INT, "a, b", Array(false, false))
+  def before(): Unit = {
+    tEnv.getConfig.getConf.setInteger(TableConfigOptions.SQL_RESOURCE_DEFAULT_PARALLELISM, 3)
+    registerCollection("myUpperCaseData", myUpperCaseData, INT_STRING, Array(true, false), "N, L")
+    registerCollection("myLowerCaseData", myLowerCaseData, INT_STRING, Array(true, false), "n, l")
+    registerCollection("myTestData1", myTestData1, INT_INT, Array(false, false), "a, b")
+    registerCollection("myTestData2", myTestData2, INT_INT, Array(false, false), "a, b")
     disableOtherJoinOpForJoin(tEnv, expectedJoinType)
   }
 
@@ -154,9 +153,10 @@ class InnerJoinITCase(expectedJoinType: JoinType) extends BatchTestBase {
   @Test
   def testBigForSpill(): Unit = {
 
-    conf.getConfiguration.setInteger(ExecutionConfigOptions.SQL_RESOURCE_SORT_BUFFER_MEM, 1)
-    conf.getConfiguration.setInteger(ExecutionConfigOptions.SQL_RESOURCE_HASH_JOIN_TABLE_MEM, 2)
-    conf.getConfiguration.setInteger(ExecutionConfigOptions.SQL_RESOURCE_DEFAULT_PARALLELISM, 1)
+    conf.getConf.setInteger(TableConfigOptions.SQL_RESOURCE_SORT_BUFFER_MEM, 1)
+    //TODO ensure hash join spilled
+//    conf.getConf.setInteger(TableConfigOptions.SQL_RESOURCE_HASH_JOIN_TABLE_MEM, 2)
+    tEnv.getConfig.getConf.setInteger(TableConfigOptions.SQL_RESOURCE_DEFAULT_PARALLELISM, 1)
 
     val bigData = Random.shuffle(
       bigIntStringData.union(bigIntStringData).union(bigIntStringData).union(bigIntStringData))
@@ -171,10 +171,10 @@ class InnerJoinITCase(expectedJoinType: JoinType) extends BatchTestBase {
   @Test
   def testSortMergeJoinOutputOrder(): Unit = {
     if (expectedJoinType == SortMergeJoin) {
-      conf.getConfiguration.setInteger(ExecutionConfigOptions.SQL_RESOURCE_DEFAULT_PARALLELISM, 1)
+      tEnv.getConfig.getConf.setInteger(TableConfigOptions.SQL_RESOURCE_DEFAULT_PARALLELISM, 1)
       env.getConfig.setParallelism(1)
 
-      conf.getConfiguration.setInteger(ExecutionConfigOptions.SQL_RESOURCE_SORT_BUFFER_MEM, 1)
+      conf.getConf.setInteger(TableConfigOptions.SQL_RESOURCE_SORT_BUFFER_MEM, 1)
 
       val bigData = Random.shuffle(
         bigIntStringData.union(bigIntStringData).union(bigIntStringData).union(bigIntStringData))
@@ -188,12 +188,3 @@ class InnerJoinITCase(expectedJoinType: JoinType) extends BatchTestBase {
     }
   }
 }
-
-object InnerJoinITCase {
-  @Parameterized.Parameters(name = "{0}")
-  def parameters(): util.Collection[Array[_]] = {
-    util.Arrays.asList(
-      Array(BroadcastHashJoin), Array(HashJoin), Array(SortMergeJoin), Array(NestedLoopJoin))
-  }
-}
-

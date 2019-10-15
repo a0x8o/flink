@@ -19,12 +19,11 @@
 package org.apache.flink.runtime.resourcemanager.exceptions;
 
 import org.apache.flink.runtime.resourcemanager.ResourceManager;
-import org.apache.flink.util.FlinkException;
 
 /**
  * Base class for {@link ResourceManager} exceptions.
  */
-public class ResourceManagerException extends FlinkException {
+public class ResourceManagerException extends Exception {
 	private static final long serialVersionUID = -5503307426519195160L;
 
 	public ResourceManagerException(String message) {

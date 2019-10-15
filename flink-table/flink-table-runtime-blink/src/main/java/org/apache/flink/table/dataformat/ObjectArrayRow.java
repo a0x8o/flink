@@ -76,13 +76,13 @@ public abstract class ObjectArrayRow implements BaseRow {
 	}
 
 	@Override
-	public BaseArray getArray(int ordinal) {
-		return (BaseArray) this.fields[ordinal];
+	public BinaryArray getArray(int ordinal) {
+		return (BinaryArray) this.fields[ordinal];
 	}
 
 	@Override
-	public BaseMap getMap(int ordinal) {
-		return (BaseMap) this.fields[ordinal];
+	public BinaryMap getMap(int ordinal) {
+		return (BinaryMap) this.fields[ordinal];
 	}
 
 	@Override

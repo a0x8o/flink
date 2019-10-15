@@ -18,7 +18,7 @@
 
 package org.apache.flink.table.plan.batch.sql.join
 
-import org.apache.flink.table.api.{ExecutionConfigOptions, TableException}
+import org.apache.flink.table.api.{TableConfigOptions, TableException}
 
 import org.junit.{Before, Test}
 
@@ -26,9 +26,16 @@ class ShuffledHashJoinTest extends JoinTestBase {
 
   @Before
   def before(): Unit = {
-    util.tableEnv.getConfig.getConfiguration.setString(
-      ExecutionConfigOptions.SQL_EXEC_DISABLED_OPERATORS,
+    util.tableEnv.getConfig.getConf.setString(
+      TableConfigOptions.SQL_EXEC_DISABLED_OPERATORS,
       "SortMergeJoin, NestedLoopJoin, BroadcastHashJoin")
+  }
+
+  @Test
+  override def testJoinNonMatchingKeyTypes(): Unit = {
+    thrown.expect(classOf[TableException])
+    thrown.expectMessage("Equality join predicate on incompatible types")
+    super.testJoinNonMatchingKeyTypes()
   }
 
   @Test
@@ -36,6 +43,13 @@ class ShuffledHashJoinTest extends JoinTestBase {
     thrown.expect(classOf[TableException])
     thrown.expectMessage("Cannot generate a valid execution plan for the given query")
     super.testInnerJoinWithoutJoinPred()
+  }
+
+  @Test
+  override def testInnerJoinWithNonEquiPred(): Unit = {
+    thrown.expect(classOf[TableException])
+    thrown.expectMessage("Cannot generate a valid execution plan for the given query")
+    super.testInnerJoinWithNonEquiPred()
   }
 
   @Test

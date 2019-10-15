@@ -44,7 +44,7 @@ abstract class WatermarkAssigner(
     val newFieldList = inputRowType.getFieldList.map { f =>
       rowtimeFieldIndex match {
         case Some(index) if f.getIndex == index =>
-          val rowtimeIndicatorType = typeFactory.createRowtimeIndicatorType(f.getType.isNullable)
+          val rowtimeIndicatorType = typeFactory.createRowtimeIndicatorType()
           new RelDataTypeFieldImpl(f.getName, f.getIndex, rowtimeIndicatorType)
         case _ => f
       }

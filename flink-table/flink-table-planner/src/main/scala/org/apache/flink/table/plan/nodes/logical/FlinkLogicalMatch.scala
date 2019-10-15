@@ -19,6 +19,7 @@
 package org.apache.flink.table.plan.nodes.logical
 
 import java.util
+
 import org.apache.calcite.plan._
 import org.apache.calcite.rel.{RelCollation, RelNode}
 import org.apache.calcite.rel.`type`.RelDataType
@@ -27,8 +28,6 @@ import org.apache.calcite.rel.core.Match
 import org.apache.calcite.rel.logical.LogicalMatch
 import org.apache.calcite.rex.RexNode
 import org.apache.flink.table.plan.nodes.FlinkConventions
-
-import org.apache.calcite.util.ImmutableBitSet
 
 class FlinkLogicalMatch(
     cluster: RelOptCluster,
@@ -43,7 +42,7 @@ class FlinkLogicalMatch(
     after: RexNode,
     subsets: util.Map[String, _ <: util.SortedSet[String]],
     allRows: Boolean,
-    partitionKeys: ImmutableBitSet,
+    partitionKeys: util.List[RexNode],
     orderKeys: RelCollation,
     interval: RexNode)
   extends Match(
@@ -64,23 +63,36 @@ class FlinkLogicalMatch(
     interval)
   with FlinkLogicalRel {
 
-  override def copy(traitSet: RelTraitSet, inputs: util.List[RelNode]): RelNode = {
+  override def copy(
+      input: RelNode,
+      rowType: RelDataType,
+      pattern: RexNode,
+      strictStart: Boolean,
+      strictEnd: Boolean,
+      patternDefinitions: util.Map[String, RexNode],
+      measures: util.Map[String, RexNode],
+      after: RexNode,
+      subsets: util.Map[String, _ <: util.SortedSet[String]],
+      allRows: Boolean,
+      partitionKeys: util.List[RexNode],
+      orderKeys: RelCollation,
+      interval: RexNode): Match = {
     new FlinkLogicalMatch(
       cluster,
       traitSet,
-      inputs.get(0),
+      input,
       rowType,
       pattern,
       strictStart,
       strictEnd,
-      getPatternDefinitions,
-      getMeasures,
-      getAfter,
-      getSubsets,
+      patternDefinitions,
+      measures,
+      after,
+      subsets,
       allRows,
-      getPartitionKeys,
-      getOrderKeys,
-      getInterval)
+      partitionKeys,
+      orderKeys,
+      interval)
   }
 }
 

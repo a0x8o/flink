@@ -19,12 +19,12 @@
 package org.apache.flink.api.scala
 
 import java.io._
-import java.net.URL
 
 import org.apache.flink.client.cli.{CliFrontend, CliFrontendParser}
 import org.apache.flink.client.deployment.ClusterDescriptor
 import org.apache.flink.client.program.ClusterClient
 import org.apache.flink.configuration.{Configuration, GlobalConfiguration, JobManagerOptions}
+import org.apache.flink.runtime.akka.AkkaUtils
 import org.apache.flink.runtime.minicluster.{MiniCluster, MiniClusterConfiguration}
 
 import scala.collection.mutable.ArrayBuffer
@@ -49,6 +49,7 @@ object FlinkShell {
 
   /** YARN configuration object */
   case class YarnConfig(
+    containers: Option[Int] = None,
     jobManagerMemory: Option[String] = None,
     name: Option[String] = None,
     queue: Option[String] = None,
@@ -92,6 +93,10 @@ object FlinkShell {
       cmd("yarn") action {
         (_, c) => c.copy(executionMode = ExecutionMode.YARN, yarnConfig = None)
       } text "Starts Flink scala shell connecting to a yarn cluster" children(
+        opt[Int]("container") abbr ("n") valueName ("arg") action {
+          (x, c) =>
+            c.copy(yarnConfig = Some(ensureYarnConfig(c).copy(containers = Some(x))))
+        } text "Number of YARN container to allocate (= Number of TaskManagers)",
         opt[String]("jobManagerMemory") abbr ("jm") valueName ("arg") action {
           (x, c) =>
             c.copy(yarnConfig = Some(ensureYarnConfig(c).copy(jobManagerMemory = Some(x))))
@@ -225,7 +230,7 @@ object FlinkShell {
         case Some(Left(miniCluster)) => miniCluster.close()
         case Some(Right(yarnCluster)) =>
           yarnCluster.shutDownCluster()
-          yarnCluster.close()
+          yarnCluster.shutdown()
         case _ =>
       }
     }
@@ -241,6 +246,13 @@ object FlinkShell {
     val args = ArrayBuffer[String](
       "-m", "yarn-cluster"
     )
+
+    // number of task managers is required.
+    yarnConfig.containers match {
+      case Some(containers) => args ++= Seq("-yn", containers.toString)
+      case None =>
+        throw new IllegalArgumentException("Number of taskmanagers must be specified.")
+    }
 
     // set configuration from user input
     yarnConfig.jobManagerMemory.foreach((jmMem) => args ++= Seq("-yjm", jmMem.toString))
@@ -265,9 +277,13 @@ object FlinkShell {
 
     val cluster = clusterDescriptor.deploySessionCluster(clusterSpecification)
 
-    val webMonitorUrl = new URL(cluster.getWebInterfaceURL)
+    val inetSocketAddress = AkkaUtils.getInetSocketAddressFromAkkaURL(
+      cluster.getClusterConnectionInfo.getAddress)
 
-    (webMonitorUrl.getHost, webMonitorUrl.getPort, Some(Right(cluster)))
+    val address = inetSocketAddress.getAddress.getHostAddress
+    val port = inetSocketAddress.getPort
+
+    (address, port, Some(Right(cluster)))
   }
 
   def fetchDeployedYarnClusterInfo(
@@ -301,9 +317,10 @@ object FlinkShell {
       throw new RuntimeException("Yarn Cluster could not be retrieved.")
     }
 
-    val webMonitorUrl = new URL(cluster.getWebInterfaceURL)
+    val jobManager = AkkaUtils.getInetSocketAddressFromAkkaURL(
+      cluster.getClusterConnectionInfo.getAddress)
 
-    (webMonitorUrl.getHost, webMonitorUrl.getPort, None)
+    (jobManager.getHostString, jobManager.getPort, None)
   }
 
   def ensureYarnConfig(config: Config) = config.yarnConfig match {

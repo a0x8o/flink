@@ -352,8 +352,7 @@ public class PendingCheckpointTest {
 				LocalFileSystem.getSharedInstance(),
 				checkpointDir, checkpointDir, checkpointDir,
 				CheckpointStorageLocationReference.getDefault(),
-				1024,
-				4096);
+				1024);
 
 		final Map<ExecutionAttemptID, ExecutionVertex> ackTasks = new HashMap<>(ACK_TASKS);
 

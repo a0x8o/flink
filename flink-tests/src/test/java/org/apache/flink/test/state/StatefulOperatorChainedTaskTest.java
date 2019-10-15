@@ -176,7 +176,7 @@ public class StatefulOperatorChainedTaskTest {
 
 		testHarness.getTaskStateManager().setWaitForReportLatch(new OneShotLatch());
 
-		while (!streamTask.triggerCheckpointAsync(checkpointMetaData, CheckpointOptions.forCheckpointWithDefaultLocation(), false).get()) {}
+		while (!streamTask.triggerCheckpoint(checkpointMetaData, CheckpointOptions.forCheckpointWithDefaultLocation(), false)) {}
 
 		testHarness.getTaskStateManager().getWaitForReportLatch().await();
 		long reportedCheckpointId = testHarness.getTaskStateManager().getReportedCheckpointId();

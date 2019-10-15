@@ -362,7 +362,8 @@ public class ResumeCheckpointManuallyITCase extends TestLogger {
 			.reduce((value1, value2) -> Tuple2.of(value1.f0, value1.f1 + value2.f1))
 			.filter(value -> value.f0.startsWith("Tuple 0"));
 
-		StreamGraph streamGraph = env.getStreamGraph("Test");
+		StreamGraph streamGraph = env.getStreamGraph();
+		streamGraph.setJobName("Test");
 
 		JobGraph jobGraph = streamGraph.getJobGraph();
 

@@ -24,8 +24,7 @@ import org.apache.flink.table.generated.AggsHandleFunction;
 import org.apache.flink.table.generated.GeneratedAggsHandleFunction;
 import org.apache.flink.table.runtime.context.ExecutionContext;
 import org.apache.flink.table.runtime.util.ResettableExternalBuffer;
-import org.apache.flink.table.types.logical.LogicalType;
-import org.apache.flink.table.types.logical.RowType;
+import org.apache.flink.table.type.RowType;
 import org.apache.flink.table.typeutils.BaseRowSerializer;
 
 /**
@@ -56,9 +55,7 @@ public class UnboundedOverWindowFrame implements OverWindowFrame {
 		processor = aggsHandleFunction.newInstance(cl);
 		processor.open(new PerKeyStateDataViewStore(ctx.getRuntimeContext()));
 		this.aggsHandleFunction = null;
-		this.valueSer = new BaseRowSerializer(
-				ctx.getRuntimeContext().getExecutionConfig(),
-				valueType.getChildren().toArray(new LogicalType[0]));
+		this.valueSer = new BaseRowSerializer(ctx.getRuntimeContext().getExecutionConfig(), valueType.getFieldTypes());
 	}
 
 	@Override

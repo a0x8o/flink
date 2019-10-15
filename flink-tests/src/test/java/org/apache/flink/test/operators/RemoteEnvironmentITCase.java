@@ -75,6 +75,7 @@ public class RemoteEnvironmentITCase extends TestLogger {
 				config
 		);
 		env.setParallelism(USER_DOP);
+		env.getConfig().disableSysoutLogging();
 
 		DataSet<Integer> result = env.createInput(new ParallelismDependentInputFormat())
 				.rebalance()

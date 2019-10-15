@@ -45,11 +45,12 @@ import org.apache.flink.util.TestLogger;
 import org.junit.Assert;
 import org.junit.Test;
 
-import java.time.Duration;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+
+import scala.concurrent.duration.FiniteDuration;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.junit.Assert.assertEquals;
@@ -365,7 +366,7 @@ public class MetricRegistryImplTest extends TestLogger {
 	 */
 	@Test
 	public void testQueryActorShutdown() throws Exception {
-		final Duration timeout = Duration.ofSeconds(10L);
+		final FiniteDuration timeout = new FiniteDuration(10L, TimeUnit.SECONDS);
 
 		MetricRegistryImpl registry = new MetricRegistryImpl(MetricRegistryConfiguration.defaultMetricRegistryConfiguration());
 

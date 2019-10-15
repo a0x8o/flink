@@ -18,7 +18,7 @@
 
 package org.apache.flink.runtime.executiongraph;
 
-import org.apache.flink.runtime.concurrent.ComponentMainThreadExecutorServiceAdapter;
+import org.apache.flink.api.common.JobID;
 import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.jobgraph.JobStatus;
 import org.apache.flink.runtime.jobgraph.JobVertex;
@@ -63,17 +63,18 @@ public class ExecutionGraphCoLocationRestartTest extends SchedulerTestBase {
 		groupVertex.setStrictlyCoLocatedWith(groupVertex2);
 
 		//initiate and schedule job
-		final ExecutionGraph eg = new ExecutionGraphTestUtils.TestingExecutionGraphBuilder(groupVertex, groupVertex2)
-			.setSlotProvider(testingSlotProvider)
-			.setRestartStrategy(
-				new TestRestartStrategy(
-					1,
-					false))
-			.allowQueuedScheduling()
-			.build();
+		final ExecutionGraph eg = ExecutionGraphTestUtils.createSimpleTestGraph(
+			new JobID(),
+			testingSlotProvider,
+			new TestRestartStrategy(
+				1,
+				false),
+			groupVertex,
+			groupVertex2);
 
 		// enable the queued scheduling for the slot pool
-		eg.start(ComponentMainThreadExecutorServiceAdapter.forMainThread());
+		eg.setQueuedSchedulingAllowed(true);
+		eg.start(TestingComponentMainThreadExecutorServiceAdapter.forMainThread());
 
 		assertEquals(JobStatus.CREATED, eg.getState());
 

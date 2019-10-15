@@ -61,7 +61,8 @@ public class CheckpointingCustomKvStateProgram {
 		StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 
 		env.setParallelism(parallelism);
-				env.enableCheckpointing(100);
+		env.getConfig().disableSysoutLogging();
+		env.enableCheckpointing(100);
 		env.setRestartStrategy(RestartStrategies.fixedDelayRestart(1, 1000));
 		env.setStateBackend(new FsStateBackend(checkpointPath));
 

@@ -29,10 +29,10 @@ import org.apache.calcite.sql.fun.SqlStdOperatorTable.FINAL
 import org.apache.flink.api.common.typeinfo.SqlTimeTypeInfo
 import org.apache.flink.table.api.{TableException, ValidationException}
 import org.apache.flink.table.calcite.FlinkTypeFactory.{isRowtimeIndicatorType, _}
-import org.apache.flink.table.catalog.BasicOperatorTable
 import org.apache.flink.table.functions.sql.ProctimeSqlFunction
-import org.apache.flink.table.plan.logical.rel._
+import org.apache.flink.table.plan.logical.rel.{LogicalTableAggregate, LogicalTemporalTableJoin, LogicalWindowAggregate}
 import org.apache.flink.table.plan.schema.TimeIndicatorRelDataType
+import org.apache.flink.table.validate.BasicOperatorTable
 
 import scala.collection.JavaConversions._
 import scala.collection.JavaConverters._
@@ -109,6 +109,9 @@ class RelTimeIndicatorConverter(rexBuilder: RexBuilder) extends RelShuttle {
     val measures = matchRel.getMeasures
       .mapValues(_.accept(materializer))
 
+    val partitionKeys = matchRel.getPartitionKeys
+      .map(_.accept(materializer))
+      .map(materializerUtils.materialize)
     val interval = if (matchRel.getInterval != null) {
       matchRel.getInterval.accept(materializer)
     } else {
@@ -134,7 +137,7 @@ class RelTimeIndicatorConverter(rexBuilder: RexBuilder) extends RelShuttle {
       matchRel.getAfter,
       matchRel.getSubsets.asInstanceOf[java.util.Map[String, java.util.TreeSet[String]]],
       matchRel.isAllRows,
-      matchRel.getPartitionKeys,
+      partitionKeys,
       matchRel.getOrderKeys,
       interval)
   }
@@ -157,15 +160,9 @@ class RelTimeIndicatorConverter(rexBuilder: RexBuilder) extends RelShuttle {
         aggregate.getNamedProperties,
         convAggregate)
 
-    case windowTableAggregate: LogicalWindowTableAggregate =>
-      val convAggregate = convertAggregate(windowTableAggregate.getCorrespondingAggregate)
-      LogicalWindowTableAggregate.create(
-        windowTableAggregate.getWindow,
-        windowTableAggregate.getNamedProperties,
-        convAggregate)
-
-    case tableAggregate: LogicalTableAggregate =>
-      val convAggregate = convertAggregate(tableAggregate.getCorrespondingAggregate)
+    case tableAgg: LogicalTableAggregate =>
+      val correspondAggregate = LogicalTableAggregate.getCorrespondingAggregate(tableAgg)
+      val convAggregate = convertAggregate(correspondAggregate)
       LogicalTableAggregate.create(convAggregate)
 
     case temporalTableJoin: LogicalTemporalTableJoin =>

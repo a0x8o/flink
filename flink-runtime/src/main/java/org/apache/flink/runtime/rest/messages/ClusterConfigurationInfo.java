@@ -19,11 +19,10 @@
 package org.apache.flink.runtime.rest.messages;
 
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.configuration.ConfigurationUtils;
+import org.apache.flink.configuration.GlobalConfiguration;
 import org.apache.flink.runtime.rest.handler.cluster.ClusterConfigHandler;
 
 import java.util.ArrayList;
-import java.util.Map;
 
 /**
  * Response of the {@link ClusterConfigHandler}, represented as a list
@@ -41,11 +40,17 @@ public class ClusterConfigurationInfo extends ArrayList<ClusterConfigurationInfo
 	}
 
 	public static ClusterConfigurationInfo from(Configuration config) {
-		final ClusterConfigurationInfo clusterConfig = new ClusterConfigurationInfo(config.keySet().size());
-		final Map<String, String> configurationWithHiddenSensitiveValues = ConfigurationUtils.hideSensitiveValues(config.toMap());
+		ClusterConfigurationInfo clusterConfig = new ClusterConfigurationInfo(config.keySet().size());
 
-		for (Map.Entry<String, String> keyValuePair : configurationWithHiddenSensitiveValues.entrySet()) {
-			clusterConfig.add(new ClusterConfigurationInfoEntry(keyValuePair.getKey(), keyValuePair.getValue()));
+		for (String key : config.keySet()) {
+			String value = config.getString(key, null);
+
+			// Mask key values which contain sensitive information
+			if (value != null && GlobalConfiguration.isSensitive(key)) {
+				value = GlobalConfiguration.HIDDEN_CONTENT;
+			}
+
+			clusterConfig.add(new ClusterConfigurationInfoEntry(key, value));
 		}
 
 		return clusterConfig;

@@ -92,6 +92,7 @@ public class Kafka08ITCase extends KafkaConsumerTestBase {
 		final int startFrom = 0;
 
 		final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+		env.getConfig().disableSysoutLogging();
 
 		readSequence(env, StartupMode.GROUP_OFFSETS, null, null, standardProps, parallelism, topic, valuesCount, startFrom);
 
@@ -190,7 +191,8 @@ public class Kafka08ITCase extends KafkaConsumerTestBase {
 
 		StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 		// NOTE: We are not enabling the checkpointing!
-				env.getConfig().setRestartStrategy(RestartStrategies.noRestart());
+		env.getConfig().disableSysoutLogging();
+		env.getConfig().setRestartStrategy(RestartStrategies.noRestart());
 		env.setParallelism(parallelism);
 
 		// the readSequence operation sleeps for 20 ms between each record.
@@ -235,7 +237,7 @@ public class Kafka08ITCase extends KafkaConsumerTestBase {
 
 	@Test(timeout = 60000)
 	public void testMultipleTopics() throws Exception {
-		runProduceConsumeMultipleTopics(true);
+		runProduceConsumeMultipleTopics();
 	}
 
 	@Test(timeout = 60000)

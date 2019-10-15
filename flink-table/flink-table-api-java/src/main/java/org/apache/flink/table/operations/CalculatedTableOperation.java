@@ -25,15 +25,13 @@ import org.apache.flink.table.expressions.Expression;
 import org.apache.flink.table.functions.TableFunction;
 
 import java.util.Collections;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Describes a relational operation that was created from applying a {@link TableFunction}.
  */
 @Internal
-public class CalculatedTableOperation<T> extends TableOperation {
+public class CalculatedTableOperation<T> implements TableOperation {
 
 	private final TableFunction<T> tableFunction;
 	private final List<Expression> parameters;
@@ -66,15 +64,6 @@ public class CalculatedTableOperation<T> extends TableOperation {
 	@Override
 	public TableSchema getTableSchema() {
 		return tableSchema;
-	}
-
-	@Override
-	public String asSummaryString() {
-		Map<String, Object> args = new LinkedHashMap<>();
-		args.put("function", tableFunction);
-		args.put("parameters", parameters);
-
-		return formatWithChildren("CalculatedTable", args);
 	}
 
 	@Override

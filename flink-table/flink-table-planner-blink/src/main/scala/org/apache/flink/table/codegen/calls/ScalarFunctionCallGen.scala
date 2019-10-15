@@ -19,16 +19,15 @@
 package org.apache.flink.table.codegen.calls
 
 import org.apache.flink.api.java.typeutils.GenericTypeInfo
+import org.apache.flink.table.`type`.InternalType
+import org.apache.flink.table.`type`.TypeConverters.createExternalTypeInfoFromInternalType
 import org.apache.flink.table.codegen.CodeGenUtils._
 import org.apache.flink.table.codegen.{CodeGeneratorContext, GenerateUtils, GeneratedExpression}
 import org.apache.flink.table.dataformat.DataFormatConverters
-import org.apache.flink.table.dataformat.DataFormatConverters.getConverterForDataType
+import org.apache.flink.table.dataformat.DataFormatConverters.getConverterForTypeInfo
 import org.apache.flink.table.functions.ScalarFunction
 import org.apache.flink.table.functions.utils.UserDefinedFunctionUtils
 import org.apache.flink.table.functions.utils.UserDefinedFunctionUtils._
-import org.apache.flink.table.types.LogicalTypeDataTypeConverter.fromLogicalTypeToDataType
-import org.apache.flink.table.types.logical.LogicalType
-import org.apache.flink.table.types.utils.TypeConversions.fromLegacyInfoToDataType
 
 /**
   * Generates a call to user-defined [[ScalarFunction]].
@@ -40,11 +39,11 @@ class ScalarFunctionCallGen(scalarFunction: ScalarFunction) extends CallGenerato
   override def generate(
       ctx: CodeGeneratorContext,
       operands: Seq[GeneratedExpression],
-      returnType: LogicalType): GeneratedExpression = {
+      returnType: InternalType): GeneratedExpression = {
     val operandTypes = operands.map(_.resultType).toArray
     val arguments = operands.map {
       case expr if expr.literal =>
-        getConverterForDataType(fromLogicalTypeToDataType(expr.resultType))
+        getConverterForTypeInfo(createExternalTypeInfoFromInternalType(expr.resultType))
             .asInstanceOf[DataFormatConverters.DataFormatConverter[Any, Any]]
             .toExternal(expr.literalValue.get)
             .asInstanceOf[AnyRef]
@@ -117,9 +116,9 @@ class ScalarFunctionCallGen(scalarFunction: ScalarFunction) extends CallGenerato
           case (t, i) =>
             // we don't trust GenericType.
             if (t.isInstanceOf[GenericTypeInfo[_]]) {
-              fromLogicalTypeToDataType(operands(i).resultType)
+              createExternalTypeInfoFromInternalType(operands(i).resultType)
             } else {
-              fromLegacyInfoToDataType(t)
+              t
             }
         }
 

@@ -17,9 +17,9 @@
  */
 package org.apache.flink.table.plan.nodes.physical.stream
 
-import org.apache.flink.api.dag.Transformation
-import org.apache.flink.streaming.api.transformations.OneInputTransformation
-import org.apache.flink.table.api.TableConfig
+import org.apache.flink.api.common.typeinfo.TypeInformation
+import org.apache.flink.streaming.api.transformations.{OneInputTransformation, StreamTransformation}
+import org.apache.flink.table.api.{StreamTableEnvironment, TableConfig}
 import org.apache.flink.table.calcite.FlinkTypeFactory
 import org.apache.flink.table.codegen.CodeGeneratorContext
 import org.apache.flink.table.codegen.agg.AggsHandlerCodeGenerator
@@ -27,11 +27,8 @@ import org.apache.flink.table.dataformat.BaseRow
 import org.apache.flink.table.generated.GeneratedAggsHandleFunction
 import org.apache.flink.table.plan.nodes.exec.{ExecNode, StreamExecNode}
 import org.apache.flink.table.plan.util._
-import org.apache.flink.table.planner.StreamPlanner
 import org.apache.flink.table.runtime.aggregate.MiniBatchIncrementalGroupAggFunction
 import org.apache.flink.table.runtime.bundle.KeyedMapBundleOperator
-import org.apache.flink.table.types.DataType
-import org.apache.flink.table.typeutils.BaseRowTypeInfo
 
 import org.apache.calcite.plan.{RelOptCluster, RelTraitSet}
 import org.apache.calcite.rel.`type`.RelDataType
@@ -125,32 +122,31 @@ class StreamExecIncrementalGroupAggregate(
 
   //~ ExecNode methods -----------------------------------------------------------
 
-  override def getInputNodes: util.List[ExecNode[StreamPlanner, _]] = {
-    getInputs.map(_.asInstanceOf[ExecNode[StreamPlanner, _]])
+  override def getInputNodes: util.List[ExecNode[StreamTableEnvironment, _]] = {
+    getInputs.map(_.asInstanceOf[ExecNode[StreamTableEnvironment, _]])
   }
 
   override def replaceInputNode(
       ordinalInParent: Int,
-      newInputNode: ExecNode[StreamPlanner, _]): Unit = {
+      newInputNode: ExecNode[StreamTableEnvironment, _]): Unit = {
     replaceInput(ordinalInParent, newInputNode.asInstanceOf[RelNode])
   }
 
   override protected def translateToPlanInternal(
-      planner: StreamPlanner): Transformation[BaseRow] = {
-    val config = planner.getTableConfig
-    val inputTransformation = getInputNodes.get(0).translateToPlan(planner)
-      .asInstanceOf[Transformation[BaseRow]]
+      tableEnv: StreamTableEnvironment): StreamTransformation[BaseRow] = {
+    val inputTransformation = getInputNodes.get(0).translateToPlan(tableEnv)
+      .asInstanceOf[StreamTransformation[BaseRow]]
 
-    val inRowType = FlinkTypeFactory.toLogicalRowType(inputRel.getRowType)
-    val outRowType = FlinkTypeFactory.toLogicalRowType(outputRowType)
+    val inRowType = FlinkTypeFactory.toInternalRowType(inputRel.getRowType)
+    val outRowType = FlinkTypeFactory.toInternalRowType(outputRowType)
 
     val partialAggsHandler = generateAggsHandler(
       "PartialGroupAggsHandler",
       partialAggInfoList,
       mergedAccOffset = partialAggGrouping.length,
       partialAggInfoList.getAccTypes,
-      config,
-      planner.getRelBuilder,
+      tableEnv.getConfig,
+      tableEnv.getRelBuilder,
       // the partial aggregate accumulators will be buffered, so need copy
       inputFieldCopy = true)
 
@@ -159,14 +155,14 @@ class StreamExecIncrementalGroupAggregate(
       finalAggInfoList,
       mergedAccOffset = 0,
       partialAggInfoList.getAccTypes,
-      config,
-      planner.getRelBuilder,
+      tableEnv.getConfig,
+      tableEnv.getRelBuilder,
       // the final aggregate accumulators is not buffered
       inputFieldCopy = false)
 
     val partialKeySelector = KeySelectorUtil.getBaseRowSelector(
       partialAggGrouping,
-      BaseRowTypeInfo.of(inRowType))
+      inRowType.toTypeInfo)
     val finalKeySelector = KeySelectorUtil.getBaseRowSelector(
       finalAggGrouping,
       partialKeySelector.getProducedType)
@@ -178,18 +174,19 @@ class StreamExecIncrementalGroupAggregate(
 
     val operator = new KeyedMapBundleOperator(
       aggFunction,
-      AggregateUtil.createMiniBatchTrigger(config))
+      AggregateUtil.createMiniBatchTrigger(tableEnv.getConfig))
 
     // partitioned aggregation
     val ret = new OneInputTransformation(
       inputTransformation,
       "IncrementalGroupAggregate",
       operator,
-      BaseRowTypeInfo.of(outRowType),
-      getResource.getParallelism)
+      outRowType.toTypeInfo,
+      tableEnv.execEnv.getParallelism)
 
-    if (getResource.getMaxParallelism > 0) {
-      ret.setMaxParallelism(getResource.getMaxParallelism)
+    if (partialAggGrouping.isEmpty) {
+      ret.setParallelism(1)
+      ret.setMaxParallelism(1)
     }
 
     // set KeyType and Selector for state
@@ -202,7 +199,7 @@ class StreamExecIncrementalGroupAggregate(
     name: String,
     aggInfoList: AggregateInfoList,
     mergedAccOffset: Int,
-    mergedAccExternalTypes: Array[DataType],
+    mergedAccExternalTypes: Array[TypeInformation[_]],
     config: TableConfig,
     relBuilder: RelBuilder,
     inputFieldCopy: Boolean): GeneratedAggsHandleFunction = {
@@ -210,12 +207,13 @@ class StreamExecIncrementalGroupAggregate(
     val generator = new AggsHandlerCodeGenerator(
       CodeGeneratorContext(config),
       relBuilder,
-      FlinkTypeFactory.toLogicalRowType(inputRowType).getChildren,
+      FlinkTypeFactory.toInternalRowType(inputRowType).getFieldTypes,
+      needRetract = false,
+      config.getNullCheck,
       inputFieldCopy)
 
     generator
-      .needAccumulate()
-      .needMerge(mergedAccOffset, mergedAccOnHeap = true, mergedAccExternalTypes)
+      .withMerging(mergedAccOffset, mergedAccOnHeap = true, mergedAccExternalTypes)
       .generateAggsHandler(name, aggInfoList)
   }
 }

@@ -110,9 +110,12 @@ public class NonReusingSortMergeInnerJoinIteratorITCase extends TestLogger {
 	}
 
 	@After
-	public void afterTest() throws Exception {
+	public void afterTest() {
 		if (this.ioManager != null) {
-			this.ioManager.close();
+			this.ioManager.shutdown();
+			if (!this.ioManager.isProperlyShutDown()) {
+				Assert.fail("I/O manager failed to properly shut down.");
+			}
 			this.ioManager = null;
 		}
 		

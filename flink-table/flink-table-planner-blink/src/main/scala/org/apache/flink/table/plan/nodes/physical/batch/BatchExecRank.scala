@@ -18,31 +18,24 @@
 
 package org.apache.flink.table.plan.nodes.physical.batch
 
-import org.apache.flink.api.dag.Transformation
 import org.apache.flink.runtime.operators.DamBehavior
-import org.apache.flink.streaming.api.transformations.OneInputTransformation
-import org.apache.flink.table.api.TableException
+import org.apache.flink.streaming.api.transformations.{OneInputTransformation, StreamTransformation}
+import org.apache.flink.table.api.{BatchTableEnvironment, TableException}
 import org.apache.flink.table.calcite.FlinkTypeFactory
 import org.apache.flink.table.codegen.sort.ComparatorCodeGenerator
 import org.apache.flink.table.dataformat.BaseRow
-import org.apache.flink.table.plan.`trait`.{FlinkRelDistribution, FlinkRelDistributionTraitDef}
 import org.apache.flink.table.plan.cost.{FlinkCost, FlinkCostFactory}
 import org.apache.flink.table.plan.nodes.calcite.Rank
 import org.apache.flink.table.plan.nodes.exec.{BatchExecNode, ExecNode}
-import org.apache.flink.table.plan.rules.physical.batch.BatchExecJoinRuleBase
-import org.apache.flink.table.plan.util.{FlinkRelOptUtil, RelExplainUtil}
-import org.apache.flink.table.planner.BatchPlanner
+import org.apache.flink.table.plan.util.RelExplainUtil
 import org.apache.flink.table.runtime.rank.{ConstantRankRange, RankRange, RankType}
 import org.apache.flink.table.runtime.sort.RankOperator
-import org.apache.flink.table.typeutils.BaseRowTypeInfo
 
 import org.apache.calcite.plan._
-import org.apache.calcite.rel.RelDistribution.Type
-import org.apache.calcite.rel.RelDistribution.Type.{HASH_DISTRIBUTED, SINGLETON}
 import org.apache.calcite.rel._
 import org.apache.calcite.rel.`type`.RelDataTypeField
 import org.apache.calcite.rel.metadata.RelMetadataQuery
-import org.apache.calcite.util.{ImmutableBitSet, ImmutableIntList, Util}
+import org.apache.calcite.util.ImmutableBitSet
 
 import java.util
 
@@ -119,140 +112,24 @@ class BatchExecRank(
     costFactory.makeCost(rowCount, cpuCost, 0, 0, memCost)
   }
 
-  override def satisfyTraits(requiredTraitSet: RelTraitSet): Option[RelNode] = {
-    if (isGlobal) {
-      satisfyTraitsOnGlobalRank(requiredTraitSet)
-    } else {
-      satisfyTraitsOnLocalRank(requiredTraitSet)
-    }
-  }
-
-  private def satisfyTraitsOnGlobalRank(requiredTraitSet: RelTraitSet): Option[RelNode] = {
-    val requiredDistribution = requiredTraitSet.getTrait(FlinkRelDistributionTraitDef.INSTANCE)
-    val canSatisfy = requiredDistribution.getType match {
-      case SINGLETON => partitionKey.cardinality() == 0
-      case HASH_DISTRIBUTED =>
-        val shuffleKeys = requiredDistribution.getKeys
-        val partitionKeyList = ImmutableIntList.of(partitionKey.toArray: _*)
-        if (requiredDistribution.requireStrict) {
-          shuffleKeys == partitionKeyList
-        } else if (Util.startsWith(shuffleKeys, partitionKeyList)) {
-          // If required distribution is not strict, Hash[a] can satisfy Hash[a, b].
-          // so return true if shuffleKeys(Hash[a, b]) start with partitionKeyList(Hash[a])
-          true
-        } else {
-          // If partialKey is enabled, try to use partial key to satisfy the required distribution
-          val tableConfig = FlinkRelOptUtil.getTableConfigFromContext(this)
-          val partialKeyEnabled = tableConfig.getConfiguration.getBoolean(
-            BatchExecJoinRuleBase.SQL_OPTIMIZER_SHUFFLE_PARTIAL_KEY_ENABLED)
-          partialKeyEnabled && partitionKeyList.containsAll(shuffleKeys)
-        }
-      case _ => false
-    }
-    if (!canSatisfy) {
-      return None
-    }
-
-    val inputRequiredDistribution = requiredDistribution.getType match {
-      case SINGLETON => requiredDistribution
-      case HASH_DISTRIBUTED =>
-        val shuffleKeys = requiredDistribution.getKeys
-        val partitionKeyList = ImmutableIntList.of(partitionKey.toArray: _*)
-        if (requiredDistribution.requireStrict) {
-          FlinkRelDistribution.hash(partitionKeyList)
-        } else if (Util.startsWith(shuffleKeys, partitionKeyList)) {
-          // Hash[a] can satisfy Hash[a, b]
-          FlinkRelDistribution.hash(partitionKeyList, requireStrict = false)
-        } else {
-          // use partial key to satisfy the required distribution
-          FlinkRelDistribution.hash(shuffleKeys.map(partitionKeyList(_)), requireStrict = false)
-        }
-    }
-
-    // sort by partition keys + orderby keys
-    val providedFieldCollations = partitionKey.toArray.map {
-      k => FlinkRelOptUtil.ofRelFieldCollation(k)
-    }.toList ++ orderKey.getFieldCollations
-    val providedCollation = RelCollations.of(providedFieldCollations)
-    val requiredCollation = requiredTraitSet.getTrait(RelCollationTraitDef.INSTANCE)
-    val newProvidedTraitSet = if (providedCollation.satisfies(requiredCollation)) {
-      getTraitSet.replace(requiredDistribution).replace(requiredCollation)
-    } else {
-      getTraitSet.replace(requiredDistribution)
-    }
-    val newInput = RelOptRule.convert(getInput, inputRequiredDistribution)
-    Some(copy(newProvidedTraitSet, Seq(newInput)))
-  }
-
-  private def satisfyTraitsOnLocalRank(requiredTraitSet: RelTraitSet): Option[RelNode] = {
-    val requiredDistribution = requiredTraitSet.getTrait(FlinkRelDistributionTraitDef.INSTANCE)
-    requiredDistribution.getType match {
-      case Type.SINGLETON =>
-        val inputRequiredDistribution = requiredDistribution
-        // sort by orderby keys
-        val providedCollation = orderKey
-        val requiredCollation = requiredTraitSet.getTrait(RelCollationTraitDef.INSTANCE)
-        val newProvidedTraitSet = if (providedCollation.satisfies(requiredCollation)) {
-          getTraitSet.replace(requiredDistribution).replace(requiredCollation)
-        } else {
-          getTraitSet.replace(requiredDistribution)
-        }
-
-        val inputRequiredTraits = getInput.getTraitSet.replace(inputRequiredDistribution)
-        val newInput = RelOptRule.convert(getInput, inputRequiredTraits)
-        Some(copy(newProvidedTraitSet, Seq(newInput)))
-      case Type.HASH_DISTRIBUTED =>
-        val shuffleKeys = requiredDistribution.getKeys
-        if (outputRankNumber) {
-          // rank function column is the last one
-          val rankColumnIndex = getRowType.getFieldCount - 1
-          if (!shuffleKeys.contains(rankColumnIndex)) {
-            // Cannot satisfy required distribution if some keys are not from input
-            return None
-          }
-        }
-
-        val inputRequiredDistributionKeys = shuffleKeys
-        val inputRequiredDistribution = FlinkRelDistribution.hash(
-          inputRequiredDistributionKeys, requiredDistribution.requireStrict)
-
-        // sort by partition keys + orderby keys
-        val providedFieldCollations = partitionKey.toArray.map {
-          k => FlinkRelOptUtil.ofRelFieldCollation(k)
-        }.toList ++ orderKey.getFieldCollations
-        val providedCollation = RelCollations.of(providedFieldCollations)
-        val requiredCollation = requiredTraitSet.getTrait(RelCollationTraitDef.INSTANCE)
-        val newProvidedTraitSet = if (providedCollation.satisfies(requiredCollation)) {
-          getTraitSet.replace(requiredDistribution).replace(requiredCollation)
-        } else {
-          getTraitSet.replace(requiredDistribution)
-        }
-
-        val inputRequiredTraits = getInput.getTraitSet.replace(inputRequiredDistribution)
-        val newInput = RelOptRule.convert(getInput, inputRequiredTraits)
-        Some(copy(newProvidedTraitSet, Seq(newInput)))
-      case _ => None
-    }
-  }
-
   //~ ExecNode methods -----------------------------------------------------------
 
   override def getDamBehavior: DamBehavior = DamBehavior.PIPELINED
 
-  override def getInputNodes: util.List[ExecNode[BatchPlanner, _]] =
-    List(getInput.asInstanceOf[ExecNode[BatchPlanner, _]])
+  override def getInputNodes: util.List[ExecNode[BatchTableEnvironment, _]] =
+    List(getInput.asInstanceOf[ExecNode[BatchTableEnvironment, _]])
 
   override def replaceInputNode(
       ordinalInParent: Int,
-      newInputNode: ExecNode[BatchPlanner, _]): Unit = {
+      newInputNode: ExecNode[BatchTableEnvironment, _]): Unit = {
     replaceInput(ordinalInParent, newInputNode.asInstanceOf[RelNode])
   }
 
-  override protected def translateToPlanInternal(
-      planner: BatchPlanner): Transformation[BaseRow] = {
-    val input = getInputNodes.get(0).translateToPlan(planner)
-        .asInstanceOf[Transformation[BaseRow]]
-    val outputType = FlinkTypeFactory.toLogicalRowType(getRowType)
+  override def translateToPlanInternal(
+      tableEnv: BatchTableEnvironment): StreamTransformation[BaseRow] = {
+    val input = getInputNodes.get(0).translateToPlan(tableEnv)
+        .asInstanceOf[StreamTransformation[BaseRow]]
+    val outputType = FlinkTypeFactory.toInternalRowType(getRowType)
     val partitionBySortingKeys = partitionKey.toArray
     // The collation for the partition-by fields is inessential here, we only use the
     // comparator to distinguish different groups.
@@ -265,18 +142,18 @@ class BatchExecRank(
     val orderByCollation = orderKey.getFieldCollations.map(_ => (true, true)).toArray
     val orderByKeys = orderKey.getFieldCollations.map(_.getFieldIndex).toArray
 
-    val inputType = FlinkTypeFactory.toLogicalRowType(getInput.getRowType)
+    val inputType = FlinkTypeFactory.toInternalRowType(getInput.getRowType)
     //operator needn't cache data
     val operator = new RankOperator(
       ComparatorCodeGenerator.gen(
-        planner.getTableConfig,
+        tableEnv.getConfig,
         "PartitionByComparator",
         partitionBySortingKeys,
         partitionBySortingKeys.map(inputType.getTypeAt),
         partitionBySortCollation.map(_._1),
         partitionBySortCollation.map(_._2)),
       ComparatorCodeGenerator.gen(
-        planner.getTableConfig,
+        tableEnv.getConfig,
         "OrderByComparator",
         orderByKeys,
         orderByKeys.map(inputType.getTypeAt),
@@ -290,8 +167,8 @@ class BatchExecRank(
       input,
       getOperatorName,
       operator,
-      BaseRowTypeInfo.of(outputType),
-      getResource.getParallelism)
+      outputType.toTypeInfo,
+      input.getParallelism)
   }
 
   private def getOperatorName: String = {

@@ -343,10 +343,6 @@ public final class BuiltInFunctionDefinitions {
 		WINDOW_START, WINDOW_END, PROCTIME, ROWTIME
 	));
 
-	public static final Set<FunctionDefinition> TIME_ATTRIBUTES = new HashSet<>(Arrays.asList(
-		PROCTIME, ROWTIME
-	));
-
 	public static final List<FunctionDefinition> ORDERING = Arrays.asList(ORDER_ASC, ORDER_DESC);
 
 	public static List<FunctionDefinition> getDefinitions() {

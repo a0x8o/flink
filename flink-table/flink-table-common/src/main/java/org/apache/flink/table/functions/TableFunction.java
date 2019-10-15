@@ -144,9 +144,4 @@ public abstract class TableFunction<T> extends UserDefinedFunction {
 	protected final void collect(T row) {
 		collector.collect(row);
 	}
-
-	@Override
-	public final FunctionKind getKind() {
-		return FunctionKind.TABLE;
-	}
 }

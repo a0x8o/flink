@@ -19,7 +19,7 @@
 package org.apache.flink.table.runtime.utils
 
 import org.apache.flink.api.common.restartstrategy.RestartStrategies
-import org.apache.flink.api.common.typeinfo.{TypeInformation, Types}
+import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.api.common.typeutils.CompositeType
 import org.apache.flink.configuration.{CheckpointingOptions, Configuration}
 import org.apache.flink.contrib.streaming.state.RocksDBStateBackend
@@ -27,13 +27,11 @@ import org.apache.flink.runtime.state.memory.MemoryStateBackend
 import org.apache.flink.streaming.api.CheckpointingMode
 import org.apache.flink.streaming.api.functions.source.FromElementsFunction
 import org.apache.flink.streaming.api.scala.DataStream
-import org.apache.flink.table.api.scala.StreamTableEnvironment
+import org.apache.flink.table.`type`.RowType
+import org.apache.flink.table.`type`.TypeConverters.createInternalTypeFromTypeInfo
+import org.apache.flink.table.api.{TableEnvironment, Types}
 import org.apache.flink.table.dataformat.{BaseRow, BinaryRow, BinaryRowWriter, BinaryString}
 import org.apache.flink.table.runtime.utils.StreamingWithStateTestBase.{HEAP_BACKEND, ROCKSDB_BACKEND, StateBackendMode}
-import org.apache.flink.table.types.TypeInfoLogicalTypeConverter
-import org.apache.flink.table.types.logical.RowType
-import org.apache.flink.table.typeutils.BaseRowTypeInfo
-
 import org.junit.runners.Parameterized
 import org.junit.{After, Assert, Before}
 
@@ -72,7 +70,7 @@ class StreamingWithStateTestBase(state: StateBackendMode) extends StreamingTestB
         env.setStateBackend(new RocksDBStateBackend(
           "file://" + baseCheckpointPath).configure(conf, classLoader))
     }
-    this.tEnv = StreamTableEnvironment.create(env)
+    this.tEnv = TableEnvironment.getTableEnvironment(env)
     FailingCollectionSource.failedBefore = true
   }
 
@@ -105,8 +103,7 @@ class StreamingWithStateTestBase(state: StateBackendMode) extends StreamingTestB
         result += reuse.copy()
       case _ => throw new UnsupportedOperationException
     }
-    val newTypeInfo = BaseRowTypeInfo.of(
-      TypeInfoLogicalTypeConverter.fromTypeInfoToLogicalType(typeInfo).asInstanceOf[RowType])
+    val newTypeInfo = createInternalTypeFromTypeInfo(typeInfo).asInstanceOf[RowType].toTypeInfo
     failingDataSource(result)(newTypeInfo.asInstanceOf[TypeInformation[BaseRow]])
   }
 

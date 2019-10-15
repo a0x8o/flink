@@ -61,63 +61,39 @@ public class FlinkKafkaInternalProducer<K, V> implements Producer<K, V> {
 
 	protected final KafkaProducer<K, V> kafkaProducer;
 
-	// This lock and closed flag are introduced to workaround KAFKA-6635. Because the bug is only fixed in
-	// Kafka 2.3.0, we need this workaround before Kafka dependency is bumped to 2.3.0 to avoid deadlock
-	// between a transaction committing / aborting thread and a producer closing thread.
-	// TODO: remove the workaround after Kafka dependency is bumped to 2.3.0+
-	private final Object producerClosingLock;
-	private volatile boolean closed;
-
 	@Nullable
 	protected final String transactionalId;
 
 	public FlinkKafkaInternalProducer(Properties properties) {
 		transactionalId = properties.getProperty(ProducerConfig.TRANSACTIONAL_ID_CONFIG);
 		kafkaProducer = new KafkaProducer<>(properties);
-		producerClosingLock = new Object();
-		closed = false;
 	}
 
 	// -------------------------------- Simple proxy method calls --------------------------------
 
 	@Override
 	public void initTransactions() {
-		synchronized (producerClosingLock) {
-			ensureNotClosed();
-			kafkaProducer.initTransactions();
-		}
+		kafkaProducer.initTransactions();
 	}
 
 	@Override
 	public void beginTransaction() throws ProducerFencedException {
-		synchronized (producerClosingLock) {
-			ensureNotClosed();
-			kafkaProducer.beginTransaction();
-		}
+		kafkaProducer.beginTransaction();
 	}
 
 	@Override
 	public void commitTransaction() throws ProducerFencedException {
-		synchronized (producerClosingLock) {
-			ensureNotClosed();
-			kafkaProducer.commitTransaction();
-		}
+		kafkaProducer.commitTransaction();
 	}
 
 	@Override
 	public void abortTransaction() throws ProducerFencedException {
-		synchronized (producerClosingLock) {
-			ensureNotClosed();
-			kafkaProducer.abortTransaction();
-		}
+		kafkaProducer.abortTransaction();
 	}
 
 	@Override
 	public void sendOffsetsToTransaction(Map<TopicPartition, OffsetAndMetadata> offsets, String consumerGroupId) throws ProducerFencedException {
-		synchronized (producerClosingLock) {
-			ensureNotClosed();
-			kafkaProducer.sendOffsetsToTransaction(offsets, consumerGroupId);
-		}
+		kafkaProducer.sendOffsetsToTransaction(offsets, consumerGroupId);
 	}
 
 	@Override
@@ -132,10 +108,7 @@ public class FlinkKafkaInternalProducer<K, V> implements Producer<K, V> {
 
 	@Override
 	public List<PartitionInfo> partitionsFor(String topic) {
-		synchronized (producerClosingLock) {
-			ensureNotClosed();
-			return kafkaProducer.partitionsFor(topic);
-		}
+		return kafkaProducer.partitionsFor(topic);
 	}
 
 	@Override
@@ -145,26 +118,17 @@ public class FlinkKafkaInternalProducer<K, V> implements Producer<K, V> {
 
 	@Override
 	public void close() {
-		closed = true;
-		synchronized (producerClosingLock) {
-			kafkaProducer.close();
-		}
+		kafkaProducer.close();
 	}
 
 	@Override
 	public void close(long timeout, TimeUnit unit) {
-		closed = true;
-		synchronized (producerClosingLock) {
-			kafkaProducer.close(timeout, unit);
-		}
+		kafkaProducer.close(timeout, unit);
 	}
 
 	@Override
 	public void close(Duration duration) {
-		closed = true;
-		synchronized (producerClosingLock) {
-			kafkaProducer.close(duration);
-		}
+		kafkaProducer.close(duration);
 	}
 
 	// -------------------------------- New methods or methods with changed behaviour --------------------------------
@@ -173,10 +137,7 @@ public class FlinkKafkaInternalProducer<K, V> implements Producer<K, V> {
 	public void flush() {
 		kafkaProducer.flush();
 		if (transactionalId != null) {
-			synchronized (producerClosingLock) {
-				ensureNotClosed();
-				flushNewPartitions();
-			}
+			flushNewPartitions();
 		}
 	}
 
@@ -187,39 +148,24 @@ public class FlinkKafkaInternalProducer<K, V> implements Producer<K, V> {
 	 * https://github.com/apache/kafka/commit/5d2422258cb975a137a42a4e08f03573c49a387e#diff-f4ef1afd8792cd2a2e9069cd7ddea630
 	 */
 	public void resumeTransaction(long producerId, short epoch) {
-		synchronized (producerClosingLock) {
-			ensureNotClosed();
-			Preconditions.checkState(producerId >= 0 && epoch >= 0,
-				"Incorrect values for producerId %s and epoch %s",
-				producerId,
-				epoch);
-			LOG.info("Attempting to resume transaction {} with producerId {} and epoch {}",
-				transactionalId,
-				producerId,
-				epoch);
+		Preconditions.checkState(producerId >= 0 && epoch >= 0, "Incorrect values for producerId {} and epoch {}", producerId, epoch);
+		LOG.info("Attempting to resume transaction {} with producerId {} and epoch {}", transactionalId, producerId, epoch);
 
-			Object transactionManager = getValue(kafkaProducer, "transactionManager");
-			synchronized (transactionManager) {
-				Object nextSequence = getValue(transactionManager, "nextSequence");
+		Object transactionManager = getValue(kafkaProducer, "transactionManager");
+		synchronized (transactionManager) {
+			Object nextSequence = getValue(transactionManager, "nextSequence");
 
-				invoke(transactionManager,
-					"transitionTo",
-					getEnum("org.apache.kafka.clients.producer.internals.TransactionManager$State.INITIALIZING"));
-				invoke(nextSequence, "clear");
+			invoke(transactionManager, "transitionTo", getEnum("org.apache.kafka.clients.producer.internals.TransactionManager$State.INITIALIZING"));
+			invoke(nextSequence, "clear");
 
-				Object producerIdAndEpoch = getValue(transactionManager, "producerIdAndEpoch");
-				setValue(producerIdAndEpoch, "producerId", producerId);
-				setValue(producerIdAndEpoch, "epoch", epoch);
+			Object producerIdAndEpoch = getValue(transactionManager, "producerIdAndEpoch");
+			setValue(producerIdAndEpoch, "producerId", producerId);
+			setValue(producerIdAndEpoch, "epoch", epoch);
 
-				invoke(transactionManager,
-					"transitionTo",
-					getEnum("org.apache.kafka.clients.producer.internals.TransactionManager$State.READY"));
+			invoke(transactionManager, "transitionTo", getEnum("org.apache.kafka.clients.producer.internals.TransactionManager$State.READY"));
 
-				invoke(transactionManager,
-					"transitionTo",
-					getEnum("org.apache.kafka.clients.producer.internals.TransactionManager$State.IN_TRANSACTION"));
-				setValue(transactionManager, "transactionStarted", true);
-			}
+			invoke(transactionManager, "transitionTo", getEnum("org.apache.kafka.clients.producer.internals.TransactionManager$State.IN_TRANSACTION"));
+			setValue(transactionManager, "transactionStarted", true);
 		}
 	}
 
@@ -244,12 +190,6 @@ public class FlinkKafkaInternalProducer<K, V> implements Producer<K, V> {
 		Object transactionManager = getValue(kafkaProducer, "transactionManager");
 		Node node = (Node) invoke(transactionManager, "coordinator", FindCoordinatorRequest.CoordinatorType.TRANSACTION);
 		return node.id();
-	}
-
-	private void ensureNotClosed() {
-		if (closed) {
-			throw new IllegalStateException("The producer has already been closed");
-		}
 	}
 
 	/**

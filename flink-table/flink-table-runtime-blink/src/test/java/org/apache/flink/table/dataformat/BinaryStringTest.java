@@ -19,7 +19,7 @@ package org.apache.flink.table.dataformat;
 
 import org.apache.flink.core.memory.MemorySegment;
 import org.apache.flink.core.memory.MemorySegmentFactory;
-import org.apache.flink.table.runtime.operators.sort.SortUtil;
+import org.apache.flink.table.runtime.sort.SortUtil;
 import org.apache.flink.table.runtime.util.StringUtf8Utils;
 
 import org.junit.Test;
@@ -35,22 +35,9 @@ import java.util.Random;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.apache.flink.table.dataformat.BinaryString.blankString;
+import static org.apache.flink.table.dataformat.BinaryString.concat;
+import static org.apache.flink.table.dataformat.BinaryString.concatWs;
 import static org.apache.flink.table.dataformat.BinaryString.fromBytes;
-import static org.apache.flink.table.dataformat.BinaryStringUtil.EMPTY_STRING_ARRAY;
-import static org.apache.flink.table.dataformat.BinaryStringUtil.concat;
-import static org.apache.flink.table.dataformat.BinaryStringUtil.concatWs;
-import static org.apache.flink.table.dataformat.BinaryStringUtil.keyValue;
-import static org.apache.flink.table.dataformat.BinaryStringUtil.reverse;
-import static org.apache.flink.table.dataformat.BinaryStringUtil.splitByWholeSeparatorPreserveAllTokens;
-import static org.apache.flink.table.dataformat.BinaryStringUtil.substringSQL;
-import static org.apache.flink.table.dataformat.BinaryStringUtil.toByte;
-import static org.apache.flink.table.dataformat.BinaryStringUtil.toDecimal;
-import static org.apache.flink.table.dataformat.BinaryStringUtil.toInt;
-import static org.apache.flink.table.dataformat.BinaryStringUtil.toLong;
-import static org.apache.flink.table.dataformat.BinaryStringUtil.toShort;
-import static org.apache.flink.table.dataformat.BinaryStringUtil.trim;
-import static org.apache.flink.table.dataformat.BinaryStringUtil.trimLeft;
-import static org.apache.flink.table.dataformat.BinaryStringUtil.trimRight;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -247,22 +234,22 @@ public class BinaryStringTest {
 	@Test
 	public void concatTest() {
 		assertEquals(empty, concat());
-		assertEquals(null, concat((BinaryString) null));
+		assertEquals(empty, concat((BinaryString) null));
 		assertEquals(empty, concat(empty));
 		assertEquals(fromString("ab"), concat(fromString("ab")));
 		assertEquals(fromString("ab"), concat(fromString("a"), fromString("b")));
 		assertEquals(fromString("abc"), concat(fromString("a"), fromString("b"), fromString("c")));
-		assertEquals(null, concat(fromString("a"), null, fromString("c")));
-		assertEquals(null, concat(fromString("a"), null, null));
-		assertEquals(null, concat(null, null, null));
+		assertEquals(fromString("ac"), concat(fromString("a"), null, fromString("c")));
+		assertEquals(fromString("a"), concat(fromString("a"), null, null));
+		assertEquals(empty, concat(null, null, null));
 		assertEquals(fromString("数据砖头"), concat(fromString("数据"), fromString("砖头")));
 	}
 
 	@Test
 	public void concatWsTest() {
 		// Returns empty if the separator is null
-		assertEquals(null, concatWs(null, (BinaryString) null));
-		assertEquals(null, concatWs(null, fromString("a")));
+		assertEquals(empty, concatWs(null, (BinaryString) null));
+		assertEquals(fromString("a"), concatWs(null, fromString("a")));
 
 		// If separator is null, concatWs should skip all null inputs and never return null.
 		BinaryString sep = fromString("哈哈");
@@ -340,47 +327,47 @@ public class BinaryStringTest {
 		assertEquals(fromString("1"), fromString("1").trim());
 
 		assertEquals(fromString("hello"), fromString("  hello ").trim());
-		assertEquals(fromString("hello "), trimLeft(fromString("  hello ")));
-		assertEquals(fromString("  hello"), trimRight(fromString("  hello ")));
+		assertEquals(fromString("hello "), fromString("  hello ").trimLeft());
+		assertEquals(fromString("  hello"), fromString("  hello ").trimRight());
 
 		assertEquals(fromString("  hello "),
-				trim(fromString("  hello "), false, false, fromString(" ")));
+			fromString("  hello ").trim(false, false, fromString(" ")));
 		assertEquals(fromString("hello"),
-				trim(fromString("  hello "), true, true, fromString(" ")));
+			fromString("  hello ").trim(true, true, fromString(" ")));
 		assertEquals(fromString("hello "),
-				trim(fromString("  hello "), true, false, fromString(" ")));
+			fromString("  hello ").trim(true, false, fromString(" ")));
 		assertEquals(fromString("  hello"),
-				trim(fromString("  hello "), false, true, fromString(" ")));
+			fromString("  hello ").trim(false, true, fromString(" ")));
 		assertEquals(fromString("hello"),
-				trim(fromString("xxxhellox"), true, true, fromString("x")));
+			fromString("xxxhellox").trim(true, true, fromString("x")));
 
 		assertEquals(fromString("ell"),
-				trim(fromString("xxxhellox"), fromString("xoh")));
+			fromString("xxxhellox").trim(fromString("xoh")));
 
 		assertEquals(fromString("ellox"),
-				trimLeft(fromString("xxxhellox"), fromString("xoh")));
+			fromString("xxxhellox").trimLeft(fromString("xoh")));
 
 		assertEquals(fromString("xxxhell"),
-				trimRight(fromString("xxxhellox"), fromString("xoh")));
+			fromString("xxxhellox").trimRight(fromString("xoh")));
 
 		assertEquals(empty, empty.trim());
 		assertEquals(empty, fromString("  ").trim());
-		assertEquals(empty, trimLeft(fromString("  ")));
-		assertEquals(empty, trimRight(fromString("  ")));
+		assertEquals(empty, fromString("  ").trimLeft());
+		assertEquals(empty, fromString("  ").trimRight());
 
 		assertEquals(fromString("数据砖头"), fromString("  数据砖头 ").trim());
-		assertEquals(fromString("数据砖头 "), trimLeft(fromString("  数据砖头 ")));
-		assertEquals(fromString("  数据砖头"), trimRight(fromString("  数据砖头 ")));
+		assertEquals(fromString("数据砖头 "), fromString("  数据砖头 ").trimLeft());
+		assertEquals(fromString("  数据砖头"), fromString("  数据砖头 ").trimRight());
 
 		assertEquals(fromString("数据砖头"), fromString("数据砖头").trim());
-		assertEquals(fromString("数据砖头"), trimLeft(fromString("数据砖头")));
-		assertEquals(fromString("数据砖头"), trimRight(fromString("数据砖头")));
+		assertEquals(fromString("数据砖头"), fromString("数据砖头").trimLeft());
+		assertEquals(fromString("数据砖头"), fromString("数据砖头").trimRight());
 
-		assertEquals(fromString(","), trim(fromString("年年岁岁, 岁岁年年"), fromString("年岁 ")));
+		assertEquals(fromString(","), fromString("年年岁岁, 岁岁年年").trim(fromString("年岁 ")));
 		assertEquals(fromString(", 岁岁年年"),
-				trimLeft(fromString("年年岁岁, 岁岁年年"), fromString("年岁 ")));
+			fromString("年年岁岁, 岁岁年年").trimLeft(fromString("年岁 ")));
 		assertEquals(fromString("年年岁岁,"),
-				trimRight(fromString("年年岁岁, 岁岁年年"), fromString("年岁 ")));
+			fromString("年年岁岁, 岁岁年年").trimRight(fromString("年岁 ")));
 
 		char[] charsLessThan0x20 = new char[10];
 		Arrays.fill(charsLessThan0x20, (char) (' ' - 1));
@@ -388,29 +375,29 @@ public class BinaryStringTest {
 			new String(charsLessThan0x20) + "hello" + new String(charsLessThan0x20);
 		assertEquals(fromString(stringStartingWithSpace), fromString(stringStartingWithSpace).trim());
 		assertEquals(fromString(stringStartingWithSpace),
-				trimLeft(fromString(stringStartingWithSpace)));
+			fromString(stringStartingWithSpace).trimLeft());
 		assertEquals(fromString(stringStartingWithSpace),
-				trimRight(fromString(stringStartingWithSpace)));
+			fromString(stringStartingWithSpace).trimRight());
 	}
 
 	@Test
 	public void testSqlSubstring() {
-		assertEquals(fromString("ello"), substringSQL(fromString("hello"), 2));
-		assertEquals(fromString("ell"), substringSQL(fromString("hello"), 2, 3));
-		assertEquals(empty, substringSQL(empty, 2, 3));
-		assertNull(substringSQL(fromString("hello"), 0, -1));
-		assertEquals(empty, substringSQL(fromString("hello"), 10));
-		assertEquals(fromString("hel"), substringSQL(fromString("hello"), 0, 3));
-		assertEquals(fromString("lo"), substringSQL(fromString("hello"), -2, 3));
-		assertEquals(empty, substringSQL(fromString("hello"), -100, 3));
+		assertEquals(fromString("ello"), fromString("hello").substringSQL(2));
+		assertEquals(fromString("ell"), fromString("hello").substringSQL(2, 3));
+		assertEquals(empty, empty.substringSQL(2, 3));
+		assertNull(fromString("hello").substringSQL(0, -1));
+		assertEquals(empty, fromString("hello").substringSQL(10));
+		assertEquals(fromString("hel"), fromString("hello").substringSQL(0, 3));
+		assertEquals(fromString("lo"), fromString("hello").substringSQL(-2, 3));
+		assertEquals(empty, fromString("hello").substringSQL(-100, 3));
 	}
 
 	@Test
-	public void reverseTest() {
-		assertEquals(fromString("olleh"), reverse(fromString("hello")));
-		assertEquals(fromString("国中"), reverse(fromString("中国")));
-		assertEquals(fromString("国中 ,olleh"), reverse(fromString("hello, 中国")));
-		assertEquals(empty, reverse(empty));
+	public void reverse() {
+		assertEquals(fromString("olleh"), fromString("hello").reverse());
+		assertEquals(fromString("国中"), fromString("中国").reverse());
+		assertEquals(fromString("国中 ,olleh"), fromString("hello, 中国").reverse());
+		assertEquals(empty, empty.reverse());
 	}
 
 	@Test
@@ -432,32 +419,32 @@ public class BinaryStringTest {
 	@Test
 	public void testToNumeric() {
 		// Test to integer.
-		assertEquals(Byte.valueOf("123"), toByte(fromString("123")));
-		assertEquals(Byte.valueOf("123"), toByte(fromString("+123")));
-		assertEquals(Byte.valueOf("-123"), toByte(fromString("-123")));
+		assertEquals(Byte.valueOf("123"), fromString("123").toByte());
+		assertEquals(Byte.valueOf("123"), fromString("+123").toByte());
+		assertEquals(Byte.valueOf("-123"), fromString("-123").toByte());
 
-		assertEquals(Short.valueOf("123"), toShort(fromString("123")));
-		assertEquals(Short.valueOf("123"), toShort(fromString("+123")));
-		assertEquals(Short.valueOf("-123"), toShort(fromString("-123")));
+		assertEquals(Short.valueOf("123"), fromString("123").toShort());
+		assertEquals(Short.valueOf("123"), fromString("+123").toShort());
+		assertEquals(Short.valueOf("-123"), fromString("-123").toShort());
 
-		assertEquals(Integer.valueOf("123"), toInt(fromString("123")));
-		assertEquals(Integer.valueOf("123"), toInt(fromString("+123")));
-		assertEquals(Integer.valueOf("-123"), toInt(fromString("-123")));
+		assertEquals(Integer.valueOf("123"), fromString("123").toInt());
+		assertEquals(Integer.valueOf("123"), fromString("+123").toInt());
+		assertEquals(Integer.valueOf("-123"), fromString("-123").toInt());
 
 		assertEquals(Long.valueOf("1234567890"),
-				toLong(fromString("1234567890")));
+			fromString("1234567890").toLong());
 		assertEquals(Long.valueOf("+1234567890"),
-				toLong(fromString("+1234567890")));
+			fromString("+1234567890").toLong());
 		assertEquals(Long.valueOf("-1234567890"),
-				toLong(fromString("-1234567890")));
+			fromString("-1234567890").toLong());
 
 		// Test decimal string to integer.
-		assertEquals(Integer.valueOf("123"), toInt(fromString("123.456789")));
-		assertEquals(Long.valueOf("123"), toLong(fromString("123.456789")));
+		assertEquals(Integer.valueOf("123"), fromString("123.456789").toInt());
+		assertEquals(Long.valueOf("123"), fromString("123.456789").toLong());
 
 		// Test negative cases.
-		assertNull(toInt(fromString("1a3.456789")));
-		assertNull(toInt(fromString("123.a56789")));
+		assertNull(fromString("1a3.456789").toInt());
+		assertNull(fromString("123.a56789").toInt());
 
 		// Test composite in BinaryRow.
 		BinaryRow row = new BinaryRow(20);
@@ -468,10 +455,10 @@ public class BinaryStringTest {
 		writer.writeString(3, BinaryString.fromString("123456789"));
 		writer.complete();
 
-		assertEquals(Byte.valueOf("1"), toByte(row.getString(0)));
-		assertEquals(Short.valueOf("123"), toShort(row.getString(1)));
-		assertEquals(Integer.valueOf("12345"), toInt(row.getString(2)));
-		assertEquals(Long.valueOf("123456789"), toLong(row.getString(3)));
+		assertEquals(Byte.valueOf("1"), row.getString(0).toByte());
+		assertEquals(Short.valueOf("123"), row.getString(1).toShort());
+		assertEquals(Integer.valueOf("12345"), row.getString(2).toInt());
+		assertEquals(Long.valueOf("123456789"), row.getString(3).toLong());
 	}
 
 	@Test
@@ -576,7 +563,7 @@ public class BinaryStringTest {
 		for (DecimalData d : data) {
 			assertEquals(
 				Decimal.fromBigDecimal(new BigDecimal(d.str), d.precision, d.scale),
-				toDecimal(fromString(d.str), d.precision, d.scale));
+				fromString(d.str).toDecimal(d.precision, d.scale));
 		}
 
 		BinaryRow row = new BinaryRow(data.length);
@@ -589,14 +576,14 @@ public class BinaryStringTest {
 			DecimalData d = data[i];
 			assertEquals(
 				Decimal.fromBigDecimal(new BigDecimal(d.str), d.precision, d.scale),
-					toDecimal(row.getString(i), d.precision, d.scale));
+				row.getString(i).toDecimal(d.precision, d.scale));
 		}
 	}
 
 	@Test
 	public void testEmptyString() {
 		BinaryString str2 = fromString("hahahahah");
-		BinaryString str3 = new BinaryString();
+		BinaryString str3 = new BinaryString(null);
 		{
 			MemorySegment[] segments = new MemorySegment[2];
 			segments[0] = MemorySegmentFactory.wrap(new byte[10]);
@@ -637,83 +624,83 @@ public class BinaryStringTest {
 
 	@Test
 	public void testKeyValue() {
-		assertNull(keyValue(fromString("k1:v1|k2:v2"),
-			fromString("|").byteAt(0),
-			fromString(":").byteAt(0),
+		assertNull(fromString("k1:v1|k2:v2").keyValue(
+			fromString("|").getByte(0),
+			fromString(":").getByte(0),
 			fromString("k3")));
-		assertNull(keyValue(fromString("k1:v1|k2:v2|"),
-			fromString("|").byteAt(0),
-			fromString(":").byteAt(0),
+		assertNull(fromString("k1:v1|k2:v2|").keyValue(
+			fromString("|").getByte(0),
+			fromString(":").getByte(0),
 			fromString("k3")));
-		assertNull(keyValue(fromString("|k1:v1|k2:v2|"),
-			fromString("|").byteAt(0),
-			fromString(":").byteAt(0),
+		assertNull(fromString("|k1:v1|k2:v2|").keyValue(
+			fromString("|").getByte(0),
+			fromString(":").getByte(0),
 			fromString("k3")));
 		String tab = org.apache.commons.lang3.StringEscapeUtils.unescapeJava("\t");
 		assertEquals(fromString("v2"),
-				keyValue(fromString("k1:v1" + tab + "k2:v2"),
-				fromString("\t").byteAt(0),
-				fromString(":").byteAt(0),
+			fromString("k1:v1" + tab + "k2:v2").keyValue(
+				fromString("\t").getByte(0),
+				fromString(":").getByte(0),
 				fromString("k2")));
-		assertNull(keyValue(fromString("k1:v1|k2:v2"),
-			fromString("|").byteAt(0),
-			fromString(":").byteAt(0),
+		assertNull(fromString("k1:v1|k2:v2").keyValue(
+			fromString("|").getByte(0),
+			fromString(":").getByte(0),
 			null));
 		assertEquals(fromString("v2"),
-				keyValue(fromString("k1=v1;k2=v2"),
-				fromString(";").byteAt(0),
-				fromString("=").byteAt(0),
+			fromString("k1=v1;k2=v2").keyValue(
+				fromString(";").getByte(0),
+				fromString("=").getByte(0),
 				fromString("k2")));
 		assertEquals(fromString("v2"),
-				keyValue(fromString("|k1=v1|k2=v2|"),
-				fromString("|").byteAt(0),
-				fromString("=").byteAt(0),
+			fromString("|k1=v1|k2=v2|").keyValue(
+				fromString("|").getByte(0),
+				fromString("=").getByte(0),
 				fromString("k2")));
 		assertEquals(fromString("v2"),
-				keyValue(fromString("k1=v1||k2=v2"),
-				fromString("|").byteAt(0),
-				fromString("=").byteAt(0),
+			fromString("k1=v1||k2=v2").keyValue(
+				fromString("|").getByte(0),
+				fromString("=").getByte(0),
 				fromString("k2")));
-		assertNull(keyValue(fromString("k1=v1;k2"),
-			fromString(";").byteAt(0),
-			fromString("=").byteAt(0),
+		assertNull(fromString("k1=v1;k2").keyValue(
+			fromString(";").getByte(0),
+			fromString("=").getByte(0),
 			fromString("k2")));
-		assertNull(keyValue(fromString("k1;k2=v2"),
-			fromString(";").byteAt(0),
-			fromString("=").byteAt(0),
+		assertNull(fromString("k1;k2=v2").keyValue(
+			fromString(";").getByte(0),
+			fromString("=").getByte(0),
 			fromString("k1")));
-		assertNull(keyValue(fromString("k=1=v1;k2=v2"),
-			fromString(";").byteAt(0),
-			fromString("=").byteAt(0),
+		assertNull(fromString("k=1=v1;k2=v2").keyValue(
+			fromString(";").getByte(0),
+			fromString("=").getByte(0),
 			fromString("k=")));
 		assertEquals(fromString("=v1"),
-				keyValue(fromString("k1==v1;k2=v2"),
-				fromString(";").byteAt(0),
-				fromString("=").byteAt(0), fromString("k1")));
-		assertNull(keyValue(fromString("k1==v1;k2=v2"),
-			fromString(";").byteAt(0),
-			fromString("=").byteAt(0), fromString("k1=")));
-		assertNull(keyValue(fromString("k1=v1;k2=v2"),
-			fromString(";").byteAt(0),
-			fromString("=").byteAt(0),
+			fromString("k1==v1;k2=v2").keyValue(
+				fromString(";").getByte(0),
+				fromString("=").getByte(0), fromString("k1")));
+		assertNull(fromString("k1==v1;k2=v2").keyValue(
+			fromString(";").getByte(0),
+			fromString("=").getByte(0), fromString("k1=")));
+		assertNull(fromString("k1=v1;k2=v2").keyValue(
+			fromString(";").getByte(0),
+			fromString("=").getByte(0),
 			fromString("k1=")));
-		assertNull(keyValue(fromString("k1k1=v1;k2=v2"),
-			fromString(";").byteAt(0),
-			fromString("=").byteAt(0),
+		assertNull(fromString("k1k1=v1;k2=v2").keyValue(
+			fromString(";").getByte(0),
+			fromString("=").getByte(0),
 			fromString("k1")));
-		assertNull(keyValue(fromString("k1=v1;k2=v2"),
-			fromString(";").byteAt(0),
-			fromString("=").byteAt(0),
+		assertNull(fromString("k1=v1;k2=v2").keyValue(
+			fromString(";").getByte(0),
+			fromString("=").getByte(0),
 			fromString("k1k1k1k1k1k1k1k1k1k1")));
 		assertEquals(fromString("v2"),
-				keyValue(fromString("k1:v||k2:v2"),
-				fromString("|").byteAt(0),
-				fromString(":").byteAt(0),
+			fromString("k1:v||k2:v2").keyValue(
+				fromString("|").getByte(0),
+				fromString(":").getByte(0),
 				fromString("k2")));
 		assertEquals(fromString("v2"),
-				keyValue(fromString("k1:v||k2:v2"),
-				fromString("|").byteAt(0),
-				fromString(":").byteAt(0),
+			fromString("k1:v||k2:v2").keyValue(
+				fromString("|").getByte(0),
+				fromString(":").getByte(0),
 				fromString("k2")));
 	}
 
@@ -724,7 +711,7 @@ public class BinaryStringTest {
 		byte[] bytes = new byte[] {(byte) 20122, (byte) 40635, 124, (byte) 38271, (byte) 34966,
 			124, (byte) 36830, (byte) 34915, (byte) 35033, 124, (byte) 55357, 124, (byte) 56407 };
 
-		String str = new String(bytes, StandardCharsets.UTF_8);
+		String str = new String(bytes);
 		assertEquals(str, StringUtf8Utils.decodeUTF8(bytes, 0, bytes.length));
 		assertEquals(str, StringUtf8Utils.decodeUTF8(MemorySegmentFactory.wrap(bytes), 0, bytes.length));
 
@@ -752,17 +739,17 @@ public class BinaryStringTest {
 
 	@Test
 	public void testSplit() {
-		assertArrayEquals(EMPTY_STRING_ARRAY,
-				splitByWholeSeparatorPreserveAllTokens(fromString(""), fromString("")));
+		assertArrayEquals(BinaryString.EMPTY_STRING_ARRAY,
+			fromString("").splitByWholeSeparatorPreserveAllTokens(fromString("")));
 		assertArrayEquals(new BinaryString[] {fromString("ab"), fromString("de"), fromString("fg")},
-				splitByWholeSeparatorPreserveAllTokens(fromString("ab de fg"), null));
+			fromString("ab de fg").splitByWholeSeparatorPreserveAllTokens(null));
 		assertArrayEquals(new BinaryString[] {fromString("ab"), fromString(""), fromString(""),
-						fromString("de"), fromString("fg")},
-				splitByWholeSeparatorPreserveAllTokens(fromString("ab   de fg"), null));
+				fromString("de"), fromString("fg")},
+			fromString("ab   de fg").splitByWholeSeparatorPreserveAllTokens(null));
 		assertArrayEquals(new BinaryString[] {fromString("ab"), fromString("cd"), fromString("ef")},
-				splitByWholeSeparatorPreserveAllTokens(fromString("ab:cd:ef"), fromString(":")));
+			fromString("ab:cd:ef").splitByWholeSeparatorPreserveAllTokens(fromString(":")));
 		assertArrayEquals(new BinaryString[] {fromString("ab"), fromString("cd"), fromString("ef")},
-				splitByWholeSeparatorPreserveAllTokens(fromString("ab-!-cd-!-ef"), fromString("-!-")));
+			fromString("ab-!-cd-!-ef").splitByWholeSeparatorPreserveAllTokens(fromString("-!-")));
 	}
 
 	@Test

@@ -20,7 +20,6 @@ package org.apache.flink.table.plan.batch.sql
 
 import org.apache.flink.api.scala._
 import org.apache.flink.table.api.SqlParserException
-import org.apache.flink.table.api.scala._
 import org.apache.flink.table.util.TableTestBase
 
 import org.junit.Test
@@ -29,6 +28,7 @@ class LimitTest extends TableTestBase {
 
   private val util = batchTestUtil()
   util.addTableSource[(Int, Long, String)]("MyTable", 'a, 'b, 'c)
+  // TODO optimize `limit 0`
 
   @Test
   def testLimitWithoutOffset(): Unit = {

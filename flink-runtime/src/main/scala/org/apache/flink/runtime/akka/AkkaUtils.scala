@@ -20,8 +20,7 @@ package org.apache.flink.runtime.akka
 
 import java.io.IOException
 import java.net._
-import java.time
-import java.util.concurrent.{Callable, CompletableFuture}
+import java.util.concurrent.{Callable, CompletableFuture, TimeUnit}
 
 import akka.actor._
 import akka.pattern.{ask => akkaAsk}
@@ -32,7 +31,6 @@ import org.apache.flink.runtime.clusterframework.BootstrapTools.{FixedThreadPool
 import org.apache.flink.runtime.concurrent.FutureUtils
 import org.apache.flink.runtime.net.SSLUtils
 import org.apache.flink.util.NetUtils
-import org.apache.flink.util.TimeUtils
 import org.apache.flink.util.function.FunctionUtils
 import org.jboss.netty.channel.ChannelException
 import org.jboss.netty.logging.{InternalLoggerFactory, Slf4JLoggerFactory}
@@ -50,6 +48,8 @@ import scala.language.postfixOps
  */
 object AkkaUtils {
   val LOG: Logger = LoggerFactory.getLogger(AkkaUtils.getClass)
+
+  val INF_TIMEOUT: FiniteDuration = 21474835 seconds
 
   val FLINK_ACTOR_SYSTEM_NAME = "flink"
 
@@ -364,12 +364,12 @@ object AkkaUtils {
   }
 
   private def validateHeartbeat(pauseParamName: String,
-                                pauseValue: time.Duration,
+                                pauseValue: String,
                                 intervalParamName: String,
-                                intervalValue: time.Duration): Unit = {
-    if (pauseValue.compareTo(intervalValue) <= 0) {
+                                intervalValue: String): Unit = {
+    if (Duration.apply(pauseValue).lteq(Duration.apply(intervalValue))) {
       throw new IllegalConfigurationException(
-        "%s [%s] must greater than %s [%s]",
+        "%s [%s] must greater then %s [%s]",
         pauseParamName,
         pauseValue,
         intervalParamName,
@@ -397,34 +397,40 @@ object AkkaUtils {
 
     val normalizedExternalHostname = NetUtils.unresolvedHostToNormalizedString(externalHostname)
 
-    val akkaAskTimeout = getTimeout(configuration)
+    val akkaAskTimeout = Duration(configuration.getString(AkkaOptions.ASK_TIMEOUT))
 
-    val startupTimeout = TimeUtils.getStringInMillis(
-      TimeUtils.parseDuration(
-        configuration.getString(
-          AkkaOptions.STARTUP_TIMEOUT,
-          TimeUtils.getStringInMillis(akkaAskTimeout.multipliedBy(10L)))))
+    val startupTimeout = configuration.getString(
+      AkkaOptions.STARTUP_TIMEOUT,
+      (akkaAskTimeout * 10).toString)
 
-    val transportHeartbeatIntervalDuration = TimeUtils.parseDuration(
-      configuration.getString(AkkaOptions.TRANSPORT_HEARTBEAT_INTERVAL))
+    val transportHeartbeatInterval = configuration.getString(
+      AkkaOptions.TRANSPORT_HEARTBEAT_INTERVAL)
 
-    val transportHeartbeatPauseDuration = TimeUtils.parseDuration(
-      configuration.getString(AkkaOptions.TRANSPORT_HEARTBEAT_PAUSE))
+    val transportHeartbeatPause = configuration.getString(
+      AkkaOptions.TRANSPORT_HEARTBEAT_PAUSE)
 
     validateHeartbeat(
       AkkaOptions.TRANSPORT_HEARTBEAT_PAUSE.key(),
-      transportHeartbeatPauseDuration,
+      transportHeartbeatPause,
       AkkaOptions.TRANSPORT_HEARTBEAT_INTERVAL.key(),
-      transportHeartbeatIntervalDuration)
-
-    val transportHeartbeatInterval = TimeUtils.getStringInMillis(transportHeartbeatIntervalDuration)
-
-    val transportHeartbeatPause = TimeUtils.getStringInMillis(transportHeartbeatPauseDuration)
+      transportHeartbeatInterval)
 
     val transportThreshold = configuration.getDouble(AkkaOptions.TRANSPORT_THRESHOLD)
 
-    val akkaTCPTimeout = TimeUtils.getStringInMillis(
-      TimeUtils.parseDuration(configuration.getString(AkkaOptions.TCP_TIMEOUT)))
+    val watchHeartbeatInterval = configuration.getString(
+      AkkaOptions.WATCH_HEARTBEAT_INTERVAL)
+
+    val watchHeartbeatPause = configuration.getString(AkkaOptions.WATCH_HEARTBEAT_PAUSE)
+
+    validateHeartbeat(
+      AkkaOptions.WATCH_HEARTBEAT_PAUSE.key(),
+      watchHeartbeatPause,
+      AkkaOptions.WATCH_HEARTBEAT_INTERVAL.key(),
+      watchHeartbeatInterval)
+
+    val watchThreshold = configuration.getInteger(AkkaOptions.WATCH_THRESHOLD)
+
+    val akkaTCPTimeout = configuration.getString(AkkaOptions.TCP_TIMEOUT)
 
     val akkaFramesize = configuration.getString(AkkaOptions.FRAMESIZE)
 
@@ -499,6 +505,12 @@ object AkkaUtils {
          |      threshold = $transportThreshold
          |    }
          |
+         |    watch-failure-detector{
+         |      heartbeat-interval = $watchHeartbeatInterval
+         |      acceptable-heartbeat-pause = $watchHeartbeatPause
+         |      threshold = $watchThreshold
+         |    }
+         |
          |    netty {
          |      tcp {
          |        transport-class = "akka.remote.transport.netty.NettyTransport"
@@ -535,7 +547,7 @@ object AkkaUtils {
       } else {
         // if bindAddress is null or empty, then leave bindAddress unspecified. Akka will pick
         // InetAddress.getLocalHost.getHostAddress
-        ""
+        "\"\""
       }
 
     val hostnameConfigString =
@@ -544,8 +556,8 @@ object AkkaUtils {
          |  remote {
          |    netty {
          |      tcp {
-         |        hostname = "$effectiveHostname"
-         |        bind-hostname = "$bindAddress"
+         |        hostname = $effectiveHostname
+         |        bind-hostname = $bindAddress
          |      }
          |    }
          |  }
@@ -735,13 +747,15 @@ object AkkaUtils {
     }
   }
 
-  def getTimeout(config: Configuration): time.Duration = {
-    TimeUtils.parseDuration(config.getString(AkkaOptions.ASK_TIMEOUT))
+  def getTimeout(config: Configuration): FiniteDuration = {
+    val duration = Duration(config.getString(AkkaOptions.ASK_TIMEOUT))
+
+    new FiniteDuration(duration.toMillis, TimeUnit.MILLISECONDS)
   }
 
   def getTimeoutAsTime(config: Configuration): Time = {
     try {
-      val duration = getTimeout(config)
+      val duration = Duration(config.getString(AkkaOptions.ASK_TIMEOUT))
 
       Time.milliseconds(duration.toMillis)
     } catch {
@@ -751,17 +765,38 @@ object AkkaUtils {
   }
 
   def getDefaultTimeout: Time = {
-    val duration = TimeUtils.parseDuration(AkkaOptions.ASK_TIMEOUT.defaultValue())
+    val duration = Duration(AkkaOptions.ASK_TIMEOUT.defaultValue())
 
     Time.milliseconds(duration.toMillis)
   }
 
-  def getLookupTimeout(config: Configuration): time.Duration = {
-    TimeUtils.parseDuration(config.getString(AkkaOptions.LOOKUP_TIMEOUT))
+  def getDefaultTimeoutAsFiniteDuration: FiniteDuration = {
+    val timeout = getDefaultTimeout
+
+    new FiniteDuration(timeout.toMilliseconds, TimeUnit.MILLISECONDS)
   }
 
-  def getClientTimeout(config: Configuration): time.Duration = {
-    TimeUtils.parseDuration(config.getString(AkkaOptions.CLIENT_TIMEOUT))
+  def getLookupTimeout(config: Configuration): FiniteDuration = {
+    val duration = Duration(config.getString(AkkaOptions.LOOKUP_TIMEOUT))
+
+    new FiniteDuration(duration.toMillis, TimeUnit.MILLISECONDS)
+  }
+
+  def getDefaultLookupTimeout: FiniteDuration = {
+    val duration = Duration(AkkaOptions.LOOKUP_TIMEOUT.defaultValue())
+    new FiniteDuration(duration.toMillis, TimeUnit.MILLISECONDS)
+  }
+
+  def getClientTimeout(config: Configuration): FiniteDuration = {
+    val duration = Duration(config.getString(AkkaOptions.CLIENT_TIMEOUT))
+
+    new FiniteDuration(duration.toMillis, TimeUnit.MILLISECONDS)
+  }
+
+  def getDefaultClientTimeout: FiniteDuration = {
+    val duration = Duration(AkkaOptions.CLIENT_TIMEOUT.defaultValue())
+
+    new FiniteDuration(duration.toMillis, TimeUnit.MILLISECONDS)
   }
 
   /** Returns the address of the given [[ActorSystem]]. The [[Address]] object contains

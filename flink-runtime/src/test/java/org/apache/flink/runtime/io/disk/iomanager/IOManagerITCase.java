@@ -65,7 +65,8 @@ public class IOManagerITCase extends TestLogger {
 
 	@After
 	public void afterTest() throws Exception {
-		ioManager.close();
+		ioManager.shutdown();
+		Assert.assertTrue("IO Manager has not properly shut down.", ioManager.isProperlyShutDown());
 		
 		Assert.assertTrue("Not all memory was returned to the memory manager in the test.", memoryManager.verifyEmpty());
 		memoryManager.shutdown();

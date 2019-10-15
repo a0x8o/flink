@@ -21,8 +21,6 @@ package org.apache.flink.runtime.executiongraph.restart;
 import org.apache.flink.runtime.concurrent.ScheduledExecutor;
 import org.apache.flink.runtime.executiongraph.ExecutionGraph;
 
-import java.util.concurrent.CompletableFuture;
-
 /**
  * Strategy for {@link ExecutionGraph} restarts.
  */
@@ -44,7 +42,6 @@ public interface RestartStrategy {
 	 *
 	 * @param restarter The hook to restart the ExecutionGraph
 	 * @param executor An scheduled executor to delay the restart
-	 * @return A {@link CompletableFuture} that will be completed when the restarting process is done.
 	 */
-	CompletableFuture<Void> restart(RestartCallback restarter, ScheduledExecutor executor);
+	void restart(RestartCallback restarter, ScheduledExecutor executor);
 }

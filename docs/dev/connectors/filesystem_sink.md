@@ -1,6 +1,6 @@
 ---
-title: "Hadoop FileSystem Connector"
-nav-title: Hadoop FileSystem
+title: "HDFS Connector"
+nav-title: Rolling File Sink
 nav-parent_id: connectors
 nav-pos: 5
 ---
@@ -23,11 +23,6 @@ specific language governing permissions and limitations
 under the License.
 -->
 
-<div class="alert alert-info" markdown="span">
-The `BucketingSink` has been **deprecated since Flink 1.9** and will be removed in subsequent releases.
-Please use the [__StreamingFileSink__]({{site.baseurl}}/dev/connectors/streamfile_sink.html) instead.
-</div>
-
 This connector provides a Sink that writes partitioned files to any filesystem supported by
 [Hadoop FileSystem](http://hadoop.apache.org). To use this connector, add the
 following dependency to your project:
@@ -42,7 +37,7 @@ following dependency to your project:
 
 Note that the streaming connectors are currently not part of the binary
 distribution. See
-[here]({{site.baseurl}}/dev/projectsetup/dependencies.html)
+[here]({{site.baseurl}}/dev/linking.html)
 for information about how to package the program with the libraries for
 cluster execution.
 
@@ -149,6 +144,6 @@ of the parallel sink instance and `count` is the running number of part files th
 because of the batch size or batch roll over interval.
 
 For in-depth information, please refer to the JavaDoc for
-[BucketingSink](https://flink.apache.org/docs/latest/api/java/org/apache/flink/streaming/connectors/fs/bucketing/BucketingSink.html).
+[BucketingSink](http://flink.apache.org/docs/latest/api/java/org/apache/flink/streaming/connectors/fs/bucketing/BucketingSink.html).
 
 {% top %}

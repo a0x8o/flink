@@ -22,35 +22,27 @@ import java.lang.Iterable
 import org.apache.flink.configuration.Configuration
 import org.apache.flink.streaming.api.functions.windowing.RichWindowFunction
 import org.apache.flink.streaming.api.windowing.windows.Window
-import org.apache.flink.table.runtime.TableAggregateCollector
 import org.apache.flink.table.runtime.types.CRow
 import org.apache.flink.types.Row
 import org.apache.flink.util.Collector
 
 /**
-  * Computes the final (table)aggregate value from incrementally computed aggregates.
+  * Computes the final aggregate value from incrementally computed aggregates.
   *
   * @param numGroupingKey The number of grouping keys.
   * @param numAggregates The number of aggregates.
   * @param finalRowArity The arity of the final output row.
-  * @param isTableAggregate Whether it is table aggregate.
   */
 class IncrementalAggregateWindowFunction[W <: Window](
     private val numGroupingKey: Int,
     private val numAggregates: Int,
-    private val finalRowArity: Int,
-    private val isTableAggregate: Boolean)
+    private val finalRowArity: Int)
   extends RichWindowFunction[Row, CRow, Row, W] {
 
   private var output: CRow = _
-  private var concatCollector: TableAggregateCollector = _
 
   override def open(parameters: Configuration): Unit = {
     output = new CRow(new Row(finalRowArity), true)
-    if (isTableAggregate) {
-      concatCollector = new TableAggregateCollector(numGroupingKey)
-      concatCollector.setResultRow(output.row)
-    }
   }
 
   /**
@@ -73,20 +65,13 @@ class IncrementalAggregateWindowFunction[W <: Window](
         output.row.setField(i, key.getField(i))
         i += 1
       }
-
-      if (isTableAggregate) {
-        concatCollector.out = out
-        val accumulator = record.getField(0).asInstanceOf[Row]
-        val func = record.getField(1).asInstanceOf[GeneratedTableAggregations]
-        func.emit(accumulator, concatCollector)
-      } else {
-        i = 0
-        while (i < numAggregates) {
-          output.row.setField(numGroupingKey + i, record.getField(i))
-          i += 1
-        }
-        out.collect(output)
+      i = 0
+      while (i < numAggregates) {
+        output.row.setField(numGroupingKey + i, record.getField(i))
+        i += 1
       }
+
+      out.collect(output)
     }
   }
 }

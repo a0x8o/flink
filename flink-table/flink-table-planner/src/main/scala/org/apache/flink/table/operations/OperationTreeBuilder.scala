@@ -21,25 +21,25 @@ package org.apache.flink.table.operations
 import java.util.{Collections, Optional, List => JList}
 
 import org.apache.flink.table.api._
-import org.apache.flink.table.catalog.FunctionLookup
-import org.apache.flink.table.expressions.ApiExpressionUtils.{unresolvedCall, unresolvedRef, valueLiteral}
+import org.apache.flink.table.expressions.ApiExpressionUtils.valueLiteral
 import org.apache.flink.table.expressions.ExpressionResolver.resolverFor
-import org.apache.flink.table.expressions.ExpressionUtils.isFunctionOfKind
+import org.apache.flink.table.expressions.ExpressionUtils.isFunctionOfType
+import org.apache.flink.table.expressions.FunctionDefinition.Type.{SCALAR_FUNCTION, TABLE_FUNCTION}
 import org.apache.flink.table.expressions._
+import org.apache.flink.table.expressions.catalog.FunctionDefinitionCatalog
 import org.apache.flink.table.expressions.lookups.TableReferenceLookup
-import org.apache.flink.table.functions.FunctionKind.{SCALAR, TABLE}
 import org.apache.flink.table.functions.utils.UserDefinedFunctionUtils
-import org.apache.flink.table.functions.{AggregateFunctionDefinition, BuiltInFunctionDefinitions, TableFunctionDefinition}
 import org.apache.flink.table.operations.AliasOperationUtils.createAliasList
-import org.apache.flink.table.operations.JoinQueryOperation.JoinType
+import org.apache.flink.table.operations.JoinTableOperation.JoinType
 import org.apache.flink.table.operations.OperationExpressionsUtils.extractAggregationsAndProperties
-import org.apache.flink.table.operations.SetQueryOperation.SetQueryOperationType._
+import org.apache.flink.table.operations.SetTableOperation.SetTableOperationType._
 import org.apache.flink.table.util.JavaScalaConversionUtil
 import org.apache.flink.table.util.JavaScalaConversionUtil.toScala
 import org.apache.flink.util.Preconditions
 
 import _root_.scala.collection.JavaConversions._
 import _root_.scala.collection.JavaConverters._
+import _root_.java.util.function.Supplier
 
 /**
   * Builder for [[[Operation]] tree.
@@ -47,7 +47,7 @@ import _root_.scala.collection.JavaConverters._
 class OperationTreeBuilder(private val tableEnv: TableEnvImpl) {
 
   private val expressionBridge: ExpressionBridge[PlannerExpression] = tableEnv.expressionBridge
-  private val functionCatalog: FunctionLookup = tableEnv.functionCatalog
+  private val functionCatalog: FunctionDefinitionCatalog = tableEnv.functionCatalog
 
   private val isStreaming = tableEnv.isInstanceOf[StreamTableEnvImpl]
   private val projectionOperationFactory = new ProjectionOperationFactory(expressionBridge)
@@ -65,22 +65,22 @@ class OperationTreeBuilder(private val tableEnv: TableEnvImpl) {
     override def lookupTable(name: String): Optional[TableReferenceExpression] =
       JavaScalaConversionUtil
       .toJava(tableEnv.scanInternal(Array(name))
-        .map(op => new TableReferenceExpression(name, op)))
+        .map(op => new TableReferenceExpression(name, op.getTableOperation)))
   }
 
   def project(
       projectList: JList[Expression],
-      child: QueryOperation,
+      child: TableOperation,
       explicitAlias: Boolean = false)
-    : QueryOperation = {
+    : TableOperation = {
     projectInternal(projectList, child, explicitAlias, Collections.emptyList())
   }
 
   def project(
       projectList: JList[Expression],
-      child: QueryOperation,
+      child: TableOperation,
       overWindows: JList[OverWindow])
-    : QueryOperation = {
+    : TableOperation = {
 
     Preconditions.checkArgument(!overWindows.isEmpty)
 
@@ -94,10 +94,10 @@ class OperationTreeBuilder(private val tableEnv: TableEnvImpl) {
 
   private def projectInternal(
       projectList: JList[Expression],
-      child: QueryOperation,
+      child: TableOperation,
       explicitAlias: Boolean,
       overWindows: JList[OverWindow])
-    : QueryOperation = {
+    : TableOperation = {
 
     validateProjectList(projectList, overWindows)
 
@@ -119,7 +119,11 @@ class OperationTreeBuilder(private val tableEnv: TableEnvImpl) {
 
     val callResolver = new LookupCallResolver(tableEnv.functionCatalog)
     val expressionsWithResolvedCalls = projectList.map(_.accept(callResolver)).asJava
-    val extracted = extractAggregationsAndProperties(expressionsWithResolvedCalls)
+    val extracted = extractAggregationsAndProperties(
+      expressionsWithResolvedCalls,
+      new Supplier[String] {
+        override def get(): String = tableEnv.createUniqueAttributeName()
+      })
     if (!extracted.getWindowProperties.isEmpty) {
       throw new ValidationException("Window properties can only be used on windowed tables.")
     }
@@ -137,21 +141,21 @@ class OperationTreeBuilder(private val tableEnv: TableEnvImpl) {
   def addColumns(
       replaceIfExist: Boolean,
       fieldLists: JList[Expression],
-      child: QueryOperation)
-    : QueryOperation = {
+      child: TableOperation)
+    : TableOperation = {
     val newColumns = if (replaceIfExist) {
       val fieldNames = child.getTableSchema.getFieldNames.toList.asJava
       ColumnOperationUtils.addOrReplaceColumns(fieldNames, fieldLists)
     } else {
-      (unresolvedRef("*") +: fieldLists.asScala).asJava
+      (new UnresolvedReferenceExpression("*") +: fieldLists.asScala).asJava
     }
     project(newColumns, child)
   }
 
   def renameColumns(
       aliases: JList[Expression],
-      child: QueryOperation)
-    : QueryOperation = {
+      child: TableOperation)
+    : TableOperation = {
 
     val resolver = resolverFor(tableCatalog, functionCatalog, child).build()
     val inputFieldNames = child.getTableSchema.getFieldNames.toList.asJava
@@ -163,8 +167,8 @@ class OperationTreeBuilder(private val tableEnv: TableEnvImpl) {
 
   def dropColumns(
       fieldLists: JList[Expression],
-      child: QueryOperation)
-    : QueryOperation = {
+      child: TableOperation)
+    : TableOperation = {
 
     val resolver = resolverFor(tableCatalog, functionCatalog, child).build()
     val inputFieldNames = child.getTableSchema.getFieldNames.toList.asJava
@@ -176,8 +180,8 @@ class OperationTreeBuilder(private val tableEnv: TableEnvImpl) {
   def aggregate(
       groupingExpressions: JList[Expression],
       aggregates: JList[Expression],
-      child: QueryOperation)
-    : QueryOperation = {
+      child: TableOperation)
+    : TableOperation = {
 
     val resolver = resolverFor(tableCatalog, functionCatalog, child).build
 
@@ -193,21 +197,21 @@ class OperationTreeBuilder(private val tableEnv: TableEnvImpl) {
   def aggregate(
       groupingExpressions: JList[Expression],
       aggregate: Expression,
-      child: QueryOperation)
-    : QueryOperation = {
+      child: TableOperation)
+    : TableOperation = {
     // resolve for java string case, i.e., turn LookupCallExpression to CallExpression.
     val resolvedAggregate = this.resolveExpression(aggregate, child)
 
     // extract alias and aggregate function
     var alias: Seq[String] = Seq()
     val aggWithoutAlias = resolvedAggregate match {
-      case c: UnresolvedCallExpression
-          if c.getFunctionDefinition == BuiltInFunctionDefinitions.AS =>
+      case c: CallExpression
+        if c.getFunctionDefinition.getName == BuiltInFunctionDefinitions.AS.getName =>
         alias = c.getChildren
           .drop(1)
-          .map(e => ExpressionUtils.extractValue(e, classOf[String]).get())
+          .map(e => e.asInstanceOf[ValueLiteralExpression].getValue.asInstanceOf[String])
         c.getChildren.get(0)
-      case c: UnresolvedCallExpression
+      case c: CallExpression
         if c.getFunctionDefinition.isInstanceOf[AggregateFunctionDefinition] =>
         if (alias.isEmpty) alias = UserDefinedFunctionUtils.getFieldInfo(
           c.getFunctionDefinition.asInstanceOf[AggregateFunctionDefinition].getResultTypeInfo)._1
@@ -221,37 +225,49 @@ class OperationTreeBuilder(private val tableEnv: TableEnvImpl) {
     while (childNames.contains("TMP_" + cnt)) {
       cnt += 1
     }
-    val aggWithNamedAlias = unresolvedCall(
+    val aggWithNamedAlias = new CallExpression(
       BuiltInFunctionDefinitions.AS,
-      aggWithoutAlias,
-      valueLiteral("TMP_" + cnt))
+      Seq(aggWithoutAlias, new ValueLiteralExpression("TMP_" + cnt, Types.STRING)))
 
     // get agg table
-    val aggQueryOperation = this.aggregate(groupingExpressions, Seq(aggWithNamedAlias), child)
+    val aggTableOperation = this.aggregate(groupingExpressions, Seq(aggWithNamedAlias), child)
 
     // flatten the aggregate function
-    val aggNames = aggQueryOperation.getTableSchema.getFieldNames
+    val aggNames = aggTableOperation.getTableSchema.getFieldNames
     val flattenExpressions = aggNames.take(groupingExpressions.size())
-      .map(e => unresolvedRef(e)) ++
-      Seq(unresolvedCall(BuiltInFunctionDefinitions.FLATTEN, unresolvedRef(aggNames.last)))
-    val flattenedOperation = this.project(flattenExpressions.toList, aggQueryOperation)
+      .map(e => new UnresolvedReferenceExpression(e)) ++
+      Seq(new CallExpression(BuiltInFunctionDefinitions.FLATTEN,
+        Seq(new UnresolvedReferenceExpression(aggNames.last))))
+    val flattenedOperation = this.project(flattenExpressions.toList, aggTableOperation)
 
     // add alias
-    aliasBackwardFields(flattenedOperation, alias, groupingExpressions.size())
+    aliasBackwardFields(flattenedOperation, alias)
   }
 
   def tableAggregate(
       groupingExpressions: JList[Expression],
       tableAggFunction: Expression,
-      child: QueryOperation)
-    : QueryOperation = {
+      child: TableOperation)
+    : TableOperation = {
 
     // Step1: add a default name to the call in the grouping expressions, e.g., groupBy(a % 5) to
     // groupBy(a % 5 as TMP_0). We need a name for every column so that to perform alias for the
     // table aggregate function in Step4.
-    val newGroupingExpressions = addAliasToTheCallInGroupings(
-      child.getTableSchema.getFieldNames,
-      groupingExpressions)
+    var attrNameCntr: Int = 0
+    val usedFieldNames = child.getTableSchema.getFieldNames.toBuffer
+    val newGroupingExpressions = groupingExpressions.map {
+      case c: CallExpression
+        if !c.getFunctionDefinition.getName.equals(BuiltInFunctionDefinitions.AS.getName) => {
+          val tempName = getUniqueName("TMP_" + attrNameCntr, usedFieldNames)
+          usedFieldNames.append(tempName)
+          attrNameCntr += 1
+          new CallExpression(
+            BuiltInFunctionDefinitions.AS,
+            Seq(c, new ValueLiteralExpression(tempName))
+          )
+        }
+      case e => e
+    }
 
     // Step2: resolve expressions
     val resolver = resolverFor(tableCatalog, functionCatalog, child).build
@@ -264,7 +280,7 @@ class OperationTreeBuilder(private val tableEnv: TableEnvImpl) {
       .createAggregate(resolvedGroupings, Seq(resolvedFunctionAndAlias.f0), child)
 
     // Step4: add a top project to alias the output fields of the table aggregate.
-    aliasBackwardFields(tableAggOperation, resolvedFunctionAndAlias.f1, groupingExpressions.size())
+    aliasBackwardFields(tableAggOperation, resolvedFunctionAndAlias.f1)
   }
 
   def windowAggregate(
@@ -272,8 +288,8 @@ class OperationTreeBuilder(private val tableEnv: TableEnvImpl) {
       window: GroupWindow,
       windowProperties: JList[Expression],
       aggregates: JList[Expression],
-      child: QueryOperation)
-    : QueryOperation = {
+      child: TableOperation)
+    : TableOperation = {
 
     val resolver = resolverFor(tableCatalog, functionCatalog, child).build()
     val resolvedWindow = aggregateOperationFactory.createResolvedWindow(window, resolver)
@@ -282,7 +298,7 @@ class OperationTreeBuilder(private val tableEnv: TableEnvImpl) {
       .withLocalReferences(
         new LocalReferenceExpression(
           resolvedWindow.getAlias,
-          resolvedWindow.getTimeAttribute.getOutputDataType))
+          resolvedWindow.getTimeAttribute.getResultType))
       .build
 
     val convertedGroupings = resolverWithWindowReferences.resolve(groupingExpressions)
@@ -299,58 +315,13 @@ class OperationTreeBuilder(private val tableEnv: TableEnvImpl) {
       child)
   }
 
-  def windowTableAggregate(
-    groupingExpressions: JList[Expression],
-    window: GroupWindow,
-    windowProperties: JList[Expression],
-    tableAggFunction: Expression,
-    child: QueryOperation)
-  : QueryOperation = {
-
-    // Step1: add a default name to the call in the grouping expressions, e.g., groupBy(a % 5) to
-    // groupBy(a % 5 as TMP_0). We need a name for every column so that to perform alias for the
-    // table aggregate function in Step4.
-    val newGroupingExpressions = addAliasToTheCallInGroupings(
-      child.getTableSchema.getFieldNames,
-      groupingExpressions)
-
-    // Step2: resolve expressions, including grouping, aggregates and window properties.
-    val resolver = resolverFor(tableCatalog, functionCatalog, child).build()
-    val resolvedWindow = aggregateOperationFactory.createResolvedWindow(window, resolver)
-
-    val resolverWithWindowReferences = resolverFor(tableCatalog, functionCatalog, child)
-      .withLocalReferences(
-        new LocalReferenceExpression(
-          resolvedWindow.getAlias,
-          resolvedWindow.getTimeAttribute.getOutputDataType))
-      .build
-
-    val convertedGroupings = resolverWithWindowReferences.resolve(newGroupingExpressions)
-    val convertedAggregates = resolverWithWindowReferences.resolve(Seq(tableAggFunction))
-    val convertedProperties = resolverWithWindowReferences.resolve(windowProperties)
-    val resolvedFunctionAndAlias = aggregateOperationFactory.extractTableAggFunctionAndAliases(
-      convertedAggregates.get(0))
-
-    // Step3: create window table agg operation
-    val tableAggOperation = aggregateOperationFactory.createWindowAggregate(
-      convertedGroupings,
-      Seq(resolvedFunctionAndAlias.f0),
-      convertedProperties,
-      resolvedWindow,
-      child)
-
-    // Step4: add a top project to alias the output fields of the table aggregate. Also, project the
-    // window attribute.
-    aliasBackwardFields(tableAggOperation, resolvedFunctionAndAlias.f1, groupingExpressions.size())
-  }
-
   def join(
-      left: QueryOperation,
-      right: QueryOperation,
+      left: TableOperation,
+      right: TableOperation,
       joinType: JoinType,
       condition: Optional[Expression],
       correlated: Boolean)
-    : QueryOperation = {
+    : TableOperation = {
     val resolver = resolverFor(tableCatalog, functionCatalog, left, right).build()
     val resolvedCondition = toScala(condition).map(expr => resolveSingleExpression(expr, resolver))
 
@@ -359,23 +330,22 @@ class OperationTreeBuilder(private val tableEnv: TableEnvImpl) {
   }
 
   def joinLateral(
-      left: QueryOperation,
+      left: TableOperation,
       tableFunction: Expression,
       joinType: JoinType,
       condition: Optional[Expression])
-    : QueryOperation = {
+    : TableOperation = {
     val resolver = resolverFor(tableCatalog, functionCatalog, left).build()
     val resolvedFunction = resolveSingleExpression(tableFunction, resolver)
 
-    val temporalTable =
-      calculatedTableFactory.create(resolvedFunction, left.getTableSchema.getFieldNames)
+    val temporalTable = calculatedTableFactory.create(resolvedFunction)
 
     join(left, temporalTable, joinType, condition, correlated = true)
   }
 
-  def resolveExpression(expression: Expression, queryOperation: QueryOperation*)
+  def resolveExpression(expression: Expression, tableOperation: TableOperation*)
     : Expression = {
-    val resolver = resolverFor(tableCatalog, functionCatalog, queryOperation: _*).build()
+    val resolver = resolverFor(tableCatalog, functionCatalog, tableOperation: _*).build()
 
     resolveSingleExpression(expression, resolver)
   }
@@ -394,8 +364,8 @@ class OperationTreeBuilder(private val tableEnv: TableEnvImpl) {
 
   def sort(
       fields: JList[Expression],
-      child: QueryOperation)
-    : QueryOperation = {
+      child: TableOperation)
+    : TableOperation = {
 
     val resolver = resolverFor(tableCatalog, functionCatalog, child).build()
     val resolvedFields = resolver.resolve(fields)
@@ -403,18 +373,18 @@ class OperationTreeBuilder(private val tableEnv: TableEnvImpl) {
     sortOperationFactory.createSort(resolvedFields, child)
   }
 
-  def limitWithOffset(offset: Int, child: QueryOperation): QueryOperation = {
+  def limitWithOffset(offset: Int, child: TableOperation): TableOperation = {
     sortOperationFactory.createLimitWithOffset(offset, child)
   }
 
-  def limitWithFetch(fetch: Int, child: QueryOperation): QueryOperation = {
+  def limitWithFetch(fetch: Int, child: TableOperation): TableOperation = {
     sortOperationFactory.createLimitWithFetch(fetch, child)
   }
 
   def alias(
       fields: JList[Expression],
-      child: QueryOperation)
-    : QueryOperation = {
+      child: TableOperation)
+    : TableOperation = {
 
     val newFields = createAliasList(fields, child)
 
@@ -423,8 +393,8 @@ class OperationTreeBuilder(private val tableEnv: TableEnvImpl) {
 
   def filter(
       condition: Expression,
-      child: QueryOperation)
-    : QueryOperation = {
+      child: TableOperation)
+    : TableOperation = {
 
     val resolver = resolverFor(tableCatalog, functionCatalog, child).build()
     val resolvedExpression = resolveSingleExpression(condition, resolver)
@@ -434,63 +404,64 @@ class OperationTreeBuilder(private val tableEnv: TableEnvImpl) {
         s" but $condition is of type ${convertedCondition.resultType}")
     }
 
-    new FilterQueryOperation(resolvedExpression, child)
+    new FilterTableOperation(resolvedExpression, child)
   }
 
   def distinct(
-      child: QueryOperation)
-    : QueryOperation = {
-    new DistinctQueryOperation(child)
+      child: TableOperation)
+    : TableOperation = {
+    new DistinctTableOperation(child)
   }
 
   def minus(
-      left: QueryOperation,
-      right: QueryOperation,
+      left: TableOperation,
+      right: TableOperation,
       all: Boolean)
-    : QueryOperation = {
+    : TableOperation = {
     setOperationFactory.create(MINUS, left, right, all)
   }
 
   def intersect(
-      left: QueryOperation,
-      right: QueryOperation,
+      left: TableOperation,
+      right: TableOperation,
       all: Boolean)
-    : QueryOperation = {
+    : TableOperation = {
     setOperationFactory.create(INTERSECT, left, right, all)
   }
 
   def union(
-      left: QueryOperation,
-      right: QueryOperation,
+      left: TableOperation,
+      right: TableOperation,
       all: Boolean)
-    : QueryOperation = {
+    : TableOperation = {
     setOperationFactory.create(UNION, left, right, all)
   }
 
-  def map(mapFunction: Expression, child: QueryOperation): QueryOperation = {
+  def map(mapFunction: Expression, child: TableOperation): TableOperation = {
 
     val resolver = resolverFor(tableCatalog, functionCatalog, child).build()
     val resolvedMapFunction = resolveSingleExpression(mapFunction, resolver)
 
-    if (!isFunctionOfKind(resolvedMapFunction, SCALAR)) {
+    if (!isFunctionOfType(resolvedMapFunction, SCALAR_FUNCTION)) {
       throw new ValidationException("Only ScalarFunction can be used in the map operator.")
     }
 
-    val expandedFields = unresolvedCall(BuiltInFunctionDefinitions.FLATTEN, resolvedMapFunction)
+    val expandedFields = new CallExpression(BuiltInFunctionDefinitions.FLATTEN,
+      List(resolvedMapFunction).asJava)
     project(Collections.singletonList(expandedFields), child)
   }
 
-  def flatMap(tableFunction: Expression, child: QueryOperation): QueryOperation = {
+  def flatMap(tableFunction: Expression, child: TableOperation): TableOperation = {
 
     val resolver = resolverFor(tableCatalog, functionCatalog, child).build()
     val resolvedTableFunction = resolveSingleExpression(tableFunction, resolver)
 
-    if (!isFunctionOfKind(resolvedTableFunction, TABLE)) {
+    if (!isFunctionOfType(resolvedTableFunction, TABLE_FUNCTION)) {
       throw new ValidationException("Only TableFunction can be used in the flatMap operator.")
     }
 
     val originFieldNames: Seq[String] =
-      resolvedTableFunction.asInstanceOf[UnresolvedCallExpression].getFunctionDefinition match {
+      resolvedTableFunction.asInstanceOf[CallExpression].getFunctionDefinition match {
         case tfd: TableFunctionDefinition =>
           UserDefinedFunctionUtils.getFieldInfo(tfd.getResultType)._1
       }
@@ -502,14 +473,14 @@ class OperationTreeBuilder(private val tableEnv: TableEnvImpl) {
       resultName
     })
 
-    val renamedTableFunction = unresolvedCall(
+    val renamedTableFunction = ApiExpressionUtils.call(
       BuiltInFunctionDefinitions.AS,
       resolvedTableFunction +: newFieldNames.map(ApiExpressionUtils.valueLiteral(_)): _*)
     val joinNode = joinLateral(child, renamedTableFunction, JoinType.INNER, Optional.empty())
     val rightNode = dropColumns(
-      child.getTableSchema.getFieldNames.map(ApiExpressionUtils.unresolvedRef).toList,
+      child.getTableSchema.getFieldNames.map(a => new UnresolvedReferenceExpression(a)).toList,
       joinNode)
-    alias(originFieldNames.map(a => unresolvedRef(a)), rightNode)
+    alias(originFieldNames.map(a => new UnresolvedReferenceExpression(a)), rightNode)
   }
 
   /**
@@ -526,45 +497,18 @@ class OperationTreeBuilder(private val tableEnv: TableEnvImpl) {
   }
 
   /**
-    * Add a default name to the call in the grouping expressions, e.g., groupBy(a % 5) to
-    * groupBy(a % 5 as TMP_0).
-    */
-  private def addAliasToTheCallInGroupings(
-      inputFieldNames: Seq[String],
-      groupingExpressions: JList[Expression])
-    : JList[Expression] = {
-
-    var attrNameCntr: Int = 0
-    val usedFieldNames = inputFieldNames.toBuffer
-    groupingExpressions.map {
-      case c: UnresolvedCallExpression
-          if c.getFunctionDefinition != BuiltInFunctionDefinitions.AS =>
-        val tempName = getUniqueName("TMP_" + attrNameCntr, usedFieldNames)
-        usedFieldNames.append(tempName)
-        attrNameCntr += 1
-        unresolvedCall(
-          BuiltInFunctionDefinitions.AS,
-          c,
-          valueLiteral(tempName)
-        )
-      case e => e
-    }
-  }
-
-  /**
-    * Rename fields in the input [[QueryOperation]].
+    * Rename backward fields of the input [[TableOperation]].
     */
   private def aliasBackwardFields(
-    inputOperation: QueryOperation,
-    alias: Seq[String],
-    aliasStartIndex: Int)
-  : QueryOperation = {
+    inputOperation: TableOperation,
+    alias: Seq[String])
+  : TableOperation = {
 
     if (alias.nonEmpty) {
       val namesBeforeAlias = inputOperation.getTableSchema.getFieldNames
-      val namesAfterAlias = namesBeforeAlias.take(aliasStartIndex) ++ alias ++
-        namesBeforeAlias.takeRight(namesBeforeAlias.length - alias.size - aliasStartIndex)
-      this.alias(namesAfterAlias.map(e => unresolvedRef(e)).toList, inputOperation)
+      val namesAfterAlias = namesBeforeAlias.dropRight(alias.size()) ++ alias
+      this.alias(namesAfterAlias.map(e =>
+        new UnresolvedReferenceExpression(e)).toList, inputOperation)
     } else {
       inputOperation
     }
@@ -572,13 +516,13 @@ class OperationTreeBuilder(private val tableEnv: TableEnvImpl) {
 
   class NoWindowPropertyChecker(val exceptionMessage: String)
     extends ApiExpressionDefaultVisitor[Void] {
-    override def visit(unresolvedCall: UnresolvedCallExpression): Void = {
-      val functionDefinition = unresolvedCall.getFunctionDefinition
+    override def visitCall(call: CallExpression): Void = {
+      val functionDefinition = call.getFunctionDefinition
       if (BuiltInFunctionDefinitions.WINDOW_PROPERTIES
         .contains(functionDefinition)) {
         throw new ValidationException(exceptionMessage)
       }
-      unresolvedCall.getChildren.asScala.foreach(expr => expr.accept(this))
+      call.getChildren.asScala.foreach(expr => expr.accept(this))
       null
     }
 

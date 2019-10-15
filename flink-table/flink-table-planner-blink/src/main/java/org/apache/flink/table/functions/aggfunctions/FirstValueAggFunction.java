@@ -24,13 +24,12 @@ import org.apache.flink.table.dataformat.BinaryString;
 import org.apache.flink.table.dataformat.Decimal;
 import org.apache.flink.table.dataformat.GenericRow;
 import org.apache.flink.table.functions.AggregateFunction;
-import org.apache.flink.table.types.logical.BigIntType;
-import org.apache.flink.table.types.logical.LogicalType;
+import org.apache.flink.table.type.InternalType;
+import org.apache.flink.table.type.InternalTypes;
+import org.apache.flink.table.type.TypeConverters;
 import org.apache.flink.table.typeutils.BaseRowTypeInfo;
 import org.apache.flink.table.typeutils.BinaryStringTypeInfo;
 import org.apache.flink.table.typeutils.DecimalTypeInfo;
-
-import static org.apache.flink.table.types.TypeInfoLogicalTypeConverter.fromTypeInfoToLogicalType;
 
 /**
  * built-in FirstValue aggregate function.
@@ -79,9 +78,9 @@ public abstract class FirstValueAggFunction<T> extends AggregateFunction<T, Gene
 
 	@Override
 	public TypeInformation<GenericRow> getAccumulatorType() {
-		LogicalType[] fieldTypes = new LogicalType[] {
-				fromTypeInfoToLogicalType(getResultType()),
-				new BigIntType()
+		InternalType[] fieldTypes = new InternalType[] {
+				TypeConverters.createInternalTypeFromTypeInfo(getResultType()),
+				InternalTypes.LONG
 		};
 
 		String[] fieldNames = new String[] {

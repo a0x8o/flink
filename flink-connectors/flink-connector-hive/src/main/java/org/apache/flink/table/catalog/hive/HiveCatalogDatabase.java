@@ -18,46 +18,73 @@
 
 package org.apache.flink.table.catalog.hive;
 
-import org.apache.flink.table.catalog.AbstractCatalogDatabase;
+import org.apache.flink.table.catalog.CatalogDatabase;
+import org.apache.flink.util.StringUtils;
 
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 
+import static org.apache.flink.util.Preconditions.checkArgument;
+import static org.apache.flink.util.Preconditions.checkNotNull;
+
 /**
  * A hive catalog database implementation.
  */
-public class HiveCatalogDatabase extends AbstractCatalogDatabase {
+public class HiveCatalogDatabase implements CatalogDatabase {
+	// Property of the database
+	private final Map<String, String> properties;
 	// HDFS path of the database
-	private final String location;
+	private String location;
+	// Comment of the database
+	private String comment = "This is a hive catalog database.";
+
+	public HiveCatalogDatabase() {
+		properties = new HashMap<>();
+	}
+
+	public HiveCatalogDatabase(Map<String, String> properties) {
+		this.properties = checkNotNull(properties, "properties cannot be null");
+	}
 
 	public HiveCatalogDatabase(Map<String, String> properties, String comment) {
-		super(properties, comment);
-		location = null;
+		this(properties);
+		this.comment = checkNotNull(comment, "comment cannot be null");
 	}
 
 	public HiveCatalogDatabase(Map<String, String> properties, String location, String comment) {
-		super(properties, comment);
+		this(properties, comment);
+
+		checkArgument(!StringUtils.isNullOrWhitespaceOnly(location), "location cannot be null or empty");
 		this.location = location;
 	}
 
 	@Override
+	public Map<String, String> getProperties() {
+		return properties;
+	}
+
+	@Override
+	public String getComment() {
+		return comment;
+	}
+
+	@Override
 	public HiveCatalogDatabase copy() {
-		return new HiveCatalogDatabase(new HashMap<>(getProperties()), location, getComment());
+		return new HiveCatalogDatabase(new HashMap<>(properties), location, comment);
 	}
 
 	@Override
 	public Optional<String> getDescription() {
-		return Optional.ofNullable(getComment());
+		return Optional.of(comment);
 	}
 
 	@Override
 	public Optional<String> getDetailedDescription() {
-		return Optional.of("This is a Hive catalog database");
+		return Optional.of("This is a Hive catalog database stored in memory only");
 	}
 
 	public String getLocation() {
 		return location;
 	}
-
 }

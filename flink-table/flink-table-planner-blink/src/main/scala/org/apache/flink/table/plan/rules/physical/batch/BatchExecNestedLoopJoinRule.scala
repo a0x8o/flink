@@ -17,55 +17,46 @@
  */
 package org.apache.flink.table.plan.rules.physical.batch
 
+import org.apache.flink.table.api.OperatorType
 import org.apache.flink.table.calcite.FlinkContext
 import org.apache.flink.table.plan.nodes.logical.FlinkLogicalJoin
 import org.apache.flink.table.plan.nodes.physical.batch.BatchExecNestedLoopJoin
-import org.apache.flink.table.plan.util.OperatorType
-import org.apache.flink.table.util.TableConfigUtils.isOperatorDisabled
 
 import org.apache.calcite.plan.RelOptRule.{any, operand}
 import org.apache.calcite.plan.{RelOptRule, RelOptRuleCall}
 import org.apache.calcite.rel.RelNode
-import org.apache.calcite.rel.core.{Join, JoinRelType}
+import org.apache.calcite.rel.core.{Join, JoinRelType, SemiJoin}
 
 /**
   * Rule that converts [[FlinkLogicalJoin]] to [[BatchExecNestedLoopJoin]]
   * if NestedLoopJoin is enabled.
   */
-class BatchExecNestedLoopJoinRule
+class BatchExecNestedLoopJoinRule(joinClass: Class[_ <: Join])
   extends RelOptRule(
-    operand(classOf[FlinkLogicalJoin],
+    operand(joinClass,
       operand(classOf[RelNode], any)),
-    "BatchExecNestedLoopJoinRule")
+    s"BatchExecNestedLoopJoinRule_${joinClass.getSimpleName}")
   with BatchExecJoinRuleBase
   with BatchExecNestedLoopJoinRuleBase {
 
   override def matches(call: RelOptRuleCall): Boolean = {
     val tableConfig = call.getPlanner.getContext.asInstanceOf[FlinkContext].getTableConfig
-    !isOperatorDisabled(tableConfig, OperatorType.NestedLoopJoin)
+    tableConfig.isOperatorEnabled(OperatorType.NestedLoopJoin)
   }
 
   override def onMatch(call: RelOptRuleCall): Unit = {
     val join: Join = call.rel(0)
     val left = join.getLeft
-    val right = join.getJoinType match {
-      case JoinRelType.SEMI | JoinRelType.ANTI =>
-        // We can do a distinct to buildSide(right) when semi join.
-        val distinctKeys = 0 until join.getRight.getRowType.getFieldCount
-        val useBuildDistinct = chooseSemiBuildDistinct(join.getRight, distinctKeys)
-        if (useBuildDistinct) {
-          addLocalDistinctAgg(join.getRight, distinctKeys, call.builder())
-        } else {
-          join.getRight
-        }
-      case _ => join.getRight
-    }
+    val right = join.getRight
     val leftIsBuild = isLeftBuild(join, left, right)
     val newJoin = createNestedLoopJoin(join, left, right, leftIsBuild, singleRowJoin = false)
     call.transformTo(newJoin)
   }
 
   private def isLeftBuild(join: Join, left: RelNode, right: RelNode): Boolean = {
+    if (join.isInstanceOf[SemiJoin]) {
+      return false
+    }
     join.getJoinType match {
       case JoinRelType.LEFT => false
       case JoinRelType.RIGHT => true
@@ -78,11 +69,10 @@ class BatchExecNestedLoopJoinRule
         } else {
           leftSize <= rightSize
         }
-      case JoinRelType.SEMI | JoinRelType.ANTI => false
     }
   }
 }
 
 object BatchExecNestedLoopJoinRule {
-  val INSTANCE: RelOptRule = new BatchExecNestedLoopJoinRule
+  val INSTANCE: RelOptRule = new BatchExecNestedLoopJoinRule(classOf[FlinkLogicalJoin])
 }

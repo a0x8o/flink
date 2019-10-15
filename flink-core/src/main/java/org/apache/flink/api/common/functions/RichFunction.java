@@ -39,7 +39,7 @@ public interface RichFunction extends Function {
 	 * composition.
 	 *
 	 * <pre>{@code
-	 * public class MyFilter extends RichFilterFunction<String> {
+	 * public class MyMapper extends FilterFunction<String> {
 	 *
 	 *     private String searchString;
 	 *

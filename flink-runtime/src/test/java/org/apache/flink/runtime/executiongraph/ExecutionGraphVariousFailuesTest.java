@@ -18,7 +18,6 @@
 
 package org.apache.flink.runtime.executiongraph;
 
-import org.apache.flink.runtime.concurrent.ComponentMainThreadExecutorServiceAdapter;
 import org.apache.flink.runtime.execution.SuppressRestartsException;
 import org.apache.flink.runtime.executiongraph.restart.InfiniteDelayRestartStrategy;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
@@ -42,7 +41,7 @@ public class ExecutionGraphVariousFailuesTest extends TestLogger {
 	@Test
 	public void testFailureWhileRestarting() throws Exception {
 		final ExecutionGraph eg = ExecutionGraphTestUtils.createSimpleTestGraph(new InfiniteDelayRestartStrategy(2));
-		eg.start(ComponentMainThreadExecutorServiceAdapter.forMainThread());
+		eg.start(TestingComponentMainThreadExecutorServiceAdapter.forMainThread());
 		eg.scheduleForExecution();
 
 		assertEquals(JobStatus.RUNNING, eg.getState());
@@ -73,7 +72,7 @@ public class ExecutionGraphVariousFailuesTest extends TestLogger {
 	@Test
 	public void testSuppressRestartFailureWhileRestarting() throws Exception {
 		final ExecutionGraph eg = ExecutionGraphTestUtils.createSimpleTestGraph(new InfiniteDelayRestartStrategy(10));
-		eg.start(ComponentMainThreadExecutorServiceAdapter.forMainThread());
+		eg.start(TestingComponentMainThreadExecutorServiceAdapter.forMainThread());
 		eg.scheduleForExecution();
 
 		assertEquals(JobStatus.RUNNING, eg.getState());
@@ -98,7 +97,7 @@ public class ExecutionGraphVariousFailuesTest extends TestLogger {
 	@Test
 	public void testFailingScheduleOrUpdateConsumers() throws Exception {
 		final ExecutionGraph eg = ExecutionGraphTestUtils.createSimpleTestGraph(new InfiniteDelayRestartStrategy(10));
-		eg.start(ComponentMainThreadExecutorServiceAdapter.forMainThread());
+		eg.start(TestingComponentMainThreadExecutorServiceAdapter.forMainThread());
 		eg.scheduleForExecution();
 
 		assertEquals(JobStatus.RUNNING, eg.getState());

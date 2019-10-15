@@ -73,7 +73,6 @@ import java.lang.reflect.UndeclaredThrowableException;
 import java.net.InetSocketAddress;
 import java.net.URL;
 import java.text.SimpleDateFormat;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -81,9 +80,12 @@ import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+
+import scala.concurrent.duration.FiniteDuration;
 
 /**
  * Implementation of a simple command line frontend for executing programs.
@@ -112,7 +114,7 @@ public class CliFrontend {
 
 	private final Options customCommandLineOptions;
 
-	private final Duration clientTimeout;
+	private final FiniteDuration clientTimeout;
 
 	private final int defaultParallelism;
 
@@ -122,7 +124,8 @@ public class CliFrontend {
 		this.configuration = Preconditions.checkNotNull(configuration);
 		this.customCommandLines = Preconditions.checkNotNull(customCommandLines);
 
-		FileSystem.initialize(configuration, PluginUtils.createPluginManagerFromRootFolder(configuration));
+		//TODO provide plugin path.
+		FileSystem.initialize(this.configuration, PluginUtils.createPluginManagerFromRootFolder(Optional.empty()));
 
 		this.customCommandLineOptions = new Options();
 
@@ -182,11 +185,8 @@ public class CliFrontend {
 			return;
 		}
 
-		if (!runOptions.isPython()) {
-			// Java program should be specified a JAR file
-			if (runOptions.getJarFilePath() == null) {
-				throw new CliArgsException("Java program should be specified a JAR file.");
-			}
+		if (runOptions.getJarFilePath() == null) {
+			throw new CliArgsException("The program JAR file was not specified.");
 		}
 
 		final PackagedProgram program;
@@ -234,7 +234,7 @@ public class CliFrontend {
 				logAndSysout("Job has been submitted with JobID " + jobGraph.getJobID());
 
 				try {
-					client.close();
+					client.shutdown();
 				} catch (Exception e) {
 					LOG.info("Could not properly shut down the client.", e);
 				}
@@ -258,6 +258,7 @@ public class CliFrontend {
 				}
 
 				try {
+					client.setPrintStatusDuringExecution(runOptions.getStdoutLogging());
 					client.setDetached(runOptions.getDetachedMode());
 
 					LOG.debug("{}", runOptions.getSavepointRestoreSettings());
@@ -283,7 +284,7 @@ public class CliFrontend {
 						}
 					}
 					try {
-						client.close();
+						client.shutdown();
 					} catch (Exception e) {
 						LOG.info("Could not properly shut down the client.", e);
 					}
@@ -529,14 +530,14 @@ public class CliFrontend {
 			activeCommandLine,
 			commandLine,
 			clusterClient -> {
-				final String savepointPath;
 				try {
-					savepointPath = clusterClient.stopWithSavepoint(jobId, advanceToEndOfEventTime, targetDirectory);
+					clusterClient.stopWithSavepoint(jobId, advanceToEndOfEventTime, targetDirectory);
 				} catch (Exception e) {
 					throw new FlinkException("Could not stop with a savepoint job \"" + jobId + "\".", e);
 				}
-				logAndSysout("Savepoint completed. Path: " + savepointPath);
 			});
+
+		logAndSysout((advanceToEndOfEventTime ? "Drained job " : "Suspended job ") + "\"" + jobId + "\" with a savepoint.");
 	}
 
 	/**
@@ -566,9 +567,6 @@ public class CliFrontend {
 		final String[] cleanedArgs = cancelOptions.getArgs();
 
 		if (cancelOptions.isWithSavepoint()) {
-
-			logAndSysout("DEPRECATION WARNING: Cancelling a job with savepoint is deprecated. Use \"stop\" instead.");
-
 			final JobID jobId;
 			final String targetDirectory;
 
@@ -773,26 +771,22 @@ public class CliFrontend {
 		String jarFilePath = options.getJarFilePath();
 		List<URL> classpaths = options.getClasspaths();
 
+		if (jarFilePath == null) {
+			throw new IllegalArgumentException("The program JAR file was not specified.");
+		}
+
+		File jarFile = new File(jarFilePath);
+
+		// Check if JAR file exists
+		if (!jarFile.exists()) {
+			throw new FileNotFoundException("JAR file does not exist: " + jarFile);
+		}
+		else if (!jarFile.isFile()) {
+			throw new FileNotFoundException("JAR file is not a file: " + jarFile);
+		}
+
 		// Get assembler class
 		String entryPointClass = options.getEntryPointClassName();
-		File jarFile = null;
-		if (options.isPython()) {
-			// If the job is specified a jar file
-			if (jarFilePath != null) {
-				jarFile = getJarFile(jarFilePath);
-			}
-
-			// If the job is Python Shell job, the entry point class name is PythonGateWayServer.
-			// Otherwise, the entry point class of python job is PythonDriver
-			if (entryPointClass == null) {
-				entryPointClass = "org.apache.flink.client.python.PythonDriver";
-			}
-		} else {
-			if (jarFilePath == null) {
-				throw new IllegalArgumentException("Java program should be specified a JAR file.");
-			}
-			jarFile = getJarFile(jarFilePath);
-		}
 
 		PackagedProgram program = entryPointClass == null ?
 				new PackagedProgram(jarFile, classpaths, programArgs) :
@@ -801,25 +795,6 @@ public class CliFrontend {
 		program.setSavepointRestoreSettings(options.getSavepointRestoreSettings());
 
 		return program;
-	}
-
-	/**
-	 * Gets the JAR file from the path.
-	 *
-	 * @param jarFilePath The path of JAR file
-	 * @return The JAR file
-	 * @throws FileNotFoundException The JAR file does not exist.
-	 */
-	private File getJarFile(String jarFilePath) throws FileNotFoundException {
-		File jarFile = new File(jarFilePath);
-		// Check if JAR file exists
-		if (!jarFile.exists()) {
-			throw new FileNotFoundException("JAR file does not exist: " + jarFile);
-		}
-		else if (!jarFile.isFile()) {
-			throw new FileNotFoundException("JAR file is not a file: " + jarFile);
-		}
-		return jarFile;
 	}
 
 	// --------------------------------------------------------------------------------------------
@@ -943,7 +918,7 @@ public class CliFrontend {
 					clusterAction.runAction(clusterClient);
 				} finally {
 					try {
-						clusterClient.close();
+						clusterClient.shutdown();
 					} catch (Exception e) {
 						LOG.info("Could not properly shut down the cluster client.", e);
 					}

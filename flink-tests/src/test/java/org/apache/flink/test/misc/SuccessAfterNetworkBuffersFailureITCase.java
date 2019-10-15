@@ -26,7 +26,6 @@ import org.apache.flink.api.java.operators.DeltaIteration;
 import org.apache.flink.api.java.operators.IterativeDataSet;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.configuration.NettyShuffleEnvironmentOptions;
 import org.apache.flink.configuration.TaskManagerOptions;
 import org.apache.flink.examples.java.clustering.KMeans;
 import org.apache.flink.examples.java.clustering.util.KMeansData;
@@ -62,8 +61,8 @@ public class SuccessAfterNetworkBuffersFailureITCase extends TestLogger {
 
 	private static Configuration getConfiguration() {
 		Configuration config = new Configuration();
-		config.setString(TaskManagerOptions.LEGACY_MANAGED_MEMORY_SIZE, "80m");
-		config.setInteger(NettyShuffleEnvironmentOptions.NETWORK_NUM_BUFFERS, 800);
+		config.setString(TaskManagerOptions.MANAGED_MEMORY_SIZE, "80m");
+		config.setInteger(TaskManagerOptions.NETWORK_NUM_BUFFERS, 800);
 		return config;
 	}
 
@@ -87,6 +86,7 @@ public class SuccessAfterNetworkBuffersFailureITCase extends TestLogger {
 	private static void runConnectedComponents(ExecutionEnvironment env) throws Exception {
 
 		env.setParallelism(PARALLELISM);
+		env.getConfig().disableSysoutLogging();
 
 		// read vertex and edge data
 		DataSet<Long> vertices = ConnectedComponentsData.getDefaultVertexDataSet(env)
@@ -127,6 +127,7 @@ public class SuccessAfterNetworkBuffersFailureITCase extends TestLogger {
 	private static void runKMeans(ExecutionEnvironment env) throws Exception {
 
 		env.setParallelism(PARALLELISM);
+		env.getConfig().disableSysoutLogging();
 
 		// get input data
 		DataSet<KMeans.Point> points =  KMeansData.getDefaultPointDataSet(env).rebalance();

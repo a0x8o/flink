@@ -24,6 +24,7 @@ import org.apache.flink.runtime.dispatcher.DispatcherFactory;
 import org.apache.flink.runtime.dispatcher.DispatcherGateway;
 import org.apache.flink.runtime.dispatcher.SessionDispatcherFactory;
 import org.apache.flink.runtime.leaderretrieval.LeaderRetrievalService;
+import org.apache.flink.runtime.metrics.groups.JobManagerMetricGroup;
 import org.apache.flink.runtime.resourcemanager.ResourceManager;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerFactory;
 import org.apache.flink.runtime.rest.SessionRestEndpointFactory;
@@ -53,12 +54,14 @@ public class SessionDispatcherResourceManagerComponentFactory extends AbstractDi
 			ResourceManager<?> resourceManager,
 			LeaderRetrievalService dispatcherLeaderRetrievalService,
 			LeaderRetrievalService resourceManagerRetrievalService,
-			WebMonitorEndpoint<?> webMonitorEndpoint) {
+			WebMonitorEndpoint<?> webMonitorEndpoint,
+			JobManagerMetricGroup jobManagerMetricGroup) {
 		return new SessionDispatcherResourceManagerComponent(
 			dispatcher,
 			resourceManager,
 			dispatcherLeaderRetrievalService,
 			resourceManagerRetrievalService,
-			webMonitorEndpoint);
+			webMonitorEndpoint,
+			jobManagerMetricGroup);
 	}
 }

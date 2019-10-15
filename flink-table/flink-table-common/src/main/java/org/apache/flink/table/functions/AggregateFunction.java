@@ -20,10 +20,6 @@ package org.apache.flink.table.functions;
 
 import org.apache.flink.annotation.PublicEvolving;
 
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.Set;
-
 /**
  * Base class for user-defined aggregates.
  *
@@ -101,9 +97,6 @@ import java.util.Set;
  * }
  * </pre>
  *
- * <p>If this aggregate function can only be applied in an OVER window, this can be declared using the
- * requirement {@link FunctionRequirement#OVER_WINDOW_ONLY} in {@link #getRequirements()}.
- *
  * @param <T>   the type of the aggregation result
  * @param <ACC> the type of the aggregation accumulator. The accumulator is used to keep the
  *              aggregated values which are needed to compute an aggregation result.
@@ -131,25 +124,8 @@ public abstract class AggregateFunction<T, ACC> extends UserDefinedAggregateFunc
 	 *
 	 * @return <code>true</code> if the {@link AggregateFunction} requires an OVER window,
 	 *         <code>false</code> otherwise.
-	 *
-	 * @deprecated Use {@link #getRequirements()} instead.
 	 */
-	@Deprecated
 	public boolean requiresOver() {
 		return false;
-	}
-
-	@Override
-	public final FunctionKind getKind() {
-		return FunctionKind.AGGREGATE;
-	}
-
-	@Override
-	public Set<FunctionRequirement> getRequirements() {
-		final HashSet<FunctionRequirement> requirements = new HashSet<>();
-		if (requiresOver()) {
-			requirements.add(FunctionRequirement.OVER_WINDOW_ONLY);
-		}
-		return Collections.unmodifiableSet(requirements);
 	}
 }

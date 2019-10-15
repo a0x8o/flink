@@ -26,7 +26,6 @@ import org.apache.flink.metrics.Meter;
 import org.apache.flink.metrics.Metric;
 import org.apache.flink.metrics.MetricConfig;
 import org.apache.flink.metrics.MetricGroup;
-import org.apache.flink.metrics.reporter.InstantiateViaFactory;
 import org.apache.flink.metrics.reporter.MetricReporter;
 import org.apache.flink.runtime.metrics.groups.AbstractMetricGroup;
 import org.apache.flink.runtime.metrics.groups.FrontMetricGroup;
@@ -35,7 +34,6 @@ import org.apache.flink.util.NetUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.annotation.Nullable;
 import javax.management.InstanceAlreadyExistsException;
 import javax.management.InstanceNotFoundException;
 import javax.management.MBeanServer;
@@ -57,7 +55,6 @@ import java.util.HashMap;
 import java.util.Hashtable;
 import java.util.Iterator;
 import java.util.Map;
-import java.util.Optional;
 
 /**
  * {@link MetricReporter} that exports {@link Metric Metrics} via JMX.
@@ -65,10 +62,11 @@ import java.util.Optional;
  * <p>Largely based on the JmxReporter class of the dropwizard metrics library
  * https://github.com/dropwizard/metrics/blob/master/metrics-core/src/main/java/io/dropwizard/metrics/JmxReporter.java
  */
-@InstantiateViaFactory(factoryClassName = "org.apache.flink.metrics.jmx.JMXReporterFactory")
 public class JMXReporter implements MetricReporter {
 
 	static final String JMX_DOMAIN_PREFIX = "org.apache.flink.";
+
+	public static final String ARG_PORT = "port";
 
 	private static final Logger LOG = LoggerFactory.getLogger(JMXReporter.class);
 
@@ -88,24 +86,33 @@ public class JMXReporter implements MetricReporter {
 	private final Map<Metric, ObjectName> registeredMetrics;
 
 	/** The server to which JMX clients connect to. Allows for better control over port usage. */
-	@Nullable
-	private final JMXServer jmxServer;
+	private JMXServer jmxServer;
 
-	JMXReporter(@Nullable final String portsConfig) {
+	public JMXReporter() {
 		this.mBeanServer = ManagementFactory.getPlatformMBeanServer();
 		this.registeredMetrics = new HashMap<>();
+	}
+
+	// ------------------------------------------------------------------------
+	//  life cycle
+	// ------------------------------------------------------------------------
+
+	@Override
+	public void open(MetricConfig config) {
+		String portsConfig = config.getString(ARG_PORT, null);
 
 		if (portsConfig != null) {
 			Iterator<Integer> ports = NetUtils.getPortRangeFromString(portsConfig);
 
-			JMXServer successfullyStartedServer = null;
-			while (ports.hasNext() && successfullyStartedServer == null) {
-				JMXServer server = new JMXServer();
+			JMXServer server = new JMXServer();
+			while (ports.hasNext()) {
 				int port = ports.next();
 				try {
 					server.start(port);
 					LOG.info("Started JMX server on port " + port + ".");
-					successfullyStartedServer = server;
+					// only set our field if the server was actually started
+					jmxServer = server;
+					break;
 				} catch (IOException ioe) { //assume port conflict
 					LOG.debug("Could not start JMX server on port " + port + ".", ioe);
 					try {
@@ -115,22 +122,11 @@ public class JMXReporter implements MetricReporter {
 					}
 				}
 			}
-			if (successfullyStartedServer == null) {
+			if (jmxServer == null) {
 				throw new RuntimeException("Could not start JMX server on any configured port. Ports: " + portsConfig);
 			}
-			this.jmxServer = successfullyStartedServer;
-		} else {
-			this.jmxServer = null;
 		}
 		LOG.info("Configured JMXReporter with {port:{}}", portsConfig);
-	}
-
-	// ------------------------------------------------------------------------
-	//  life cycle
-	// ------------------------------------------------------------------------
-
-	@Override
-	public void open(MetricConfig config) {
 	}
 
 	@Override
@@ -144,12 +140,11 @@ public class JMXReporter implements MetricReporter {
 		}
 	}
 
-	public Optional<Integer> getPort() {
+	public int getPort() {
 		if (jmxServer == null) {
-			return Optional.empty();
-		} else {
-			return Optional.of(jmxServer.port);
+			throw new NullPointerException("No server was opened. Did you specify a port?");
 		}
+		return jmxServer.port;
 	}
 
 	// ------------------------------------------------------------------------

@@ -25,10 +25,10 @@ import org.apache.flink.client.deployment.ClusterDeploymentException;
 import org.apache.flink.client.deployment.ClusterSpecification;
 import org.apache.flink.client.program.ClusterClient;
 import org.apache.flink.client.program.rest.RestClusterClient;
+import org.apache.flink.configuration.ConfigConstants;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.HighAvailabilityOptions;
 import org.apache.flink.configuration.ResourceManagerOptions;
-import org.apache.flink.configuration.RestartStrategyOptions;
 import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.jobmaster.JobResult;
@@ -153,55 +153,51 @@ public class YARNHighAvailabilityITCase extends YarnTestBase {
 	 */
 	@Test
 	public void testKillYarnSessionClusterEntrypoint() throws Exception {
-		runTest(() -> {
-			assumeTrue(
-				"This test kills processes via the pkill command. Thus, it only runs on Linux, Mac OS, Free BSD and Solaris.",
-				OperatingSystem.isLinux() || OperatingSystem.isMac() || OperatingSystem.isFreeBSD() || OperatingSystem.isSolaris());
+		assumeTrue(
+			"This test kills processes via the pkill command. Thus, it only runs on Linux, Mac OS, Free BSD and Solaris.",
+			OperatingSystem.isLinux() || OperatingSystem.isMac() || OperatingSystem.isFreeBSD() || OperatingSystem.isSolaris());
 
-			final YarnClusterDescriptor yarnClusterDescriptor = setupYarnClusterDescriptor();
-			yarnClusterDescriptor.addShipFiles(Arrays.asList(flinkShadedHadoopDir.listFiles()));
+		final YarnClusterDescriptor yarnClusterDescriptor = setupYarnClusterDescriptor();
+		yarnClusterDescriptor.addShipFiles(Arrays.asList(flinkShadedHadoopDir.listFiles()));
 
-			final RestClusterClient<ApplicationId> restClusterClient = deploySessionCluster(yarnClusterDescriptor);
+		final RestClusterClient<ApplicationId> restClusterClient = deploySessionCluster(yarnClusterDescriptor);
 
-			try {
-				final JobID jobId = submitJob(restClusterClient);
-				final ApplicationId id = restClusterClient.getClusterId();
+		try {
+			final JobID jobId = submitJob(restClusterClient);
+			final ApplicationId id = restClusterClient.getClusterId();
 
-				waitUntilJobIsRunning(restClusterClient, jobId);
+			waitUntilJobIsRunning(restClusterClient, jobId);
 
-				killApplicationMaster(yarnClusterDescriptor.getYarnSessionClusterEntrypoint());
-				waitForApplicationAttempt(id, 2);
+			killApplicationMaster(yarnClusterDescriptor.getYarnSessionClusterEntrypoint());
+			waitForApplicationAttempt(id, 2);
 
-				waitForJobTermination(restClusterClient, jobId);
+			waitForJobTermination(restClusterClient, jobId);
 
-				killApplicationAndWait(id);
-			} finally {
-				restClusterClient.close();
-			}
-		});
+			killApplicationAndWait(id);
+		} finally {
+			restClusterClient.shutdown();
+		}
 	}
 
 	@Test
 	public void testJobRecoversAfterKillingTaskManager() throws Exception {
-		runTest(() -> {
-			final YarnClusterDescriptor yarnClusterDescriptor = setupYarnClusterDescriptor();
-			yarnClusterDescriptor.addShipFiles(Arrays.asList(flinkShadedHadoopDir.listFiles()));
+		final YarnClusterDescriptor yarnClusterDescriptor = setupYarnClusterDescriptor();
+		yarnClusterDescriptor.addShipFiles(Arrays.asList(flinkShadedHadoopDir.listFiles()));
 
-			final RestClusterClient<ApplicationId> restClusterClient = deploySessionCluster(yarnClusterDescriptor);
-			try {
-				final JobID jobId = submitJob(restClusterClient);
-				waitUntilJobIsRunning(restClusterClient, jobId);
+		final RestClusterClient<ApplicationId> restClusterClient = deploySessionCluster(yarnClusterDescriptor);
+		try {
+			final JobID jobId = submitJob(restClusterClient);
+			waitUntilJobIsRunning(restClusterClient, jobId);
 
-				stopTaskManagerContainer();
-				waitUntilJobIsRestarted(restClusterClient, jobId, 1);
+			stopTaskManagerContainer();
+			waitUntilJobIsRestarted(restClusterClient, jobId, 1);
 
-				waitForJobTermination(restClusterClient, jobId);
+			waitForJobTermination(restClusterClient, jobId);
 
-				killApplicationAndWait(restClusterClient.getClusterId());
-			} finally {
-				restClusterClient.close();
-			}
-		});
+			killApplicationAndWait(restClusterClient.getClusterId());
+		} finally {
+			restClusterClient.shutdown();
+		}
 	}
 
 	private void waitForApplicationAttempt(final ApplicationId applicationId, final int attemptId) throws Exception {
@@ -278,8 +274,8 @@ public class YARNHighAvailabilityITCase extends YarnTestBase {
 		flinkConfiguration.setString(HighAvailabilityOptions.HA_ZOOKEEPER_QUORUM, zkServer.getConnectString());
 		flinkConfiguration.setInteger(HighAvailabilityOptions.ZOOKEEPER_SESSION_TIMEOUT, 1000);
 
-		flinkConfiguration.setString(RestartStrategyOptions.RESTART_STRATEGY, "fixed-delay");
-		flinkConfiguration.setInteger(RestartStrategyOptions.RESTART_STRATEGY_FIXED_DELAY_ATTEMPTS, Integer.MAX_VALUE);
+		flinkConfiguration.setString(ConfigConstants.RESTART_STRATEGY, "fixed-delay");
+		flinkConfiguration.setInteger(ConfigConstants.RESTART_STRATEGY_FIXED_DELAY_ATTEMPTS, Integer.MAX_VALUE);
 
 		final int minMemory = 100;
 		flinkConfiguration.setInteger(ResourceManagerOptions.CONTAINERIZED_HEAP_CUTOFF_MIN, minMemory);

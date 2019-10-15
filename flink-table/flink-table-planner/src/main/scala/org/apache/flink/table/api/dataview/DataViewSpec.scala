@@ -19,6 +19,7 @@
 package org.apache.flink.table.api.dataview
 
 import java.lang.reflect.Field
+
 import org.apache.flink.api.common.state.{ListStateDescriptor, MapStateDescriptor, State, StateDescriptor}
 import org.apache.flink.table.dataview.{ListViewTypeInfo, MapViewTypeInfo}
 
@@ -40,7 +41,7 @@ case class ListViewSpec[T](
   extends DataViewSpec[ListView[T]] {
 
   override def toStateDescriptor: StateDescriptor[_ <: State, _] =
-    new ListStateDescriptor[T](stateId, listViewTypeInfo.getElementType)
+    new ListStateDescriptor[T](stateId, listViewTypeInfo.elementType)
 }
 
 case class MapViewSpec[K, V](
@@ -50,5 +51,5 @@ case class MapViewSpec[K, V](
   extends DataViewSpec[MapView[K, V]] {
 
   override def toStateDescriptor: StateDescriptor[_ <: State, _] =
-    new MapStateDescriptor[K, V](stateId, mapViewTypeInfo.getKeyType, mapViewTypeInfo.getValueType)
+    new MapStateDescriptor[K, V](stateId, mapViewTypeInfo.keyType, mapViewTypeInfo.valueType)
 }

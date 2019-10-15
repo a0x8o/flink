@@ -38,8 +38,7 @@ import java.io.IOException;
  *
  * @param <IN> Input type
  *
- * @deprecated Please use the {@link org.apache.flink.streaming.api.functions.sink.filesystem.StreamingFileSink StreamingFileSink}
- * for writing to files from a streaming program.
+ * @deprecated Please use the {@code BucketingSink} for writing to files from a streaming program.
  */
 @PublicEvolving
 @Deprecated
@@ -112,7 +111,4 @@ public class OutputFormatSinkFunction<IN> extends RichSinkFunction<IN> implement
 		}
 	}
 
-	public OutputFormat<IN> getFormat() {
-		return format;
-	}
 }

@@ -94,7 +94,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RunnableFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
 
 import static org.apache.flink.contrib.streaming.state.snapshot.RocksSnapshotUtil.END_OF_KEY_GROUP_MARK;
 import static org.apache.flink.contrib.streaming.state.snapshot.RocksSnapshotUtil.FIRST_BIT_IN_BYTE_MASK;
@@ -213,8 +212,6 @@ public class RocksDBAsyncSnapshotTest extends TestLogger {
 			testHarness.bufferSize,
 			taskStateManagerTestMock);
 
-		AtomicReference<Throwable> errorRef = new AtomicReference<>();
-		mockEnv.setExternalExceptionHandler(errorRef::set);
 		testHarness.invoke(mockEnv);
 
 		final OneInputStreamTask<String, String> task = testHarness.getTask();
@@ -229,8 +226,7 @@ public class RocksDBAsyncSnapshotTest extends TestLogger {
 			}
 		}
 
-		task.triggerCheckpointAsync(new CheckpointMetaData(42, 17), CheckpointOptions.forCheckpointWithDefaultLocation(), false)
-			.get();
+		task.triggerCheckpoint(new CheckpointMetaData(42, 17), CheckpointOptions.forCheckpointWithDefaultLocation(), false);
 
 		testHarness.processElement(new StreamRecord<>("Wohoo", 0));
 
@@ -247,7 +243,7 @@ public class RocksDBAsyncSnapshotTest extends TestLogger {
 		Assert.assertTrue(threadPool.awaitTermination(60_000, TimeUnit.MILLISECONDS));
 
 		testHarness.waitForTaskCompletion();
-		if (errorRef.get() != null) {
+		if (mockEnv.wasFailedExternally()) {
 			fail("Unexpected exception during execution.");
 		}
 	}
@@ -344,11 +340,10 @@ public class RocksDBAsyncSnapshotTest extends TestLogger {
 			}
 		}
 
-		task.triggerCheckpointAsync(
+		task.triggerCheckpoint(
 			new CheckpointMetaData(42, 17),
 			CheckpointOptions.forCheckpointWithDefaultLocation(),
-			false)
-			.get();
+			false);
 
 		testHarness.processElement(new StreamRecord<>("Wohoo", 0));
 		blockerCheckpointStreamFactory.getWaiterLatch().await();

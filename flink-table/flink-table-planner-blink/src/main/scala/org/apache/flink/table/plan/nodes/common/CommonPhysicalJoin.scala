@@ -22,11 +22,9 @@ import org.apache.flink.table.plan.nodes.physical.FlinkPhysicalRel
 import org.apache.flink.table.plan.util.{JoinTypeUtil, JoinUtil, RelExplainUtil}
 import org.apache.flink.table.runtime.join.FlinkJoinType
 
-import org.apache.calcite.plan.{RelOptCluster, RelTraitSet}
+import org.apache.calcite.rel.RelWriter
 import org.apache.calcite.rel.`type`.{RelDataType, RelDataTypeField}
-import org.apache.calcite.rel.core.{CorrelationId, Join, JoinInfo, JoinRelType}
-import org.apache.calcite.rel.{RelNode, RelWriter}
-import org.apache.calcite.rex.RexNode
+import org.apache.calcite.rel.core.{Join, SemiJoin}
 import org.apache.calcite.sql.validate.SqlValidatorUtil
 import org.apache.calcite.util.mapping.IntPair
 
@@ -38,41 +36,31 @@ import scala.collection.JavaConversions._
 /**
   * Base physical class for flink [[Join]].
   */
-abstract class CommonPhysicalJoin(
-    cluster: RelOptCluster,
-    traitSet: RelTraitSet,
-    leftRel: RelNode,
-    rightRel: RelNode,
-    condition: RexNode,
-    joinType: JoinRelType)
-  extends Join(cluster, traitSet, leftRel, rightRel, condition, Set.empty[CorrelationId], joinType)
-  with FlinkPhysicalRel {
+trait CommonPhysicalJoin extends Join with FlinkPhysicalRel {
 
-  def getJoinInfo: JoinInfo = joinInfo
-
-  lazy val filterNulls: Array[Boolean] = {
+  lazy val (joinInfo, filterNulls) = {
     val filterNulls = new util.ArrayList[java.lang.Boolean]
-    JoinUtil.createJoinInfo(getLeft, getRight, getCondition, filterNulls)
-    filterNulls.map(_.booleanValue()).toArray
+    val joinInfo = JoinUtil.createJoinInfo(getLeft, getRight, getCondition, filterNulls)
+    (joinInfo, filterNulls.map(_.booleanValue()).toArray)
   }
 
-  lazy val keyPairs: List[IntPair] = getJoinInfo.pairs.toList
+  lazy val keyPairs: List[IntPair] = joinInfo.pairs.toList
 
-  // TODO remove FlinkJoinType
-  lazy val flinkJoinType: FlinkJoinType = JoinTypeUtil.getFlinkJoinType(this.getJoinType)
+  lazy val flinkJoinType: FlinkJoinType = JoinTypeUtil.getFlinkJoinType(this)
 
-  lazy val inputRowType: RelDataType = joinType match {
-    case JoinRelType.SEMI | JoinRelType.ANTI =>
-      // Combines inputs' RowType, the result is different from SEMI/ANTI Join's RowType.
-      SqlValidatorUtil.createJoinType(
-        getCluster.getTypeFactory,
-        getLeft.getRowType,
-        getRight.getRowType,
+  lazy val inputRowType: RelDataType = this match {
+    case sj: SemiJoin =>
+      // Combines inputs' RowType, the result is different from SemiJoin's RowType.
+      SqlValidatorUtil.deriveJoinRowType(
+        sj.getLeft.getRowType,
+        sj.getRight.getRowType,
+        getJoinType,
+        sj.getCluster.getTypeFactory,
         null,
         Collections.emptyList[RelDataTypeField]
       )
-    case _ =>
-      getRowType
+    case j: Join => getRowType
+    case _ => throw new IllegalArgumentException(s"Illegal join node: ${this.getRelTypeName}")
   }
 
   override def explainTerms(pw: RelWriter): RelWriter = {

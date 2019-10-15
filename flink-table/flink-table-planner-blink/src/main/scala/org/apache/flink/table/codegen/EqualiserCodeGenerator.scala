@@ -21,13 +21,10 @@ import org.apache.flink.table.api.TableConfig
 import org.apache.flink.table.codegen.CodeGenUtils._
 import org.apache.flink.table.codegen.Indenter.toISC
 import org.apache.flink.table.generated.{GeneratedRecordEqualiser, RecordEqualiser}
-import org.apache.flink.table.types.PlannerTypeUtils
-import org.apache.flink.table.types.logical.LogicalTypeRoot._
-import org.apache.flink.table.types.logical.{LogicalType, RowType}
+import org.apache.flink.table.`type`.{DateType, InternalType, PrimitiveType, RowType, TimeType,
+TimestampType}
 
-import scala.collection.JavaConversions._
-
-class EqualiserCodeGenerator(fieldTypes: Seq[LogicalType]) {
+class EqualiserCodeGenerator(fieldTypes: Seq[InternalType]) {
 
   private val RECORD_EQUALISER = className[RecordEqualiser]
   private val LEFT_INPUT = "left"
@@ -56,7 +53,7 @@ class EqualiserCodeGenerator(fieldTypes: Seq[LogicalType]) {
         s"$leftFieldTerm == $rightFieldTerm"
       } else if (isBaseRow(fieldType)) {
         val equaliserGenerator =
-          new EqualiserCodeGenerator(fieldType.asInstanceOf[RowType].getChildren)
+          new EqualiserCodeGenerator(fieldType.asInstanceOf[RowType].getFieldTypes)
         val generatedEqualiser = equaliserGenerator
           .generateRecordEqualiser("field$" + i + "GeneratedEqualiser")
         val generatedEqualiserTerm = ctx.addReusableObject(
@@ -132,15 +129,17 @@ class EqualiserCodeGenerator(fieldTypes: Seq[LogicalType]) {
     new GeneratedRecordEqualiser(className, functionCode, ctx.references.toArray)
   }
 
-  private def isInternalPrimitive(t: LogicalType): Boolean = t.getTypeRoot match {
-    case _ if PlannerTypeUtils.isPrimitive(t) => true
+  private def isInternalPrimitive(t: InternalType): Boolean = t match {
+    case _: PrimitiveType => true
 
-    case DATE | TIME_WITHOUT_TIME_ZONE | TIMESTAMP_WITHOUT_TIME_ZONE |
-         TIMESTAMP_WITH_LOCAL_TIME_ZONE | INTERVAL_YEAR_MONTH |INTERVAL_DAY_TIME => true
+    case _: DateType => true
+    case TimeType.INSTANCE => true
+    case _: TimestampType => true
+
     case _ => false
   }
 
-  private def isBaseRow(t: LogicalType): Boolean = t match {
+  private def isBaseRow(t: InternalType): Boolean = t match {
     case _: RowType => true
     case _ => false
   }

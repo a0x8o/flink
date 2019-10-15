@@ -23,16 +23,14 @@ import org.apache.flink.table.api.TableSchema;
 import org.apache.flink.table.expressions.Expression;
 
 import java.util.Collections;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Relational operation that performs computations on top of subsets of input rows grouped by
  * key.
  */
 @Internal
-public class AggregateTableOperation extends TableOperation {
+public class AggregateTableOperation implements TableOperation {
 
 	private final List<Expression> groupingExpressions;
 	private final List<Expression> aggregateExpressions;
@@ -53,15 +51,6 @@ public class AggregateTableOperation extends TableOperation {
 	@Override
 	public TableSchema getTableSchema() {
 		return tableSchema;
-	}
-
-	@Override
-	public String asSummaryString() {
-		Map<String, Object> args = new LinkedHashMap<>();
-		args.put("group", groupingExpressions);
-		args.put("agg", aggregateExpressions);
-
-		return formatWithChildren("Aggregate", args);
 	}
 
 	public List<Expression> getGroupingExpressions() {

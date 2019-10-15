@@ -25,8 +25,6 @@ import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.streaming.api.TimeDomain;
 import org.apache.flink.streaming.api.functions.KeyedProcessFunction;
 
-import java.io.IOException;
-
 /**
  * A function that processes elements of a stream, and could cleanup state.
  * @param <K> Type of the key.
@@ -81,13 +79,4 @@ public abstract class KeyedProcessFunctionWithCleanupState<K, IN, OUT>
 		this.cleanupTimeState.clear();
 	}
 
-	protected Boolean needToCleanupState(Long timestamp) throws IOException {
-		if (stateCleaningEnabled) {
-			Long cleanupTime = cleanupTimeState.value();
-			// check that the triggered timer is the last registered processing time timer.
-			return timestamp.equals(cleanupTime);
-		} else {
-			return false;
-		}
-	}
 }

@@ -39,13 +39,11 @@ public final class DateType extends LogicalType {
 
 	private static final Set<String> NULL_OUTPUT_CONVERSION = conversionSet(
 		java.sql.Date.class.getName(),
-		java.time.LocalDate.class.getName(),
-		Integer.class.getName());
+		java.time.LocalDate.class.getName());
 
 	private static final Set<String> NOT_NULL_INPUT_OUTPUT_CONVERSION = conversionSet(
 		java.sql.Date.class.getName(),
 		java.time.LocalDate.class.getName(),
-		Integer.class.getName(),
 		int.class.getName());
 
 	private static final Class<?> DEFAULT_CONVERSION = java.time.LocalDate.class;

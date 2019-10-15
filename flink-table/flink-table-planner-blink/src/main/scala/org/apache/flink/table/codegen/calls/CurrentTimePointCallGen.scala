@@ -18,10 +18,9 @@
 
 package org.apache.flink.table.codegen.calls
 
-import org.apache.flink.table.codegen.GenerateUtils.generateNonNullField
+import org.apache.flink.table.`type`.{InternalType, InternalTypes}
 import org.apache.flink.table.codegen.{CodeGeneratorContext, GeneratedExpression}
-import org.apache.flink.table.types.logical.LogicalType
-import org.apache.flink.table.types.logical.LogicalTypeRoot.{DATE, TIMESTAMP_WITHOUT_TIME_ZONE, TIME_WITHOUT_TIME_ZONE}
+import org.apache.flink.table.codegen.GenerateUtils.generateNonNullField
 
 /**
   * Generates function call to determine current time point (as date/time/timestamp) in
@@ -32,25 +31,24 @@ class CurrentTimePointCallGen(local: Boolean) extends CallGenerator {
   override def generate(
       ctx: CodeGeneratorContext,
       operands: Seq[GeneratedExpression],
-      returnType: LogicalType): GeneratedExpression = returnType.getTypeRoot match {
-    case TIME_WITHOUT_TIME_ZONE if local =>
+      returnType: InternalType): GeneratedExpression = returnType match {
+    case InternalTypes.TIME if local =>
       val time = ctx.addReusableLocalTime()
       generateNonNullField(returnType, time)
 
-    case TIMESTAMP_WITHOUT_TIME_ZONE if local =>
-      val timestamp = ctx.addReusableLocalDateTime()
+    case InternalTypes.TIMESTAMP if local =>
+      val timestamp = ctx.addReusableLocalTimestamp()
       generateNonNullField(returnType, timestamp)
 
-    case DATE =>
+    case InternalTypes.DATE =>
       val date = ctx.addReusableDate()
       generateNonNullField(returnType, date)
 
-    case TIME_WITHOUT_TIME_ZONE =>
+    case InternalTypes.TIME =>
       val time = ctx.addReusableTime()
       generateNonNullField(returnType, time)
 
-    case TIMESTAMP_WITHOUT_TIME_ZONE =>
-      // TODO CURRENT_TIMESTAMP should return TIMESTAMP WITH TIME ZONE
+    case InternalTypes.TIMESTAMP =>
       val timestamp = ctx.addReusableTimestamp()
       generateNonNullField(returnType, timestamp)
   }

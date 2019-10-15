@@ -18,16 +18,18 @@
 
 package org.apache.flink.table.validate
 
-import java.util
+import org.apache.flink.api.common.typeinfo.TypeInformation
+import org.apache.flink.table.calcite.FlinkTypeFactory
+import org.apache.flink.table.expressions._
+import org.apache.flink.table.functions.utils.UserDefinedFunctionUtils.{createAggregateSqlFunction, createScalarSqlFunction, createTableSqlFunction}
+import org.apache.flink.table.functions.{AggregateFunction, ScalarFunction, TableFunction}
 
 import org.apache.calcite.sql._
-import org.apache.flink.table.calcite.FlinkTypeFactory
-import org.apache.flink.table.functions.utils.UserDefinedFunctionUtils.{createAggregateSqlFunction, createScalarSqlFunction, createTableSqlFunction}
-import org.apache.flink.table.functions.{AggregateFunction, ScalarFunction, TableFunction, _}
-import org.apache.flink.table.types.DataType
-import org.apache.flink.table.types.TypeInfoDataTypeConverter.fromDataTypeToTypeInfo
+import org.apache.calcite.sql.util.ListSqlOperatorTable
 
 import _root_.scala.collection.JavaConversions._
+import _root_.scala.collection.mutable
+import scala.collection.mutable.ListBuffer
 
 /**
   * A catalog for looking up (user-defined) functions, used during validation phases
@@ -36,7 +38,7 @@ import _root_.scala.collection.JavaConversions._
   */
 class FunctionCatalog() {
 
-  val sqlFunctions: util.List[SqlOperator] = new util.ArrayList[SqlOperator]()
+  val sqlFunctions: ListBuffer[SqlFunction] = mutable.ListBuffer[SqlFunction]()
 
   def registerScalarFunction(
       name: String,
@@ -52,11 +54,11 @@ class FunctionCatalog() {
   def registerTableFunction(
       name: String,
       function: TableFunction[_],
-      implicitResultType: DataType,
+      implicitResultType: TypeInformation[_],
       typeFactory: FlinkTypeFactory): Unit = {
     registerFunction(
       name,
-      new TableFunctionDefinition(name, function, fromDataTypeToTypeInfo(implicitResultType)),
+      new TableFunctionDefinition(name, function, implicitResultType),
       createTableSqlFunction(name, name, function, implicitResultType, typeFactory)
     )
   }
@@ -64,13 +66,12 @@ class FunctionCatalog() {
   def registerAggregateFunction(
       name: String,
       function: AggregateFunction[_, _],
-      resultType: DataType,
-      accType: DataType,
+      resultType: TypeInformation[_],
+      accType: TypeInformation[_],
       typeFactory: FlinkTypeFactory): Unit = {
     registerFunction(
       name,
-      new AggregateFunctionDefinition(name, function,
-        fromDataTypeToTypeInfo(resultType), fromDataTypeToTypeInfo(accType)),
+      new AggregateFunctionDefinition(name, function, resultType, accType),
       createAggregateSqlFunction(
         name,
         name,
@@ -93,4 +94,6 @@ class FunctionCatalog() {
     sqlFunctions.map(_.getName)
   }
 
+  def getSqlOperatorTable: SqlOperatorTable =
+      new ListSqlOperatorTable(sqlFunctions)
 }

@@ -19,17 +19,18 @@
 package org.apache.flink.table.plan.nodes.physical.batch
 
 import org.apache.flink.runtime.operators.DamBehavior
+import org.apache.flink.streaming.api.transformations.StreamTransformation
 import org.apache.flink.table.api.TableConfig
-import org.apache.flink.table.calcite.FlinkRelBuilder.PlannerNamedWindowProperty
+import org.apache.flink.table.calcite.FlinkRelBuilder.NamedWindowProperty
 import org.apache.flink.table.dataformat.BaseRow
 import org.apache.flink.table.functions.UserDefinedFunction
 import org.apache.flink.table.plan.logical.LogicalWindow
+
 import org.apache.calcite.plan.{RelOptCluster, RelTraitSet}
 import org.apache.calcite.rel.RelNode
 import org.apache.calcite.rel.`type`.RelDataType
 import org.apache.calcite.rel.core.AggregateCall
 import org.apache.calcite.tools.RelBuilder
-import org.apache.flink.api.dag.Transformation
 
 class BatchExecSortWindowAggregate(
     cluster: RelOptCluster,
@@ -45,7 +46,7 @@ class BatchExecSortWindowAggregate(
     window: LogicalWindow,
     inputTimeFieldIndex: Int,
     inputTimeIsDate: Boolean,
-    namedProperties: Seq[PlannerNamedWindowProperty],
+    namedProperties: Seq[NamedWindowProperty],
     enableAssignPane: Boolean = false,
     isMerge: Boolean)
   extends BatchExecSortWindowAggregateBase(
@@ -94,5 +95,9 @@ class BatchExecSortWindowAggregate(
   override def getOperatorName: String = {
     val aggregateNamePrefix = if (isMerge) "Global" else "Complete"
     aggregateNamePrefix + "WindowSortAggregateBatchExec"
+  }
+
+  override def getParallelism(input: StreamTransformation[BaseRow], conf: TableConfig): Int = {
+    if (isFinal && grouping.length == 0) 1 else input.getParallelism
   }
 }

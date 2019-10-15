@@ -23,6 +23,8 @@ import org.apache.flink.runtime.akka.AkkaUtils;
 
 import javax.annotation.Nonnull;
 
+import scala.concurrent.duration.FiniteDuration;
+
 import static org.apache.flink.util.Preconditions.checkArgument;
 
 /**
@@ -60,7 +62,8 @@ public class AkkaRpcServiceConfiguration {
 	}
 
 	public static AkkaRpcServiceConfiguration fromConfiguration(Configuration configuration) {
-		final Time timeout = AkkaUtils.getTimeoutAsTime(configuration);
+		final FiniteDuration duration = AkkaUtils.getTimeout(configuration);
+		final Time timeout = Time.of(duration.length(), duration.unit());
 
 		final long maximumFramesize = AkkaRpcServiceUtils.extractMaximumFramesize(configuration);
 

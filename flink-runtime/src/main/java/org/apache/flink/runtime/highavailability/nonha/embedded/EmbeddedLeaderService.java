@@ -236,10 +236,7 @@ public class EmbeddedLeaderService {
 	/**
 	 * Callback from leader contenders when they confirm a leader grant.
 	 */
-	private void confirmLeader(
-			final EmbeddedLeaderElectionService service,
-			final UUID leaderSessionId,
-			final String leaderAddress) {
+	private void confirmLeader(final EmbeddedLeaderElectionService service, final UUID leaderSessionId) {
 		synchronized (lock) {
 			// if the service was shut down in the meantime, ignore this confirmation
 			if (!service.running || shutdown) {
@@ -249,15 +246,16 @@ public class EmbeddedLeaderService {
 			try {
 				// check if the confirmation is for the same grant, or whether it is a stale grant
 				if (service == currentLeaderProposed && currentLeaderSessionId.equals(leaderSessionId)) {
-					LOG.info("Received confirmation of leadership for leader {} , session={}", leaderAddress, leaderSessionId);
+					final String address = service.contender.getAddress();
+					LOG.info("Received confirmation of leadership for leader {} , session={}", address, leaderSessionId);
 
 					// mark leadership
 					currentLeaderConfirmed = service;
-					currentLeaderAddress = leaderAddress;
+					currentLeaderAddress = address;
 					currentLeaderProposed = null;
 
 					// notify all listeners
-					notifyAllListeners(leaderAddress, leaderSessionId);
+					notifyAllListeners(address, leaderSessionId);
 				}
 				else {
 					LOG.debug("Received confirmation of leadership for a stale leadership grant. Ignoring.");
@@ -299,7 +297,8 @@ public class EmbeddedLeaderService {
 				currentLeaderProposed = leaderService;
 				currentLeaderProposed.isLeader = true;
 
-				LOG.info("Proposing leadership to contender {}", leaderService.contender.getDescription());
+				LOG.info("Proposing leadership to contender {} @ {}",
+						leaderService.contender, leaderService.contender.getAddress());
 
 				return execute(new GrantLeadershipCall(leaderService.contender, leaderSessionId, LOG));
 			}
@@ -435,10 +434,9 @@ public class EmbeddedLeaderService {
 		}
 
 		@Override
-		public void confirmLeadership(UUID leaderSessionID, String leaderAddress) {
+		public void confirmLeaderSessionID(UUID leaderSessionID) {
 			checkNotNull(leaderSessionID);
-			checkNotNull(leaderAddress);
-			confirmLeader(this, leaderSessionID, leaderAddress);
+			confirmLeader(this, leaderSessionID);
 		}
 
 		@Override

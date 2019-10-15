@@ -54,62 +54,65 @@ public abstract class StateMapView<N, MK, MV> extends MapView<MK, MV> implements
 
 		private static final long serialVersionUID = 2605280027745112384L;
 
+		private final MapState<MK, MV> mapState;
 		private final Map<MK, MV> emptyState = Collections.emptyMap();
 
-		protected abstract MapState<MK, MV> getMapState();
+		private StateMapViewWithKeysNotNull(MapState<MK, MV> mapState) {
+			this.mapState = mapState;
+		}
 
 		@Override
 		public MV get(MK key) throws Exception {
-			return getMapState().get(key);
+			return mapState.get(key);
 		}
 
 		@Override
 		public void put(MK key, MV value) throws Exception {
-			getMapState().put(key, value);
+			mapState.put(key, value);
 		}
 
 		@Override
 		public void putAll(Map<MK, MV> map) throws Exception {
-			getMapState().putAll(map);
+			mapState.putAll(map);
 		}
 
 		@Override
 		public void remove(MK key) throws Exception {
-			getMapState().remove(key);
+			mapState.remove(key);
 		}
 
 		@Override
 		public boolean contains(MK key) throws Exception {
-			return getMapState().contains(key);
+			return mapState.contains(key);
 		}
 
 		@Override
 		public Iterable<Map.Entry<MK, MV>> entries() throws Exception {
-			Iterable<Map.Entry<MK, MV>> original = getMapState().entries();
+			Iterable<Map.Entry<MK, MV>> original = mapState.entries();
 			return original != null ? original : emptyState.entrySet();
 		}
 
 		@Override
 		public Iterable<MK> keys() throws Exception {
-			Iterable<MK> original = getMapState().keys();
+			Iterable<MK> original = mapState.keys();
 			return original != null ? original : emptyState.keySet();
 		}
 
 		@Override
 		public Iterable<MV> values() throws Exception {
-			Iterable<MV> original = getMapState().values();
+			Iterable<MV> original = mapState.values();
 			return original != null ? original : emptyState.values();
 		}
 
 		@Override
 		public Iterator<Map.Entry<MK, MV>> iterator() throws Exception {
-			Iterator<Map.Entry<MK, MV>> original = getMapState().iterator();
+			Iterator<Map.Entry<MK, MV>> original = mapState.iterator();
 			return original != null ? original : emptyState.entrySet().iterator();
 		}
 
 		@Override
 		public void clear() {
-			getMapState().clear();
+			mapState.clear();
 		}
 	}
 
@@ -126,21 +129,32 @@ public abstract class StateMapView<N, MK, MV> extends MapView<MK, MV> implements
 
 		private static final long serialVersionUID = 2605280027745112384L;
 
+		private final MapState<MK, MV> mapState;
+		private final ValueState<MV> nullState;
+
+		private StateMapViewWithKeysNullable(
+			MapState<MK, MV> mapState,
+			ValueState<MV> nullState) {
+
+			this.mapState = mapState;
+			this.nullState = nullState;
+		}
+
 		@Override
 		public MV get(MK key) throws Exception {
 			if (key == null) {
-				return getNullState().value();
+				return nullState.value();
 			} else {
-				return getMapState().get(key);
+				return mapState.get(key);
 			}
 		}
 
 		@Override
 		public void put(MK key, MV value) throws Exception {
 			if (key == null) {
-				getNullState().update(value);
+				nullState.update(value);
 			} else {
-				getMapState().put(key, value);
+				mapState.put(key, value);
 			}
 		}
 
@@ -155,18 +169,18 @@ public abstract class StateMapView<N, MK, MV> extends MapView<MK, MV> implements
 		@Override
 		public void remove(MK key) throws Exception {
 			if (key == null) {
-				getNullState().clear();
+				nullState.clear();
 			} else {
-				getMapState().remove(key);
+				mapState.remove(key);
 			}
 		}
 
 		@Override
 		public boolean contains(MK key) throws Exception {
 			if (key == null) {
-				return getNullState().value() != null;
+				return nullState.value() != null;
 			} else {
-				return getMapState().contains(key);
+				return mapState.contains(key);
 			}
 		}
 
@@ -188,18 +202,14 @@ public abstract class StateMapView<N, MK, MV> extends MapView<MK, MV> implements
 
 		@Override
 		public Iterator<Map.Entry<MK, MV>> iterator() throws Exception {
-			return new NullAwareMapIterator<>(getMapState().iterator(), new NullMapEntryImpl());
+			return new NullAwareMapIterator<>(mapState.iterator(), new NullMapEntryImpl());
 		}
 
 		@Override
 		public void clear() {
-			getMapState().clear();
-			getNullState().clear();
+			mapState.clear();
+			nullState.clear();
 		}
-
-		protected abstract MapState<MK, MV> getMapState();
-
-		protected abstract ValueState<MV> getNullState();
 
 		/**
 		 * MapEntry for the null key of this MapView.
@@ -209,7 +219,7 @@ public abstract class StateMapView<N, MK, MV> extends MapView<MK, MV> implements
 			@Override
 			public MV getValue() {
 				try {
-					return getNullState().value();
+					return nullState.value();
 				} catch (IOException e) {
 					throw new RuntimeException(e);
 				}
@@ -219,8 +229,8 @@ public abstract class StateMapView<N, MK, MV> extends MapView<MK, MV> implements
 			public MV setValue(MV value) {
 				MV oldValue;
 				try {
-					oldValue = getNullState().value();
-					getNullState().update(value);
+					oldValue = nullState.value();
+					nullState.update(value);
 					return oldValue;
 				} catch (IOException e) {
 					throw new RuntimeException(e);
@@ -229,7 +239,7 @@ public abstract class StateMapView<N, MK, MV> extends MapView<MK, MV> implements
 
 			@Override
 			public void remove() {
-				getNullState().clear();
+				nullState.clear();
 			}
 		}
 
@@ -294,20 +304,14 @@ public abstract class StateMapView<N, MK, MV> extends MapView<MK, MV> implements
 	public static final class KeyedStateMapViewWithKeysNotNull<N, MK, MV> extends StateMapViewWithKeysNotNull<N, MK, MV> {
 
 		private static final long serialVersionUID = 6650061094951931356L;
-		private final MapState<MK, MV> mapState;
 
 		public KeyedStateMapViewWithKeysNotNull(MapState<MK, MV> mapState) {
-			this.mapState = mapState;
+			super(mapState);
 		}
 
 		@Override
 		public void setCurrentNamespace(N namespace) {
 			throw new UnsupportedOperationException();
-		}
-
-		@Override
-		protected MapState<MK, MV> getMapState() {
-			return mapState;
 		}
 	}
 
@@ -318,21 +322,15 @@ public abstract class StateMapView<N, MK, MV> extends MapView<MK, MV> implements
 
 		private static final long serialVersionUID = -2793150592169689571L;
 		private final InternalMapState<?, N, MK, MV> internalMapState;
-		private N namespace;
 
 		public NamespacedStateMapViewWithKeysNotNull(InternalMapState<?, N, MK, MV> internalMapState) {
+			super(internalMapState);
 			this.internalMapState = internalMapState;
 		}
 
 		@Override
 		public void setCurrentNamespace(N namespace) {
-			this.namespace = namespace;
-		}
-
-		@Override
-		protected MapState<MK, MV> getMapState() {
 			internalMapState.setCurrentNamespace(namespace);
-			return internalMapState;
 		}
 	}
 
@@ -342,27 +340,14 @@ public abstract class StateMapView<N, MK, MV> extends MapView<MK, MV> implements
 	public static final class KeyedStateMapViewWithKeysNullable<N, MK, MV> extends StateMapViewWithKeysNullable<N, MK, MV> {
 
 		private static final long serialVersionUID = -4222930534937318207L;
-		private final MapState<MK, MV> mapState;
-		private final ValueState<MV> nullState;
 
 		public KeyedStateMapViewWithKeysNullable(MapState<MK, MV> mapState, ValueState<MV> nullState) {
-			this.mapState = mapState;
-			this.nullState = nullState;
+			super(mapState, nullState);
 		}
 
 		@Override
 		public void setCurrentNamespace(N namespace) {
 			throw new UnsupportedOperationException();
-		}
-
-		@Override
-		protected MapState<MK, MV> getMapState() {
-			return mapState;
-		}
-
-		@Override
-		protected ValueState<MV> getNullState() {
-			return nullState;
 		}
 	}
 
@@ -374,28 +359,17 @@ public abstract class StateMapView<N, MK, MV> extends MapView<MK, MV> implements
 		private static final long serialVersionUID = -6915428707804508152L;
 		private final InternalMapState<?, N, MK, MV> internalMapState;
 		private final InternalValueState<?, N, MV> internalNullState;
-		private N namespace;
 
 		public NamespacedStateMapViewWithKeysNullable(InternalMapState<?, N, MK, MV> internalMapState, InternalValueState<?, N, MV> internalNullState) {
+			super(internalMapState, internalNullState);
 			this.internalMapState = internalMapState;
 			this.internalNullState = internalNullState;
 		}
 
 		@Override
 		public void setCurrentNamespace(N namespace) {
-			this.namespace = namespace;
-		}
-
-		@Override
-		protected MapState<MK, MV> getMapState() {
 			internalMapState.setCurrentNamespace(namespace);
-			return internalMapState;
-		}
-
-		@Override
-		protected ValueState<MV> getNullState() {
 			internalNullState.setCurrentNamespace(namespace);
-			return internalNullState;
 		}
 	}
 

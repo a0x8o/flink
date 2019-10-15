@@ -18,13 +18,11 @@
 
 package org.apache.flink.table.codegen.calls
 
-import org.apache.flink.table.functions.sql.FlinkSqlOperatorTable._
-import org.apache.flink.table.types.PlannerTypeUtils.isPrimitive
-import org.apache.flink.table.types.logical.LogicalTypeRoot._
-import org.apache.flink.table.types.logical.{LogicalType, LogicalTypeRoot}
-
+import org.apache.calcite.avatica.util.{TimeUnit, TimeUnitRange}
 import org.apache.calcite.sql.SqlOperator
 import org.apache.calcite.util.BuiltInMethod
+import org.apache.flink.table.`type`._
+import org.apache.flink.table.functions.sql.FlinkSqlOperatorTable._
 
 import java.lang.reflect.Method
 
@@ -32,15 +30,18 @@ import scala.collection.mutable
 
 object FunctionGenerator {
 
+  // as a key to match any Decimal(p,s)
+  val ANY_DEC_TYPE: DecimalType = DecimalType.SYSTEM_DEFAULT
+
   val INTEGRAL_TYPES = Array(
-    INTEGER,
-    SMALLINT,
-    INTEGER,
-    BIGINT)
+    InternalTypes.BYTE,
+    InternalTypes.SHORT,
+    InternalTypes.INT,
+    InternalTypes.LONG)
 
-  val FRACTIONAL_TYPES = Array(FLOAT, DOUBLE)
+  val FRACTIONAL_TYPES = Array(InternalTypes.FLOAT, InternalTypes.DOUBLE)
 
-  private val sqlFunctions: mutable.Map[(SqlOperator, Seq[LogicalTypeRoot]), CallGenerator] =
+  private val sqlFunctions: mutable.Map[(SqlOperator, Seq[InternalType]), CallGenerator] =
     mutable.Map()
   // ----------------------------------------------------------------------------------------------
   // Arithmetic functions
@@ -48,243 +49,243 @@ object FunctionGenerator {
 
   addSqlFunctionMethod(
     LOG10,
-    Seq(DOUBLE),
+    Seq(InternalTypes.DOUBLE),
     BuiltInMethods.LOG10)
 
   addSqlFunctionMethod(
     LOG10,
-    Seq(DECIMAL),
+    Seq(ANY_DEC_TYPE),
     BuiltInMethods.LOG10_DEC)
 
   addSqlFunctionMethod(
     LN,
-    Seq(DOUBLE),
+    Seq(InternalTypes.DOUBLE),
     BuiltInMethods.LN)
 
   addSqlFunctionMethod(
     LN,
-    Seq(DECIMAL),
+    Seq(ANY_DEC_TYPE),
     BuiltInMethods.LN_DEC)
 
   addSqlFunctionMethod(
     EXP,
-    Seq(DOUBLE),
+    Seq(InternalTypes.DOUBLE),
     BuiltInMethods.EXP)
 
   addSqlFunctionMethod(
     EXP,
-    Seq(DECIMAL),
+    Seq(ANY_DEC_TYPE),
     BuiltInMethods.EXP_DEC)
 
   addSqlFunctionMethod(
     POWER,
-    Seq(DOUBLE, DOUBLE),
+    Seq(InternalTypes.DOUBLE, InternalTypes.DOUBLE),
     BuiltInMethods.POWER_NUM_NUM)
 
   addSqlFunctionMethod(
     POWER,
-    Seq(DOUBLE, DECIMAL),
+    Seq(InternalTypes.DOUBLE, ANY_DEC_TYPE),
     BuiltInMethods.POWER_NUM_DEC)
 
   addSqlFunctionMethod(
     POWER,
-    Seq(DECIMAL, DECIMAL),
+    Seq(ANY_DEC_TYPE, ANY_DEC_TYPE),
     BuiltInMethods.POWER_DEC_DEC)
 
   addSqlFunctionMethod(
     POWER,
-    Seq(DECIMAL, DOUBLE),
+    Seq(ANY_DEC_TYPE, InternalTypes.DOUBLE),
     BuiltInMethods.POWER_DEC_NUM)
 
   addSqlFunctionMethod(
     ABS,
-    Seq(DOUBLE),
+    Seq(InternalTypes.DOUBLE),
     BuiltInMethods.ABS)
 
   addSqlFunctionMethod(
     ABS,
-    Seq(DECIMAL),
+    Seq(ANY_DEC_TYPE),
     BuiltInMethods.ABS_DEC)
 
   addSqlFunction(
     FLOOR,
-    Seq(DOUBLE),
+    Seq(InternalTypes.DOUBLE),
     new FloorCeilCallGen(BuiltInMethod.FLOOR.method))
 
   addSqlFunction(
     FLOOR,
-    Seq(DECIMAL),
+    Seq(ANY_DEC_TYPE),
     new FloorCeilCallGen(BuiltInMethods.FLOOR_DEC))
 
   addSqlFunction(
     CEIL,
-    Seq(DOUBLE),
+    Seq(InternalTypes.DOUBLE),
     new FloorCeilCallGen(BuiltInMethod.CEIL.method))
 
   addSqlFunction(
     CEIL,
-    Seq(DECIMAL),
+    Seq(ANY_DEC_TYPE),
     new FloorCeilCallGen(BuiltInMethods.CEIL_DEC))
 
   addSqlFunctionMethod(
     SIN,
-    Seq(DOUBLE),
+    Seq(InternalTypes.DOUBLE),
     BuiltInMethods.SIN)
 
   addSqlFunctionMethod(
     SIN,
-    Seq(DECIMAL),
+    Seq(ANY_DEC_TYPE),
     BuiltInMethods.SIN_DEC)
 
   addSqlFunctionMethod(
     COS,
-    Seq(DOUBLE),
+    Seq(InternalTypes.DOUBLE),
     BuiltInMethods.COS)
 
   addSqlFunctionMethod(
     COS,
-    Seq(DECIMAL),
+    Seq(ANY_DEC_TYPE),
     BuiltInMethods.COS_DEC)
 
   addSqlFunctionMethod(
     TAN,
-    Seq(DOUBLE),
+    Seq(InternalTypes.DOUBLE),
     BuiltInMethods.TAN)
 
   addSqlFunctionMethod(
     TAN,
-    Seq(DECIMAL),
+    Seq(ANY_DEC_TYPE),
     BuiltInMethods.TAN_DEC)
 
   addSqlFunctionMethod(
     COT,
-    Seq(DOUBLE),
+    Seq(InternalTypes.DOUBLE),
     BuiltInMethods.COT)
 
   addSqlFunctionMethod(
     COT,
-    Seq(DECIMAL),
+    Seq(ANY_DEC_TYPE),
     BuiltInMethods.COT_DEC)
 
   addSqlFunctionMethod(
     ASIN,
-    Seq(DOUBLE),
+    Seq(InternalTypes.DOUBLE),
     BuiltInMethods.ASIN)
 
   addSqlFunctionMethod(
     ASIN,
-    Seq(DECIMAL),
+    Seq(ANY_DEC_TYPE),
     BuiltInMethods.ASIN_DEC)
 
   addSqlFunctionMethod(
     ACOS,
-    Seq(DOUBLE),
+    Seq(InternalTypes.DOUBLE),
     BuiltInMethods.ACOS)
 
   addSqlFunctionMethod(
     ACOS,
-    Seq(DECIMAL),
+    Seq(ANY_DEC_TYPE),
     BuiltInMethods.ACOS_DEC)
 
   addSqlFunctionMethod(
     ATAN,
-    Seq(DOUBLE),
+    Seq(InternalTypes.DOUBLE),
     BuiltInMethods.ATAN)
 
   addSqlFunctionMethod(
     ATAN,
-    Seq(DECIMAL),
+    Seq(ANY_DEC_TYPE),
     BuiltInMethods.ATAN_DEC)
 
   addSqlFunctionMethod(
     ATAN2,
-    Seq(DOUBLE, DOUBLE),
+    Seq(InternalTypes.DOUBLE, InternalTypes.DOUBLE),
     BuiltInMethods.ATAN2_DOUBLE_DOUBLE)
 
   addSqlFunctionMethod(
     ATAN2,
-    Seq(DECIMAL, DECIMAL),
+    Seq(ANY_DEC_TYPE, ANY_DEC_TYPE),
     BuiltInMethods.ATAN2_DEC_DEC)
 
   addSqlFunctionMethod(
     DEGREES,
-    Seq(DOUBLE),
+    Seq(InternalTypes.DOUBLE),
     BuiltInMethods.DEGREES)
 
   addSqlFunctionMethod(
     DEGREES,
-    Seq(DECIMAL),
+    Seq(ANY_DEC_TYPE),
     BuiltInMethods.DEGREES_DEC)
 
   addSqlFunctionMethod(
     RADIANS,
-    Seq(DOUBLE),
+    Seq(InternalTypes.DOUBLE),
     BuiltInMethods.RADIANS)
 
   addSqlFunctionMethod(
     RADIANS,
-    Seq(DECIMAL),
+    Seq(ANY_DEC_TYPE),
     BuiltInMethods.RADIANS_DEC)
 
   addSqlFunctionMethod(
     SIGN,
-    Seq(DOUBLE),
+    Seq(InternalTypes.DOUBLE),
     BuiltInMethods.SIGN_DOUBLE)
 
   addSqlFunctionMethod(
     SIGN,
-    Seq(INTEGER),
+    Seq(InternalTypes.INT),
     BuiltInMethods.SIGN_INT)
 
   addSqlFunctionMethod(
     SIGN,
-    Seq(BIGINT),
+    Seq(InternalTypes.LONG),
     BuiltInMethods.SIGN_LONG)
 
   // note: calcite: SIGN(Decimal(p,s)) => Decimal(p,s). may return e.g. 1.0000
   addSqlFunctionMethod(
     SIGN,
-    Seq(DECIMAL),
+    Seq(ANY_DEC_TYPE),
     BuiltInMethods.SIGN_DEC)
 
   addSqlFunctionMethod(
     ROUND,
-    Seq(BIGINT, INTEGER),
+    Seq(InternalTypes.LONG, InternalTypes.INT),
     BuiltInMethods.ROUND_LONG)
 
   addSqlFunctionMethod(
     ROUND,
-    Seq(INTEGER, INTEGER),
+    Seq(InternalTypes.INT, InternalTypes.INT),
     BuiltInMethods.ROUND_INT)
 
   addSqlFunctionMethod(
     ROUND,
-    Seq(DECIMAL, INTEGER),
+    Seq(ANY_DEC_TYPE, InternalTypes.INT),
     BuiltInMethods.ROUND_DEC)
 
   addSqlFunctionMethod(
     ROUND,
-    Seq(DOUBLE, INTEGER),
+    Seq(InternalTypes.DOUBLE, InternalTypes.INT),
     BuiltInMethods.ROUND_DOUBLE)
 
   addSqlFunctionMethod(
     ROUND,
-    Seq(BIGINT),
+    Seq(InternalTypes.LONG),
     BuiltInMethods.ROUND_LONG_0)
 
   addSqlFunctionMethod(
     ROUND,
-    Seq(INTEGER),
+    Seq(InternalTypes.INT),
     BuiltInMethods.ROUND_INT_0)
 
   addSqlFunctionMethod(
     ROUND,
-    Seq(DECIMAL),
+    Seq(ANY_DEC_TYPE),
     BuiltInMethods.ROUND_DEC_0)
 
   addSqlFunctionMethod(
     ROUND,
-    Seq(DOUBLE),
+    Seq(InternalTypes.DOUBLE),
     BuiltInMethods.ROUND_DOUBLE_0)
 
   addSqlFunction(
@@ -309,174 +310,157 @@ object FunctionGenerator {
 
   addSqlFunction(
     RAND,
-    Seq(INTEGER),
+    Seq(InternalTypes.INT),
     new RandCallGen(isRandInteger = false, hasSeed = true))
 
   addSqlFunction(
     RAND_INTEGER,
-    Seq(INTEGER),
+    Seq(InternalTypes.INT),
     new RandCallGen(isRandInteger = true, hasSeed = false))
 
   addSqlFunction(
     RAND_INTEGER,
-    Seq(INTEGER, INTEGER),
+    Seq(InternalTypes.INT, InternalTypes.INT),
     new RandCallGen(isRandInteger = true, hasSeed = true))
 
   addSqlFunctionMethod(
     LOG,
-    Seq(DOUBLE),
+    Seq(InternalTypes.DOUBLE),
     BuiltInMethods.LOG)
 
   addSqlFunctionMethod(
     LOG,
-    Seq(DECIMAL),
+    Seq(ANY_DEC_TYPE),
     BuiltInMethods.LOG_DEC)
 
   addSqlFunctionMethod(
     LOG,
-    Seq(DOUBLE, DOUBLE),
+    Seq(InternalTypes.DOUBLE, InternalTypes.DOUBLE),
     BuiltInMethods.LOG_WITH_BASE)
 
   addSqlFunctionMethod(
     LOG,
-    Seq(DECIMAL, DECIMAL),
+    Seq(ANY_DEC_TYPE, ANY_DEC_TYPE),
     BuiltInMethods.LOG_WITH_BASE_DEC)
 
   addSqlFunctionMethod(
     LOG,
-    Seq(DECIMAL, DOUBLE),
+    Seq(ANY_DEC_TYPE, InternalTypes.DOUBLE),
     BuiltInMethods.LOG_WITH_BASE_DEC_DOU)
 
   addSqlFunctionMethod(
     LOG,
-    Seq(DOUBLE, DECIMAL),
+    Seq(InternalTypes.DOUBLE, ANY_DEC_TYPE),
     BuiltInMethods.LOG_WITH_BASE_DOU_DEC)
 
   addSqlFunctionMethod(
     HEX,
-    Seq(BIGINT),
+    Seq(InternalTypes.LONG),
     BuiltInMethods.HEX_LONG)
 
-  addSqlFunctionMethod(HEX, Seq(VARCHAR), BuiltInMethods.HEX_STRING)
-  addSqlFunctionMethod(HEX, Seq(CHAR), BuiltInMethods.HEX_STRING)
+  addSqlFunctionMethod(
+    HEX,
+    Seq(InternalTypes.STRING),
+    BuiltInMethods.HEX_STRING)
 
   // ----------------------------------------------------------------------------------------------
   // Temporal functions
   // ----------------------------------------------------------------------------------------------
 
-  addSqlFunction(
+  addSqlFunctionMethod(
     EXTRACT,
-    Seq(ANY, BIGINT),
-    new ExtractCallGen(BuiltInMethod.UNIX_DATE_EXTRACT.method))
+    Seq(new GenericType(classOf[TimeUnitRange]), InternalTypes.LONG),
+    BuiltInMethod.UNIX_DATE_EXTRACT.method)
 
-  addSqlFunction(
+  addSqlFunctionMethod(
     EXTRACT,
-    Seq(ANY, DATE),
-    new ExtractCallGen(BuiltInMethod.UNIX_DATE_EXTRACT.method))
+    Seq(new GenericType(classOf[TimeUnitRange]), InternalTypes.DATE),
+    BuiltInMethod.UNIX_DATE_EXTRACT.method)
 
-  addSqlFunction(
+  addSqlFunctionMethod(
     EXTRACT,
-    Seq(ANY, TIME_WITHOUT_TIME_ZONE),
-    new ExtractCallGen(BuiltInMethod.UNIX_DATE_EXTRACT.method))
+    Seq(new GenericType(classOf[TimeUnitRange]), InternalTypes.TIME),
+    BuiltInMethods.UNIX_TIME_EXTRACT)
 
-  addSqlFunction(
+  addSqlFunctionMethod(
     EXTRACT,
-    Seq(ANY, TIMESTAMP_WITHOUT_TIME_ZONE),
-    new ExtractCallGen(BuiltInMethod.UNIX_DATE_EXTRACT.method))
+    Seq(new GenericType(classOf[TimeUnitRange]), InternalTypes.TIMESTAMP),
+    BuiltInMethods.EXTRACT_FROM_TIMESTAMP)
 
-  addSqlFunction(
+  addSqlFunctionMethod(
     EXTRACT,
-    Seq(ANY, TIMESTAMP_WITH_LOCAL_TIME_ZONE),
-    new MethodCallGen(BuiltInMethods.EXTRACT_FROM_TIMESTAMP_TIME_ZONE))
+    Seq(new GenericType(classOf[TimeUnitRange]), InternalTypes.INTERVAL_MILLIS),
+    BuiltInMethods.EXTRACT_FROM_DATE)
 
-  addSqlFunction(
+  addSqlFunctionMethod(
     EXTRACT,
-    Seq(ANY, INTERVAL_DAY_TIME),
-    new ExtractCallGen(BuiltInMethod.UNIX_DATE_EXTRACT.method))
-
-  addSqlFunction(
-    EXTRACT,
-    Seq(ANY, INTERVAL_YEAR_MONTH),
-    new ExtractCallGen(BuiltInMethod.UNIX_DATE_EXTRACT.method))
+    Seq(new GenericType(classOf[TimeUnitRange]), InternalTypes.INTERVAL_MONTHS),
+    BuiltInMethods.EXTRACT_YEAR_MONTH)
 
   addSqlFunction(
     TIMESTAMP_DIFF,
     Seq(
-      ANY,
-      TIMESTAMP_WITHOUT_TIME_ZONE,
-      TIMESTAMP_WITHOUT_TIME_ZONE),
+      new GenericType(classOf[TimeUnit]),
+      InternalTypes.TIMESTAMP,
+      InternalTypes.TIMESTAMP),
     new TimestampDiffCallGen)
 
   addSqlFunction(
     TIMESTAMP_DIFF,
-    Seq(ANY, TIMESTAMP_WITHOUT_TIME_ZONE, DATE),
+    Seq(new GenericType(classOf[TimeUnit]), InternalTypes.TIMESTAMP, InternalTypes.DATE),
     new TimestampDiffCallGen)
 
   addSqlFunction(
     TIMESTAMP_DIFF,
-    Seq(ANY, DATE, TIMESTAMP_WITHOUT_TIME_ZONE),
+    Seq(new GenericType(classOf[TimeUnit]), InternalTypes.DATE, InternalTypes.TIMESTAMP),
     new TimestampDiffCallGen)
 
   addSqlFunction(
     TIMESTAMP_DIFF,
-    Seq(ANY, DATE, DATE),
+    Seq(new GenericType(classOf[TimeUnit]), InternalTypes.DATE, InternalTypes.DATE),
     new TimestampDiffCallGen)
 
   addSqlFunction(
     FLOOR,
-    Seq(DATE, ANY),
+    Seq(InternalTypes.DATE, new GenericType(classOf[TimeUnitRange])),
     new FloorCeilCallGen(
       BuiltInMethod.FLOOR.method,
       Some(BuiltInMethod.UNIX_DATE_FLOOR.method)))
 
   addSqlFunction(
     FLOOR,
-    Seq(TIME_WITHOUT_TIME_ZONE, ANY),
+    Seq(InternalTypes.TIME, new GenericType(classOf[TimeUnitRange])),
     new FloorCeilCallGen(
       BuiltInMethod.FLOOR.method,
       Some(BuiltInMethod.UNIX_DATE_FLOOR.method)))
 
   addSqlFunction(
     FLOOR,
-    Seq(TIMESTAMP_WITHOUT_TIME_ZONE, ANY),
+    Seq(InternalTypes.TIMESTAMP, new GenericType(classOf[TimeUnitRange])),
     new FloorCeilCallGen(
       BuiltInMethod.FLOOR.method,
-      Some(BuiltInMethod.UNIX_TIMESTAMP_FLOOR.method)))
-
-  addSqlFunction(
-    FLOOR,
-    Seq(TIMESTAMP_WITH_LOCAL_TIME_ZONE, ANY),
-    new FloorCeilCallGen(
-      BuiltInMethod.FLOOR.method,
-      Some(BuiltInMethods.TIMESTAMP_FLOOR_TIME_ZONE)))
+      Some(BuiltInMethods.TIMESTAMP_FLOOR)))
 
   addSqlFunction(
     CEIL,
-    Seq(DATE, ANY),
+    Seq(InternalTypes.DATE, new GenericType(classOf[TimeUnitRange])),
     new FloorCeilCallGen(
       BuiltInMethod.CEIL.method,
       Some(BuiltInMethod.UNIX_DATE_CEIL.method)))
 
   addSqlFunction(
     CEIL,
-    Seq(TIME_WITHOUT_TIME_ZONE, ANY),
+    Seq(InternalTypes.TIME, new GenericType(classOf[TimeUnitRange])),
     new FloorCeilCallGen(
       BuiltInMethod.CEIL.method,
       Some(BuiltInMethod.UNIX_DATE_CEIL.method)))
 
   addSqlFunction(
     CEIL,
-    Seq(TIMESTAMP_WITHOUT_TIME_ZONE, ANY),
+    Seq(InternalTypes.TIMESTAMP, new GenericType(classOf[TimeUnitRange])),
     new FloorCeilCallGen(
       BuiltInMethod.CEIL.method,
-      Some(BuiltInMethod.UNIX_TIMESTAMP_CEIL.method)))
-
-  addSqlFunction(
-    CEIL,
-    Seq(TIMESTAMP_WITH_LOCAL_TIME_ZONE, ANY),
-    new FloorCeilCallGen(
-      BuiltInMethod.CEIL.method,
-      Some(BuiltInMethods.TIMESTAMP_CEIL_TIME_ZONE)))
+      Some(BuiltInMethods.TIMESTAMP_CEIL)))
 
   addSqlFunction(
     CURRENT_DATE,
@@ -505,123 +489,195 @@ object FunctionGenerator {
 
   addSqlFunctionMethod(
     LOG2,
-    Seq(DOUBLE),
+    Seq(InternalTypes.DOUBLE),
     BuiltInMethods.LOG2)
 
   addSqlFunctionMethod(
     LOG2,
-    Seq(DECIMAL),
+    Seq(ANY_DEC_TYPE),
     BuiltInMethods.LOG2_DEC)
 
   addSqlFunctionMethod(
     SINH,
-    Seq(DOUBLE),
+    Seq(InternalTypes.DOUBLE),
     BuiltInMethods.SINH)
 
   addSqlFunctionMethod(
     SINH,
-    Seq(DECIMAL),
+    Seq(DecimalType.SYSTEM_DEFAULT),
     BuiltInMethods.SINH_DEC)
 
   addSqlFunctionMethod(
     COSH,
-    Seq(DOUBLE),
+    Seq(InternalTypes.DOUBLE),
     BuiltInMethods.COSH)
 
   addSqlFunctionMethod(
     COSH,
-    Seq(DECIMAL),
+    Seq(DecimalType.SYSTEM_DEFAULT),
     BuiltInMethods.COSH_DEC)
 
   addSqlFunctionMethod(
     TANH,
-    Seq(DOUBLE),
+    Seq(InternalTypes.DOUBLE),
     BuiltInMethods.TANH)
 
   addSqlFunctionMethod(
     TANH,
-    Seq(DECIMAL),
+    Seq(DecimalType.SYSTEM_DEFAULT),
     BuiltInMethods.TANH_DEC)
 
   addSqlFunctionMethod(
     BITAND,
-    Seq(INTEGER, INTEGER),
+    Seq(InternalTypes.BYTE, InternalTypes.BYTE),
     BuiltInMethods.BITAND_BYTE)
 
   addSqlFunctionMethod(
     BITAND,
-    Seq(SMALLINT, SMALLINT),
+    Seq(InternalTypes.SHORT, InternalTypes.SHORT),
     BuiltInMethods.BITAND_SHORT)
 
   addSqlFunctionMethod(
     BITAND,
-    Seq(INTEGER, INTEGER),
+    Seq(InternalTypes.INT, InternalTypes.INT),
     BuiltInMethods.BITAND_INTEGER)
 
   addSqlFunctionMethod(
     BITAND,
-    Seq(BIGINT, BIGINT),
+    Seq(InternalTypes.LONG, InternalTypes.LONG),
     BuiltInMethods.BITAND_LONG)
 
   addSqlFunctionMethod(
     BITNOT,
-    Seq(INTEGER),
+    Seq(InternalTypes.BYTE),
     BuiltInMethods.BITNOT_BYTE)
 
   addSqlFunctionMethod(
     BITNOT,
-    Seq(SMALLINT),
+    Seq(InternalTypes.SHORT),
     BuiltInMethods.BITNOT_SHORT)
 
   addSqlFunctionMethod(
     BITNOT,
-    Seq(INTEGER),
+    Seq(InternalTypes.INT),
     BuiltInMethods.BITNOT_INTEGER)
 
   addSqlFunctionMethod(
     BITNOT,
-    Seq(BIGINT),
+    Seq(InternalTypes.LONG),
     BuiltInMethods.BITNOT_LONG)
 
   addSqlFunctionMethod(
     BITOR,
-    Seq(INTEGER, INTEGER),
+    Seq(InternalTypes.BYTE, InternalTypes.BYTE),
     BuiltInMethods.BITOR_BYTE)
 
   addSqlFunctionMethod(
     BITOR,
-    Seq(SMALLINT, SMALLINT),
+    Seq(InternalTypes.SHORT, InternalTypes.SHORT),
     BuiltInMethods.BITOR_SHORT)
 
   addSqlFunctionMethod(
     BITOR,
-    Seq(INTEGER, INTEGER),
+    Seq(InternalTypes.INT, InternalTypes.INT),
     BuiltInMethods.BITOR_INTEGER)
 
   addSqlFunctionMethod(
     BITOR,
-    Seq(BIGINT, BIGINT),
+    Seq(InternalTypes.LONG, InternalTypes.LONG),
     BuiltInMethods.BITOR_LONG)
 
   addSqlFunctionMethod(
     BITXOR,
-    Seq(INTEGER, INTEGER),
+    Seq(InternalTypes.BYTE, InternalTypes.BYTE),
     BuiltInMethods.BITXOR_BYTE)
 
   addSqlFunctionMethod(
     BITXOR,
-    Seq(SMALLINT, SMALLINT),
+    Seq(InternalTypes.SHORT, InternalTypes.SHORT),
     BuiltInMethods.BITXOR_SHORT)
 
   addSqlFunctionMethod(
     BITXOR,
-    Seq(INTEGER, INTEGER),
+    Seq(InternalTypes.INT, InternalTypes.INT),
     BuiltInMethods.BITXOR_INTEGER)
 
   addSqlFunctionMethod(
     BITXOR,
-    Seq(BIGINT, BIGINT),
+    Seq(InternalTypes.LONG, InternalTypes.LONG),
     BuiltInMethods.BITXOR_LONG)
+
+  addSqlFunction(
+    PRINT,
+    Seq(InternalTypes.STRING, InternalTypes.STRING),
+    new PrintCallGen())
+
+  addSqlFunction(
+    PRINT,
+    Seq(InternalTypes.STRING, InternalTypes.BOOLEAN),
+    new PrintCallGen())
+
+  addSqlFunction(
+    PRINT,
+    Seq(InternalTypes.STRING, InternalTypes.BYTE),
+    new PrintCallGen())
+
+  addSqlFunction(
+    PRINT,
+    Seq(InternalTypes.STRING, InternalTypes.SHORT),
+    new PrintCallGen())
+
+  addSqlFunction(
+    PRINT,
+    Seq(InternalTypes.STRING, InternalTypes.INT),
+    new PrintCallGen())
+
+  addSqlFunction(
+    PRINT,
+    Seq(InternalTypes.STRING, InternalTypes.LONG),
+    new PrintCallGen())
+
+  addSqlFunction(
+    PRINT,
+    Seq(InternalTypes.STRING, InternalTypes.FLOAT),
+    new PrintCallGen())
+
+  addSqlFunction(
+    PRINT,
+    Seq(InternalTypes.STRING, InternalTypes.DOUBLE),
+    new PrintCallGen())
+
+  addSqlFunction(
+    PRINT,
+    Seq(InternalTypes.STRING, InternalTypes.CHAR),
+    new PrintCallGen())
+
+  addSqlFunction(
+    PRINT,
+    Seq(InternalTypes.STRING, InternalTypes.DATE),
+    new PrintCallGen())
+
+  addSqlFunction(
+    PRINT,
+    Seq(InternalTypes.STRING, InternalTypes.TIMESTAMP),
+    new PrintCallGen())
+
+  addSqlFunction(
+    PRINT,
+    Seq(InternalTypes.STRING, InternalTypes.TIME),
+    new PrintCallGen())
+
+  addSqlFunction(
+    PRINT,
+    Seq(InternalTypes.STRING, ANY_DEC_TYPE),
+    new PrintCallGen())
+
+  addSqlFunction(
+    PRINT,
+    Seq(
+      InternalTypes.STRING,
+      InternalTypes.BINARY),
+    new PrintCallGen())
 
   addSqlFunctionMethod(
     NOW,
@@ -630,7 +686,7 @@ object FunctionGenerator {
 
   addSqlFunctionMethod(
     NOW,
-    Seq(INTEGER),
+    Seq(InternalTypes.INT),
     BuiltInMethods.NOW_OFFSET)
 
   addSqlFunctionMethod(
@@ -640,167 +696,169 @@ object FunctionGenerator {
 
   addSqlFunctionMethod(
     UNIX_TIMESTAMP,
-    Seq(TIMESTAMP_WITHOUT_TIME_ZONE),
-    BuiltInMethods.UNIX_TIMESTAMP_TS)
-
-  addSqlFunctionMethod(
-    UNIX_TIMESTAMP,
-    Seq(TIMESTAMP_WITH_LOCAL_TIME_ZONE),
+    Seq(InternalTypes.TIMESTAMP),
     BuiltInMethods.UNIX_TIMESTAMP_TS)
 
   addSqlFunctionMethod(
     DATEDIFF,
-    Seq(TIMESTAMP_WITHOUT_TIME_ZONE,
-      TIMESTAMP_WITHOUT_TIME_ZONE),
+    Seq(InternalTypes.TIMESTAMP,
+      InternalTypes.TIMESTAMP),
     BuiltInMethods.DATEDIFF_T_T)
+
+  addSqlFunction(
+    IF,
+    Seq(InternalTypes.BOOLEAN, InternalTypes.STRING, InternalTypes.STRING),
+    new IfCallGen())
+
+  addSqlFunction(
+    IF,
+    Seq(InternalTypes.BOOLEAN, InternalTypes.BOOLEAN, InternalTypes.BOOLEAN),
+    new IfCallGen())
 
   // This sequence must be in sync with [[NumericOrDefaultReturnTypeInference]]
   val numericTypes = Seq(
-    INTEGER,
-    SMALLINT,
-    INTEGER,
-    BIGINT,
-    DECIMAL,
-    FLOAT,
-    DOUBLE)
+    InternalTypes.BYTE,
+    InternalTypes.SHORT,
+    InternalTypes.INT,
+    InternalTypes.LONG,
+    DecimalType.SYSTEM_DEFAULT,
+    InternalTypes.FLOAT,
+    InternalTypes.DOUBLE)
 
   for (t1 <- numericTypes) {
     for (t2 <- numericTypes) {
       addSqlFunction(
         IF,
-        Seq(BOOLEAN, t1, t2),
+        Seq(InternalTypes.BOOLEAN, t1, t2),
         new IfCallGen())
     }
   }
 
   addSqlFunction(
     IF,
-    Seq(BOOLEAN, DATE, DATE),
+    Seq(InternalTypes.BOOLEAN, InternalTypes.CHAR, InternalTypes.CHAR),
     new IfCallGen())
 
   addSqlFunction(
     IF,
-    Seq(BOOLEAN, TIMESTAMP_WITHOUT_TIME_ZONE, TIMESTAMP_WITHOUT_TIME_ZONE),
+    Seq(InternalTypes.BOOLEAN, InternalTypes.DATE, InternalTypes.DATE),
     new IfCallGen())
 
   addSqlFunction(
     IF,
-    Seq(BOOLEAN, TIME_WITHOUT_TIME_ZONE, TIME_WITHOUT_TIME_ZONE),
+    Seq(InternalTypes.BOOLEAN, InternalTypes.TIMESTAMP, InternalTypes.TIMESTAMP),
+    new IfCallGen())
+
+  addSqlFunction(
+    IF,
+    Seq(InternalTypes.BOOLEAN, InternalTypes.TIME, InternalTypes.TIME),
     new IfCallGen())
 
   addSqlFunction(
     IF,
     Seq(
-      BOOLEAN,
-      VARBINARY,
-      VARBINARY),
-    new IfCallGen())
-
-  addSqlFunction(
-    IF,
-    Seq(
-      BOOLEAN,
-      BINARY,
-      BINARY),
+      InternalTypes.BOOLEAN,
+      InternalTypes.BINARY,
+      InternalTypes.BINARY),
     new IfCallGen())
 
   addSqlFunctionMethod(
     DIV_INT,
-    Seq(INTEGER, INTEGER),
+    Seq(InternalTypes.INT, InternalTypes.INT),
     BuiltInMethods.DIV_INT)
 
   addSqlFunction(
     DIV,
-    Seq(DECIMAL, DOUBLE),
+    Seq(ANY_DEC_TYPE, InternalTypes.DOUBLE),
     new DivCallGen()
   )
 
   addSqlFunction(
     DIV,
-    Seq(DECIMAL, DECIMAL),
+    Seq(ANY_DEC_TYPE, ANY_DEC_TYPE),
     new DivCallGen()
   )
 
   addSqlFunction(
     DIV,
-    Seq(DOUBLE, DOUBLE),
+    Seq(InternalTypes.DOUBLE, InternalTypes.DOUBLE),
     new DivCallGen()
   )
 
   addSqlFunction(
     DIV,
-    Seq(DOUBLE, DECIMAL),
+    Seq(InternalTypes.DOUBLE, ANY_DEC_TYPE),
     new DivCallGen()
   )
 
   addSqlFunction(
     HASH_CODE,
-    Seq(BOOLEAN),
+    Seq(InternalTypes.BOOLEAN),
     new HashCodeCallGen())
 
   addSqlFunction(
     HASH_CODE,
-    Seq(INTEGER),
+    Seq(InternalTypes.BYTE),
     new HashCodeCallGen())
 
   addSqlFunction(
     HASH_CODE,
-    Seq(SMALLINT),
+    Seq(InternalTypes.SHORT),
     new HashCodeCallGen())
 
   addSqlFunction(
     HASH_CODE,
-    Seq(INTEGER),
+    Seq(InternalTypes.INT),
     new HashCodeCallGen())
 
   addSqlFunction(
     HASH_CODE,
-    Seq(BIGINT),
+    Seq(InternalTypes.LONG),
     new HashCodeCallGen())
 
   addSqlFunction(
     HASH_CODE,
-    Seq(FLOAT),
+    Seq(InternalTypes.FLOAT),
     new HashCodeCallGen())
 
   addSqlFunction(
     HASH_CODE,
-    Seq(DOUBLE),
+    Seq(InternalTypes.DOUBLE),
     new HashCodeCallGen())
 
   addSqlFunction(
     HASH_CODE,
-    Seq(DATE),
+    Seq(InternalTypes.CHAR),
     new HashCodeCallGen())
 
   addSqlFunction(
     HASH_CODE,
-    Seq(TIME_WITHOUT_TIME_ZONE),
+    Seq(InternalTypes.DATE),
     new HashCodeCallGen())
 
   addSqlFunction(
     HASH_CODE,
-    Seq(TIMESTAMP_WITHOUT_TIME_ZONE),
+    Seq(InternalTypes.TIME),
     new HashCodeCallGen())
 
   addSqlFunction(
     HASH_CODE,
-    Seq(VARBINARY),
+    Seq(InternalTypes.TIMESTAMP),
     new HashCodeCallGen())
 
   addSqlFunction(
     HASH_CODE,
-    Seq(BINARY),
+    Seq(InternalTypes.BINARY),
     new HashCodeCallGen())
 
   addSqlFunction(
     HASH_CODE,
-    Seq(DECIMAL),
+    Seq(DecimalType.SYSTEM_DEFAULT),
     new HashCodeCallGen())
 
   addSqlFunctionMethod(
     TO_DATE,
-    Seq(INTEGER),
+    Seq(InternalTypes.INT),
     BuiltInMethods.INT_TO_DATE)
 
   INTEGRAL_TYPES foreach (
@@ -814,13 +872,44 @@ object FunctionGenerator {
       BuiltInMethods.DOUBLE_TO_TIMESTAMP))
 
   addSqlFunctionMethod(TO_TIMESTAMP,
-    Seq(DECIMAL),
+    Seq(DecimalType.SYSTEM_DEFAULT),
     BuiltInMethods.DECIMAL_TO_TIMESTAMP)
 
   addSqlFunctionMethod(
     FROM_TIMESTAMP,
-    Seq(TIMESTAMP_WITHOUT_TIME_ZONE),
+    Seq(InternalTypes.TIMESTAMP),
     BuiltInMethods.TIMESTAMP_TO_BIGINT)
+
+  // Date/Time & BinaryString Converting -- start
+  addSqlFunctionMethod(
+    TO_DATE,
+    Seq(InternalTypes.STRING),
+    BuiltInMethod.STRING_TO_DATE.method)
+
+  addSqlFunctionMethod(
+    TO_DATE,
+    Seq(InternalTypes.STRING, InternalTypes.STRING),
+    BuiltInMethods.STRING_TO_DATE_WITH_FORMAT)
+
+  addSqlFunctionMethod(
+    TO_TIMESTAMP,
+    Seq(InternalTypes.STRING),
+    BuiltInMethods.STRING_TO_TIMESTAMP)
+
+  addSqlFunctionMethod(
+    TO_TIMESTAMP,
+    Seq(InternalTypes.STRING, InternalTypes.STRING),
+    BuiltInMethods.STRING_TO_TIMESTAMP_WITH_FORMAT)
+
+  addSqlFunctionMethod(
+    UNIX_TIMESTAMP,
+    Seq(InternalTypes.STRING),
+    BuiltInMethods.UNIX_TIMESTAMP_STR)
+
+  addSqlFunctionMethod(
+    UNIX_TIMESTAMP,
+    Seq(InternalTypes.STRING, InternalTypes.STRING),
+    BuiltInMethods.UNIX_TIMESTAMP_FORMAT)
 
   INTEGRAL_TYPES foreach (
     dt => addSqlFunctionMethod(
@@ -836,23 +925,93 @@ object FunctionGenerator {
 
   addSqlFunctionMethod(
     FROM_UNIXTIME,
-    Seq(DECIMAL),
+    Seq(DecimalType.SYSTEM_DEFAULT),
     BuiltInMethods.FROM_UNIXTIME_AS_DECIMAL)
 
-  addSqlFunctionMethod(FROM_UNIXTIME, Seq(BIGINT, VARCHAR), BuiltInMethods.FROM_UNIXTIME_FORMAT)
-  addSqlFunctionMethod(FROM_UNIXTIME, Seq(BIGINT, CHAR), BuiltInMethods.FROM_UNIXTIME_FORMAT)
-
-  addSqlFunctionMethod(DATE_SUB, Seq(VARCHAR, INTEGER), BuiltInMethods.DATE_SUB_S)
-  addSqlFunctionMethod(DATE_SUB, Seq(CHAR, INTEGER), BuiltInMethods.DATE_SUB_S)
+  addSqlFunctionMethod(
+    FROM_UNIXTIME,
+    Seq(InternalTypes.LONG, InternalTypes.STRING),
+    BuiltInMethods.FROM_UNIXTIME_FORMAT)
 
   addSqlFunctionMethod(
-    DATE_SUB, Seq(TIMESTAMP_WITHOUT_TIME_ZONE, INTEGER), BuiltInMethods.DATE_SUB_T)
-
-  addSqlFunctionMethod(DATE_ADD, Seq(VARCHAR, INTEGER), BuiltInMethods.DATE_ADD_S)
-  addSqlFunctionMethod(DATE_ADD, Seq(CHAR, INTEGER), BuiltInMethods.DATE_ADD_S)
+    DATEDIFF,
+    Seq(InternalTypes.TIMESTAMP, InternalTypes.STRING),
+    BuiltInMethods.DATEDIFF_T_S)
 
   addSqlFunctionMethod(
-    DATE_ADD, Seq(TIMESTAMP_WITHOUT_TIME_ZONE, INTEGER), BuiltInMethods.DATE_ADD_T)
+    DATEDIFF,
+    Seq(InternalTypes.STRING, InternalTypes.TIMESTAMP),
+    BuiltInMethods.DATEDIFF_S_T)
+
+  addSqlFunctionMethod(
+    DATEDIFF,
+    Seq(InternalTypes.STRING, InternalTypes.STRING),
+    BuiltInMethods.DATEDIFF_S_S)
+
+  addSqlFunctionMethod(
+    DATE_FORMAT,
+    Seq(InternalTypes.TIMESTAMP, InternalTypes.STRING),
+    BuiltInMethods.DATE_FORMAT_LONG_STRING)
+
+  addSqlFunctionMethod(
+    DATE_FORMAT,
+    Seq(InternalTypes.STRING, InternalTypes.STRING),
+    BuiltInMethods.DATE_FORMAT_STIRNG_STRING)
+
+  addSqlFunctionMethod(
+    DATE_FORMAT,
+    Seq(InternalTypes.STRING, InternalTypes.STRING, InternalTypes.STRING),
+    BuiltInMethods.DATE_FORMAT_STRING_STRING_STRING)
+
+  addSqlFunctionMethod(
+    DATE_SUB,
+    Seq(InternalTypes.STRING, InternalTypes.INT),
+    BuiltInMethods.DATE_SUB_S)
+
+  addSqlFunctionMethod(
+    DATE_SUB,
+    Seq(InternalTypes.TIMESTAMP, InternalTypes.INT),
+    BuiltInMethods.DATE_SUB_T)
+
+  addSqlFunctionMethod(
+    DATE_ADD,
+    Seq(InternalTypes.STRING, InternalTypes.INT),
+    BuiltInMethods.DATE_ADD_S)
+
+  addSqlFunctionMethod(
+    DATE_ADD,
+    Seq(InternalTypes.TIMESTAMP, InternalTypes.INT),
+    BuiltInMethods.DATE_ADD_T)
+
+  addSqlFunctionMethod(
+    TO_TIMESTAMP_TZ,
+    Seq(InternalTypes.STRING, InternalTypes.STRING),
+    BuiltInMethods.STRING_TO_TIMESTAMP_TZ)
+
+  addSqlFunctionMethod(
+    TO_TIMESTAMP_TZ,
+    Seq(InternalTypes.STRING, InternalTypes.STRING, InternalTypes.STRING),
+    BuiltInMethods.STRING_TO_TIMESTAMP_FORMAT_TZ)
+
+  addSqlFunctionMethod(
+    DATE_FORMAT_TZ,
+    Seq(InternalTypes.TIMESTAMP, InternalTypes.STRING),
+    BuiltInMethods.DATE_FORMAT_LONG_ZONE)
+
+  addSqlFunctionMethod(
+    DATE_FORMAT_TZ,
+    Seq(InternalTypes.TIMESTAMP, InternalTypes.STRING, InternalTypes.STRING),
+    BuiltInMethods.DATE_FORMAT_LONG_STRING_ZONE)
+
+  addSqlFunctionMethod(
+    CONVERT_TZ,
+    Seq(InternalTypes.STRING, InternalTypes.STRING, InternalTypes.STRING),
+    BuiltInMethods.CONVERT_TZ)
+
+  addSqlFunctionMethod(
+    CONVERT_TZ,
+    Seq(InternalTypes.STRING, InternalTypes.STRING, InternalTypes.STRING, InternalTypes.STRING),
+    BuiltInMethods.CONVERT_FORMAT_TZ)
 
   // ----------------------------------------------------------------------------------------------
 
@@ -867,57 +1026,46 @@ object FunctionGenerator {
     */
   def getCallGenerator(
     sqlOperator: SqlOperator,
-    operandTypes: Seq[LogicalType],
-    resultType: LogicalType)
+    operandTypes: Seq[InternalType],
+    resultType: InternalType)
   : Option[CallGenerator] = sqlOperator match {
+
+    // TODO: support user-defined scalar function
+
+    // TODO: support user-defined table function
+
     // built-in scalar function
     case _ =>
-      val typeRoots = operandTypes.map(_.getTypeRoot)
-      sqlFunctions.get((sqlOperator, typeRoots))
+      sqlFunctions.get((sqlOperator, operandTypes))
         .orElse(sqlFunctions.find(entry => entry._1._1 == sqlOperator
-          && entry._1._2.length == typeRoots.length
-          && entry._1._2.zip(typeRoots).forall {
-          case (DECIMAL, DECIMAL) => true
-          case (x, y) if isPrimitive(x) && isPrimitive(y) => shouldAutoCastTo(y, x) || x == y
-          case (x, y) => x == y
+          && entry._1._2.length == operandTypes.length
+          && entry._1._2.zip(operandTypes).forall {
+          case (x: DecimalType, y: DecimalType) => true
+          case (x: PrimitiveType, y: PrimitiveType) => 
+            InternalTypeUtils.shouldAutoCastTo(y, x) || x == y
+          case (x: InternalType, y: InternalType) => x == y
           case _ => false
         }).map(_._2))
-  }
 
-  /**
-    * Returns whether this type should be automatically casted to
-    * the target type in an arithmetic operation.
-    */
-  def shouldAutoCastTo(from: LogicalTypeRoot, to: LogicalTypeRoot): Boolean = {
-    from match {
-      case TINYINT =>
-        (to eq SMALLINT) || (to eq INTEGER) || (to eq BIGINT) || (to eq FLOAT) || (to eq DOUBLE)
-      case SMALLINT =>
-        (to eq INTEGER) || (to eq BIGINT) || (to eq FLOAT) || (to eq DOUBLE)
-      case INTEGER =>
-        (to eq BIGINT) || (to eq FLOAT) || (to eq DOUBLE)
-      case BIGINT =>
-        (to eq FLOAT) || (to eq DOUBLE)
-      case FLOAT =>
-        to eq DOUBLE
-      case _ =>
-        false
-    }
   }
 
   // ----------------------------------------------------------------------------------------------
 
   private def addSqlFunctionMethod(
     sqlOperator: SqlOperator,
-    operandTypes: Seq[LogicalTypeRoot],
-    method: Method): Unit = {
+    operandTypes: Seq[InternalType],
+    method: Method)
+  : Unit = {
     sqlFunctions((sqlOperator, operandTypes)) = new MethodCallGen(method)
   }
 
   private def addSqlFunction(
     sqlOperator: SqlOperator,
-    operandTypes: Seq[LogicalTypeRoot],
-    callGenerator: CallGenerator): Unit = {
+    operandTypes: Seq[InternalType],
+    callGenerator: CallGenerator)
+  : Unit = {
     sqlFunctions((sqlOperator, operandTypes)) = callGenerator
   }
+
+
 }

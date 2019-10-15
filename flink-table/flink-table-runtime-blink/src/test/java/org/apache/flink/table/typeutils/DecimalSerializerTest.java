@@ -22,7 +22,7 @@ import org.apache.flink.api.common.typeutils.SerializerTestBase;
 import org.apache.flink.table.dataformat.Decimal;
 
 /**
- * A test for the {@link DecimalSerializer}.
+ * A test for the {@link BinaryArraySerializer}.
  */
 public class DecimalSerializerTest extends SerializerTestBase<Decimal> {
 

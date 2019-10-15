@@ -18,17 +18,18 @@
 
 package org.apache.flink.api.java.io.jdbc;
 
+import org.apache.flink.api.common.io.RichOutputFormat;
+import org.apache.flink.configuration.Configuration;
 import org.apache.flink.types.Row;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
-
-import static org.apache.flink.api.java.io.jdbc.JDBCUtils.setRecordToStatement;
 
 /**
  * OutputFormat to write Rows into a JDBC database.
@@ -37,25 +38,31 @@ import static org.apache.flink.api.java.io.jdbc.JDBCUtils.setRecordToStatement;
  * @see Row
  * @see DriverManager
  */
-public class JDBCOutputFormat extends AbstractJDBCOutputFormat<Row> {
-
+public class JDBCOutputFormat extends RichOutputFormat<Row> {
 	private static final long serialVersionUID = 1L;
+	static final int DEFAULT_BATCH_INTERVAL = 5000;
 
 	private static final Logger LOG = LoggerFactory.getLogger(JDBCOutputFormat.class);
 
-	private final String query;
-	private final int batchInterval;
-	private final int[] typesArray;
+	private String username;
+	private String password;
+	private String drivername;
+	private String dbURL;
+	private String query;
+	private int batchInterval = DEFAULT_BATCH_INTERVAL;
 
+	private Connection dbConn;
 	private PreparedStatement upload;
+
 	private int batchCount = 0;
 
-	public JDBCOutputFormat(String username, String password, String drivername,
-			String dbURL, String query, int batchInterval, int[] typesArray) {
-		super(username, password, drivername, dbURL);
-		this.query = query;
-		this.batchInterval = batchInterval;
-		this.typesArray = typesArray;
+	private int[] typesArray;
+
+	public JDBCOutputFormat() {
+	}
+
+	@Override
+	public void configure(Configuration parameters) {
 	}
 
 	/**
@@ -69,7 +76,7 @@ public class JDBCOutputFormat extends AbstractJDBCOutputFormat<Row> {
 	public void open(int taskNumber, int numTasks) throws IOException {
 		try {
 			establishConnection();
-			upload = connection.prepareStatement(query);
+			upload = dbConn.prepareStatement(query);
 		} catch (SQLException sqe) {
 			throw new IllegalArgumentException("open() failed.", sqe);
 		} catch (ClassNotFoundException cnfe) {
@@ -77,16 +84,135 @@ public class JDBCOutputFormat extends AbstractJDBCOutputFormat<Row> {
 		}
 	}
 
+	private void establishConnection() throws SQLException, ClassNotFoundException {
+		Class.forName(drivername);
+		if (username == null) {
+			dbConn = DriverManager.getConnection(dbURL);
+		} else {
+			dbConn = DriverManager.getConnection(dbURL, username, password);
+		}
+	}
+
+	/**
+	 * Adds a record to the prepared statement.
+	 *
+	 * <p>When this method is called, the output format is guaranteed to be opened.
+	 *
+	 * <p>WARNING: this may fail when no column types specified (because a best effort approach is attempted in order to
+	 * insert a null value but it's not guaranteed that the JDBC driver handles PreparedStatement.setObject(pos, null))
+	 *
+	 * @param row The records to add to the output.
+	 * @see PreparedStatement
+	 * @throws IOException Thrown, if the records could not be added due to an I/O problem.
+	 */
 	@Override
 	public void writeRecord(Row row) throws IOException {
+
+		if (typesArray != null && typesArray.length > 0 && typesArray.length != row.getArity()) {
+			LOG.warn("Column SQL types array doesn't match arity of passed Row! Check the passed array...");
+		}
 		try {
-			setRecordToStatement(upload, typesArray, row);
+
+			if (typesArray == null) {
+				// no types provided
+				for (int index = 0; index < row.getArity(); index++) {
+					LOG.warn("Unknown column type for column {}. Best effort approach to set its value: {}.", index + 1, row.getField(index));
+					upload.setObject(index + 1, row.getField(index));
+				}
+			} else {
+				// types provided
+				for (int index = 0; index < row.getArity(); index++) {
+
+					if (row.getField(index) == null) {
+						upload.setNull(index + 1, typesArray[index]);
+					} else {
+						try {
+							// casting values as suggested by http://docs.oracle.com/javase/1.5.0/docs/guide/jdbc/getstart/mapping.html
+							switch (typesArray[index]) {
+								case java.sql.Types.NULL:
+									upload.setNull(index + 1, typesArray[index]);
+									break;
+								case java.sql.Types.BOOLEAN:
+								case java.sql.Types.BIT:
+									upload.setBoolean(index + 1, (boolean) row.getField(index));
+									break;
+								case java.sql.Types.CHAR:
+								case java.sql.Types.NCHAR:
+								case java.sql.Types.VARCHAR:
+								case java.sql.Types.LONGVARCHAR:
+								case java.sql.Types.LONGNVARCHAR:
+									upload.setString(index + 1, (String) row.getField(index));
+									break;
+								case java.sql.Types.TINYINT:
+									upload.setByte(index + 1, (byte) row.getField(index));
+									break;
+								case java.sql.Types.SMALLINT:
+									upload.setShort(index + 1, (short) row.getField(index));
+									break;
+								case java.sql.Types.INTEGER:
+									upload.setInt(index + 1, (int) row.getField(index));
+									break;
+								case java.sql.Types.BIGINT:
+									upload.setLong(index + 1, (long) row.getField(index));
+									break;
+								case java.sql.Types.REAL:
+									upload.setFloat(index + 1, (float) row.getField(index));
+									break;
+								case java.sql.Types.FLOAT:
+								case java.sql.Types.DOUBLE:
+									upload.setDouble(index + 1, (double) row.getField(index));
+									break;
+								case java.sql.Types.DECIMAL:
+								case java.sql.Types.NUMERIC:
+									upload.setBigDecimal(index + 1, (java.math.BigDecimal) row.getField(index));
+									break;
+								case java.sql.Types.DATE:
+									upload.setDate(index + 1, (java.sql.Date) row.getField(index));
+									break;
+								case java.sql.Types.TIME:
+									upload.setTime(index + 1, (java.sql.Time) row.getField(index));
+									break;
+								case java.sql.Types.TIMESTAMP:
+									upload.setTimestamp(index + 1, (java.sql.Timestamp) row.getField(index));
+									break;
+								case java.sql.Types.BINARY:
+								case java.sql.Types.VARBINARY:
+								case java.sql.Types.LONGVARBINARY:
+									upload.setBytes(index + 1, (byte[]) row.getField(index));
+									break;
+								default:
+									upload.setObject(index + 1, row.getField(index));
+									LOG.warn("Unmanaged sql type ({}) for column {}. Best effort approach to set its value: {}.",
+										typesArray[index], index + 1, row.getField(index));
+									// case java.sql.Types.SQLXML
+									// case java.sql.Types.ARRAY:
+									// case java.sql.Types.JAVA_OBJECT:
+									// case java.sql.Types.BLOB:
+									// case java.sql.Types.CLOB:
+									// case java.sql.Types.NCLOB:
+									// case java.sql.Types.DATALINK:
+									// case java.sql.Types.DISTINCT:
+									// case java.sql.Types.OTHER:
+									// case java.sql.Types.REF:
+									// case java.sql.Types.ROWID:
+									// case java.sql.Types.STRUC
+							}
+						} catch (ClassCastException e) {
+							// enrich the exception with detailed information.
+							String errorMessage = String.format(
+								"%s, field index: %s, field value: %s.", e.getMessage(), index, row.getField(index));
+							ClassCastException enrichedException = new ClassCastException(errorMessage);
+							enrichedException.setStackTrace(e.getStackTrace());
+							throw enrichedException;
+						}
+					}
+				}
+			}
 			upload.addBatch();
+			batchCount++;
 		} catch (SQLException e) {
 			throw new RuntimeException("Preparation of JDBC statement failed.", e);
 		}
-
-		batchCount++;
 
 		if (batchCount >= batchInterval) {
 			// execute batch
@@ -116,6 +242,7 @@ public class JDBCOutputFormat extends AbstractJDBCOutputFormat<Row> {
 	public void close() throws IOException {
 		if (upload != null) {
 			flush();
+			// close the connection
 			try {
 				upload.close();
 			} catch (SQLException e) {
@@ -125,7 +252,15 @@ public class JDBCOutputFormat extends AbstractJDBCOutputFormat<Row> {
 			}
 		}
 
-		closeDbConnection();
+		if (dbConn != null) {
+			try {
+				dbConn.close();
+			} catch (SQLException se) {
+				LOG.info("JDBC connection could not be closed: " + se.getMessage());
+			} finally {
+				dbConn = null;
+			}
+		}
 	}
 
 	public static JDBCOutputFormatBuilder buildJDBCOutputFormat() {
@@ -136,48 +271,44 @@ public class JDBCOutputFormat extends AbstractJDBCOutputFormat<Row> {
 	 * Builder for a {@link JDBCOutputFormat}.
 	 */
 	public static class JDBCOutputFormatBuilder {
-		private String username;
-		private String password;
-		private String drivername;
-		private String dbURL;
-		private String query;
-		private int batchInterval = DEFAULT_FLUSH_MAX_SIZE;
-		private int[] typesArray;
+		private final JDBCOutputFormat format;
 
-		protected JDBCOutputFormatBuilder() {}
+		protected JDBCOutputFormatBuilder() {
+			this.format = new JDBCOutputFormat();
+		}
 
 		public JDBCOutputFormatBuilder setUsername(String username) {
-			this.username = username;
+			format.username = username;
 			return this;
 		}
 
 		public JDBCOutputFormatBuilder setPassword(String password) {
-			this.password = password;
+			format.password = password;
 			return this;
 		}
 
 		public JDBCOutputFormatBuilder setDrivername(String drivername) {
-			this.drivername = drivername;
+			format.drivername = drivername;
 			return this;
 		}
 
 		public JDBCOutputFormatBuilder setDBUrl(String dbURL) {
-			this.dbURL = dbURL;
+			format.dbURL = dbURL;
 			return this;
 		}
 
 		public JDBCOutputFormatBuilder setQuery(String query) {
-			this.query = query;
+			format.query = query;
 			return this;
 		}
 
 		public JDBCOutputFormatBuilder setBatchInterval(int batchInterval) {
-			this.batchInterval = batchInterval;
+			format.batchInterval = batchInterval;
 			return this;
 		}
 
 		public JDBCOutputFormatBuilder setSqlTypes(int[] typesArray) {
-			this.typesArray = typesArray;
+			format.typesArray = typesArray;
 			return this;
 		}
 
@@ -187,25 +318,23 @@ public class JDBCOutputFormat extends AbstractJDBCOutputFormat<Row> {
 		 * @return Configured JDBCOutputFormat
 		 */
 		public JDBCOutputFormat finish() {
-			if (this.username == null) {
+			if (format.username == null) {
 				LOG.info("Username was not supplied.");
 			}
-			if (this.password == null) {
+			if (format.password == null) {
 				LOG.info("Password was not supplied.");
 			}
-			if (this.dbURL == null) {
+			if (format.dbURL == null) {
 				throw new IllegalArgumentException("No database URL supplied.");
 			}
-			if (this.query == null) {
+			if (format.query == null) {
 				throw new IllegalArgumentException("No query supplied.");
 			}
-			if (this.drivername == null) {
+			if (format.drivername == null) {
 				throw new IllegalArgumentException("No driver supplied.");
 			}
 
-			return new JDBCOutputFormat(
-					username, password, drivername, dbURL,
-					query, batchInterval, typesArray);
+			return format;
 		}
 	}
 

@@ -57,7 +57,7 @@ import org.apache.flink.table.runtime.window.internal.InternalWindowProcessFunct
 import org.apache.flink.table.runtime.window.internal.MergingWindowProcessFunction;
 import org.apache.flink.table.runtime.window.internal.PanedWindowProcessFunction;
 import org.apache.flink.table.runtime.window.triggers.Trigger;
-import org.apache.flink.table.types.logical.LogicalType;
+import org.apache.flink.table.type.InternalType;
 import org.apache.flink.table.typeutils.BaseRowSerializer;
 
 import org.apache.commons.lang3.ArrayUtils;
@@ -116,13 +116,13 @@ public class WindowOperator<K, W extends Window>
 	/** For serializing the window in checkpoints. */
 	private final TypeSerializer<W> windowSerializer;
 
-	private final LogicalType[] inputFieldTypes;
+	private final InternalType[] inputFieldTypes;
 
-	private final LogicalType[] accumulatorTypes;
+	private final InternalType[] accumulatorTypes;
 
-	private final LogicalType[] aggResultTypes;
+	private final InternalType[] aggResultTypes;
 
-	private final LogicalType[] windowPropertyTypes;
+	private final InternalType[] windowPropertyTypes;
 
 	private final boolean sendRetraction;
 
@@ -184,10 +184,10 @@ public class WindowOperator<K, W extends Window>
 			WindowAssigner<W> windowAssigner,
 			Trigger<W> trigger,
 			TypeSerializer<W> windowSerializer,
-			LogicalType[] inputFieldTypes,
-			LogicalType[] accumulatorTypes,
-			LogicalType[] aggResultTypes,
-			LogicalType[] windowPropertyTypes,
+			InternalType[] inputFieldTypes,
+			InternalType[] accumulatorTypes,
+			InternalType[] aggResultTypes,
+			InternalType[] windowPropertyTypes,
 			int rowtimeIndex,
 			boolean sendRetraction,
 			long allowedLateness) {
@@ -217,10 +217,10 @@ public class WindowOperator<K, W extends Window>
 			WindowAssigner<W> windowAssigner,
 			Trigger<W> trigger,
 			TypeSerializer<W> windowSerializer,
-			LogicalType[] inputFieldTypes,
-			LogicalType[] accumulatorTypes,
-			LogicalType[] aggResultTypes,
-			LogicalType[] windowPropertyTypes,
+			InternalType[] inputFieldTypes,
+			InternalType[] accumulatorTypes,
+			InternalType[] aggResultTypes,
+			InternalType[] windowPropertyTypes,
 			int rowtimeIndex,
 			boolean sendRetraction,
 			long allowedLateness) {
@@ -262,7 +262,7 @@ public class WindowOperator<K, W extends Window>
 		this.windowState = (InternalValueState<K, W, BaseRow>) getOrCreateKeyedState(windowSerializer, windowStateDescriptor);
 
 		if (sendRetraction) {
-			LogicalType[] valueTypes = ArrayUtils.addAll(aggResultTypes, windowPropertyTypes);
+			InternalType[] valueTypes = ArrayUtils.addAll(aggResultTypes, windowPropertyTypes);
 			StateDescriptor<ValueState<BaseRow>, BaseRow> previousStateDescriptor = new ValueStateDescriptor<>(
 					"previous-aggs",
 					new BaseRowSerializer(getExecutionConfig(), valueTypes));

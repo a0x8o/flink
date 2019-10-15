@@ -18,10 +18,9 @@
 
 package org.apache.flink.table.plan.nodes.physical.batch
 
-import org.apache.flink.api.dag.Transformation
-import org.apache.flink.streaming.api.transformations.OneInputTransformation
-import org.apache.flink.table.api.ExecutionConfigOptions
-import org.apache.flink.table.calcite.FlinkRelBuilder.PlannerNamedWindowProperty
+import org.apache.flink.streaming.api.transformations.{OneInputTransformation, StreamTransformation}
+import org.apache.flink.table.api.{BatchTableEnvironment, TableConfig, TableConfigOptions}
+import org.apache.flink.table.calcite.FlinkRelBuilder.NamedWindowProperty
 import org.apache.flink.table.calcite.FlinkTypeFactory
 import org.apache.flink.table.codegen.CodeGeneratorContext
 import org.apache.flink.table.codegen.agg.batch.{SortWindowCodeGenerator, WindowCodeGenerator}
@@ -31,9 +30,7 @@ import org.apache.flink.table.plan.cost.{FlinkCost, FlinkCostFactory}
 import org.apache.flink.table.plan.logical.LogicalWindow
 import org.apache.flink.table.plan.nodes.exec.{BatchExecNode, ExecNode}
 import org.apache.flink.table.plan.util.AggregateUtil.transformToBatchAggregateInfoList
-import org.apache.flink.table.planner.BatchPlanner
-import org.apache.flink.table.runtime.CodeGenOperatorFactory
-import org.apache.flink.table.typeutils.BaseRowTypeInfo
+import org.apache.flink.table.runtime.OneInputOperatorWrapper
 
 import org.apache.calcite.plan.{RelOptCluster, RelOptCost, RelOptPlanner, RelTraitSet}
 import org.apache.calcite.rel.RelNode
@@ -60,7 +57,7 @@ abstract class BatchExecSortWindowAggregateBase(
     window: LogicalWindow,
     inputTimeFieldIndex: Int,
     inputTimeIsDate: Boolean,
-    namedProperties: Seq[PlannerNamedWindowProperty],
+    namedProperties: Seq[NamedWindowProperty],
     enableAssignPane: Boolean = false,
     isMerge: Boolean,
     isFinal: Boolean)
@@ -96,30 +93,32 @@ abstract class BatchExecSortWindowAggregateBase(
 
   //~ ExecNode methods -----------------------------------------------------------
 
-  override def getInputNodes: util.List[ExecNode[BatchPlanner, _]] =
-    List(getInput.asInstanceOf[ExecNode[BatchPlanner, _]])
+  override def getInputNodes: util.List[ExecNode[BatchTableEnvironment, _]] =
+    List(getInput.asInstanceOf[ExecNode[BatchTableEnvironment, _]])
 
   override def replaceInputNode(
       ordinalInParent: Int,
-      newInputNode: ExecNode[BatchPlanner, _]): Unit = {
+      newInputNode: ExecNode[BatchTableEnvironment, _]): Unit = {
     replaceInput(ordinalInParent, newInputNode.asInstanceOf[RelNode])
   }
 
   def getOperatorName: String
 
-  override protected def translateToPlanInternal(
-      planner: BatchPlanner): Transformation[BaseRow] = {
-    val input = getInputNodes.get(0).translateToPlan(planner)
-        .asInstanceOf[Transformation[BaseRow]]
-    val ctx = CodeGeneratorContext(planner.getTableConfig)
-    val outputType = FlinkTypeFactory.toLogicalRowType(getRowType)
-    val inputType = FlinkTypeFactory.toLogicalRowType(inputRowType)
+  def getParallelism(input: StreamTransformation[BaseRow], conf: TableConfig): Int
+
+  override def translateToPlanInternal(
+      tableEnv: BatchTableEnvironment): StreamTransformation[BaseRow] = {
+    val input = getInputNodes.get(0).translateToPlan(tableEnv)
+        .asInstanceOf[StreamTransformation[BaseRow]]
+    val ctx = CodeGeneratorContext(tableEnv.getConfig)
+    val outputType = FlinkTypeFactory.toInternalRowType(getRowType)
+    val inputType = FlinkTypeFactory.toInternalRowType(inputRowType)
 
     val aggInfos = transformToBatchAggregateInfoList(
       aggCallToAggFunction.map(_._1), aggInputRowType)
 
-    val groupBufferLimitSize = planner.getTableConfig.getConfiguration.getInteger(
-      ExecutionConfigOptions.SQL_EXEC_WINDOW_AGG_BUFFER_SIZE_LIMIT)
+    val groupBufferLimitSize = tableEnv.getConfig.getConf.getInteger(
+      TableConfigOptions.SQL_EXEC_WINDOW_AGG_BUFFER_SIZE_LIMIT)
 
     val (windowSize: Long, slideSize: Long) = WindowCodeGenerator.getWindowDef(window)
 
@@ -134,12 +133,12 @@ abstract class BatchExecSortWindowAggregateBase(
     } else {
       generator.genWithKeys()
     }
-    val operator = new CodeGenOperatorFactory[BaseRow](generatedOperator)
+    val operator = new OneInputOperatorWrapper[BaseRow, BaseRow](generatedOperator)
     new OneInputTransformation(
       input,
       getOperatorName,
       operator,
-      BaseRowTypeInfo.of(outputType),
-      getResource.getParallelism)
+      outputType.toTypeInfo,
+      getParallelism(input, tableEnv.config))
   }
 }

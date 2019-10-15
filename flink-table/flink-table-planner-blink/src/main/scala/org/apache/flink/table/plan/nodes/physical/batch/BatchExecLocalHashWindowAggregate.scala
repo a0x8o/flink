@@ -19,7 +19,7 @@
 package org.apache.flink.table.plan.nodes.physical.batch
 
 import org.apache.flink.runtime.operators.DamBehavior
-import org.apache.flink.table.calcite.FlinkRelBuilder.PlannerNamedWindowProperty
+import org.apache.flink.table.calcite.FlinkRelBuilder.NamedWindowProperty
 import org.apache.flink.table.functions.UserDefinedFunction
 import org.apache.flink.table.plan.logical.LogicalWindow
 
@@ -42,9 +42,9 @@ class BatchExecLocalHashWindowAggregate(
     auxGrouping: Array[Int],
     aggCallToAggFunction: Seq[(AggregateCall, UserDefinedFunction)],
     window: LogicalWindow,
-    val inputTimeFieldIndex: Int,
+    inputTimeFieldIndex: Int,
     inputTimeIsDate: Boolean,
-    namedProperties: Seq[PlannerNamedWindowProperty],
+    namedProperties: Seq[NamedWindowProperty],
     enableAssignPane: Boolean = false)
   extends BatchExecHashWindowAggregateBase(
     cluster,

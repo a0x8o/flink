@@ -179,7 +179,7 @@ class DecimalTypeTest extends ExpressionTestBase {
 
     // implicit cast to decimal
     testAllApis(
-      12.toExpr + 'f1,
+      Literal(12) + 'f1,
       "12 + f1",
       "12 + f1",
       "123456789123456789123456801")

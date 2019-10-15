@@ -21,7 +21,6 @@ package org.apache.flink.runtime.io.network.partition.consumer;
 import org.apache.flink.runtime.event.TaskEvent;
 import org.apache.flink.runtime.execution.CancelTaskException;
 import org.apache.flink.runtime.io.network.TaskEventPublisher;
-import org.apache.flink.runtime.io.network.metrics.InputChannelMetrics;
 import org.apache.flink.runtime.io.network.partition.BufferAvailabilityListener;
 import org.apache.flink.runtime.io.network.partition.PartitionNotFoundException;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
@@ -193,7 +192,7 @@ public class LocalInputChannel extends InputChannel implements BufferAvailabilit
 			}
 		}
 
-		numBytesIn.inc(next.buffer().getSize());
+		numBytesIn.inc(next.buffer().getSizeUnsafe());
 		numBuffersIn.inc();
 		return Optional.of(new BufferAndAvailability(next.buffer(), next.isMoreAvailable(), next.buffersInBacklog()));
 	}
@@ -237,6 +236,13 @@ public class LocalInputChannel extends InputChannel implements BufferAvailabilit
 		return isReleased;
 	}
 
+	@Override
+	void notifySubpartitionConsumed() throws IOException {
+		if (subpartitionView != null) {
+			subpartitionView.notifySubpartitionConsumed();
+		}
+	}
+
 	/**
 	 * Releases the partition reader.
 	 */
@@ -251,17 +257,6 @@ public class LocalInputChannel extends InputChannel implements BufferAvailabilit
 				subpartitionView = null;
 			}
 		}
-	}
-
-	@Override
-	public int unsynchronizedGetNumberOfQueuedBuffers() {
-		ResultSubpartitionView view = subpartitionView;
-
-		if (view != null) {
-			return view.unsynchronizedGetNumberOfQueuedBuffers();
-		}
-
-		return 0;
 	}
 
 	@Override

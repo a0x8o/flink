@@ -75,7 +75,10 @@ abstract class CsvTableSourceFactoryBase extends TableFactory {
     // validate
     new FileSystemValidator().validate(params)
     new OldCsvValidator().validate(params)
-    new SchemaValidator(isStreaming, false, false).validate(params)
+    new SchemaValidator(
+      isStreaming,
+      supportsSourceTimestamps = false,
+      supportsSourceWatermarks = false).validate(params)
 
     // build
     val csvTableSourceBuilder = new CsvTableSource.Builder

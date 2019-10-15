@@ -24,9 +24,7 @@ import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.typeutils.TupleTypeInfo;
 import org.apache.flink.streaming.api.datastream.DataStream;
-import org.apache.flink.streaming.api.datastream.DataStreamSink;
 import org.apache.flink.streaming.experimental.CollectSink;
-import org.apache.flink.table.api.TableSchema;
 import org.apache.flink.table.sinks.RetractStreamTableSink;
 import org.apache.flink.types.Row;
 
@@ -40,39 +38,43 @@ public class CollectStreamTableSink implements RetractStreamTableSink<Row> {
 	private final InetAddress targetAddress;
 	private final int targetPort;
 	private final TypeSerializer<Tuple2<Boolean, Row>> serializer;
-	private final TableSchema tableSchema;
 
-	public CollectStreamTableSink(InetAddress targetAddress, int targetPort, TypeSerializer<Tuple2<Boolean, Row>> serializer, TableSchema tableSchema) {
+	private String[] fieldNames;
+	private TypeInformation<?>[] fieldTypes;
+
+	public CollectStreamTableSink(InetAddress targetAddress, int targetPort, TypeSerializer<Tuple2<Boolean, Row>> serializer) {
 		this.targetAddress = targetAddress;
 		this.targetPort = targetPort;
 		this.serializer = serializer;
-		this.tableSchema = tableSchema;
 	}
 
 	@Override
-	public TableSchema getTableSchema() {
-		return tableSchema;
+	public String[] getFieldNames() {
+		return fieldNames;
+	}
+
+	@Override
+	public TypeInformation<?>[] getFieldTypes() {
+		return fieldTypes;
 	}
 
 	@Override
 	public CollectStreamTableSink configure(String[] fieldNames, TypeInformation<?>[] fieldTypes) {
-		return new CollectStreamTableSink(targetAddress, targetPort, serializer, tableSchema);
+		final CollectStreamTableSink copy = new CollectStreamTableSink(targetAddress, targetPort, serializer);
+		copy.fieldNames = fieldNames;
+		copy.fieldTypes = fieldTypes;
+		return copy;
 	}
 
 	@Override
 	public TypeInformation<Row> getRecordType() {
-		return getTableSchema().toRowType();
+		return Types.ROW_NAMED(fieldNames, fieldTypes);
 	}
 
 	@Override
 	public void emitDataStream(DataStream<Tuple2<Boolean, Row>> stream) {
-		consumeDataStream(stream);
-	}
-
-	@Override
-	public DataStreamSink<?> consumeDataStream(DataStream<Tuple2<Boolean, Row>> stream) {
 		// add sink
-		return stream
+		stream
 			.addSink(new CollectSink<>(targetAddress, targetPort, serializer))
 			.name("SQL Client Stream Collect Sink")
 			.setParallelism(1);

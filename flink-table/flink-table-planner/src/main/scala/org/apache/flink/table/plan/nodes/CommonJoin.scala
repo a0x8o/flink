@@ -45,8 +45,6 @@ trait CommonJoin {
       case JoinRelType.LEFT=> "LeftOuterJoin"
       case JoinRelType.RIGHT => "RightOuterJoin"
       case JoinRelType.FULL => "FullOuterJoin"
-      case JoinRelType.SEMI => "SemiJoin"
-      case JoinRelType.ANTI => "AntiJoin"
     }
   }
 

@@ -18,7 +18,6 @@
 
 package org.apache.flink.formats.json;
 
-import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.types.Row;
 
@@ -28,16 +27,15 @@ import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.databind.node.Obje
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.io.IOException;
 import java.math.BigDecimal;
 import java.sql.Date;
 import java.sql.Time;
 import java.sql.Timestamp;
 import java.util.concurrent.ThreadLocalRandom;
 
-import static org.apache.flink.formats.utils.DeserializationSchemaMatcher.whenDeserializedWith;
-import static org.hamcrest.Matchers.instanceOf;
-import static org.junit.Assert.assertThat;
-import static org.junit.internal.matchers.ThrowableCauseMatcher.hasCause;
+import static org.junit.Assert.assertArrayEquals;
+import static org.junit.Assert.assertEquals;
 
 /**
  * Tests for the {@link JsonRowDeserializationSchema}.
@@ -64,18 +62,18 @@ public class JsonRowDeserializationSchemaTest {
 
 		byte[] serializedJson = objectMapper.writeValueAsBytes(root);
 
-		JsonRowDeserializationSchema deserializationSchema = new JsonRowDeserializationSchema.Builder(
+		JsonRowDeserializationSchema deserializationSchema = new JsonRowDeserializationSchema(
 			Types.ROW_NAMED(
-				new String[]{"id", "name", "bytes"},
+				new String[] { "id", "name", "bytes" },
 				Types.LONG, Types.STRING, Types.PRIMITIVE_ARRAY(Types.BYTE))
-		).build();
+		);
 
-		Row row = new Row(3);
-		row.setField(0, id);
-		row.setField(1, name);
-		row.setField(2, bytes);
+		Row deserialized = deserializationSchema.deserialize(serializedJson);
 
-		assertThat(serializedJson, whenDeserializedWith(deserializationSchema).equalsTo(row));
+		assertEquals(3, deserialized.getArity());
+		assertEquals(id, deserialized.getField(0));
+		assertEquals(name, deserialized.getField(1));
+		assertArrayEquals(bytes, (byte[]) deserialized.getField(2));
 	}
 
 	@Test
@@ -105,7 +103,7 @@ public class JsonRowDeserializationSchemaTest {
 
 		final byte[] serializedJson = objectMapper.writeValueAsBytes(root);
 
-		JsonRowDeserializationSchema deserializationSchema = new JsonRowDeserializationSchema.Builder(
+		JsonRowDeserializationSchema deserializationSchema = new JsonRowDeserializationSchema(
 			"{" +
 			"    type: 'object'," +
 			"    properties: {" +
@@ -126,7 +124,9 @@ public class JsonRowDeserializationSchemaTest {
 			"             }" +
 			"         }" +
 			"    }" +
-			"}").build();
+			"}");
+
+		final Row deserialized = deserializationSchema.deserialize(serializedJson);
 
 		final Row expected = new Row(10);
 		expected.setField(0, id);
@@ -143,7 +143,7 @@ public class JsonRowDeserializationSchemaTest {
 		nestedRow.setField(1, BigDecimal.valueOf(12));
 		expected.setField(9, nestedRow);
 
-		assertThat(serializedJson, whenDeserializedWith(deserializationSchema).equalsTo(expected));
+		assertEquals(expected, deserialized);
 	}
 
 	/**
@@ -158,25 +158,25 @@ public class JsonRowDeserializationSchemaTest {
 		root.put("id", 123123123);
 		byte[] serializedJson = objectMapper.writeValueAsBytes(root);
 
-		TypeInformation<Row> rowTypeInformation = Types.ROW_NAMED(
-			new String[]{"name"},
-			Types.STRING);
+		JsonRowDeserializationSchema deserializationSchema = new JsonRowDeserializationSchema(
+			Types.ROW_NAMED(
+				new String[] { "name" },
+				Types.STRING)
+		);
 
-		JsonRowDeserializationSchema deserializationSchema =
-			new JsonRowDeserializationSchema.Builder(rowTypeInformation)
-				.build();
+		Row row = deserializationSchema.deserialize(serializedJson);
 
-		Row row = new Row(1);
-		assertThat(serializedJson,
-			whenDeserializedWith(deserializationSchema).equalsTo(row));
+		assertEquals(1, row.getArity());
+		Assert.assertNull("Missing field not null", row.getField(0));
 
-		deserializationSchema = new JsonRowDeserializationSchema.Builder(rowTypeInformation)
-			.failOnMissingField()
-			.build();
+		deserializationSchema.setFailOnMissingField(true);
 
-		assertThat(serializedJson,
-			whenDeserializedWith(deserializationSchema)
-				.failsWithException(hasCause(instanceOf(IllegalStateException.class))));
+		try {
+			deserializationSchema.deserialize(serializedJson);
+			Assert.fail("Did not throw expected Exception");
+		} catch (IOException e) {
+			Assert.assertTrue(e.getCause() instanceof IllegalStateException);
+		}
 	}
 
 	/**
@@ -185,10 +185,10 @@ public class JsonRowDeserializationSchemaTest {
 	@Test
 	public void testNumberOfFieldNamesAndTypesMismatch() {
 		try {
-			new JsonRowDeserializationSchema.Builder(
+			new JsonRowDeserializationSchema(
 				Types.ROW_NAMED(
 					new String[]{"one", "two", "three"},
-					Types.LONG)).build();
+					Types.LONG));
 			Assert.fail("Did not throw expected Exception");
 		} catch (IllegalArgumentException ignored) {
 			// Expected

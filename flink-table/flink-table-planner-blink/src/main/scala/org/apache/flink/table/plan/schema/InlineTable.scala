@@ -18,18 +18,16 @@
 
 package org.apache.flink.table.plan.schema
 
+import org.apache.flink.api.common.typeinfo.TypeInformation
+import org.apache.flink.table.`type`.{InternalType, InternalTypes, RowType, TypeConverters}
 import org.apache.flink.table.api.TableException
 import org.apache.flink.table.calcite.FlinkTypeFactory
 import org.apache.flink.table.plan.stats.FlinkStatistic
-import org.apache.flink.table.types.DataType
-import org.apache.flink.table.types.LogicalTypeDataTypeConverter.fromDataTypeToLogicalType
-import org.apache.flink.table.types.logical.{LogicalType, RowType, TimestampKind, TimestampType}
-import org.apache.flink.table.typeutils.TimeIndicatorTypeInfo
 
 import org.apache.calcite.rel.`type`.{RelDataType, RelDataTypeFactory}
 
 abstract class InlineTable[T](
-    val dataType: DataType,
+    val typeInfo: TypeInformation[T],
     val fieldIndexes: Array[Int],
     val fieldNames: Array[String],
     val statistic: FlinkStatistic)
@@ -57,38 +55,39 @@ abstract class InlineTable[T](
         s"List of all fields: ${fieldNames.mkString("[", ", ", "]")}.")
   }
 
-  val fieldTypes: Array[LogicalType] =
-    fromDataTypeToLogicalType(dataType) match {
+  val fieldTypes: Array[InternalType] =
+    TypeConverters.createInternalTypeFromTypeInfo(typeInfo) match {
+
       case rt: RowType =>
         // it is ok to leave out fields
-        if (fieldIndexes.count(_ >= 0) > rt.getFieldCount) {
+        if (fieldIndexes.count(_ >= 0) > rt.getArity) {
           throw new TableException(
-            s"Arity of type (" + rt.getFieldNames.toArray.deep + ") " +
+            s"Arity of type (" + rt.getFieldNames.deep + ") " +
               "must not be greater than number of field names " + fieldNames.deep + ".")
         }
         fieldIndexes.map {
-          case TimeIndicatorTypeInfo.ROWTIME_STREAM_MARKER =>
-            new TimestampType(true, TimestampKind.ROWTIME, 3)
-          case TimeIndicatorTypeInfo.PROCTIME_STREAM_MARKER =>
-            new TimestampType(true, TimestampKind.PROCTIME, 3)
-          case TimeIndicatorTypeInfo.ROWTIME_BATCH_MARKER =>
-            new TimestampType(3)
-          case TimeIndicatorTypeInfo.PROCTIME_BATCH_MARKER =>
-            new TimestampType(3)
+          case InternalTypes.ROWTIME_STREAM_MARKER =>
+            InternalTypes.ROWTIME_INDICATOR
+          case InternalTypes.PROCTIME_STREAM_MARKER =>
+            InternalTypes.PROCTIME_INDICATOR
+          case InternalTypes.ROWTIME_BATCH_MARKER =>
+            InternalTypes.TIMESTAMP
+          case InternalTypes.PROCTIME_BATCH_MARKER =>
+            InternalTypes.TIMESTAMP
           case i => rt.getTypeAt(i)
         }
 
-      case t: LogicalType =>
+      case t: InternalType =>
         var cnt = 0
         val types = fieldIndexes.map {
-          case TimeIndicatorTypeInfo.ROWTIME_STREAM_MARKER =>
-            new TimestampType(true, TimestampKind.ROWTIME, 3)
-          case TimeIndicatorTypeInfo.PROCTIME_STREAM_MARKER =>
-            new TimestampType(true, TimestampKind.PROCTIME, 3)
-          case TimeIndicatorTypeInfo.ROWTIME_BATCH_MARKER =>
-            new TimestampType(3)
-          case TimeIndicatorTypeInfo.PROCTIME_BATCH_MARKER =>
-            new TimestampType(3)
+          case InternalTypes.ROWTIME_STREAM_MARKER =>
+            InternalTypes.ROWTIME_INDICATOR
+          case InternalTypes.PROCTIME_STREAM_MARKER =>
+            InternalTypes.PROCTIME_INDICATOR
+          case InternalTypes.ROWTIME_BATCH_MARKER =>
+            InternalTypes.TIMESTAMP
+          case InternalTypes.PROCTIME_BATCH_MARKER =>
+            InternalTypes.TIMESTAMP
           case _ =>
             cnt += 1
             t
@@ -104,7 +103,7 @@ abstract class InlineTable[T](
 
   override def getRowType(typeFactory: RelDataTypeFactory): RelDataType = {
     val flinkTypeFactory = typeFactory.asInstanceOf[FlinkTypeFactory]
-    flinkTypeFactory.buildRelNodeRowType(fieldNames, fieldTypes)
+    flinkTypeFactory.buildLogicalRowType(fieldNames, fieldTypes)
   }
 
   /**

@@ -219,22 +219,7 @@ object BuiltInMethods {
   val TIMESTAMP_TO_STRING = Types.lookupMethod(
     classOf[SqlDateTimeUtils],
     "timestampToString",
-    classOf[Long], classOf[Int])
-
-  val TIMESTAMP_TO_STRING_TIME_ZONE = Types.lookupMethod(
-    classOf[SqlDateTimeUtils],
-    "timestampToString",
     classOf[Long], classOf[Int], classOf[TimeZone])
-
-  val TIMESTAMP_TO_TIMESTAMP_WITH_LOCAL_ZONE = Types.lookupMethod(
-    classOf[SqlDateTimeUtils],
-    "timestampToTimestampWithLocalZone",
-    classOf[Long], classOf[TimeZone])
-
-  val TIMESTAMP_WITH_LOCAL_ZONE_TO_TIMESTAMP = Types.lookupMethod(
-    classOf[SqlDateTimeUtils],
-    "timestampWithLocalZoneToTimestamp",
-    classOf[Long], classOf[TimeZone])
 
   val STRING_TO_DATE_WITH_FORMAT = Types.lookupMethod(
     classOf[SqlDateTimeUtils],
@@ -247,33 +232,17 @@ object BuiltInMethods {
   val NOW_OFFSET = Types.lookupMethod(
     classOf[SqlDateTimeUtils], "now", classOf[Long])
 
-  val DATE_FORMAT_STRING_STRING_STRING_TIME_ZONE = Types.lookupMethod(
+  val DATE_FORMAT_STRING_STRING_STRING = Types.lookupMethod(
     classOf[SqlDateTimeUtils], "dateFormat", classOf[String],
     classOf[String], classOf[String], classOf[TimeZone])
 
-  val DATE_FORMAT_STIRNG_STRING_TIME_ZONE = Types.lookupMethod(
+  val DATE_FORMAT_STIRNG_STRING = Types.lookupMethod(
     classOf[SqlDateTimeUtils], "dateFormat", classOf[String], classOf[String], classOf[TimeZone])
 
-  val DATE_FORMAT_LONG_STRING_TIME_ZONE = Types.lookupMethod(
+  val DATE_FORMAT_LONG_STRING = Types.lookupMethod(
     classOf[SqlDateTimeUtils], "dateFormat", classOf[Long], classOf[String], classOf[TimeZone])
 
-  val DATE_FORMAT_STRING_STRING_STRING = Types.lookupMethod(
-    classOf[SqlDateTimeUtils], "dateFormat", classOf[String],
-    classOf[String], classOf[String])
-
-  val DATE_FORMAT_STIRNG_STRING = Types.lookupMethod(
-    classOf[SqlDateTimeUtils], "dateFormat", classOf[String], classOf[String])
-
-  val DATE_FORMAT_LONG_STRING = Types.lookupMethod(
-    classOf[SqlDateTimeUtils], "dateFormat", classOf[Long], classOf[String])
-
   val UNIX_TIMESTAMP_FORMAT = Types.lookupMethod(
-    classOf[SqlDateTimeUtils],
-    "unixTimestamp",
-    classOf[String],
-    classOf[String])
-
-  val UNIX_TIMESTAMP_FORMAT_TIME_ZONE = Types.lookupMethod(
     classOf[SqlDateTimeUtils],
     "unixTimestamp",
     classOf[String],
@@ -281,9 +250,6 @@ object BuiltInMethods {
     classOf[TimeZone])
 
   val UNIX_TIMESTAMP_STR = Types.lookupMethod(
-    classOf[SqlDateTimeUtils], "unixTimestamp", classOf[String])
-
-  val UNIX_TIMESTAMP_STR_TIME_ZONE = Types.lookupMethod(
     classOf[SqlDateTimeUtils], "unixTimestamp", classOf[String], classOf[TimeZone])
 
   val UNIX_TIMESTAMP = Types.lookupMethod(
@@ -293,76 +259,40 @@ object BuiltInMethods {
     classOf[SqlDateTimeUtils], "unixTimestamp", classOf[Long])
 
   val FROM_UNIXTIME_FORMAT = Types.lookupMethod(
-    classOf[SqlDateTimeUtils], "fromUnixtime", classOf[Long], classOf[String])
-
-  val FROM_UNIXTIME = Types.lookupMethod(
-    classOf[SqlDateTimeUtils], "fromUnixtime", classOf[Long])
-
-  val FROM_UNIXTIME_AS_DOUBLE = Types.lookupMethod(
-    classOf[SqlDateTimeUtils], "fromUnixtime", classOf[Double])
-
-  val FROM_UNIXTIME_AS_DECIMAL = Types.lookupMethod(
-    classOf[SqlDateTimeUtils], "fromUnixtime", classOf[Decimal])
-
-  val FROM_UNIXTIME_FORMAT_TIME_ZONE = Types.lookupMethod(
     classOf[SqlDateTimeUtils], "fromUnixtime", classOf[Long], classOf[String], classOf[TimeZone])
 
-  val FROM_UNIXTIME_TIME_ZONE = Types.lookupMethod(
+  val FROM_UNIXTIME = Types.lookupMethod(
     classOf[SqlDateTimeUtils], "fromUnixtime", classOf[Long], classOf[TimeZone])
 
-  val FROM_UNIXTIME_AS_DOUBLE_TIME_ZONE = Types.lookupMethod(
+  val FROM_UNIXTIME_AS_DOUBLE = Types.lookupMethod(
     classOf[SqlDateTimeUtils], "fromUnixtime", classOf[Double], classOf[TimeZone])
 
-  val FROM_UNIXTIME_AS_DECIMAL_TIME_ZONE = Types.lookupMethod(
+  val FROM_UNIXTIME_AS_DECIMAL = Types.lookupMethod(
     classOf[SqlDateTimeUtils], "fromUnixtime", classOf[Decimal], classOf[TimeZone])
 
-  val DATEDIFF_T_S_TIME_ZONE = Types.lookupMethod(
+  val DATEDIFF_T_S = Types.lookupMethod(
     classOf[SqlDateTimeUtils], "dateDiff", classOf[Long], classOf[String], classOf[TimeZone])
 
-  val DATEDIFF_S_S_TIME_ZONE = Types.lookupMethod(
+  val DATEDIFF_S_S = Types.lookupMethod(
     classOf[SqlDateTimeUtils], "dateDiff", classOf[String], classOf[String], classOf[TimeZone])
 
-  val DATEDIFF_S_T_TIME_ZONE = Types.lookupMethod(
+  val DATEDIFF_S_T = Types.lookupMethod(
     classOf[SqlDateTimeUtils], "dateDiff", classOf[String], classOf[Long], classOf[TimeZone])
 
-  val DATEDIFF_T_T_TIME_ZONE = Types.lookupMethod(
+  val DATEDIFF_T_T = Types.lookupMethod(
     classOf[SqlDateTimeUtils], "dateDiff", classOf[Long], classOf[Long], classOf[TimeZone])
 
-  val DATEDIFF_T_S = Types.lookupMethod(
-    classOf[SqlDateTimeUtils], "dateDiff", classOf[Long], classOf[String])
-
-  val DATEDIFF_S_S = Types.lookupMethod(
-    classOf[SqlDateTimeUtils], "dateDiff", classOf[String], classOf[String])
-
-  val DATEDIFF_S_T = Types.lookupMethod(
-    classOf[SqlDateTimeUtils], "dateDiff", classOf[String], classOf[Long])
-
-  val DATEDIFF_T_T = Types.lookupMethod(
-    classOf[SqlDateTimeUtils], "dateDiff", classOf[Long], classOf[Long])
-
-  val DATE_SUB_S_TIME_ZONE = Types.lookupMethod(
+  val DATE_SUB_S = Types.lookupMethod(
     classOf[SqlDateTimeUtils], "dateSub", classOf[String], classOf[Int], classOf[TimeZone])
 
-  val DATE_SUB_T_TIME_ZONE = Types.lookupMethod(
+  val DATE_SUB_T = Types.lookupMethod(
     classOf[SqlDateTimeUtils], "dateSub", classOf[Long], classOf[Int], classOf[TimeZone])
 
-  val DATE_SUB_S = Types.lookupMethod(
-    classOf[SqlDateTimeUtils], "dateSub", classOf[String], classOf[Int])
-
-  val DATE_SUB_T = Types.lookupMethod(
-    classOf[SqlDateTimeUtils], "dateSub", classOf[Long], classOf[Int])
-
-  val DATE_ADD_S_TIME_ZONE = Types.lookupMethod(
+  val DATE_ADD_S = Types.lookupMethod(
     classOf[SqlDateTimeUtils], "dateAdd", classOf[String], classOf[Int], classOf[TimeZone])
 
-  val DATE_ADD_T_TIME_ZONE = Types.lookupMethod(
-    classOf[SqlDateTimeUtils], "dateAdd", classOf[Long], classOf[Int], classOf[TimeZone])
-
-  val DATE_ADD_S = Types.lookupMethod(
-    classOf[SqlDateTimeUtils], "dateAdd", classOf[String], classOf[Int])
-
   val DATE_ADD_T = Types.lookupMethod(
-    classOf[SqlDateTimeUtils], "dateAdd", classOf[Long], classOf[Int])
+    classOf[SqlDateTimeUtils], "dateAdd", classOf[Long], classOf[Int], classOf[TimeZone])
 
   val INT_TO_DATE = Types.lookupMethod(
     classOf[SqlDateTimeUtils],
@@ -387,49 +317,19 @@ object BuiltInMethods {
   val STRING_TO_TIMESTAMP = Types.lookupMethod(
     classOf[SqlDateTimeUtils],
     "toTimestamp",
-    classOf[String])
+    classOf[String], classOf[TimeZone])
 
   val STRING_TO_TIMESTAMP_WITH_FORMAT = Types.lookupMethod(
     classOf[SqlDateTimeUtils],
     "toTimestamp",
-    classOf[String], classOf[String])
-
-  val STRING_TO_TIMESTAMP_TIME_ZONE = Types.lookupMethod(
-    classOf[SqlDateTimeUtils],
-    "toTimestamp",
-    classOf[String], classOf[TimeZone])
-
-  val STRING_TO_TIMESTAMP_WITH_FORMAT_TIME_ZONE = Types.lookupMethod(
-    classOf[SqlDateTimeUtils],
-    "toTimestamp",
     classOf[String], classOf[String], classOf[TimeZone])
-
-  val TIMESTAMP_WITH_LOCAL_TIME_ZONE_TO_DATE = Types.lookupMethod(
-    classOf[SqlDateTimeUtils],
-    "timestampWithLocalZoneToDate",
-    classOf[Long], classOf[TimeZone])
-
-  val TIMESTAMP_WITH_LOCAL_TIME_ZONE_TO_TIME = Types.lookupMethod(
-    classOf[SqlDateTimeUtils],
-    "timestampWithLocalZoneToTime",
-    classOf[Long], classOf[TimeZone])
-
-  val DATE_TO_TIMESTAMP_WITH_LOCAL_TIME_ZONE = Types.lookupMethod(
-    classOf[SqlDateTimeUtils],
-    "dateToTimestampWithLocalZone",
-    classOf[Int], classOf[TimeZone])
-
-  val TIME_TO_TIMESTAMP_WITH_LOCAL_TIME_ZONE = Types.lookupMethod(
-    classOf[SqlDateTimeUtils],
-    "timeToTimestampWithLocalZone",
-    classOf[Int], classOf[TimeZone])
 
   val TIMESTAMP_TO_BIGINT = Types.lookupMethod(
     classOf[SqlDateTimeUtils],
     "fromTimestamp",
     classOf[Long])
 
-  val EXTRACT_FROM_TIMESTAMP_TIME_ZONE = Types.lookupMethod(
+  val EXTRACT_FROM_TIMESTAMP = Types.lookupMethod(
     classOf[SqlDateTimeUtils],
     "extractFromTimestamp",
     classOf[TimeUnitRange], classOf[Long], classOf[TimeZone])
@@ -449,12 +349,12 @@ object BuiltInMethods {
     "extractYearMonth",
     classOf[TimeUnitRange], classOf[Int])
 
-  val TIMESTAMP_FLOOR_TIME_ZONE = Types.lookupMethod(
+  val TIMESTAMP_FLOOR = Types.lookupMethod(
     classOf[SqlDateTimeUtils],
     "timestampFloor",
     classOf[TimeUnitRange], classOf[Long], classOf[TimeZone])
 
-  val TIMESTAMP_CEIL_TIME_ZONE = Types.lookupMethod(
+  val TIMESTAMP_CEIL = Types.lookupMethod(
     classOf[SqlDateTimeUtils],
     "timestampCeil",
     classOf[TimeUnitRange], classOf[Long], classOf[TimeZone])
@@ -485,9 +385,4 @@ object BuiltInMethods {
     "convertTz",
     classOf[String], classOf[String], classOf[String], classOf[String])
 
-  val STRING_TO_DATE = Types.lookupMethod(
-    classOf[SqlDateTimeUtils], "dateStringToUnixDate", classOf[String])
-
-  val STRING_TO_TIME = Types.lookupMethod(
-    classOf[SqlDateTimeUtils], "timeStringToUnixDate", classOf[String])
 }

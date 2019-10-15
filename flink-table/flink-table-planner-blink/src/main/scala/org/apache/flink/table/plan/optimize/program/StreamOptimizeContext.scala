@@ -18,8 +18,6 @@
 
 package org.apache.flink.table.plan.optimize.program
 
-import org.apache.flink.table.plan.`trait`.MiniBatchInterval
-
 import org.apache.calcite.rex.RexBuilder
 
 /**
@@ -34,15 +32,9 @@ trait StreamOptimizeContext extends FlinkOptimizeContext {
 
   /**
     * Returns true if the sink requests updates as retraction messages
-    * defined in
-    * [[org.apache.flink.table.plan.optimize.StreamCommonSubGraphBasedOptimizer.optimize]].
+    * defined in [[org.apache.flink.table.plan.optimize.StreamOptimizer.optimize]].
     */
   def updateAsRetraction: Boolean
-
-  /**
-    * Returns the mini-batch interval that sink requests.
-    */
-  def getMiniBatchInterval: MiniBatchInterval
 
   /**
     * Returns true if the output node needs final TimeIndicator conversion

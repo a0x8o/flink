@@ -19,7 +19,6 @@
 package org.apache.flink.table.plan.stream.sql.agg
 
 import org.apache.flink.api.scala._
-import org.apache.flink.table.api.scala._
 import org.apache.flink.table.api.{TableException, ValidationException}
 import org.apache.flink.table.plan.util.JavaUserDefinedAggFunctions.WeightedAvgWithMerge
 import org.apache.flink.table.util.TableTestBase
@@ -30,8 +29,7 @@ import org.junit.Test
 class WindowAggregateTest extends TableTestBase {
 
   private val util = streamTestUtil()
-  util.addDataStream[(Int, String, Long)](
-    "MyTable", 'a, 'b, 'c, 'proctime.proctime, 'rowtime.rowtime)
+  util.addDataStream[(Int, String, Long)]("MyTable", 'a, 'b, 'c, 'proctime, 'rowtime)
   util.addFunction("weightedAvg", new WeightedAvgWithMerge)
 
   @Test(expected = classOf[TableException])
@@ -231,7 +229,7 @@ class WindowAggregateTest extends TableTestBase {
         |        TUMBLE_START(rowtime, INTERVAL '15' MINUTE) as ping_start
         |     FROM MyTable
         |         GROUP BY a, b, c, TUMBLE(rowtime, INTERVAL '15' MINUTE)) AS t1
-        |GROUP BY b
+        |GROUP BY b, ping_start
       """.stripMargin
     util.verifyPlan(sql)
   }

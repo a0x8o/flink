@@ -35,7 +35,7 @@ import org.apache.flink.table.runtime.window.triggers.ElementTriggers;
 import org.apache.flink.table.runtime.window.triggers.EventTimeTriggers;
 import org.apache.flink.table.runtime.window.triggers.ProcessingTimeTriggers;
 import org.apache.flink.table.runtime.window.triggers.Trigger;
-import org.apache.flink.table.types.logical.LogicalType;
+import org.apache.flink.table.type.InternalType;
 
 import java.time.Duration;
 
@@ -57,16 +57,16 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * </pre>
  */
 public class WindowOperatorBuilder {
-	private LogicalType[] inputFieldTypes;
+	private InternalType[] inputFieldTypes;
 	private WindowAssigner<?> windowAssigner;
 	private Trigger<?> trigger;
 	private NamespaceAggsHandleFunction<?> aggregateFunction;
 	private GeneratedNamespaceAggsHandleFunction<?> generatedAggregateFunction;
 	private RecordEqualiser equaliser;
 	private GeneratedRecordEqualiser generatedEqualiser;
-	private LogicalType[] accumulatorTypes;
-	private LogicalType[] aggResultTypes;
-	private LogicalType[] windowPropertyTypes;
+	private InternalType[] accumulatorTypes;
+	private InternalType[] aggResultTypes;
+	private InternalType[] windowPropertyTypes;
 	private long allowedLateness = 0L;
 	private boolean sendRetraction = false;
 	private int rowtimeIndex = -1;
@@ -75,20 +75,22 @@ public class WindowOperatorBuilder {
 		return new WindowOperatorBuilder();
 	}
 
-	public WindowOperatorBuilder withInputFields(LogicalType[] inputFieldTypes) {
+	public WindowOperatorBuilder withInputFields(InternalType[] inputFieldTypes) {
 		this.inputFieldTypes = inputFieldTypes;
 		return this;
 	}
 
-	public WindowOperatorBuilder tumble(Duration size) {
+	public WindowOperatorBuilder tumble(Duration size, long offset) {
 		checkArgument(windowAssigner == null);
-		this.windowAssigner = TumblingWindowAssigner.of(size);
+		this.windowAssigner = TumblingWindowAssigner.of(size)
+				.withOffset(Duration.ofMillis(-offset));
 		return this;
 	}
 
-	public WindowOperatorBuilder sliding(Duration size, Duration slide) {
+	public WindowOperatorBuilder sliding(Duration size, Duration slide, long offset) {
 		checkArgument(windowAssigner == null);
-		this.windowAssigner = SlidingWindowAssigner.of(size, slide);
+		this.windowAssigner = SlidingWindowAssigner.of(size, slide)
+				.withOffset(Duration.ofMillis(-offset));
 		return this;
 	}
 
@@ -163,10 +165,10 @@ public class WindowOperatorBuilder {
 	public WindowOperatorBuilder aggregate(
 			NamespaceAggsHandleFunction<?> aggregateFunction,
 			RecordEqualiser equaliser,
-			LogicalType[] accumulatorTypes,
-			LogicalType[] aggResultTypes,
-			LogicalType[] windowPropertyTypes) {
-		ClosureCleaner.clean(aggregateFunction, ExecutionConfig.ClosureCleanerLevel.RECURSIVE, true);
+			InternalType[] accumulatorTypes,
+			InternalType[] aggResultTypes,
+			InternalType[] windowPropertyTypes) {
+		ClosureCleaner.clean(aggregateFunction, true);
 		this.accumulatorTypes = accumulatorTypes;
 		this.aggResultTypes = aggResultTypes;
 		this.windowPropertyTypes = windowPropertyTypes;
@@ -178,9 +180,9 @@ public class WindowOperatorBuilder {
 	public WindowOperatorBuilder aggregate(
 			GeneratedNamespaceAggsHandleFunction<?> generatedAggregateFunction,
 			GeneratedRecordEqualiser generatedEqualiser,
-			LogicalType[] accumulatorTypes,
-			LogicalType[] aggResultTypes,
-			LogicalType[] windowPropertyTypes) {
+			InternalType[] accumulatorTypes,
+			InternalType[] aggResultTypes,
+			InternalType[] windowPropertyTypes) {
 		this.accumulatorTypes = accumulatorTypes;
 		this.aggResultTypes = aggResultTypes;
 		this.windowPropertyTypes = windowPropertyTypes;

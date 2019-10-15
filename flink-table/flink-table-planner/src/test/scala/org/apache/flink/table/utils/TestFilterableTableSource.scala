@@ -161,11 +161,11 @@ class TestFilterableTableSource(
 
   private def shouldPushDown(expr: BinaryComparison): Boolean = {
     (expr.left, expr.right) match {
-      case (f: PlannerResolvedFieldReference, v: Literal) =>
+      case (f: ResolvedFieldReference, v: Literal) =>
         filterableFields.contains(f.name)
-      case (v: Literal, f: PlannerResolvedFieldReference) =>
+      case (v: Literal, f: ResolvedFieldReference) =>
         filterableFields.contains(f.name)
-      case (f1: PlannerResolvedFieldReference, f2: PlannerResolvedFieldReference) =>
+      case (f1: ResolvedFieldReference, f2: ResolvedFieldReference) =>
         filterableFields.contains(f1.name) && filterableFields.contains(f2.name)
       case (_, _) => false
     }
@@ -184,15 +184,15 @@ class TestFilterableTableSource(
     expr match {
       case _: GreaterThan =>
         lhsValue.compareTo(rhsValue) > 0
-      case LessThan(l: PlannerResolvedFieldReference, r: Literal) =>
+      case LessThan(l: ResolvedFieldReference, r: Literal) =>
         lhsValue.compareTo(rhsValue) < 0
-      case GreaterThanOrEqual(l: PlannerResolvedFieldReference, r: Literal) =>
+      case GreaterThanOrEqual(l: ResolvedFieldReference, r: Literal) =>
         lhsValue.compareTo(rhsValue) >= 0
-      case LessThanOrEqual(l: PlannerResolvedFieldReference, r: Literal) =>
+      case LessThanOrEqual(l: ResolvedFieldReference, r: Literal) =>
         lhsValue.compareTo(rhsValue) <= 0
-      case EqualTo(l: PlannerResolvedFieldReference, r: Literal) =>
+      case EqualTo(l: ResolvedFieldReference, r: Literal) =>
         lhsValue.compareTo(rhsValue) == 0
-      case NotEqualTo(l: PlannerResolvedFieldReference, r: Literal) =>
+      case NotEqualTo(l: ResolvedFieldReference, r: Literal) =>
         lhsValue.compareTo(rhsValue) != 0
     }
   }
@@ -201,12 +201,12 @@ class TestFilterableTableSource(
     : (Comparable[Any], Comparable[Any]) = {
 
     (expr.left, expr.right) match {
-      case (l: PlannerResolvedFieldReference, r: Literal) =>
+      case (l: ResolvedFieldReference, r: Literal) =>
         val idx = rowTypeInfo.getFieldIndex(l.name)
         val lv = row.getField(idx).asInstanceOf[Comparable[Any]]
         val rv = r.value.asInstanceOf[Comparable[Any]]
         (lv, rv)
-      case (l: Literal, r: PlannerResolvedFieldReference) =>
+      case (l: Literal, r: ResolvedFieldReference) =>
         val idx = rowTypeInfo.getFieldIndex(r.name)
         val lv = l.value.asInstanceOf[Comparable[Any]]
         val rv = row.getField(idx).asInstanceOf[Comparable[Any]]
@@ -215,7 +215,7 @@ class TestFilterableTableSource(
         val lv = l.value.asInstanceOf[Comparable[Any]]
         val rv = r.value.asInstanceOf[Comparable[Any]]
         (lv, rv)
-      case (l: PlannerResolvedFieldReference, r: PlannerResolvedFieldReference) =>
+      case (l: ResolvedFieldReference, r: ResolvedFieldReference) =>
         val lidx = rowTypeInfo.getFieldIndex(l.name)
         val ridx = rowTypeInfo.getFieldIndex(r.name)
         val lv = row.getField(lidx).asInstanceOf[Comparable[Any]]

@@ -19,14 +19,10 @@
 package org.apache.flink.table.calcite
 
 import org.apache.flink.table.api.TableConfig
-import org.apache.flink.table.catalog.FunctionCatalog
 
 class FlinkContextImpl(
-    tableConfig: TableConfig,
-    functionCatalog: FunctionCatalog)
+    tableConfig: TableConfig)
   extends FlinkContext {
 
   override def getTableConfig: TableConfig = tableConfig
-
-  override def getFunctionCatalog: FunctionCatalog = functionCatalog
 }

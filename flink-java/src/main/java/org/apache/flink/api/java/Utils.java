@@ -31,12 +31,9 @@ import org.apache.flink.configuration.Configuration;
 
 import org.apache.commons.lang3.StringUtils;
 
-import javax.annotation.Nullable;
-
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
-import java.util.Optional;
 import java.util.Random;
 
 /**
@@ -297,24 +294,6 @@ public final class Utils {
 			}
 		}
 		return ret;
-	}
-
-	// --------------------------------------------------------------------------------------------
-
-	/**
-	 * Resolves the given factories. The thread local factory has preference over the static factory.
-	 * If none is set, the method returns {@link Optional#empty()}.
-	 *
-	 * @param threadLocalFactory containing the thread local factory
-	 * @param staticFactory containing the global factory
-	 * @param <T> type of factory
-	 * @return Optional containing the resolved factory if it exists, otherwise it's empty
-	 */
-	public static <T> Optional<T> resolveFactory(ThreadLocal<T> threadLocalFactory, @Nullable T staticFactory) {
-		final T localFactory = threadLocalFactory.get();
-		final T factory = localFactory == null ? staticFactory : localFactory;
-
-		return Optional.ofNullable(factory);
 	}
 
 	/**

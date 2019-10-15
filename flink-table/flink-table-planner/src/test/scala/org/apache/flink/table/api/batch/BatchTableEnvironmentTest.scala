@@ -35,7 +35,7 @@ class BatchTableEnvironmentTest extends TableTestBase {
 
     val expected = unaryNode(
       "DataSetCalc",
-      batchTableNode(table),
+      batchTableNode(0),
       term("select", "a, b, c"),
       term("where", ">(b, 12)"))
 
@@ -49,8 +49,8 @@ class BatchTableEnvironmentTest extends TableTestBase {
       "DataSetJoin",
       binaryNode(
         "DataSetCalc",
-        batchTableNode(table),
-        batchTableNode(table2),
+        batchTableNode(0),
+        batchTableNode(1),
         term("select", "c")),
       term("where", "=(c, d)"),
       term("join", "c, d, e, f"),

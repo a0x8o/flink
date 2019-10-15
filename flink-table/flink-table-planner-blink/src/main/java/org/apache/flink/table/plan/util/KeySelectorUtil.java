@@ -25,9 +25,10 @@ import org.apache.flink.table.generated.GeneratedProjection;
 import org.apache.flink.table.runtime.keyselector.BaseRowKeySelector;
 import org.apache.flink.table.runtime.keyselector.BinaryRowKeySelector;
 import org.apache.flink.table.runtime.keyselector.NullBinaryRowKeySelector;
-import org.apache.flink.table.types.logical.LogicalType;
-import org.apache.flink.table.types.logical.RowType;
+import org.apache.flink.table.type.InternalType;
+import org.apache.flink.table.type.RowType;
 import org.apache.flink.table.typeutils.BaseRowTypeInfo;
+import org.apache.flink.table.typeutils.TypeCheckUtils;
 
 /**
  * Utility for KeySelector.
@@ -43,22 +44,24 @@ public class KeySelectorUtil {
 	 */
 	public static BaseRowKeySelector getBaseRowSelector(int[] keyFields, BaseRowTypeInfo rowType) {
 		if (keyFields.length > 0) {
-			LogicalType[] inputFieldTypes = rowType.getLogicalTypes();
+			InternalType[] inputFieldTypes = rowType.getInternalTypes();
 			String[] inputFieldNames = rowType.getFieldNames();
-			LogicalType[] keyFieldTypes = new LogicalType[keyFields.length];
+			InternalType[] keyFieldTypes = new InternalType[keyFields.length];
 			String[] keyFieldNames = new String[keyFields.length];
 			for (int i = 0; i < keyFields.length; ++i) {
 				keyFieldTypes[i] = inputFieldTypes[keyFields[i]];
 				keyFieldNames[i] = inputFieldNames[keyFields[i]];
 			}
-			RowType returnType = RowType.of(keyFieldTypes, keyFieldNames);
-			RowType inputType = RowType.of(inputFieldTypes, rowType.getFieldNames());
+			RowType returnType = new RowType(keyFieldTypes, keyFieldNames);
+			RowType inputType = new RowType(inputFieldTypes, rowType.getFieldNames());
 			GeneratedProjection generatedProjection = ProjectionCodeGenerator.generateProjection(
 				CodeGeneratorContext.apply(new TableConfig()),
 				"KeyProjection",
 				inputType,
 				returnType, keyFields);
-			BaseRowTypeInfo keyRowType = BaseRowTypeInfo.of(returnType);
+			BaseRowTypeInfo keyRowType = returnType.toTypeInfo();
+			// check if type implements proper equals/hashCode
+			TypeCheckUtils.validateEqualsHashCode("grouping", keyRowType);
 			return new BinaryRowKeySelector(keyRowType, generatedProjection);
 		} else {
 			return NullBinaryRowKeySelector.INSTANCE;

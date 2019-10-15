@@ -18,9 +18,9 @@
 
 package org.apache.flink.table.plan.nodes.calcite
 
+import org.apache.flink.table.`type`.TypeConverters
 import org.apache.flink.table.calcite.FlinkTypeFactory
 import org.apache.flink.table.sinks.TableSink
-import org.apache.flink.table.types.LogicalTypeDataTypeConverter.fromDataTypeToLogicalType
 
 import org.apache.calcite.plan.{RelOptCluster, RelTraitSet}
 import org.apache.calcite.rel.`type`.RelDataType
@@ -45,14 +45,15 @@ abstract class Sink(
 
   override def deriveRowType(): RelDataType = {
     val typeFactory = getCluster.getTypeFactory.asInstanceOf[FlinkTypeFactory]
-    val outputType = sink.getConsumedDataType
-    typeFactory.createFieldTypeFromLogicalType(fromDataTypeToLogicalType(outputType))
+    val outputType = sink.getOutputType
+    val internalType = TypeConverters.createInternalTypeFromTypeInfo(outputType)
+    typeFactory.createTypeFromInternalType(internalType, isNullable = true)
   }
 
   override def explainTerms(pw: RelWriter): RelWriter = {
     super.explainTerms(pw)
       .itemIf("name", sinkName, sinkName != null)
-      .item("fields", sink.getTableSchema.getFieldNames.mkString(", "))
+      .item("fields", sink.getFieldNames.mkString(", "))
   }
 
 }

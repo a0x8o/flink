@@ -19,21 +19,22 @@
 package org.apache.flink.table.plan.nodes.datastream
 
 import org.apache.calcite.plan.{RelOptCluster, RelTraitSet}
-import org.apache.calcite.rel.RelFieldCollation.Direction
 import org.apache.calcite.rel.`type`.RelDataType
-import org.apache.calcite.rel.core.Sort
-import org.apache.calcite.rel.{RelCollation, RelNode, RelWriter}
+import org.apache.calcite.rel.{RelNode, RelWriter}
+import org.apache.flink.streaming.api.datastream.DataStream
+import org.apache.flink.table.calcite.FlinkTypeFactory
+import org.apache.flink.table.runtime.aggregate._
+import org.apache.flink.api.java.functions.NullByteKeySelector
+import org.apache.calcite.rel.RelFieldCollation.Direction
+import org.apache.calcite.rel.RelCollation
 import org.apache.calcite.rex.RexNode
 import org.apache.flink.api.common.ExecutionConfig
-import org.apache.flink.api.java.functions.NullByteKeySelector
-import org.apache.flink.streaming.api.datastream.DataStream
-import org.apache.flink.table.api.{StreamQueryConfig, TableException}
-import org.apache.flink.table.calcite.FlinkTypeFactory
-import org.apache.flink.table.plan.nodes.CommonSort
-import org.apache.flink.table.plan.schema.RowSchema
-import org.apache.flink.table.planner.StreamPlanner
-import org.apache.flink.table.runtime.aggregate._
 import org.apache.flink.table.runtime.types.{CRow, CRowTypeInfo}
+import org.apache.flink.table.api.{StreamQueryConfig, StreamTableEnvImpl, TableException}
+import org.apache.flink.table.plan.schema.RowSchema
+import org.apache.flink.table.plan.nodes.CommonSort
+import org.apache.calcite.rel.core.Sort
+import org.apache.flink.streaming.api.functions.KeyedProcessFunction
 
 /**
  * Flink RelNode which matches along with Sort Rule.
@@ -88,10 +89,10 @@ class DataStreamSort(
   }
 
   override def translateToPlan(
-      planner: StreamPlanner,
+      tableEnv: StreamTableEnvImpl,
       queryConfig: StreamQueryConfig): DataStream[CRow] = {
     
-    val inputDS = input.asInstanceOf[DataStreamRel].translateToPlan(planner, queryConfig)
+    val inputDS = input.asInstanceOf[DataStreamRel].translateToPlan(tableEnv, queryConfig)
     
     // need to identify time between others order fields. Time needs to be first sort element
     val timeType = SortUtil.getFirstSortField(sortCollation, schema.relDataType).getType
@@ -101,7 +102,7 @@ class DataStreamSort(
       throw new TableException("Primary sort order of a streaming table must be ascending on time.")
     }
     
-    val execCfg = planner.getExecutionEnvironment.getConfig
+    val execCfg = tableEnv.execEnv.getConfig
       
     // enable to extend for other types of aggregates that will not be implemented in a window
     timeType match {

@@ -231,24 +231,30 @@ class FlinkRelMdSize private extends MetadataHandler[BuiltInMetadata.Size] {
   }
 
   def averageColumnSizes(overWindow: Window, mq: RelMetadataQuery): JList[JDouble] =
-    averageColumnSizesOfOverAgg(overWindow, mq)
+    averageColumnSizesOfOverWindow(overWindow, mq)
 
   def averageColumnSizes(rel: BatchExecOverAggregate, mq: RelMetadataQuery): JList[JDouble] =
-    averageColumnSizesOfOverAgg(rel, mq)
+    averageColumnSizesOfOverWindow(rel, mq)
 
-  private def averageColumnSizesOfOverAgg(
-      overAgg: SingleRel,
+  private def averageColumnSizesOfOverWindow(
+      overWindow: SingleRel,
       mq: RelMetadataQuery): JList[JDouble] = {
-    val inputFieldCount = overAgg.getInput.getRowType.getFieldCount
-    getColumnSizesFromInputOrType(overAgg, mq, (0 until inputFieldCount).zipWithIndex.toMap)
+    val inputFieldCount = overWindow.getInput.getRowType.getFieldCount
+    getColumnSizesFromInputOrType(overWindow, mq, (0 until inputFieldCount).zipWithIndex.toMap)
   }
 
-  def averageColumnSizes(rel: Join, mq: RelMetadataQuery): JList[JDouble] = {
-    val acsOfLeft = mq.getAverageColumnSizes(rel.getLeft)
-    val acsOfRight = rel.getJoinType match {
-      case JoinRelType.SEMI | JoinRelType.ANTI => null
-      case _ => mq.getAverageColumnSizes(rel.getRight)
-    }
+  def averageColumnSizes(rel: Join, mq: RelMetadataQuery): JList[JDouble] =
+    averageJoinColumnSizesOfJoin(rel, mq, isSemiJoin = false)
+
+  def averageColumnSizes(rel: SemiJoin, mq: RelMetadataQuery): JList[JDouble] =
+    averageJoinColumnSizesOfJoin(rel, mq, isSemiJoin = true)
+
+  private def averageJoinColumnSizesOfJoin(
+      join: Join,
+      mq: RelMetadataQuery,
+      isSemiJoin: Boolean): JList[JDouble] = {
+    val acsOfLeft = mq.getAverageColumnSizes(join.getLeft)
+    val acsOfRight = if (isSemiJoin) null else mq.getAverageColumnSizes(join.getRight)
     if (acsOfLeft == null && acsOfRight == null) {
       null
     } else if (acsOfRight == null) {
@@ -426,8 +432,7 @@ object FlinkRelMdSize {
     case typeName if SqlTypeName.YEAR_INTERVAL_TYPES.contains(typeName) => 8D
     case typeName if SqlTypeName.DAY_INTERVAL_TYPES.contains(typeName) => 4D
     // TODO after time/date => int, timestamp => long, this estimate value should update
-    case SqlTypeName.TIME | SqlTypeName.TIMESTAMP |
-         SqlTypeName.TIMESTAMP_WITH_LOCAL_TIME_ZONE | SqlTypeName.DATE => 12D
+    case SqlTypeName.TIME | SqlTypeName.TIMESTAMP | SqlTypeName.DATE => 12D
     case SqlTypeName.ANY => 128D // 128 is an arbitrary estimate
     case SqlTypeName.BINARY | SqlTypeName.VARBINARY => 16D // 16 is an arbitrary estimate
     case _ => throw new TableException(s"Unsupported data type encountered: $sqlType")

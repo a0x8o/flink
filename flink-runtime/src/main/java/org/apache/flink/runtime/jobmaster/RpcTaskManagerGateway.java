@@ -88,8 +88,8 @@ public class RpcTaskManagerGateway implements TaskManagerGateway {
 	}
 
 	@Override
-	public void releasePartitions(JobID jobId, Collection<ResultPartitionID> partitionIds) {
-		taskExecutorGateway.releasePartitions(jobId, partitionIds);
+	public void releasePartitions(Collection<ResultPartitionID> partitionIds) {
+		taskExecutorGateway.releasePartitions(partitionIds);
 	}
 
 	@Override

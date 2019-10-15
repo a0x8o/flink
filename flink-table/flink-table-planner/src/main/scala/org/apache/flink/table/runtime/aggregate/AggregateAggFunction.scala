@@ -25,19 +25,15 @@ import org.apache.flink.table.util.Logging
 import org.apache.flink.types.Row
 
 /**
-  * Aggregate Function used for the aggregate or table aggregate operator in
-  * [[org.apache.flink.streaming.api.datastream.WindowedStream]].
+  * Aggregate Function used for the aggregate operator in
+  * [[org.apache.flink.streaming.api.datastream.WindowedStream]]
   *
-  * @param genAggregations Generated aggregate or table aggregate helper function
-  * @param isTableAggregate Whether it is table aggregate.
+  * @param genAggregations Generated aggregate helper function
   */
-class AggregateAggFunction[F <: AggregationsFunction](
-    genAggregations: GeneratedAggregationsFunction,
-    isTableAggregate: Boolean)
-  extends AggregateFunction[CRow, Row, Row]
-    with Compiler[F] with Logging {
+class AggregateAggFunction(genAggregations: GeneratedAggregationsFunction)
+  extends AggregateFunction[CRow, Row, Row] with Compiler[GeneratedAggregations] with Logging {
 
-  private var function: F = _
+  private var function: GeneratedAggregations = _
 
   override def createAccumulator(): Row = {
     if (function == null) {
@@ -58,15 +54,9 @@ class AggregateAggFunction[F <: AggregationsFunction](
     if (function == null) {
       initFunction()
     }
-
-    if (isTableAggregate) {
-      // pass both accumulator and function to the window function and emit value in it.
-      Row.of(accumulatorRow, function)
-    } else {
-      val output = function.createOutputRow()
-      function.asInstanceOf[GeneratedAggregations].setAggregationResults(accumulatorRow, output)
-      output
-    }
+    val output = function.createOutputRow()
+    function.setAggregationResults(accumulatorRow, output)
+    output
   }
 
   override def merge(aAccumulatorRow: Row, bAccumulatorRow: Row): Row = {
@@ -78,7 +68,7 @@ class AggregateAggFunction[F <: AggregationsFunction](
 
   def initFunction(): Unit = {
     LOG.debug(s"Compiling AggregateHelper: $genAggregations.name \n\n " +
-      s"Code:\n$genAggregations.code")
+                s"Code:\n$genAggregations.code")
     val clazz = compile(
       Thread.currentThread().getContextClassLoader,
       genAggregations.name,

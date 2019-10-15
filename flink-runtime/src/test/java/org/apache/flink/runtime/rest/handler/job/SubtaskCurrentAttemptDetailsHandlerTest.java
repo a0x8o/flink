@@ -164,8 +164,7 @@ public class SubtaskCurrentAttemptDetailsHandlerTest extends TestLogger {
 			deployingTs,
 			finishedTs,
 			finishedTs - deployingTs,
-			ioMetricsInfo,
-			assignedResourceLocation.getResourceID().getResourceIdString()
+			ioMetricsInfo
 		);
 
 		assertEquals(expectedDetailsInfo, detailsInfo);

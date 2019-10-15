@@ -18,13 +18,16 @@
 
 package akka.actor
 
+import java.lang.Thread.UncaughtExceptionHandler
+
 import org.apache.flink.runtime.akka.AkkaUtils
-import org.apache.flink.runtime.concurrent.TestingUncaughtExceptionHandler
 import org.junit.{After, Before, Test}
 import org.scalatest.Matchers
 import org.scalatest.junit.JUnitSuite
 
-import scala.concurrent.Future
+import scala.concurrent.duration.Duration
+import scala.concurrent.{Await, Future, Promise}
+import scala.util.Success
 
 class RobustActorSystemTest extends JUnitSuite with Matchers {
 
@@ -54,7 +57,9 @@ class RobustActorSystemTest extends JUnitSuite with Matchers {
       throw error
     }(robustActorSystem.dispatcher)
 
-    val caughtException = testingUncaughtExceptionHandler.waitForUncaughtException()
+    val caughtException = Await.result(
+      testingUncaughtExceptionHandler.exceptionPromise.future,
+      Duration.Inf)
 
     caughtException should equal (error)
   }
@@ -66,9 +71,19 @@ class RobustActorSystemTest extends JUnitSuite with Matchers {
 
     actor ! Failure
 
-    val caughtException = testingUncaughtExceptionHandler.waitForUncaughtException()
+    val caughtException = Await.result(
+      testingUncaughtExceptionHandler.exceptionPromise.future,
+      Duration.Inf)
 
     caughtException should equal (error)
+  }
+}
+
+class TestingUncaughtExceptionHandler extends UncaughtExceptionHandler {
+  val exceptionPromise: Promise[Throwable] = Promise()
+
+  override def uncaughtException(t: Thread, e: Throwable): Unit = {
+    exceptionPromise.complete(Success(e))
   }
 }
 

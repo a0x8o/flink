@@ -209,7 +209,7 @@ public class FailoverRegion {
 			if (transitionState(JobStatus.CREATED, JobStatus.RUNNING)) {
 				// if we have checkpointed state, reload it into the executions
 				if (executionGraph.getCheckpointCoordinator() != null) {
-					// we abort pending checkpoints for
+					// we restart the checkpoint scheduler for
 					// i) enable new checkpoint could be triggered without waiting for last checkpoint expired.
 					// ii) ensure the EXACTLY_ONCE semantics if needed.
 					executionGraph.getCheckpointCoordinator().abortPendingCheckpoints(
@@ -232,7 +232,8 @@ public class FailoverRegion {
 				for (ExecutionVertex ev : connectedExecutionVertexes) {
 					try {
 						ev.scheduleForExecution(
-							executionGraph.getSlotProviderStrategy(),
+							executionGraph.getSlotProvider(),
+							executionGraph.isQueuedSchedulingAllowed(),
 							LocationPreferenceConstraint.ANY,
 							previousAllocationsInRegion); // some inputs not belonging to the failover region might have failed concurrently
 					}

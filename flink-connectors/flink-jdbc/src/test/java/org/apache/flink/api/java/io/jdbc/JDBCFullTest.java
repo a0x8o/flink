@@ -85,7 +85,7 @@ public class JDBCFullTest extends JDBCTestBase {
 			//use a "splittable" query to exploit parallelism
 			inputBuilder = inputBuilder
 					.setQuery(JDBCTestBase.SELECT_ALL_BOOKS_SPLIT_BY_ID)
-					.setParametersProvider(new NumericBetweenParametersProvider(min, max).ofBatchSize(fetchSize));
+					.setParametersProvider(new NumericBetweenParametersProvider(fetchSize, min, max));
 		}
 		DataSet<Row> source = environment.createInput(inputBuilder.finish());
 

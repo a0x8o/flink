@@ -52,6 +52,7 @@ public class ExecutionEnvironmentITCase extends TestLogger {
 		conf.setInteger(TaskManagerOptions.NUM_TASK_SLOTS, PARALLELISM);
 
 		final ExecutionEnvironment env = ExecutionEnvironment.createLocalEnvironment(conf);
+		env.getConfig().disableSysoutLogging();
 
 		DataSet<Integer> result = env.createInput(new ParallelismDependentInputFormat())
 				.rebalance()

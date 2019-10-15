@@ -17,16 +17,15 @@
  */
 package org.apache.flink.table.plan.nodes.physical.batch
 
-import org.apache.flink.api.dag.Transformation
 import org.apache.flink.runtime.operators.DamBehavior
-import org.apache.flink.streaming.api.transformations.OneInputTransformation
+import org.apache.flink.streaming.api.transformations.{OneInputTransformation, StreamTransformation}
+import org.apache.flink.table.api.BatchTableEnvironment
 import org.apache.flink.table.dataformat.BaseRow
 import org.apache.flink.table.plan.cost.FlinkCost._
 import org.apache.flink.table.plan.cost.FlinkCostFactory
 import org.apache.flink.table.plan.nodes.exec.{BatchExecNode, ExecNode}
 import org.apache.flink.table.plan.util.RelExplainUtil.fetchToString
 import org.apache.flink.table.plan.util.SortUtil
-import org.apache.flink.table.planner.BatchPlanner
 import org.apache.flink.table.runtime.sort.LimitOperator
 
 import org.apache.calcite.plan.{RelOptCluster, RelOptCost, RelOptPlanner, RelTraitSet}
@@ -91,19 +90,19 @@ class BatchExecLimit(
 
   override def getDamBehavior: DamBehavior = DamBehavior.PIPELINED
 
-  override def getInputNodes: util.List[ExecNode[BatchPlanner, _]] =
-    List(getInput.asInstanceOf[ExecNode[BatchPlanner, _]])
+  override def getInputNodes: util.List[ExecNode[BatchTableEnvironment, _]] =
+    List(getInput.asInstanceOf[ExecNode[BatchTableEnvironment, _]])
 
   override def replaceInputNode(
       ordinalInParent: Int,
-      newInputNode: ExecNode[BatchPlanner, _]): Unit = {
+      newInputNode: ExecNode[BatchTableEnvironment, _]): Unit = {
     replaceInput(ordinalInParent, newInputNode.asInstanceOf[RelNode])
   }
 
-  override protected def translateToPlanInternal(
-      planner: BatchPlanner): Transformation[BaseRow] = {
-    val input = getInputNodes.get(0).translateToPlan(planner)
-        .asInstanceOf[Transformation[BaseRow]]
+  override def translateToPlanInternal(
+      tableEnv: BatchTableEnvironment): StreamTransformation[BaseRow] = {
+    val input = getInputNodes.get(0).translateToPlan(tableEnv)
+        .asInstanceOf[StreamTransformation[BaseRow]]
     val inputType = input.getOutputType
     val operator = new LimitOperator(isGlobal, limitStart, limitEnd)
     new OneInputTransformation(
@@ -111,7 +110,7 @@ class BatchExecLimit(
       getOperatorName,
       operator,
       inputType,
-      getResource.getParallelism)
+      if (isGlobal) 1 else input.getParallelism)
   }
 
   private def getOperatorName = {

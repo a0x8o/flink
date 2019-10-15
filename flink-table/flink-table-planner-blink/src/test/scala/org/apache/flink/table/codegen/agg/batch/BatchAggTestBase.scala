@@ -20,13 +20,13 @@ package org.apache.flink.table.codegen.agg.batch
 
 import org.apache.flink.runtime.execution.Environment
 import org.apache.flink.runtime.jobgraph.OperatorID
+import org.apache.flink.streaming.api.operators.OneInputStreamOperator
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord
-import org.apache.flink.streaming.runtime.tasks.{OneInputStreamTask, OneInputStreamTaskTestHarness}
+import org.apache.flink.streaming.runtime.tasks.{OneInputStreamTask, OneInputStreamTaskTestHarness, OperatorChain}
+import org.apache.flink.table.`type`.{InternalType, InternalTypes, RowType}
 import org.apache.flink.table.codegen.agg.AggTestBase
 import org.apache.flink.table.dataformat.{BaseRow, BinaryString, GenericRow}
-import org.apache.flink.table.runtime.CodeGenOperatorFactory
-import org.apache.flink.table.types.logical.{DoubleType, LogicalType, RowType, VarCharType}
-import org.apache.flink.table.typeutils.BaseRowTypeInfo
+import org.apache.flink.table.runtime.OneInputOperatorWrapper
 import org.apache.flink.table.util.BaseRowTestUtil
 
 import org.junit.Assert
@@ -39,14 +39,14 @@ import scala.collection.JavaConverters._
 /**
   * Base agg test.
   */
-abstract class BatchAggTestBase extends AggTestBase(isBatchMode = true) {
+abstract class BatchAggTestBase extends AggTestBase {
 
-  val globalOutputType = RowType.of(
-    Array[LogicalType](
-      new VarCharType(VarCharType.MAX_LENGTH), new VarCharType(VarCharType.MAX_LENGTH),
-      new DoubleType(),
-      new DoubleType(),
-      new DoubleType()),
+  val globalOutputType = new RowType(
+    Array[InternalType](
+      InternalTypes.STRING, InternalTypes.STRING,
+      InternalTypes.DOUBLE,
+      InternalTypes.DOUBLE,
+      InternalTypes.DOUBLE),
     Array(
       "f0", "f4",
       "agg1Output",
@@ -63,17 +63,17 @@ abstract class BatchAggTestBase extends AggTestBase(isBatchMode = true) {
   }
 
   def testOperator(
-      args: (CodeGenOperatorFactory[BaseRow], RowType, RowType),
+      args: (OneInputStreamOperator[BaseRow, BaseRow], RowType, RowType),
       input: Array[BaseRow], expectedOutput: Array[GenericRow]): Unit = {
     val testHarness = new OneInputStreamTaskTestHarness[BaseRow, BaseRow](
       new function.Function[Environment, OneInputStreamTask[BaseRow, BaseRow]] {
         override def apply(t: Environment) = new OneInputStreamTask(t)
-      }, 1, 1, BaseRowTypeInfo.of(args._2), BaseRowTypeInfo.of(args._3))
+      }, 1, 1, args._2.toTypeInfo, args._3.toTypeInfo)
     testHarness.memorySize = 32 * 100 * 1024
 
     testHarness.setupOutputForSingletonOperatorChain()
     val streamConfig = testHarness.getStreamConfig
-    streamConfig.setStreamOperatorFactory(args._1)
+    streamConfig.setStreamOperator(args._1)
     streamConfig.setOperatorID(new OperatorID)
 
     testHarness.invoke()
@@ -85,6 +85,11 @@ abstract class BatchAggTestBase extends AggTestBase(isBatchMode = true) {
 
     testHarness.waitForInputProcessing()
 
+    val op = testHarness.getTask.getStreamStatusMaintainer.asInstanceOf[OperatorChain[_, _]]
+        .getHeadOperator.asInstanceOf[OneInputOperatorWrapper[_, _]].getOperator
+    // TODO close will invoke endInput
+    // op.getClass.getMethod("endInput").invoke(op)
+
     testHarness.endInput()
     testHarness.waitForTaskCompletion()
 
@@ -92,7 +97,7 @@ abstract class BatchAggTestBase extends AggTestBase(isBatchMode = true) {
     val outQueue = testHarness.getOutput
     while (!outQueue.isEmpty) {
       outputs.add(BaseRowTestUtil.toGenericRowDeeply(
-        outQueue.poll().asInstanceOf[StreamRecord[BaseRow]].getValue, args._3.getChildren))
+        outQueue.poll().asInstanceOf[StreamRecord[BaseRow]].getValue, args._3.getFieldTypes))
     }
     Assert.assertArrayEquals(expectedOutput.toArray[AnyRef], outputs.asScala.toArray[AnyRef])
   }

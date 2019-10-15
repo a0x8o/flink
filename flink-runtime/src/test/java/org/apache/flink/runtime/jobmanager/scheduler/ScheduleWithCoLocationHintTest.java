@@ -365,6 +365,7 @@ public class ScheduleWithCoLocationHintTest extends SchedulerTestBase {
 		s2.releaseSlot();
 
 		assertEquals(2, testingSlotProvider.getNumberOfAvailableSlots());
+		assertEquals(0, sharingGroup.getTaskAssignment().getNumberOfSlots());
 
 		LogicalSlot s3 = testingSlotProvider.allocateSlot(
 				new ScheduledUnit(getTestVertexWithLocation(jid2, 0, 2, sharingGroup, loc2), sharingGroup.getSlotSharingGroupId(), cc1), false, slotProfileForLocation(loc2), TestingUtils.infiniteTime()).get();
@@ -411,6 +412,7 @@ public class ScheduleWithCoLocationHintTest extends SchedulerTestBase {
 		s2.releaseSlot();
 
 		assertEquals(2, testingSlotProvider.getNumberOfAvailableSlots());
+		assertEquals(0, sharingGroup.getTaskAssignment().getNumberOfSlots());
 
 		LogicalSlot sa = testingSlotProvider.allocateSlot(
 				new ScheduledUnit(getTestVertexWithLocation(jidx, 0, 2, null)), false, SlotProfile.noRequirements(), TestingUtils.infiniteTime()).get();
@@ -485,6 +487,10 @@ public class ScheduleWithCoLocationHintTest extends SchedulerTestBase {
 		s3.releaseSlot();
 		s4.releaseSlot();
 		assertEquals(2, testingSlotProvider.getNumberOfAvailableSlots());
+
+		assertEquals(0, sharingGroup.getTaskAssignment().getNumberOfSlots());
+		assertEquals(0, sharingGroup.getTaskAssignment().getNumberOfAvailableSlotsForGroup(jid1));
+		assertEquals(0, sharingGroup.getTaskAssignment().getNumberOfAvailableSlotsForGroup(jid2));
 	}
 
 	@Test
@@ -523,6 +529,10 @@ public class ScheduleWithCoLocationHintTest extends SchedulerTestBase {
 		s4.releaseSlot();
 
 		assertEquals(2, testingSlotProvider.getNumberOfAvailableSlots());
+
+		assertEquals(0, sharingGroup.getTaskAssignment().getNumberOfSlots());
+		assertEquals(0, sharingGroup.getTaskAssignment().getNumberOfAvailableSlotsForGroup(jid1));
+		assertEquals(0, sharingGroup.getTaskAssignment().getNumberOfAvailableSlotsForGroup(jid2));
 	}
 
 	private static SlotProfile slotProfileForLocation(TaskManagerLocation location) {

@@ -21,7 +21,6 @@ package org.apache.flink.table.plan.schema
 import org.apache.flink.streaming.api.datastream.DataStream
 import org.apache.flink.table.calcite.FlinkTypeFactory
 import org.apache.flink.table.plan.stats.FlinkStatistic
-import org.apache.flink.table.types.utils.TypeConversions.fromLegacyInfoToDataType
 
 import org.apache.calcite.rel.`type`.{RelDataType, RelDataTypeFactory}
 
@@ -36,8 +35,7 @@ class DataStreamTable[T](
     override val fieldNames: Array[String],
     statistic: FlinkStatistic = FlinkStatistic.UNKNOWN,
     fieldNullables: Option[Array[Boolean]] = None)
-  extends InlineTable[T](
-    fromLegacyInfoToDataType(dataStream.getType), fieldIndexes, fieldNames, statistic) {
+  extends InlineTable[T](dataStream.getType, fieldIndexes, fieldNames, statistic) {
 
   // This is only used for bounded stream now, we supply default statistic.
   def this(
@@ -58,9 +56,7 @@ class DataStreamTable[T](
   override def getRowType(typeFactory: RelDataTypeFactory): RelDataType = {
     fieldNullables match {
       case Some(nulls) => typeFactory.asInstanceOf[FlinkTypeFactory]
-          .buildRelNodeRowType(fieldNames, fieldTypes.zip(nulls).map {
-            case (t, nullable) => t.copy(nullable)
-          })
+          .buildLogicalRowType(fieldNames, fieldTypes, nulls)
       case _ => super.getRowType(typeFactory)
     }
   }

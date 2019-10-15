@@ -24,7 +24,7 @@ import org.apache.flink.api.java.ExecutionEnvironment;
  * Skeleton for a Flink Batch Job.
  *
  * <p>For a tutorial how to write a Flink batch application, check the
- * tutorials and examples on the <a href="https://flink.apache.org/docs/stable/">Flink Website</a>.
+ * tutorials and examples on the <a href="http://flink.apache.org/docs/stable/">Flink Website</a>.
  *
  * <p>To package your application into a JAR file for execution,
  * change the main class in the POM.xml file to this class (simply search for 'mainClass')
@@ -52,11 +52,11 @@ public class BatchJob {
 		 * and many more.
 		 * Have a look at the programming guide for the Java API:
 		 *
-		 * https://flink.apache.org/docs/latest/apis/batch/index.html
+		 * http://flink.apache.org/docs/latest/apis/batch/index.html
 		 *
 		 * and the examples
 		 *
-		 * https://flink.apache.org/docs/latest/apis/batch/examples.html
+		 * http://flink.apache.org/docs/latest/apis/batch/examples.html
 		 *
 		 */
 

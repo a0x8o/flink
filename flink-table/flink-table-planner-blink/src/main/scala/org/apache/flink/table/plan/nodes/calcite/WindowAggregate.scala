@@ -18,7 +18,7 @@
 
 package org.apache.flink.table.plan.nodes.calcite
 
-import org.apache.flink.table.calcite.FlinkRelBuilder.PlannerNamedWindowProperty
+import org.apache.flink.table.calcite.FlinkRelBuilder.NamedWindowProperty
 import org.apache.flink.table.calcite.FlinkTypeFactory
 import org.apache.flink.table.plan.logical.LogicalWindow
 
@@ -43,18 +43,19 @@ abstract class WindowAggregate(
     groupSet: ImmutableBitSet,
     aggCalls: util.List[AggregateCall],
     window: LogicalWindow,
-    namedProperties: Seq[PlannerNamedWindowProperty])
+    namedProperties: Seq[NamedWindowProperty])
   extends Aggregate(
     cluster,
     traitSet,
     child,
+    false,
     groupSet,
     ImmutableList.of(groupSet),
     aggCalls) {
 
   def getWindow: LogicalWindow = window
 
-  def getNamedProperties: Seq[PlannerNamedWindowProperty] = namedProperties
+  def getNamedProperties: Seq[NamedWindowProperty] = namedProperties
 
   override def accept(shuttle: RelShuttle): RelNode = shuttle.visit(this)
 
@@ -66,7 +67,7 @@ abstract class WindowAggregate(
     namedProperties.foreach { namedProp =>
       builder.add(
         namedProp.name,
-        typeFactory.createFieldTypeFromLogicalType(namedProp.property.resultType)
+        typeFactory.createTypeFromInternalType(namedProp.property.resultType, isNullable = true)
       )
     }
     builder.build()

@@ -18,8 +18,7 @@
 
 package org.apache.flink.table.runtime.batch.sql.agg
 
-import org.apache.flink.table.api.ExecutionConfigOptions
-import org.apache.flink.table.plan.util.OperatorType
+import org.apache.flink.table.api.{OperatorType, TableConfigOptions}
 
 /**
   * HashDistinctAggITCase using HashAgg Operator.
@@ -27,7 +26,7 @@ import org.apache.flink.table.plan.util.OperatorType
 class HashDistinctAggregateITCase extends DistinctAggregateITCaseBase {
 
   override def prepareAggOp(): Unit = {
-    tEnv.getConfig.getConfiguration.setString(
-      ExecutionConfigOptions.SQL_EXEC_DISABLED_OPERATORS, OperatorType.SortAgg.toString)
+    tEnv.getConfig.getConf.setString(
+      TableConfigOptions.SQL_EXEC_DISABLED_OPERATORS, OperatorType.SortAgg.toString)
   }
 }

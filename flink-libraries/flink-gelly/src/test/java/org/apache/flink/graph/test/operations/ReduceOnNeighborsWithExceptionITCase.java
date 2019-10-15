@@ -52,6 +52,7 @@ public class ReduceOnNeighborsWithExceptionITCase extends AbstractTestBase {
 
 		final ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
 		env.setParallelism(PARALLELISM);
+		env.getConfig().disableSysoutLogging();
 
 		Graph<Long, Long, Long> graph = Graph.fromDataSet(TestGraphUtils.getLongLongVertexData(env),
 				TestGraphUtils.getLongLongEdgeInvalidSrcData(env), env);
@@ -78,6 +79,7 @@ public class ReduceOnNeighborsWithExceptionITCase extends AbstractTestBase {
 
 		final ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
 		env.setParallelism(PARALLELISM);
+		env.getConfig().disableSysoutLogging();
 
 		Graph<Long, Long, Long> graph = Graph.fromDataSet(TestGraphUtils.getLongLongVertexData(env),
 				TestGraphUtils.getLongLongEdgeInvalidTrgData(env), env);
@@ -104,6 +106,7 @@ public class ReduceOnNeighborsWithExceptionITCase extends AbstractTestBase {
 
 		final ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
 		env.setParallelism(PARALLELISM);
+		env.getConfig().disableSysoutLogging();
 
 		Graph<Long, Long, Long> graph = Graph.fromDataSet(TestGraphUtils.getLongLongVertexData(env),
 				TestGraphUtils.getLongLongEdgeInvalidTrgData(env), env);
@@ -128,6 +131,7 @@ public class ReduceOnNeighborsWithExceptionITCase extends AbstractTestBase {
 
 		final ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
 		env.setParallelism(PARALLELISM);
+		env.getConfig().disableSysoutLogging();
 
 		Graph<Long, Long, Long> graph = Graph.fromDataSet(TestGraphUtils.getLongLongVertexData(env),
 				TestGraphUtils.getLongLongEdgeInvalidSrcData(env), env);

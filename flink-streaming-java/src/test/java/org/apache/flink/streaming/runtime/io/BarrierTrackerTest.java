@@ -30,13 +30,12 @@ import org.apache.flink.runtime.io.network.partition.consumer.BufferOrEvent;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
 import org.apache.flink.runtime.operators.testutils.DummyEnvironment;
 
-import org.junit.After;
 import org.junit.Test;
 
 import java.util.Arrays;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.Matchers.any;
@@ -52,153 +51,210 @@ public class BarrierTrackerTest {
 
 	private static final int PAGE_SIZE = 512;
 
-	private BarrierTracker tracker;
-
-	@After
-	public void ensureEmpty() throws Exception {
-		assertFalse(tracker.pollNext().isPresent());
-		assertTrue(tracker.isFinished());
-		assertTrue(tracker.isEmpty());
-	}
-
 	@Test
-	public void testSingleChannelNoBarriers() throws Exception {
-		BufferOrEvent[] sequence = { createBuffer(0), createBuffer(0), createBuffer(0) };
-		tracker = createBarrierTracker(1, sequence);
+	public void testSingleChannelNoBarriers() {
+		try {
+			BufferOrEvent[] sequence = { createBuffer(0), createBuffer(0), createBuffer(0) };
 
-		for (BufferOrEvent boe : sequence) {
-			assertEquals(boe, tracker.pollNext().get());
-		}
-	}
+			MockInputGate gate = new MockInputGate(PAGE_SIZE, 1, Arrays.asList(sequence));
+			BarrierTracker tracker = new BarrierTracker(gate);
 
-	@Test
-	public void testMultiChannelNoBarriers() throws Exception {
-		BufferOrEvent[] sequence = { createBuffer(2), createBuffer(2), createBuffer(0),
-				createBuffer(1), createBuffer(0), createBuffer(3),
-				createBuffer(1), createBuffer(1), createBuffer(2)
-		};
-		tracker = createBarrierTracker(4, sequence);
-
-		for (BufferOrEvent boe : sequence) {
-			assertEquals(boe, tracker.pollNext().get());
-		}
-	}
-
-	@Test
-	public void testSingleChannelWithBarriers() throws Exception {
-		BufferOrEvent[] sequence = {
-				createBuffer(0), createBuffer(0), createBuffer(0),
-				createBarrier(1, 0),
-				createBuffer(0), createBuffer(0), createBuffer(0), createBuffer(0),
-				createBarrier(2, 0), createBarrier(3, 0),
-				createBuffer(0), createBuffer(0),
-				createBarrier(4, 0), createBarrier(5, 0), createBarrier(6, 0),
-				createBuffer(0)
-		};
-		tracker = createBarrierTracker(1, sequence);
-
-		CheckpointSequenceValidator validator =
-				new CheckpointSequenceValidator(1, 2, 3, 4, 5, 6);
-		tracker.registerCheckpointEventHandler(validator);
-
-		for (BufferOrEvent boe : sequence) {
-			if (boe.isBuffer() || boe.getEvent().getClass() != CheckpointBarrier.class) {
-				assertEquals(boe, tracker.pollNext().get());
+			for (BufferOrEvent boe : sequence) {
+				assertEquals(boe, tracker.getNextNonBlocked());
 			}
+
+			assertNull(tracker.getNextNonBlocked());
+			assertNull(tracker.getNextNonBlocked());
+		}
+		catch (Exception e) {
+			e.printStackTrace();
+			fail(e.getMessage());
 		}
 	}
 
 	@Test
-	public void testSingleChannelWithSkippedBarriers() throws Exception {
-		BufferOrEvent[] sequence = {
-				createBuffer(0),
-				createBarrier(1, 0),
-				createBuffer(0), createBuffer(0),
-				createBarrier(3, 0), createBuffer(0),
-				createBarrier(4, 0), createBarrier(6, 0), createBuffer(0),
-				createBarrier(7, 0), createBuffer(0), createBarrier(10, 0),
-				createBuffer(0)
-		};
-		tracker = createBarrierTracker(1, sequence);
+	public void testMultiChannelNoBarriers() {
+		try {
+			BufferOrEvent[] sequence = { createBuffer(2), createBuffer(2), createBuffer(0),
+					createBuffer(1), createBuffer(0), createBuffer(3),
+					createBuffer(1), createBuffer(1), createBuffer(2)
+			};
 
-		CheckpointSequenceValidator validator =
-				new CheckpointSequenceValidator(1, 3, 4, 6, 7, 10);
-		tracker.registerCheckpointEventHandler(validator);
+			MockInputGate gate = new MockInputGate(PAGE_SIZE, 4, Arrays.asList(sequence));
+			BarrierTracker tracker = new BarrierTracker(gate);
 
-		for (BufferOrEvent boe : sequence) {
-			if (boe.isBuffer() || boe.getEvent().getClass() != CheckpointBarrier.class) {
-				assertEquals(boe, tracker.pollNext().get());
+			for (BufferOrEvent boe : sequence) {
+				assertEquals(boe, tracker.getNextNonBlocked());
 			}
+
+			assertNull(tracker.getNextNonBlocked());
+			assertNull(tracker.getNextNonBlocked());
+		}
+		catch (Exception e) {
+			e.printStackTrace();
+			fail(e.getMessage());
 		}
 	}
 
 	@Test
-	public void testMultiChannelWithBarriers() throws Exception {
-		BufferOrEvent[] sequence = {
-				createBuffer(0), createBuffer(2), createBuffer(0),
-				createBarrier(1, 1), createBarrier(1, 2),
-				createBuffer(2), createBuffer(1),
-				createBarrier(1, 0),
+	public void testSingleChannelWithBarriers() {
+		try {
+			BufferOrEvent[] sequence = {
+					createBuffer(0), createBuffer(0), createBuffer(0),
+					createBarrier(1, 0),
+					createBuffer(0), createBuffer(0), createBuffer(0), createBuffer(0),
+					createBarrier(2, 0), createBarrier(3, 0),
+					createBuffer(0), createBuffer(0),
+					createBarrier(4, 0), createBarrier(5, 0), createBarrier(6, 0),
+					createBuffer(0)
+			};
 
-				createBuffer(0), createBuffer(0), createBuffer(1), createBuffer(1), createBuffer(2),
-				createBarrier(2, 0), createBarrier(2, 1), createBarrier(2, 2),
+			MockInputGate gate = new MockInputGate(PAGE_SIZE, 1, Arrays.asList(sequence));
+			BarrierTracker tracker = new BarrierTracker(gate);
 
-				createBuffer(2), createBuffer(2),
-				createBarrier(3, 2),
-				createBuffer(2), createBuffer(2),
-				createBarrier(3, 0), createBarrier(3, 1),
+			CheckpointSequenceValidator validator =
+					new CheckpointSequenceValidator(1, 2, 3, 4, 5, 6);
+			tracker.registerCheckpointEventHandler(validator);
 
-				createBarrier(4, 1), createBarrier(4, 2), createBarrier(4, 0),
-
-				createBuffer(0)
-		};
-		tracker = createBarrierTracker(3, sequence);
-
-		CheckpointSequenceValidator validator =
-				new CheckpointSequenceValidator(1, 2, 3, 4);
-		tracker.registerCheckpointEventHandler(validator);
-
-		for (BufferOrEvent boe : sequence) {
-			if (boe.isBuffer() || boe.getEvent().getClass() != CheckpointBarrier.class) {
-				assertEquals(boe, tracker.pollNext().get());
+			for (BufferOrEvent boe : sequence) {
+				if (boe.isBuffer() || boe.getEvent().getClass() != CheckpointBarrier.class) {
+					assertEquals(boe, tracker.getNextNonBlocked());
+				}
 			}
+
+			assertNull(tracker.getNextNonBlocked());
+			assertNull(tracker.getNextNonBlocked());
+		}
+		catch (Exception e) {
+			e.printStackTrace();
+			fail(e.getMessage());
 		}
 	}
 
 	@Test
-	public void testMultiChannelSkippingCheckpoints() throws Exception {
-		BufferOrEvent[] sequence = {
-				createBuffer(0), createBuffer(2), createBuffer(0),
-				createBarrier(1, 1), createBarrier(1, 2),
-				createBuffer(2), createBuffer(1),
-				createBarrier(1, 0),
+	public void testSingleChannelWithSkippedBarriers() {
+		try {
+			BufferOrEvent[] sequence = {
+					createBuffer(0),
+					createBarrier(1, 0),
+					createBuffer(0), createBuffer(0),
+					createBarrier(3, 0), createBuffer(0),
+					createBarrier(4, 0), createBarrier(6, 0), createBuffer(0),
+					createBarrier(7, 0), createBuffer(0), createBarrier(10, 0),
+					createBuffer(0)
+			};
 
-				createBuffer(0), createBuffer(0), createBuffer(1), createBuffer(1), createBuffer(2),
-				createBarrier(2, 0), createBarrier(2, 1), createBarrier(2, 2),
+			MockInputGate gate = new MockInputGate(PAGE_SIZE, 1, Arrays.asList(sequence));
+			BarrierTracker tracker = new BarrierTracker(gate);
 
-				createBuffer(2), createBuffer(2),
-				createBarrier(3, 2),
-				createBuffer(2), createBuffer(2),
+			CheckpointSequenceValidator validator =
+					new CheckpointSequenceValidator(1, 3, 4, 6, 7, 10);
+			tracker.registerCheckpointEventHandler(validator);
 
-				// jump to checkpoint 4
-				createBarrier(4, 0),
-				createBuffer(0), createBuffer(1), createBuffer(2),
-				createBarrier(4, 1),
-				createBuffer(1),
-				createBarrier(4, 2),
-
-				createBuffer(0)
-		};
-		tracker = createBarrierTracker(3, sequence);
-
-		CheckpointSequenceValidator validator =
-				new CheckpointSequenceValidator(1, 2, 4);
-		tracker.registerCheckpointEventHandler(validator);
-
-		for (BufferOrEvent boe : sequence) {
-			if (boe.isBuffer() || boe.getEvent().getClass() != CheckpointBarrier.class) {
-				assertEquals(boe, tracker.pollNext().get());
+			for (BufferOrEvent boe : sequence) {
+				if (boe.isBuffer() || boe.getEvent().getClass() != CheckpointBarrier.class) {
+					assertEquals(boe, tracker.getNextNonBlocked());
+				}
 			}
+
+			assertNull(tracker.getNextNonBlocked());
+			assertNull(tracker.getNextNonBlocked());
+		}
+		catch (Exception e) {
+			e.printStackTrace();
+			fail(e.getMessage());
+		}
+	}
+
+	@Test
+	public void testMultiChannelWithBarriers() {
+		try {
+			BufferOrEvent[] sequence = {
+					createBuffer(0), createBuffer(2), createBuffer(0),
+					createBarrier(1, 1), createBarrier(1, 2),
+					createBuffer(2), createBuffer(1),
+					createBarrier(1, 0),
+
+					createBuffer(0), createBuffer(0), createBuffer(1), createBuffer(1), createBuffer(2),
+					createBarrier(2, 0), createBarrier(2, 1), createBarrier(2, 2),
+
+					createBuffer(2), createBuffer(2),
+					createBarrier(3, 2),
+					createBuffer(2), createBuffer(2),
+					createBarrier(3, 0), createBarrier(3, 1),
+
+					createBarrier(4, 1), createBarrier(4, 2), createBarrier(4, 0),
+
+					createBuffer(0)
+			};
+
+			MockInputGate gate = new MockInputGate(PAGE_SIZE, 3, Arrays.asList(sequence));
+			BarrierTracker tracker = new BarrierTracker(gate);
+
+			CheckpointSequenceValidator validator =
+					new CheckpointSequenceValidator(1, 2, 3, 4);
+			tracker.registerCheckpointEventHandler(validator);
+
+			for (BufferOrEvent boe : sequence) {
+				if (boe.isBuffer() || boe.getEvent().getClass() != CheckpointBarrier.class) {
+					assertEquals(boe, tracker.getNextNonBlocked());
+				}
+			}
+
+			assertNull(tracker.getNextNonBlocked());
+			assertNull(tracker.getNextNonBlocked());
+		}
+		catch (Exception e) {
+			e.printStackTrace();
+			fail(e.getMessage());
+		}
+	}
+
+	@Test
+	public void testMultiChannelSkippingCheckpoints() {
+		try {
+			BufferOrEvent[] sequence = {
+					createBuffer(0), createBuffer(2), createBuffer(0),
+					createBarrier(1, 1), createBarrier(1, 2),
+					createBuffer(2), createBuffer(1),
+					createBarrier(1, 0),
+
+					createBuffer(0), createBuffer(0), createBuffer(1), createBuffer(1), createBuffer(2),
+					createBarrier(2, 0), createBarrier(2, 1), createBarrier(2, 2),
+
+					createBuffer(2), createBuffer(2),
+					createBarrier(3, 2),
+					createBuffer(2), createBuffer(2),
+
+					// jump to checkpoint 4
+					createBarrier(4, 0),
+					createBuffer(0), createBuffer(1), createBuffer(2),
+					createBarrier(4, 1),
+					createBuffer(1),
+					createBarrier(4, 2),
+
+					createBuffer(0)
+			};
+
+			MockInputGate gate = new MockInputGate(PAGE_SIZE, 3, Arrays.asList(sequence));
+			BarrierTracker tracker = new BarrierTracker(gate);
+
+			CheckpointSequenceValidator validator =
+					new CheckpointSequenceValidator(1, 2, 4);
+			tracker.registerCheckpointEventHandler(validator);
+
+			for (BufferOrEvent boe : sequence) {
+				if (boe.isBuffer() || boe.getEvent().getClass() != CheckpointBarrier.class) {
+					assertEquals(boe, tracker.getNextNonBlocked());
+				}
+			}
+
+			assertNull(tracker.getNextNonBlocked());
+			assertNull(tracker.getNextNonBlocked());
+		}
+		catch (Exception e) {
+			e.printStackTrace();
+			fail(e.getMessage());
 		}
 	}
 
@@ -213,68 +269,76 @@ public class BarrierTrackerTest {
 	 * checkpoint all together.
 	 */
 	@Test
-	public void testCompleteCheckpointsOnLateBarriers() throws Exception {
-		BufferOrEvent[] sequence = {
-				// checkpoint 2
-				createBuffer(1), createBuffer(1), createBuffer(0), createBuffer(2),
-				createBarrier(2, 1), createBarrier(2, 0), createBarrier(2, 2),
+	public void testCompleteCheckpointsOnLateBarriers() {
+		try {
+			BufferOrEvent[] sequence = {
+					// checkpoint 2
+					createBuffer(1), createBuffer(1), createBuffer(0), createBuffer(2),
+					createBarrier(2, 1), createBarrier(2, 0), createBarrier(2, 2),
 
-				// incomplete checkpoint 3
-				createBuffer(1), createBuffer(0),
-				createBarrier(3, 1), createBarrier(3, 2),
+					// incomplete checkpoint 3
+					createBuffer(1), createBuffer(0),
+					createBarrier(3, 1), createBarrier(3, 2),
 
-				// some barriers from checkpoint 4
-				createBuffer(1), createBuffer(0),
-				createBarrier(4, 2), createBarrier(4, 1),
-				createBuffer(1), createBuffer(2),
+					// some barriers from checkpoint 4
+					createBuffer(1), createBuffer(0),
+					createBarrier(4, 2), createBarrier(4, 1),
+					createBuffer(1), createBuffer(2),
 
-				// last barrier from checkpoint 3
-				createBarrier(3, 0),
+					// last barrier from checkpoint 3
+					createBarrier(3, 0),
 
-				// complete checkpoint 4
-				createBuffer(0), createBarrier(4, 0),
+					// complete checkpoint 4
+					createBuffer(0), createBarrier(4, 0),
 
-				// regular checkpoint 5
-				createBuffer(1), createBuffer(2), createBarrier(5, 1),
-				createBuffer(0), createBarrier(5, 0),
-				createBuffer(1), createBarrier(5, 2),
+					// regular checkpoint 5
+					createBuffer(1), createBuffer(2), createBarrier(5, 1),
+					createBuffer(0), createBarrier(5, 0),
+					createBuffer(1), createBarrier(5, 2),
 
-				// checkpoint 6 (incomplete),
-				createBuffer(1), createBarrier(6, 1),
-				createBuffer(0), createBarrier(6, 0),
+					// checkpoint 6 (incomplete),
+					createBuffer(1), createBarrier(6, 1),
+					createBuffer(0), createBarrier(6, 0),
 
-				// checkpoint 7, with early barriers for checkpoints 8 and 9
-				createBuffer(1), createBarrier(7, 1),
-				createBuffer(0), createBarrier(7, 2),
-				createBuffer(2), createBarrier(8, 2),
-				createBuffer(0), createBarrier(8, 1),
-				createBuffer(1), createBarrier(9, 1),
+					// checkpoint 7, with early barriers for checkpoints 8 and 9
+					createBuffer(1), createBarrier(7, 1),
+					createBuffer(0), createBarrier(7, 2),
+					createBuffer(2), createBarrier(8, 2),
+					createBuffer(0), createBarrier(8, 1),
+					createBuffer(1), createBarrier(9, 1),
 
-				// complete checkpoint 7, first barriers from checkpoint 10
-				createBarrier(7, 0),
-				createBuffer(0), createBarrier(9, 2),
-				createBuffer(2), createBarrier(10, 2),
+					// complete checkpoint 7, first barriers from checkpoint 10
+					createBarrier(7, 0),
+					createBuffer(0), createBarrier(9, 2),
+					createBuffer(2), createBarrier(10, 2),
 
-				// complete checkpoint 8 and 9
-				createBarrier(8, 0),
-				createBuffer(1), createBuffer(2), createBarrier(9, 0),
+					// complete checkpoint 8 and 9
+					createBarrier(8, 0),
+					createBuffer(1), createBuffer(2), createBarrier(9, 0),
 
-				// trailing data
-				createBuffer(1), createBuffer(0), createBuffer(2),
+					// trailing data
+					createBuffer(1), createBuffer(0), createBuffer(2)
+			};
 
-				// complete checkpoint 10
-				createBarrier(10, 0), createBarrier(10, 1),
-		};
-		tracker = createBarrierTracker(3, sequence);
+			MockInputGate gate = new MockInputGate(PAGE_SIZE, 3, Arrays.asList(sequence));
+			BarrierTracker tracker = new BarrierTracker(gate);
 
-		CheckpointSequenceValidator validator =
-				new CheckpointSequenceValidator(2, 3, 4, 5, 7, 8, 9, 10);
-		tracker.registerCheckpointEventHandler(validator);
+			CheckpointSequenceValidator validator =
+					new CheckpointSequenceValidator(2, 3, 4, 5, 7, 8, 9);
+			tracker.registerCheckpointEventHandler(validator);
 
-		for (BufferOrEvent boe : sequence) {
-			if (boe.isBuffer() || boe.getEvent().getClass() != CheckpointBarrier.class) {
-				assertEquals(boe, tracker.pollNext().get());
+			for (BufferOrEvent boe : sequence) {
+				if (boe.isBuffer() || boe.getEvent().getClass() != CheckpointBarrier.class) {
+					assertEquals(boe, tracker.getNextNonBlocked());
+				}
 			}
+
+			assertNull(tracker.getNextNonBlocked());
+			assertNull(tracker.getNextNonBlocked());
+		}
+		catch (Exception e) {
+			e.printStackTrace();
+			fail(e.getMessage());
 		}
 	}
 
@@ -291,7 +355,9 @@ public class BarrierTrackerTest {
 				createCancellationBarrier(6, 0),
 				createBuffer(0)
 		};
-		tracker = createBarrierTracker(1, sequence);
+
+		MockInputGate gate = new MockInputGate(PAGE_SIZE, 1, Arrays.asList(sequence));
+		BarrierTracker tracker = new BarrierTracker(gate);
 
 		// negative values mean an expected cancellation call!
 		CheckpointSequenceValidator validator =
@@ -300,10 +366,13 @@ public class BarrierTrackerTest {
 
 		for (BufferOrEvent boe : sequence) {
 			if (boe.isBuffer()) {
-				assertEquals(boe, tracker.pollNext().get());
+				assertEquals(boe, tracker.getNextNonBlocked());
 			}
 			assertTrue(tracker.isEmpty());
 		}
+
+		assertNull(tracker.getNextNonBlocked());
+		assertNull(tracker.getNextNonBlocked());
 	}
 
 	@Test
@@ -342,7 +411,9 @@ public class BarrierTrackerTest {
 
 				createBuffer(0)
 		};
-		tracker = createBarrierTracker(3, sequence);
+
+		MockInputGate gate = new MockInputGate(PAGE_SIZE, 3, Arrays.asList(sequence));
+		BarrierTracker tracker = new BarrierTracker(gate);
 
 		// negative values mean an expected cancellation call!
 		CheckpointSequenceValidator validator =
@@ -351,9 +422,16 @@ public class BarrierTrackerTest {
 
 		for (BufferOrEvent boe : sequence) {
 			if (boe.isBuffer()) {
-				assertEquals(boe, tracker.pollNext().get());
+				assertEquals(boe, tracker.getNextNonBlocked());
 			}
 		}
+
+		assertTrue(tracker.isEmpty());
+
+		assertNull(tracker.getNextNonBlocked());
+		assertNull(tracker.getNextNonBlocked());
+
+		assertTrue(tracker.isEmpty());
 	}
 
 	/**
@@ -371,15 +449,16 @@ public class BarrierTrackerTest {
 			createCancellationBarrier(2L, 2),
 			createBuffer(0)
 		};
-		tracker = createBarrierTracker(3, sequence);
 
+		MockInputGate gate = new MockInputGate(PAGE_SIZE, 3, Arrays.asList(sequence));
+		BarrierTracker tracker = new BarrierTracker(gate);
 		AbstractInvokable statefulTask = mock(AbstractInvokable.class);
 
 		tracker.registerCheckpointEventHandler(statefulTask);
 
 		for (BufferOrEvent boe : sequence) {
 			if (boe.isBuffer() || (boe.getEvent().getClass() != CheckpointBarrier.class && boe.getEvent().getClass() != CancelCheckpointMarker.class)) {
-				assertEquals(boe, tracker.pollNext().get());
+				assertEquals(boe, tracker.getNextNonBlocked());
 			}
 		}
 
@@ -390,11 +469,6 @@ public class BarrierTrackerTest {
 	// ------------------------------------------------------------------------
 	//  Utils
 	// ------------------------------------------------------------------------
-
-	private static BarrierTracker createBarrierTracker(int numberOfChannels, BufferOrEvent[] sequence) {
-		MockInputGate gate = new MockInputGate(PAGE_SIZE, numberOfChannels, Arrays.asList(sequence));
-		return new BarrierTracker(gate);
-	}
 
 	private static BufferOrEvent createBarrier(long id, int channel) {
 		return new BufferOrEvent(new CheckpointBarrier(id, System.currentTimeMillis(), CheckpointOptions.forCheckpointWithDefaultLocation()), channel);

@@ -17,14 +17,14 @@
  */
 package org.apache.flink.table.plan.rules.logical
 
+import org.apache.flink.table.`type`.TypeConverters.createInternalTypeFromTypeInfo
 import org.apache.flink.table.api._
-import org.apache.flink.table.calcite.FlinkRelBuilder.PlannerNamedWindowProperty
-import org.apache.flink.table.expressions.utils.ApiExpressionUtils.intervalOfMillis
-import org.apache.flink.table.expressions.{FieldReferenceExpression, PlannerWindowReference}
+import org.apache.flink.table.calcite.FlinkRelBuilder.NamedWindowProperty
+import org.apache.flink.table.expressions.{FieldReferenceExpression, ValueLiteralExpression, WindowReference}
 import org.apache.flink.table.functions.sql.FlinkSqlOperatorTable
 import org.apache.flink.table.plan.logical.{LogicalWindow, SessionGroupWindow, SlidingGroupWindow, TumblingGroupWindow}
 import org.apache.flink.table.plan.nodes.calcite.LogicalWindowAggregate
-import org.apache.flink.table.types.LogicalTypeDataTypeConverter.fromDataTypeToLogicalType
+import org.apache.flink.table.typeutils.TimeIntervalTypeInfo.INTERVAL_MILLIS
 
 import com.google.common.collect.ImmutableList
 import org.apache.calcite.plan.RelOptRule._
@@ -105,7 +105,7 @@ abstract class LogicalWindowAggregateRuleBase(description: String)
     val transformed = call.builder()
     val windowAgg = LogicalWindowAggregate.create(
       window,
-      Seq[PlannerNamedWindowProperty](),
+      Seq[NamedWindowProperty](),
       newAgg)
     // The transformation adds an additional LogicalProject at the top to ensure
     // that the types are equivalent.
@@ -175,30 +175,30 @@ abstract class LogicalWindowAggregateRuleBase(description: String)
       }
 
     val timeField = getTimeFieldReference(windowExpr.getOperands.get(0), windowExprIdx, rowType)
-    val resultType = Some(fromDataTypeToLogicalType(timeField.getOutputDataType))
-    val windowRef = PlannerWindowReference("w$", resultType)
+    val resultType = Some(createInternalTypeFromTypeInfo(timeField.getResultType))
+    val windowRef = WindowReference("w$", resultType)
     windowExpr.getOperator match {
       case FlinkSqlOperatorTable.TUMBLE =>
         val interval = getOperandAsLong(windowExpr, 1)
         TumblingGroupWindow(
           windowRef,
           timeField,
-          intervalOfMillis(interval))
+          new ValueLiteralExpression(interval, INTERVAL_MILLIS))
 
       case FlinkSqlOperatorTable.HOP =>
         val (slide, size) = (getOperandAsLong(windowExpr, 1), getOperandAsLong(windowExpr, 2))
         SlidingGroupWindow(
           windowRef,
           timeField,
-          intervalOfMillis(size),
-          intervalOfMillis(slide))
+          new ValueLiteralExpression(size, INTERVAL_MILLIS),
+          new ValueLiteralExpression(slide, INTERVAL_MILLIS))
 
       case FlinkSqlOperatorTable.SESSION =>
         val gap = getOperandAsLong(windowExpr, 1)
         SessionGroupWindow(
           windowRef,
           timeField,
-          intervalOfMillis(gap))
+          new ValueLiteralExpression(gap, INTERVAL_MILLIS))
     }
   }
 

@@ -28,46 +28,44 @@ class SetOperatorsTest extends TableTestBase {
   @Test
   def testInOnLiterals(): Unit = {
     val util = streamTestUtil()
-    val table = util.addTable[(Int, Long, String)]("MyTable", 'a, 'b, 'c)
+    util.addTable[(Int, Long, String)]("MyTable", 'a, 'b, 'c)
 
-    val resultStr = (1 to 30).map(i => s"$i:BIGINT").mkString(", ")
+    val resultStr = (1 to 30).mkString(", ")
     val expected = unaryNode(
       "DataStreamCalc",
-      streamTableNode(table),
+      streamTableNode(0),
       term("select", "a", "b", "c"),
       term("where", s"IN(b, $resultStr)")
     )
 
-    val inStr = (1 to 30).mkString(", ")
     util.verifySql(
-      s"SELECT * FROM MyTable WHERE b in ($inStr)",
+      s"SELECT * FROM MyTable WHERE b in ($resultStr)",
       expected)
   }
 
   @Test
   def testNotInOnLiterals(): Unit = {
     val util = streamTestUtil()
-    val table = util.addTable[(Int, Long, String)]("MyTable", 'a, 'b, 'c)
+    util.addTable[(Int, Long, String)]("MyTable", 'a, 'b, 'c)
 
-    val resultStr = (1 to 30).map(i => s"$i:BIGINT").mkString(", ")
+    val resultStr = (1 to 30).mkString(", ")
     val expected = unaryNode(
       "DataStreamCalc",
-      streamTableNode(table),
+      streamTableNode(0),
       term("select", "a", "b", "c"),
       term("where", s"NOT IN(b, $resultStr)")
     )
 
-    val notInStr = (1 to 30).mkString(", ")
     util.verifySql(
-      s"SELECT * FROM MyTable WHERE b NOT IN ($notInStr)",
+      s"SELECT * FROM MyTable WHERE b NOT IN ($resultStr)",
       expected)
   }
 
   @Test
   def testInUncorrelated(): Unit = {
     val streamUtil = streamTestUtil()
-    val table = streamUtil.addTable[(Int, Long, String)]("tableA", 'a, 'b, 'c)
-    val table1 = streamUtil.addTable[(Int, String)]("tableB", 'x, 'y)
+    streamUtil.addTable[(Int, Long, String)]("tableA", 'a, 'b, 'c)
+    streamUtil.addTable[(Int, String)]("tableB", 'x, 'y)
 
     val sqlQuery =
       s"""
@@ -80,12 +78,12 @@ class SetOperatorsTest extends TableTestBase {
         "DataStreamCalc",
         binaryNode(
           "DataStreamJoin",
-          streamTableNode(table),
+          streamTableNode(0),
           unaryNode(
             "DataStreamGroupAggregate",
             unaryNode(
               "DataStreamCalc",
-              streamTableNode(table1),
+              streamTableNode(1),
               term("select", "x")
             ),
             term("groupBy", "x"),
@@ -104,8 +102,8 @@ class SetOperatorsTest extends TableTestBase {
   @Test
   def testInUncorrelatedWithConditionAndAgg(): Unit = {
     val streamUtil = streamTestUtil()
-    val table = streamUtil.addTable[(Int, Long, String)]("tableA", 'a, 'b, 'c)
-    val table1 = streamUtil.addTable[(Int, String)]("tableB", 'x, 'y)
+    streamUtil.addTable[(Int, Long, String)]("tableA", 'a, 'b, 'c)
+    streamUtil.addTable[(Int, String)]("tableB", 'x, 'y)
 
     val sqlQuery =
       s"""
@@ -118,7 +116,7 @@ class SetOperatorsTest extends TableTestBase {
         "DataStreamCalc",
         binaryNode(
           "DataStreamJoin",
-          streamTableNode(table),
+          streamTableNode(0),
           unaryNode(
             "DataStreamGroupAggregate",
             unaryNode(
@@ -127,7 +125,7 @@ class SetOperatorsTest extends TableTestBase {
                 "DataStreamGroupAggregate",
                 unaryNode(
                   "DataStreamCalc",
-                  streamTableNode(table1),
+                  streamTableNode(1),
                   term("select", "x", "y"),
                   term("where", "LIKE(y, '%Hanoi%')")
                 ),
@@ -152,9 +150,9 @@ class SetOperatorsTest extends TableTestBase {
   @Test
   def testInWithMultiUncorrelatedCondition(): Unit = {
     val streamUtil = streamTestUtil()
-    val table = streamUtil.addTable[(Int, Long, String)]("tableA", 'a, 'b, 'c)
-    val table1 = streamUtil.addTable[(Int, String)]("tableB", 'x, 'y)
-    val table2 = streamUtil.addTable[(Long, Int)]("tableC", 'w, 'z)
+    streamUtil.addTable[(Int, Long, String)]("tableA", 'a, 'b, 'c)
+    streamUtil.addTable[(Int, String)]("tableB", 'x, 'y)
+    streamUtil.addTable[(Long, Int)]("tableC", 'w, 'z)
 
     val sqlQuery =
       s"""
@@ -172,12 +170,12 @@ class SetOperatorsTest extends TableTestBase {
             "DataStreamCalc",
             binaryNode(
               "DataStreamJoin",
-              streamTableNode(table),
+              streamTableNode(0),
               unaryNode(
                 "DataStreamGroupAggregate",
                 unaryNode(
                   "DataStreamCalc",
-                  streamTableNode(table1),
+                  streamTableNode(1),
                   term("select", "x")
                 ),
                 term("groupBy", "x"),
@@ -193,7 +191,7 @@ class SetOperatorsTest extends TableTestBase {
             "DataStreamGroupAggregate",
             unaryNode(
               "DataStreamCalc",
-              streamTableNode(table2),
+              streamTableNode(2),
               term("select", "w")
             ),
             term("groupBy", "w"),
@@ -219,15 +217,15 @@ class SetOperatorsTest extends TableTestBase {
         unaryNode("DataStreamCalc",
           values("DataStreamValues",
             tuples(List("0"))),
-          term("select", "1 AS EXPR$0, 1:BIGINT AS EXPR$1")),
+          term("select", "1 AS EXPR$0, 1 AS EXPR$1")),
         unaryNode("DataStreamCalc",
           values("DataStreamValues",
             tuples(List("0"))),
-          term("select", "2 AS EXPR$0, 2:BIGINT AS EXPR$1")),
+          term("select", "2 AS EXPR$0, 2 AS EXPR$1")),
         unaryNode("DataStreamCalc",
           values("DataStreamValues",
             tuples(List("0"))),
-          term("select", "3 AS EXPR$0, 3:BIGINT AS EXPR$1"))
+          term("select", "3 AS EXPR$0, 3 AS EXPR$1"))
       ),
       term("all", "true"),
       term("union all", "EXPR$0, EXPR$1")

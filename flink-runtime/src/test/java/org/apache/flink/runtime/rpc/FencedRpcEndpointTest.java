@@ -296,11 +296,20 @@ public class FencedRpcEndpointTest extends TestLogger {
 		}
 
 		protected FencedTestingEndpoint(RpcService rpcService, String value, UUID initialFencingToken) {
-			super(rpcService, initialFencingToken);
+			super(rpcService);
 
 			computationLatch = new OneShotLatch();
 
 			this.value = value;
+
+			// make sure that it looks as if we are running in the main thread
+			currentMainThread.set(Thread.currentThread());
+
+			try {
+				setFencingToken(initialFencingToken);
+			} finally {
+				currentMainThread.set(null);
+			}
 		}
 
 		@Override

@@ -119,11 +119,7 @@ public class DatadogHttpClient {
 		client.connectionPool().evictAll();
 	}
 
-	/**
-	 * A handler for OkHttpClient callback.  In case of error or failure it logs the error at warning level.
-	 */
-	protected static class EmptyCallback implements Callback {
-
+	private static class EmptyCallback implements Callback {
 		private static final EmptyCallback singleton = new EmptyCallback();
 
 		public static Callback getEmptyCallback() {
@@ -132,15 +128,11 @@ public class DatadogHttpClient {
 
 		@Override
 		public void onFailure(Call call, IOException e) {
-			LOGGER.warn("Failed sending request to Datadog", e);
+			LOGGER.debug("Failed sending request to Datadog" , e);
 		}
 
 		@Override
 		public void onResponse(Call call, Response response) throws IOException {
-			if (!response.isSuccessful()) {
-				LOGGER.warn("Failed to send request to Datadog (response was {})", response);
-			}
-
 			response.close();
 		}
 	}

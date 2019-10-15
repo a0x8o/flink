@@ -33,8 +33,6 @@ import java.util.Set;
 @PublicEvolving
 public final class BigIntType extends LogicalType {
 
-	public static final int PRECISION = 19;
-
 	private static final String FORMAT = "BIGINT";
 
 	private static final Set<String> NULL_OUTPUT_CONVERSION = conversionSet(

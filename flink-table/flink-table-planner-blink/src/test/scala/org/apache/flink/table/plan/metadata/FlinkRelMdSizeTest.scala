@@ -135,31 +135,13 @@ class FlinkRelMdSizeTest extends FlinkRelMdHandlerTestBase {
   }
 
   @Test
-  def testAverageColumnSizeOnWindowAgg(): Unit = {
-    Array(logicalWindowAgg, flinkLogicalWindowAgg, batchGlobalWindowAggWithoutLocalAgg,
-      batchGlobalWindowAggWithLocalAgg).foreach { agg =>
-      assertEquals(Seq(4D, 32D, 8D, 12D, 12D, 12D, 12D), mq.getAverageColumnSizes(agg).toSeq)
-    }
-    assertEquals(Seq(4.0, 32.0, 8.0, 8.0),
-      mq.getAverageColumnSizes(batchLocalWindowAgg).toSeq)
-
-    Array(logicalWindowAggWithAuxGroup, flinkLogicalWindowAggWithAuxGroup,
-      batchGlobalWindowAggWithoutLocalAggWithAuxGroup,
-      batchGlobalWindowAggWithLocalAggWithAuxGroup).foreach { agg =>
-      assertEquals(Seq(8D, 4D, 8D, 12D, 12D, 12D, 12D), mq.getAverageColumnSizes(agg).toSeq)
-    }
-    assertEquals(Seq(8D, 8D, 4D, 8D),
-      mq.getAverageColumnSizes(batchLocalWindowAggWithAuxGroup).toSeq)
-  }
-
-  @Test
-  def testAverageColumnSizeOnOverAgg(): Unit = {
-    Array(flinkLogicalOverAgg, batchOverAgg).foreach { agg =>
+  def testAverageColumnSizeOnOverWindow(): Unit = {
+    Array(flinkLogicalOverWindow, batchOverWindowAgg).foreach { agg =>
       assertEquals(Seq(8.0, 7.2, 8.0, 4.0, 4.0, 8.0, 8.0, 8.0, 8.0, 8.0, 8.0),
         mq.getAverageColumnSizes(agg).toList)
     }
     assertEquals(Seq(8.0, 12.0, 8.0, 4.0, 4.0, 8.0, 8.0, 8.0),
-      mq.getAverageColumnSizes(streamOverAgg).toList)
+      mq.getAverageColumnSizes(streamOverWindowAgg).toList)
   }
 
   @Test
@@ -169,11 +151,6 @@ class FlinkRelMdSizeTest extends FlinkRelMdHandlerTestBase {
     Array(logicalInnerJoinOnDisjointKeys, logicalLeftJoinNotOnUniqueKeys,
       logicalRightJoinOnLHSUniqueKeys, logicalFullJoinWithoutEquiCond).foreach { join =>
       assertEquals(Seq(4.0, 8.0, 12.0, 88.8, 4.0, 4.0, 8.0, 12.0, 10.52, 4.0),
-        mq.getAverageColumnSizes(join).toList)
-    }
-
-    Array(logicalSemiJoinOnUniqueKeys, logicalAntiJoinNotOnUniqueKeys).foreach { join =>
-      assertEquals(Seq(4.0, 8.0, 12.0, 88.8, 4.0),
         mq.getAverageColumnSizes(join).toList)
     }
   }

@@ -18,17 +18,19 @@
 
 package org.apache.flink.table.plan.nodes.datastream
 
-import org.apache.calcite.plan.{RelOptCluster, RelTraitSet}
+import org.apache.calcite.plan.{RelOptCluster, RelOptCost, RelOptPlanner, RelTraitSet}
+import org.apache.calcite.rel.`type`.RelDataType
 import org.apache.calcite.rel.core.Calc
-import org.apache.calcite.rel.RelNode
+import org.apache.calcite.rel.metadata.RelMetadataQuery
+import org.apache.calcite.rel.{RelNode, RelWriter}
 import org.apache.calcite.rex.RexProgram
 import org.apache.flink.streaming.api.datastream.DataStream
 import org.apache.flink.streaming.api.functions.ProcessFunction
-import org.apache.flink.table.api.StreamQueryConfig
+import org.apache.flink.table.api.{StreamQueryConfig, StreamTableEnvImpl}
 import org.apache.flink.table.calcite.RelTimeIndicatorConverter
 import org.apache.flink.table.codegen.FunctionCodeGenerator
+import org.apache.flink.table.plan.nodes.CommonCalc
 import org.apache.flink.table.plan.schema.RowSchema
-import org.apache.flink.table.planner.StreamPlanner
 import org.apache.flink.table.runtime.CRowProcessRunner
 import org.apache.flink.table.runtime.types.{CRow, CRowTypeInfo}
 
@@ -46,14 +48,11 @@ class DataStreamCalc(
     schema: RowSchema,
     calcProgram: RexProgram,
     ruleDescription: String)
-  extends DataStreamCalcBase(
-    cluster,
-    traitSet,
-    input,
-    inputSchema,
-    schema,
-    calcProgram,
-    ruleDescription) {
+  extends Calc(cluster, traitSet, input, calcProgram)
+  with CommonCalc
+  with DataStreamRel {
+
+  override def deriveRowType(): RelDataType = schema.relDataType
 
   override def copy(traitSet: RelTraitSet, child: RelNode, program: RexProgram): Calc = {
     new DataStreamCalc(
@@ -66,14 +65,36 @@ class DataStreamCalc(
       ruleDescription)
   }
 
+  override def toString: String = calcToString(calcProgram, getExpressionString)
+
+  override def explainTerms(pw: RelWriter): RelWriter = {
+    pw.input("input", getInput)
+      .item("select", selectionToString(calcProgram, getExpressionString))
+      .itemIf("where",
+        conditionToString(calcProgram, getExpressionString),
+        calcProgram.getCondition != null)
+  }
+
+  override def computeSelfCost(planner: RelOptPlanner, metadata: RelMetadataQuery): RelOptCost = {
+    val child = this.getInput
+    val rowCnt = metadata.getRowCount(child)
+    computeSelfCost(calcProgram, planner, rowCnt)
+  }
+
+  override def estimateRowCount(metadata: RelMetadataQuery): Double = {
+    val child = this.getInput
+    val rowCnt = metadata.getRowCount(child)
+    estimateRowCount(calcProgram, rowCnt)
+  }
+
   override def translateToPlan(
-      planner: StreamPlanner,
+      tableEnv: StreamTableEnvImpl,
       queryConfig: StreamQueryConfig): DataStream[CRow] = {
 
-    val config = planner.getConfig
+    val config = tableEnv.getConfig
 
     val inputDataStream =
-      getInput.asInstanceOf[DataStreamRel].translateToPlan(planner, queryConfig)
+      getInput.asInstanceOf[DataStreamRel].translateToPlan(tableEnv, queryConfig)
 
     // materialize time attributes in condition
     val condition = if (calcProgram.getCondition != null) {
@@ -95,6 +116,7 @@ class DataStreamCalc(
     val genFunction = generateFunction(
       generator,
       ruleDescription,
+      inputSchema,
       schema,
       projection,
       condition,

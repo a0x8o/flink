@@ -33,23 +33,9 @@ export class MetricsService {
    * @param vertexId
    */
   getAllAvailableMetrics(jobId: string, vertexId: string) {
-    return this.httpClient
-      .get<Array<{ id: string; value: string }>>(`${BASE_URL}/jobs/${jobId}/vertices/${vertexId}/metrics`)
-      .pipe(
-        map(item =>
-          item.sort((pre, next) => {
-            const preId = pre.id.toLowerCase();
-            const nextId = next.id.toLowerCase();
-            if (preId < nextId) {
-              return -1;
-            } else if (preId > nextId) {
-              return 1;
-            } else {
-              return 0;
-            }
-          })
-        )
-      );
+    return this.httpClient.get<Array<{ id: string; value: string }>>(
+      `${BASE_URL}/jobs/${jobId}/vertices/${vertexId}/metrics`
+    );
   }
 
   /**

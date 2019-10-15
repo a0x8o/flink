@@ -85,7 +85,9 @@ public class HashTableRecordWidthCombinations {
 			}
 		};
 
-		try (final IOManager ioMan = new IOManagerAsync()) {
+		final IOManager ioMan = new IOManagerAsync();
+
+		try {
 			final int pageSize = 32 * 1024;
 			final int numSegments = 34;
 
@@ -172,6 +174,9 @@ public class HashTableRecordWidthCombinations {
 		catch (Exception e) {
 			e.printStackTrace();
 			fail(e.getMessage());
+		}
+		finally {
+			ioMan.shutdown();
 		}
 	}
 

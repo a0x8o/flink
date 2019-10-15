@@ -311,7 +311,7 @@ TypeInformation : ClassTag](jgraph: jg.Graph[K, VV, EV]) {
 
   private[flink] def clean[F <: AnyRef](f: F, checkSerializable: Boolean = true): F = {
     if (jgraph.getContext.getConfig.isClosureCleanerEnabled) {
-      ClosureCleaner.clean(f, checkSerializable, jgraph.getContext.getConfig.getClosureCleanerLevel)
+      ClosureCleaner.clean(f, checkSerializable)
     }
     ClosureCleaner.ensureSerializable(f)
     f

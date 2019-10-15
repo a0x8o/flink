@@ -89,9 +89,4 @@ public abstract class ScalarFunction extends UserDefinedFunction {
 		}
 		return types;
 	}
-
-	@Override
-	public final FunctionKind getKind() {
-		return FunctionKind.SCALAR;
-	}
 }

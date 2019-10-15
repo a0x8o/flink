@@ -47,7 +47,5 @@ public interface TableOperationVisitor<T> {
 
 	T visitCatalogTable(CatalogTableOperation catalogTable);
 
-	<U> T visitTableSourceTable(TableSourceTableOperation<U> tableSourceTable);
-
 	T visitOther(TableOperation other);
 }

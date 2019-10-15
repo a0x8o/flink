@@ -55,6 +55,7 @@ public abstract class SimpleRecoveryITCaseBase {
 
 				env.setParallelism(4);
 				env.setRestartStrategy(RestartStrategies.noRestart());
+				env.getConfig().disableSysoutLogging();
 
 				env.generateSequence(1, 10)
 						.rebalance()
@@ -83,6 +84,7 @@ public abstract class SimpleRecoveryITCaseBase {
 
 				env.setParallelism(4);
 				env.setRestartStrategy(RestartStrategies.noRestart());
+				env.getConfig().disableSysoutLogging();
 
 				env.generateSequence(1, 10)
 						.rebalance()
@@ -134,6 +136,7 @@ public abstract class SimpleRecoveryITCaseBase {
 
 			env.setParallelism(4);
 			// the default restart strategy should be taken
+			env.getConfig().disableSysoutLogging();
 
 			env.generateSequence(1, 10)
 					.rebalance()
@@ -171,6 +174,7 @@ public abstract class SimpleRecoveryITCaseBase {
 
 			env.setParallelism(4);
 			env.setRestartStrategy(RestartStrategies.fixedDelayRestart(5, 100));
+			env.getConfig().disableSysoutLogging();
 
 			env.generateSequence(1, 10)
 					.rebalance()

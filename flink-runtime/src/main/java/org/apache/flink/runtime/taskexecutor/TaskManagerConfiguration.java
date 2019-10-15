@@ -31,14 +31,13 @@ import org.apache.flink.runtime.execution.librarycache.FlinkUserCodeClassLoaders
 import org.apache.flink.runtime.registration.RetryingRegistrationConfiguration;
 import org.apache.flink.runtime.taskmanager.TaskManagerRuntimeInfo;
 import org.apache.flink.util.Preconditions;
-import org.apache.flink.util.TimeUtils;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
 
-import java.time.Duration;
+import scala.concurrent.duration.Duration;
 
 /**
  * Configuration object for {@link TaskExecutor}.
@@ -186,8 +185,9 @@ public class TaskManagerConfiguration implements TaskManagerRuntimeInfo {
 		final String[] tmpDirPaths = ConfigurationUtils.parseTempDirectories(configuration);
 
 		final Time timeout;
+
 		try {
-			timeout = AkkaUtils.getTimeoutAsTime(configuration);
+			timeout = Time.milliseconds(AkkaUtils.getTimeout(configuration).toMillis());
 		} catch (Exception e) {
 			throw new IllegalArgumentException(
 				"Invalid format for '" + AkkaOptions.ASK_TIMEOUT.key() +
@@ -196,39 +196,56 @@ public class TaskManagerConfiguration implements TaskManagerRuntimeInfo {
 
 		LOG.info("Messages have a max timeout of " + timeout);
 
-		Time finiteRegistrationDuration;
+		final Time finiteRegistrationDuration;
+
 		try {
-			Duration maxRegistrationDuration = TimeUtils.parseDuration(configuration.getString(TaskManagerOptions.REGISTRATION_TIMEOUT));
-			finiteRegistrationDuration = Time.milliseconds(maxRegistrationDuration.toMillis());
-		} catch (IllegalArgumentException e) {
-			LOG.warn("Invalid format for parameter {}. Set the timeout to be infinite.",
-				TaskManagerOptions.REGISTRATION_TIMEOUT.key());
-			finiteRegistrationDuration = null;
+			Duration maxRegistrationDuration = Duration.create(configuration.getString(TaskManagerOptions.REGISTRATION_TIMEOUT));
+			if (maxRegistrationDuration.isFinite()) {
+				finiteRegistrationDuration = Time.milliseconds(maxRegistrationDuration.toMillis());
+			} else {
+				finiteRegistrationDuration = null;
+			}
+		} catch (NumberFormatException e) {
+			throw new IllegalArgumentException("Invalid format for parameter " +
+				TaskManagerOptions.REGISTRATION_TIMEOUT.key(), e);
 		}
 
 		final Time initialRegistrationPause;
 		try {
-			Duration pause = TimeUtils.parseDuration(configuration.getString(TaskManagerOptions.INITIAL_REGISTRATION_BACKOFF));
-			initialRegistrationPause = Time.milliseconds(pause.toMillis());
-		} catch (IllegalArgumentException e) {
+			Duration pause = Duration.create(configuration.getString(TaskManagerOptions.INITIAL_REGISTRATION_BACKOFF));
+			if (pause.isFinite()) {
+				initialRegistrationPause = Time.milliseconds(pause.toMillis());
+			} else {
+				throw new IllegalArgumentException("The initial registration pause must be finite: " + pause);
+			}
+		} catch (NumberFormatException e) {
 			throw new IllegalArgumentException("Invalid format for parameter " +
 				TaskManagerOptions.INITIAL_REGISTRATION_BACKOFF.key(), e);
 		}
 
 		final Time maxRegistrationPause;
 		try {
-			Duration pause = TimeUtils.parseDuration(configuration.getString(TaskManagerOptions.REGISTRATION_MAX_BACKOFF));
-			maxRegistrationPause = Time.milliseconds(pause.toMillis());
-		} catch (IllegalArgumentException e) {
+			Duration pause = Duration.create(configuration.getString(
+				TaskManagerOptions.REGISTRATION_MAX_BACKOFF));
+			if (pause.isFinite()) {
+				maxRegistrationPause = Time.milliseconds(pause.toMillis());
+			} else {
+				throw new IllegalArgumentException("The maximum registration pause must be finite: " + pause);
+			}
+		} catch (NumberFormatException e) {
 			throw new IllegalArgumentException("Invalid format for parameter " +
 				TaskManagerOptions.INITIAL_REGISTRATION_BACKOFF.key(), e);
 		}
 
 		final Time refusedRegistrationPause;
 		try {
-			Duration pause = TimeUtils.parseDuration(configuration.getString(TaskManagerOptions.REFUSED_REGISTRATION_BACKOFF));
-			refusedRegistrationPause = Time.milliseconds(pause.toMillis());
-		} catch (IllegalArgumentException e) {
+			Duration pause = Duration.create(configuration.getString(TaskManagerOptions.REFUSED_REGISTRATION_BACKOFF));
+			if (pause.isFinite()) {
+				refusedRegistrationPause = Time.milliseconds(pause.toMillis());
+			} else {
+				throw new IllegalArgumentException("The refused registration pause must be finite: " + pause);
+			}
+		} catch (NumberFormatException e) {
 			throw new IllegalArgumentException("Invalid format for parameter " +
 				TaskManagerOptions.INITIAL_REGISTRATION_BACKOFF.key(), e);
 		}

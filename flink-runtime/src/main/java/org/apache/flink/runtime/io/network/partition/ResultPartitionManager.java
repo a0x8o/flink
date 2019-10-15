@@ -22,7 +22,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -107,23 +106,30 @@ public class ResultPartitionManager implements ResultPartitionProvider {
 	// ------------------------------------------------------------------------
 
 	void onConsumedPartition(ResultPartition partition) {
+		final ResultPartition previous;
+
 		LOG.debug("Received consume notification from {}.", partition);
 
 		synchronized (registeredPartitions) {
-			final ResultPartition previous = registeredPartitions.remove(partition.getPartitionId());
-			// Release the partition if it was successfully removed
-			if (partition == previous) {
-				partition.release();
-				ResultPartitionID partitionId = partition.getPartitionId();
-				LOG.debug("Released partition {} produced by {}.",
-					partitionId.getPartitionId(), partitionId.getProducerId());
-			}
+			previous = registeredPartitions.remove(partition.getPartitionId());
+		}
+
+		// Release the partition if it was successfully removed
+		if (partition == previous) {
+			partition.release();
+
+			LOG.debug("Released {}.", partition);
 		}
 	}
 
-	public Collection<ResultPartitionID> getUnreleasedPartitions() {
+	public boolean areAllPartitionsReleased() {
 		synchronized (registeredPartitions) {
-			return registeredPartitions.keySet();
+			for (ResultPartition partition : registeredPartitions.values()) {
+				if (!partition.isReleased()) {
+					return false;
+				}
+			}
+			return true;
 		}
 	}
 }

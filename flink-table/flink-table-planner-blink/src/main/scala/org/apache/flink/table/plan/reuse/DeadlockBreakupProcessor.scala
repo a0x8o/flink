@@ -18,14 +18,13 @@
 
 package org.apache.flink.table.plan.reuse
 
+import org.apache.flink.runtime.io.network.DataExchangeMode
 import org.apache.flink.runtime.operators.DamBehavior
 import org.apache.flink.streaming.api.datastream.DataStream
-import org.apache.flink.streaming.api.transformations.ShuffleMode
 import org.apache.flink.table.api.TableException
 import org.apache.flink.table.plan.`trait`.FlinkRelDistribution
 import org.apache.flink.table.plan.nodes.exec.{BatchExecNode, ExecNode, ExecNodeVisitorImpl}
 import org.apache.flink.table.plan.nodes.physical.batch._
-import org.apache.flink.table.plan.nodes.process.{DAGProcessContext, DAGProcessor}
 
 import com.google.common.collect.{Maps, Sets}
 import org.apache.calcite.rel.RelNode
@@ -70,7 +69,7 @@ import scala.collection.mutable
   *                     |
   *                 HashJoin
   *     (build side)/      \(probe side)
-  *    (broadcast)Exchange Exchange(shuffle_mode=[BATCH]) add BATCH Exchange to breakup deadlock
+  *    (broadcast)Exchange Exchange(exchange_mode=[BATCH]) add BATCH Exchange to breakup deadlock
   *                |        |
   *             Calc(b>10) Calc(b<20)
   *                 \      /
@@ -83,10 +82,9 @@ import scala.collection.mutable
   *                ScanTableSource
   * }}}
   */
-class DeadlockBreakupProcessor extends DAGProcessor {
+class DeadlockBreakupProcessor {
 
-  def process(rootNodes: util.List[ExecNode[_, _]],
-      context: DAGProcessContext): util.List[ExecNode[_, _]] = {
+  def process(rootNodes: util.List[ExecNode[_, _]]): util.List[ExecNode[_, _]] = {
     if (!rootNodes.forall(_.isInstanceOf[BatchExecNode[_]])) {
       throw new TableException("Only BatchExecNode DAG is supported now")
     }
@@ -165,7 +163,7 @@ class DeadlockBreakupProcessor extends DAGProcessor {
         probeNode match {
           case e: BatchExecExchange =>
             // TODO create a cloned BatchExecExchange for PIPELINE output
-            e.setRequiredShuffleMode(ShuffleMode.BATCH)
+            e.setRequiredDataExchangeMode(DataExchangeMode.BATCH)
           case _ =>
             val probeRel = probeNode.asInstanceOf[RelNode]
             val traitSet = probeRel.getTraitSet.replace(distribution)
@@ -174,7 +172,7 @@ class DeadlockBreakupProcessor extends DAGProcessor {
               traitSet,
               probeRel,
               distribution)
-            e.setRequiredShuffleMode(ShuffleMode.BATCH)
+            e.setRequiredDataExchangeMode(DataExchangeMode.BATCH)
             // replace join node's input
             join.replaceInputNode(probeSideIndex, e)
         }
@@ -184,12 +182,12 @@ class DeadlockBreakupProcessor extends DAGProcessor {
     override def visit(node: ExecNode[_, _]): Unit = {
       super.visit(node)
       node match {
-        case hashJoin: BatchExecHashJoin =>
-          val joinInfo = hashJoin.getJoinInfo
+        case hashJoin: BatchExecHashJoinBase =>
+          val joinInfo = hashJoin.joinInfo
           val columns = if (hashJoin.leftIsBuild) joinInfo.rightKeys else joinInfo.leftKeys
           val distribution = FlinkRelDistribution.hash(columns)
           rewriteJoin(hashJoin, hashJoin.leftIsBuild, distribution)
-        case nestedLoopJoin: BatchExecNestedLoopJoin =>
+        case nestedLoopJoin: BatchExecNestedLoopJoinBase =>
           rewriteJoin(nestedLoopJoin, nestedLoopJoin.leftIsBuild, FlinkRelDistribution.ANY)
         case _ => // do nothing
       }
@@ -325,11 +323,11 @@ class DeadlockBreakupProcessor extends DAGProcessor {
             true
           } else {
             node match {
-              case h: BatchExecHashJoin =>
+              case h: BatchExecHashJoinBase =>
                 val buildSideIndex = if (h.leftIsBuild) 0 else 1
                 val buildNode = h.getInputNodes.get(buildSideIndex)
                 checkJoinBuildSide(buildNode, idx, inputPath)
-              case n: BatchExecNestedLoopJoin =>
+              case n: BatchExecNestedLoopJoinBase =>
                 val buildSideIndex = if (n.leftIsBuild) 0 else 1
                 val buildNode = n.getInputNodes.get(buildSideIndex)
                 checkJoinBuildSide(buildNode, idx, inputPath)

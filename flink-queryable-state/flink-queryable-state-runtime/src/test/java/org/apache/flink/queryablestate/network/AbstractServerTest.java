@@ -44,8 +44,6 @@ import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 /**
  * Tests general behavior of the {@link AbstractServerBase}.
@@ -86,17 +84,18 @@ public class AbstractServerTest extends TestLogger {
 	@Test
 	public void testPortRangeSuccess() throws Throwable {
 
-		AtomicKvStateRequestStats serverStats1 = new AtomicKvStateRequestStats();
-		AtomicKvStateRequestStats serverStats2 = new AtomicKvStateRequestStats();
+		// this is shared between the two servers.
+		AtomicKvStateRequestStats serverStats = new AtomicKvStateRequestStats();
 		AtomicKvStateRequestStats clientStats = new AtomicKvStateRequestStats();
 
-		final int portRangeStart = 7777;
-		final int portRangeEnd = 7900;
-		List<Integer> portList = IntStream.range(portRangeStart, portRangeEnd + 1).boxed().collect(Collectors.toList());
+		List<Integer> portList = new ArrayList<>();
+		portList.add(7777);
+		portList.add(7778);
+		portList.add(7779);
 
 		try (
-				TestServer server1 = new TestServer("Test Server 1", serverStats1, portList.iterator());
-				TestServer server2 = new TestServer("Test Server 2", serverStats2, portList.iterator());
+				TestServer server1 = new TestServer("Test Server 1", serverStats, portList.iterator());
+				TestServer server2 = new TestServer("Test Server 2", serverStats, portList.iterator());
 				TestClient client = new TestClient(
 						"Test Client",
 						1,
@@ -105,10 +104,10 @@ public class AbstractServerTest extends TestLogger {
 				)
 		) {
 			server1.start();
-			Assert.assertTrue(server1.getServerAddress().getPort() >= portRangeStart && server1.getServerAddress().getPort() <= portRangeEnd);
+			Assert.assertTrue(server1.getServerAddress().getPort() >= 7777 && server1.getServerAddress().getPort() <= 7779);
 
 			server2.start();
-			Assert.assertTrue(server2.getServerAddress().getPort() >= portRangeStart && server2.getServerAddress().getPort() <= portRangeEnd);
+			Assert.assertTrue(server2.getServerAddress().getPort() >= 7777 && server2.getServerAddress().getPort() <= 7779);
 
 			TestMessage response1 = client.sendRequest(server1.getServerAddress(), new TestMessage("ping")).join();
 			Assert.assertEquals(server1.getServerName() + "-ping", response1.getMessage());
@@ -116,17 +115,14 @@ public class AbstractServerTest extends TestLogger {
 			TestMessage response2 = client.sendRequest(server2.getServerAddress(), new TestMessage("pong")).join();
 			Assert.assertEquals(server2.getServerName() + "-pong", response2.getMessage());
 
-			Assert.assertEquals(1L, serverStats1.getNumConnections());
-			Assert.assertEquals(1L, serverStats2.getNumConnections());
+			// the client connects to both servers and the stats object is shared.
+			Assert.assertEquals(2L, serverStats.getNumConnections());
 
 			Assert.assertEquals(2L, clientStats.getNumConnections());
 			Assert.assertEquals(0L, clientStats.getNumFailed());
 			Assert.assertEquals(2L, clientStats.getNumSuccessful());
 			Assert.assertEquals(2L, clientStats.getNumRequests());
 		}
-
-		Assert.assertEquals(0L, serverStats1.getNumConnections());
-		Assert.assertEquals(0L, serverStats2.getNumConnections());
 
 		Assert.assertEquals(0L, clientStats.getNumConnections());
 		Assert.assertEquals(0L, clientStats.getNumFailed());
@@ -187,6 +183,10 @@ public class AbstractServerTest extends TestLogger {
 		@Override
 		public void close() throws Exception {
 			shutdownServer().get();
+			if (requestStats instanceof AtomicKvStateRequestStats) {
+				AtomicKvStateRequestStats stats = (AtomicKvStateRequestStats) requestStats;
+				Assert.assertEquals(0L, stats.getNumConnections());
+			}
 			Assert.assertTrue(getQueryExecutor().isTerminated());
 			Assert.assertTrue(isEventGroupShutdown());
 		}

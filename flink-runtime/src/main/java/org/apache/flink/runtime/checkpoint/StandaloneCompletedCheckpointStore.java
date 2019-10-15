@@ -77,6 +77,11 @@ public class StandaloneCompletedCheckpointStore implements CompletedCheckpointSt
 	}
 
 	@Override
+	public CompletedCheckpoint getLatestCheckpoint() {
+		return checkpoints.isEmpty() ? null : checkpoints.getLast();
+	}
+
+	@Override
 	public List<CompletedCheckpoint> getAllCheckpoints() {
 		return new ArrayList<>(checkpoints);
 	}

@@ -18,12 +18,13 @@
 
 package org.apache.flink.table.runtime.batch.sql
 
-import org.apache.flink.table.api.{ExecutionConfigOptions, OptimizerConfigOptions}
+import org.apache.flink.api.common.typeinfo.BasicTypeInfo.{INT_TYPE_INFO, LONG_TYPE_INFO, STRING_TYPE_INFO}
+import org.apache.flink.table.`type`.InternalTypes
+import org.apache.flink.table.api.{PlannerConfigOptions, TableConfigOptions}
 import org.apache.flink.table.dataformat.BinaryString.fromString
 import org.apache.flink.table.runtime.utils.BatchTestBase
 import org.apache.flink.table.runtime.utils.BatchTestBase.{binaryRow, row}
 import org.apache.flink.table.runtime.utils.TestData._
-import org.apache.flink.table.types.logical.{BigIntType, IntType, VarCharType}
 import org.apache.flink.table.typeutils.BaseRowTypeInfo
 
 import org.junit._
@@ -33,23 +34,23 @@ import scala.collection.Seq
 class UnionITCase extends BatchTestBase {
 
   val type6 = new BaseRowTypeInfo(
-    new IntType(), new BigIntType(), new VarCharType(VarCharType.MAX_LENGTH))
+    InternalTypes.INT, InternalTypes.LONG, InternalTypes.STRING)
 
   val data6 = Seq(
-    binaryRow(type6.getLogicalTypes, 1, 1L, fromString("Hi")),
-    binaryRow(type6.getLogicalTypes, 2, 2L, fromString("Hello")),
-    binaryRow(type6.getLogicalTypes, 3, 2L, fromString("Hello world")),
-    binaryRow(type6.getLogicalTypes, 4, 3L, fromString("Hello world, how are you?"))
+    binaryRow(type6.getInternalTypes, 1, 1L, fromString("Hi")),
+    binaryRow(type6.getInternalTypes, 2, 2L, fromString("Hello")),
+    binaryRow(type6.getInternalTypes, 3, 2L, fromString("Hello world")),
+    binaryRow(type6.getInternalTypes, 4, 3L, fromString("Hello world, how are you?"))
   )
 
   @Before
-  override def before(): Unit = {
-    super.before()
-    registerCollection("Table3", smallData3, type3, "a, b, c", nullablesOfSmallData3)
-    registerCollection("Table5", data5, type5, "d, e, f, g, h", nullablesOfData5)
-    registerCollection("Table6", data6, type6, "a, b, c", Array(false, false, false))
-    tEnv.getConfig.getConfiguration.setString(
-      ExecutionConfigOptions.SQL_EXEC_DISABLED_OPERATORS, "HashAgg")
+  def before(): Unit = {
+    tEnv.getConfig.getConf.setInteger(TableConfigOptions.SQL_RESOURCE_DEFAULT_PARALLELISM, 3)
+    registerCollection("Table3", smallData3, type3, nullablesOfSmallData3, "a, b, c")
+    registerCollection("Table5", data5, type5, nullablesOfData5, "d, e, f, g, h")
+    registerCollection("Table6", data6, type6, Array(false, false, false), "a, b, c")
+    tEnv.getConfig.getConf.setString(
+      TableConfigOptions.SQL_EXEC_DISABLED_OPERATORS, "HashAgg")
   }
 
   @Test
@@ -113,10 +114,10 @@ class UnionITCase extends BatchTestBase {
     */
   @Test
   def testJoinAfterDifferentTypeUnionAll(): Unit = {
-    tEnv.getConfig.getConfiguration.setLong(
-      OptimizerConfigOptions.SQL_OPTIMIZER_BROADCAST_JOIN_THRESHOLD, -1)
-    tEnv.getConfig.getConfiguration.setString(
-      ExecutionConfigOptions.SQL_EXEC_DISABLED_OPERATORS, "HashJoin, NestedLoopJoin")
+    tEnv.getConfig.getConf.setLong(
+      PlannerConfigOptions.SQL_OPTIMIZER_HASH_JOIN_BROADCAST_THRESHOLD, -1)
+    tEnv.getConfig.getConf.setString(
+      TableConfigOptions.SQL_EXEC_DISABLED_OPERATORS, "HashJoin, NestedLoopJoin")
     checkResult(
       "SELECT a, c, g FROM (SELECT t1.a, t1.b, t1.c FROM Table3 t1 UNION ALL" +
           "(SELECT a, b, c FROM Table3 ORDER BY a, b, c)), Table5 WHERE b = e",

@@ -24,7 +24,6 @@ import org.apache.flink.metrics.Gauge;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.memory.MemoryAllocationException;
 import org.apache.flink.runtime.memory.MemoryManager;
-import org.apache.flink.streaming.api.operators.BoundedMultiInput;
 import org.apache.flink.streaming.api.operators.TwoInputStreamOperator;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.table.dataformat.BaseRow;
@@ -62,7 +61,7 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * <p>NOTE: SEMI and ANTI join output input1 instead of input2. (Contrary to {@link HashJoinOperator}).
  */
 public class SortMergeJoinOperator extends TableStreamOperator<BaseRow>
-		implements TwoInputStreamOperator<BaseRow, BaseRow, BaseRow>, BoundedMultiInput {
+		implements TwoInputStreamOperator<BaseRow, BaseRow, BaseRow> {
 
 	private final long reservedSortMemory1;
 	private final long reservedSortMemory2;
@@ -173,8 +172,6 @@ public class SortMergeJoinOperator extends TableStreamOperator<BaseRow>
 
 		keyComparator = genKeyComparator.newInstance(cl);
 		this.condFunc = condFuncCode.newInstance(cl);
-		condFunc.setRuntimeContext(getRuntimeContext());
-		condFunc.open(new Configuration());
 
 		projection1 = projectionCode1.newInstance(cl);
 		projection2 = projectionCode2.newInstance(cl);
@@ -212,9 +209,15 @@ public class SortMergeJoinOperator extends TableStreamOperator<BaseRow>
 		this.sorter2.write(element.getValue());
 	}
 
-	@Override
-	public void endInput(int inputId) throws Exception {
-		isFinished[inputId - 1] = true;
+	public void endInput1() throws Exception {
+		isFinished[0] = true;
+		if (isAllFinished()) {
+			doSortMergeJoin();
+		}
+	}
+
+	public void endInput2() throws Exception {
+		isFinished[1] = true;
 		if (isAllFinished()) {
 			doSortMergeJoin();
 		}
@@ -444,6 +447,8 @@ public class SortMergeJoinOperator extends TableStreamOperator<BaseRow>
 
 	@Override
 	public void close() throws Exception {
+		endInput1(); // TODO remove it
+		endInput2(); // TODO remove it
 		super.close();
 		if (this.sorter1 != null) {
 			this.sorter1.close();
@@ -451,7 +456,6 @@ public class SortMergeJoinOperator extends TableStreamOperator<BaseRow>
 		if (this.sorter2 != null) {
 			this.sorter2.close();
 		}
-		condFunc.close();
 	}
 
 }

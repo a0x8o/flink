@@ -18,11 +18,10 @@
 
 package org.apache.flink.table.plan.nodes.physical.stream
 
-import org.apache.flink.api.dag.Transformation
-import org.apache.flink.streaming.api.transformations.UnionTransformation
+import org.apache.flink.streaming.api.transformations.{StreamTransformation, UnionTransformation}
+import org.apache.flink.table.api.StreamTableEnvironment
 import org.apache.flink.table.dataformat.BaseRow
 import org.apache.flink.table.plan.nodes.exec.{ExecNode, StreamExecNode}
-import org.apache.flink.table.planner.StreamPlanner
 
 import org.apache.calcite.plan.{RelOptCluster, RelTraitSet}
 import org.apache.calcite.rel.`type`.RelDataType
@@ -70,20 +69,20 @@ class StreamExecUnion(
 
   //~ ExecNode methods -----------------------------------------------------------
 
-  override def getInputNodes: util.List[ExecNode[StreamPlanner, _]] = {
-    getInputs.map(_.asInstanceOf[ExecNode[StreamPlanner, _]])
+  override def getInputNodes: util.List[ExecNode[StreamTableEnvironment, _]] = {
+    getInputs.map(_.asInstanceOf[ExecNode[StreamTableEnvironment, _]])
   }
 
   override def replaceInputNode(
       ordinalInParent: Int,
-      newInputNode: ExecNode[StreamPlanner, _]): Unit = {
+      newInputNode: ExecNode[StreamTableEnvironment, _]): Unit = {
     replaceInput(ordinalInParent, newInputNode.asInstanceOf[RelNode])
   }
 
   override protected def translateToPlanInternal(
-      planner: StreamPlanner): Transformation[BaseRow] = {
+      tableEnv: StreamTableEnvironment): StreamTransformation[BaseRow] = {
     val transformations = getInputNodes.map {
-      input => input.translateToPlan(planner).asInstanceOf[Transformation[BaseRow]]
+      input => input.translateToPlan(tableEnv).asInstanceOf[StreamTransformation[BaseRow]]
     }
     new UnionTransformation(transformations)
   }

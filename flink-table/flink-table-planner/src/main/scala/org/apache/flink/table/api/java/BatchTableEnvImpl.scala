@@ -21,7 +21,6 @@ import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.api.java.typeutils.TypeExtractor
 import org.apache.flink.api.java.{DataSet, ExecutionEnvironment}
 import org.apache.flink.table.api._
-import org.apache.flink.table.catalog.CatalogManager
 import org.apache.flink.table.expressions.ExpressionParser
 import org.apache.flink.table.functions.{AggregateFunction, TableFunction}
 
@@ -36,16 +35,15 @@ import _root_.scala.collection.JavaConverters._
   */
 class BatchTableEnvImpl(
     execEnv: ExecutionEnvironment,
-    config: TableConfig,
-    catalogManager: CatalogManager)
-  extends org.apache.flink.table.api.BatchTableEnvImpl(
-    execEnv,
-    config,
-    catalogManager)
-  with org.apache.flink.table.api.java.BatchTableEnvironment {
+    config: TableConfig)
+  extends org.apache.flink.table.api.BatchTableEnvImpl(execEnv, config)
+    with org.apache.flink.table.api.java.BatchTableEnvironment {
 
   override def fromDataSet[T](dataSet: DataSet[T]): Table = {
-    new TableImpl(this, asQueryOperation(dataSet, None))
+
+    val name = createUniqueTableName()
+    registerDataSetInternal(name, dataSet)
+    scan(name)
   }
 
   override def fromDataSet[T](dataSet: DataSet[T], fields: String): Table = {
@@ -53,15 +51,24 @@ class BatchTableEnvImpl(
       .parseExpressionList(fields).asScala
       .toArray
 
-    new TableImpl(this, asQueryOperation(dataSet, Some(exprs)))
+    val name = createUniqueTableName()
+    registerDataSetInternal(name, dataSet, exprs)
+    scan(name)
   }
 
   override def registerDataSet[T](name: String, dataSet: DataSet[T]): Unit = {
-    registerTable(name, fromDataSet(dataSet))
+
+    checkValidTableName(name)
+    registerDataSetInternal(name, dataSet)
   }
 
   override def registerDataSet[T](name: String, dataSet: DataSet[T], fields: String): Unit = {
-    registerTable(name, fromDataSet(dataSet, fields))
+    val exprs = ExpressionParser
+      .parseExpressionList(fields).asScala
+      .toArray
+
+    checkValidTableName(name)
+    registerDataSetInternal(name, dataSet, exprs)
   }
 
   override def toDataSet[T](table: Table, clazz: Class[T]): DataSet[T] = {

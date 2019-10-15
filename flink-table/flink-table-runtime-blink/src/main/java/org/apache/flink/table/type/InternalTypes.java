@@ -41,6 +41,8 @@ public class InternalTypes {
 
 	public static final ShortType SHORT = ShortType.INSTANCE;
 
+	public static final CharType CHAR = CharType.INSTANCE;
+
 	public static final BinaryType BINARY = BinaryType.INSTANCE;
 
 	public static final DateType DATE = DateType.DATE;

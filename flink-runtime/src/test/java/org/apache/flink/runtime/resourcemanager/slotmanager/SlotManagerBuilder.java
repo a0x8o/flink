@@ -22,7 +22,7 @@ import org.apache.flink.api.common.time.Time;
 import org.apache.flink.runtime.concurrent.ScheduledExecutor;
 import org.apache.flink.runtime.testingUtils.TestingUtils;
 
-/** Builder for {@link SlotManagerImpl}. */
+/** Builder for {@link SlotManager}. */
 public class SlotManagerBuilder {
 	private ScheduledExecutor scheduledExecutor;
 	private Time taskManagerRequestTimeout;
@@ -67,8 +67,8 @@ public class SlotManagerBuilder {
 		return this;
 	}
 
-	public SlotManagerImpl build() {
-		return new SlotManagerImpl(
+	public SlotManager build() {
+		return new SlotManager(
 			scheduledExecutor,
 			taskManagerRequestTimeout,
 			slotRequestTimeout,

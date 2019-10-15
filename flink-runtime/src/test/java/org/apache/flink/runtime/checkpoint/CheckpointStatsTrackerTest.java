@@ -64,9 +64,7 @@ public class CheckpointStatsTrackerTest {
 				191929L,
 				123,
 				CheckpointRetentionPolicy.NEVER_RETAIN_AFTER_TERMINATION,
-				false,
-				false,
-				0
+				false
 			),
 			null);
 

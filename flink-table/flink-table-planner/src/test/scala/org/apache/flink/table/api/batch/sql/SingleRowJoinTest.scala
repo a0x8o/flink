@@ -29,7 +29,7 @@ class SingleRowJoinTest extends TableTestBase {
   @Test
   def testSingleRowCrossJoin(): Unit = {
     val util = batchTestUtil()
-    val table = util.addTable[(Int, Int)]("A", 'a1, 'a2)
+    util.addTable[(Int, Int)]("A", 'a1, 'a2)
 
     val query =
       "SELECT a1, asum " +
@@ -40,14 +40,14 @@ class SingleRowJoinTest extends TableTestBase {
         "DataSetSingleRowJoin",
         unaryNode(
           "DataSetCalc",
-          batchTableNode(table),
+          batchTableNode(0),
           term("select", "a1")
         ),
         unaryNode(
           "DataSetCalc",
           unaryNode(
             "DataSetAggregate",
-            batchTableNode(table),
+            batchTableNode(0),
             term("select", "SUM(a1) AS $f0", "SUM(a2) AS $f1")
           ),
           term("select", "+($f0, $f1) AS asum")
@@ -63,7 +63,7 @@ class SingleRowJoinTest extends TableTestBase {
   @Test
   def testSingleRowEquiJoin(): Unit = {
     val util = batchTestUtil()
-    val table = util.addTable[(Int, String)]("A", 'a1, 'a2)
+    util.addTable[(Int, String)]("A", 'a1, 'a2)
 
     val query =
       "SELECT a1, a2 " +
@@ -75,12 +75,12 @@ class SingleRowJoinTest extends TableTestBase {
         "DataSetCalc",
         binaryNode(
           "DataSetSingleRowJoin",
-          batchTableNode(table),
+          batchTableNode(0),
           unaryNode(
             "DataSetAggregate",
             unaryNode(
               "DataSetCalc",
-              batchTableNode(table),
+              batchTableNode(0),
               term("select", "a1")
             ),
             term("select", "COUNT(a1) AS cnt")
@@ -98,7 +98,7 @@ class SingleRowJoinTest extends TableTestBase {
   @Test
   def testSingleRowNotEquiJoin(): Unit = {
     val util = batchTestUtil()
-    val table = util.addTable[(Int, String)]("A", 'a1, 'a2)
+    util.addTable[(Int, String)]("A", 'a1, 'a2)
 
     val query =
       "SELECT a1, a2 " +
@@ -110,12 +110,12 @@ class SingleRowJoinTest extends TableTestBase {
         "DataSetCalc",
         binaryNode(
           "DataSetSingleRowJoin",
-          batchTableNode(table),
+          batchTableNode(0),
           unaryNode(
             "DataSetAggregate",
             unaryNode(
               "DataSetCalc",
-              batchTableNode(table),
+              batchTableNode(0),
               term("select", "a1")
             ),
             term("select", "COUNT(a1) AS cnt")
@@ -133,8 +133,8 @@ class SingleRowJoinTest extends TableTestBase {
   @Test
   def testSingleRowJoinWithComplexPredicate(): Unit = {
     val util = batchTestUtil()
-    val table = util.addTable[(Int, Long)]("A", 'a1, 'a2)
-    val table1 = util.addTable[(Int, Long)]("B", 'b1, 'b2)
+    util.addTable[(Int, Long)]("A", 'a1, 'a2)
+    util.addTable[(Int, Long)]("B", 'b1, 'b2)
 
     val query =
       "SELECT a1, a2, b1, b2 " +
@@ -143,10 +143,10 @@ class SingleRowJoinTest extends TableTestBase {
 
     val expected = binaryNode(
       "DataSetSingleRowJoin",
-      batchTableNode(table),
+      batchTableNode(0),
       unaryNode(
         "DataSetAggregate",
-        batchTableNode(table1),
+        batchTableNode(1),
         term("select", "MIN(b1) AS b1", "MAX(b2) AS b2")
       ),
       term("where", "AND(<(a1, b1)", "=(a2, b2))"),
@@ -160,8 +160,8 @@ class SingleRowJoinTest extends TableTestBase {
   @Test
   def testRightSingleLeftJoinEqualPredicate(): Unit = {
     val util = batchTestUtil()
-    val table = util.addTable[(Long, Int)]("A", 'a1, 'a2)
-    val table1 = util.addTable[(Int, Int)]("B", 'b1, 'b2)
+    util.addTable[(Long, Int)]("A", 'a1, 'a2)
+    util.addTable[(Int, Int)]("B", 'b1, 'b2)
 
     val queryLeftJoin =
       "SELECT a2 " +
@@ -175,7 +175,7 @@ class SingleRowJoinTest extends TableTestBase {
         "DataSetCalc",
         unaryNode(
           "DataSetSingleRowJoin",
-          batchTableNode(table),
+          batchTableNode(0),
           term("where", "=(a1, cnt)"),
           term("join", "a1", "a2", "cnt"),
           term("joinType", "NestedLoopLeftJoin")
@@ -186,7 +186,7 @@ class SingleRowJoinTest extends TableTestBase {
           "DataSetAggregate",
           unaryNode(
             "DataSetCalc",
-            batchTableNode(table1),
+            batchTableNode(1),
             term("select", "")),
           term("select", "COUNT(*) AS cnt")
         )
@@ -197,8 +197,8 @@ class SingleRowJoinTest extends TableTestBase {
   @Test
   def testRightSingleLeftJoinNotEqualPredicate(): Unit = {
     val util = batchTestUtil()
-    val table = util.addTable[(Long, Int)]("A", 'a1, 'a2)
-    val table1 = util.addTable[(Int, Int)]("B", 'b1, 'b2)
+    util.addTable[(Long, Int)]("A", 'a1, 'a2)
+    util.addTable[(Int, Int)]("B", 'b1, 'b2)
 
     val queryLeftJoin =
       "SELECT a2 " +
@@ -212,7 +212,7 @@ class SingleRowJoinTest extends TableTestBase {
         "DataSetCalc",
         unaryNode(
           "DataSetSingleRowJoin",
-          batchTableNode(table),
+          batchTableNode(0),
           term("where", ">(a1, cnt)"),
           term("join", "a1", "a2", "cnt"),
           term("joinType", "NestedLoopLeftJoin")
@@ -223,7 +223,7 @@ class SingleRowJoinTest extends TableTestBase {
           "DataSetAggregate",
           unaryNode(
             "DataSetCalc",
-            batchTableNode(table1),
+            batchTableNode(1),
             term("select", "")),
           term("select", "COUNT(*) AS cnt")
         )
@@ -234,8 +234,8 @@ class SingleRowJoinTest extends TableTestBase {
   @Test
   def testLeftSingleRightJoinEqualPredicate(): Unit = {
     val util = batchTestUtil()
-    val table = util.addTable[(Long, Long)]("A", 'a1, 'a2)
-    val table1 = util.addTable[(Long, Long)]("B", 'b1, 'b2)
+    util.addTable[(Long, Long)]("A", 'a1, 'a2)
+    util.addTable[(Long, Long)]("B", 'b1, 'b2)
 
     val queryRightJoin =
       "SELECT a1 " +
@@ -259,11 +259,11 @@ class SingleRowJoinTest extends TableTestBase {
         "DataSetAggregate",
         unaryNode(
           "DataSetCalc",
-          batchTableNode(table1),
+          batchTableNode(1),
           term("select", "")),
         term("select", "COUNT(*) AS cnt")
       ) + "\n" +
-        batchTableNode(table)
+        batchTableNode(0)
 
     util.verifySql(queryRightJoin, expected)
   }
@@ -271,8 +271,8 @@ class SingleRowJoinTest extends TableTestBase {
   @Test
   def testLeftSingleRightJoinNotEqualPredicate(): Unit = {
     val util = batchTestUtil()
-    val table = util.addTable[(Long, Long)]("A", 'a1, 'a2)
-    val table1 = util.addTable[(Long, Long)]("B", 'b1, 'b2)
+    util.addTable[(Long, Long)]("A", 'a1, 'a2)
+    util.addTable[(Long, Long)]("B", 'b1, 'b2)
 
     val queryRightJoin =
       "SELECT a1 " +
@@ -297,11 +297,11 @@ class SingleRowJoinTest extends TableTestBase {
           "DataSetAggregate",
           unaryNode(
             "DataSetCalc",
-            batchTableNode(table1),
+            batchTableNode(1),
             term("select", "")),
           term("select", "COUNT(*) AS cnt")
         ) + "\n" +
-        batchTableNode(table)
+        batchTableNode(0)
 
     util.verifySql(queryRightJoin, expected)
   }
@@ -309,7 +309,7 @@ class SingleRowJoinTest extends TableTestBase {
   @Test
   def testSingleRowJoinInnerJoin(): Unit = {
     val util = batchTestUtil()
-    val table = util.addTable[(Int, Int)]("A", 'a1, 'a2)
+    util.addTable[(Int, Int)]("A", 'a1, 'a2)
     val query =
       "SELECT a2, sum(a1) " +
         "FROM A " +
@@ -323,7 +323,7 @@ class SingleRowJoinTest extends TableTestBase {
           "DataSetSingleRowJoin",
           unaryNode(
             "DataSetAggregate",
-            batchTableNode(table),
+            batchTableNode(0),
             term("groupBy", "a2"),
             term("select", "a2", "SUM(a1) AS EXPR$1")
           ),
@@ -339,12 +339,12 @@ class SingleRowJoinTest extends TableTestBase {
             "DataSetAggregate",
             unaryNode(
               "DataSetCalc",
-              batchTableNode(table),
+              batchTableNode(0),
               term("select", "a1")
             ),
             term("select", "SUM(a1) AS $f0")
           ),
-          term("select", "*($f0, 0.1:DECIMAL(2, 1)) AS EXPR$0")
+          term("select", "*($f0, 0.1) AS EXPR$0")
         )
 
     util.verifySql(query, expected)

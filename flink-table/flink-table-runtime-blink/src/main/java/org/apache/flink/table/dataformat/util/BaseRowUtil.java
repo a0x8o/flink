@@ -21,7 +21,7 @@ package org.apache.flink.table.dataformat.util;
 import org.apache.flink.table.dataformat.BaseRow;
 import org.apache.flink.table.dataformat.GenericRow;
 import org.apache.flink.table.dataformat.TypeGetterSetters;
-import org.apache.flink.table.types.logical.LogicalType;
+import org.apache.flink.table.type.InternalType;
 
 /**
  * Util for base row.
@@ -42,10 +42,6 @@ public final class BaseRowUtil {
 		return baseRow.getHeader() == ACCUMULATE_MSG;
 	}
 
-	public static boolean isRetractMsg(BaseRow baseRow) {
-		return baseRow.getHeader() == RETRACT_MSG;
-	}
-
 	public static BaseRow setAccumulate(BaseRow baseRow) {
 		baseRow.setHeader(ACCUMULATE_MSG);
 		return baseRow;
@@ -58,7 +54,7 @@ public final class BaseRowUtil {
 
 	public static GenericRow toGenericRow(
 			BaseRow baseRow,
-			LogicalType[] types) {
+			InternalType[] types) {
 		if (baseRow instanceof GenericRow) {
 			return (GenericRow) baseRow;
 		} else {

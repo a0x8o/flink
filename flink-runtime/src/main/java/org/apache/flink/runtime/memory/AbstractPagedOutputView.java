@@ -21,7 +21,6 @@ package org.apache.flink.runtime.memory;
 import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataOutputView;
 import org.apache.flink.core.memory.MemorySegment;
-import org.apache.flink.core.memory.MemorySegmentWritable;
 
 import java.io.IOException;
 import java.io.UTFDataFormatException;
@@ -34,7 +33,7 @@ import java.io.UTFDataFormatException;
  *
  * <p>The paging assumes that all memory segments are of the same size.
  */
-public abstract class AbstractPagedOutputView implements DataOutputView, MemorySegmentWritable {
+public abstract class AbstractPagedOutputView implements DataOutputView {
 
 	private MemorySegment currentSegment;			// the current memory segment to write to
 
@@ -417,7 +416,6 @@ public abstract class AbstractPagedOutputView implements DataOutputView, MemoryS
 		}
 	}
 
-	@Override
 	public void write(MemorySegment segment, int off, int len) throws IOException {
 		int remaining = this.segmentSize - this.positionInSegment;
 		if (remaining >= len) {

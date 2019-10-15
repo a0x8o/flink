@@ -19,13 +19,9 @@
 package org.apache.flink.runtime.io.network.partition.consumer;
 
 import org.apache.flink.runtime.event.TaskEvent;
-import org.apache.flink.runtime.io.PullingAsyncDataInput;
 
 import java.io.IOException;
 import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
-
-import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
  * An input gate consumes one or more partitions of a single produced intermediate result.
@@ -69,64 +65,33 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * will have an input gate attached to it. This will provide its input, which will consist of one
  * subpartition from each partition of the intermediate result.
  */
-public abstract class InputGate implements PullingAsyncDataInput<BufferOrEvent>, AutoCloseable {
+public interface InputGate extends AutoCloseable {
 
-	protected CompletableFuture<?> isAvailable = new CompletableFuture<>();
+	int getNumberOfInputChannels();
 
-	public abstract int getNumberOfInputChannels();
+	String getOwningTaskName();
 
-	public abstract boolean isFinished();
+	boolean isFinished();
+
+	void requestPartitions() throws IOException, InterruptedException;
 
 	/**
 	 * Blocking call waiting for next {@link BufferOrEvent}.
 	 *
 	 * @return {@code Optional.empty()} if {@link #isFinished()} returns true.
 	 */
-	public abstract Optional<BufferOrEvent> getNext() throws IOException, InterruptedException;
+	Optional<BufferOrEvent> getNextBufferOrEvent() throws IOException, InterruptedException;
 
 	/**
 	 * Poll the {@link BufferOrEvent}.
 	 *
 	 * @return {@code Optional.empty()} if there is no data to return or if {@link #isFinished()} returns true.
 	 */
-	public abstract Optional<BufferOrEvent> pollNext() throws IOException, InterruptedException;
+	Optional<BufferOrEvent> pollNextBufferOrEvent() throws IOException, InterruptedException;
 
-	public abstract void sendTaskEvent(TaskEvent event) throws IOException;
+	void sendTaskEvent(TaskEvent event) throws IOException;
 
-	/**
-	 * @return a future that is completed if there are more records available. If there are more
-	 * records available immediately, {@link #AVAILABLE} should be returned. Previously returned
-	 * not completed futures should become completed once there are more records available.
-	 */
-	@Override
-	public CompletableFuture<?> isAvailable() {
-		return isAvailable;
-	}
+	void registerListener(InputGateListener listener);
 
-	protected void resetIsAvailable() {
-		// try to avoid volatile access in isDone()}
-		if (isAvailable == AVAILABLE || isAvailable.isDone()) {
-			isAvailable = new CompletableFuture<>();
-		}
-	}
-
-	/**
-	 * Simple pojo for INPUT, DATA and moreAvailable.
-	 */
-	protected static class InputWithData<INPUT, DATA> {
-		protected final INPUT input;
-		protected final DATA data;
-		protected final boolean moreAvailable;
-
-		InputWithData(INPUT input, DATA data, boolean moreAvailable) {
-			this.input = checkNotNull(input);
-			this.data = checkNotNull(data);
-			this.moreAvailable = moreAvailable;
-		}
-	}
-
-	/**
-	 * Setup gate, potentially heavy-weight, blocking operation comparing to just creation.
-	 */
-	public abstract void setup() throws IOException, InterruptedException;
+	int getPageSize();
 }

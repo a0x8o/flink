@@ -21,17 +21,19 @@ package org.apache.flink.table.calcite;
 import org.apache.flink.table.plan.schema.FlinkRelOptTable;
 import org.apache.flink.table.plan.schema.FlinkTable;
 
+import org.apache.flink.shaded.guava18.com.google.common.collect.ImmutableList;
+
 import org.apache.calcite.config.CalciteConnectionConfig;
 import org.apache.calcite.jdbc.CalciteSchema;
 import org.apache.calcite.prepare.CalciteCatalogReader;
 import org.apache.calcite.prepare.Prepare;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
+import org.apache.calcite.sql.validate.SqlNameMatcher;
 import org.apache.calcite.sql.validate.SqlNameMatchers;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 /**
  * Flink specific {@link CalciteCatalogReader} that changes the RelOptTable which wrapped a
@@ -41,19 +43,33 @@ public class FlinkCalciteCatalogReader extends CalciteCatalogReader {
 
 	public FlinkCalciteCatalogReader(
 		CalciteSchema rootSchema,
-		List<List<String>> defaultSchemas,
+		List<String> defaultSchemas,
 		RelDataTypeFactory typeFactory,
 		CalciteConnectionConfig config) {
 
-		super(
+		this(
 			rootSchema,
 			SqlNameMatchers.withCaseSensitive(config != null && config.caseSensitive()),
-				Stream.concat(
-					defaultSchemas.stream(),
-					Stream.of(Collections.<String>emptyList())
-				).collect(Collectors.toList()),
+			getDefaultSchemas(defaultSchemas),
 			typeFactory,
 			config);
+	}
+
+	protected FlinkCalciteCatalogReader(
+		CalciteSchema rootSchema,
+		SqlNameMatcher nameMatcher,
+		List<List<String>> schemaPaths,
+		RelDataTypeFactory typeFactory,
+		CalciteConnectionConfig config) {
+
+		super(rootSchema, nameMatcher, schemaPaths, typeFactory, config);
+	}
+
+	private static List<List<String>> getDefaultSchemas(List<String> defaultSchemas) {
+		List<List<String>> paths = new ArrayList<>(ImmutableList.of(defaultSchemas));
+		paths.add(new ArrayList<>());
+
+		return Collections.unmodifiableList(paths);
 	}
 
 	@Override

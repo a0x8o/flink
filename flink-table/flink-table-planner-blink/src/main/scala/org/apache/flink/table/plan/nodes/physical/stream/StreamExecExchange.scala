@@ -18,16 +18,15 @@
 
 package org.apache.flink.table.plan.nodes.physical.stream
 
-import org.apache.flink.api.dag.Transformation
 import org.apache.flink.runtime.state.KeyGroupRangeAssignment.DEFAULT_LOWER_BOUND_MAX_PARALLELISM
-import org.apache.flink.streaming.api.transformations.PartitionTransformation
-import org.apache.flink.streaming.runtime.partitioner.{GlobalPartitioner, KeyGroupStreamPartitioner, StreamPartitioner}
-import org.apache.flink.table.calcite.FlinkTypeFactory
-import org.apache.flink.table.dataformat.BaseRow
 import org.apache.flink.table.plan.nodes.common.CommonPhysicalExchange
+import org.apache.flink.table.dataformat.BaseRow
 import org.apache.flink.table.plan.nodes.exec.{ExecNode, StreamExecNode}
+import org.apache.flink.streaming.api.transformations.{PartitionTransformation, StreamTransformation}
+import org.apache.flink.streaming.runtime.partitioner.{GlobalPartitioner, KeyGroupStreamPartitioner, StreamPartitioner}
+import org.apache.flink.table.api.StreamTableEnvironment
+import org.apache.flink.table.calcite.FlinkTypeFactory
 import org.apache.flink.table.plan.util.KeySelectorUtil
-import org.apache.flink.table.planner.StreamPlanner
 import org.apache.flink.table.typeutils.BaseRowTypeInfo
 
 import org.apache.calcite.plan.{RelOptCluster, RelTraitSet}
@@ -68,23 +67,22 @@ class StreamExecExchange(
 
   //~ ExecNode methods -----------------------------------------------------------
 
-  override def getInputNodes: util.List[ExecNode[StreamPlanner, _]] = {
-    List(getInput.asInstanceOf[ExecNode[StreamPlanner, _]])
+  override def getInputNodes: util.List[ExecNode[StreamTableEnvironment, _]] = {
+    List(getInput.asInstanceOf[ExecNode[StreamTableEnvironment, _]])
   }
 
   override def replaceInputNode(
       ordinalInParent: Int,
-      newInputNode: ExecNode[StreamPlanner, _]): Unit = {
+      newInputNode: ExecNode[StreamTableEnvironment, _]): Unit = {
     replaceInput(ordinalInParent, newInputNode.asInstanceOf[RelNode])
   }
 
   override protected def translateToPlanInternal(
-      planner: StreamPlanner): Transformation[BaseRow] = {
-    val inputTransform = getInputNodes.get(0).translateToPlan(planner)
-      .asInstanceOf[Transformation[BaseRow]]
+      tableEnv: StreamTableEnvironment): StreamTransformation[BaseRow] = {
+    val inputTransform = getInputNodes.get(0).translateToPlan(tableEnv)
+      .asInstanceOf[StreamTransformation[BaseRow]]
     val inputTypeInfo = inputTransform.getOutputType.asInstanceOf[BaseRowTypeInfo]
-    val outputTypeInfo = BaseRowTypeInfo.of(
-      FlinkTypeFactory.toLogicalRowType(getRowType))
+    val outputTypeInfo = FlinkTypeFactory.toInternalRowType(getRowType).toTypeInfo
     relDistribution.getType match {
       case RelDistribution.Type.SINGLETON =>
         val partitioner = new GlobalPartitioner[BaseRow]

@@ -22,9 +22,11 @@ import org.apache.flink.api.java.tuple.{Tuple2 => JTuple2}
 import org.apache.flink.api.java.typeutils.ListTypeInfo
 import org.apache.flink.runtime.operators.sort.QuickSort
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator
+import org.apache.flink.table.`type`.TypeConverters.createInternalTypeFromTypeInfo
+import org.apache.flink.table.`type`.{InternalType, RowType}
 import org.apache.flink.table.api.Types
 import org.apache.flink.table.api.window.TimeWindow
-import org.apache.flink.table.calcite.FlinkRelBuilder.PlannerNamedWindowProperty
+import org.apache.flink.table.calcite.FlinkRelBuilder.NamedWindowProperty
 import org.apache.flink.table.codegen.CodeGenUtils.{BINARY_ROW, newName}
 import org.apache.flink.table.codegen.OperatorCodeGenerator.generateCollect
 import org.apache.flink.table.codegen.agg.batch.AggCodeGenHelper.genGroupKeyChangedCheckCode
@@ -37,16 +39,12 @@ import org.apache.flink.table.plan.util.AggregateInfoList
 import org.apache.flink.table.runtime.TableStreamOperator
 import org.apache.flink.table.runtime.aggregate.{BytesHashMap, BytesHashMapSpillMemorySegmentPool}
 import org.apache.flink.table.runtime.sort.BinaryKVInMemorySortBuffer
-import org.apache.flink.table.types.TypeInfoLogicalTypeConverter.fromTypeInfoToLogicalType
-import org.apache.flink.table.types.logical.{LogicalType, RowType}
 import org.apache.flink.table.typeutils.BinaryRowSerializer
 import org.apache.flink.util.MutableObjectIterator
 
 import org.apache.calcite.rel.`type`.RelDataType
 import org.apache.calcite.tools.RelBuilder
 import org.apache.commons.math3.util.ArithmeticUtils
-
-import scala.collection.JavaConversions._
 
 /**
   * Tumbling window: like [[HashAggCodeGenerator]].
@@ -68,7 +66,7 @@ class HashWindowCodeGenerator(
     window: LogicalWindow,
     inputTimeFieldIndex: Int,
     inputTimeIsDate: Boolean,
-    namedProperties: Seq[PlannerNamedWindowProperty],
+    namedProperties: Seq[NamedWindowProperty],
     aggInfoList: AggregateInfoList,
     inputRowType: RelDataType,
     grouping: Array[Int],
@@ -90,17 +88,18 @@ class HashWindowCodeGenerator(
     isMerge,
     isFinal) {
 
-  private lazy val aggBufferRowType = RowType.of(aggBufferTypes.flatten, aggBufferNames.flatten)
+  private lazy val aggBufferRowType = new RowType(aggBufferTypes.flatten, aggBufferNames.flatten)
 
-  private lazy val aggMapKeyRowType = RowType.of(
-    (groupKeyRowType.getChildren :+ timestampInternalType).toArray,
-    (groupKeyRowType.getFieldNames :+ "assignedTs").toArray)
+  private lazy val aggMapKeyRowType = new RowType(
+    groupKeyRowType.getFieldTypes :+ timestampInternalType,
+    groupKeyRowType.getFieldNames :+ "assignedTs")
 
   def gen(
       inputType: RowType,
       outputType: RowType,
       buffLimitSize: Int,
       reservedAggMapMemory: Long,
+      maxManagedMemory: Long,
       windowStart: Long,
       windowSize: Long,
       slideSize: Long): GeneratedOperator[OneInputStreamOperator[BaseRow, BaseRow]] = {
@@ -117,6 +116,7 @@ class HashWindowCodeGenerator(
     val aggMapKeyWriter = newName("aggMapKeyWriter")
     val (processElementPerWindow, outputResultFromMap) = genHashWindowAggCodes(
       reservedAggMapMemory,
+      maxManagedMemory,
       buffLimitSize,
       windowSize,
       slideSize,
@@ -222,7 +222,7 @@ class HashWindowCodeGenerator(
                """.stripMargin
           val assignTimestampExpr =
             new GeneratedExpression(assignedWindows, "false", code,
-              fromTypeInfoToLogicalType(new ListTypeInfo(Types.LONG)))
+              createInternalTypeFromTypeInfo(new ListTypeInfo(Types.LONG)))
 
           // gen code to filter invalid overlapping windows
           val assignedTimestamp = newName("assignedTimestamp")
@@ -316,7 +316,7 @@ class HashWindowCodeGenerator(
 
   private def prepareAggMapKeyExpr(
       inputTerm: String,
-      inputType: LogicalType,
+      inputType: InternalType,
       assignedTimestampExpr: Option[GeneratedExpression],
       currentKeyType: RowType,
       currentKeyTerm: String,
@@ -429,8 +429,8 @@ class HashWindowCodeGenerator(
       bufferLimitSize: Int,
       outputType: RowType,
       aggregateMapTerm: String,
-      argsMapping: Array[Array[(Int, LogicalType)]],
-      aggBuffMapping: Array[Array[(Int, LogicalType)]],
+      argsMapping: Array[Array[(Int, InternalType)]],
+      aggBuffMapping: Array[Array[(Int, InternalType)]],
       aggKeyTypeTerm: String,
       aggBufferTypeTerm: String,
       aggMapKeyType: RowType,
@@ -466,9 +466,9 @@ class HashWindowCodeGenerator(
     val binaryRow = classOf[BinaryRow].getName
     val kvType = classOf[JTuple2[_,_]].getName
     ctx.addReusableMember(
-      s"transient $binaryRow $reuseAggMapKeyTerm = new $binaryRow(${aggMapKeyType.getFieldCount});")
+      s"transient $binaryRow $reuseAggMapKeyTerm = new $binaryRow(${aggMapKeyType.getArity});")
     ctx.addReusableMember(
-      s"transient $binaryRow $reuseAggBufferTerm = new $binaryRow(${aggBufferType.getFieldCount});")
+      s"transient $binaryRow $reuseAggBufferTerm = new $binaryRow(${aggBufferType.getArity});")
     ctx.addReusableMember(
       s"transient $kvType<$binaryRow, $binaryRow> $reuseKVTerm = " +
           s"new  $kvType<$binaryRow, $binaryRow>($reuseAggMapKeyTerm, $reuseAggBufferTerm);"
@@ -482,15 +482,15 @@ class HashWindowCodeGenerator(
     val bufferWindowElementWriterTerm = newName("prepareWinElementWriter")
     val exprCodegen = new ExprCodeGenerator(ctx, false)
     // TODO refine this. Is it possible to reuse grouping key projection?
-    val accessKeyExprs = for (idx <- 0 until aggMapKeyType.getFieldCount - 1) yield
+    val accessKeyExprs = for (idx <- 0 until aggMapKeyType.getArity - 1) yield
       GenerateUtils.generateFieldAccess(
         ctx, aggMapKeyType, reuseAggMapKeyTerm, idx)
     val accessTimestampExpr = GenerateUtils.generateFieldAccess(
       ctx,
       aggMapKeyType,
       reuseAggMapKeyTerm,
-      aggMapKeyType.getFieldCount - 1)
-    val accessValExprs = for (idx <- 0 until aggBufferType.getFieldCount) yield
+      aggMapKeyType.getArity - 1)
+    val accessValExprs = for (idx <- 0 until aggBufferType.getArity) yield
       GenerateUtils.generateFieldAccess(ctx, aggBufferType, reuseAggBufferTerm, idx)
     val accessExprs = (accessKeyExprs :+ GeneratedExpression(
       accessTimestampExpr.resultTerm,
@@ -619,8 +619,8 @@ class HashWindowCodeGenerator(
       inputType: RowType,
       outputType: RowType,
       aggregateMapTerm: String,
-      argsMapping: Array[Array[(Int, LogicalType)]],
-      aggBuffMapping: Array[Array[(Int, LogicalType)]]): String = {
+      argsMapping: Array[Array[(Int, InternalType)]],
+      aggBuffMapping: Array[Array[(Int, InternalType)]]): String = {
     val outputTerm = "hashAggOutput"
     ctx.addReusableOutputRecord(outputType, getOutputRowClass, outputTerm)
     val (reuseAggMapEntryTerm, reuseAggMapKeyTerm, reuseAggBufferTerm) =
@@ -726,6 +726,7 @@ class HashWindowCodeGenerator(
 
   private def genHashWindowAggCodes(
       reservedAggMapMemory: Long,
+      maxManagedMemory: Long,
       buffLimitSize: Int,
       windowSize: Long,
       slideSize: Long,
@@ -741,7 +742,8 @@ class HashWindowCodeGenerator(
       ctx, aggMapKeyTypesTerm, aggBufferTypesTerm, aggMapKeyRowType, aggBufferRowType)
     val aggregateMapTerm = CodeGenUtils.newName("aggregateMap")
     prepareHashAggMap(
-      ctx, reservedAggMapMemory, aggMapKeyTypesTerm, aggBufferTypesTerm, aggregateMapTerm)
+      ctx, reservedAggMapMemory, maxManagedMemory
+      , aggMapKeyTypesTerm, aggBufferTypesTerm, aggregateMapTerm)
 
     // gen code to do aggregate by window using aggregate map
     val currentAggBufferTerm =

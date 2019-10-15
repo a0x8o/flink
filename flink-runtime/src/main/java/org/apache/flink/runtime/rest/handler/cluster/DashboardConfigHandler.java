@@ -46,11 +46,10 @@ public class DashboardConfigHandler extends AbstractRestHandler<RestfulGateway, 
 			Time timeout,
 			Map<String, String> responseHeaders,
 			MessageHeaders<EmptyRequestBody, DashboardConfiguration, EmptyMessageParameters> messageHeaders,
-			long refreshInterval,
-			boolean webSubmitEnabled) {
+			long refreshInterval) {
 		super(leaderRetriever, timeout, responseHeaders, messageHeaders);
 
-		dashboardConfiguration = DashboardConfiguration.from(refreshInterval, ZonedDateTime.now(), webSubmitEnabled);
+		dashboardConfiguration = DashboardConfiguration.from(refreshInterval, ZonedDateTime.now());
 	}
 
 	@Override

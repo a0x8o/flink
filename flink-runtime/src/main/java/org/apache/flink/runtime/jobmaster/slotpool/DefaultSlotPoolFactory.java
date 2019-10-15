@@ -42,18 +42,13 @@ public class DefaultSlotPoolFactory implements SlotPoolFactory {
 	@Nonnull
 	private final Time slotIdleTimeout;
 
-	@Nonnull
-	private final Time batchSlotTimeout;
-
 	public DefaultSlotPoolFactory(
 			@Nonnull Clock clock,
 			@Nonnull Time rpcTimeout,
-			@Nonnull Time slotIdleTimeout,
-			@Nonnull Time batchSlotTimeout) {
+			@Nonnull Time slotIdleTimeout) {
 		this.clock = clock;
 		this.rpcTimeout = rpcTimeout;
 		this.slotIdleTimeout = slotIdleTimeout;
-		this.batchSlotTimeout = batchSlotTimeout;
 	}
 
 	@Override
@@ -63,20 +58,17 @@ public class DefaultSlotPoolFactory implements SlotPoolFactory {
 			jobId,
 			clock,
 			rpcTimeout,
-			slotIdleTimeout,
-			batchSlotTimeout);
+			slotIdleTimeout);
 	}
 
 	public static DefaultSlotPoolFactory fromConfiguration(@Nonnull Configuration configuration) {
 
 		final Time rpcTimeout = AkkaUtils.getTimeoutAsTime(configuration);
 		final Time slotIdleTimeout = Time.milliseconds(configuration.getLong(JobManagerOptions.SLOT_IDLE_TIMEOUT));
-		final Time batchSlotTimeout = Time.milliseconds(configuration.getLong(JobManagerOptions.SLOT_REQUEST_TIMEOUT));
 
 		return new DefaultSlotPoolFactory(
 			SystemClock.getInstance(),
 			rpcTimeout,
-			slotIdleTimeout,
-			batchSlotTimeout);
+			slotIdleTimeout);
 	}
 }

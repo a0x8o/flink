@@ -18,11 +18,8 @@
 
 package org.apache.flink.runtime.rest.messages.job;
 
-import org.apache.flink.api.common.JobID;
 import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.executiongraph.AccessExecution;
-import org.apache.flink.runtime.jobgraph.JobVertexID;
-import org.apache.flink.runtime.rest.handler.legacy.metrics.MetricFetcher;
 import org.apache.flink.runtime.rest.handler.util.MutableIOMetrics;
 import org.apache.flink.runtime.rest.messages.ResponseBody;
 import org.apache.flink.runtime.rest.messages.job.metrics.IOMetricsInfo;
@@ -31,8 +28,6 @@ import org.apache.flink.util.Preconditions;
 
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.annotation.JsonCreator;
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.annotation.JsonProperty;
-
-import javax.annotation.Nullable;
 
 import java.util.Objects;
 
@@ -51,15 +46,11 @@ public class SubtaskExecutionAttemptDetailsInfo implements ResponseBody {
 
 	public static final String FIELD_NAME_START_TIME = "start-time";
 
-	public static final String FIELD_NAME_COMPATIBLE_START_TIME = "start_time";
-
 	public static final String FIELD_NAME_END_TIME = "end-time";
 
 	public static final String FIELD_NAME_DURATION = "duration";
 
 	public static final String FIELD_NAME_METRICS = "metrics";
-
-	public static final String FIELD_NAME_TASKMANAGER_ID = "taskmanager-id";
 
 	@JsonProperty(FIELD_NAME_SUBTASK_INDEX)
 	private final int subtaskIndex;
@@ -76,9 +67,6 @@ public class SubtaskExecutionAttemptDetailsInfo implements ResponseBody {
 	@JsonProperty(FIELD_NAME_START_TIME)
 	private final long startTime;
 
-	@JsonProperty(FIELD_NAME_COMPATIBLE_START_TIME)
-	private final long startTimeCompatible;
-
 	@JsonProperty(FIELD_NAME_END_TIME)
 	private final long endTime;
 
@@ -87,9 +75,6 @@ public class SubtaskExecutionAttemptDetailsInfo implements ResponseBody {
 
 	@JsonProperty(FIELD_NAME_METRICS)
 	private final IOMetricsInfo ioMetricsInfo;
-
-	@JsonProperty(FIELD_NAME_TASKMANAGER_ID)
-	private final String taskmanagerId;
 
 	@JsonCreator
 	public SubtaskExecutionAttemptDetailsInfo(
@@ -100,19 +85,16 @@ public class SubtaskExecutionAttemptDetailsInfo implements ResponseBody {
 			@JsonProperty(FIELD_NAME_START_TIME) long startTime,
 			@JsonProperty(FIELD_NAME_END_TIME) long endTime,
 			@JsonProperty(FIELD_NAME_DURATION) long duration,
-			@JsonProperty(FIELD_NAME_METRICS) IOMetricsInfo ioMetricsInfo,
-			@JsonProperty(FIELD_NAME_TASKMANAGER_ID) String taskmanagerId) {
+			@JsonProperty(FIELD_NAME_METRICS) IOMetricsInfo ioMetricsInfo) {
 
 		this.subtaskIndex = subtaskIndex;
 		this.status = Preconditions.checkNotNull(status);
 		this.attempt = attempt;
 		this.host = Preconditions.checkNotNull(host);
 		this.startTime = startTime;
-		this.startTimeCompatible = startTime;
 		this.endTime = endTime;
 		this.duration = duration;
 		this.ioMetricsInfo = Preconditions.checkNotNull(ioMetricsInfo);
-		this.taskmanagerId = Preconditions.checkNotNull(taskmanagerId);
 	}
 
 	public int getSubtaskIndex() {
@@ -135,10 +117,6 @@ public class SubtaskExecutionAttemptDetailsInfo implements ResponseBody {
 		return startTime;
 	}
 
-	public long getStartTimeCompatible() {
-		return startTimeCompatible;
-	}
-
 	public long getEndTime() {
 		return endTime;
 	}
@@ -149,10 +127,6 @@ public class SubtaskExecutionAttemptDetailsInfo implements ResponseBody {
 
 	public IOMetricsInfo getIoMetricsInfo() {
 		return ioMetricsInfo;
-	}
-
-	public String getTaskmanagerId() {
-		return taskmanagerId;
 	}
 
 	@Override
@@ -171,25 +145,22 @@ public class SubtaskExecutionAttemptDetailsInfo implements ResponseBody {
 			attempt == that.attempt &&
 			Objects.equals(host, that.host) &&
 			startTime == that.startTime &&
-			startTimeCompatible == that.startTimeCompatible &&
 			endTime == that.endTime &&
 			duration == that.duration &&
-			Objects.equals(ioMetricsInfo, that.ioMetricsInfo) &&
-			Objects.equals(taskmanagerId, that.taskmanagerId);
+			Objects.equals(ioMetricsInfo, that.ioMetricsInfo);
 	}
 
 	@Override
 	public int hashCode() {
-		return Objects.hash(subtaskIndex, status, attempt, host, startTime, startTimeCompatible, endTime, duration, ioMetricsInfo, taskmanagerId);
+		return Objects.hash(subtaskIndex, status, attempt, host, startTime, endTime, duration, ioMetricsInfo);
 	}
 
-	public static SubtaskExecutionAttemptDetailsInfo create(AccessExecution execution, @Nullable MetricFetcher metricFetcher, JobID jobID, JobVertexID jobVertexID) {
+	public static SubtaskExecutionAttemptDetailsInfo create(AccessExecution execution, MutableIOMetrics ioMetrics) {
 		final ExecutionState status = execution.getState();
 		final long now = System.currentTimeMillis();
 
 		final TaskManagerLocation location = execution.getAssignedResourceLocation();
 		final String locationString = location == null ? "(unassigned)" : location.getHostname();
-		String taskmanagerId = location == null ? "(unassigned)" : location.getResourceID().toString();
 
 		long startTime = execution.getStateTimestamp(ExecutionState.DEPLOYING);
 		if (startTime == 0) {
@@ -197,14 +168,6 @@ public class SubtaskExecutionAttemptDetailsInfo implements ResponseBody {
 		}
 		final long endTime = status.isTerminal() ? execution.getStateTimestamp(status) : -1;
 		final long duration = startTime > 0 ? ((endTime > 0 ? endTime : now) - startTime) : -1;
-
-		final MutableIOMetrics ioMetrics = new MutableIOMetrics();
-		ioMetrics.addIOMetrics(
-			execution,
-			metricFetcher,
-			jobID.toString(),
-			jobVertexID.toString()
-		);
 
 		final IOMetricsInfo ioMetricsInfo = new IOMetricsInfo(
 			ioMetrics.getNumBytesIn(),
@@ -224,8 +187,7 @@ public class SubtaskExecutionAttemptDetailsInfo implements ResponseBody {
 			startTime,
 			endTime,
 			duration,
-			ioMetricsInfo,
-			taskmanagerId
+			ioMetricsInfo
 		);
 	}
 }

@@ -19,45 +19,31 @@
 package org.apache.flink.table.plan.nodes.dataset
 
 import org.apache.calcite.plan._
-import org.apache.calcite.prepare.RelOptTableImpl
+import org.apache.calcite.rel.RelNode
 import org.apache.calcite.rel.`type`.RelDataType
 import org.apache.calcite.rel.core.TableScan
 import org.apache.calcite.rel.metadata.RelMetadataQuery
-import org.apache.calcite.rel.{RelNode, RelWriter}
 import org.apache.flink.api.java.DataSet
-import org.apache.flink.table.api.BatchQueryConfig
-import org.apache.flink.table.api.internal.BatchTableEnvImpl
-import org.apache.flink.table.plan.schema.RowSchema
+import org.apache.flink.table.api.{BatchQueryConfig, BatchTableEnvImpl}
+import org.apache.flink.table.plan.schema.{DataSetTable, RowSchema}
 import org.apache.flink.types.Row
-
-import scala.collection.JavaConverters._
 
 /**
   * Flink RelNode which matches along with DataSource.
   * It ensures that types without deterministic field order (e.g. POJOs) are not part of
   * the plan translation.
-  *
-  * This may read only part, or change the order of the fields available in a
-  * [[org.apache.flink.api.common.typeutils.CompositeType]] of the underlying [[DataSet]].
-  * The fieldIdxs describe the indices of the fields in the
-  * [[org.apache.flink.api.common.typeinfo.TypeInformation]]
   */
 class DataSetScan(
     cluster: RelOptCluster,
     traitSet: RelTraitSet,
-    catalog: RelOptSchema,
-    inputDataSet: DataSet[_],
-    fieldIdxs: Array[Int],
+    table: RelOptTable,
     rowRelDataType: RelDataType)
-  extends TableScan(
-    cluster,
-    traitSet,
-    RelOptTableImpl.create(catalog, rowRelDataType, List[String]().asJava, null))
+  extends TableScan(cluster, traitSet, table)
   with BatchScan {
 
-  override def deriveRowType(): RelDataType = rowRelDataType
+  val dataSetTable: DataSetTable[Any] = getTable.unwrap(classOf[DataSetTable[Any]])
 
-  override def estimateRowCount(mq: RelMetadataQuery): Double = 1000L
+  override def deriveRowType(): RelDataType = rowRelDataType
 
   override def computeSelfCost(planner: RelOptPlanner, metadata: RelMetadataQuery): RelOptCost = {
     val rowCnt = metadata.getRowCount(this)
@@ -68,9 +54,7 @@ class DataSetScan(
     new DataSetScan(
       cluster,
       traitSet,
-      catalog,
-      inputDataSet,
-      fieldIdxs,
+      getTable,
       getRowType
     )
   }
@@ -79,11 +63,10 @@ class DataSetScan(
       tableEnv: BatchTableEnvImpl,
       queryConfig: BatchQueryConfig): DataSet[Row] = {
     val schema = new RowSchema(rowRelDataType)
+    val inputDataSet: DataSet[Any] = dataSetTable.dataSet
+    val fieldIdxs = dataSetTable.fieldIndexes
     val config = tableEnv.getConfig
-    convertToInternalRow(schema, inputDataSet.asInstanceOf[DataSet[Any]], fieldIdxs, config, None)
+    convertToInternalRow(schema, inputDataSet, fieldIdxs, config, None)
   }
 
-  override def explainTerms(pw: RelWriter): RelWriter = pw
-    .item("ref", System.identityHashCode(inputDataSet))
-    .item("fields", String.join(", ", rowRelDataType.getFieldNames))
 }

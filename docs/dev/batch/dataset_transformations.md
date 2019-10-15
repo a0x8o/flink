@@ -65,6 +65,13 @@ val intSums = intPairs.map { pair => pair._1 + pair._2 }
 {% endhighlight %}
 
 </div>
+<div data-lang="python" markdown="1">
+
+{% highlight python %}
+ intSums = intPairs.map(lambda x: sum(x))
+{% endhighlight %}
+
+</div>
 </div>
 
 ### FlatMap
@@ -99,6 +106,13 @@ DataSet<String> words = textLines.flatMap(new Tokenizer());
 {% highlight scala %}
 val textLines: DataSet[String] = // [...]
 val words = textLines.flatMap { _.split(" ") }
+{% endhighlight %}
+
+</div>
+<div data-lang="python" markdown="1">
+
+{% highlight python %}
+ words = lines.flat_map(lambda x,c: [line.split() for line in x])
 {% endhighlight %}
 
 </div>
@@ -143,6 +157,13 @@ val counts = texLines.mapPartition { in => Some(in.size) }
 {% endhighlight %}
 
 </div>
+<div data-lang="python" markdown="1">
+
+{% highlight python %}
+ counts = lines.map_partition(lambda x,c: [sum(1 for _ in x)])
+{% endhighlight %}
+
+</div>
 </div>
 
 ### Filter
@@ -174,6 +195,13 @@ DataSet<Integer> naturalNumbers = intNumbers.filter(new NaturalNumberFilter());
 {% highlight scala %}
 val intNumbers: DataSet[Int] = // [...]
 val naturalNumbers = intNumbers.filter { _ > 0 }
+{% endhighlight %}
+
+</div>
+<div data-lang="python" markdown="1">
+
+{% highlight python %}
+ naturalNumbers = intNumbers.filter(lambda x: x > 0)
 {% endhighlight %}
 
 </div>
@@ -220,6 +248,13 @@ DataSet<Tuple1<String>> ds2 = ds.<Tuple1<String>>project(0).distinct(0);
 
 {% highlight scala %}
 Not supported.
+{% endhighlight %}
+
+</div>
+<div data-lang="python" markdown="1">
+
+{% highlight python %}
+out = in.project(2,0);
 {% endhighlight %}
 
 </div>
@@ -303,6 +338,12 @@ val wordCounts = words.groupBy("word").reduce {
 {% endhighlight %}
 
 </div>
+<div data-lang="python" markdown="1">
+
+{% highlight python %}
+Not supported.
+{% endhighlight %}
+</div>
 </div>
 
 #### Reduce on DataSet Grouped by KeySelector Function
@@ -366,6 +407,19 @@ val wordCounts = words.groupBy { _.word } reduce {
 {% endhighlight %}
 
 </div>
+<div data-lang="python" markdown="1">
+
+{% highlight python %}
+class WordCounter(ReduceFunction):
+    def reduce(self, in1, in2):
+        return (in1[0], in1[1] + in2[1])
+
+words = // [...]
+wordCounts = words \
+    .group_by(lambda x: x[0]) \
+    .reduce(WordCounter())
+{% endhighlight %}
+</div>
 </div>
 
 #### Reduce on DataSet Grouped by Field Position Keys (Tuple DataSets only)
@@ -395,6 +449,13 @@ val reducedTuples = tuples.groupBy(0, 1).reduce { ... }
 {% endhighlight %}
 
 </div>
+<div data-lang="python" markdown="1">
+
+{% highlight python %}
+ reducedTuples = tuples.group_by(0, 1).reduce( ... )
+{% endhighlight %}
+
+</div>
 </div>
 
 #### Reduce on DataSet grouped by Case Class Fields
@@ -417,6 +478,12 @@ val tuples = DataSet[MyClass] = // [...]
 val reducedTuples = tuples.groupBy("a", "b").reduce { ... }
 {% endhighlight %}
 
+</div>
+<div data-lang="python" markdown="1">
+
+{% highlight python %}
+Not supported.
+{% endhighlight %}
 </div>
 </div>
 
@@ -474,6 +541,21 @@ val output = input.groupBy(0).reduceGroup {
       (in, out: Collector[(Int, String)]) =>
         in.toSet foreach (out.collect)
     }
+{% endhighlight %}
+
+</div>
+<div data-lang="python" markdown="1">
+
+{% highlight python %}
+ class DistinctReduce(GroupReduceFunction):
+   def reduce(self, iterator, collector):
+     dic = dict()
+     for value in iterator:
+       dic[value[1]] = 1
+     for key in dic.keys():
+       collector.collect(key)
+
+ output = data.group_by(0).reduce_group(DistinctReduce())
 {% endhighlight %}
 
 </div>
@@ -543,6 +625,22 @@ val output = input.groupBy(0).sortGroup(1, Order.ASCENDING).reduceGroup {
     }
 
 {% endhighlight %}
+
+</div>
+<div data-lang="python" markdown="1">
+
+{% highlight python %}
+ class DistinctReduce(GroupReduceFunction):
+   def reduce(self, iterator, collector):
+     dic = dict()
+     for value in iterator:
+       dic[value[1]] = 1
+     for key in dic.keys():
+       collector.collect(key)
+
+ output = data.group_by(0).sort_group(1, Order.ASCENDING).reduce_group(DistinctReduce())
+{% endhighlight %}
+
 
 </div>
 </div>
@@ -629,6 +727,26 @@ class MyCombinableGroupReducer
     out.collect(r)
   }
 }
+{% endhighlight %}
+
+</div>
+<div data-lang="python" markdown="1">
+
+{% highlight python %}
+ class GroupReduce(GroupReduceFunction):
+   def reduce(self, iterator, collector):
+     key, int_sum = iterator.next()
+     for value in iterator:
+       int_sum += value[1]
+     collector.collect(key + "-" + int_sum))
+
+   def combine(self, iterator, collector):
+     key, int_sum = iterator.next()
+     for value in iterator:
+       int_sum += value[1]
+     collector.collect((key, int_sum))
+
+data.reduce_group(GroupReduce(), combinable=True)
 {% endhighlight %}
 
 </div>
@@ -735,6 +853,13 @@ val output: DataSet[(String, Int)] = combinedWords
 {% endhighlight %}
 
 </div>
+<div data-lang="python" markdown="1">
+
+{% highlight python %}
+Not supported.
+{% endhighlight %}
+
+</div>
 </div>
 
 The above alternative WordCount implementation demonstrates how the GroupCombine
@@ -775,6 +900,16 @@ val output = input.groupBy(1).aggregate(SUM, 0).and(MIN, 2)
 {% endhighlight %}
 
 </div>
+<div data-lang="python" markdown="1">
+
+{% highlight python %}
+from flink.functions.Aggregation import Sum, Min
+
+input = # [...]
+output = input.group_by(1).aggregate(Sum, 0).and_agg(Min, 2)
+{% endhighlight %}
+
+</div>
 </div>
 
 To apply multiple aggregations on a DataSet it is necessary to use the `.and()` function after the first aggregate, that means `.aggregate(SUM, 0).and(MIN, 2)` produces the sum of field 0 and the minimum of field 2 of the original DataSet.
@@ -806,6 +941,13 @@ val input: DataSet[(Int, String, Double)] = // [...]
 val output: DataSet[(Int, String, Double)] = input
                                    .groupBy(1)  // group DataSet on second field
                                    .minBy(0, 2) // select tuple with minimum values for first and third field.
+{% endhighlight %}
+
+</div>
+<div data-lang="python" markdown="1">
+
+{% highlight python %}
+Not supported.
 {% endhighlight %}
 
 </div>
@@ -844,6 +986,14 @@ val sum = intNumbers.reduce (_ + _)
 {% endhighlight %}
 
 </div>
+<div data-lang="python" markdown="1">
+
+{% highlight python %}
+ intNumbers = env.from_elements(1,2,3)
+ sum = intNumbers.reduce(lambda x,y: x + y)
+{% endhighlight %}
+
+</div>
 </div>
 
 Reducing a full DataSet using the Reduce transformation implies that the final Reduce operation cannot be done in parallel. However, a reduce function is automatically combinable such that a Reduce transformation does not limit scalability for most use cases.
@@ -870,6 +1020,13 @@ DataSet<Double> output = input.reduceGroup(new MyGroupReducer());
 {% highlight scala %}
 val input: DataSet[Int] = // [...]
 val output = input.reduceGroup(new MyGroupReducer())
+{% endhighlight %}
+
+</div>
+<div data-lang="python" markdown="1">
+
+{% highlight python %}
+ output = data.reduce_group(MyGroupReducer())
 {% endhighlight %}
 
 </div>
@@ -919,6 +1076,16 @@ val output = input.aggregate(SUM, 0).and(MIN, 2)
 {% endhighlight %}
 
 </div>
+<div data-lang="python" markdown="1">
+
+{% highlight python %}
+from flink.functions.Aggregation import Sum, Min
+
+input = # [...]
+output = input.aggregate(Sum, 0).and_agg(Min, 2)
+{% endhighlight %}
+
+</div>
 </div>
 
 **Note:** Extending the set of supported aggregation functions is on our roadmap.
@@ -948,6 +1115,13 @@ val output: DataSet[(Int, String, Double)] = input
 {% endhighlight %}
 
 </div>
+<div data-lang="python" markdown="1">
+
+{% highlight python %}
+Not supported.
+{% endhighlight %}
+
+</div>
 </div>
 
 ### Distinct
@@ -971,6 +1145,13 @@ DataSet<Tuple2<Integer, Double>> output = input.distinct();
 val input: DataSet[(Int, String, Double)] = // [...]
 val output = input.distinct()
 
+{% endhighlight %}
+
+</div>
+<div data-lang="python" markdown="1">
+
+{% highlight python %}
+Not supported.
 {% endhighlight %}
 
 </div>
@@ -1003,6 +1184,13 @@ val output = input.distinct(0,2)
 {% endhighlight %}
 
 </div>
+<div data-lang="python" markdown="1">
+
+{% highlight python %}
+Not supported.
+{% endhighlight %}
+
+</div>
 </div>
 
 #### Distinct with KeySelector function
@@ -1030,6 +1218,13 @@ DataSet<Integer> output = input.distinct(new AbsSelector());
 val input: DataSet[Int] = // [...]
 val output = input.distinct {x => Math.abs(x)}
 
+{% endhighlight %}
+
+</div>
+<div data-lang="python" markdown="1">
+
+{% highlight python %}
+Not supported.
 {% endhighlight %}
 
 </div>
@@ -1066,6 +1261,13 @@ val output = input.distinct("aName", "aNumber")
 {% endhighlight %}
 
 </div>
+<div data-lang="python" markdown="1">
+
+{% highlight python %}
+Not supported.
+{% endhighlight %}
+
+</div>
 </div>
 
 It is also possible to indicate to use all the fields by the wildcard character:
@@ -1087,6 +1289,13 @@ DataSet<CustomType> output = input.distinct("*");
 val input: DataSet[CustomType] = // [...]
 val output = input.distinct("_")
 
+{% endhighlight %}
+
+</div>
+<div data-lang="python" markdown="1">
+
+{% highlight python %}
+Not supported.
 {% endhighlight %}
 
 </div>
@@ -1131,6 +1340,13 @@ DataSet<Tuple2<User, Store>>
 val input1: DataSet[(Int, String)] = // [...]
 val input2: DataSet[(Double, Int)] = // [...]
 val result = input1.join(input2).where(0).equalTo(1)
+{% endhighlight %}
+
+</div>
+<div data-lang="python" markdown="1">
+
+{% highlight python %}
+ result = input1.join(input2).where(0).equal_to(1)
 {% endhighlight %}
 
 </div>
@@ -1196,6 +1412,20 @@ val weightedRatings = ratings.join(weights).where("category").equalTo(0) {
 {% endhighlight %}
 
 </div>
+<div data-lang="python" markdown="1">
+
+{% highlight python %}
+ class PointWeighter(JoinFunction):
+   def join(self, rating, weight):
+     return (rating[0], rating[1] * weight[1])
+       if value1[3]:
+
+ weightedRatings =
+   ratings.join(weights).where(0).equal_to(0). \
+   with(new PointWeighter());
+{% endhighlight %}
+
+</div>
 </div>
 
 #### Join with Flat-Join Function
@@ -1241,9 +1471,12 @@ val weightedRatings = ratings.join(weights).where("category").equalTo(0) {
 {% endhighlight %}
 
 </div>
+<div data-lang="python" markdown="1">
+Not supported.
+</div>
 </div>
 
-#### Join with Projection (Java Only)
+#### Join with Projection (Java/Python Only)
 
 A Join transformation can construct result tuples using a projection as shown here:
 
@@ -1273,6 +1506,17 @@ The join projection works also for non-Tuple DataSets. In this case, `projectFir
 {% highlight scala %}
 Not supported.
 {% endhighlight %}
+
+</div>
+<div data-lang="python" markdown="1">
+
+{% highlight python %}
+ result = input1.join(input2).where(0).equal_to(0) \
+  .project_first(0,2).project_second(1).project_first(1);
+{% endhighlight %}
+
+`project_first(int...)` and `project_second(int...)` select the fields of the first and second joined input that should be assembled into an output Tuple. The order of indexes defines the order of fields in the output tuple.
+The join projection works also for non-Tuple DataSets. In this case, `project_first()` or `project_second()` must be called without arguments to add a joined element to the output Tuple.
 
 </div>
 </div>
@@ -1319,6 +1563,19 @@ val result1 = input1.joinWithHuge(input2).where(0).equalTo(0)
 {% endhighlight %}
 
 </div>
+<div data-lang="python" markdown="1">
+
+{% highlight python %}
+
+ #hint that the second DataSet is very small
+ result1 = input1.join_with_tiny(input2).where(0).equal_to(0)
+
+ #hint that the second DataSet is very large
+ result1 = input1.join_with_huge(input2).where(0).equal_to(0)
+
+{% endhighlight %}
+
+</div>
 </div>
 
 #### Join Algorithm Hints
@@ -1349,6 +1606,13 @@ val input2: DataSet[AnotherType] = // [...]
 // hint that the second DataSet is very small
 val result1 = input1.join(input2, JoinHint.BROADCAST_HASH_FIRST).where("id").equalTo("key")
 
+{% endhighlight %}
+
+</div>
+<div data-lang="python" markdown="1">
+
+{% highlight python %}
+Not supported.
 {% endhighlight %}
 
 </div>
@@ -1455,6 +1719,13 @@ val moviesWithPoints = movies.leftOuterJoin(ratings).where(0).equalTo("name") {
 {% endhighlight %}
 
 </div>
+<div data-lang="python" markdown="1">
+
+{% highlight python %}
+Not supported.
+{% endhighlight %}
+
+</div>
 </div>
 
 #### OuterJoin with Flat-Join Function
@@ -1490,6 +1761,13 @@ DataSet<Tuple2<String, Integer>>
 <div data-lang="scala" markdown="1">
 
 {% highlight scala %}
+Not supported.
+{% endhighlight %}
+
+</div>
+<div data-lang="python" markdown="1">
+
+{% highlight python %}
 Not supported.
 {% endhighlight %}
 
@@ -1530,6 +1808,13 @@ val result1 = input1.leftOuterJoin(input2, JoinHint.REPARTITION_SORT_MERGE).wher
 
 val result2 = input1.rightOuterJoin(input2, JoinHint.BROADCAST_HASH_FIRST).where("id").equalTo("key")
 
+{% endhighlight %}
+
+</div>
+<div data-lang="python" markdown="1">
+
+{% highlight python %}
+Not supported.
 {% endhighlight %}
 
 </div>
@@ -1655,6 +1940,27 @@ val distances = coords1.cross(coords2) {
 
 
 </div>
+<div data-lang="python" markdown="1">
+
+{% highlight python %}
+ class Euclid(CrossFunction):
+   def cross(self, c1, c2):
+     return (c1[0], c2[0], sqrt(pow(c1[1] - c2.[1], 2) + pow(c1[2] - c2[2], 2)))
+
+ distances = coords1.cross(coords2).using(Euclid())
+{% endhighlight %}
+
+#### Cross with Projection
+
+A Cross transformation can also construct result tuples using a projection as shown here:
+
+{% highlight python %}
+result = input1.cross(input2).projectFirst(1,0).projectSecond(0,1);
+{% endhighlight %}
+
+The field selection in a Cross projection works the same way as in the projection of Join results.
+
+</div>
 </div>
 
 #### Cross with DataSet Size Hint
@@ -1695,6 +2001,18 @@ val result1 = input1.crossWithTiny(input2)
 
 // hint that the second DataSet is very large
 val result1 = input1.crossWithHuge(input2)
+
+{% endhighlight %}
+
+</div>
+<div data-lang="python" markdown="1">
+
+{% highlight python %}
+ #hint that the second DataSet is very small
+ result1 = input1.cross_with_tiny(input2)
+
+ #hint that the second DataSet is very large
+ result1 = input1.cross_with_huge(input2)
 
 {% endhighlight %}
 
@@ -1773,6 +2091,25 @@ val output = iVals.coGroup(dVals).where(0).equalTo(0) {
 {% endhighlight %}
 
 </div>
+<div data-lang="python" markdown="1">
+
+{% highlight python %}
+ class CoGroup(CoGroupFunction):
+   def co_group(self, ivals, dvals, collector):
+     ints = dict()
+     # add all Integer values in group to set
+     for value in ivals:
+       ints[value[1]] = 1
+     # multiply each Double value with each unique Integer values of group
+     for value in dvals:
+       for i in ints.keys():
+         collector.collect(value[1] * i)
+
+
+ output = ivals.co_group(dvals).where(0).equal_to(0).using(CoGroup())
+{% endhighlight %}
+
+</div>
 </div>
 
 
@@ -1802,6 +2139,13 @@ val unioned = vals1.union(vals2).union(vals3)
 {% endhighlight %}
 
 </div>
+<div data-lang="python" markdown="1">
+
+{% highlight python %}
+ unioned = vals1.union(vals2).union(vals3)
+{% endhighlight %}
+
+</div>
 </div>
 
 ### Rebalance
@@ -1824,6 +2168,13 @@ DataSet<Tuple2<String, String>> out = in.rebalance()
 val in: DataSet[String] = // [...]
 // rebalance DataSet and apply a Map transformation.
 val out = in.rebalance().map { ... }
+{% endhighlight %}
+
+</div>
+<div data-lang="python" markdown="1">
+
+{% highlight python %}
+Not supported.
 {% endhighlight %}
 
 </div>
@@ -1855,6 +2206,13 @@ val out = in.partitionByHash(0).mapPartition { ... }
 {% endhighlight %}
 
 </div>
+<div data-lang="python" markdown="1">
+
+{% highlight python %}
+Not supported.
+{% endhighlight %}
+
+</div>
 </div>
 
 ### Range-Partition
@@ -1879,6 +2237,13 @@ DataSet<Tuple2<String, String>> out = in.partitionByRange(0)
 val in: DataSet[(String, Int)] = // [...]
 // range-partition DataSet by String value and apply a MapPartition transformation.
 val out = in.partitionByRange(0).mapPartition { ... }
+{% endhighlight %}
+
+</div>
+<div data-lang="python" markdown="1">
+
+{% highlight python %}
+Not supported.
 {% endhighlight %}
 
 </div>
@@ -1915,6 +2280,13 @@ val in: DataSet[(String, Int)] = // [...]
 val out = in.sortPartition(1, Order.ASCENDING)
             .sortPartition(0, Order.DESCENDING)
             .mapPartition { ... }
+{% endhighlight %}
+
+</div>
+<div data-lang="python" markdown="1">
+
+{% highlight python %}
+Not supported.
 {% endhighlight %}
 
 </div>
@@ -1955,6 +2327,13 @@ val out2 = in.groupBy(0).first(2)
 
 // Return the first three elements of each String group ordered by the Integer field
 val out3 = in.groupBy(0).sortGroup(1, Order.ASCENDING).first(3)
+{% endhighlight %}
+
+</div>
+<div data-lang="python" markdown="1">
+
+{% highlight python %}
+Not supported.
 {% endhighlight %}
 
 </div>

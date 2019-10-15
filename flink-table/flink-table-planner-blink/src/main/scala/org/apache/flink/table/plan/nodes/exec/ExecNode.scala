@@ -18,46 +18,35 @@
 
 package org.apache.flink.table.plan.nodes.exec
 
-import org.apache.flink.api.dag.Transformation
-import org.apache.flink.table.delegation.Planner
+import org.apache.flink.streaming.api.transformations.StreamTransformation
+import org.apache.flink.table.api.TableEnvironment
 import org.apache.flink.table.plan.nodes.physical.FlinkPhysicalRel
-import org.apache.flink.table.plan.nodes.resource.NodeResource
 
 import java.util
 
 /**
   * The representation of execution information for a [[FlinkPhysicalRel]].
   *
-  * @tparam E The Planner
-  * @tparam T The type of the elements that result from this [[Transformation]]
+  * @tparam E The TableEnvironment
+  * @tparam T The type of the elements that result from this [[StreamTransformation]]
   */
-trait ExecNode[E <: Planner, T] {
+trait ExecNode[E <: TableEnvironment, T] {
 
   /**
-    * Defines how much resource the node will take.
+    * The [[StreamTransformation]] translated from this node.
     */
-  private val resource: NodeResource = new NodeResource
-
-  /**
-    * The [[Transformation]] translated from this node.
-    */
-  private var transformation: Transformation[T] = _
-
-  /**
-    * Get node resource.
-    */
-  def getResource: NodeResource = resource
+  private var transformation: StreamTransformation[T] = _
 
   /**
     * Translates this node into a Flink operator.
     *
     * <p>NOTE: returns same translate result if called multiple times.
     *
-    * @param planner The [[Planner]] of the translated Table.
+    * @param tableEnv The [[TableEnvironment]] of the translated Table.
     */
-  def translateToPlan(planner: E): Transformation[T] = {
+  def translateToPlan(tableEnv: E): StreamTransformation[T] = {
     if (transformation == null) {
-      transformation = translateToPlanInternal(planner)
+      transformation = translateToPlanInternal(tableEnv)
     }
     transformation
   }
@@ -65,9 +54,9 @@ trait ExecNode[E <: Planner, T] {
   /**
     * Internal method, translates this node into a Flink operator.
     *
-    * @param planner The [[Planner]] of the translated Table.
+    * @param tableEnv The [[TableEnvironment]] of the translated Table.
     */
-  protected def translateToPlanInternal(planner: E): Transformation[T]
+  protected def translateToPlanInternal(tableEnv: E): StreamTransformation[T]
 
   /**
     * Returns an array of this node's inputs. If there are no inputs,
@@ -94,4 +83,5 @@ trait ExecNode[E <: Planner, T] {
   def accept(visitor: ExecNodeVisitor): Unit = {
     visitor.visit(this)
   }
+
 }

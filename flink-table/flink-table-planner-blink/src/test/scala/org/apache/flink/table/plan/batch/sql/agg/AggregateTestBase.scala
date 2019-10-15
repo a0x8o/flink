@@ -19,7 +19,6 @@ package org.apache.flink.table.plan.batch.sql.agg
 
 import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.api.scala._
-import org.apache.flink.table.api.scala._
 import org.apache.flink.table.api.{TableException, Types}
 import org.apache.flink.table.plan.util.JavaUserDefinedAggFunctions.{VarSum1AggFunction, VarSum2AggFunction}
 import org.apache.flink.table.typeutils.DecimalTypeInfo
@@ -33,7 +32,7 @@ abstract class AggregateTestBase extends TableTestBase {
   util.addTableSource("MyTable",
     Array[TypeInformation[_]](
       Types.BYTE, Types.SHORT, Types.INT, Types.LONG, Types.FLOAT, Types.DOUBLE, Types.BOOLEAN,
-      Types.STRING, Types.LOCAL_DATE, Types.LOCAL_TIME, Types.LOCAL_DATE_TIME,
+      Types.STRING, Types.SQL_DATE, Types.SQL_TIME, Types.SQL_TIMESTAMP,
       DecimalTypeInfo.of(30, 20), DecimalTypeInfo.of(10, 5)),
     Array("byte", "short", "int", "long", "float", "double", "boolean",
       "string", "date", "time", "timestamp", "decimal3020", "decimal105"))
@@ -189,13 +188,13 @@ abstract class AggregateTestBase extends TableTestBase {
 
   @Test
   def testAggNotSupportMerge(): Unit = {
-    util.addFunction("var_sum", new VarSum2AggFunction)
+    util.tableEnv.registerFunction("var_sum", new VarSum2AggFunction)
     util.verifyPlan("SELECT b, var_sum(a) FROM MyTable1 GROUP BY b")
   }
 
   @Test
   def testPojoAccumulator(): Unit = {
-    util.addFunction("var_sum", new VarSum1AggFunction)
+    util.tableEnv.registerFunction("var_sum", new VarSum1AggFunction)
     util.verifyPlan("SELECT b, var_sum(a) FROM MyTable1 GROUP BY b")
   }
 

@@ -20,21 +20,20 @@ package org.apache.flink.table.operations;
 
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.table.api.TableSchema;
+import org.apache.flink.table.api.Types;
 import org.apache.flink.table.api.ValidationException;
 import org.apache.flink.table.expressions.ApiExpressionDefaultVisitor;
+import org.apache.flink.table.expressions.BuiltInFunctionDefinitions;
+import org.apache.flink.table.expressions.CallExpression;
 import org.apache.flink.table.expressions.Expression;
 import org.apache.flink.table.expressions.ExpressionUtils;
 import org.apache.flink.table.expressions.UnresolvedReferenceExpression;
 import org.apache.flink.table.expressions.ValueLiteralExpression;
-import org.apache.flink.table.functions.BuiltInFunctionDefinitions;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
-
-import static org.apache.flink.table.expressions.ApiExpressionUtils.unresolvedCall;
-import static org.apache.flink.table.expressions.ApiExpressionUtils.unresolvedRef;
-import static org.apache.flink.table.expressions.ApiExpressionUtils.valueLiteral;
 
 /**
  * Utility class for creating valid alias expressions that can be later used as a projection.
@@ -53,7 +52,7 @@ public final class AliasOperationUtils {
 	 * @param child relational operation on top of which to apply the aliases
 	 * @return validated list of aliases
 	 */
-	public static List<Expression> createAliasList(List<Expression> aliases, QueryOperation child) {
+	public static List<Expression> createAliasList(List<Expression> aliases, TableOperation child) {
 		TableSchema childSchema = child.getTableSchema();
 
 		if (aliases.size() > childSchema.getFieldCount()) {
@@ -67,10 +66,10 @@ public final class AliasOperationUtils {
 		String[] childNames = childSchema.getFieldNames();
 		return IntStream.range(0, childNames.length)
 			.mapToObj(idx -> {
-				UnresolvedReferenceExpression oldField = unresolvedRef(childNames[idx]);
+				UnresolvedReferenceExpression oldField = new UnresolvedReferenceExpression(childNames[idx]);
 				if (idx < fieldAliases.size()) {
 					ValueLiteralExpression alias = fieldAliases.get(idx);
-					return unresolvedCall(BuiltInFunctionDefinitions.AS, oldField, alias);
+					return new CallExpression(BuiltInFunctionDefinitions.AS, Arrays.asList(oldField, alias));
 				} else {
 					return oldField;
 				}
@@ -80,15 +79,15 @@ public final class AliasOperationUtils {
 	private static class AliasLiteralValidator extends ApiExpressionDefaultVisitor<ValueLiteralExpression> {
 
 		@Override
-		public ValueLiteralExpression visit(ValueLiteralExpression valueLiteral) {
-			String name = ExpressionUtils.extractValue(valueLiteral, String.class)
+		public ValueLiteralExpression visitValueLiteral(ValueLiteralExpression valueLiteralExpression) {
+			String name = ExpressionUtils.extractValue(valueLiteralExpression, Types.STRING())
 				.orElseThrow(() -> new ValidationException(
 					"Alias accepts only names that are not '*' reference."));
 
 			if (name.equals(ALL_REFERENCE)) {
 				throw new ValidationException("Alias can not accept '*' as name.");
 			}
-			return valueLiteral;
+			return valueLiteralExpression;
 		}
 
 		@Override
@@ -97,12 +96,12 @@ public final class AliasOperationUtils {
 		}
 
 		@Override
-		public ValueLiteralExpression visit(UnresolvedReferenceExpression unresolvedReference) {
+		public ValueLiteralExpression visitUnresolvedReference(UnresolvedReferenceExpression unresolvedReference) {
 
 			if (unresolvedReference.getName().equals(ALL_REFERENCE)) {
 				throw new ValidationException("Alias can not accept '*' as name.");
 			}
-			return valueLiteral(unresolvedReference.getName());
+			return new ValueLiteralExpression(unresolvedReference.getName());
 		}
 	}
 

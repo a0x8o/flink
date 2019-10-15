@@ -47,7 +47,7 @@ public class JobSubmissionResult {
 	 * @return True if this is a JobExecutionResult, false otherwise
 	 */
 	public boolean isJobExecutionResult() {
-		return false;
+		return this instanceof JobExecutionResult;
 	}
 
 	/**
@@ -56,6 +56,10 @@ public class JobSubmissionResult {
 	 * @throws ClassCastException if this is not a JobExecutionResult
 	 */
 	public JobExecutionResult getJobExecutionResult() {
-		throw new ClassCastException("This JobSubmissionResult is not a JobExecutionResult.");
+		if (isJobExecutionResult()) {
+			return (JobExecutionResult) this;
+		} else {
+			throw new ClassCastException("This JobSubmissionResult is not a JobExecutionResult.");
+		}
 	}
 }

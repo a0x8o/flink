@@ -19,13 +19,10 @@
 package org.apache.flink.table.runtime.utils
 
 import org.apache.flink.api.common.typeinfo.TypeInformation
-import org.apache.flink.table.api.internal.TableImpl
+import org.apache.flink.table.`type`.TypeConverters.createExternalTypeInfoFromInternalType
+import org.apache.flink.table.api.{BatchTableEnvironment, TableImpl}
 import org.apache.flink.table.calcite.FlinkTypeFactory
-import org.apache.flink.table.plan.schema.TimeIndicatorRelDataType
 import org.apache.flink.table.sinks.{CollectRowTableSink, CollectTableSink}
-import org.apache.flink.table.types.TypeInfoLogicalTypeConverter
-import org.apache.flink.table.types.logical.TimestampType
-import org.apache.flink.table.util.TableTestUtil
 import org.apache.flink.types.Row
 
 import _root_.scala.collection.JavaConversions._
@@ -54,23 +51,13 @@ object TableUtil {
   def collectSink[T](
       table: TableImpl, sink: CollectTableSink[T], jobName: Option[String] = None): Seq[T] = {
     // get schema information of table
-    val relNode = TableTestUtil.toRelNode(table)
-    val rowType = relNode.getRowType
+    val rowType = table.getRelNode.getRowType
     val fieldNames = rowType.getFieldNames.asScala.toArray
-    val fieldTypes = rowType.getFieldList.map { field =>
-      val `type` = field.getType match {
-        // converts `TIME ATTRIBUTE(ROWTIME)`/`TIME ATTRIBUTE(PROCTIME)` to `TIMESTAMP(3)` for sink
-        case _: TimeIndicatorRelDataType =>
-          relNode.getCluster
-            .getTypeFactory.asInstanceOf[FlinkTypeFactory]
-            .createFieldTypeFromLogicalType(new TimestampType(false, 3))
-        case t => t
-      }
-      FlinkTypeFactory.toLogicalType(`type`)
-    }.toArray
+    val fieldTypes = rowType.getFieldList
+      .map(field => FlinkTypeFactory.toInternalType(field.getType)).toArray
     val configuredSink = sink.configure(
-      fieldNames, fieldTypes.map(TypeInfoLogicalTypeConverter.fromLogicalTypeToTypeInfo))
-    BatchTableEnvUtil.collect(table.getTableEnvironment,
+      fieldNames, fieldTypes.map(createExternalTypeInfoFromInternalType))
+    BatchTableEnvUtil.collect(table.tableEnv.asInstanceOf[BatchTableEnvironment],
       table, configuredSink.asInstanceOf[CollectTableSink[T]], jobName)
   }
 

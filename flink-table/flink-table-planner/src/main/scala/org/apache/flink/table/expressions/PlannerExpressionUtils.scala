@@ -18,10 +18,9 @@
 
 package org.apache.flink.table.expressions
 
-import org.apache.flink.api.common.typeinfo.BasicTypeInfo
 import org.apache.flink.streaming.api.windowing.time.{Time => FlinkTime}
 import org.apache.flink.table.calcite.FlinkTypeFactory
-import org.apache.flink.table.typeutils.TimeIntervalTypeInfo
+import org.apache.flink.table.typeutils.{RowIntervalTypeInfo, TimeIntervalTypeInfo}
 
 object PlannerExpressionUtils {
 
@@ -31,25 +30,25 @@ object PlannerExpressionUtils {
   }
 
   private[flink] def isRowCountLiteral(expr: PlannerExpression): Boolean = expr match {
-    case Literal(_, BasicTypeInfo.LONG_TYPE_INFO) => true
+    case Literal(_, RowIntervalTypeInfo.INTERVAL_ROWS) => true
     case _ => false
   }
 
   private[flink] def isTimeAttribute(expr: PlannerExpression): Boolean = expr match {
-    case r: PlannerResolvedFieldReference if FlinkTypeFactory.isTimeIndicatorType(r.resultType) =>
+    case r: ResolvedFieldReference if FlinkTypeFactory.isTimeIndicatorType(r.resultType) =>
       true
     case _ => false
   }
 
   private[flink] def isRowtimeAttribute(expr: PlannerExpression): Boolean = expr match {
-    case r: PlannerResolvedFieldReference
+    case r: ResolvedFieldReference
       if FlinkTypeFactory.isRowtimeIndicatorType(r.resultType) =>
       true
     case _ => false
   }
 
   private[flink] def isProctimeAttribute(expr: PlannerExpression): Boolean = expr match {
-    case r: PlannerResolvedFieldReference
+    case r: ResolvedFieldReference
       if FlinkTypeFactory.isProctimeIndicatorType(r.resultType) =>
       true
     case _ => false
@@ -62,7 +61,7 @@ object PlannerExpressionUtils {
   }
 
   private[flink] def toLong(expr: PlannerExpression): Long = expr match {
-    case Literal(value: Long, BasicTypeInfo.LONG_TYPE_INFO) => value
+    case Literal(value: Long, RowIntervalTypeInfo.INTERVAL_ROWS) => value
     case _ => throw new IllegalArgumentException()
   }
 }

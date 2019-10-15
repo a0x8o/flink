@@ -18,17 +18,14 @@
 
 package org.apache.flink.table.runtime.util;
 
-import org.apache.flink.api.common.ExecutionConfig;
-import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.table.dataformat.BaseRow;
 import org.apache.flink.table.dataformat.BinaryRow;
 import org.apache.flink.table.dataformat.BinaryRowWriter;
 import org.apache.flink.table.dataformat.BinaryWriter;
 import org.apache.flink.table.dataformat.TypeGetterSetters;
 import org.apache.flink.table.runtime.keyselector.BaseRowKeySelector;
-import org.apache.flink.table.runtime.types.InternalSerializers;
-import org.apache.flink.table.runtime.typeutils.BaseRowTypeInfo;
-import org.apache.flink.table.types.logical.LogicalType;
+import org.apache.flink.table.type.InternalType;
+import org.apache.flink.table.typeutils.BaseRowTypeInfo;
 
 /**
  * A utility class which extracts key from BaseRow.
@@ -38,19 +35,15 @@ public class BinaryRowKeySelector implements BaseRowKeySelector {
 	private static final long serialVersionUID = -2327761762415377059L;
 
 	private final int[] keyFields;
-	private final LogicalType[] inputFieldTypes;
-	private final LogicalType[] keyFieldTypes;
-	private final TypeSerializer[] keySers;
+	private final InternalType[] inputFieldTypes;
+	private final InternalType[] keyFieldTypes;
 
-	public BinaryRowKeySelector(int[] keyFields, LogicalType[] inputFieldTypes) {
+	public BinaryRowKeySelector(int[] keyFields, InternalType[] inputFieldTypes) {
 		this.keyFields = keyFields;
 		this.inputFieldTypes = inputFieldTypes;
-		this.keyFieldTypes = new LogicalType[keyFields.length];
-		this.keySers = new TypeSerializer[keyFields.length];
-		ExecutionConfig conf = new ExecutionConfig();
+		this.keyFieldTypes = new InternalType[keyFields.length];
 		for (int i = 0; i < keyFields.length; ++i) {
 			keyFieldTypes[i] = inputFieldTypes[keyFields[i]];
-			keySers[i] = InternalSerializers.create(keyFieldTypes[i], conf);
 		}
 	}
 
@@ -66,8 +59,7 @@ public class BinaryRowKeySelector implements BaseRowKeySelector {
 						writer,
 						i,
 						TypeGetterSetters.get(value, keyFields[i], inputFieldTypes[keyFields[i]]),
-						inputFieldTypes[keyFields[i]],
-						keySers[i]);
+						inputFieldTypes[keyFields[i]]);
 			}
 		}
 		writer.complete();

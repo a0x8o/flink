@@ -25,19 +25,14 @@ import org.apache.flink.metrics.HistogramStatistics;
  * Stateless test histogram for which all methods return a static value.
  */
 public class TestHistogram implements Histogram {
-	private long count = 1;
-	private int size = 3;
-	private double mean = 4;
-	private double stdDev = 5;
-	private long max = 6;
-	private long min = 7;
+
 	@Override
 	public void update(long value) {
 	}
 
 	@Override
 	public long getCount() {
-		return count;
+		return 1;
 	}
 
 	@Override
@@ -55,52 +50,28 @@ public class TestHistogram implements Histogram {
 
 			@Override
 			public int size() {
-				return size;
+				return 3;
 			}
 
 			@Override
 			public double getMean() {
-				return mean;
+				return 4;
 			}
 
 			@Override
 			public double getStdDev() {
-				return stdDev;
+				return 5;
 			}
 
 			@Override
 			public long getMax() {
-				return max;
+				return 6;
 			}
 
 			@Override
 			public long getMin() {
-				return min;
+				return 7;
 			}
 		};
-	}
-
-	public void setSize(int size) {
-		this.size = size;
-	}
-
-	public void setMean(double mean) {
-		this.mean = mean;
-	}
-
-	public void setStdDev(double stdDev) {
-		this.stdDev = stdDev;
-	}
-
-	public void setMax(long max) {
-		this.max = max;
-	}
-
-	public void setMin(long min) {
-		this.min = min;
-	}
-
-	public void setCount(long count) {
-		this.count = count;
 	}
 }

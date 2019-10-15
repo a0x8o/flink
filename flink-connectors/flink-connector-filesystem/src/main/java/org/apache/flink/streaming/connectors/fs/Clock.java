@@ -24,7 +24,6 @@ package org.apache.flink.streaming.connectors.fs;
  *
  * <p>Normally this would be system time, but for testing a custom {@code Clock} can be provided.
  */
-@Deprecated
 public interface Clock {
 
 	/**

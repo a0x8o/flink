@@ -18,44 +18,36 @@
 
 package org.apache.flink.table.runtime.utils
 
-import org.apache.flink.table.api.{Table, TableException}
+import org.apache.flink.table.`type`.TypeConverters.createExternalTypeInfoFromInternalType
+import org.apache.flink.table.api.{Table, TableImpl}
 import org.apache.flink.table.calcite.FlinkTypeFactory
 import org.apache.flink.table.dataformat.GenericRow
 import org.apache.flink.table.runtime.utils.JavaPojos.Pojo1
 import org.apache.flink.table.sinks.TableSink
-import org.apache.flink.table.types.TypeInfoLogicalTypeConverter
-import org.apache.flink.table.util.TableTestUtil
 import org.apache.flink.types.Row
 import org.apache.flink.util.StringUtils
-import org.apache.calcite.avatica.util.DateTimeUtils
+
 import java.sql.{Date, Time, Timestamp}
-import java.util.{Calendar, TimeZone}
+import java.util.TimeZone
 
 import scala.collection.JavaConverters._
 
 object TestSinkUtil {
 
   def configureSink[T <: TableSink[_]](table: Table, sink: T): T = {
-    val rowType = TableTestUtil.toRelNode(table).getRowType
+    val rowType = table.asInstanceOf[TableImpl].getRelNode.getRowType
     val fieldNames = rowType.getFieldNames.asScala.toArray
     val fieldTypes = rowType.getFieldList.asScala
-      .map(field => FlinkTypeFactory.toLogicalType(field.getType))
-      .map(TypeInfoLogicalTypeConverter.fromLogicalTypeToTypeInfo).toArray
-    sink match {
-      case _: TestingAppendTableSink =>
-        new TestingAppendTableSink().configure(fieldNames, fieldTypes).asInstanceOf[T]
-      case s: TestingUpsertTableSink =>
-        new TestingUpsertTableSink(s.keys, s.tz).configure(fieldNames, fieldTypes).asInstanceOf[T]
-      case _: TestingRetractTableSink =>
-        new TestingRetractTableSink().configure(fieldNames, fieldTypes).asInstanceOf[T]
-      case _ => throw new TableException(s"Unsupported sink: $sink")
-    }
+        .map(field => FlinkTypeFactory.toInternalType(field.getType))
+        .map(createExternalTypeInfoFromInternalType).toArray
+    new TestingAppendTableSink().configure(fieldNames, fieldTypes).asInstanceOf[T]
   }
 
   def fieldToString(field: Any, tz: TimeZone): String = {
     field match {
       case _: Date | _: Time | _: Timestamp =>
-        unixDateTimeToString(field, tz)
+        // TODO TimeConvertUtils.unixDateTimeToString(field, tz)
+        throw new RuntimeException
       case _ => StringUtils.arrayAwareToString(field)
     }
   }
@@ -87,33 +79,4 @@ object TestSinkUtil {
     return "Pojo1{" + "ts=" + fieldToString(pojo.ts, tz) + ", msg='" + pojo.msg + "\'}"
   }
 
-  def unixDateTimeToString(value: Any, tz: TimeZone): String = {
-    val offset =
-      if (tz.useDaylightTime()) {
-        tz.getOffset(value.asInstanceOf[java.util.Date].getTime)
-      } else {
-        tz.getOffset(Calendar.ZONE_OFFSET)
-      }
-    val time = value match {
-      case _: java.util.Date =>
-        val origin = value.asInstanceOf[java.util.Date].getTime
-        origin + DateTimeUtils.UTC_ZONE.getOffset(origin)
-    }
-
-    value match {
-      case _: Date =>
-        DateTimeUtils.unixDateToString(
-          (time / DateTimeUtils.MILLIS_PER_DAY).asInstanceOf[Int] + offset)
-      case _: Time =>
-        DateTimeUtils.unixTimeToString(
-          ((time % DateTimeUtils.MILLIS_PER_DAY).asInstanceOf[Int] + offset)
-            % DateTimeUtils.MILLIS_PER_DAY.asInstanceOf[Int]
-        )
-      case _: Timestamp =>
-        DateTimeUtils.unixTimestampToString(time + offset, 3)
-      case _ =>
-        value.toString
-    }
-
-  }
 }

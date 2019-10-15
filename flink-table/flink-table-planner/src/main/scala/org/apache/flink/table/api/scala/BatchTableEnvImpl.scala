@@ -20,7 +20,6 @@ package org.apache.flink.table.api.scala
 import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.api.scala._
 import org.apache.flink.table.api._
-import org.apache.flink.table.catalog.CatalogManager
 import org.apache.flink.table.expressions.Expression
 import org.apache.flink.table.functions.{AggregateFunction, TableFunction}
 
@@ -35,28 +34,34 @@ import _root_.scala.reflect.ClassTag
   */
 class BatchTableEnvImpl(
     execEnv: ExecutionEnvironment,
-    config: TableConfig,
-    catalogManager: CatalogManager)
-  extends org.apache.flink.table.api.BatchTableEnvImpl(
-    execEnv.getJavaEnv,
-    config,
-    catalogManager)
-  with org.apache.flink.table.api.scala.BatchTableEnvironment {
+    config: TableConfig)
+  extends org.apache.flink.table.api.BatchTableEnvImpl(execEnv.getJavaEnv, config)
+    with org.apache.flink.table.api.scala.BatchTableEnvironment {
 
   override def fromDataSet[T](dataSet: DataSet[T]): Table = {
-    new TableImpl(this, asQueryOperation(dataSet.javaSet, None))
+
+    val name = createUniqueTableName()
+    registerDataSetInternal(name, dataSet.javaSet)
+    scan(name)
   }
 
   override def fromDataSet[T](dataSet: DataSet[T], fields: Expression*): Table = {
-    new TableImpl(this, asQueryOperation(dataSet.javaSet, Some(fields.toArray)))
+
+    val name = createUniqueTableName()
+    registerDataSetInternal(name, dataSet.javaSet, fields.toArray)
+    scan(name)
   }
 
   override def registerDataSet[T](name: String, dataSet: DataSet[T]): Unit = {
-    registerTable(name, fromDataSet(dataSet))
+
+    checkValidTableName(name)
+    registerDataSetInternal(name, dataSet.javaSet)
   }
 
   override def registerDataSet[T](name: String, dataSet: DataSet[T], fields: Expression*): Unit = {
-    registerTable(name, fromDataSet(dataSet, fields: _*))
+
+    checkValidTableName(name)
+    registerDataSetInternal(name, dataSet.javaSet, fields.toArray)
   }
 
   override def toDataSet[T: TypeInformation](table: Table): DataSet[T] = {

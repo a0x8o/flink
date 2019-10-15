@@ -47,11 +47,12 @@ import org.apache.flink.shaded.netty4.io.netty.util.CharsetUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.time.Duration;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+
+import scala.concurrent.duration.FiniteDuration;
 
 /**
  * A simple HTTP client.
@@ -129,7 +130,7 @@ public class HttpTestClient implements AutoCloseable {
 	 *
 	 * @param request The {@link HttpRequest} to send to the server
 	 */
-	public void sendRequest(HttpRequest request, Duration timeout) throws InterruptedException, TimeoutException {
+	public void sendRequest(HttpRequest request, FiniteDuration timeout) throws InterruptedException, TimeoutException {
 		LOG.debug("Writing {}.", request);
 
 		// Make the connection attempt.
@@ -152,7 +153,7 @@ public class HttpTestClient implements AutoCloseable {
 	 *
 	 * @param path The $path to GET (http://$host:$host/$path)
 	 */
-	public void sendGetRequest(String path, Duration timeout) throws TimeoutException, InterruptedException {
+	public void sendGetRequest(String path, FiniteDuration timeout) throws TimeoutException, InterruptedException {
 		if (!path.startsWith("/")) {
 			path = "/" + path;
 		}
@@ -171,7 +172,7 @@ public class HttpTestClient implements AutoCloseable {
 	 *
 	 * @param path The $path to DELETE (http://$host:$host/$path)
 	 */
-	public void sendDeleteRequest(String path, Duration timeout) throws TimeoutException, InterruptedException {
+	public void sendDeleteRequest(String path, FiniteDuration timeout) throws TimeoutException, InterruptedException {
 		if (!path.startsWith("/")) {
 			path = "/" + path;
 		}
@@ -190,7 +191,7 @@ public class HttpTestClient implements AutoCloseable {
 	 *
 	 * @param path The $path to PATCH (http://$host:$host/$path)
 	 */
-	public void sendPatchRequest(String path, Duration timeout) throws TimeoutException, InterruptedException {
+	public void sendPatchRequest(String path, FiniteDuration timeout) throws TimeoutException, InterruptedException {
 		if (!path.startsWith("/")) {
 			path = "/" + path;
 		}
@@ -220,7 +221,7 @@ public class HttpTestClient implements AutoCloseable {
 	 * @param timeout Timeout in milliseconds for the next response to become available
 	 * @return The next available {@link SimpleHttpResponse}
 	 */
-	public SimpleHttpResponse getNextResponse(Duration timeout) throws InterruptedException,
+	public SimpleHttpResponse getNextResponse(FiniteDuration timeout) throws InterruptedException,
 			TimeoutException {
 
 		SimpleHttpResponse response = responses.poll(timeout.toMillis(), TimeUnit.MILLISECONDS);

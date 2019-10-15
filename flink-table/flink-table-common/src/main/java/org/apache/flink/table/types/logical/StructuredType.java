@@ -19,7 +19,6 @@
 package org.apache.flink.table.types.logical;
 
 import org.apache.flink.annotation.PublicEvolving;
-import org.apache.flink.table.catalog.ObjectIdentifier;
 import org.apache.flink.types.Row;
 import org.apache.flink.util.Preconditions;
 
@@ -72,16 +71,9 @@ public final class StructuredType extends UserDefinedType {
 
 		private final LogicalType type;
 
-		private final @Nullable String description;
-
-		public StructuredAttribute(String name, LogicalType type, @Nullable String description) {
+		public StructuredAttribute(String name, LogicalType type) {
 			this.name = Preconditions.checkNotNull(name, "Attribute name must not be null.");
 			this.type = Preconditions.checkNotNull(type, "Attribute type must not be null.");
-			this.description = description;
-		}
-
-		public StructuredAttribute(String name, LogicalType type) {
-			this(name, type, null);
 		}
 
 		public String getName() {
@@ -92,12 +84,8 @@ public final class StructuredType extends UserDefinedType {
 			return type;
 		}
 
-		public Optional<String> getDescription() {
-			return Optional.ofNullable(description);
-		}
-
 		public StructuredAttribute copy() {
-			return new StructuredAttribute(name, type.copy(), description);
+			return new StructuredAttribute(name, type.copy());
 		}
 
 		@Override
@@ -109,14 +97,12 @@ public final class StructuredType extends UserDefinedType {
 				return false;
 			}
 			StructuredAttribute that = (StructuredAttribute) o;
-			return name.equals(that.name) &&
-				type.equals(that.type) &&
-				Objects.equals(description, that.description);
+			return name.equals(that.name) && type.equals(that.type);
 		}
 
 		@Override
 		public int hashCode() {
-			return Objects.hash(name, type, description);
+			return Objects.hash(name, type);
 		}
 	}
 
@@ -134,7 +120,7 @@ public final class StructuredType extends UserDefinedType {
 	 */
 	public static class Builder {
 
-		private final ObjectIdentifier objectIdentifier;
+		private final TypeIdentifier typeIdentifier;
 
 		private final List<StructuredAttribute> attributes;
 
@@ -152,8 +138,8 @@ public final class StructuredType extends UserDefinedType {
 
 		private @Nullable Class<?> implementationClass;
 
-		public Builder(ObjectIdentifier objectIdentifier, List<StructuredAttribute> attributes) {
-			this.objectIdentifier = Preconditions.checkNotNull(objectIdentifier, "Object identifier must not be null.");
+		public Builder(TypeIdentifier typeIdentifier, List<StructuredAttribute> attributes) {
+			this.typeIdentifier = Preconditions.checkNotNull(typeIdentifier, "Type identifier must not be null.");
 			this.attributes = Collections.unmodifiableList(
 				new ArrayList<>(
 					Preconditions.checkNotNull(attributes, "Attributes must not be null.")));
@@ -201,7 +187,7 @@ public final class StructuredType extends UserDefinedType {
 		public StructuredType build() {
 			return new StructuredType(
 				isNullable,
-				objectIdentifier,
+				typeIdentifier,
 				attributes,
 				isFinal,
 				isInstantiable,
@@ -224,7 +210,7 @@ public final class StructuredType extends UserDefinedType {
 
 	private StructuredType(
 			boolean isNullable,
-			ObjectIdentifier objectIdentifier,
+			TypeIdentifier typeIdentifier,
 			List<StructuredAttribute> attributes,
 			boolean isFinal,
 			boolean isInstantiable,
@@ -235,7 +221,7 @@ public final class StructuredType extends UserDefinedType {
 		super(
 			isNullable,
 			LogicalTypeRoot.STRUCTURED_TYPE,
-			objectIdentifier,
+			typeIdentifier,
 			isFinal,
 			description);
 
@@ -270,7 +256,7 @@ public final class StructuredType extends UserDefinedType {
 	public LogicalType copy(boolean isNullable) {
 		return new StructuredType(
 			isNullable,
-			getObjectIdentifier(),
+			getTypeIdentifier(),
 			attributes.stream().map(StructuredAttribute::copy).collect(Collectors.toList()),
 			isFinal(),
 			isInstantiable,

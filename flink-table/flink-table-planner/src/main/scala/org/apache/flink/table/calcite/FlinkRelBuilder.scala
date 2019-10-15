@@ -19,19 +19,22 @@
 package org.apache.flink.table.calcite
 
 import java.lang.Iterable
-import java.util.{List => JList}
+import java.util.{Collections, List => JList}
 
+import org.apache.calcite.jdbc.CalciteSchema
 import org.apache.calcite.plan._
+import org.apache.calcite.plan.volcano.VolcanoPlanner
+import org.apache.calcite.prepare.CalciteCatalogReader
 import org.apache.calcite.rel.logical.LogicalAggregate
-import org.apache.calcite.tools.RelBuilder
+import org.apache.calcite.rex.RexBuilder
 import org.apache.calcite.tools.RelBuilder.{AggCall, GroupKey}
+import org.apache.calcite.tools.{FrameworkConfig, RelBuilder}
 import org.apache.flink.table.api.TableException
 import org.apache.flink.table.expressions.{Alias, ExpressionBridge, PlannerExpression, WindowProperty}
-import org.apache.flink.table.operations.QueryOperation
-import org.apache.flink.table.plan.QueryOperationConverter
+import org.apache.flink.table.operations.TableOperation
+import org.apache.flink.table.plan.TableOperationConverter
 import org.apache.flink.table.plan.logical.LogicalWindow
-import org.apache.flink.table.plan.logical.rel.{LogicalTableAggregate, LogicalWindowAggregate, LogicalWindowTableAggregate}
-import org.apache.flink.table.runtime.aggregate.AggregateUtil
+import org.apache.flink.table.plan.logical.rel.{LogicalTableAggregate, LogicalWindowAggregate}
 
 import scala.collection.JavaConverters._
 
@@ -48,38 +51,20 @@ class FlinkRelBuilder(
     relOptCluster,
     relOptSchema) {
 
-  private val toRelNodeConverter = new QueryOperationConverter(this, expressionBridge)
+  private val toRelNodeConverter = new TableOperationConverter(this, expressionBridge)
 
-  override def getRelOptSchema: RelOptSchema = relOptSchema
+  def getRelOptSchema: RelOptSchema = relOptSchema
 
   def getPlanner: RelOptPlanner = cluster.getPlanner
 
-  override def getCluster: RelOptCluster = relOptCluster
+  def getCluster: RelOptCluster = relOptCluster
 
   override def shouldMergeProject(): Boolean = false
 
   override def getTypeFactory: FlinkTypeFactory =
     super.getTypeFactory.asInstanceOf[FlinkTypeFactory]
 
-  /**
-    * Build non-window aggregate for either aggregate or table aggregate.
-    */
-  override def aggregate(groupKey: GroupKey, aggCalls: Iterable[AggCall]): RelBuilder = {
-    // build a relNode, the build() may also return a project
-    val relNode = super.aggregate(groupKey, aggCalls).build()
-
-    relNode match {
-      case logicalAggregate: LogicalAggregate
-        if AggregateUtil.isTableAggregate(logicalAggregate.getAggCallList) =>
-        push(LogicalTableAggregate.create(logicalAggregate))
-      case _ => push(relNode)
-    }
-  }
-
-  /**
-    * Build window aggregate for either aggregate or table aggregate.
-    */
-  def windowAggregate(
+  def aggregate(
       window: LogicalWindow,
       groupKey: GroupKey,
       windowProperties: JList[PlannerExpression],
@@ -95,14 +80,21 @@ class FlinkRelBuilder(
     }
 
     // build logical window aggregate from it
-    if (AggregateUtil.isTableAggregate(aggregate.getAggCallList)) {
-      push(LogicalWindowTableAggregate.create(window, namedProperties, aggregate))
-    } else {
-      push(LogicalWindowAggregate.create(window, namedProperties, aggregate))
-    }
+    push(LogicalWindowAggregate.create(window, namedProperties, aggregate))
+    this
   }
 
-  def tableOperation(tableOperation: QueryOperation): RelBuilder= {
+  def tableAggregate(
+    groupKey: GroupKey,
+    aggCalls: Iterable[AggCall]): RelBuilder = {
+
+    // build logical aggregate
+    val aggregate = super.aggregate(groupKey, aggCalls).build().asInstanceOf[LogicalAggregate]
+    // build logical table aggregate from it
+    push(LogicalTableAggregate.create(aggregate))
+  }
+
+  def tableOperation(tableOperation: TableOperation): RelBuilder= {
     val relNode = tableOperation.accept(toRelNodeConverter)
 
     push(relNode)
@@ -113,21 +105,35 @@ class FlinkRelBuilder(
 
 object FlinkRelBuilder {
 
+  def create(
+      config: FrameworkConfig,
+      expressionBridge: ExpressionBridge[PlannerExpression])
+    : FlinkRelBuilder = {
+
+    // create Flink type factory
+    val typeSystem = config.getTypeSystem
+    val typeFactory = new FlinkTypeFactory(typeSystem)
+
+    // create context instances with Flink type factory
+    val planner = new VolcanoPlanner(config.getCostFactory, Contexts.empty())
+    planner.setExecutor(config.getExecutor)
+    planner.addRelTraitDef(ConventionTraitDef.INSTANCE)
+    val cluster = FlinkRelOptClusterFactory.create(planner, new RexBuilder(typeFactory))
+    val calciteSchema = CalciteSchema.from(config.getDefaultSchema)
+    val relOptSchema = new CalciteCatalogReader(
+      calciteSchema,
+      Collections.emptyList(),
+      typeFactory,
+      CalciteConfig.connectionConfig(config.getParserConfig))
+
+    new FlinkRelBuilder(config.getContext, cluster, relOptSchema, expressionBridge)
+  }
+
   /**
     * Information necessary to create a window aggregate.
     *
     * Similar to [[RelBuilder.AggCall]] or [[RelBuilder.GroupKey]].
     */
   case class NamedWindowProperty(name: String, property: WindowProperty)
-
-  def of(cluster: RelOptCluster, relTable: RelOptTable): FlinkRelBuilder = {
-    val clusterContext = cluster.getPlanner.getContext
-
-    new FlinkRelBuilder(
-      clusterContext,
-      cluster,
-      relTable.getRelOptSchema,
-      clusterContext.unwrap(classOf[ExpressionBridge[PlannerExpression]]))
-  }
 
 }

@@ -72,7 +72,7 @@ public class TestRestartStrategy implements RestartStrategy {
 	}
 
 	@Override
-	public CompletableFuture<Void> restart(RestartCallback restarter, ScheduledExecutor executor) {
+	public void restart(RestartCallback restarter, ScheduledExecutor executor) {
 
 		++restartAttempts;
 		ExecutorAction executorAction = new ExecutorAction(restarter::triggerFullRecovery, executor);
@@ -80,9 +80,8 @@ public class TestRestartStrategy implements RestartStrategy {
 			synchronized (actionsQueue) {
 				actionsQueue.add(executorAction);
 			}
-			return new CompletableFuture<>();
 		} else {
-			return executorAction.trigger();
+			executorAction.trigger();
 		}
 	}
 

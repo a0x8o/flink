@@ -18,24 +18,21 @@
 
 package org.apache.flink.table.util
 
-import org.apache.flink.table.dataformat.DataFormatConverters.{LocalDateConverter, LocalDateTimeConverter, LocalTimeConverter}
-
 import org.apache.calcite.avatica.util.DateTimeUtils
-import org.apache.calcite.avatica.util.DateTimeUtils.dateStringToUnixDate
 
-import java.time.{LocalDate, LocalDateTime, LocalTime}
+import java.sql.{Date, Time, Timestamp}
 
 object DateTimeTestUtil {
 
-  def localDate(s: String): LocalDate = {
-    LocalDateConverter.INSTANCE.toExternal(dateStringToUnixDate(s))
+  def UTCDate(s: String): Date = {
+    new Date(DateTimeUtils.dateStringToUnixDate(s) * DateTimeUtils.MILLIS_PER_DAY)
   }
 
-  def localTime(s: String): LocalTime = {
-    LocalTimeConverter.INSTANCE.toExternal(DateTimeUtils.timeStringToUnixDate(s))
+  def UTCTime(s: String): Time = {
+    new Time(DateTimeUtils.timeStringToUnixDate(s).longValue())
   }
 
-  def localDateTime(s: String): LocalDateTime = {
-    LocalDateTimeConverter.INSTANCE.toExternal(DateTimeUtils.timestampStringToUnixDate(s))
+  def UTCTimestamp(s: String): Timestamp = {
+    new Timestamp(DateTimeUtils.timestampStringToUnixDate(s))
   }
 }

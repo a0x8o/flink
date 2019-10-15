@@ -18,14 +18,12 @@
 
 package org.apache.flink.table.runtime.batch.sql
 
+import org.apache.flink.api.common.typeinfo.{BasicTypeInfo, TypeInformation}
 import org.apache.flink.api.java.typeutils.RowTypeInfo
-import org.apache.flink.table.api.{DataTypes, ExecutionConfigOptions}
-import org.apache.flink.table.runtime.utils.BatchTestBase
+import org.apache.flink.table.api.TableConfigOptions
 import org.apache.flink.table.runtime.utils.BatchTestBase.row
-import org.apache.flink.table.types.LogicalTypeDataTypeConverter.fromDataTypeToLogicalType
-import org.apache.flink.table.types.PlannerTypeUtils.isInteroperable
-import org.apache.flink.table.types.TypeInfoLogicalTypeConverter.fromLogicalTypeToTypeInfo
-import org.apache.flink.table.types.logical.{DecimalType, LogicalType}
+import org.apache.flink.table.runtime.utils.BatchTestBase
+import org.apache.flink.table.typeutils.BigDecimalTypeInfo
 import org.apache.flink.types.Row
 
 import org.junit.{Assert, Ignore, Test}
@@ -40,7 +38,7 @@ import scala.collection.Seq
   */
 class DecimalITCase extends BatchTestBase {
 
-  private case class Coll(colTypes: Seq[LogicalType], rows: Seq[Row])
+  private case class Coll(colTypes: Seq[TypeInformation[_]], rows: Seq[Row])
 
   private var globalTableId = 0
   private def checkQueryX(
@@ -57,7 +55,7 @@ class DecimalITCase extends BatchTestBase {
       globalTableId += 1
       val tableName = "Table" + tableId
       val newTableName = tableName + "_" + globalTableId
-      val rowTypeInfo = new RowTypeInfo(table.colTypes.toArray.map(fromLogicalTypeToTypeInfo): _*)
+      val rowTypeInfo = new RowTypeInfo(table.colTypes.toArray: _*)
       val fieldNames = rowTypeInfo.getFieldNames.mkString(",")
       registerCollection(newTableName, table.rows, rowTypeInfo, fieldNames)
       queryX = queryX.replace(tableName, newTableName)
@@ -65,13 +63,9 @@ class DecimalITCase extends BatchTestBase {
 
     // check result schema
     val resultTable = parseQuery(queryX)
-    val ts1 = expected.colTypes
-    val ts2 = resultTable.getSchema.getFieldDataTypes.map(fromDataTypeToLogicalType)
-    Assert.assertEquals(ts1.length, ts2.length)
-
-    Assert.assertTrue(ts1.zip(ts2).forall {
-      case (t1, t2) => isInteroperable(t1, t2)
-    })
+    Assert.assertArrayEquals(
+      expected.colTypes.toArray[AnyRef],
+      resultTable.getSchema.getFieldTypes.toArray[AnyRef])
 
     def prepareResult(isSorted: Boolean, seq: Seq[Row]) = {
       if (!isSorted) seq.map(_.toString).sortBy(s => s) else seq.map(_.toString)
@@ -83,10 +77,10 @@ class DecimalITCase extends BatchTestBase {
   }
 
   private def checkQuery1(
-      sourceColTypes: Seq[LogicalType],
+      sourceColTypes: Seq[TypeInformation[_]],
       sourceRows: Seq[Row],
       query: String,
-      expectedColTypes: Seq[LogicalType],
+      expectedColTypes: Seq[TypeInformation[_]],
       expectedRows: Seq[Row],
       isSorted: Boolean = false)
     : Unit = {
@@ -119,13 +113,13 @@ class DecimalITCase extends BatchTestBase {
     }
   }
 
-  private def DECIMAL = (p: Int, s: Int) => new DecimalType(p, s)
+  private def DECIMAL = (p: Int, s: Int) => BigDecimalTypeInfo.of(p, s)
 
-  private def BOOL = DataTypes.BOOLEAN.getLogicalType
-  private def INT = DataTypes.INT.getLogicalType
-  private def LONG = DataTypes.BIGINT.getLogicalType
-  private def DOUBLE = DataTypes.DOUBLE.getLogicalType
-  private def STRING = DataTypes.STRING.getLogicalType
+  private def BOOL = BasicTypeInfo.BOOLEAN_TYPE_INFO
+  private def INT = BasicTypeInfo.INT_TYPE_INFO
+  private def LONG = BasicTypeInfo.LONG_TYPE_INFO
+  private def DOUBLE = BasicTypeInfo.DOUBLE_TYPE_INFO
+  private def STRING = BasicTypeInfo.STRING_TYPE_INFO
 
   // d"xxx" => new BigDecimal("xxx")
   // d"xxx$yy" => new BigDecimal("xxx").setScale(yy)
@@ -773,8 +767,8 @@ class DecimalITCase extends BatchTestBase {
 
   @Test
   def testJoin1(): Unit = {
-    tEnv.getConfig.getConfiguration.setString(
-      ExecutionConfigOptions.SQL_EXEC_DISABLED_OPERATORS, "HashJoin, NestedLoopJoin")
+    tEnv.getConfig.getConf.setString(
+      TableConfigOptions.SQL_EXEC_DISABLED_OPERATORS, "HashJoin, NestedLoopJoin")
 
     checkQuery1(
       Seq(DECIMAL(8, 2), DECIMAL(8, 4), INT, DOUBLE),
@@ -786,8 +780,8 @@ class DecimalITCase extends BatchTestBase {
 
   @Test
   def testJoin2(): Unit = {
-    tEnv.getConfig.getConfiguration.setString(
-      ExecutionConfigOptions.SQL_EXEC_DISABLED_OPERATORS, "HashJoin, NestedLoopJoin")
+    tEnv.getConfig.getConf.setString(
+      TableConfigOptions.SQL_EXEC_DISABLED_OPERATORS, "HashJoin, NestedLoopJoin")
 
     checkQuery1(
       Seq(DECIMAL(8, 2), DECIMAL(8, 4), INT, DOUBLE),
@@ -799,8 +793,8 @@ class DecimalITCase extends BatchTestBase {
 
   @Test
   def testJoin3(): Unit = {
-    tEnv.getConfig.getConfiguration.setString(
-      ExecutionConfigOptions.SQL_EXEC_DISABLED_OPERATORS, "HashJoin, NestedLoopJoin")
+    tEnv.getConfig.getConf.setString(
+      TableConfigOptions.SQL_EXEC_DISABLED_OPERATORS, "HashJoin, NestedLoopJoin")
 
     checkQuery1(
       Seq(DECIMAL(8, 2), DECIMAL(8, 4), INT, DOUBLE),
@@ -813,8 +807,8 @@ class DecimalITCase extends BatchTestBase {
 
   @Test
   def testJoin4(): Unit = {
-    tEnv.getConfig.getConfiguration.setString(
-      ExecutionConfigOptions.SQL_EXEC_DISABLED_OPERATORS, "HashJoin, NestedLoopJoin")
+    tEnv.getConfig.getConf.setString(
+      TableConfigOptions.SQL_EXEC_DISABLED_OPERATORS, "HashJoin, NestedLoopJoin")
 
     checkQuery1(
       Seq(DECIMAL(8, 2), DECIMAL(8, 4), INT, DOUBLE),
@@ -826,8 +820,8 @@ class DecimalITCase extends BatchTestBase {
 
   @Test
   def testJoin5(): Unit = {
-    tEnv.getConfig.getConfiguration.setString(
-      ExecutionConfigOptions.SQL_EXEC_DISABLED_OPERATORS, "HashJoin, NestedLoopJoin")
+    tEnv.getConfig.getConf.setString(
+      TableConfigOptions.SQL_EXEC_DISABLED_OPERATORS, "HashJoin, NestedLoopJoin")
 
     checkQuery1(
       Seq(DECIMAL(8, 2), DECIMAL(8, 4), INT, DOUBLE),
@@ -839,8 +833,8 @@ class DecimalITCase extends BatchTestBase {
 
   @Test
   def testJoin6(): Unit = {
-    tEnv.getConfig.getConfiguration.setString(
-      ExecutionConfigOptions.SQL_EXEC_DISABLED_OPERATORS, "HashJoin, NestedLoopJoin")
+    tEnv.getConfig.getConf.setString(
+      TableConfigOptions.SQL_EXEC_DISABLED_OPERATORS, "HashJoin, NestedLoopJoin")
 
     checkQuery1(
       Seq(DECIMAL(8, 2), DECIMAL(8, 4), INT, DOUBLE),
@@ -852,8 +846,8 @@ class DecimalITCase extends BatchTestBase {
 
   @Test
   def testJoin7(): Unit = {
-    tEnv.getConfig.getConfiguration.setString(
-      ExecutionConfigOptions.SQL_EXEC_DISABLED_OPERATORS, "HashJoin, NestedLoopJoin")
+    tEnv.getConfig.getConf.setString(
+      TableConfigOptions.SQL_EXEC_DISABLED_OPERATORS, "HashJoin, NestedLoopJoin")
     checkQuery1(
       Seq(DECIMAL(8, 2), DECIMAL(8, 4), INT, DOUBLE),
       s1r(d"1", d"1", 1, 1.0),

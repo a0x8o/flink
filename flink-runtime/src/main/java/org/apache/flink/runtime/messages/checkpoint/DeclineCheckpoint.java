@@ -19,7 +19,12 @@
 package org.apache.flink.runtime.messages.checkpoint;
 
 import org.apache.flink.api.common.JobID;
-import org.apache.flink.runtime.checkpoint.CheckpointException;
+import org.apache.flink.runtime.checkpoint.decline.AlignmentLimitExceededException;
+import org.apache.flink.runtime.checkpoint.decline.CheckpointDeclineOnCancellationBarrierException;
+import org.apache.flink.runtime.checkpoint.decline.CheckpointDeclineSubsumedException;
+import org.apache.flink.runtime.checkpoint.decline.CheckpointDeclineTaskNotCheckpointingException;
+import org.apache.flink.runtime.checkpoint.decline.CheckpointDeclineTaskNotReadyException;
+import org.apache.flink.runtime.checkpoint.decline.InputEndOfStreamException;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.util.SerializedThrowable;
 
@@ -43,7 +48,14 @@ public class DeclineCheckpoint extends AbstractCheckpointMessage implements java
 	public DeclineCheckpoint(JobID job, ExecutionAttemptID taskExecutionId, long checkpointId, Throwable reason) {
 		super(job, taskExecutionId, checkpointId);
 
-		if (reason == null || reason instanceof CheckpointException) {
+		if (reason == null ||
+			reason.getClass() == AlignmentLimitExceededException.class ||
+			reason.getClass() == CheckpointDeclineOnCancellationBarrierException.class ||
+			reason.getClass() == CheckpointDeclineSubsumedException.class ||
+			reason.getClass() == CheckpointDeclineTaskNotCheckpointingException.class ||
+			reason.getClass() == CheckpointDeclineTaskNotReadyException.class ||
+			reason.getClass() == InputEndOfStreamException.class) {
+			// null or known common exceptions that cannot reference any dynamically loaded code
 			this.reason = reason;
 		} else {
 			// some other exception. replace with a serialized throwable, to be on the safe side

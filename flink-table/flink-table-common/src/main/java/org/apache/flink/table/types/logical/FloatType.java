@@ -25,8 +25,7 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Logical type of a 4-byte single precision floating point number. Compared to the SQL standard,
- * the type does not take parameters.
+ * Logical type of a 4-byte single precision floating point number.
  *
  * <p>The serialized string representation is {@code FLOAT}.
  */

@@ -18,6 +18,8 @@
 
 package org.apache.flink.table.descriptors;
 
+import org.apache.flink.annotation.PublicEvolving;
+
 import java.util.Map;
 
 import static org.apache.flink.table.descriptors.ExternalCatalogDescriptorValidator.CATALOG_PROPERTY_VERSION;
@@ -25,10 +27,8 @@ import static org.apache.flink.table.descriptors.ExternalCatalogDescriptorValida
 
 /**
  * Describes an external catalog of tables, views, and functions.
- *
- * @deprecated use {@link CatalogDescriptor} instead.
  */
-@Deprecated
+@PublicEvolving
 public abstract class ExternalCatalogDescriptor extends DescriptorBase implements Descriptor {
 
 	private final String type;

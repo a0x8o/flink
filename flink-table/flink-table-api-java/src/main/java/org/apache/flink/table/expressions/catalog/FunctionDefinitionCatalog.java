@@ -21,8 +21,6 @@ package org.apache.flink.table.expressions.catalog;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.table.expressions.FunctionDefinition;
 
-import java.util.Optional;
-
 /**
  * Catalog of functions that can resolve the name of a function to a {@link FunctionDefinition}.
  */
@@ -32,5 +30,5 @@ public interface FunctionDefinitionCatalog {
 	/**
 	 * Lookup a function by name and return the {@link FunctionDefinition}. The lookup is case insensitive.
 	 */
-	Optional<FunctionDefinition> lookupFunction(String name);
+	FunctionDefinition lookupFunction(String name);
 }

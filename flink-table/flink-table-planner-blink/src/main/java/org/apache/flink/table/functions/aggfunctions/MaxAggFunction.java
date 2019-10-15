@@ -18,24 +18,24 @@
 
 package org.apache.flink.table.functions.aggfunctions;
 
-import org.apache.flink.table.api.DataTypes;
+import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.table.expressions.Expression;
 import org.apache.flink.table.expressions.UnresolvedReferenceExpression;
-import org.apache.flink.table.types.DataType;
-import org.apache.flink.table.types.logical.DecimalType;
-import org.apache.flink.table.types.logical.TimeType;
+import org.apache.flink.table.type.InternalType;
+import org.apache.flink.table.type.TypeConverters;
+import org.apache.flink.table.typeutils.DecimalTypeInfo;
 
 import static org.apache.flink.table.expressions.ExpressionBuilder.greaterThan;
 import static org.apache.flink.table.expressions.ExpressionBuilder.ifThenElse;
 import static org.apache.flink.table.expressions.ExpressionBuilder.isNull;
 import static org.apache.flink.table.expressions.ExpressionBuilder.nullOf;
-import static org.apache.flink.table.expressions.utils.ApiExpressionUtils.unresolvedRef;
 
 /**
  * built-in max aggregate function.
  */
 public abstract class MaxAggFunction extends DeclarativeAggregateFunction {
-	private UnresolvedReferenceExpression max = unresolvedRef("max");
+	private UnresolvedReferenceExpression max = new UnresolvedReferenceExpression("max");
 
 	@Override
 	public int operandCount() {
@@ -48,8 +48,8 @@ public abstract class MaxAggFunction extends DeclarativeAggregateFunction {
 	}
 
 	@Override
-	public DataType[] getAggBufferTypes() {
-		return new DataType[] { getResultType() };
+	public InternalType[] getAggBufferTypes() {
+		return new InternalType[] { TypeConverters.createInternalTypeFromTypeInfo(getResultType()) };
 	}
 
 	@Override
@@ -97,8 +97,8 @@ public abstract class MaxAggFunction extends DeclarativeAggregateFunction {
 	public static class IntMaxAggFunction extends MaxAggFunction {
 
 		@Override
-		public DataType getResultType() {
-			return DataTypes.INT();
+		public TypeInformation getResultType() {
+			return Types.INT;
 		}
 	}
 
@@ -107,8 +107,8 @@ public abstract class MaxAggFunction extends DeclarativeAggregateFunction {
 	 */
 	public static class ByteMaxAggFunction extends MaxAggFunction {
 		@Override
-		public DataType getResultType() {
-			return DataTypes.TINYINT();
+		public TypeInformation getResultType() {
+			return Types.BYTE;
 		}
 	}
 
@@ -117,8 +117,8 @@ public abstract class MaxAggFunction extends DeclarativeAggregateFunction {
 	 */
 	public static class ShortMaxAggFunction extends MaxAggFunction {
 		@Override
-		public DataType getResultType() {
-			return DataTypes.SMALLINT();
+		public TypeInformation getResultType() {
+			return Types.SHORT;
 		}
 	}
 
@@ -127,8 +127,8 @@ public abstract class MaxAggFunction extends DeclarativeAggregateFunction {
 	 */
 	public static class LongMaxAggFunction extends MaxAggFunction {
 		@Override
-		public DataType getResultType() {
-			return DataTypes.BIGINT();
+		public TypeInformation getResultType() {
+			return Types.LONG;
 		}
 	}
 
@@ -137,8 +137,8 @@ public abstract class MaxAggFunction extends DeclarativeAggregateFunction {
 	 */
 	public static class FloatMaxAggFunction extends MaxAggFunction {
 		@Override
-		public DataType getResultType() {
-			return DataTypes.FLOAT();
+		public TypeInformation getResultType() {
+			return Types.FLOAT;
 		}
 	}
 
@@ -147,8 +147,8 @@ public abstract class MaxAggFunction extends DeclarativeAggregateFunction {
 	 */
 	public static class DoubleMaxAggFunction extends MaxAggFunction {
 		@Override
-		public DataType getResultType() {
-			return DataTypes.DOUBLE();
+		public TypeInformation getResultType() {
+			return Types.DOUBLE;
 		}
 	}
 
@@ -156,15 +156,15 @@ public abstract class MaxAggFunction extends DeclarativeAggregateFunction {
 	 * Built-in Decimal Max aggregate function.
 	 */
 	public static class DecimalMaxAggFunction extends MaxAggFunction {
-		private DecimalType decimalType;
+		private DecimalTypeInfo decimalType;
 
-		public DecimalMaxAggFunction(DecimalType decimalType) {
+		public DecimalMaxAggFunction(DecimalTypeInfo decimalType) {
 			this.decimalType = decimalType;
 		}
 
 		@Override
-		public DataType getResultType() {
-			return DataTypes.DECIMAL(decimalType.getPrecision(), decimalType.getScale());
+		public TypeInformation getResultType() {
+			return decimalType;
 		}
 	}
 
@@ -173,8 +173,8 @@ public abstract class MaxAggFunction extends DeclarativeAggregateFunction {
 	 */
 	public static class BooleanMaxAggFunction extends MaxAggFunction {
 		@Override
-		public DataType getResultType() {
-			return DataTypes.BOOLEAN();
+		public TypeInformation getResultType() {
+			return Types.BOOLEAN;
 		}
 	}
 
@@ -183,8 +183,8 @@ public abstract class MaxAggFunction extends DeclarativeAggregateFunction {
 	 */
 	public static class StringMaxAggFunction extends MaxAggFunction {
 		@Override
-		public DataType getResultType() {
-			return DataTypes.STRING();
+		public TypeInformation getResultType() {
+			return Types.STRING;
 		}
 	}
 
@@ -193,8 +193,8 @@ public abstract class MaxAggFunction extends DeclarativeAggregateFunction {
 	 */
 	public static class DateMaxAggFunction extends MaxAggFunction {
 		@Override
-		public DataType getResultType() {
-			return DataTypes.DATE();
+		public TypeInformation getResultType() {
+			return Types.SQL_DATE;
 		}
 	}
 
@@ -203,8 +203,8 @@ public abstract class MaxAggFunction extends DeclarativeAggregateFunction {
 	 */
 	public static class TimeMaxAggFunction extends MaxAggFunction {
 		@Override
-		public DataType getResultType() {
-			return DataTypes.TIME(TimeType.DEFAULT_PRECISION);
+		public TypeInformation getResultType() {
+			return Types.SQL_TIME;
 		}
 	}
 
@@ -213,8 +213,8 @@ public abstract class MaxAggFunction extends DeclarativeAggregateFunction {
 	 */
 	public static class TimestampMaxAggFunction extends MaxAggFunction {
 		@Override
-		public DataType getResultType() {
-			return DataTypes.TIMESTAMP(3);
+		public TypeInformation getResultType() {
+			return Types.SQL_TIMESTAMP;
 		}
 	}
 }

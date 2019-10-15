@@ -19,7 +19,8 @@
 package org.apache.flink.table.expressions;
 
 import org.apache.flink.annotation.PublicEvolving;
-import org.apache.flink.table.types.DataType;
+import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.table.utils.TypeStringUtils;
 import org.apache.flink.util.Preconditions;
 
 import java.util.Collections;
@@ -27,34 +28,19 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * Expression that wraps {@link DataType} as a literal.
- *
- * <p>Expressing a type is primarily needed for casting operations. This expression simplifies the
- * {@link Expression} design as it makes {@link CallExpression} the only expression that takes
- * subexpressions.
+ * Expression that wraps {@link TypeInformation} as a literal.
  */
 @PublicEvolving
-public final class TypeLiteralExpression implements ResolvedExpression {
+public final class TypeLiteralExpression implements Expression {
 
-	private final DataType dataType;
+	private final TypeInformation<?> type;
 
-	public TypeLiteralExpression(DataType dataType) {
-		this.dataType = Preconditions.checkNotNull(dataType, "Data type must not be null.");
+	public TypeLiteralExpression(TypeInformation<?> type) {
+		this.type = Preconditions.checkNotNull(type);
 	}
 
-	@Override
-	public DataType getOutputDataType() {
-		return dataType;
-	}
-
-	@Override
-	public List<ResolvedExpression> getResolvedChildren() {
-		return Collections.emptyList();
-	}
-
-	@Override
-	public String asSummaryString() {
-		return dataType.toString();
+	public TypeInformation<?> getType() {
+		return type;
 	}
 
 	@Override
@@ -64,7 +50,7 @@ public final class TypeLiteralExpression implements ResolvedExpression {
 
 	@Override
 	public <R> R accept(ExpressionVisitor<R> visitor) {
-		return visitor.visit(this);
+		return visitor.visitTypeLiteral(this);
 	}
 
 	@Override
@@ -76,16 +62,16 @@ public final class TypeLiteralExpression implements ResolvedExpression {
 			return false;
 		}
 		TypeLiteralExpression that = (TypeLiteralExpression) o;
-		return dataType.equals(that.dataType);
+		return Objects.equals(type, that.type);
 	}
 
 	@Override
 	public int hashCode() {
-		return Objects.hash(dataType);
+		return Objects.hash(type);
 	}
 
 	@Override
 	public String toString() {
-		return asSummaryString();
+		return TypeStringUtils.writeTypeInfo(type);
 	}
 }

@@ -20,9 +20,8 @@ package org.apache.flink.table.api;
 
 import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.api.common.typeutils.CompositeType;
-import org.apache.flink.table.types.DataType;
-import org.apache.flink.table.types.utils.TypeConversions;
 import org.apache.flink.types.Row;
 import org.apache.flink.util.Preconditions;
 
@@ -34,17 +33,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.stream.IntStream;
-
-import static org.apache.flink.table.api.DataTypes.FIELD;
-import static org.apache.flink.table.api.DataTypes.Field;
-import static org.apache.flink.table.api.DataTypes.ROW;
-import static org.apache.flink.table.types.utils.TypeConversions.fromDataTypeToLegacyInfo;
-import static org.apache.flink.table.types.utils.TypeConversions.fromLegacyInfoToDataType;
 
 /**
- * A table schema that represents a table's structure with field names and data types.
- */
+  * A table schema that represents a table's structure with field names and types.
+  */
 @PublicEvolving
 public class TableSchema {
 
@@ -52,20 +44,20 @@ public class TableSchema {
 
 	private final String[] fieldNames;
 
-	private final DataType[] fieldDataTypes;
+	private final TypeInformation<?>[] fieldTypes;
 
 	private final Map<String, Integer> fieldNameToIndex;
 
-	private TableSchema(String[] fieldNames, DataType[] fieldDataTypes) {
+	public TableSchema(String[] fieldNames, TypeInformation<?>[] fieldTypes) {
 		this.fieldNames = Preconditions.checkNotNull(fieldNames);
-		this.fieldDataTypes = Preconditions.checkNotNull(fieldDataTypes);
+		this.fieldTypes = Preconditions.checkNotNull(fieldTypes);
 
-		if (fieldNames.length != fieldDataTypes.length) {
+		if (fieldNames.length != fieldTypes.length) {
 			throw new TableException(
-				"Number of field names and field data types must be equal.\n" +
-					"Number of names is " + fieldNames.length + ", number of data types is " + fieldDataTypes.length + ".\n" +
-					"List of field names: " + Arrays.toString(fieldNames) + "\n" +
-					"List of field data types: " + Arrays.toString(fieldDataTypes));
+				"Number of field names and field types must be equal.\n" +
+				"Number of names is " + fieldNames.length + ", number of types is " + fieldTypes.length + ".\n" +
+				"List of field names: " + Arrays.toString(fieldNames) + "\n" +
+				"List of field types: " + Arrays.toString(fieldTypes));
 		}
 
 		// validate and create name to index mapping
@@ -74,7 +66,7 @@ public class TableSchema {
 		final Set<String> uniqueNames = new HashSet<>();
 		for (int i = 0; i < fieldNames.length; i++) {
 			// check for null
-			Preconditions.checkNotNull(fieldDataTypes[i]);
+			Preconditions.checkNotNull(fieldTypes[i]);
 			final String fieldName = Preconditions.checkNotNull(fieldNames[i]);
 
 			// collect indices
@@ -90,93 +82,47 @@ public class TableSchema {
 		if (!duplicateNames.isEmpty()) {
 			throw new TableException(
 				"Field names must be unique.\n" +
-					"List of duplicate fields: " + duplicateNames.toString() + "\n" +
-					"List of all fields: " + Arrays.toString(fieldNames));
+				"List of duplicate fields: " + duplicateNames.toString() + "\n" +
+				"List of all fields: " + Arrays.toString(fieldNames));
 		}
-	}
-
-	/**
-	 * @deprecated Use the {@link Builder} instead.
-	 */
-	@Deprecated
-	public TableSchema(String[] fieldNames, TypeInformation<?>[] fieldTypes) {
-		this(fieldNames, fromLegacyInfoToDataType(fieldTypes));
 	}
 
 	/**
 	 * Returns a deep copy of the table schema.
 	 */
 	public TableSchema copy() {
-		return new TableSchema(fieldNames.clone(), fieldDataTypes.clone());
+		return new TableSchema(fieldNames.clone(), fieldTypes.clone());
 	}
 
 	/**
-	 * Returns all field data types as an array.
+	 * Returns all field type information as an array.
 	 */
-	public DataType[] getFieldDataTypes() {
-		return fieldDataTypes;
-	}
-
-	/**
-	 * @deprecated This method will be removed in future versions as it uses the old type system. It
-	 *             is recommended to use {@link #getFieldDataTypes()} instead which uses the new type
-	 *             system based on {@link DataTypes}. Please make sure to use either the old or the new
-	 *             type system consistently to avoid unintended behavior. See the website documentation
-	 *             for more information.
-	 */
-	@Deprecated
 	public TypeInformation<?>[] getFieldTypes() {
-		return fromDataTypeToLegacyInfo(fieldDataTypes);
+		return fieldTypes;
 	}
 
 	/**
-	 * Returns the specified data type for the given field index.
+	 * Returns the specified type information for the given field index.
 	 *
 	 * @param fieldIndex the index of the field
 	 */
-	public Optional<DataType> getFieldDataType(int fieldIndex) {
-		if (fieldIndex < 0 || fieldIndex >= fieldDataTypes.length) {
+	public Optional<TypeInformation<?>> getFieldType(int fieldIndex) {
+		if (fieldIndex < 0 || fieldIndex >= fieldTypes.length) {
 			return Optional.empty();
 		}
-		return Optional.of(fieldDataTypes[fieldIndex]);
+		return Optional.of(fieldTypes[fieldIndex]);
 	}
 
 	/**
-	 * @deprecated This method will be removed in future versions as it uses the old type system. It
-	 *             is recommended to use {@link #getFieldDataType(int)} instead which uses the new type
-	 *             system based on {@link DataTypes}. Please make sure to use either the old or the new
-	 *             type system consistently to avoid unintended behavior. See the website documentation
-	 *             for more information.
-	 */
-	@Deprecated
-	public Optional<TypeInformation<?>> getFieldType(int fieldIndex) {
-		return getFieldDataType(fieldIndex)
-			.map(TypeConversions::fromDataTypeToLegacyInfo);
-	}
-
-	/**
-	 * Returns the specified data type for the given field name.
+	 * Returns the specified type information for the given field name.
 	 *
 	 * @param fieldName the name of the field
 	 */
-	public Optional<DataType> getFieldDataType(String fieldName) {
+	public Optional<TypeInformation<?>> getFieldType(String fieldName) {
 		if (fieldNameToIndex.containsKey(fieldName)) {
-			return Optional.of(fieldDataTypes[fieldNameToIndex.get(fieldName)]);
+			return Optional.of(fieldTypes[fieldNameToIndex.get(fieldName)]);
 		}
 		return Optional.empty();
-	}
-
-	/**
-	 * @deprecated This method will be removed in future versions as it uses the old type system. It
-	 *             is recommended to use {@link #getFieldDataType(String)} instead which uses the new type
-	 *             system based on {@link DataTypes}. Please make sure to use either the old or the new
-	 *             type system consistently to avoid unintended behavior. See the website documentation
-	 *             for more information.
-	 */
-	@Deprecated
-	public Optional<TypeInformation<?>> getFieldType(String fieldName) {
-		return getFieldDataType(fieldName)
-			.map(TypeConversions::fromDataTypeToLegacyInfo);
 	}
 
 	/**
@@ -206,22 +152,26 @@ public class TableSchema {
 	}
 
 	/**
-	 * Converts a table schema into a (nested) data type describing a {@link DataTypes#ROW(Field...)}.
+	 * @deprecated Use {@link TableSchema#getFieldTypes()} instead. Can be dropped after 1.7.
 	 */
-	public DataType toRowDataType() {
-		final Field[] fields = IntStream.range(0, fieldDataTypes.length)
-			.mapToObj(i -> FIELD(fieldNames[i], fieldDataTypes[i]))
-			.toArray(Field[]::new);
-		return ROW(fields);
+	@Deprecated
+	public TypeInformation<?>[] getTypes() {
+		return getFieldTypes();
 	}
 
 	/**
-	 * @deprecated Use {@link #toRowDataType()} instead.
+	 * @deprecated Use {@link TableSchema#getFieldNames()} instead. Can be dropped after 1.7.
 	 */
 	@Deprecated
-	@SuppressWarnings("unchecked")
+	public String[] getColumnNames() {
+		return getFieldNames();
+	}
+
+	/**
+	 * Converts a table schema into a (nested) type information describing a {@link Row}.
+	 */
 	public TypeInformation<Row> toRowType() {
-		return (TypeInformation<Row>) fromDataTypeToLegacyInfo(toRowDataType());
+		return Types.ROW_NAMED(fieldNames, fieldTypes);
 	}
 
 	@Override
@@ -229,7 +179,7 @@ public class TableSchema {
 		final StringBuilder sb = new StringBuilder();
 		sb.append("root\n");
 		for (int i = 0; i < fieldNames.length; i++) {
-			sb.append(" |-- ").append(fieldNames[i]).append(": ").append(fieldDataTypes[i]).append('\n');
+			sb.append(" |-- ").append(fieldNames[i]).append(": ").append(fieldTypes[i]).append('\n');
 		}
 		return sb.toString();
 	}
@@ -244,13 +194,13 @@ public class TableSchema {
 		}
 		TableSchema schema = (TableSchema) o;
 		return Arrays.equals(fieldNames, schema.fieldNames) &&
-			Arrays.equals(fieldDataTypes, schema.fieldDataTypes);
+			Arrays.equals(fieldTypes, schema.fieldTypes);
 	}
 
 	@Override
 	public int hashCode() {
 		int result = Arrays.hashCode(fieldNames);
-		result = 31 * result + Arrays.hashCode(fieldDataTypes);
+		result = 31 * result + Arrays.hashCode(fieldTypes);
 		return result;
 	}
 
@@ -262,10 +212,7 @@ public class TableSchema {
 	 *
 	 * @param typeInfo The {@link TypeInformation} from which the table schema is generated.
 	 * @return The table schema that was generated from the given {@link TypeInformation}.
-	 *
-	 * @deprecated This method will be removed soon. Use {@link DataTypes} to declare types.
 	 */
-	@Deprecated
 	public static TableSchema fromTypeInfo(TypeInformation<?> typeInfo) {
 		if (typeInfo instanceof CompositeType<?>) {
 			final CompositeType<?> compositeType = (CompositeType<?>) typeInfo;
@@ -297,50 +244,23 @@ public class TableSchema {
 
 		private List<String> fieldNames;
 
-		private List<DataType> fieldDataTypes;
+		private List<TypeInformation<?>> fieldTypes;
 
 		public Builder() {
 			fieldNames = new ArrayList<>();
-			fieldDataTypes = new ArrayList<>();
+			fieldTypes = new ArrayList<>();
 		}
 
 		/**
-		 * Add a field with name and data type.
-		 *
-		 * <p>The call order of this method determines the order of fields in the schema.
+		 * Add a field with name and type. The call order of this method determines the order
+		 * of fields in the schema.
 		 */
-		public Builder field(String name, DataType dataType) {
+		public Builder field(String name, TypeInformation<?> type) {
 			Preconditions.checkNotNull(name);
-			Preconditions.checkNotNull(dataType);
+			Preconditions.checkNotNull(type);
 			fieldNames.add(name);
-			fieldDataTypes.add(dataType);
+			fieldTypes.add(type);
 			return this;
-		}
-
-		/**
-		 * Add an array of fields with names and data types.
-		 *
-		 * <p>The call order of this method determines the order of fields in the schema.
-		 */
-		public Builder fields(String[] names, DataType[] dataTypes) {
-			Preconditions.checkNotNull(names);
-			Preconditions.checkNotNull(dataTypes);
-
-			fieldNames.addAll(Arrays.asList(names));
-			fieldDataTypes.addAll(Arrays.asList(dataTypes));
-			return this;
-		}
-
-		/**
-		 * @deprecated This method will be removed in future versions as it uses the old type system. It
-		 *             is recommended to use {@link #field(String, DataType)} instead which uses the new type
-		 *             system based on {@link DataTypes}. Please make sure to use either the old or the new
-		 *             type system consistently to avoid unintended behavior. See the website documentation
-		 *             for more information.
-		 */
-		@Deprecated
-		public Builder field(String name, TypeInformation<?> typeInfo) {
-			return field(name, fromLegacyInfoToDataType(typeInfo));
 		}
 
 		/**
@@ -349,7 +269,7 @@ public class TableSchema {
 		public TableSchema build() {
 			return new TableSchema(
 				fieldNames.toArray(new String[0]),
-				fieldDataTypes.toArray(new DataType[0]));
+				fieldTypes.toArray(new TypeInformation<?>[0]));
 		}
 	}
 }

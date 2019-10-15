@@ -38,8 +38,7 @@ public class RestOptions {
 	public static final ConfigOption<String> BIND_ADDRESS =
 		key("rest.bind-address")
 			.noDefaultValue()
-			.withFallbackKeys(WebOptions.ADDRESS.key())
-			.withDeprecatedKeys(ConfigConstants.DEFAULT_JOB_MANAGER_WEB_FRONTEND_ADDRESS.key())
+			.withDeprecatedKeys(WebOptions.ADDRESS.key(), ConfigConstants.DEFAULT_JOB_MANAGER_WEB_FRONTEND_ADDRESS.key())
 			.withDescription("The address that the server binds itself.");
 
 	/**

@@ -25,9 +25,10 @@ import org.apache.calcite.rel.core.TableScan
 import org.apache.calcite.rel.logical.LogicalTableScan
 import org.apache.calcite.rel.metadata.RelMetadataQuery
 import org.apache.calcite.rel.{RelNode, RelWriter}
+import org.apache.flink.table.api.TableException
 import org.apache.flink.table.calcite.FlinkTypeFactory
 import org.apache.flink.table.plan.nodes.FlinkConventions
-import org.apache.flink.table.plan.schema.TableSourceTable
+import org.apache.flink.table.plan.schema.TableSourceSinkTable
 import org.apache.flink.table.sources.{FilterableTableSource, TableSource, TableSourceUtil}
 
 import scala.collection.JavaConverters._
@@ -50,7 +51,11 @@ class FlinkLogicalTableSourceScan(
 
   override def deriveRowType(): RelDataType = {
     val flinkTypeFactory = cluster.getTypeFactory.asInstanceOf[FlinkTypeFactory]
-    val streamingTable = table.unwrap(classOf[TableSourceTable[_]]).isStreamingMode
+    val streamingTable = table.unwrap(classOf[TableSourceSinkTable[_, _]]) match {
+      case t: TableSourceSinkTable[_, _] if t.isStreamSourceTable => true
+      // null
+      case _ => false
+    }
 
     TableSourceUtil.getRelDataType(tableSource, selectedFields, streamingTable, flinkTypeFactory)
   }
@@ -106,18 +111,26 @@ class FlinkLogicalTableSourceScanConverter
 
   override def matches(call: RelOptRuleCall): Boolean = {
     val scan = call.rel[TableScan](0)
-    scan.getTable.unwrap(classOf[TableSourceTable[_]]) != null
+    scan.getTable.unwrap(classOf[TableSourceSinkTable[_, _]]) match {
+      case t: TableSourceSinkTable[_, _] if t.isSourceTable => true
+      // null
+      case _ => false
+    }
   }
 
   def convert(rel: RelNode): RelNode = {
     val scan = rel.asInstanceOf[TableScan]
     val traitSet = rel.getTraitSet.replace(FlinkConventions.LOGICAL)
+    val tableSource = scan.getTable.unwrap(classOf[TableSourceSinkTable[_, _]])
+      .tableSourceTable
+      .map(_.tableSource)
+      .getOrElse(throw new TableException("Table source expected."))
 
     new FlinkLogicalTableSourceScan(
       rel.getCluster,
       traitSet,
       scan.getTable,
-      scan.getTable.unwrap(classOf[TableSourceTable[_]]).tableSource,
+      tableSource,
       None
     )
   }

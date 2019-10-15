@@ -18,50 +18,34 @@
 
 package org.apache.flink.client;
 
-import org.apache.flink.runtime.execution.librarycache.FlinkUserCodeClassLoaders;
-
-import java.io.File;
-import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.net.URI;
 import java.net.URISyntaxException;
-import java.net.URL;
-import java.util.List;
-import java.util.jar.JarFile;
 
 /**
- * Utility functions for Flink client.
+ * A class that provides some utility methods.
  */
-public enum ClientUtils {
-	;
-
-	public static void checkJarFile(URL jar) throws IOException {
-		File jarFile;
+public class ClientUtils {
+	/**
+	 * Utility method that converts a string of the form "host:port" into an {@link InetSocketAddress}.
+	 * The returned InetSocketAddress may be unresolved!
+	 *
+	 * @param hostport The "host:port" string.
+	 * @return The converted InetSocketAddress.
+	 */
+	public static InetSocketAddress parseHostPortAddress(String hostport) {
+		// from http://stackoverflow.com/questions/2345063/java-common-way-to-validate-and-convert-hostport-to-inetsocketaddress
+		URI uri;
 		try {
-			jarFile = new File(jar.toURI());
+			uri = new URI("my://" + hostport);
 		} catch (URISyntaxException e) {
-			throw new IOException("JAR file path is invalid '" + jar + '\'');
+			throw new RuntimeException("Could not identify hostname and port in '" + hostport + "'.", e);
 		}
-		if (!jarFile.exists()) {
-			throw new IOException("JAR file does not exist '" + jarFile.getAbsolutePath() + '\'');
+		String host = uri.getHost();
+		int port = uri.getPort();
+		if (host == null || port == -1) {
+			throw new RuntimeException("Could not identify hostname and port in '" + hostport + "'.");
 		}
-		if (!jarFile.canRead()) {
-			throw new IOException("JAR file can't be read '" + jarFile.getAbsolutePath() + '\'');
-		}
-
-		try (JarFile ignored = new JarFile(jarFile)) {
-			// verify that we can open the Jar file
-		} catch (IOException e) {
-			throw new IOException("Error while opening jar file '" + jarFile.getAbsolutePath() + '\'', e);
-		}
-	}
-
-	public static ClassLoader buildUserCodeClassLoader(List<URL> jars, List<URL> classpaths, ClassLoader parent) {
-		URL[] urls = new URL[jars.size() + classpaths.size()];
-		for (int i = 0; i < jars.size(); i++) {
-			urls[i] = jars.get(i);
-		}
-		for (int i = 0; i < classpaths.size(); i++) {
-			urls[i + jars.size()] = classpaths.get(i);
-		}
-		return FlinkUserCodeClassLoaders.parentFirst(urls, parent);
+		return new InetSocketAddress(host, port);
 	}
 }

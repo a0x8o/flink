@@ -76,19 +76,25 @@ public class LocalStreamEnvironment extends StreamExecutionEnvironment {
 	}
 
 	/**
-	 * Executes the JobGraph of the on a mini cluster of ClusterUtil with a user
+	 * Executes the JobGraph of the on a mini cluster of CLusterUtil with a user
 	 * specified name.
 	 *
+	 * @param jobName
+	 *            name of the job
 	 * @return The result of the job execution, containing elapsed time and accumulators.
 	 */
 	@Override
-	public JobExecutionResult execute(StreamGraph streamGraph) throws Exception {
+	public JobExecutionResult execute(String jobName) throws Exception {
+		// transform the streaming program into a JobGraph
+		StreamGraph streamGraph = getStreamGraph();
+		streamGraph.setJobName(jobName);
+
 		JobGraph jobGraph = streamGraph.getJobGraph();
 		jobGraph.setAllowQueuedScheduling(true);
 
 		Configuration configuration = new Configuration();
 		configuration.addAll(jobGraph.getJobConfiguration());
-		configuration.setString(TaskManagerOptions.LEGACY_MANAGED_MEMORY_SIZE, "0");
+		configuration.setString(TaskManagerOptions.MANAGED_MEMORY_SIZE, "0");
 
 		// add (and override) the settings with what the user defined
 		configuration.addAll(this.configuration);

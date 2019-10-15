@@ -21,31 +21,21 @@ package org.apache.flink.table.expressions;
 import org.apache.flink.annotation.PublicEvolving;
 
 /**
- * The visitor definition of {@link Expression}.
- *
- * <p>An expression visitor transforms an expression to instances of {@code R}.
- *
- * <p>Please note that only {@link ResolvedExpression}s are listed here. Pure API expression are handled
- * in {@link #visit(Expression)}.
+ * The visitor definition of {@link Expression}. An expression visitor transforms an
+ * expression to instances of {@code R}.
  */
 @PublicEvolving
 public interface ExpressionVisitor<R> {
 
-	// --------------------------------------------------------------------------------------------
-	// resolved expressions
-	// --------------------------------------------------------------------------------------------
+	R visitCall(CallExpression call);
 
-	R visit(CallExpression call);
+	R visitSymbol(SymbolExpression symbolExpression);
 
-	R visit(ValueLiteralExpression valueLiteral);
+	R visitValueLiteral(ValueLiteralExpression valueLiteralExpression);
 
-	R visit(FieldReferenceExpression fieldReference);
+	R visitFieldReference(FieldReferenceExpression fieldReference);
 
-	R visit(TypeLiteralExpression typeLiteral);
-
-	// --------------------------------------------------------------------------------------------
-	// other expressions
-	// --------------------------------------------------------------------------------------------
+	R visitTypeLiteral(TypeLiteralExpression typeLiteral);
 
 	R visit(Expression other);
 }

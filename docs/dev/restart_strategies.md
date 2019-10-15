@@ -93,6 +93,7 @@ env.setRestartStrategy(RestartStrategies.fixedDelayRestart(
 </div>
 </div>
 
+{% top %}
 
 ## Restart Strategies
 
@@ -162,6 +163,7 @@ env.setRestartStrategy(RestartStrategies.fixedDelayRestart(
 </div>
 </div>
 
+{% top %}
 
 ### Failure Rate Restart Strategy
 
@@ -232,6 +234,7 @@ env.setRestartStrategy(RestartStrategies.failureRateRestart(
 </div>
 </div>
 
+{% top %}
 
 ### No Restart Strategy
 

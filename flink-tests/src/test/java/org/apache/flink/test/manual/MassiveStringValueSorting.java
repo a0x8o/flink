@@ -84,9 +84,11 @@ public class MassiveStringValueSorting {
 			BufferedReader reader = null;
 			BufferedReader verifyReader = null;
 			MemoryManager mm = null;
+			IOManager ioMan = null;
 
-			try (IOManager ioMan = new IOManagerAsync()) {
+			try {
 				mm = new MemoryManager(1024 * 1024, 1);
+				ioMan = new IOManagerAsync();
 
 				TypeSerializer<StringValue> serializer = new CopyableValueSerializer<StringValue>(StringValue.class);
 				TypeComparator<StringValue> comparator = new CopyableValueComparator<StringValue>(true, StringValue.class);
@@ -126,6 +128,9 @@ public class MassiveStringValueSorting {
 				}
 				if (mm != null) {
 					mm.shutdown();
+				}
+				if (ioMan != null) {
+					ioMan.shutdown();
 				}
 			}
 		}
@@ -181,9 +186,11 @@ public class MassiveStringValueSorting {
 			BufferedReader reader = null;
 			BufferedReader verifyReader = null;
 			MemoryManager mm = null;
+			IOManager ioMan = null;
 
-			try (IOManager ioMan = new IOManagerAsync()) {
+			try {
 				mm = new MemoryManager(1024 * 1024, 1);
+				ioMan = new IOManagerAsync();
 
 				TupleTypeInfo<Tuple2<StringValue, StringValue[]>> typeInfo = (TupleTypeInfo<Tuple2<StringValue, StringValue[]>>)
 						new TypeHint<Tuple2<StringValue, StringValue[]>>(){}.getTypeInfo();
@@ -252,6 +259,9 @@ public class MassiveStringValueSorting {
 				}
 				if (mm != null) {
 					mm.shutdown();
+				}
+				if (ioMan != null) {
+					ioMan.shutdown();
 				}
 			}
 		}

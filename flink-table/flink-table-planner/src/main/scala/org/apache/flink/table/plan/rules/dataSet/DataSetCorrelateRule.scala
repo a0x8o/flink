@@ -75,7 +75,7 @@ class DataSetCorrelateRule
               rel.getRowType,
               join.getRowType,
               join.getJoinType,
-              "DataSetCorrelateRule")
+              description)
         }
       }
       convertToCorrelate(right, None)

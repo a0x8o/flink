@@ -20,8 +20,8 @@ package org.apache.flink.table.plan
 
 import org.apache.calcite.rel.RelNode
 import org.apache.flink.api.scala._
+import org.apache.flink.table.api.{Table, TableImpl, Tumble}
 import org.apache.flink.table.api.scala._
-import org.apache.flink.table.api.{Table, Tumble}
 import org.apache.flink.table.plan.nodes.datastream._
 import org.apache.flink.table.runtime.utils.JavaUserDefinedAggFunctions.CountDistinct
 import org.apache.flink.table.utils.TableTestUtil._
@@ -251,17 +251,21 @@ class RetractionRulesTest extends TableTestBase {
     val expected =
       unaryNode(
         "DataStreamGroupAggregate",
-        unaryNode(
-          "DataStreamCalc",
-          binaryNode(
-            "DataStreamUnion",
+        binaryNode(
+          "DataStreamUnion",
+          unaryNode(
+            "DataStreamCalc",
             unaryNode(
               "DataStreamGroupAggregate",
               "DataStreamScan(true, Acc)",
               "true, AccRetract"
             ),
-            "DataStreamScan(true, Acc)",
             "true, AccRetract"
+          ),
+          unaryNode(
+            "DataStreamCalc",
+            "DataStreamScan(true, Acc)",
+            "true, Acc"
           ),
           "true, AccRetract"
         ),
@@ -502,7 +506,8 @@ class StreamTableTestForRetractionUtil extends StreamTableTestUtil {
   }
 
   def verifyTableTrait(resultTable: Table, expected: String): Unit = {
-    val optimized = optimize(resultTable)
+    val relNode = resultTable.asInstanceOf[TableImpl].getRelNode
+    val optimized = tableEnv.optimize(relNode, updatesAsRetraction = false)
     val actual = TraitUtil.toString(optimized)
     assertEquals(
       expected.split("\n").map(_.trim).mkString("\n"),

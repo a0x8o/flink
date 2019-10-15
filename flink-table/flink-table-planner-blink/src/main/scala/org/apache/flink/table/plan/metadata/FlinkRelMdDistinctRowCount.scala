@@ -18,11 +18,11 @@
 
 package org.apache.flink.table.plan.metadata
 
-import org.apache.flink.table.api.TableException
-import org.apache.flink.table.plan.nodes.calcite.{Expand, Rank, WindowAggregate}
+import org.apache.flink.table.api.{PlannerConfigOptions, TableException}
+import org.apache.flink.table.plan.nodes.calcite.{Expand, Rank}
 import org.apache.flink.table.plan.nodes.physical.batch._
 import org.apache.flink.table.plan.schema.FlinkRelOptTable
-import org.apache.flink.table.plan.util.{FlinkRelMdUtil, FlinkRelOptUtil, FlinkRexUtil, RankUtil}
+import org.apache.flink.table.plan.util.{FlinkRelMdUtil, FlinkRelOptUtil, FlinkRexUtil}
 import org.apache.flink.table.{JArrayList, JDouble}
 
 import org.apache.calcite.plan.RelOptUtil
@@ -204,8 +204,8 @@ class FlinkRelMdDistinctRowCount private extends MetadataHandler[BuiltInMetadata
     } else {
       val rexBuilder = rel.getCluster.getRexBuilder
       val tableConfig = FlinkRelOptUtil.getTableConfigFromContext(rel)
-      val maxCnfNodeCount = tableConfig.getConfiguration.getInteger(
-        FlinkRexUtil.SQL_OPTIMIZER_CNF_NODES_LIMIT)
+      val maxCnfNodeCount = tableConfig.getConf.getInteger(
+        PlannerConfigOptions.SQL_OPTIMIZER_CNF_NODES_LIMIT)
       val cnf = FlinkRexUtil.toCnf(rexBuilder, maxCnfNodeCount, predicate)
       val conjunctions = RelOptUtil.conjunctions(cnf)
       val conjunctionsWithoutExpandId = conjunctions.filterNot { c =>
@@ -254,7 +254,7 @@ class FlinkRelMdDistinctRowCount private extends MetadataHandler[BuiltInMetadata
       mq: RelMetadataQuery,
       groupKey: ImmutableBitSet,
       predicate: RexNode): JDouble = {
-    val rankFunColumnIndex = RankUtil.getRankNumberColumnIndex(rank).getOrElse(-1)
+    val rankFunColumnIndex = FlinkRelMdUtil.getRankFunctionColumnIndex(rank).getOrElse(-1)
     val newGroupKey = groupKey.clearIf(rankFunColumnIndex, rankFunColumnIndex > 0)
     val (nonRankPred, rankPred) = FlinkRelMdUtil.splitPredicateOnRank(rank, predicate)
     val inputNdv: JDouble = if (newGroupKey.nonEmpty) {
@@ -399,86 +399,26 @@ class FlinkRelMdDistinctRowCount private extends MetadataHandler[BuiltInMetadata
       FlinkRelMdUtil.splitPredicateOnAggregate(rel, predicate)
     case rel: BatchExecGroupAggregateBase =>
       FlinkRelMdUtil.splitPredicateOnAggregate(rel, predicate)
-    case rel: BatchExecWindowAggregateBase =>
-      FlinkRelMdUtil.splitPredicateOnAggregate(rel, predicate)
   }
 
-  def getDistinctRowCount(
-      rel: WindowAggregate,
-      mq: RelMetadataQuery,
-      groupKey: ImmutableBitSet,
-      predicate: RexNode): JDouble = {
-    val newPredicate = FlinkRelMdUtil.makeNamePropertiesSelectivityRexNode(rel, predicate)
-    if (newPredicate == null || newPredicate.isAlwaysTrue) {
-      if (groupKey.isEmpty) {
-        return 1D
-      }
-    }
-    val fieldCnt = rel.getRowType.getFieldCount
-    val namedPropertiesCnt = rel.getNamedProperties.size
-    val namedWindowStartIndex = fieldCnt - namedPropertiesCnt
-    val groupKeyFromNamedWindow = groupKey.toList.exists(_ >= namedWindowStartIndex)
-    if (groupKeyFromNamedWindow) {
-      // cannot estimate DistinctRowCount result when some group keys are from named windows
-      null
-    } else {
-      getDistinctRowCountOfAggregate(rel, mq, groupKey, newPredicate)
-    }
-  }
-
-  def getDistinctRowCount(
-      rel: BatchExecWindowAggregateBase,
-      mq: RelMetadataQuery,
-      groupKey: ImmutableBitSet,
-      predicate: RexNode): JDouble = {
-    if (predicate == null || predicate.isAlwaysTrue) {
-      if (groupKey.isEmpty) {
-        return 1D
-      }
-    }
-
-    val newPredicate = if (rel.isFinal) {
-      val namedWindowStartIndex = rel.getRowType.getFieldCount - rel.getNamedProperties.size
-      val groupKeyFromNamedWindow = groupKey.toList.exists(_ >= namedWindowStartIndex)
-      if (groupKeyFromNamedWindow) {
-        // cannot estimate DistinctRowCount result when some group keys are from named windows
-        return null
-      }
-      val newPredicate = FlinkRelMdUtil.makeNamePropertiesSelectivityRexNode(rel, predicate)
-      if (rel.isMerge) {
-        // set the bits as they correspond to local window aggregate
-        val localWinAggGroupKey = FlinkRelMdUtil.setChildKeysOfWinAgg(groupKey, rel)
-        val childPredicate = FlinkRelMdUtil.setChildPredicateOfWinAgg(newPredicate, rel)
-        return mq.getDistinctRowCount(rel.getInput, localWinAggGroupKey, childPredicate)
-      } else {
-        newPredicate
-      }
-    } else {
-      // local window aggregate
-      val assignTsFieldIndex = rel.getGrouping.length
-      if (groupKey.toList.contains(assignTsFieldIndex)) {
-        // groupKey contains `assignTs` fields
-        return null
-      }
-      predicate
-    }
-    getDistinctRowCountOfAggregate(rel, mq, groupKey, newPredicate)
-  }
+  // TODO supports window aggregate
 
   def getDistinctRowCount(
       rel: Window,
       mq: RelMetadataQuery,
       groupKey: ImmutableBitSet,
-      predicate: RexNode): JDouble = getDistinctRowCountOfOverAgg(rel, mq, groupKey, predicate)
+      predicate: RexNode): JDouble =
+    getDistinctRowCountOfOverWindow(rel, mq, groupKey, predicate)
 
   def getDistinctRowCount(
       rel: BatchExecOverAggregate,
       mq: RelMetadataQuery,
       groupKey: ImmutableBitSet,
-      predicate: RexNode): JDouble = getDistinctRowCountOfOverAgg(rel, mq, groupKey, predicate)
+      predicate: RexNode): JDouble =
+    getDistinctRowCountOfOverWindow(rel, mq, groupKey, predicate)
 
-  private def getDistinctRowCountOfOverAgg(
-      overAgg: SingleRel,
+  private def getDistinctRowCountOfOverWindow(
+      overWindow: SingleRel,
       mq: RelMetadataQuery,
       groupKey: ImmutableBitSet,
       predicate: RexNode): JDouble = {
@@ -487,10 +427,10 @@ class FlinkRelMdDistinctRowCount private extends MetadataHandler[BuiltInMetadata
         return 1D
       }
     }
-    val input = overAgg.getInput
+    val input = overWindow.getInput
     val fieldsCountOfInput = input.getRowType.getFieldCount
     val groupKeyContainsAggCall = groupKey.toList.exists(_ >= fieldsCountOfInput)
-    // cannot estimate ndv of aggCall result of OverAgg
+    // cannot estimate ndv of aggCall result of OverWindowAgg
     if (groupKeyContainsAggCall) {
       null
     } else {
@@ -501,7 +441,7 @@ class FlinkRelMdDistinctRowCount private extends MetadataHandler[BuiltInMetadata
         predicate,
         pushable,
         notPushable)
-      val rexBuilder = overAgg.getCluster.getRexBuilder
+      val rexBuilder = overWindow.getCluster.getRexBuilder
       val childPreds = RexUtil.composeConjunction(rexBuilder, pushable, true)
       val distinctRowCount = mq.getDistinctRowCount(input, groupKey, childPreds)
       if (distinctRowCount == null) {
@@ -510,7 +450,7 @@ class FlinkRelMdDistinctRowCount private extends MetadataHandler[BuiltInMetadata
         distinctRowCount
       } else {
         val preds = RexUtil.composeConjunction(rexBuilder, notPushable, true)
-        val rowCount = mq.getRowCount(overAgg)
+        val rowCount = mq.getRowCount(overWindow)
         FlinkRelMdUtil.adaptNdvBasedOnSelectivity(rowCount, distinctRowCount,
           RelMdUtil.guessSelectivity(preds))
       }
@@ -527,19 +467,27 @@ class FlinkRelMdDistinctRowCount private extends MetadataHandler[BuiltInMetadata
         return 1D
       }
     }
-    rel.getJoinType match {
-      case JoinRelType.SEMI | JoinRelType.ANTI =>
-        // create a RexNode representing the selectivity of the
-        // semi-join filter and pass it to getDistinctRowCount
-        var newPred = FlinkRelMdUtil.makeSemiAntiJoinSelectivityRexNode(mq, rel)
-        if (predicate != null) {
-          val rexBuilder = rel.getCluster.getRexBuilder
-          newPred = rexBuilder.makeCall(SqlStdOperatorTable.AND, newPred, predicate)
-        }
-        mq.getDistinctRowCount(rel.getLeft, groupKey, newPred)
-      case _ =>
-        RelMdUtil.getJoinDistinctRowCount(mq, rel, rel.getJoinType, groupKey, predicate, false)
+    RelMdUtil.getJoinDistinctRowCount(mq, rel, rel.getJoinType, groupKey, predicate, false)
+  }
+
+  def getDistinctRowCount(
+      rel: SemiJoin,
+      mq: RelMetadataQuery,
+      groupKey: ImmutableBitSet,
+      predicate: RexNode): JDouble = {
+    if (predicate == null || predicate.isAlwaysTrue) {
+      if (groupKey.isEmpty) {
+        return 1D
+      }
     }
+    // create a RexNode representing the selectivity of the
+    // semijoin filter and pass it to getDistinctRowCount
+    var newPred = FlinkRelMdUtil.makeSemiJoinSelectivityRexNode(mq, rel)
+    if (predicate != null) {
+      val rexBuilder = rel.getCluster.getRexBuilder
+      newPred = rexBuilder.makeCall(SqlStdOperatorTable.AND, newPred, predicate)
+    }
+    mq.getDistinctRowCount(rel.getLeft, groupKey, newPred)
   }
 
   def getDistinctRowCount(

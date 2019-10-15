@@ -102,7 +102,7 @@ public final class KeyedStateCheckpointOutputStream extends NonClosingCheckpoint
 
 	@Override
 	KeyGroupsStateHandle closeAndGetHandle() throws IOException {
-		StreamStateHandle streamStateHandle = super.closeAndGetHandleAfterLeasesReleased();
+		StreamStateHandle streamStateHandle = delegate.closeAndGetHandle();
 		return streamStateHandle != null ? new KeyGroupsStateHandle(keyGroupRangeOffsets, streamStateHandle) : null;
 	}
 }

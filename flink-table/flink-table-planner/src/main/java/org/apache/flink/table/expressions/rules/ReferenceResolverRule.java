@@ -20,16 +20,15 @@ package org.apache.flink.table.expressions.rules;
 
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.table.api.ValidationException;
+import org.apache.flink.table.expressions.CallExpression;
 import org.apache.flink.table.expressions.Expression;
 import org.apache.flink.table.expressions.FieldReferenceExpression;
-import org.apache.flink.table.expressions.UnresolvedCallExpression;
 import org.apache.flink.table.expressions.UnresolvedReferenceExpression;
 
 import java.util.List;
 import java.util.stream.Collectors;
 
 import static java.lang.String.format;
-import static org.apache.flink.table.expressions.ApiExpressionUtils.unresolvedCall;
 
 /**
  * Resolves {@link UnresolvedReferenceExpression} to either
@@ -54,17 +53,17 @@ final class ReferenceResolverRule implements ResolverRule {
 		}
 
 		@Override
-		public Expression visit(UnresolvedCallExpression unresolvedCall) {
-			final Expression[] resolvedArgs = unresolvedCall.getChildren()
+		public Expression visitCall(CallExpression call) {
+			List<Expression> resolvedArgs = call.getChildren()
 				.stream()
 				.map(expr -> expr.accept(this))
-				.toArray(Expression[]::new);
+				.collect(Collectors.toList());
 
-			return unresolvedCall(unresolvedCall.getFunctionDefinition(), resolvedArgs);
+			return new CallExpression(call.getFunctionDefinition(), resolvedArgs);
 		}
 
 		@Override
-		public Expression visit(UnresolvedReferenceExpression unresolvedReference) {
+		public Expression visitUnresolvedReference(UnresolvedReferenceExpression unresolvedReference) {
 			return resolutionContext.referenceLookup().lookupField(unresolvedReference.getName())
 				.map(expr -> (Expression) expr)
 				.orElseGet(() ->

@@ -48,6 +48,7 @@ public class TypeHintITCase extends AbstractTestBase {
 	@Test
 	public void testIdentityMapWithMissingTypesAndStringTypeHint() throws Exception {
 		final ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
+		env.getConfig().disableSysoutLogging();
 
 		DataSet<Tuple3<Integer, Long, String>> ds = CollectionDataSets.getSmall3TupleDataSet(env);
 		DataSet<Tuple3<Integer, Long, String>> identityMapDs = ds
@@ -65,6 +66,7 @@ public class TypeHintITCase extends AbstractTestBase {
 	@Test
 	public void testIdentityMapWithMissingTypesAndTypeInformationTypeHint() throws Exception {
 		final ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
+		env.getConfig().disableSysoutLogging();
 
 		DataSet<Tuple3<Integer, Long, String>> ds = CollectionDataSets.getSmall3TupleDataSet(env);
 		DataSet<Tuple3<Integer, Long, String>> identityMapDs = ds
@@ -84,6 +86,7 @@ public class TypeHintITCase extends AbstractTestBase {
 	@Test
 	public void testFlatMapWithClassTypeHint() throws Exception {
 		final ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
+		env.getConfig().disableSysoutLogging();
 
 		DataSet<Tuple3<Integer, Long, String>> ds = CollectionDataSets.getSmall3TupleDataSet(env);
 		DataSet<Integer> identityMapDs = ds
@@ -101,6 +104,7 @@ public class TypeHintITCase extends AbstractTestBase {
 	@Test
 	public void testJoinWithTypeInformationTypeHint() throws Exception {
 		final ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
+		env.getConfig().disableSysoutLogging();
 
 		DataSet<Tuple3<Integer, Long, String>> ds1 = CollectionDataSets.getSmall3TupleDataSet(env);
 		DataSet<Tuple3<Integer, Long, String>> ds2 = CollectionDataSets.getSmall3TupleDataSet(env);
@@ -122,6 +126,7 @@ public class TypeHintITCase extends AbstractTestBase {
 	@Test
 	public void testFlatJoinWithTypeInformationTypeHint() throws Exception {
 		final ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
+		env.getConfig().disableSysoutLogging();
 
 		DataSet<Tuple3<Integer, Long, String>> ds1 = CollectionDataSets.getSmall3TupleDataSet(env);
 		DataSet<Tuple3<Integer, Long, String>> ds2 = CollectionDataSets.getSmall3TupleDataSet(env);
@@ -143,6 +148,7 @@ public class TypeHintITCase extends AbstractTestBase {
 	@Test
 	public void testUnsortedGroupReduceWithTypeInformationTypeHint() throws Exception {
 		final ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
+		env.getConfig().disableSysoutLogging();
 
 		DataSet<Tuple3<Integer, Long, String>> ds = CollectionDataSets.getSmall3TupleDataSet(env);
 		DataSet<Integer> resultDs = ds
@@ -161,6 +167,7 @@ public class TypeHintITCase extends AbstractTestBase {
 	@Test
 	public void testSortedGroupReduceWithTypeInformationTypeHint() throws Exception {
 		final ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
+		env.getConfig().disableSysoutLogging();
 
 		DataSet<Tuple3<Integer, Long, String>> ds = CollectionDataSets.getSmall3TupleDataSet(env);
 		DataSet<Integer> resultDs = ds
@@ -180,6 +187,7 @@ public class TypeHintITCase extends AbstractTestBase {
 	@Test
 	public void testCombineGroupWithTypeInformationTypeHint() throws Exception {
 		final ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
+		env.getConfig().disableSysoutLogging();
 
 		DataSet<Tuple3<Integer, Long, String>> ds = CollectionDataSets.getSmall3TupleDataSet(env);
 		DataSet<Integer> resultDs = ds
@@ -198,6 +206,7 @@ public class TypeHintITCase extends AbstractTestBase {
 	@Test
 	public void testCoGroupWithTypeInformationTypeHint() throws Exception {
 		final ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
+		env.getConfig().disableSysoutLogging();
 
 		DataSet<Tuple3<Integer, Long, String>> ds1 = CollectionDataSets.getSmall3TupleDataSet(env);
 		DataSet<Tuple3<Integer, Long, String>> ds2 = CollectionDataSets.getSmall3TupleDataSet(env);

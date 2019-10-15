@@ -22,10 +22,11 @@ import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
-import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
 import org.apache.flink.runtime.clusterframework.types.SlotProfile;
 import org.apache.flink.runtime.concurrent.FutureUtils;
+import org.apache.flink.runtime.instance.SimpleSlot;
 import org.apache.flink.runtime.instance.SimpleSlotContext;
+import org.apache.flink.runtime.instance.Slot;
 import org.apache.flink.runtime.instance.SlotSharingGroupId;
 import org.apache.flink.runtime.jobmanager.scheduler.NoResourceAvailableException;
 import org.apache.flink.runtime.jobmanager.scheduler.ScheduledUnit;
@@ -34,11 +35,10 @@ import org.apache.flink.runtime.jobmaster.LogicalSlot;
 import org.apache.flink.runtime.jobmaster.SlotContext;
 import org.apache.flink.runtime.jobmaster.SlotOwner;
 import org.apache.flink.runtime.jobmaster.SlotRequestId;
-import org.apache.flink.runtime.jobmaster.TestingLogicalSlot;
-import org.apache.flink.runtime.jobmaster.TestingLogicalSlotBuilder;
 import org.apache.flink.runtime.jobmaster.slotpool.SlotProvider;
 import org.apache.flink.runtime.taskmanager.TaskManagerLocation;
 import org.apache.flink.util.FlinkRuntimeException;
+import org.apache.flink.util.Preconditions;
 
 import javax.annotation.Nullable;
 
@@ -46,7 +46,6 @@ import java.net.InetAddress;
 import java.util.ArrayDeque;
 import java.util.HashMap;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeoutException;
 
 import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
@@ -77,8 +76,7 @@ public class SimpleSlotProvider implements SlotProvider, SlotOwner {
 				new AllocationID(),
 				new TaskManagerLocation(ResourceID.generate(), InetAddress.getLoopbackAddress(), 10000 + i),
 				0,
-				taskManagerGateway,
-				ResourceProfile.UNKNOWN);
+				taskManagerGateway);
 			slots.add(as);
 		}
 
@@ -101,20 +99,11 @@ public class SimpleSlotProvider implements SlotProvider, SlotOwner {
 				slot = slots.removeFirst();
 			}
 			if (slot != null) {
-				TestingLogicalSlot result = new TestingLogicalSlotBuilder()
-					.setTaskManagerLocation(slot.getTaskManagerLocation())
-					.setTaskManagerGateway(slot.getTaskManagerGateway())
-					.setSlotNumber(slot.getPhysicalSlotNumber())
-					.setAllocationId(slot.getAllocationId())
-					.setSlotRequestId(slotRequestId)
-					.setSlotSharingGroupId(task.getSlotSharingGroupId())
-					.setSlotOwner(this)
-					.createTestingLogicalSlot();
+				SimpleSlot result = new SimpleSlot(slot, this, 0);
 				allocatedSlots.put(slotRequestId, slot);
 				return CompletableFuture.completedFuture(result);
-			} else if (allowQueued) {
-				return FutureUtils.completedExceptionally(new TimeoutException());
-			} else {
+			}
+			else {
 				return FutureUtils.completedExceptionally(new NoResourceAvailableException());
 			}
 		}
@@ -135,15 +124,12 @@ public class SimpleSlotProvider implements SlotProvider, SlotOwner {
 
 	@Override
 	public void returnLogicalSlot(LogicalSlot logicalSlot) {
-		synchronized (lock) {
-			SimpleSlotContext as = new SimpleSlotContext(
-				logicalSlot.getAllocationId(),
-				logicalSlot.getTaskManagerLocation(),
-				logicalSlot.getPhysicalSlotNumber(),
-				logicalSlot.getTaskManagerGateway(),
-				ResourceProfile.UNKNOWN);
+		Preconditions.checkArgument(logicalSlot instanceof Slot);
 
-			slots.add(as);
+		final Slot slot = ((Slot) logicalSlot);
+
+		synchronized (lock) {
+			slots.add(slot.getSlotContext());
 			allocatedSlots.remove(logicalSlot.getSlotRequestId());
 		}
 	}

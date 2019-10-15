@@ -216,6 +216,7 @@ public class NetworkBufferTest extends AbstractByteBufTest {
 
 		assertEquals(0, slice.getReaderIndex());
 		assertEquals(10, slice.getSize());
+		assertEquals(10, slice.getSizeUnsafe());
 		assertSame(buffer, slice.unwrap().unwrap());
 
 		// slice indices should be independent:
@@ -223,6 +224,7 @@ public class NetworkBufferTest extends AbstractByteBufTest {
 		buffer.setReaderIndex(2);
 		assertEquals(0, slice.getReaderIndex());
 		assertEquals(10, slice.getSize());
+		assertEquals(10, slice.getSizeUnsafe());
 	}
 
 	@Test
@@ -242,6 +244,7 @@ public class NetworkBufferTest extends AbstractByteBufTest {
 
 		assertEquals(0, slice.getReaderIndex());
 		assertEquals(10, slice.getSize());
+		assertEquals(10, slice.getSizeUnsafe());
 		assertSame(buffer, slice.unwrap().unwrap());
 
 		// slice indices should be independent:
@@ -249,6 +252,7 @@ public class NetworkBufferTest extends AbstractByteBufTest {
 		buffer.setReaderIndex(2);
 		assertEquals(0, slice.getReaderIndex());
 		assertEquals(10, slice.getSize());
+		assertEquals(10, slice.getSizeUnsafe());
 	}
 
 	@Test
@@ -308,11 +312,13 @@ public class NetworkBufferTest extends AbstractByteBufTest {
 		NetworkBuffer buffer = newBuffer(1024, 1024, isBuffer);
 
 		assertEquals(0, buffer.getSize()); // initially 0
+		assertEquals(0, buffer.getSizeUnsafe());
 		assertEquals(buffer.writerIndex(), buffer.getSize());
 		assertEquals(0, buffer.readerIndex()); // initially 0
 
 		buffer.setSize(10);
 		assertEquals(10, buffer.getSize());
+		assertEquals(10, buffer.getSizeUnsafe());
 		assertEquals(buffer.writerIndex(), buffer.getSize());
 		assertEquals(0, buffer.readerIndex()); // independent
 	}

@@ -18,7 +18,7 @@
 
 package org.apache.flink.table.plan.metadata
 
-import org.apache.flink.table.plan.nodes.calcite.{Expand, Rank, WindowAggregate}
+import org.apache.flink.table.plan.nodes.calcite.{Expand, Rank}
 import org.apache.flink.table.plan.nodes.physical.batch._
 import org.apache.flink.table.plan.util.FlinkRelMdUtil
 import org.apache.flink.table.{JArrayList, JDouble}
@@ -101,26 +101,6 @@ class FlinkRelMdSelectivity private extends MetadataHandler[BuiltInMetadata.Sele
       mq: RelMetadataQuery,
       predicate: RexNode): JDouble = getSelectivityOfAgg(rel, mq, predicate)
 
-  def getSelectivity(
-      rel: WindowAggregate,
-      mq: RelMetadataQuery,
-      predicate: RexNode): JDouble = {
-    val newPredicate = FlinkRelMdUtil.makeNamePropertiesSelectivityRexNode(rel, predicate)
-    getSelectivityOfAgg(rel, mq, newPredicate)
-  }
-
-  def getSelectivity(
-      rel: BatchExecWindowAggregateBase,
-      mq: RelMetadataQuery,
-      predicate: RexNode): JDouble = {
-    val newPredicate = if (rel.isFinal) {
-      FlinkRelMdUtil.makeNamePropertiesSelectivityRexNode(rel, predicate)
-    } else {
-      predicate
-    }
-    getSelectivityOfAgg(rel, mq, newPredicate)
-  }
-
   private def getSelectivityOfAgg(
       agg: SingleRel,
       mq: RelMetadataQuery,
@@ -131,25 +111,16 @@ class FlinkRelMdSelectivity private extends MetadataHandler[BuiltInMetadata.Sele
       val hasLocalAgg = agg match {
         case _: Aggregate => false
         case rel: BatchExecGroupAggregateBase => rel.isFinal && rel.isMerge
-        case rel: BatchExecWindowAggregateBase => rel.isFinal && rel.isMerge
         case _ => throw new IllegalArgumentException(s"Cannot handle ${agg.getRelTypeName}!")
       }
       if (hasLocalAgg) {
-        val childPredicate = agg match {
-          case rel: BatchExecWindowAggregateBase =>
-            // set the predicate as they correspond to local window aggregate
-            FlinkRelMdUtil.setChildPredicateOfWinAgg(predicate, rel)
-          case _ => predicate
-        }
-        return mq.getSelectivity(agg.getInput, childPredicate)
+        return mq.getSelectivity(agg.getInput, predicate)
       }
 
       val (childPred, restPred) = agg match {
         case rel: Aggregate =>
           FlinkRelMdUtil.splitPredicateOnAggregate(rel, predicate)
         case rel: BatchExecGroupAggregateBase =>
-          FlinkRelMdUtil.splitPredicateOnAggregate(rel, predicate)
-        case rel: BatchExecWindowAggregateBase =>
           FlinkRelMdUtil.splitPredicateOnAggregate(rel, predicate)
         case _ => throw new IllegalArgumentException(s"Cannot handle ${agg.getRelTypeName}!")
       }
@@ -168,17 +139,19 @@ class FlinkRelMdSelectivity private extends MetadataHandler[BuiltInMetadata.Sele
     }
   }
 
+  // TODO supports window aggregate
+
   def getSelectivity(
       overWindow: Window,
       mq: RelMetadataQuery,
-      predicate: RexNode): JDouble = getSelectivityOfOverAgg(overWindow, mq, predicate)
+      predicate: RexNode): JDouble = getSelectivityOfOverWindowAgg(overWindow, mq, predicate)
 
   def getSelectivity(
       rel: BatchExecOverAggregate,
       mq: RelMetadataQuery,
-      predicate: RexNode): JDouble = getSelectivityOfOverAgg(rel, mq, predicate)
+      predicate: RexNode): JDouble = getSelectivityOfOverWindowAgg(rel, mq, predicate)
 
-  private def getSelectivityOfOverAgg(
+  private def getSelectivityOfOverWindowAgg(
       over: SingleRel,
       mq: RelMetadataQuery,
       predicate: RexNode): JDouble = {
@@ -215,19 +188,22 @@ class FlinkRelMdSelectivity private extends MetadataHandler[BuiltInMetadata.Sele
     if (predicate == null || predicate.isAlwaysTrue) {
       1.0
     } else {
-      rel.getJoinType match {
-        case JoinRelType.SEMI | JoinRelType.ANTI =>
-          // create a RexNode representing the selectivity of the
-          // semi-join filter and pass it to getSelectivity
-          val rexBuilder = rel.getCluster.getRexBuilder
-          var newPred = FlinkRelMdUtil.makeSemiAntiJoinSelectivityRexNode(mq, rel)
-          if (predicate != null) {
-            newPred = rexBuilder.makeCall(SqlStdOperatorTable.AND, newPred, predicate)
-          }
-          mq.getSelectivity(rel.getLeft, newPred)
-        case _ =>
-          estimateSelectivity(rel, mq, predicate)
+      estimateSelectivity(rel, mq, predicate)
+    }
+  }
+
+  def getSelectivity(rel: SemiJoin, mq: RelMetadataQuery, predicate: RexNode): JDouble = {
+    if (predicate == null || predicate.isAlwaysTrue) {
+      1.0
+    } else {
+      // create a RexNode representing the selectivity of the
+      // semijoin filter and pass it to getSelectivity
+      val rexBuilder = rel.getCluster.getRexBuilder
+      var newPred = FlinkRelMdUtil.makeSemiJoinSelectivityRexNode(mq, rel)
+      if (predicate != null) {
+        newPred = rexBuilder.makeCall(SqlStdOperatorTable.AND, newPred, predicate)
       }
+      mq.getSelectivity(rel.getLeft, newPred)
     }
   }
 

@@ -26,7 +26,7 @@ import org.apache.flink.table.runtime.types.CRow
 import org.apache.flink.util.Collector
 
 /**
-  * Computes the final (table)aggregate value from incrementally computed aggregates.
+  * Computes the final aggregate value from incrementally computed aggregates.
   *
   * @param numGroupingKey the number of grouping keys
   * @param numAggregates the number of aggregates
@@ -34,7 +34,6 @@ import org.apache.flink.util.Collector
   * @param windowEndOffset   the offset of the window end property
   * @param windowRowtimeOffset the offset of the window rowtime property
   * @param finalRowArity  The arity of the final output row.
-  * @param isTableAggregate Whether it is table aggregate.
   */
 class IncrementalAggregateTimeWindowFunction(
     private val numGroupingKey: Int,
@@ -42,13 +41,11 @@ class IncrementalAggregateTimeWindowFunction(
     private val windowStartOffset: Option[Int],
     private val windowEndOffset: Option[Int],
     private val windowRowtimeOffset: Option[Int],
-    private val finalRowArity: Int,
-    private val isTableAggregate: Boolean)
+    private val finalRowArity: Int)
   extends IncrementalAggregateWindowFunction[TimeWindow](
     numGroupingKey,
     numAggregates,
-    finalRowArity,
-    isTableAggregate) {
+    finalRowArity) {
 
   private var collector: DataStreamTimeWindowPropertyCollector = _
 

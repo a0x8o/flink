@@ -34,21 +34,20 @@ import java.util.Set;
  * digits in a number (=precision) and {@code s} is the number of digits to the right of the decimal
  * point in a number (=scale). {@code p} must have a value between 1 and 38 (both inclusive). {@code s}
  * must have a value between 0 and {@code p} (both inclusive). The default value for {@code p} is 10.
- * The default value for {@code s} is 0. {@code NUMERIC(p, s)} and {@code DEC(p, s)} are synonyms for
- * this type.
+ * The default value for {@code s} is 0.
  */
 @PublicEvolving
 public final class DecimalType extends LogicalType {
 
-	public static final int MIN_PRECISION = 1;
+	private static final int MIN_PRECISION = 1;
 
-	public static final int MAX_PRECISION = 38;
+	private static final int MAX_PRECISION = 38;
 
-	public static final int DEFAULT_PRECISION = 10;
+	private static final int DEFAULT_PRECISION = 10;
 
-	public static final int MIN_SCALE = 0;
+	private static final int MIN_SCALE = 0;
 
-	public static final int DEFAULT_SCALE = 0;
+	private static final int DEFAULT_SCALE = 0;
 
 	private static final String FORMAT = "DECIMAL(%d, %d)";
 

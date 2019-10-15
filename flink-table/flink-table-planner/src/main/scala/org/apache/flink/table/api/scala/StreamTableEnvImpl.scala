@@ -17,13 +17,13 @@
  */
 package org.apache.flink.table.api.scala
 
-import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.api.scala._
-import org.apache.flink.streaming.api.scala.{DataStream, StreamExecutionEnvironment, asScalaStream}
-import org.apache.flink.table.api.{StreamQueryConfig, Table, TableConfig, TableImpl}
-import org.apache.flink.table.catalog.CatalogManager
+import org.apache.flink.api.common.typeinfo.TypeInformation
+import org.apache.flink.table.api.{StreamQueryConfig, Table, TableConfig, TableEnvImpl}
 import org.apache.flink.table.expressions.Expression
 import org.apache.flink.table.functions.{AggregateFunction, TableAggregateFunction, TableFunction}
+import org.apache.flink.streaming.api.scala.{DataStream, StreamExecutionEnvironment}
+import org.apache.flink.streaming.api.scala.asScalaStream
 
 /**
   * The implementation for a Scala [[StreamTableEnvironment]].
@@ -33,34 +33,37 @@ import org.apache.flink.table.functions.{AggregateFunction, TableAggregateFuncti
   */
 class StreamTableEnvImpl(
     execEnv: StreamExecutionEnvironment,
-    config: TableConfig,
-    catalogManager: CatalogManager)
+    config: TableConfig)
   extends org.apache.flink.table.api.StreamTableEnvImpl(
     execEnv.getWrappedStreamExecutionEnvironment,
-    config,
-    catalogManager)
-  with org.apache.flink.table.api.scala.StreamTableEnvironment {
+    config)
+    with org.apache.flink.table.api.scala.StreamTableEnvironment {
 
   override def fromDataStream[T](dataStream: DataStream[T]): Table = {
-    val tableOperation = asQueryOperation(dataStream.javaStream, None)
-    new TableImpl(this, tableOperation)
+
+    val name = createUniqueTableName()
+    registerDataStreamInternal(name, dataStream.javaStream)
+    scan(name)
   }
 
   override def fromDataStream[T](dataStream: DataStream[T], fields: Expression*): Table = {
-    val tableOperation = asQueryOperation(dataStream.javaStream, Some(fields.toArray))
-    new TableImpl(this, tableOperation)
+
+    val name = createUniqueTableName()
+    registerDataStreamInternal(name, dataStream.javaStream, fields.toArray)
+    scan(name)
   }
 
   override def registerDataStream[T](name: String, dataStream: DataStream[T]): Unit = {
-    registerTable(name, fromDataStream(dataStream))
+
+    checkValidTableName(name)
+    registerDataStreamInternal(name, dataStream.javaStream)
   }
 
   override def registerDataStream[T](
-      name: String,
-      dataStream: DataStream[T],
-      fields: Expression*)
-    : Unit = {
-    registerTable(name, fromDataStream(dataStream, fields: _*))
+    name: String, dataStream: DataStream[T], fields: Expression*): Unit = {
+
+    checkValidTableName(name)
+    registerDataStreamInternal(name, dataStream.javaStream, fields.toArray)
   }
 
   override def toAppendStream[T: TypeInformation](table: Table): DataStream[T] = {
@@ -72,8 +75,7 @@ class StreamTableEnvImpl(
     queryConfig: StreamQueryConfig): DataStream[T] = {
     val returnType = createTypeInformation[T]
     asScalaStream(translate(
-      table.getQueryOperation, queryConfig, updatesAsRetraction = false, withChangeFlag = false)(
-      returnType))
+      table, queryConfig, updatesAsRetraction = false, withChangeFlag = false)(returnType))
   }
 
   override def toRetractStream[T: TypeInformation](table: Table): DataStream[(Boolean, T)] = {
@@ -85,11 +87,7 @@ class StreamTableEnvImpl(
       queryConfig: StreamQueryConfig): DataStream[(Boolean, T)] = {
     val returnType = createTypeInformation[(Boolean, T)]
     asScalaStream(
-      translate(
-        table.getQueryOperation,
-        queryConfig,
-        updatesAsRetraction = true,
-        withChangeFlag = true)(returnType))
+      translate(table, queryConfig, updatesAsRetraction = true, withChangeFlag = true)(returnType))
   }
 
   override def registerFunction[T: TypeInformation](name: String, tf: TableFunction[T]): Unit = {

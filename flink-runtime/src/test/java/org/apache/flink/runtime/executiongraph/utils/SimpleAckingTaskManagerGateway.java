@@ -34,7 +34,6 @@ import org.apache.flink.runtime.messages.StackTraceSampleResponse;
 import java.util.Collection;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
-import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 
@@ -52,22 +51,16 @@ public class SimpleAckingTaskManagerGateway implements TaskManagerGateway {
 
 	private volatile BiFunction<AllocationID, Throwable, CompletableFuture<Acknowledge>> freeSlotFunction;
 
-	private BiConsumer<JobID, Collection<ResultPartitionID>> releasePartitionsConsumer = (ignore1, ignore2) -> { };
-
-	public void setSubmitConsumer(Consumer<TaskDeploymentDescriptor> submitConsumer) {
-		this.submitConsumer = submitConsumer;
+	public void setSubmitConsumer(Consumer<TaskDeploymentDescriptor> predicate) {
+		submitConsumer = predicate;
 	}
 
-	public void setCancelConsumer(Consumer<ExecutionAttemptID> cancelConsumer) {
-		this.cancelConsumer = cancelConsumer;
+	public void setCancelConsumer(Consumer<ExecutionAttemptID> predicate) {
+		cancelConsumer = predicate;
 	}
 
 	public void setFreeSlotFunction(BiFunction<AllocationID, Throwable, CompletableFuture<Acknowledge>> freeSlotFunction) {
 		this.freeSlotFunction = freeSlotFunction;
-	}
-
-	public void setReleasePartitionsConsumer(BiConsumer<JobID, Collection<ResultPartitionID>> releasePartitionsConsumer) {
-		this.releasePartitionsConsumer = releasePartitionsConsumer;
 	}
 
 	@Override
@@ -104,8 +97,7 @@ public class SimpleAckingTaskManagerGateway implements TaskManagerGateway {
 	}
 
 	@Override
-	public void releasePartitions(JobID jobId, Collection<ResultPartitionID> partitionIds) {
-		releasePartitionsConsumer.accept(jobId, partitionIds);
+	public void releasePartitions(Collection<ResultPartitionID> partitionIds) {
 	}
 
 	@Override

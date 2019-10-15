@@ -18,8 +18,6 @@
 
 package org.apache.flink.table.catalog;
 
-import org.apache.flink.table.catalog.config.CatalogConfig;
-
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -27,26 +25,37 @@ import java.util.Optional;
 /**
  * A generic catalog partition implementation.
  */
-public class GenericCatalogPartition extends AbstractCatalogPartition {
+public class GenericCatalogPartition implements CatalogPartition {
+	private final Map<String, String> properties;
+
+	private String comment = "This is a generic catalog partition";
+
+	public GenericCatalogPartition(Map<String, String> properties) {
+		this.properties = properties;
+	}
 
 	public GenericCatalogPartition(Map<String, String> properties, String comment) {
-		super(properties, comment);
-		properties.put(CatalogConfig.IS_GENERIC, String.valueOf(true));
+		this(properties);
+		this.comment = comment;
+	}
+
+	@Override
+	public Map<String, String> getProperties() {
+		return properties;
 	}
 
 	@Override
 	public CatalogPartition copy() {
-		return new GenericCatalogPartition(new HashMap<>(getProperties()), getComment());
+		return new GenericCatalogPartition(new HashMap<>(properties));
 	}
 
 	@Override
 	public Optional<String> getDescription() {
-		return Optional.of(getComment());
+		return Optional.of(comment);
 	}
 
 	@Override
 	public Optional<String> getDetailedDescription() {
 		return Optional.of("This is a generic catalog partition with detailed description");
 	}
-
 }

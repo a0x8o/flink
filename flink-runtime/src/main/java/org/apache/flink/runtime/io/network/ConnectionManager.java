@@ -18,6 +18,9 @@
 
 package org.apache.flink.runtime.io.network;
 
+import org.apache.flink.runtime.io.network.netty.PartitionRequestClient;
+import org.apache.flink.runtime.io.network.partition.ResultPartitionProvider;
+
 import java.io.IOException;
 
 /**
@@ -26,12 +29,7 @@ import java.io.IOException;
  */
 public interface ConnectionManager {
 
-	/**
-	 * Starts the internal related components for network connection and communication.
-	 *
-	 * @return a port to connect to the task executor for shuffle data exchange, -1 if only local connection is possible.
-	 */
-	int start() throws IOException;
+	void start(ResultPartitionProvider partitionProvider, TaskEventPublisher taskEventDispatcher) throws IOException;
 
 	/**
 	 * Creates a {@link PartitionRequestClient} instance for the given {@link ConnectionID}.
@@ -44,6 +42,8 @@ public interface ConnectionManager {
 	void closeOpenChannelConnections(ConnectionID connectionId);
 
 	int getNumberOfActiveConnections();
+
+	int getDataPort();
 
 	void shutdown() throws IOException;
 

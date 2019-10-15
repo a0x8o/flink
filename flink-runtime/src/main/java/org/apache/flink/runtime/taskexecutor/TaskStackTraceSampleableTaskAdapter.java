@@ -47,7 +47,7 @@ class TaskStackTraceSampleableTaskAdapter implements StackTraceSampleableTask {
 
 	@Override
 	public StackTraceElement[] getStackTrace() {
-		return task.getStackTraceOfExecutingThread();
+		return task.getExecutingThread().getStackTrace();
 	}
 
 	@Override

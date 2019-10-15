@@ -20,32 +20,32 @@ package org.apache.flink.table.operations;
 
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.table.api.ValidationException;
+import org.apache.flink.table.expressions.ApiExpressionDefaultVisitor;
 import org.apache.flink.table.expressions.CallExpression;
-import org.apache.flink.table.expressions.ExpressionResolver;
-import org.apache.flink.table.expressions.ResolvedExpression;
-import org.apache.flink.table.expressions.ResolvedExpressionDefaultVisitor;
+import org.apache.flink.table.expressions.Expression;
 
 import java.util.List;
 import java.util.stream.Collectors;
 
-import static org.apache.flink.table.functions.BuiltInFunctionDefinitions.ORDERING;
-import static org.apache.flink.table.functions.BuiltInFunctionDefinitions.ORDER_ASC;
-
+import static java.util.Collections.singletonList;
+import static org.apache.flink.table.expressions.BuiltInFunctionDefinitions.ORDERING;
+import static org.apache.flink.table.expressions.BuiltInFunctionDefinitions.ORDER_ASC;
 
 /**
- * Utility class for creating a valid {@link SortQueryOperation} operation.
+ * Utility class for creating a valid {@link SortTableOperation} operation.
  */
 @Internal
 public class SortOperationFactory {
 
 	private final boolean isStreaming;
+	private final OrderWrapper orderWrapper = new OrderWrapper();
 
 	public SortOperationFactory(boolean isStreaming) {
 		this.isStreaming = isStreaming;
 	}
 
 	/**
-	 * Creates a valid {@link SortQueryOperation} operation.
+	 * Creates a valid {@link SortTableOperation} operation.
 	 *
 	 * <p><b>NOTE:</b> if the collation is not explicitly specified for any expression, it is wrapped in a
 	 * default ascending order
@@ -54,29 +54,24 @@ public class SortOperationFactory {
 	 * @param child relational expression on top of which to apply the sort operation
 	 * @return valid sort operation
 	 */
-	public QueryOperation createSort(
-			List<ResolvedExpression> orders,
-			QueryOperation child,
-			ExpressionResolver.PostResolverFactory postResolverFactory) {
+	public TableOperation createSort(List<Expression> orders, TableOperation child) {
 		failIfStreaming();
 
-		final OrderWrapper orderWrapper = new OrderWrapper(postResolverFactory);
-
-		List<ResolvedExpression> convertedOrders = orders.stream()
+		List<Expression> convertedOrders = orders.stream()
 			.map(f -> f.accept(orderWrapper))
 			.collect(Collectors.toList());
-		return new SortQueryOperation(convertedOrders, child);
+		return new SortTableOperation(convertedOrders, child);
 	}
 
 	/**
-	 * Adds offset to the underlying {@link SortQueryOperation} if it is a valid one.
+	 * Adds offset to the underlying {@link SortTableOperation} if it is a valid one.
 	 *
 	 * @param offset offset to add
-	 * @param child should be {@link SortQueryOperation}
+	 * @param child should be {@link SortTableOperation}
 	 * @return valid sort operation with applied offset
 	 */
-	public QueryOperation createLimitWithOffset(int offset, QueryOperation child) {
-		SortQueryOperation previousSort = validateAndGetChildSort(child);
+	public TableOperation createLimitWithOffset(int offset, TableOperation child) {
+		SortTableOperation previousSort = validateAndGetChildSort(child);
 
 		if (offset < 0) {
 			throw new ValidationException("Offset should be greater or equal 0");
@@ -86,18 +81,18 @@ public class SortOperationFactory {
 			throw new ValidationException("OFFSET already defined");
 		}
 
-		return new SortQueryOperation(previousSort.getOrder(), previousSort.getChild(), offset, -1);
+		return new SortTableOperation(previousSort.getOrder(), previousSort.getChild(), offset, -1);
 	}
 
 	/**
-	 * Adds fetch to the underlying {@link SortQueryOperation} if it is a valid one.
+	 * Adds fetch to the underlying {@link SortTableOperation} if it is a valid one.
 	 *
 	 * @param fetch fetch number to add
-	 * @param child should be {@link SortQueryOperation}
+	 * @param child should be {@link SortTableOperation}
 	 * @return valid sort operation with applied fetch
 	 */
-	public QueryOperation createLimitWithFetch(int fetch, QueryOperation child) {
-		SortQueryOperation previousSort = validateAndGetChildSort(child);
+	public TableOperation createLimitWithFetch(int fetch, TableOperation child) {
+		SortTableOperation previousSort = validateAndGetChildSort(child);
 
 		if (fetch < 0) {
 			throw new ValidationException("Fetch should be greater or equal 0");
@@ -105,17 +100,17 @@ public class SortOperationFactory {
 
 		int offset = Math.max(previousSort.getOffset(), 0);
 
-		return new SortQueryOperation(previousSort.getOrder(), previousSort.getChild(), offset, fetch);
+		return new SortTableOperation(previousSort.getOrder(), previousSort.getChild(), offset, fetch);
 	}
 
-	private SortQueryOperation validateAndGetChildSort(QueryOperation child) {
+	private SortTableOperation validateAndGetChildSort(TableOperation child) {
 		failIfStreaming();
 
-		if (!(child instanceof SortQueryOperation)) {
+		if (!(child instanceof SortTableOperation)) {
 			throw new ValidationException("A limit operation must be preceded by a sort operation.");
 		}
 
-		SortQueryOperation previousSort = (SortQueryOperation) child;
+		SortTableOperation previousSort = (SortTableOperation) child;
 
 		if ((previousSort).getFetch() != -1) {
 			throw new ValidationException("FETCH is already defined.");
@@ -130,16 +125,10 @@ public class SortOperationFactory {
 		}
 	}
 
-	private class OrderWrapper extends ResolvedExpressionDefaultVisitor<ResolvedExpression> {
-
-		private ExpressionResolver.PostResolverFactory postResolverFactory;
-
-		OrderWrapper(ExpressionResolver.PostResolverFactory postResolverFactory) {
-			this.postResolverFactory = postResolverFactory;
-		}
+	private class OrderWrapper extends ApiExpressionDefaultVisitor<Expression> {
 
 		@Override
-		public ResolvedExpression visit(CallExpression call) {
+		public Expression visitCall(CallExpression call) {
 			if (ORDERING.contains(call.getFunctionDefinition())) {
 				return call;
 			} else {
@@ -148,8 +137,8 @@ public class SortOperationFactory {
 		}
 
 		@Override
-		protected ResolvedExpression defaultMethod(ResolvedExpression expression) {
-			return postResolverFactory.wrappingCall(ORDER_ASC, expression);
+		protected Expression defaultMethod(Expression expression) {
+			return new CallExpression(ORDER_ASC, singletonList(expression));
 		}
 	}
 }

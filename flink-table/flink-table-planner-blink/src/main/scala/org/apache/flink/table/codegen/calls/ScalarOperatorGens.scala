@@ -18,16 +18,12 @@
 
 package org.apache.flink.table.codegen.calls
 
+import org.apache.flink.table.`type`._
 import org.apache.flink.table.codegen.CodeGenUtils.{binaryRowFieldSetAccess, binaryRowSetNull, binaryWriterWriteField, binaryWriterWriteNull, _}
 import org.apache.flink.table.codegen.GenerateUtils._
-import org.apache.flink.table.codegen.GeneratedExpression.{ALWAYS_NULL, NEVER_NULL, NO_CODE}
+import org.apache.flink.table.codegen.GeneratedExpression.{NEVER_NULL, NO_CODE, ALWAYS_NULL}
 import org.apache.flink.table.codegen.{CodeGenException, CodeGeneratorContext, GeneratedExpression}
 import org.apache.flink.table.dataformat._
-import org.apache.flink.table.types.LogicalTypeDataTypeConverter.fromLogicalTypeToDataType
-import org.apache.flink.table.types.PlannerTypeUtils
-import org.apache.flink.table.types.PlannerTypeUtils.{isInteroperable, isPrimitive}
-import org.apache.flink.table.types.logical.LogicalTypeRoot._
-import org.apache.flink.table.types.logical._
 import org.apache.flink.table.typeutils.TypeCheckUtils._
 import org.apache.flink.table.typeutils.{TypeCheckUtils, TypeCoercion}
 import org.apache.flink.util.Preconditions.checkArgument
@@ -38,8 +34,6 @@ import org.apache.calcite.util.BuiltInMethod
 
 import java.lang.{StringBuilder => JStringBuilder}
 import java.nio.charset.StandardCharsets
-
-import scala.collection.JavaConversions._
 
 /**
   * Utilities to generate SQL scalar operators, e.g. arithmetic operator,
@@ -57,7 +51,7 @@ object ScalarOperatorGens {
   def generateBinaryArithmeticOperator(
     ctx: CodeGeneratorContext,
     operator: String,
-    resultType: LogicalType,
+    resultType: InternalType,
     left: GeneratedExpression,
     right: GeneratedExpression)
   : GeneratedExpression = {
@@ -70,11 +64,11 @@ object ScalarOperatorGens {
 
     val leftCasting = operator match {
       case "%" =>
-        if (isInteroperable(left.resultType, right.resultType)) {
+        if (left.resultType == right.resultType) {
           numericCasting(left.resultType, resultType)
         } else {
           val castedType = if (isDecimal(left.resultType)) {
-            new BigIntType()
+            InternalTypes.LONG
           } else {
             left.resultType
           }
@@ -105,7 +99,7 @@ object ScalarOperatorGens {
 
     // do not cast a decimal operand to resultType, which may change its value.
     // use it as is during calculation.
-    def castToDec(t: LogicalType): String => String = t match {
+    def castToDec(t: InternalType): String => String = t match {
       case _: DecimalType => (operandTerm: String) => s"$operandTerm"
       case _ => numericCasting(t, resultType)
     }
@@ -121,9 +115,9 @@ object ScalarOperatorGens {
         val method = methods(operator)
         val leftCasted = castToDec(left.resultType)(leftTerm)
         val rightCasted = castToDec(right.resultType)(rightTerm)
-        val precision = resultType.getPrecision
-        val scale = resultType.getScale
-        s"$DECIMAL_TERM.$method($leftCasted, $rightCasted, $precision, $scale)"
+        val precision = resultType.precision()
+        val scale = resultType.scale()
+        s"$DECIMAL.$method($leftCasted, $rightCasted, $precision, $scale)"
       }
     }
   }
@@ -134,7 +128,7 @@ object ScalarOperatorGens {
   def generateUnaryArithmeticOperator(
       ctx: CodeGeneratorContext,
       operator: String,
-      resultType: LogicalType,
+      resultType: InternalType,
       operand: GeneratedExpression)
     : GeneratedExpression = {
     generateUnaryOperatorIfNotNull(ctx, resultType, operand) {
@@ -153,55 +147,55 @@ object ScalarOperatorGens {
   def generateTemporalPlusMinus(
     ctx: CodeGeneratorContext,
     plus: Boolean,
-    resultType: LogicalType,
+    resultType: InternalType,
     left: GeneratedExpression,
     right: GeneratedExpression)
   : GeneratedExpression = {
 
     val op = if (plus) "+" else "-"
 
-    (left.resultType.getTypeRoot, right.resultType.getTypeRoot) match {
+    (left.resultType, right.resultType) match {
       // arithmetic of time point and time interval
-      case (INTERVAL_YEAR_MONTH, INTERVAL_YEAR_MONTH) |
-           (INTERVAL_DAY_TIME, INTERVAL_DAY_TIME) =>
+      case (InternalTypes.INTERVAL_MONTHS, InternalTypes.INTERVAL_MONTHS) |
+           (InternalTypes.INTERVAL_MILLIS, InternalTypes.INTERVAL_MILLIS) =>
         generateBinaryArithmeticOperator(ctx, op, left.resultType, left, right)
 
-      case (DATE, INTERVAL_DAY_TIME) =>
-        generateOperatorIfNotNull(ctx, new DateType(), left, right) {
+      case (InternalTypes.DATE, InternalTypes.INTERVAL_MILLIS) =>
+        generateOperatorIfNotNull(ctx, InternalTypes.DATE, left, right) {
           (l, r) => s"$l $op ((int) ($r / ${MILLIS_PER_DAY}L))"
         }
 
-      case (DATE, INTERVAL_YEAR_MONTH) =>
-        generateOperatorIfNotNull(ctx, new DateType(), left, right) {
+      case (InternalTypes.DATE, InternalTypes.INTERVAL_MONTHS) =>
+        generateOperatorIfNotNull(ctx, InternalTypes.DATE, left, right) {
           (l, r) => s"${qualifyMethod(BuiltInMethod.ADD_MONTHS.method)}($l, $op($r))"
         }
 
-      case (TIME_WITHOUT_TIME_ZONE, INTERVAL_DAY_TIME) =>
-        generateOperatorIfNotNull(ctx, new TimeType(), left, right) {
+      case (InternalTypes.TIME, InternalTypes.INTERVAL_MILLIS) =>
+        generateOperatorIfNotNull(ctx, InternalTypes.TIME, left, right) {
           (l, r) => s"$l $op ((int) ($r))"
         }
 
-      case (TIMESTAMP_WITHOUT_TIME_ZONE, INTERVAL_DAY_TIME) =>
-        generateOperatorIfNotNull(ctx, left.resultType, left, right) {
+      case (InternalTypes.TIMESTAMP, InternalTypes.INTERVAL_MILLIS) =>
+        generateOperatorIfNotNull(ctx, InternalTypes.TIMESTAMP, left, right) {
           (l, r) => s"$l $op $r"
         }
 
-      case (TIMESTAMP_WITHOUT_TIME_ZONE, INTERVAL_YEAR_MONTH) =>
-        generateOperatorIfNotNull(ctx, left.resultType, left, right) {
+      case (InternalTypes.TIMESTAMP, InternalTypes.INTERVAL_MONTHS) =>
+        generateOperatorIfNotNull(ctx, InternalTypes.TIMESTAMP, left, right) {
           (l, r) => s"${qualifyMethod(BuiltInMethod.ADD_MONTHS.method)}($l, $op($r))"
         }
 
       // minus arithmetic of time points (i.e. for TIMESTAMPDIFF)
-      case (TIMESTAMP_WITHOUT_TIME_ZONE | TIME_WITHOUT_TIME_ZONE | DATE,
-      TIMESTAMP_WITHOUT_TIME_ZONE | TIME_WITHOUT_TIME_ZONE | DATE) if !plus =>
-        resultType.getTypeRoot match {
-          case INTERVAL_YEAR_MONTH =>
+      case (InternalTypes.TIMESTAMP | InternalTypes.TIME | InternalTypes.DATE,
+      InternalTypes.TIMESTAMP | InternalTypes.TIME | InternalTypes.DATE) if !plus =>
+        resultType match {
+          case InternalTypes.INTERVAL_MONTHS =>
             generateOperatorIfNotNull(ctx, resultType, left, right) {
-              (ll, rr) => (left.resultType.getTypeRoot, right.resultType.getTypeRoot) match {
-                case (TIMESTAMP_WITHOUT_TIME_ZONE, DATE) =>
+              (ll, rr) => (left.resultType, right.resultType) match {
+                case (InternalTypes.TIMESTAMP, InternalTypes.DATE) =>
                   s"${qualifyMethod(BuiltInMethod.SUBTRACT_MONTHS.method)}" +
                     s"($ll, $rr * ${MILLIS_PER_DAY}L)"
-                case (DATE, TIMESTAMP_WITHOUT_TIME_ZONE) =>
+                case (InternalTypes.DATE, InternalTypes.TIMESTAMP) =>
                   s"${qualifyMethod(BuiltInMethod.SUBTRACT_MONTHS.method)}" +
                     s"($ll * ${MILLIS_PER_DAY}L, $rr)"
                 case _ =>
@@ -209,16 +203,16 @@ object ScalarOperatorGens {
               }
             }
 
-          case INTERVAL_DAY_TIME =>
+          case InternalTypes.INTERVAL_MILLIS =>
             generateOperatorIfNotNull(ctx, resultType, left, right) {
-              (ll, rr) => (left.resultType.getTypeRoot, right.resultType.getTypeRoot) match {
-                case (TIMESTAMP_WITHOUT_TIME_ZONE, TIMESTAMP_WITHOUT_TIME_ZONE) =>
+              (ll, rr) => (left.resultType, right.resultType) match {
+                case (InternalTypes.TIMESTAMP, InternalTypes.TIMESTAMP) =>
                   s"$ll $op $rr"
-                case (DATE, DATE) =>
+                case (InternalTypes.DATE, InternalTypes.DATE) =>
                   s"($ll * ${MILLIS_PER_DAY}L) $op ($rr * ${MILLIS_PER_DAY}L)"
-                case (TIMESTAMP_WITHOUT_TIME_ZONE, DATE) =>
+                case (InternalTypes.TIMESTAMP, InternalTypes.DATE) =>
                   s"$ll $op ($rr * ${MILLIS_PER_DAY}L)"
-                case (DATE, TIMESTAMP_WITHOUT_TIME_ZONE) =>
+                case (InternalTypes.DATE, InternalTypes.TIMESTAMP) =>
                   s"($ll * ${MILLIS_PER_DAY}L) $op $rr"
               }
             }
@@ -287,8 +281,8 @@ object ScalarOperatorGens {
         resultType)
 
       val Seq(resultTerm, nullTerm) = newNames("result", "isNull")
-      val resultTypeTerm = primitiveTypeTermForType(new BooleanType())
-      val defaultValue = primitiveDefaultValue(new BooleanType())
+      val resultTypeTerm = primitiveTypeTermForType(InternalTypes.BOOLEAN)
+      val defaultValue = primitiveDefaultValue(InternalTypes.BOOLEAN)
 
       val operatorCode = if (ctx.nullCheck) {
         s"""
@@ -308,7 +302,7 @@ object ScalarOperatorGens {
            |""".stripMargin.trim
       }
 
-      GeneratedExpression(resultTerm, nullTerm, operatorCode, new BooleanType())
+      GeneratedExpression(resultTerm, nullTerm, operatorCode, InternalTypes.BOOLEAN)
     } else {
       // we use a chain of ORs for a set that contains non-constant elements
       haystack
@@ -324,9 +318,8 @@ object ScalarOperatorGens {
       left: GeneratedExpression,
       right: GeneratedExpression)
     : GeneratedExpression = {
-    val canEqual = isInteroperable(left.resultType, right.resultType)
-    if (isCharacterString(left.resultType) && isCharacterString(right.resultType)) {
-      generateOperatorIfNotNull(ctx, new BooleanType(), left, right) {
+    if (left.resultType == InternalTypes.STRING && right.resultType == InternalTypes.STRING) {
+      generateOperatorIfNotNull(ctx, InternalTypes.BOOLEAN, left, right) {
         (leftTerm, rightTerm) => s"$leftTerm.equals($rightTerm)"
       }
     }
@@ -334,28 +327,32 @@ object ScalarOperatorGens {
     else if (isNumeric(left.resultType) && isNumeric(right.resultType)) {
       generateComparison(ctx, "==", left, right)
     }
+    // temporal types
+    else if (isTemporal(left.resultType) && left.resultType == right.resultType) {
+      generateComparison(ctx, "==", left, right)
+    }
     // array types
-    else if (isArray(left.resultType) && canEqual) {
+    else if (isArray(left.resultType) && left.resultType == right.resultType) {
       generateArrayComparison(ctx, left, right)
     }
     // map types
-    else if (isMap(left.resultType) && canEqual) {
+    else if (isMap(left.resultType) && left.resultType == right.resultType) {
       generateMapComparison(ctx, left, right)
     }
     // comparable types of same type
-    else if (isComparable(left.resultType) && canEqual) {
+    else if (isComparable(left.resultType) && left.resultType == right.resultType) {
       generateComparison(ctx, "==", left, right)
     }
     // support date/time/timestamp equalTo string.
     // for performance, we cast literal string to literal time.
-    else if (isTimePoint(left.resultType) && isCharacterString(right.resultType)) {
+    else if (isTimePoint(left.resultType) && right.resultType == InternalTypes.STRING) {
       if (right.literal) {
         generateEquals(ctx, left, generateCastStringLiteralToDateTime(ctx, right, left.resultType))
       } else {
         generateEquals(ctx, left, generateCast(ctx, right, left.resultType))
       }
     }
-    else if (isTimePoint(right.resultType) && isCharacterString(left.resultType)) {
+    else if (isTimePoint(right.resultType) && left.resultType == InternalTypes.STRING) {
       if (left.literal) {
         generateEquals(
           ctx,
@@ -367,11 +364,11 @@ object ScalarOperatorGens {
     }
     // non comparable types
     else {
-      generateOperatorIfNotNull(ctx, new BooleanType(), left, right) {
-        if (isReference(left.resultType)) {
+      generateOperatorIfNotNull(ctx, InternalTypes.BOOLEAN, left, right) {
+        if (isReference(left)) {
           (leftTerm, rightTerm) => s"$leftTerm.equals($rightTerm)"
         }
-        else if (isReference(right.resultType)) {
+        else if (isReference(right)) {
           (leftTerm, rightTerm) => s"$rightTerm.equals($leftTerm)"
         }
         else {
@@ -387,8 +384,8 @@ object ScalarOperatorGens {
       left: GeneratedExpression,
       right: GeneratedExpression)
     : GeneratedExpression = {
-    if (isCharacterString(left.resultType) && isCharacterString(right.resultType)) {
-      generateOperatorIfNotNull(ctx, new BooleanType(), left, right) {
+    if (left.resultType == InternalTypes.STRING && right.resultType == InternalTypes.STRING) {
+      generateOperatorIfNotNull(ctx, InternalTypes.BOOLEAN, left, right) {
         (leftTerm, rightTerm) => s"!$leftTerm.equals($rightTerm)"
       }
     }
@@ -397,34 +394,32 @@ object ScalarOperatorGens {
       generateComparison(ctx, "!=", left, right)
     }
     // temporal types
-    else if (isTemporal(left.resultType) &&
-        isInteroperable(left.resultType, right.resultType)) {
+    else if (isTemporal(left.resultType) && left.resultType == right.resultType) {
       generateComparison(ctx, "!=", left, right)
     }
     // array types
-    else if (isArray(left.resultType) && isInteroperable(left.resultType, right.resultType)) {
+    else if (isArray(left.resultType) && left.resultType == right.resultType) {
       val equalsExpr = generateEquals(ctx, left, right)
       GeneratedExpression(
-        s"(!${equalsExpr.resultTerm})", equalsExpr.nullTerm, equalsExpr.code, new BooleanType())
+        s"(!${equalsExpr.resultTerm})", equalsExpr.nullTerm, equalsExpr.code, InternalTypes.BOOLEAN)
     }
     // map types
-    else if (isMap(left.resultType) && isInteroperable(left.resultType, right.resultType)) {
+    else if (isMap(left.resultType) && left.resultType == right.resultType) {
       val equalsExpr = generateEquals(ctx, left, right)
       GeneratedExpression(
-        s"(!${equalsExpr.resultTerm})", equalsExpr.nullTerm, equalsExpr.code, new BooleanType())
+        s"(!${equalsExpr.resultTerm})", equalsExpr.nullTerm, equalsExpr.code, InternalTypes.BOOLEAN)
     }
     // comparable types
-    else if (isComparable(left.resultType) &&
-        isInteroperable(left.resultType, right.resultType)) {
+    else if (isComparable(left.resultType) && left.resultType == right.resultType) {
       generateComparison(ctx, "!=", left, right)
     }
     // non-comparable types
     else {
-      generateOperatorIfNotNull(ctx, new BooleanType(), left, right) {
-        if (isReference(left.resultType)) {
+      generateOperatorIfNotNull(ctx, InternalTypes.BOOLEAN, left, right) {
+        if (isReference(left)) {
           (leftTerm, rightTerm) => s"!($leftTerm.equals($rightTerm))"
         }
-        else if (isReference(right.resultType)) {
+        else if (isReference(right)) {
           (leftTerm, rightTerm) => s"!($rightTerm.equals($leftTerm))"
         }
         else {
@@ -444,7 +439,7 @@ object ScalarOperatorGens {
       left: GeneratedExpression,
       right: GeneratedExpression)
     : GeneratedExpression = {
-    generateOperatorIfNotNull(ctx, new BooleanType(), left, right) {
+    generateOperatorIfNotNull(ctx, InternalTypes.BOOLEAN, left, right) {
       // either side is decimal
       if (isDecimal(left.resultType) || isDecimal(right.resultType)) {
         (leftTerm, rightTerm) => {
@@ -456,13 +451,11 @@ object ScalarOperatorGens {
         (leftTerm, rightTerm) => s"$leftTerm $operator $rightTerm"
       }
       // both sides are temporal of same type
-      else if (isTemporal(left.resultType) &&
-          isInteroperable(left.resultType, right.resultType)) {
+      else if (isTemporal(left.resultType) && left.resultType == right.resultType) {
         (leftTerm, rightTerm) => s"$leftTerm $operator $rightTerm"
       }
       // both sides are boolean
-      else if (isBoolean(left.resultType) &&
-          isInteroperable(left.resultType, right.resultType)) {
+      else if (isBoolean(left.resultType) && left.resultType == right.resultType) {
         operator match {
           case "==" | "!=" => (leftTerm, rightTerm) => s"$leftTerm $operator $rightTerm"
           case ">" | "<" | "<=" | ">=" =>
@@ -472,14 +465,12 @@ object ScalarOperatorGens {
         }
       }
       // both sides are binary type
-      else if (isBinaryString(left.resultType) &&
-          isInteroperable(left.resultType, right.resultType)) {
+      else if (isBinary(left.resultType) && left.resultType == right.resultType) {
         (leftTerm, rightTerm) =>
           s"java.util.Arrays.equals($leftTerm, $rightTerm)"
       }
       // both sides are same comparable type
-      else if (isComparable(left.resultType) &&
-          isInteroperable(left.resultType, right.resultType)) {
+      else if (isComparable(left.resultType) && left.resultType == right.resultType) {
         (leftTerm, rightTerm) =>
           s"(($leftTerm == null) ? (($rightTerm == null) ? 0 : -1) : (($rightTerm == null) ? " +
             s"1 : ($leftTerm.compareTo($rightTerm)))) $operator 0"
@@ -495,19 +486,19 @@ object ScalarOperatorGens {
       ctx: CodeGeneratorContext,
       operand: GeneratedExpression): GeneratedExpression = {
     if (ctx.nullCheck) {
-      GeneratedExpression(operand.nullTerm, NEVER_NULL, operand.code, new BooleanType())
+      GeneratedExpression(operand.nullTerm, NEVER_NULL, operand.code, InternalTypes.BOOLEAN)
     }
-    else if (!ctx.nullCheck && isReference(operand.resultType)) {
+    else if (!ctx.nullCheck && isReference(operand)) {
       val resultTerm = newName("isNull")
       val operatorCode =
         s"""
            |${operand.code}
            |boolean $resultTerm = ${operand.resultTerm} == null;
            |""".stripMargin
-      GeneratedExpression(resultTerm, NEVER_NULL, operatorCode, new BooleanType())
+      GeneratedExpression(resultTerm, NEVER_NULL, operatorCode, InternalTypes.BOOLEAN)
     }
     else {
-      GeneratedExpression("false", NEVER_NULL, operand.code, new BooleanType())
+      GeneratedExpression("false", NEVER_NULL, operand.code, InternalTypes.BOOLEAN)
     }
   }
 
@@ -521,19 +512,19 @@ object ScalarOperatorGens {
            |${operand.code}
            |boolean $resultTerm = !${operand.nullTerm};
            |""".stripMargin.trim
-      GeneratedExpression(resultTerm, NEVER_NULL, operatorCode, new BooleanType())
+      GeneratedExpression(resultTerm, NEVER_NULL, operatorCode, InternalTypes.BOOLEAN)
     }
-    else if (!ctx.nullCheck && isReference(operand.resultType)) {
+    else if (!ctx.nullCheck && isReference(operand)) {
       val resultTerm = newName("result")
       val operatorCode =
         s"""
            |${operand.code}
            |boolean $resultTerm = ${operand.resultTerm} != null;
            |""".stripMargin.trim
-      GeneratedExpression(resultTerm, NEVER_NULL, operatorCode, new BooleanType())
+      GeneratedExpression(resultTerm, NEVER_NULL, operatorCode, InternalTypes.BOOLEAN)
     }
     else {
-      GeneratedExpression("true", NEVER_NULL, operand.code, new BooleanType())
+      GeneratedExpression("true", NEVER_NULL, operand.code, InternalTypes.BOOLEAN)
     }
   }
 
@@ -599,7 +590,7 @@ object ScalarOperatorGens {
          |""".stripMargin.trim
     }
 
-    GeneratedExpression(resultTerm, nullTerm, operatorCode, new BooleanType())
+    GeneratedExpression(resultTerm, nullTerm, operatorCode, InternalTypes.BOOLEAN)
   }
 
   def generateOr(
@@ -664,7 +655,7 @@ object ScalarOperatorGens {
          |""".stripMargin.trim
     }
 
-    GeneratedExpression(resultTerm, nullTerm, operatorCode, new BooleanType())
+    GeneratedExpression(resultTerm, nullTerm, operatorCode, InternalTypes.BOOLEAN)
   }
 
   def generateNot(
@@ -674,7 +665,7 @@ object ScalarOperatorGens {
     // Three-valued logic:
     // no Unknown -> Two-valued logic
     // Unknown -> Unknown
-    generateUnaryOperatorIfNotNull(ctx, new BooleanType(), operand) {
+    generateUnaryOperatorIfNotNull(ctx, InternalTypes.BOOLEAN, operand) {
       operandTerm => s"!($operandTerm)"
     }
   }
@@ -684,7 +675,7 @@ object ScalarOperatorGens {
       operand.resultTerm, // unknown is always false by default
       GeneratedExpression.NEVER_NULL,
       operand.code,
-      new BooleanType())
+      InternalTypes.BOOLEAN)
   }
 
   def generateIsNotTrue(operand: GeneratedExpression): GeneratedExpression = {
@@ -692,7 +683,7 @@ object ScalarOperatorGens {
       s"(!${operand.resultTerm})", // unknown is always false by default
       GeneratedExpression.NEVER_NULL,
       operand.code,
-      new BooleanType())
+      InternalTypes.BOOLEAN)
   }
 
   def generateIsFalse(operand: GeneratedExpression): GeneratedExpression = {
@@ -700,7 +691,7 @@ object ScalarOperatorGens {
       s"(!${operand.resultTerm} && !${operand.nullTerm})",
       GeneratedExpression.NEVER_NULL,
       operand.code,
-      new BooleanType())
+      InternalTypes.BOOLEAN)
   }
 
   def generateIsNotFalse(operand: GeneratedExpression): GeneratedExpression = {
@@ -708,17 +699,17 @@ object ScalarOperatorGens {
       s"(${operand.resultTerm} || ${operand.nullTerm})",
       GeneratedExpression.NEVER_NULL,
       operand.code,
-      new BooleanType())
+      InternalTypes.BOOLEAN)
   }
 
   def generateReinterpret(
       ctx: CodeGeneratorContext,
       operand: GeneratedExpression,
-      targetType: LogicalType)
-    : GeneratedExpression = (operand.resultType.getTypeRoot, targetType.getTypeRoot) match {
+      targetType: InternalType)
+    : GeneratedExpression = (operand.resultType, targetType) match {
 
-    case (_, _) if isInteroperable(operand.resultType, targetType) =>
-      operand.copy(resultType = targetType)
+    case (fromTp, toTp) if fromTp == toTp =>
+      operand
 
     // internal reinterpretation of temporal types
     // Date -> Integer
@@ -734,19 +725,19 @@ object ScalarOperatorGens {
     // Date -> Long
     // Time -> Long
     // Interval Months -> Long
-    case (DATE, INTEGER) |
-         (TIME_WITHOUT_TIME_ZONE, INTEGER) |
-         (TIMESTAMP_WITHOUT_TIME_ZONE, BIGINT) |
-         (INTEGER, DATE) |
-         (INTEGER, TIME_WITHOUT_TIME_ZONE) |
-         (BIGINT, TIMESTAMP_WITHOUT_TIME_ZONE) |
-         (INTEGER, INTERVAL_YEAR_MONTH) |
-         (BIGINT, INTERVAL_DAY_TIME) |
-         (INTERVAL_YEAR_MONTH, INTEGER) |
-         (INTERVAL_DAY_TIME, BIGINT) |
-         (DATE, BIGINT) |
-         (TIME_WITHOUT_TIME_ZONE, BIGINT) |
-         (INTERVAL_YEAR_MONTH, BIGINT) =>
+    case (InternalTypes.DATE, InternalTypes.INT) |
+         (InternalTypes.TIME, InternalTypes.INT) |
+         (_: TimestampType, InternalTypes.LONG) |
+         (InternalTypes.INT, InternalTypes.DATE) |
+         (InternalTypes.INT, InternalTypes.TIME) |
+         (InternalTypes.LONG, _: TimestampType) |
+         (InternalTypes.INT, InternalTypes.INTERVAL_MONTHS) |
+         (InternalTypes.LONG, InternalTypes.INTERVAL_MILLIS) |
+         (InternalTypes.INTERVAL_MONTHS, InternalTypes.INT) |
+         (InternalTypes.INTERVAL_MILLIS, InternalTypes.LONG) |
+         (InternalTypes.DATE, InternalTypes.LONG) |
+         (InternalTypes.TIME, InternalTypes.LONG) |
+         (InternalTypes.INTERVAL_MONTHS, InternalTypes.LONG) =>
       internalExprCasting(operand, targetType)
 
     case (from, to) =>
@@ -756,46 +747,30 @@ object ScalarOperatorGens {
   def generateCast(
       ctx: CodeGeneratorContext,
       operand: GeneratedExpression,
-      targetType: LogicalType)
-    : GeneratedExpression = (operand.resultType.getTypeRoot, targetType.getTypeRoot) match {
+      targetType: InternalType)
+    : GeneratedExpression = (operand.resultType, targetType) match {
 
     // special case: cast from TimeIndicatorTypeInfo to SqlTimeTypeInfo
-    case (TIMESTAMP_WITHOUT_TIME_ZONE, TIMESTAMP_WITHOUT_TIME_ZONE)
-      if operand.resultType.asInstanceOf[TimestampType].getKind == TimestampKind.PROCTIME ||
-          operand.resultType.asInstanceOf[TimestampType].getKind == TimestampKind.ROWTIME ||
-          targetType.asInstanceOf[TimestampType].getKind == TimestampKind.PROCTIME ||
-          targetType.asInstanceOf[TimestampType].getKind == TimestampKind.ROWTIME =>
-      operand.copy(resultType = new TimestampType(3)) // just replace the DataType
-
-    case (TIMESTAMP_WITHOUT_TIME_ZONE, TIMESTAMP_WITH_LOCAL_TIME_ZONE) =>
-      val method = qualifyMethod(BuiltInMethods.TIMESTAMP_TO_TIMESTAMP_WITH_LOCAL_ZONE)
-      generateUnaryOperatorIfNotNull(ctx, targetType, operand) {
-        operandTerm =>
-          val timeZone = ctx.addReusableTimeZone()
-          s"$method($operandTerm, $timeZone)"
-      }
-
-    case (TIMESTAMP_WITH_LOCAL_TIME_ZONE, TIMESTAMP_WITHOUT_TIME_ZONE) =>
-      val method = qualifyMethod(BuiltInMethods.TIMESTAMP_WITH_LOCAL_ZONE_TO_TIMESTAMP)
-      generateUnaryOperatorIfNotNull(ctx, targetType, operand) {
-        operandTerm =>
-          val zone = ctx.addReusableTimeZone()
-          s"$method($operandTerm, $zone)"
-      }
+    case (InternalTypes.PROCTIME_INDICATOR, InternalTypes.TIMESTAMP) |
+         (InternalTypes.ROWTIME_INDICATOR, InternalTypes.TIMESTAMP) |
+         (InternalTypes.TIMESTAMP, InternalTypes.PROCTIME_INDICATOR) |
+         (InternalTypes.TIMESTAMP, InternalTypes.ROWTIME_INDICATOR) =>
+      operand.copy(resultType = InternalTypes.TIMESTAMP) // just replace the DataType
 
     // identity casting
-    case (_, _) if isInteroperable(operand.resultType, targetType) =>
-      operand.copy(resultType = targetType)
+    case (fromTp, toTp) if fromTp == toTp =>
+      operand
 
     // Date/Time/Timestamp -> String
-    case (_, VARCHAR | CHAR) if TypeCheckUtils.isTimePoint(operand.resultType) =>
+    case (left, InternalTypes.STRING) if TypeCheckUtils.isTimePoint(left) =>
       generateStringResultCallIfArgsNotNull(ctx, Seq(operand)) {
         operandTerm =>
-          s"${localTimeToStringCode(ctx, operand.resultType, operandTerm.head)}"
+          val zoneTerm = ctx.addReusableTimeZone()
+          s"${internalToStringCode(left, operandTerm.head, zoneTerm)}"
       }
 
     // Interval Months -> String
-    case (INTERVAL_YEAR_MONTH, VARCHAR | CHAR) =>
+    case (InternalTypes.INTERVAL_MONTHS, InternalTypes.STRING) =>
       val method = qualifyMethod(BuiltInMethod.INTERVAL_YEAR_MONTH_TO_STRING.method)
       val timeUnitRange = qualifyEnum(TimeUnitRange.YEAR_TO_MONTH)
       generateStringResultCallIfArgsNotNull(ctx, Seq(operand)) {
@@ -803,7 +778,7 @@ object ScalarOperatorGens {
       }
 
     // Interval Millis -> String
-    case (INTERVAL_DAY_TIME, VARCHAR | CHAR) =>
+    case (InternalTypes.INTERVAL_MILLIS, InternalTypes.STRING) =>
       val method = qualifyMethod(BuiltInMethod.INTERVAL_DAY_TIME_TO_STRING.method)
       val timeUnitRange = qualifyEnum(TimeUnitRange.DAY_TO_SECOND)
       generateStringResultCallIfArgsNotNull(ctx, Seq(operand)) {
@@ -811,11 +786,11 @@ object ScalarOperatorGens {
       }
 
     // Array -> String
-    case (ARRAY, VARCHAR | CHAR) =>
-      generateCastArrayToString(ctx, operand, operand.resultType.asInstanceOf[ArrayType])
+    case (at: ArrayType, InternalTypes.STRING) =>
+      generateCastArrayToString(ctx, operand, at)
 
     // Byte array -> String UTF-8
-    case (VARBINARY, VARCHAR | CHAR) =>
+    case (InternalTypes.BINARY, InternalTypes.STRING) =>
       val charset = classOf[StandardCharsets].getCanonicalName
       generateStringResultCallIfArgsNotNull(ctx, Seq(operand)) {
         terms => s"(new String(${terms.head}, $charset.UTF_8))"
@@ -823,55 +798,58 @@ object ScalarOperatorGens {
 
 
     // Map -> String
-    case (MAP, VARCHAR | CHAR) =>
-      generateCastMapToString(ctx, operand, operand.resultType.asInstanceOf[MapType])
+    case (mt: MapType, InternalTypes.STRING) =>
+      generateCastMapToString(ctx, operand, mt)
 
     // composite type -> String
-    case (ROW, VARCHAR | CHAR) =>
-      generateCastBaseRowToString(ctx, operand, operand.resultType.asInstanceOf[RowType])
+    case (brt: RowType, InternalTypes.STRING) =>
+      generateCastBaseRowToString(ctx, operand, brt)
 
-    case (ANY, VARCHAR | CHAR) =>
+    case (g: GenericType[_], InternalTypes.STRING) =>
       generateStringResultCallIfArgsNotNull(ctx, Seq(operand)) {
         terms =>
-          val converter = DataFormatConverters.getConverterForDataType(
-            fromLogicalTypeToDataType(operand.resultType))
+          val converter = DataFormatConverters.getConverterForTypeInfo(g.getTypeInfo)
           val converterTerm = ctx.addReusableObject(converter, "converter")
           s""" "" + $converterTerm.toExternal(${terms.head})"""
       }
 
     // * (not Date/Time/Timestamp) -> String
     // TODO: GenericType with Date/Time/Timestamp -> String would call toString implicitly
-    case (_, VARCHAR | CHAR) =>
+    case (_, InternalTypes.STRING) =>
       generateStringResultCallIfArgsNotNull(ctx, Seq(operand)) {
         terms => s""" "" + ${terms.head}"""
       }
 
+    // * -> Character
+    case (_, InternalTypes.CHAR) =>
+      throw new CodeGenException("Character type not supported.")
+
     // String -> Boolean
-    case (VARCHAR | CHAR, BOOLEAN) =>
+    case (InternalTypes.STRING, InternalTypes.BOOLEAN) =>
       generateUnaryOperatorIfNotNull(
         ctx,
         targetType,
         operand,
         resultNullable = true) {
-        operandTerm => s"$STRING_UTIL.toBooleanSQL($operandTerm)"
+        operandTerm => s"$operandTerm.toBooleanSQL()"
       }
 
     // String -> NUMERIC TYPE (not Character)
-    case (VARCHAR | CHAR, _)
+    case (InternalTypes.STRING, _)
       if TypeCheckUtils.isNumeric(targetType) =>
       targetType match {
         case dt: DecimalType =>
-          generateUnaryOperatorIfNotNull(ctx, targetType, operand) { operandTerm =>
-            s"$STRING_UTIL.toDecimal($operandTerm, ${dt.getPrecision}, ${dt.getScale})"
+          generateUnaryOperatorIfNotNull(ctx, targetType, operand) {
+            operandTerm => s"$operandTerm.toDecimal(${dt.precision}, ${dt.scale})"
           }
         case _ =>
-          val methodName = targetType.getTypeRoot match {
-            case TINYINT => "toByte"
-            case SMALLINT => "toShort"
-            case INTEGER => "toInt"
-            case BIGINT => "toLong"
-            case DOUBLE => "toDouble"
-            case FLOAT => "toFloat"
+          val methodName = targetType match {
+            case InternalTypes.BYTE => "toByte"
+            case InternalTypes.SHORT => "toShort"
+            case InternalTypes.INT => "toInt"
+            case InternalTypes.LONG => "toLong"
+            case InternalTypes.DOUBLE => "toDouble"
+            case InternalTypes.FLOAT => "toFloat"
             case _ => null
           }
           assert(methodName != null, "Unexpected data type.")
@@ -880,55 +858,47 @@ object ScalarOperatorGens {
             targetType,
             operand,
             resultNullable = true) {
-            operandTerm => s"($STRING_UTIL.$methodName($operandTerm.trim()))"
+            operandTerm => s"($operandTerm.trim().$methodName())"
           }
       }
 
     // String -> Date
-    case (VARCHAR | CHAR, DATE) =>
+    case (InternalTypes.STRING, InternalTypes.DATE) =>
       generateUnaryOperatorIfNotNull(
         ctx,
         targetType,
         operand,
         resultNullable = true) {
         operandTerm =>
-          s"${qualifyMethod(BuiltInMethods.STRING_TO_DATE)}($operandTerm.toString())"
+          s"${qualifyMethod(BuiltInMethod.STRING_TO_DATE.method)}($operandTerm.toString())"
       }
 
     // String -> Time
-    case (VARCHAR | CHAR, TIME_WITHOUT_TIME_ZONE) =>
+    case (InternalTypes.STRING, InternalTypes.TIME) =>
       generateUnaryOperatorIfNotNull(
         ctx, 
         targetType,
         operand, 
         resultNullable = true) {
         operandTerm =>
-          s"${qualifyMethod(BuiltInMethods.STRING_TO_TIME)}($operandTerm.toString())"
+          s"${qualifyMethod(BuiltInMethod.STRING_TO_TIME.method)}($operandTerm.toString())"
       }
 
     // String -> Timestamp
-    case (VARCHAR | CHAR, TIMESTAMP_WITHOUT_TIME_ZONE) =>
+    case (InternalTypes.STRING, InternalTypes.TIMESTAMP) =>
       generateUnaryOperatorIfNotNull(
         ctx, 
         targetType,
         operand, 
         resultNullable = true) {
         operandTerm =>
-          s"""
-             |${qualifyMethod(BuiltInMethods.STRING_TO_TIMESTAMP)}($operandTerm.toString())
-           """.stripMargin
-      }
-
-    case (VARCHAR | CHAR, TIMESTAMP_WITH_LOCAL_TIME_ZONE) =>
-      generateUnaryOperatorIfNotNull(
-        ctx, targetType, operand, resultNullable = true) { operandTerm =>
-        val zone = ctx.addReusableTimeZone()
-        val method = qualifyMethod(BuiltInMethods.STRING_TO_TIMESTAMP_TIME_ZONE)
-        s"$method($operandTerm.toString(), $zone)"
+          val zoneTerm = ctx.addReusableTimeZone()
+          s"""${qualifyMethod(BuiltInMethods.STRING_TO_TIMESTAMP)}($operandTerm.toString(),
+             | $zoneTerm)""".stripMargin
       }
 
     // String -> binary
-    case (VARCHAR | CHAR, VARBINARY | BINARY) =>
+    case (InternalTypes.STRING, InternalTypes.BINARY) =>
       generateUnaryOperatorIfNotNull(ctx, targetType, operand) {
         operandTerm => s"$operandTerm.getBytes()"
       }
@@ -936,54 +906,53 @@ object ScalarOperatorGens {
     // Note: SQL2003 $6.12 - casting is not allowed between boolean and numeric types.
     //       Calcite does not allow it either.
 
-    // Boolean -> DECIMAL
-    case (BOOLEAN, DECIMAL) =>
-      val dt = targetType.asInstanceOf[DecimalType]
+    // Boolean -> BigDecimal
+    case (InternalTypes.BOOLEAN, dt: DecimalType) =>
       generateUnaryOperatorIfNotNull(ctx, targetType, operand) {
-        operandTerm => s"$DECIMAL_TERM.castFrom($operandTerm, ${dt.getPrecision}, ${dt.getScale})"
+        operandTerm => s"$DECIMAL.castFrom($operandTerm, ${dt.precision}, ${dt.scale})"
       }
 
     // Boolean -> NUMERIC TYPE
-    case (BOOLEAN, _) if TypeCheckUtils.isNumeric(targetType) =>
+    case (InternalTypes.BOOLEAN, _) if TypeCheckUtils.isNumeric(targetType) =>
       val targetTypeTerm = primitiveTypeTermForType(targetType)
       generateUnaryOperatorIfNotNull(ctx, targetType, operand) {
         operandTerm => s"($targetTypeTerm) ($operandTerm ? 1 : 0)"
       }
 
-    // DECIMAL -> Boolean
-    case (DECIMAL, BOOLEAN) =>
+    // BigDecimal -> Boolean
+    case (_: DecimalType, InternalTypes.BOOLEAN) =>
       generateUnaryOperatorIfNotNull(ctx, targetType, operand) {
-        operandTerm => s"$DECIMAL_TERM.castToBoolean($operandTerm)"
+        operandTerm => s"$DECIMAL.castToBoolean($operandTerm)"
       }
 
-    // DECIMAL -> Timestamp
-    case (DECIMAL, TIMESTAMP_WITHOUT_TIME_ZONE) =>
+    // BigDecimal -> Timestamp
+    case (_: DecimalType, InternalTypes.TIMESTAMP) =>
       generateUnaryOperatorIfNotNull(ctx, targetType, operand) {
-        operandTerm => s"$DECIMAL_TERM.castToTimestamp($operandTerm)"
+        operandTerm => s"$DECIMAL.castToTimestamp($operandTerm)"
       }
 
     // NUMERIC TYPE -> Boolean
-    case (_, BOOLEAN) if isNumeric(operand.resultType) =>
+    case (left, InternalTypes.BOOLEAN) if isNumeric(left) =>
       generateUnaryOperatorIfNotNull(ctx, targetType, operand) {
         operandTerm => s"$operandTerm != 0"
       }
 
     // between NUMERIC TYPE | Decimal
-    case  (_, _) if isNumeric(operand.resultType) && isNumeric(targetType) =>
+    case  (left, right) if isNumeric(left) && isNumeric(right) =>
       val operandCasting = numericCasting(operand.resultType, targetType)
       generateUnaryOperatorIfNotNull(ctx, targetType, operand) {
         operandTerm => s"${operandCasting(operandTerm)}"
       }
 
     // Date -> Timestamp
-    case (DATE, TIMESTAMP_WITHOUT_TIME_ZONE) =>
+    case (InternalTypes.DATE, InternalTypes.TIMESTAMP) =>
       generateUnaryOperatorIfNotNull(ctx, targetType, operand) {
         operandTerm =>
           s"$operandTerm * ${classOf[DateTimeUtils].getCanonicalName}.MILLIS_PER_DAY"
       }
 
     // Timestamp -> Date
-    case (TIMESTAMP_WITHOUT_TIME_ZONE, DATE) =>
+    case (InternalTypes.TIMESTAMP, InternalTypes.DATE) =>
       val targetTypeTerm = primitiveTypeTermForType(targetType)
       generateUnaryOperatorIfNotNull(ctx, targetType, operand) {
         operandTerm =>
@@ -992,13 +961,13 @@ object ScalarOperatorGens {
       }
 
     // Time -> Timestamp
-    case (TIME_WITHOUT_TIME_ZONE, TIMESTAMP_WITHOUT_TIME_ZONE) =>
+    case (InternalTypes.TIME, InternalTypes.TIMESTAMP) =>
       generateUnaryOperatorIfNotNull(ctx, targetType, operand) {
         operandTerm => s"$operandTerm"
       }
 
     // Timestamp -> Time
-    case (TIMESTAMP_WITHOUT_TIME_ZONE, TIME_WITHOUT_TIME_ZONE) =>
+    case (InternalTypes.TIMESTAMP, InternalTypes.TIME) =>
       val targetTypeTerm = primitiveTypeTermForType(targetType)
       generateUnaryOperatorIfNotNull(ctx, targetType, operand) {
         operandTerm =>
@@ -1006,98 +975,65 @@ object ScalarOperatorGens {
             s"${classOf[DateTimeUtils].getCanonicalName}.MILLIS_PER_DAY)"
       }
 
-    // Date -> Timestamp with local time zone
-    case (DATE, TIMESTAMP_WITH_LOCAL_TIME_ZONE) =>
-      generateUnaryOperatorIfNotNull(ctx, targetType, operand) { operandTerm =>
-        val zone = ctx.addReusableTimeZone()
-        val method = qualifyMethod(BuiltInMethods.DATE_TO_TIMESTAMP_WITH_LOCAL_TIME_ZONE)
-        s"$method($operandTerm, $zone)"
-      }
-
-    // Timestamp with local time zone -> Date
-    case (TIMESTAMP_WITH_LOCAL_TIME_ZONE, DATE) =>
-      generateUnaryOperatorIfNotNull(ctx, targetType, operand) { operandTerm =>
-        val zone = ctx.addReusableTimeZone()
-        val method = qualifyMethod(BuiltInMethods.TIMESTAMP_WITH_LOCAL_TIME_ZONE_TO_DATE)
-        s"$method($operandTerm, $zone)"
-      }
-
-    // Time -> Timestamp with local time zone
-    case (TIME_WITHOUT_TIME_ZONE, TIMESTAMP_WITH_LOCAL_TIME_ZONE) =>
-      generateUnaryOperatorIfNotNull(ctx, targetType, operand) { operandTerm =>
-        val zone = ctx.addReusableTimeZone()
-        val method = qualifyMethod(BuiltInMethods.TIME_TO_TIMESTAMP_WITH_LOCAL_TIME_ZONE)
-        s"$method($operandTerm, $zone)"
-      }
-
-    // Timestamp with local time zone -> Time
-    case (TIMESTAMP_WITH_LOCAL_TIME_ZONE, TIME_WITHOUT_TIME_ZONE) =>
-      generateUnaryOperatorIfNotNull(ctx, targetType, operand) { operandTerm =>
-        val zone = ctx.addReusableTimeZone()
-        val method = qualifyMethod(BuiltInMethods.TIMESTAMP_WITH_LOCAL_TIME_ZONE_TO_TIME)
-        s"$method($operandTerm, $zone)"
-      }
-
     // Timestamp -> Decimal
-    case  (TIMESTAMP_WITHOUT_TIME_ZONE, DECIMAL) =>
-      val dt = targetType.asInstanceOf[DecimalType]
+    case  (InternalTypes.TIMESTAMP, dt: DecimalType) =>
       generateUnaryOperatorIfNotNull(ctx, targetType, operand) {
-        operandTerm => s"$DECIMAL_TERM.castFrom" +
-          s"(((double) ($operandTerm / 1000.0)), ${dt.getPrecision}, ${dt.getScale})"
+        operandTerm => s"$DECIMAL.castFrom" +
+          s"(((double) ($operandTerm / 1000.0)), ${dt.precision}, ${dt.scale})"
       }
 
     // Tinyint -> Timestamp
     // Smallint -> Timestamp
     // Int -> Timestamp
     // Bigint -> Timestamp
-    case (TINYINT, TIMESTAMP_WITHOUT_TIME_ZONE) |
-         (SMALLINT, TIMESTAMP_WITHOUT_TIME_ZONE) |
-         (INTEGER, TIMESTAMP_WITHOUT_TIME_ZONE) |
-         (BIGINT, TIMESTAMP_WITHOUT_TIME_ZONE) =>
+    case (InternalTypes.BYTE, InternalTypes.TIMESTAMP) |
+         (InternalTypes.SHORT,InternalTypes.TIMESTAMP) |
+         (InternalTypes.INT, InternalTypes.TIMESTAMP) |
+         (InternalTypes.LONG, InternalTypes.TIMESTAMP) =>
       generateUnaryOperatorIfNotNull(ctx, targetType, operand) {
         operandTerm => s"(((long) $operandTerm) * 1000)"
       }
 
     // Float -> Timestamp
     // Double -> Timestamp
-    case (FLOAT, TIMESTAMP_WITHOUT_TIME_ZONE) |
-         (DOUBLE, TIMESTAMP_WITHOUT_TIME_ZONE) =>
+    case (InternalTypes.FLOAT, InternalTypes.TIMESTAMP) |
+         (InternalTypes.DOUBLE, InternalTypes.TIMESTAMP) =>
       generateUnaryOperatorIfNotNull(ctx, targetType, operand) {
         operandTerm => s"((long) ($operandTerm * 1000))"
       }
 
     // Timestamp -> Tinyint
-    case (TIMESTAMP_WITHOUT_TIME_ZONE, TINYINT) =>
+    case (InternalTypes.TIMESTAMP, InternalTypes.BYTE) =>
       generateUnaryOperatorIfNotNull(ctx, targetType, operand) {
         operandTerm => s"((byte) ($operandTerm / 1000))"
       }
 
     // Timestamp -> Smallint
-    case (TIMESTAMP_WITHOUT_TIME_ZONE, SMALLINT) =>
+    case (InternalTypes.TIMESTAMP, InternalTypes.SHORT) =>
       generateUnaryOperatorIfNotNull(ctx, targetType, operand) {
         operandTerm => s"((short) ($operandTerm / 1000))"
       }
 
     // Timestamp -> Int
-    case (TIMESTAMP_WITHOUT_TIME_ZONE, INTEGER) =>
+    case (InternalTypes.TIMESTAMP, InternalTypes.INT) =>
       generateUnaryOperatorIfNotNull(ctx, targetType, operand) {
         operandTerm => s"((int) ($operandTerm / 1000))"
       }
 
     // Timestamp -> BigInt
-    case (TIMESTAMP_WITHOUT_TIME_ZONE, BIGINT) =>
+    case (InternalTypes.TIMESTAMP, InternalTypes.LONG) =>
       generateUnaryOperatorIfNotNull(ctx, targetType, operand) {
         operandTerm => s"((long) ($operandTerm / 1000))"
       }
 
     // Timestamp -> Float
-    case (TIMESTAMP_WITHOUT_TIME_ZONE, FLOAT) =>
+    case (InternalTypes.TIMESTAMP, InternalTypes.FLOAT) =>
       generateUnaryOperatorIfNotNull(ctx, targetType, operand) {
         operandTerm => s"((float) ($operandTerm / 1000.0))"
       }
 
     // Timestamp -> Double
-    case (TIMESTAMP_WITHOUT_TIME_ZONE, DOUBLE) =>
+    case (InternalTypes.TIMESTAMP, InternalTypes.DOUBLE) =>
       generateUnaryOperatorIfNotNull(ctx, targetType, operand) {
         operandTerm => s"((double) ($operandTerm / 1000.0))"
       }
@@ -1111,21 +1047,21 @@ object ScalarOperatorGens {
     // Long -> Interval Millis
     // Interval Months -> Integer
     // Interval Millis -> Long
-    case (DATE, INTEGER) |
-         (TIME_WITHOUT_TIME_ZONE, INTEGER) |
-         (INTEGER, DATE) |
-         (INTEGER, TIME_WITHOUT_TIME_ZONE) |
-         (INTEGER, INTERVAL_YEAR_MONTH) |
-         (BIGINT, INTERVAL_DAY_TIME) |
-         (INTERVAL_YEAR_MONTH, INTEGER) |
-         (INTERVAL_DAY_TIME, BIGINT) =>
+    case (InternalTypes.DATE, InternalTypes.INT) |
+         (InternalTypes.TIME, InternalTypes.INT) |
+         (InternalTypes.INT, InternalTypes.DATE) |
+         (InternalTypes.INT, InternalTypes.TIME) |
+         (InternalTypes.INT, InternalTypes.INTERVAL_MONTHS) |
+         (InternalTypes.LONG, InternalTypes.INTERVAL_MILLIS) |
+         (InternalTypes.INTERVAL_MONTHS, InternalTypes.INT) |
+         (InternalTypes.INTERVAL_MILLIS, InternalTypes.LONG) =>
       internalExprCasting(operand, targetType)
 
     // internal reinterpretation of temporal types
     // Date, Time, Interval Months -> Long
-    case  (DATE, BIGINT)
-          | (TIME_WITHOUT_TIME_ZONE, BIGINT)
-          | (INTERVAL_YEAR_MONTH, BIGINT) =>
+    case  (InternalTypes.DATE, InternalTypes.LONG)
+          | (InternalTypes.TIME, InternalTypes.LONG)
+          | (InternalTypes.INTERVAL_MONTHS, InternalTypes.LONG) =>
       internalExprCasting(operand, targetType)
 
     case (from, to) =>
@@ -1135,7 +1071,7 @@ object ScalarOperatorGens {
   def generateIfElse(
       ctx: CodeGeneratorContext,
       operands: Seq[GeneratedExpression],
-      resultType: LogicalType,
+      resultType: InternalType,
       i: Int = 0)
     : GeneratedExpression = {
     // else part
@@ -1202,7 +1138,7 @@ object ScalarOperatorGens {
     }
 
     checkArgument(operands(1).literal)
-    checkArgument(isCharacterString(operands(1).resultType))
+    checkArgument(operands(1).resultType == InternalTypes.STRING)
     checkArgument(operands.head.resultType.isInstanceOf[RowType])
 
     val fieldName = operands(1).literalValue.get.toString
@@ -1260,13 +1196,13 @@ object ScalarOperatorGens {
 
   def generateRow(
       ctx: CodeGeneratorContext,
-      resultType: LogicalType,
+      resultType: InternalType,
       elements: Seq[GeneratedExpression]): GeneratedExpression = {
     checkArgument(resultType.isInstanceOf[RowType])
     val rowType = resultType.asInstanceOf[RowType]
-    val fieldTypes = rowType.getChildren
+    val fieldTypes = rowType.getFieldTypes
     val isLiteral = elements.forall(e => e.literal)
-    val isPrimitive = fieldTypes.forall(PlannerTypeUtils.isPrimitive)
+    val isPrimitive = fieldTypes.forall(f => f.isInstanceOf[PrimitiveType])
 
     if (isLiteral) {
       // generate literal row
@@ -1358,21 +1294,21 @@ object ScalarOperatorGens {
          |$writerTerm.complete();
        """.stripMargin
 
-    ctx.addReusableMember(s"$BINARY_ROW $rowTerm = new $BINARY_ROW(${rowType.getFieldCount});")
+    ctx.addReusableMember(s"$BINARY_ROW $rowTerm = new $BINARY_ROW(${rowType.getArity});")
     ctx.addReusableMember(s"$writerCls $writerTerm = new $writerCls($rowTerm);")
     GeneratedExpression(rowTerm, GeneratedExpression.NEVER_NULL, code, rowType)
   }
 
   def generateArray(
       ctx: CodeGeneratorContext,
-      resultType: LogicalType,
+      resultType: InternalType,
       elements: Seq[GeneratedExpression]): GeneratedExpression = {
 
     checkArgument(resultType.isInstanceOf[ArrayType])
     val arrayType = resultType.asInstanceOf[ArrayType]
     val elementType = arrayType.getElementType
     val isLiteral = elements.forall(e => e.literal)
-    val isPrimitive = PlannerTypeUtils.isPrimitive(elementType)
+    val isPrimitive = elementType.isInstanceOf[PrimitiveType]
 
     if (isLiteral) {
       // generate literal array
@@ -1401,7 +1337,7 @@ object ScalarOperatorGens {
   private def generatePrimitiveArrayUpdateCode(
       ctx: CodeGeneratorContext,
       arrayTerm: String,
-      elementType: LogicalType,
+      elementType: InternalType,
       elements: Seq[GeneratedExpression]): String = {
     elements.zipWithIndex.map { case (element, idx) =>
       if (element.literal) {
@@ -1538,41 +1474,38 @@ object ScalarOperatorGens {
       ctx: CodeGeneratorContext,
       array: GeneratedExpression)
     : GeneratedExpression = {
-    generateUnaryOperatorIfNotNull(ctx, new IntType(), array) {
+    generateUnaryOperatorIfNotNull(ctx, InternalTypes.INT, array) {
       _ => s"${array.resultTerm}.numElements()"
     }
   }
 
   def generateMap(
       ctx: CodeGeneratorContext,
-      resultType: LogicalType,
+      resultType: InternalType,
       elements: Seq[GeneratedExpression]): GeneratedExpression = {
 
     checkArgument(resultType.isInstanceOf[MapType])
     val mapType = resultType.asInstanceOf[MapType]
-    val baseMap = newName("map")
+    val mapTerm = newName("map")
 
     // prepare map key array
     val keyElements = elements.grouped(2).map { case Seq(key, _) => key }.toSeq
     val keyType = mapType.getKeyType
-    val keyExpr = generateArray(ctx, new ArrayType(keyType), keyElements)
-    val isKeyFixLength = isPrimitive(keyType)
+    val keyExpr = generateArray(ctx, InternalTypes.createArrayType(keyType), keyElements)
+    val isKeyFixLength = keyType.isInstanceOf[PrimitiveType]
 
     // prepare map value array
     val valueElements = elements.grouped(2).map { case Seq(_, value) => value }.toSeq
     val valueType = mapType.getValueType
-    val valueExpr = generateArray(ctx, new ArrayType(valueType), valueElements)
-    val isValueFixLength = isPrimitive(valueType)
+    val valueExpr = generateArray(ctx, InternalTypes.createArrayType(valueType), valueElements)
+    val isValueFixLength = valueType.isInstanceOf[PrimitiveType]
 
     // construct binary map
-    ctx.addReusableMember(s"$BASE_MAP $baseMap = null;")
+    ctx.addReusableMember(s"$BINARY_MAP $mapTerm = null;")
 
     val code = if (isKeyFixLength && isValueFixLength) {
-      val binaryMap = newName("binaryMap")
-      ctx.addReusableMember(s"$BINARY_MAP $binaryMap = null;")
       // the key and value are fixed length, initialize and reuse the map in constructor
-      val init =
-        s"$binaryMap = $BINARY_MAP.valueOf(${keyExpr.resultTerm}, ${valueExpr.resultTerm});"
+      val init = s"$mapTerm = $BINARY_MAP.valueOf(${keyExpr.resultTerm}, ${valueExpr.resultTerm});"
       ctx.addReusableInitStatement(init)
       // there are some non-literal primitive fields need to update
       val keyArrayTerm = newName("keyArray")
@@ -1582,21 +1515,20 @@ object ScalarOperatorGens {
       val valueUpdate = generatePrimitiveArrayUpdateCode(
         ctx, valueArrayTerm, valueType, valueElements)
       s"""
-         |$BINARY_ARRAY $keyArrayTerm = $binaryMap.keyArray();
+         |$BINARY_ARRAY $keyArrayTerm = $mapTerm.keyArray();
          |$keyUpdate
-         |$BINARY_ARRAY $valueArrayTerm = $binaryMap.valueArray();
+         |$BINARY_ARRAY $valueArrayTerm = $mapTerm.valueArray();
          |$valueUpdate
-         |$baseMap = $binaryMap;
        """.stripMargin
     } else {
       // the key or value is not fixed length, re-create the map on every update
       s"""
          |${keyExpr.code}
          |${valueExpr.code}
-         |$baseMap = $BINARY_MAP.valueOf(${keyExpr.resultTerm}, ${valueExpr.resultTerm});
+         |$mapTerm = $BINARY_MAP.valueOf(${keyExpr.resultTerm}, ${valueExpr.resultTerm});
        """.stripMargin
     }
-    GeneratedExpression(baseMap, NEVER_NULL, code, resultType)
+    GeneratedExpression(mapTerm, NEVER_NULL, code, resultType)
   }
 
   def generateMapGet(
@@ -1610,7 +1542,6 @@ object ScalarOperatorGens {
     val values = newName("values")
     val index = newName("index")
     val found = newName("found")
-    val tmpValue = newName("value")
 
     val mapType = map.resultType.asInstanceOf[MapType]
     val keyType = mapType.getKeyType
@@ -1620,59 +1551,42 @@ object ScalarOperatorGens {
     val keyTypeTerm = primitiveTypeTermForType(keyType)
     val valueTypeTerm = primitiveTypeTermForType(valueType)
     val valueDefault = primitiveDefaultValue(valueType)
-    val binaryMapTypeTerm = classOf[BinaryMap].getCanonicalName
-    val binaryMapTerm = newName("binaryMap")
-    val genericMapTypeTerm = classOf[GenericMap].getCanonicalName
-    val genericMapTerm = newName("genericMap")
-    val boxedValueTypeTerm = boxedTypeTermForType(valueType)
 
     val mapTerm = map.resultTerm
 
     val equal = generateEquals(ctx, key, GeneratedExpression(tmpKey, NEVER_NULL, NO_CODE, keyType))
     val code =
       s"""
-         |if ($mapTerm instanceof $binaryMapTypeTerm) {
-         |  $binaryMapTypeTerm $binaryMapTerm = ($binaryMapTypeTerm) $mapTerm;
-         |  final int $length = $binaryMapTerm.numElements();
-         |  final $BINARY_ARRAY $keys = $binaryMapTerm.keyArray();
-         |  final $BINARY_ARRAY $values = $binaryMapTerm.valueArray();
+         |final int $length = $mapTerm.numElements();
+         |final $BINARY_ARRAY $keys = $mapTerm.keyArray();
+         |final $BINARY_ARRAY $values = $mapTerm.valueArray();
          |
-         |  int $index = 0;
-         |  boolean $found = false;
-         |  if (${key.nullTerm}) {
-         |    while ($index < $length && !$found) {
-         |      if ($keys.isNullAt($index)) {
-         |        $found = true;
-         |      } else {
-         |        $index++;
-         |      }
+         |int $index = 0;
+         |boolean $found = false;
+         |if (${key.nullTerm}) {
+         |  while ($index < $length && !$found) {
+         |    if ($keys.isNullAt($index)) {
+         |      $found = true;
+         |    } else {
+         |      $index++;
          |    }
-         |  } else {
-         |    while ($index < $length && !$found) {
-         |      final $keyTypeTerm $tmpKey = ${baseRowFieldReadAccess(ctx, index, keys, keyType)};
-         |      ${equal.code}
-         |      if (${equal.resultTerm}) {
-         |        $found = true;
-         |      } else {
-         |        $index++;
-         |      }
-         |    }
-         |  }
-         |
-         |  if (!$found || $values.isNullAt($index)) {
-         |    $nullTerm = true;
-         |  } else {
-         |    $resultTerm = ${baseRowFieldReadAccess(ctx, index, values, valueType)};
          |  }
          |} else {
-         |  $genericMapTypeTerm $genericMapTerm = ($genericMapTypeTerm) $mapTerm;
-         |  $boxedValueTypeTerm $tmpValue =
-         |    ($boxedValueTypeTerm) $genericMapTerm.get(($keyTypeTerm) ${key.resultTerm});
-         |  if ($tmpValue == null) {
-         |    $nullTerm = true;
-         |  } else {
-         |    $resultTerm = $tmpValue;
+         |  while ($index < $length && !$found) {
+         |    final $keyTypeTerm $tmpKey = ${baseRowFieldReadAccess(ctx, index, keys, keyType)};
+         |    ${equal.code}
+         |    if (${equal.resultTerm}) {
+         |      $found = true;
+         |    } else {
+         |      $index++;
+         |    }
          |  }
+         |}
+         |
+         |if (!$found || $values.isNullAt($index)) {
+         |  $nullTerm = true;
+         |} else {
+         |  $resultTerm = ${baseRowFieldReadAccess(ctx, index, values, valueType)};
          |}
         """.stripMargin
 
@@ -1693,7 +1607,7 @@ object ScalarOperatorGens {
   def generateMapCardinality(
       ctx: CodeGeneratorContext,
       map: GeneratedExpression): GeneratedExpression = {
-    generateUnaryOperatorIfNotNull(ctx, new IntType(), map) {
+    generateUnaryOperatorIfNotNull(ctx, InternalTypes.INT, map) {
       _ => s"${map.resultTerm}.numElements()"
     }
   }
@@ -1705,13 +1619,14 @@ object ScalarOperatorGens {
   private def generateCastStringLiteralToDateTime(
       ctx: CodeGeneratorContext,
       stringLiteral: GeneratedExpression,
-      expectType: LogicalType): GeneratedExpression = {
+      expectType: InternalType): GeneratedExpression = {
     checkArgument(stringLiteral.literal)
     val rightTerm = stringLiteral.resultTerm
     val typeTerm = primitiveTypeTermForType(expectType)
     val defaultTerm = primitiveDefaultValue(expectType)
     val term = newName("stringToTime")
-    val code = stringToLocalTimeCode(expectType, rightTerm)
+    val zoneTerm = ctx.addReusableTimeZone()
+    val code = stringToInternalCode(expectType, rightTerm, zoneTerm)
     val stmt = s"$typeTerm $term = ${stringLiteral.nullTerm} ? $defaultTerm : $code;"
     ctx.addReusableMember(stmt)
     stringLiteral.copy(resultType = expectType, resultTerm = term)
@@ -1747,7 +1662,7 @@ object ScalarOperatorGens {
              """.stripMargin
         val elementExpr = GeneratedExpression(
           elementTerm, elementNullTerm, elementCode, elementType)
-        val castExpr = generateCast(ctx, elementExpr, new VarCharType(VarCharType.MAX_LENGTH))
+        val castExpr = generateCast(ctx, elementExpr, InternalTypes.STRING)
 
         val stmt =
           s"""
@@ -1783,12 +1698,8 @@ object ScalarOperatorGens {
         val builderTerm = newName("builder")
         ctx.addReusableMember(s"$builderCls $builderTerm = new $builderCls();")
 
-        val mapTerm = terms.head
-        val genericMapCls = classOf[GenericMap].getCanonicalName
-        val genericMapTerm = newName("genericMap")
-        val binaryMapCls = classOf[BinaryMap].getCanonicalName
-        val binaryMapTerm = newName("binaryMap")
-        val arrayCls = classOf[BaseArray].getCanonicalName
+        val binaryMapTerm = terms.head
+        val arrayCls = classOf[BinaryArray].getCanonicalName
         val keyArrayTerm = newName("keyArray")
         val valueArrayTerm = newName("valueArray")
 
@@ -1809,7 +1720,7 @@ object ScalarOperatorGens {
              |}
              """.stripMargin
         val keyExpr = GeneratedExpression(keyTerm, keyNullTerm, keyCode, keyType)
-        val keyCastExpr = generateCast(ctx, keyExpr, new VarCharType(VarCharType.MAX_LENGTH))
+        val keyCastExpr = generateCast(ctx, keyExpr, InternalTypes.STRING)
 
         val valueType = mt.getValueType
         val valueCls = primitiveTypeTermForType(valueType)
@@ -1825,47 +1736,41 @@ object ScalarOperatorGens {
              |}
              """.stripMargin
         val valueExpr = GeneratedExpression(valueTerm, valueNullTerm, valueCode, valueType)
-        val valueCastExpr = generateCast(ctx, valueExpr, new VarCharType(VarCharType.MAX_LENGTH))
+        val valueCastExpr = generateCast(ctx, valueExpr, InternalTypes.STRING)
 
         val stmt =
           s"""
              |String $resultTerm;
-             |if ($mapTerm instanceof $binaryMapCls) {
-             |  $binaryMapCls $binaryMapTerm = ($binaryMapCls) $mapTerm;
-             |  $arrayCls $keyArrayTerm = $binaryMapTerm.keyArray();
-             |  $arrayCls $valueArrayTerm = $binaryMapTerm.valueArray();
+             |$arrayCls $keyArrayTerm = $binaryMapTerm.keyArray();
+             |$arrayCls $valueArrayTerm = $binaryMapTerm.valueArray();
              |
-             |  $builderTerm.setLength(0);
-             |  $builderTerm.append("{");
+             |$builderTerm.setLength(0);
+             |$builderTerm.append("{");
              |
-             |  int $numTerm = $binaryMapTerm.numElements();
-             |  for (int $indexTerm = 0; $indexTerm < $numTerm; $indexTerm++) {
-             |    if ($indexTerm != 0) {
-             |      $builderTerm.append(", ");
-             |    }
-             |
-             |    ${keyCastExpr.code}
-             |    if (${keyCastExpr.nullTerm}) {
-             |      $builderTerm.append("null");
-             |    } else {
-             |      $builderTerm.append(${keyCastExpr.resultTerm});
-             |    }
-             |    $builderTerm.append("=");
-             |
-             |    ${valueCastExpr.code}
-             |    if (${valueCastExpr.nullTerm}) {
-             |      $builderTerm.append("null");
-             |    } else {
-             |      $builderTerm.append(${valueCastExpr.resultTerm});
-             |    }
+             |int $numTerm = $binaryMapTerm.numElements();
+             |for (int $indexTerm = 0; $indexTerm < $numTerm; $indexTerm++) {
+             |  if ($indexTerm != 0) {
+             |    $builderTerm.append(", ");
              |  }
-             |  $builderTerm.append("}");
              |
-             |  $resultTerm = $builderTerm.toString();
-             |} else {
-             |  $genericMapCls $genericMapTerm = ($genericMapCls) $mapTerm;
-             |  $resultTerm = $genericMapTerm.toString();
+             |  ${keyCastExpr.code}
+             |  if (${keyCastExpr.nullTerm}) {
+             |    $builderTerm.append("null");
+             |  } else {
+             |    $builderTerm.append(${keyCastExpr.resultTerm});
+             |  }
+             |  $builderTerm.append("=");
+             |
+             |  ${valueCastExpr.code}
+             |  if (${valueCastExpr.nullTerm}) {
+             |    $builderTerm.append("null");
+             |  } else {
+             |    $builderTerm.append(${valueCastExpr.resultTerm});
+             |  }
              |}
+             |$builderTerm.append("}");
+             |
+             |$resultTerm = $builderTerm.toString();
              """.stripMargin
         (stmt, resultTerm)
     }
@@ -1882,7 +1787,7 @@ object ScalarOperatorGens {
 
         val rowTerm = terms.head
 
-        val appendCode = brt.getChildren.zipWithIndex.map {
+        val appendCode = brt.getFieldTypes.zipWithIndex.map {
           case (elementType, idx) =>
             val elementCls = primitiveTypeTermForType(elementType)
             val elementTerm = newName("element")
@@ -1890,7 +1795,7 @@ object ScalarOperatorGens {
               elementTerm, s"$rowTerm.isNullAt($idx)",
               s"$elementCls $elementTerm = ($elementCls) ${baseRowFieldReadAccess(
                 ctx, idx, rowTerm, elementType)};", elementType)
-            val castExpr = generateCast(ctx, elementExpr, new VarCharType(VarCharType.MAX_LENGTH))
+            val castExpr = generateCast(ctx, elementExpr, InternalTypes.STRING)
             s"""
                |${if (idx != 0) s"""$builderTerm.append(",");""" else ""}
                |${castExpr.code}
@@ -1916,7 +1821,7 @@ object ScalarOperatorGens {
       ctx: CodeGeneratorContext,
       left: GeneratedExpression,
       right: GeneratedExpression): GeneratedExpression =
-    generateCallWithStmtIfArgsNotNull(ctx, new BooleanType(), Seq(left, right)) {
+    generateCallWithStmtIfArgsNotNull(ctx, InternalTypes.BOOLEAN, Seq(left, right)) {
       args =>
         val leftTerm = args.head
         val rightTerm = args(1)
@@ -1982,72 +1887,12 @@ object ScalarOperatorGens {
       ctx: CodeGeneratorContext,
       left: GeneratedExpression,
       right: GeneratedExpression): GeneratedExpression =
-    generateCallWithStmtIfArgsNotNull(ctx, new BooleanType(), Seq(left, right)) {
+    generateCallWithStmtIfArgsNotNull(ctx, InternalTypes.BOOLEAN, Seq(left, right)) {
       args =>
         val leftTerm = args.head
         val rightTerm = args(1)
-
         val resultTerm = newName("compareResult")
-        val binaryMapCls = classOf[BinaryMap].getCanonicalName
-
-        val mapType = left.resultType.asInstanceOf[MapType]
-        val mapCls = classOf[java.util.Map[AnyRef, AnyRef]].getCanonicalName
-        val keyCls = boxedTypeTermForType(mapType.getKeyType)
-        val valueCls = boxedTypeTermForType(mapType.getValueType)
-
-        val leftMapTerm = newName("leftMap")
-        val leftKeyTerm = newName("leftKey")
-        val leftValueTerm = newName("leftValue")
-        val leftValueNullTerm = newName("leftValueIsNull")
-        val leftValueExpr =
-          GeneratedExpression(leftValueTerm, leftValueNullTerm, "", mapType.getValueType)
-
-        val rightMapTerm = newName("rightMap")
-        val rightValueTerm = newName("rightValue")
-        val rightValueNullTerm = newName("rightValueIsNull")
-        val rightValueExpr =
-          GeneratedExpression(rightValueTerm, rightValueNullTerm, "", mapType.getValueType)
-
-        val entryTerm = newName("entry")
-        val entryCls = classOf[java.util.Map.Entry[AnyRef, AnyRef]].getCanonicalName
-        val valueEqualsExpr = generateEquals(ctx, leftValueExpr, rightValueExpr)
-
-        val internalTypeCls = classOf[LogicalType].getCanonicalName
-        val keyTypeTerm =
-          ctx.addReusableObject(mapType.getKeyType, "keyType", internalTypeCls)
-        val valueTypeTerm =
-          ctx.addReusableObject(mapType.getValueType, "valueType", internalTypeCls)
-
-        val stmt =
-          s"""
-             |boolean $resultTerm;
-             |if ($leftTerm.numElements() == $rightTerm.numElements()) {
-             |  $resultTerm = true;
-             |  $mapCls $leftMapTerm = $leftTerm.toJavaMap($keyTypeTerm, $valueTypeTerm);
-             |  $mapCls $rightMapTerm = $rightTerm.toJavaMap($keyTypeTerm, $valueTypeTerm);
-             |
-             |  for ($entryCls $entryTerm : $leftMapTerm.entrySet()) {
-             |    $keyCls $leftKeyTerm = ($keyCls) $entryTerm.getKey();
-             |    if ($rightMapTerm.containsKey($leftKeyTerm)) {
-             |      $valueCls $leftValueTerm = ($valueCls) $entryTerm.getValue();
-             |      $valueCls $rightValueTerm = ($valueCls) $rightMapTerm.get($leftKeyTerm);
-             |      boolean $leftValueNullTerm = ($leftValueTerm == null);
-             |      boolean $rightValueNullTerm = ($rightValueTerm == null);
-             |
-             |      ${valueEqualsExpr.code}
-             |      if (!${valueEqualsExpr.resultTerm}) {
-             |        $resultTerm = false;
-             |        break;
-             |      }
-             |    } else {
-             |      $resultTerm = false;
-             |      break;
-             |    }
-             |  }
-             |} else {
-             |  $resultTerm = false;
-             |}
-             """.stripMargin
+        val stmt = s"boolean $resultTerm = $leftTerm.equals($rightTerm);"
         (stmt, resultTerm)
     }
   
@@ -2055,7 +1900,7 @@ object ScalarOperatorGens {
 
   private def generateUnaryOperatorIfNotNull(
       ctx: CodeGeneratorContext,
-      returnType: LogicalType,
+      returnType: InternalType,
       operand: GeneratedExpression,
       resultNullable: Boolean = false)
       (expr: String => String): GeneratedExpression = {
@@ -2066,7 +1911,7 @@ object ScalarOperatorGens {
 
   private def generateOperatorIfNotNull(
       ctx: CodeGeneratorContext,
-      returnType: LogicalType,
+      returnType: InternalType,
       left: GeneratedExpression,
       right: GeneratedExpression,
       resultNullable: Boolean = false)
@@ -2081,48 +1926,48 @@ object ScalarOperatorGens {
 
   private def internalExprCasting(
       expr: GeneratedExpression,
-      targetType: LogicalType)
+      targetType: InternalType)
     : GeneratedExpression = {
     expr.copy(resultType = targetType)
   }
 
   private def numericCasting(
-      operandType: LogicalType,
-      resultType: LogicalType): String => String = {
+      operandType: InternalType,
+      resultType: InternalType): String => String = {
 
     val resultTypeTerm = primitiveTypeTermForType(resultType)
 
-    def decToPrimMethod(targetType: LogicalType): String = targetType.getTypeRoot match {
-      case TINYINT => "castToByte"
-      case SMALLINT => "castToShort"
-      case INTEGER => "castToInt"
-      case BIGINT => "castToLong"
-      case FLOAT => "castToFloat"
-      case DOUBLE => "castToDouble"
-      case BOOLEAN => "castToBoolean"
+    def decToPrimMethod(targetType: InternalType): String = targetType match {
+      case InternalTypes.BYTE => "castToByte"
+      case InternalTypes.SHORT => "castToShort"
+      case InternalTypes.INT => "castToInt"
+      case InternalTypes.LONG => "castToLong"
+      case InternalTypes.FLOAT => "castToFloat"
+      case InternalTypes.DOUBLE => "castToDouble"
+      case InternalTypes.BOOLEAN => "castToBoolean"
       case _ => throw new CodeGenException(s"Unsupported decimal casting type: '$targetType'")
     }
 
     // no casting necessary
-    if (isInteroperable(operandType, resultType)) {
+    if (operandType == resultType) {
       operandTerm => s"$operandTerm"
     }
     // decimal to decimal, may have different precision/scale
     else if (isDecimal(resultType) && isDecimal(operandType)) {
       val dt = resultType.asInstanceOf[DecimalType]
       operandTerm =>
-        s"$DECIMAL_TERM.castToDecimal($operandTerm, ${dt.getPrecision}, ${dt.getScale})"
+        s"$DECIMAL.castToDecimal($operandTerm, ${dt.precision()}, ${dt.scale()})"
     }
     // non_decimal_numeric to decimal
     else if (isDecimal(resultType) && isNumeric(operandType)) {
       val dt = resultType.asInstanceOf[DecimalType]
       operandTerm =>
-        s"$DECIMAL_TERM.castFrom($operandTerm, ${dt.getPrecision}, ${dt.getScale})"
+        s"$DECIMAL.castFrom($operandTerm, ${dt.precision()}, ${dt.scale()})"
     }
     // decimal to non_decimal_numeric
     else if (isNumeric(resultType) && isDecimal(operandType) ) {
       operandTerm =>
-        s"$DECIMAL_TERM.${decToPrimMethod(resultType)}($operandTerm)"
+        s"$DECIMAL.${decToPrimMethod(resultType)}($operandTerm)"
     }
     // numeric to numeric
     // TODO: Create a wrapper layer that handles type conversion between numeric.
@@ -2141,36 +1986,32 @@ object ScalarOperatorGens {
     }
   }
 
-  private def stringToLocalTimeCode(
-      targetType: LogicalType,
-      operandTerm: String): String =
-    targetType.getTypeRoot match {
-      case DATE =>
-        s"${qualifyMethod(BuiltInMethods.STRING_TO_DATE)}($operandTerm.toString())"
-      case TIME_WITHOUT_TIME_ZONE =>
-        s"${qualifyMethod(BuiltInMethods.STRING_TO_TIME)}($operandTerm.toString())"
-      case TIMESTAMP_WITHOUT_TIME_ZONE =>
-        s"""
-           |${qualifyMethod(BuiltInMethods.STRING_TO_TIMESTAMP)}($operandTerm.toString())
-           |""".stripMargin
+  private def stringToInternalCode(
+      targetType: InternalType,
+      operandTerm: String,
+      zoneTerm: String): String =
+    targetType match {
+      case InternalTypes.DATE =>
+        s"${qualifyMethod(BuiltInMethod.STRING_TO_DATE.method)}($operandTerm.toString())"
+      case InternalTypes.TIME =>
+        s"${qualifyMethod(BuiltInMethod.STRING_TO_TIME.method)}($operandTerm.toString())"
+      case InternalTypes.TIMESTAMP =>
+        s"""${qualifyMethod(BuiltInMethods.STRING_TO_TIMESTAMP)}($operandTerm.toString(),
+           | $zoneTerm)""".stripMargin
       case _ => throw new UnsupportedOperationException
     }
 
-  private def localTimeToStringCode(
-      ctx: CodeGeneratorContext,
-      fromType: LogicalType,
-      operandTerm: String): String =
-    fromType.getTypeRoot match {
-      case DATE =>
+  private def internalToStringCode(
+      fromType: InternalType,
+      operandTerm: String,
+      zoneTerm: String): String =
+    fromType match {
+      case InternalTypes.DATE =>
         s"${qualifyMethod(BuiltInMethod.UNIX_DATE_TO_STRING.method)}($operandTerm)"
-      case TIME_WITHOUT_TIME_ZONE =>
+      case InternalTypes.TIME =>
         s"${qualifyMethod(BuiltInMethods.UNIX_TIME_TO_STRING)}($operandTerm)"
-      case TIMESTAMP_WITHOUT_TIME_ZONE => // including rowtime indicator
-        s"${qualifyMethod(BuiltInMethods.TIMESTAMP_TO_STRING)}($operandTerm, 3)"
-      case TIMESTAMP_WITH_LOCAL_TIME_ZONE =>
-        val method = qualifyMethod(BuiltInMethods.TIMESTAMP_TO_STRING_TIME_ZONE)
-        val zone = ctx.addReusableTimeZone()
-        s"$method($operandTerm, 3, $zone)"
+      case _: TimestampType => // including rowtime indicator
+        s"${qualifyMethod(BuiltInMethods.TIMESTAMP_TO_STRING)}($operandTerm, 3, $zoneTerm)"
     }
 
 }

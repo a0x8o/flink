@@ -19,12 +19,8 @@
 package org.apache.flink.table.expressions
 
 import org.apache.flink.table.api.{TableException, ValidationException}
+import org.apache.flink.table.expressions.BuiltInFunctionDefinitions._
 import org.apache.flink.table.expressions.{E => PlannerE, UUID => PlannerUUID}
-import org.apache.flink.table.functions.BuiltInFunctionDefinitions._
-import org.apache.flink.table.functions._
-import org.apache.flink.table.types.logical.LogicalTypeRoot.SYMBOL
-import org.apache.flink.table.types.logical.utils.LogicalTypeChecks._
-import org.apache.flink.table.types.utils.TypeConversions.fromDataTypeToLegacyInfo
 
 import _root_.scala.collection.JavaConverters._
 
@@ -33,18 +29,9 @@ import _root_.scala.collection.JavaConverters._
   */
 class PlannerExpressionConverter private extends ApiExpressionVisitor[PlannerExpression] {
 
-  override def visit(call: CallExpression): PlannerExpression = {
-    translateCall(call.getFunctionDefinition, call.getChildren.asScala)
-  }
-
-  override def visit(unresolvedCall: UnresolvedCallExpression): PlannerExpression = {
-    translateCall(unresolvedCall.getFunctionDefinition, unresolvedCall.getChildren.asScala)
-  }
-
-  private def translateCall(
-      func: FunctionDefinition,
-      children: Seq[Expression])
-    : PlannerExpression = {
+  override def visitCall(call: CallExpression): PlannerExpression = {
+    val func = call.getFunctionDefinition
+    val children = call.getChildren.asScala
 
     // special case: requires individual handling of child expressions
     func match {
@@ -52,8 +39,7 @@ class PlannerExpressionConverter private extends ApiExpressionVisitor[PlannerExp
         assert(children.size == 2)
         return Cast(
           children.head.accept(this),
-          fromDataTypeToLegacyInfo(
-            children(1).asInstanceOf[TypeLiteralExpression].getOutputDataType))
+          children(1).asInstanceOf[TypeLiteralExpression].getType)
 
       case WINDOW_START =>
         assert(children.size == 1)
@@ -91,7 +77,7 @@ class PlannerExpressionConverter private extends ApiExpressionVisitor[PlannerExp
 
       case tfd: TableFunctionDefinition =>
         PlannerTableFunctionCall(
-          tfd.toString,
+          tfd.getName,
           tfd.getTableFunction,
           args,
           tfd.getResultType)
@@ -101,13 +87,6 @@ class PlannerExpressionConverter private extends ApiExpressionVisitor[PlannerExp
           afd.getAggregateFunction,
           afd.getResultTypeInfo,
           afd.getAccumulatorTypeInfo,
-          args)
-
-      case tafd: TableAggregateFunctionDefinition =>
-        AggFunctionCall(
-          tafd.getTableAggregateFunction,
-          tafd.getResultTypeInfo,
-          tafd.getAccumulatorTypeInfo,
           args)
 
       case fd: FunctionDefinition =>
@@ -285,8 +264,12 @@ class PlannerExpressionConverter private extends ApiExpressionVisitor[PlannerExp
             }
 
           case REPLACE =>
-            assert(args.size == 3)
-            Replace(args.head, args(1), args.last)
+            assert(args.size == 2 || args.size == 3)
+            if (args.size == 2) {
+              new Replace(args.head, args.last)
+            } else {
+              Replace(args.head, args(1), args.last)
+            }
 
           case TRIM =>
             assert(args.size == 4)
@@ -678,90 +661,82 @@ class PlannerExpressionConverter private extends ApiExpressionVisitor[PlannerExp
             assert(args.isEmpty)
             CurrentRow()
 
-          case STREAM_RECORD_TIMESTAMP =>
-            assert(args.isEmpty)
-            StreamRecordTimestamp()
-
           case _ =>
             throw new TableException(s"Unsupported function definition: $fd")
         }
     }
   }
 
-  override def visit(literal: ValueLiteralExpression): PlannerExpression = {
-    if (hasRoot(literal.getOutputDataType.getLogicalType, SYMBOL)) {
-      val plannerSymbol = getSymbol(literal.getValueAs(classOf[TableSymbol]).get())
-      return SymbolPlannerExpression(plannerSymbol)
+  override def visitSymbol(symbolExpression: SymbolExpression): PlannerExpression = {
+    val plannerSymbol = symbolExpression.getSymbol match {
+      case TimeIntervalUnit.YEAR => PlannerTimeIntervalUnit.YEAR
+      case TimeIntervalUnit.YEAR_TO_MONTH => PlannerTimeIntervalUnit.YEAR_TO_MONTH
+      case TimeIntervalUnit.QUARTER => PlannerTimeIntervalUnit.QUARTER
+      case TimeIntervalUnit.MONTH => PlannerTimeIntervalUnit.MONTH
+      case TimeIntervalUnit.WEEK => PlannerTimeIntervalUnit.WEEK
+      case TimeIntervalUnit.DAY => PlannerTimeIntervalUnit.DAY
+      case TimeIntervalUnit.DAY_TO_HOUR => PlannerTimeIntervalUnit.DAY_TO_HOUR
+      case TimeIntervalUnit.DAY_TO_MINUTE => PlannerTimeIntervalUnit.DAY_TO_MINUTE
+      case TimeIntervalUnit.DAY_TO_SECOND => PlannerTimeIntervalUnit.DAY_TO_SECOND
+      case TimeIntervalUnit.HOUR => PlannerTimeIntervalUnit.HOUR
+      case TimeIntervalUnit.SECOND => PlannerTimeIntervalUnit.SECOND
+      case TimeIntervalUnit.HOUR_TO_MINUTE => PlannerTimeIntervalUnit.HOUR_TO_MINUTE
+      case TimeIntervalUnit.HOUR_TO_SECOND => PlannerTimeIntervalUnit.HOUR_TO_SECOND
+      case TimeIntervalUnit.MINUTE => PlannerTimeIntervalUnit.MINUTE
+      case TimeIntervalUnit.MINUTE_TO_SECOND => PlannerTimeIntervalUnit.MINUTE_TO_SECOND
+      case TimePointUnit.YEAR => PlannerTimePointUnit.YEAR
+      case TimePointUnit.MONTH => PlannerTimePointUnit.MONTH
+      case TimePointUnit.DAY => PlannerTimePointUnit.DAY
+      case TimePointUnit.HOUR => PlannerTimePointUnit.HOUR
+      case TimePointUnit.MINUTE => PlannerTimePointUnit.MINUTE
+      case TimePointUnit.SECOND => PlannerTimePointUnit.SECOND
+      case TimePointUnit.QUARTER => PlannerTimePointUnit.QUARTER
+      case TimePointUnit.WEEK => PlannerTimePointUnit.WEEK
+      case TimePointUnit.MILLISECOND => PlannerTimePointUnit.MILLISECOND
+      case TimePointUnit.MICROSECOND => PlannerTimePointUnit.MICROSECOND
+
+      case _ =>
+        throw new TableException("Unsupported symbol: " + symbolExpression.getSymbol)
     }
 
-    val typeInfo = fromDataTypeToLegacyInfo(literal.getOutputDataType)
-    if (literal.isNull) {
-      Null(typeInfo)
+    SymbolPlannerExpression(plannerSymbol)
+  }
+
+  override def visitValueLiteral(literal: ValueLiteralExpression): PlannerExpression = {
+    if (literal.getValue == null) {
+      Null(literal.getType)
     } else {
-      Literal(
-        literal.getValueAs(typeInfo.getTypeClass).get(),
-        typeInfo)
+      Literal(literal.getValue, literal.getType)
     }
   }
 
-  private def getSymbol(symbol: TableSymbol): PlannerSymbol = symbol match {
-    case TimeIntervalUnit.YEAR => PlannerTimeIntervalUnit.YEAR
-    case TimeIntervalUnit.YEAR_TO_MONTH => PlannerTimeIntervalUnit.YEAR_TO_MONTH
-    case TimeIntervalUnit.QUARTER => PlannerTimeIntervalUnit.QUARTER
-    case TimeIntervalUnit.MONTH => PlannerTimeIntervalUnit.MONTH
-    case TimeIntervalUnit.WEEK => PlannerTimeIntervalUnit.WEEK
-    case TimeIntervalUnit.DAY => PlannerTimeIntervalUnit.DAY
-    case TimeIntervalUnit.DAY_TO_HOUR => PlannerTimeIntervalUnit.DAY_TO_HOUR
-    case TimeIntervalUnit.DAY_TO_MINUTE => PlannerTimeIntervalUnit.DAY_TO_MINUTE
-    case TimeIntervalUnit.DAY_TO_SECOND => PlannerTimeIntervalUnit.DAY_TO_SECOND
-    case TimeIntervalUnit.HOUR => PlannerTimeIntervalUnit.HOUR
-    case TimeIntervalUnit.SECOND => PlannerTimeIntervalUnit.SECOND
-    case TimeIntervalUnit.HOUR_TO_MINUTE => PlannerTimeIntervalUnit.HOUR_TO_MINUTE
-    case TimeIntervalUnit.HOUR_TO_SECOND => PlannerTimeIntervalUnit.HOUR_TO_SECOND
-    case TimeIntervalUnit.MINUTE => PlannerTimeIntervalUnit.MINUTE
-    case TimeIntervalUnit.MINUTE_TO_SECOND => PlannerTimeIntervalUnit.MINUTE_TO_SECOND
-    case TimePointUnit.YEAR => PlannerTimePointUnit.YEAR
-    case TimePointUnit.MONTH => PlannerTimePointUnit.MONTH
-    case TimePointUnit.DAY => PlannerTimePointUnit.DAY
-    case TimePointUnit.HOUR => PlannerTimePointUnit.HOUR
-    case TimePointUnit.MINUTE => PlannerTimePointUnit.MINUTE
-    case TimePointUnit.SECOND => PlannerTimePointUnit.SECOND
-    case TimePointUnit.QUARTER => PlannerTimePointUnit.QUARTER
-    case TimePointUnit.WEEK => PlannerTimePointUnit.WEEK
-    case TimePointUnit.MILLISECOND => PlannerTimePointUnit.MILLISECOND
-    case TimePointUnit.MICROSECOND => PlannerTimePointUnit.MICROSECOND
-
-    case _ =>
-      throw new TableException("Unsupported symbol: " + symbol)
-  }
-
-  override def visit(fieldReference: FieldReferenceExpression): PlannerExpression = {
+  override def visitFieldReference(fieldReference: FieldReferenceExpression): PlannerExpression = {
     PlannerResolvedFieldReference(
       fieldReference.getName,
-      fromDataTypeToLegacyInfo(fieldReference.getOutputDataType))
+      fieldReference.getResultType)
   }
 
-  override def visit(fieldReference: UnresolvedReferenceExpression)
+  override def visitUnresolvedReference(fieldReference: UnresolvedReferenceExpression)
     : PlannerExpression = {
     UnresolvedFieldReference(fieldReference.getName)
   }
 
-  override def visit(typeLiteral: TypeLiteralExpression): PlannerExpression = {
+  override def visitTypeLiteral(typeLiteral: TypeLiteralExpression): PlannerExpression = {
     throw new TableException("Unsupported type literal expression: " + typeLiteral)
   }
 
-  override def visit(tableRef: TableReferenceExpression): PlannerExpression = {
+  override def visitTableReference(tableRef: TableReferenceExpression): PlannerExpression = {
     TableReference(
       tableRef.asInstanceOf[TableReferenceExpression].getName,
-      tableRef.asInstanceOf[TableReferenceExpression].getQueryOperation
+      tableRef.asInstanceOf[TableReferenceExpression].getTableOperation
     )
   }
 
-  override def visit(localReference: LocalReferenceExpression): PlannerExpression =
+  override def visitLocalReference(localReference: LocalReferenceExpression): PlannerExpression =
     throw new TableException(
       "Local reference should be handled individually by a call: " + localReference)
 
-  override def visit(lookupCall: LookupCallExpression): PlannerExpression =
+  override def visitLookupCall(lookupCall: LookupCallExpression): PlannerExpression =
     throw new TableException("Unsupported function call: " + lookupCall)
 
   override def visitNonApiExpression(other: Expression): PlannerExpression = {
@@ -786,7 +761,7 @@ class PlannerExpressionConverter private extends ApiExpressionVisitor[PlannerExp
 
   private def translateWindowReference(reference: Expression): PlannerExpression = reference match {
     case expr : LocalReferenceExpression =>
-      WindowReference(expr.getName, Some(fromDataTypeToLegacyInfo(expr.getOutputDataType)))
+      WindowReference(expr.getName, Some(expr.getResultType))
     //just because how the datastream is converted to table
     case expr: UnresolvedReferenceExpression =>
       UnresolvedFieldReference(expr.getName)

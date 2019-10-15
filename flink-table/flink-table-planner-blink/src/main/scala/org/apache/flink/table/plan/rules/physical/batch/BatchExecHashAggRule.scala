@@ -17,15 +17,14 @@
  */
 package org.apache.flink.table.plan.rules.physical.batch
 
-import org.apache.flink.table.api.OptimizerConfigOptions
+import org.apache.flink.table.`type`.TypeConverters
+import org.apache.flink.table.api.{OperatorType, PlannerConfigOptions}
 import org.apache.flink.table.calcite.FlinkContext
 import org.apache.flink.table.plan.`trait`.FlinkRelDistribution
 import org.apache.flink.table.plan.nodes.FlinkConventions
 import org.apache.flink.table.plan.nodes.logical.FlinkLogicalAggregate
 import org.apache.flink.table.plan.nodes.physical.batch.{BatchExecHashAggregate, BatchExecLocalHashAggregate}
-import org.apache.flink.table.plan.util.{AggregateUtil, OperatorType}
-import org.apache.flink.table.types.LogicalTypeDataTypeConverter.fromDataTypeToLogicalType
-import org.apache.flink.table.util.TableConfigUtils.isOperatorDisabled
+import org.apache.flink.table.plan.util.AggregateUtil
 
 import org.apache.calcite.plan.RelOptRule.{any, operand}
 import org.apache.calcite.plan.{RelOptRule, RelOptRuleCall}
@@ -43,16 +42,16 @@ import scala.collection.JavaConversions._
   *         +- input of agg
   * }}}
   * when all aggregate functions are mergeable
-  * and [[OptimizerConfigOptions.SQL_OPTIMIZER_AGG_PHASE_STRATEGY]] is TWO_PHASE, or
+  * and [[PlannerConfigOptions.SQL_OPTIMIZER_AGG_PHASE_ENFORCER]] is TWO_PHASE, or
   * {{{
   *   BatchExecHashAggregate
   *   +- BatchExecExchange (hash by group keys if group keys is not empty, else singleton)
   *      +- input of agg
   * }}}
   * when some aggregate functions are not mergeable
-  * or [[OptimizerConfigOptions.SQL_OPTIMIZER_AGG_PHASE_STRATEGY]] is ONE_PHASE.
+  * or [[PlannerConfigOptions.SQL_OPTIMIZER_AGG_PHASE_ENFORCER]] is ONE_PHASE.
   *
-  * Notes: if [[OptimizerConfigOptions.SQL_OPTIMIZER_AGG_PHASE_STRATEGY]] is NONE,
+  * Notes: if [[PlannerConfigOptions.SQL_OPTIMIZER_AGG_PHASE_ENFORCER]] is NONE,
   * this rule will try to create two possibilities above, and chooses the best one based on cost.
   */
 class BatchExecHashAggRule
@@ -64,7 +63,7 @@ class BatchExecHashAggRule
 
   override def matches(call: RelOptRuleCall): Boolean = {
     val tableConfig = call.getPlanner.getContext.asInstanceOf[FlinkContext].getTableConfig
-    if (isOperatorDisabled(tableConfig, OperatorType.HashAgg)) {
+    if (!tableConfig.isOperatorEnabled(OperatorType.HashAgg)) {
       return false
     }
     val agg: FlinkLogicalAggregate = call.rel(0)
@@ -100,7 +99,7 @@ class BatchExecHashAggRule
         groupSet,
         auxGroupSet,
         aggFunctions,
-        aggBufferTypes.map(_.map(fromDataTypeToLogicalType)))
+        aggBufferTypes.map(_.map(TypeConverters.createInternalTypeFromTypeInfo)))
       val localRequiredTraitSet = input.getTraitSet.replace(FlinkConventions.BATCH_PHYSICAL)
       val newInput = RelOptRule.convert(input, localRequiredTraitSet)
       val providedTraitSet = localRequiredTraitSet

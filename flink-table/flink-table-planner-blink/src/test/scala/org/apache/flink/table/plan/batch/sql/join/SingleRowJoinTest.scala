@@ -19,7 +19,6 @@
 package org.apache.flink.table.plan.batch.sql.join
 
 import org.apache.flink.api.scala._
-import org.apache.flink.table.api.scala._
 import org.apache.flink.table.util.TableTestBase
 
 import org.junit.Test
@@ -31,6 +30,13 @@ class SingleRowJoinTest extends TableTestBase {
     val util = batchTestUtil()
     util.addTableSource[(Int, Int)]("A", 'a1, 'a2)
     util.verifyPlan("SELECT a1, a_sum FROM A, (SELECT SUM(a1) + SUM(a2) AS a_sum FROM A)")
+  }
+
+  @Test
+  def testSingleRowEquiJoin(): Unit = {
+    val util = batchTestUtil()
+    util.addTableSource[(Int, String)]("A", 'a1, 'a2)
+    util.verifyPlan("SELECT a1, a2 FROM A, (SELECT COUNT(a1) AS cnt FROM A) WHERE a1 = cnt")
   }
 
   @Test

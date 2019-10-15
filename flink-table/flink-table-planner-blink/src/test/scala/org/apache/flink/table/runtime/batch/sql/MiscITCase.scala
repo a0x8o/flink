@@ -21,7 +21,7 @@ package org.apache.flink.table.runtime.batch.sql
 import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.api.java.typeutils.RowTypeInfo
 import org.apache.flink.api.scala._
-import org.apache.flink.table.api.ExecutionConfigOptions.SQL_RESOURCE_DEFAULT_PARALLELISM
+import org.apache.flink.table.api.{TableConfigOptions, TableException}
 import org.apache.flink.table.runtime.batch.sql.join.JoinITCaseHelper
 import org.apache.flink.table.runtime.batch.sql.join.JoinType.SortMergeJoin
 import org.apache.flink.table.runtime.utils.BatchTestBase
@@ -43,8 +43,7 @@ class MiscITCase extends BatchTestBase {
   private var newTableId = 0
 
   @Before
-  override def before(): Unit = {
-    super.before()
+  def before(): Unit = {
     registerCollection("testTable", buildInData, buildInType, "a,b,c,d,e,f,g,h,i,j")
   }
 
@@ -317,8 +316,7 @@ class MiscITCase extends BatchTestBase {
     )
   }
 
-  @Ignore // TODO support lazy from source
-  @Test
+  @Test(expected = classOf[TableException])
   def testExcept(): Unit = {
     checkQuery2(
       Seq((1, "a"), (2, "b"), (3, "c"), (4, "d")),
@@ -376,8 +374,7 @@ class MiscITCase extends BatchTestBase {
     )
   }
 
-  @Ignore // TODO support lazy from source
-  @Test
+  @Test(expected = classOf[TableException])
   def testIntersect(): Unit = {
     checkQuery(
       Seq((1, "a"), (2, "b"), (3, "c"), (4, "d")),
@@ -417,7 +414,7 @@ class MiscITCase extends BatchTestBase {
 
   @Test
   def testOrderByAgg(): Unit = {
-    tEnv.getConfig.getConfiguration.setInteger(SQL_RESOURCE_DEFAULT_PARALLELISM, 1)
+    tEnv.getConfig.getConf.setInteger(TableConfigOptions.SQL_RESOURCE_DEFAULT_PARALLELISM, 1)
     env.setParallelism(1)
     checkQuery(
       Seq((1, 10), (1, 20), (10, 1), (10, 2)),
@@ -512,8 +509,7 @@ class MiscITCase extends BatchTestBase {
     )
   }
 
-  @Ignore // TODO support lazy from source
-  @Test
+  @Test(expected = classOf[TableException])
   def testCompareFunctionWithSubquery(): Unit = {
     checkResult("SELECT " +
         "b IN (3, 4, 5)," +

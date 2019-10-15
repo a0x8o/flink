@@ -21,14 +21,12 @@ package org.apache.flink.table.codegen
 import org.apache.flink.api.common.functions.{MapFunction, RichMapFunction}
 import org.apache.flink.configuration.Configuration
 import org.apache.flink.metrics.MetricGroup
+import org.apache.flink.table.`type`.RowType
 import org.apache.flink.table.api.{TableConfig, TableException}
 import org.apache.flink.table.calcite.FlinkTypeFactory
 import org.apache.flink.table.codegen.FunctionCodeGenerator.generateFunction
-import org.apache.flink.table.dataformat.BinaryStringUtil.safeToString
 import org.apache.flink.table.dataformat.{BinaryString, Decimal, GenericRow}
 import org.apache.flink.table.functions.{FunctionContext, UserDefinedFunction}
-import org.apache.flink.table.runtime.functions.SqlDateTimeUtils
-import org.apache.flink.table.types.logical.RowType
 
 import org.apache.calcite.avatica.util.ByteString
 import org.apache.calcite.rex.{RexBuilder, RexExecutor, RexNode}
@@ -36,7 +34,6 @@ import org.apache.calcite.sql.`type`.SqlTypeName
 import org.apache.commons.lang3.StringEscapeUtils
 
 import java.io.File
-import java.util.TimeZone
 
 import scala.collection.JavaConverters._
 
@@ -52,7 +49,7 @@ class ExpressionReducer(
     allowChangeNullability: Boolean = false)
   extends RexExecutor {
 
-  private val EMPTY_ROW_TYPE = RowType.of()
+  private val EMPTY_ROW_TYPE = new RowType()
   private val EMPTY_ROW = new GenericRow(0)
 
   override def reduce(
@@ -72,8 +69,8 @@ class ExpressionReducer(
       case (_, e) => Some(e)
     }
 
-    val literalTypes = literals.map(e => FlinkTypeFactory.toLogicalType(e.getType))
-    val resultType = RowType.of(literalTypes: _*)
+    val literalTypes = literals.map(e => FlinkTypeFactory.toInternalType(e.getType))
+    val resultType =  new RowType(literalTypes: _*)
 
     // generate MapFunction
     val ctx = new ConstantCodeGeneratorContext(config)
@@ -102,11 +99,7 @@ class ExpressionReducer(
       case _ => throw new TableException("RichMapFunction[GenericRow, GenericRow] required here")
     }
 
-    val parameters = if (config.getConfiguration != null) {
-      config.getConfiguration
-    } else {
-      new Configuration()
-    }
+    val parameters = if (config.getConf != null) config.getConf else new Configuration()
     val reduced = try {
       richMapFunction.open(parameters)
       // execute
@@ -130,7 +123,8 @@ class ExpressionReducer(
           reducedValues.add(unreduced)
         case SqlTypeName.VARCHAR | SqlTypeName.CHAR =>
           val escapeVarchar = StringEscapeUtils
-            .escapeJava(safeToString(reduced.getField(reducedIdx).asInstanceOf[BinaryString]))
+            .escapeJava(
+              BinaryString.safeToString(reduced.getField(reducedIdx).asInstanceOf[BinaryString]))
           reducedValues.add(maySkipNullLiteralReduce(rexBuilder, escapeVarchar, unreduced))
           reducedIdx += 1
         case SqlTypeName.VARBINARY | SqlTypeName.BINARY =>
@@ -139,16 +133,6 @@ class ExpressionReducer(
             new ByteString(reduced.getField(reducedIdx).asInstanceOf[Array[Byte]])
           } else {
             reducedValue
-          }
-          reducedValues.add(maySkipNullLiteralReduce(rexBuilder, value, unreduced))
-          reducedIdx += 1
-        case SqlTypeName.TIMESTAMP_WITH_LOCAL_TIME_ZONE =>
-          val value = if (!reduced.isNullAt(reducedIdx)) {
-            val mills = reduced.getField(reducedIdx).asInstanceOf[Long]
-            Long.box(SqlDateTimeUtils.timestampWithLocalZoneToTimestamp(
-              mills, TimeZone.getTimeZone(config.getLocalTimeZone)))
-          } else {
-            null
           }
           reducedValues.add(maySkipNullLiteralReduce(rexBuilder, value, unreduced))
           reducedIdx += 1
@@ -218,14 +202,16 @@ class ExpressionReducer(
   *
   * @param parameters User-defined configuration set in [[TableConfig]].
   */
-class ConstantFunctionContext(parameters: Configuration) extends FunctionContext(null) {
+private class ConstantFunctionContext(parameters: Configuration) extends FunctionContext(null) {
 
   override def getMetricGroup: MetricGroup = {
-    throw new UnsupportedOperationException("getMetricGroup is not supported when optimizing")
+    throw new UnsupportedOperationException(
+      "getMetricGroup is not supported when reducing expression")
   }
 
   override def getCachedFile(name: String): File = {
-    throw new UnsupportedOperationException("getCachedFile is not supported when optimizing")
+    throw new UnsupportedOperationException(
+      "getCachedFile is not supported when reducing expression")
   }
 
   /**
@@ -244,7 +230,7 @@ class ConstantFunctionContext(parameters: Configuration) extends FunctionContext
 /**
   * Constant expression code generator context.
   */
-class ConstantCodeGeneratorContext(tableConfig: TableConfig)
+private class ConstantCodeGeneratorContext(tableConfig: TableConfig)
   extends CodeGeneratorContext(tableConfig) {
   override def addReusableFunction(
       function: UserDefinedFunction,

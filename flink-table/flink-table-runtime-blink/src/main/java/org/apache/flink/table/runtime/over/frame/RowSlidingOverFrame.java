@@ -21,7 +21,7 @@ package org.apache.flink.table.runtime.over.frame;
 import org.apache.flink.table.dataformat.BaseRow;
 import org.apache.flink.table.generated.GeneratedAggsHandleFunction;
 import org.apache.flink.table.runtime.util.ResettableExternalBuffer;
-import org.apache.flink.table.types.logical.RowType;
+import org.apache.flink.table.type.RowType;
 
 /**
  * The row sliding window frame calculates frames with the following SQL form:

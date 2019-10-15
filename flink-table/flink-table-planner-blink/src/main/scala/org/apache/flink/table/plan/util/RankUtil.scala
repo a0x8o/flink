@@ -18,7 +18,7 @@
 
 package org.apache.flink.table.plan.util
 
-import org.apache.flink.table.api.TableConfig
+import org.apache.flink.table.api.{PlannerConfigOptions, TableConfig}
 import org.apache.flink.table.codegen.ExpressionReducer
 import org.apache.flink.table.plan.nodes.calcite.Rank
 import org.apache.flink.table.runtime.rank.{ConstantRankRange, ConstantRankRangeWithoutEnd, RankRange, VariableRankRange}
@@ -70,8 +70,7 @@ object RankUtil {
       config: TableConfig): (Option[RankRange], Option[RexNode]) = {
 
     // Converts the condition to conjunctive normal form (CNF)
-    val cnfNodeCount = config.getConfiguration.getInteger(
-      FlinkRexUtil.SQL_OPTIMIZER_CNF_NODES_LIMIT)
+    val cnfNodeCount = config.getConf.getInteger(PlannerConfigOptions.SQL_OPTIMIZER_CNF_NODES_LIMIT)
     val cnfCondition = FlinkRexUtil.toCnf(rexBuilder, cnfNodeCount, predicate)
 
     // split the condition into sort limit condition and other condition
@@ -293,16 +292,6 @@ object RankUtil {
     }
 
     literals.head
-  }
-
-  def getRankNumberColumnIndex(rank: Rank): Option[Int] = {
-    if (rank.outputRankNumber) {
-      require(rank.getRowType.getFieldCount == rank.getInput.getRowType.getFieldCount + 1)
-      Some(rank.getRowType.getFieldCount - 1)
-    } else {
-      require(rank.getRowType.getFieldCount == rank.getInput.getRowType.getFieldCount)
-      None
-    }
   }
 
 }

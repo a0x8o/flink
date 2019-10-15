@@ -34,7 +34,7 @@ import java.io.Serializable;
  *
  * 		@Override
  * 		void onFailure(Throwable failure) throws IOException {
- * 			if (ExceptionUtils.findThrowable(failure, WriteTimeoutException.class).isPresent()) {
+ * 			if (ExceptionUtils.containsThrowable(failure, WriteTimeoutException.class)) {
  * 				// drop exception
  * 			} else {
  * 				// for all other failures, fail the sink;

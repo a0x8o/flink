@@ -25,9 +25,6 @@ import org.apache.flink.table.api.scala._
 import org.apache.flink.table.utils._
 import org.apache.flink.types.Row
 import org.junit.Test
-import org.mockito.Mockito.{mock, when}
-import org.apache.flink.streaming.api.datastream.{DataStream => JDataStream}
-import org.apache.flink.streaming.api.scala.DataStream
 
 class CorrelateStringExpressionTest extends TableTestBase {
 
@@ -35,15 +32,9 @@ class CorrelateStringExpressionTest extends TableTestBase {
   def testCorrelateJoinsWithJoinLateral(): Unit = {
 
     val util = streamTestUtil()
+    val sTab = util.addTable[(Int, Long, String)]('a, 'b, 'c)
     val typeInfo = new RowTypeInfo(Seq(Types.INT, Types.LONG, Types.STRING): _*)
-    val jDs = mock(classOf[JDataStream[Row]])
-    when(jDs.getType).thenReturn(typeInfo)
-
-    val sDs = mock(classOf[DataStream[Row]])
-    when(sDs.javaStream).thenReturn(jDs)
-
-    val jTab = util.javaTableEnv.fromDataStream(jDs, "a, b, c")
-    val sTab = util.tableEnv.fromDataStream(sDs, 'a, 'b, 'c)
+    val jTab = util.addJavaTable[Row](typeInfo,"MyTab","a, b, c")
 
     // test cross join
     val func1 = new TableFunc1
@@ -104,15 +95,9 @@ class CorrelateStringExpressionTest extends TableTestBase {
   def testFlatMap(): Unit = {
 
     val util = streamTestUtil()
+    val sTab = util.addTable[(Int, Long, String)]('a, 'b, 'c)
     val typeInfo = new RowTypeInfo(Seq(Types.INT, Types.LONG, Types.STRING): _*)
-    val jDs = mock(classOf[JDataStream[Row]])
-    when(jDs.getType).thenReturn(typeInfo)
-
-    val sDs = mock(classOf[DataStream[Row]])
-    when(sDs.javaStream).thenReturn(jDs)
-
-    val jTab = util.javaTableEnv.fromDataStream(jDs, "a, b, c")
-    val sTab = util.tableEnv.fromDataStream(sDs, 'a, 'b, 'c)
+    val jTab = util.addJavaTable[Row](typeInfo,"MyTab","a, b, c")
 
     // test flatMap
     val func1 = new TableFunc1

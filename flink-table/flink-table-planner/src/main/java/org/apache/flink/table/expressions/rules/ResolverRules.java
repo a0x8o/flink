@@ -63,9 +63,10 @@ public final class ResolverRules {
 	public static final ResolverRule EXPAND_COLUMN_FUNCTIONS = new ExpandColumnFunctionsRule();
 
 	/**
-	 * Looks up unresolved calls of built-in functions to make them fully qualified.
+	 * Checks that the output of {@link org.apache.flink.table.expressions.ExpressionResolver} has no more unresolved
+	 * expressions. See {@link VerifyNoUnresolvedExpressionsRule} for details.
 	 */
-	public static final ResolverRule QUALIFY_BUILT_IN_FUNCTIONS = new QualifyBuiltInFunctionsRule();
+	public static final ResolverRule VERIFY_NO_MORE_UNRESOLVED_EXPRESSIONS = new VerifyNoUnresolvedExpressionsRule();
 
 	private ResolverRules() {
 	}

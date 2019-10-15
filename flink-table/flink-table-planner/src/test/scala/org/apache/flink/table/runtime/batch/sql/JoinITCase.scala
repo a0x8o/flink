@@ -20,7 +20,6 @@ package org.apache.flink.table.runtime.batch.sql
 
 import java.util
 
-import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.api.scala._
 import org.apache.flink.api.scala.util.CollectionDataSets
 import org.apache.flink.table.api.Types
@@ -522,8 +521,8 @@ class JoinITCase(
     )
 
     implicit val typeInfo = Types.ROW(
-      Array[String]("a", "b", "c"),
-      Array[TypeInformation[_]](Types.INT,
+      fieldNames = Array("a", "b", "c"),
+      types = Array(Types.INT,
         Types.LONG,
         Types.MAP(Types.STRING, Types.STRING))
     )

@@ -22,9 +22,8 @@ import org.apache.flink.api.common.JobID;
 import org.apache.flink.runtime.concurrent.Executors;
 import org.apache.flink.runtime.leaderelection.LeaderContender;
 import org.apache.flink.runtime.leaderelection.LeaderElectionService;
+import org.apache.flink.runtime.leaderretrieval.LeaderRetrievalListener;
 import org.apache.flink.runtime.leaderretrieval.LeaderRetrievalService;
-import org.apache.flink.runtime.util.LeaderConnectionInfo;
-import org.apache.flink.runtime.util.LeaderRetrievalUtils;
 import org.apache.flink.util.TestLogger;
 
 import org.junit.After;
@@ -38,16 +37,16 @@ import static junit.framework.TestCase.assertTrue;
 import static org.hamcrest.Matchers.is;
 import static org.junit.Assert.assertThat;
 import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 /**
  * Tests for the {@link EmbeddedHaServices}.
  */
 public class EmbeddedHaServicesTest extends TestLogger {
-
-	private static final String ADDRESS = "foobar";
 
 	private EmbeddedHaServices embeddedHaServices;
 
@@ -121,29 +120,26 @@ public class EmbeddedHaServicesTest extends TestLogger {
 	 */
 	@Test
 	public void testJobManagerLeaderRetrieval() throws Exception {
+		final String address = "foobar";
 		JobID jobId = new JobID();
+		LeaderRetrievalListener leaderRetrievalListener = mock(LeaderRetrievalListener.class);
+		LeaderContender leaderContender = mock(LeaderContender.class);
+		when(leaderContender.getAddress()).thenReturn(address);
 
 		LeaderElectionService leaderElectionService = embeddedHaServices.getJobManagerLeaderElectionService(jobId);
 		LeaderRetrievalService leaderRetrievalService = embeddedHaServices.getJobManagerLeaderRetriever(jobId);
 
-		runLeaderRetrievalTest(leaderElectionService, leaderRetrievalService);
-	}
-
-	private void runLeaderRetrievalTest(LeaderElectionService leaderElectionService, LeaderRetrievalService leaderRetrievalService) throws Exception {
-		LeaderRetrievalUtils.LeaderConnectionInfoListener leaderRetrievalListener = new LeaderRetrievalUtils.LeaderConnectionInfoListener();
-		TestingLeaderContender leaderContender = new TestingLeaderContender();
-
 		leaderRetrievalService.start(leaderRetrievalListener);
 		leaderElectionService.start(leaderContender);
 
-		final UUID leaderId = leaderContender.getLeaderSessionFuture().get();
+		ArgumentCaptor<UUID> leaderIdArgumentCaptor = ArgumentCaptor.forClass(UUID.class);
+		verify(leaderContender).grantLeadership(leaderIdArgumentCaptor.capture());
 
-		leaderElectionService.confirmLeadership(leaderId, ADDRESS);
+		final UUID leaderId = leaderIdArgumentCaptor.getValue();
 
-		final LeaderConnectionInfo leaderConnectionInfo = leaderRetrievalListener.getLeaderConnectionInfoFuture().get();
+		leaderElectionService.confirmLeaderSessionID(leaderId);
 
-		assertThat(leaderConnectionInfo.getAddress(), is(ADDRESS));
-		assertThat(leaderConnectionInfo.getLeaderSessionId(), is(leaderId));
+		verify(leaderRetrievalListener).notifyLeaderAddress(eq(address), eq(leaderId));
 	}
 
 	/**
@@ -151,10 +147,25 @@ public class EmbeddedHaServicesTest extends TestLogger {
 	 */
 	@Test
 	public void testResourceManagerLeaderRetrieval() throws Exception {
+		final String address = "foobar";
+		LeaderRetrievalListener leaderRetrievalListener = mock(LeaderRetrievalListener.class);
+		LeaderContender leaderContender = mock(LeaderContender.class);
+		when(leaderContender.getAddress()).thenReturn(address);
+
 		LeaderElectionService leaderElectionService = embeddedHaServices.getResourceManagerLeaderElectionService();
 		LeaderRetrievalService leaderRetrievalService = embeddedHaServices.getResourceManagerLeaderRetriever();
 
-		runLeaderRetrievalTest(leaderElectionService, leaderRetrievalService);
+		leaderRetrievalService.start(leaderRetrievalListener);
+		leaderElectionService.start(leaderContender);
+
+		ArgumentCaptor<UUID> leaderIdArgumentCaptor = ArgumentCaptor.forClass(UUID.class);
+		verify(leaderContender).grantLeadership(leaderIdArgumentCaptor.capture());
+
+		final UUID leaderId = leaderIdArgumentCaptor.getValue();
+
+		leaderElectionService.confirmLeaderSessionID(leaderId);
+
+		verify(leaderRetrievalListener).notifyLeaderAddress(eq(address), eq(leaderId));
 	}
 
 	/**
@@ -180,8 +191,8 @@ public class EmbeddedHaServicesTest extends TestLogger {
 
 		assertThat(dispatcherLeaderElectionService.hasLeadership(newLeaderSessionId), is(true));
 
-		dispatcherLeaderElectionService.confirmLeadership(oldLeaderSessionId, ADDRESS);
-		dispatcherLeaderElectionService.confirmLeadership(newLeaderSessionId, ADDRESS);
+		dispatcherLeaderElectionService.confirmLeaderSessionID(oldLeaderSessionId);
+		dispatcherLeaderElectionService.confirmLeaderSessionID(newLeaderSessionId);
 
 		assertThat(dispatcherLeaderElectionService.hasLeadership(newLeaderSessionId), is(true));
 

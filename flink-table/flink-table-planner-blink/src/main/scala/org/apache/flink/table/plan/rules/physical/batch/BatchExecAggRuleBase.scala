@@ -18,17 +18,14 @@
 package org.apache.flink.table.plan.rules.physical.batch
 
 import org.apache.flink.table.JArrayList
-import org.apache.flink.table.api.{TableConfig, TableException}
+import org.apache.flink.table.`type`.{InternalType, TypeConverters}
+import org.apache.flink.table.api.{AggPhaseEnforcer, PlannerConfigOptions, TableConfig, TableException}
 import org.apache.flink.table.calcite.FlinkTypeFactory
 import org.apache.flink.table.dataformat.BinaryRow
 import org.apache.flink.table.functions.aggfunctions.DeclarativeAggregateFunction
 import org.apache.flink.table.functions.utils.UserDefinedFunctionUtils._
 import org.apache.flink.table.functions.{AggregateFunction, UserDefinedFunction}
 import org.apache.flink.table.plan.util.{AggregateUtil, FlinkRelOptUtil}
-import org.apache.flink.table.types.LogicalTypeDataTypeConverter.fromDataTypeToLogicalType
-import org.apache.flink.table.types.logical.LogicalType
-import org.apache.flink.table.util.AggregatePhaseStrategy
-import org.apache.flink.table.util.TableConfigUtils.getAggPhaseStrategy
 
 import org.apache.calcite.rel.`type`.RelDataType
 import org.apache.calcite.rel.core.Aggregate
@@ -45,7 +42,7 @@ trait BatchExecAggRuleBase {
       groupSet: Array[Int],
       auxGroupSet: Array[Int],
       aggFunctions: Array[UserDefinedFunction],
-      aggBufferTypes: Array[Array[LogicalType]]): RelDataType = {
+      aggBufferTypes: Array[Array[InternalType]]): RelDataType = {
 
     val typeFactory = agg.getCluster.getTypeFactory.asInstanceOf[FlinkTypeFactory]
     val aggCallNames = Util.skip(
@@ -61,7 +58,7 @@ trait BatchExecAggRuleBase {
       groupSet: Array[Int],
       auxGroupSet: Array[Int],
       aggFunctions: Array[UserDefinedFunction],
-      aggBufferTypes: Array[Array[LogicalType]]): RelDataType = {
+      aggBufferTypes: Array[Array[InternalType]]): RelDataType = {
 
     val aggBufferFieldNames = new Array[Array[String]](aggFunctions.length)
     var index = -1
@@ -83,7 +80,7 @@ trait BatchExecAggRuleBase {
     // local agg output order: groupSet + auxGroupSet + aggCalls
     val aggBufferSqlTypes = aggBufferTypes.flatten.map { t =>
       val nullable = !FlinkTypeFactory.isTimeIndicatorType(t)
-      typeFactory.createFieldTypeFromLogicalType(t)
+      typeFactory.createTypeFromInternalType(t, nullable)
     }
 
     val localAggFieldTypes = (
@@ -104,8 +101,8 @@ trait BatchExecAggRuleBase {
   protected def isTwoPhaseAggWorkable(
       aggFunctions: Array[UserDefinedFunction],
       tableConfig: TableConfig): Boolean = {
-    getAggPhaseStrategy(tableConfig) match {
-      case AggregatePhaseStrategy.ONE_PHASE => false
+    getAggEnforceStrategy(tableConfig) match {
+      case AggPhaseEnforcer.ONE_PHASE => false
       case _ => doAllSupportMerge(aggFunctions)
     }
   }
@@ -114,10 +111,10 @@ trait BatchExecAggRuleBase {
       agg: Aggregate,
       aggFunctions: Array[UserDefinedFunction],
       tableConfig: TableConfig): Boolean = {
-    getAggPhaseStrategy(tableConfig) match {
-      case AggregatePhaseStrategy.ONE_PHASE => true
-      case AggregatePhaseStrategy.TWO_PHASE => !doAllSupportMerge(aggFunctions)
-      case AggregatePhaseStrategy.AUTO =>
+    getAggEnforceStrategy(tableConfig) match {
+      case AggPhaseEnforcer.ONE_PHASE => true
+      case AggPhaseEnforcer.TWO_PHASE => !doAllSupportMerge(aggFunctions)
+      case AggPhaseEnforcer.NONE =>
         if (!doAllSupportMerge(aggFunctions)) {
           true
         } else {
@@ -140,11 +137,19 @@ trait BatchExecAggRuleBase {
   }
 
   protected def isEnforceOnePhaseAgg(tableConfig: TableConfig): Boolean = {
-    getAggPhaseStrategy(tableConfig) == AggregatePhaseStrategy.ONE_PHASE
+    getAggEnforceStrategy(tableConfig) == AggPhaseEnforcer.ONE_PHASE
   }
 
   protected def isEnforceTwoPhaseAgg(tableConfig: TableConfig): Boolean = {
-    getAggPhaseStrategy(tableConfig) == AggregatePhaseStrategy.TWO_PHASE
+    getAggEnforceStrategy(tableConfig) == AggPhaseEnforcer.TWO_PHASE
+  }
+
+  protected def getAggEnforceStrategy(tableConfig: TableConfig): AggPhaseEnforcer.Value = {
+    val aggPrefConfig = tableConfig.getConf.getString(
+      PlannerConfigOptions.SQL_OPTIMIZER_AGG_PHASE_ENFORCER)
+    AggPhaseEnforcer.values.find(_.toString.equalsIgnoreCase(aggPrefConfig))
+      .getOrElse(throw new IllegalArgumentException(
+        "Agg phase enforcer can only set to be: NONE, ONE_PHASE, TWO_PHASE!"))
   }
 
   protected def isAggBufferFixedLength(agg: Aggregate): Boolean = {
@@ -152,13 +157,12 @@ trait BatchExecAggRuleBase {
     val (_, aggBufferTypes, _) = AggregateUtil.transformToBatchAggregateFunctions(
       aggCallsWithoutAuxGroupCalls, agg.getInput.getRowType)
 
-    isAggBufferFixedLength(aggBufferTypes.map(_.map(fromDataTypeToLogicalType)))
+    isAggBufferFixedLength(aggBufferTypes.map(_.map(TypeConverters.createInternalTypeFromTypeInfo)))
   }
 
-  protected def isAggBufferFixedLength(aggBufferTypes: Array[Array[LogicalType]]): Boolean = {
+  protected def isAggBufferFixedLength(aggBufferTypes: Array[Array[InternalType]]): Boolean = {
     val aggBuffAttributesTypes = aggBufferTypes.flatten
-    val isAggBufferFixedLength = aggBuffAttributesTypes.forall(
-      t => BinaryRow.isMutable(t))
+    val isAggBufferFixedLength = aggBuffAttributesTypes.forall(BinaryRow.isMutable)
     // it means grouping without aggregate functions
     aggBuffAttributesTypes.isEmpty || isAggBufferFixedLength
   }

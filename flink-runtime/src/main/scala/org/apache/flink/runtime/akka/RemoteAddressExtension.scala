@@ -18,19 +18,15 @@
 
 package org.apache.flink.runtime.akka
 
-import akka.actor.{Address, ExtendedActorSystem, Extension, ExtensionId}
+import akka.actor.{Address, ExtensionKey, Extension, ExtendedActorSystem}
 
 /** [[akka.actor.ActorSystem]] [[Extension]] used to obtain the [[Address]] on which the
   * given ActorSystem is listening.
   *
-  * @param system this ActorSystem.
+  * @param system
   */
-class RemoteAddressExtension(system: ExtendedActorSystem) extends Extension {
+class RemoteAddressExtensionImplementation(system: ExtendedActorSystem) extends Extension {
   def address: Address = system.provider.getDefaultAddress
 }
 
-object RemoteAddressExtension extends ExtensionId[RemoteAddressExtension]{
-  override def createExtension(system: ExtendedActorSystem): RemoteAddressExtension = {
-    new RemoteAddressExtension(system)
-  }
-}
+object RemoteAddressExtension extends ExtensionKey[RemoteAddressExtensionImplementation]{}
