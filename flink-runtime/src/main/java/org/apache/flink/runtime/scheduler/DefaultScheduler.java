@@ -111,7 +111,8 @@ public class DefaultScheduler extends SchedulerBase implements SchedulerOperatio
 		final FailoverStrategy.Factory failoverStrategyFactory,
 		final RestartBackoffTimeStrategy restartBackoffTimeStrategy,
 		final ExecutionVertexOperations executionVertexOperations,
-		final ExecutionVertexVersioner executionVertexVersioner) throws Exception {
+		final ExecutionVertexVersioner executionVertexVersioner,
+		final ExecutionSlotAllocatorFactory executionSlotAllocatorFactory) throws Exception {
 
 		super(
 			log,
@@ -140,7 +141,7 @@ public class DefaultScheduler extends SchedulerBase implements SchedulerOperatio
 
 		this.executionFailureHandler = new ExecutionFailureHandler(failoverStrategyFactory.create(getFailoverTopology()), restartBackoffTimeStrategy);
 		this.schedulingStrategy = schedulingStrategyFactory.createInstance(this, getSchedulingTopology(), getJobGraph());
-		this.executionSlotAllocator = new DefaultExecutionSlotAllocator(slotProvider, getInputsLocationsRetriever(), slotRequestTimeout);
+		this.executionSlotAllocator = checkNotNull(executionSlotAllocatorFactory).createInstance(getInputsLocationsRetriever());
 	}
 
 	// ------------------------------------------------------------------------
@@ -198,6 +199,9 @@ public class DefaultScheduler extends SchedulerBase implements SchedulerOperatio
 	private Runnable restartTasks(final Set<ExecutionVertexVersion> executionVertexVersions) {
 		return () -> {
 			final Set<ExecutionVertexID> verticesToRestart = executionVertexVersioner.getUnmodifiedExecutionVertices(executionVertexVersions);
+
+			resetForNewExecutionIfInTerminalState(verticesToRestart);
+
 			schedulingStrategy.restartTasks(verticesToRestart);
 		};
 	}
@@ -211,6 +215,7 @@ public class DefaultScheduler extends SchedulerBase implements SchedulerOperatio
 	}
 
 	private CompletableFuture<?> cancelExecutionVertex(final ExecutionVertexID executionVertexId) {
+		executionSlotAllocator.cancel(executionVertexId);
 		return executionVertexOperations.cancel(getExecutionVertex(executionVertexId));
 	}
 
@@ -225,13 +230,19 @@ public class DefaultScheduler extends SchedulerBase implements SchedulerOperatio
 
 	@Override
 	public void allocateSlotsAndDeploy(final Collection<ExecutionVertexDeploymentOption> executionVertexDeploymentOptions) {
-		final Map<ExecutionVertexID, ExecutionVertexDeploymentOption> deploymentOptionsByVertex = groupDeploymentOptionsByVertexId(executionVertexDeploymentOptions);
+		validateDeploymentOptions(executionVertexDeploymentOptions);
+
+		final Map<ExecutionVertexID, ExecutionVertexDeploymentOption> deploymentOptionsByVertex =
+			groupDeploymentOptionsByVertexId(executionVertexDeploymentOptions);
+
 		final Set<ExecutionVertexID> verticesToDeploy = deploymentOptionsByVertex.keySet();
-		final Map<ExecutionVertexID, ExecutionVertexVersion> requiredVersionByVertex = executionVertexVersioner.recordVertexModifications(verticesToDeploy);
+		final Map<ExecutionVertexID, ExecutionVertexVersion> requiredVersionByVertex =
+			executionVertexVersioner.recordVertexModifications(verticesToDeploy);
 
-		prepareToDeployVertices(verticesToDeploy);
+		transitionToScheduled(verticesToDeploy);
 
-		final Collection<SlotExecutionVertexAssignment> slotExecutionVertexAssignments = allocateSlots(executionVertexDeploymentOptions);
+		final Collection<SlotExecutionVertexAssignment> slotExecutionVertexAssignments =
+			allocateSlots(executionVertexDeploymentOptions);
 
 		final Collection<DeploymentHandle> deploymentHandles = createDeploymentHandles(
 			requiredVersionByVertex,
@@ -245,21 +256,20 @@ public class DefaultScheduler extends SchedulerBase implements SchedulerOperatio
 		}
 	}
 
+	private void validateDeploymentOptions(final Collection<ExecutionVertexDeploymentOption> deploymentOptions) {
+		deploymentOptions.stream()
+			.map(ExecutionVertexDeploymentOption::getExecutionVertexId)
+			.map(this::getExecutionVertex)
+			.forEach(v -> checkState(
+				v.getExecutionState() == ExecutionState.CREATED,
+				"expected vertex %s to be in CREATED state, was: %s", v.getID(), v.getExecutionState()));
+	}
+
 	private static Map<ExecutionVertexID, ExecutionVertexDeploymentOption> groupDeploymentOptionsByVertexId(
 			final Collection<ExecutionVertexDeploymentOption> executionVertexDeploymentOptions) {
 		return executionVertexDeploymentOptions.stream().collect(Collectors.toMap(
 				ExecutionVertexDeploymentOption::getExecutionVertexId,
 				Function.identity()));
-	}
-
-	private void prepareToDeployVertices(final Set<ExecutionVertexID> verticesToDeploy) {
-		cancelSlotAssignments(verticesToDeploy);
-		resetForNewExecutionIfInTerminalState(verticesToDeploy);
-		transitionToScheduled(verticesToDeploy);
-	}
-
-	private void cancelSlotAssignments(final Collection<ExecutionVertexID> vertices) {
-		vertices.forEach(executionSlotAllocator::cancel);
 	}
 
 	private Collection<SlotExecutionVertexAssignment> allocateSlots(final Collection<ExecutionVertexDeploymentOption> executionVertexDeploymentOptions) {

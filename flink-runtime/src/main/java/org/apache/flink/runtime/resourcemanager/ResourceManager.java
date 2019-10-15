@@ -901,7 +901,7 @@ public abstract class ResourceManager<WorkerType extends ResourceIDRetrievable>
 			(acceptLeadership) -> {
 				if (acceptLeadership) {
 					// confirming the leader session ID might be blocking,
-					leaderElectionService.confirmLeaderSessionID(newLeaderSessionID);
+					leaderElectionService.confirmLeadership(newLeaderSessionID, getAddress());
 				}
 			},
 			getRpcService().getExecutor());
@@ -1204,7 +1204,7 @@ public abstract class ResourceManager<WorkerType extends ResourceIDRetrievable>
 
 	public static Collection<ResourceProfile> createWorkerSlotProfiles(Configuration config) {
 		final int numSlots = config.getInteger(TaskManagerOptions.NUM_TASK_SLOTS);
-		final long managedMemoryBytes = MemorySize.parse(config.getString(TaskManagerOptions.MANAGED_MEMORY_SIZE)).getBytes();
+		final long managedMemoryBytes = MemorySize.parse(config.getString(TaskManagerOptions.LEGACY_MANAGED_MEMORY_SIZE)).getBytes();
 
 		final ResourceProfile resourceProfile = TaskManagerServices.computeSlotResourceProfile(numSlots, managedMemoryBytes);
 		return Collections.nCopies(numSlots, resourceProfile);
