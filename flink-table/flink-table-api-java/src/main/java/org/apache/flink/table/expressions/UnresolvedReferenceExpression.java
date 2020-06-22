@@ -37,11 +37,16 @@ public final class UnresolvedReferenceExpression implements Expression {
 
 	private final String name;
 
-	public UnresolvedReferenceExpression(String name) {
+	UnresolvedReferenceExpression(String name) {
 		this.name = Preconditions.checkNotNull(name);
 	}
 
 	public String getName() {
+		return name;
+	}
+
+	@Override
+	public String asSummaryString() {
 		return name;
 	}
 
@@ -74,6 +79,6 @@ public final class UnresolvedReferenceExpression implements Expression {
 
 	@Override
 	public String toString() {
-		return name;
+		return asSummaryString();
 	}
 }

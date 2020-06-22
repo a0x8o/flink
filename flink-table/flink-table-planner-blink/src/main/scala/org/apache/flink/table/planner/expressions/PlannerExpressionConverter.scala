@@ -290,6 +290,10 @@ class PlannerExpressionConverter private extends ApiExpressionVisitor[PlannerExp
             assert(args.size == 1)
             Lower(args.head)
 
+          case LOWERCASE =>
+            assert(args.size == 1)
+            Lower(args.head)
+
           case SIMILAR =>
             assert(args.size == 2)
             Similar(args.head, args.last)
@@ -323,6 +327,10 @@ class PlannerExpressionConverter private extends ApiExpressionVisitor[PlannerExp
             Trim(trimMode, args(2), args(3))
 
           case UPPER =>
+            assert(args.size == 1)
+            Upper(args.head)
+
+          case UPPERCASE =>
             assert(args.size == 1)
             Upper(args.head)
 
@@ -745,12 +753,6 @@ class PlannerExpressionConverter private extends ApiExpressionVisitor[PlannerExp
       val value = literal.getValueAs(classOf[java.lang.String]).get()
       if (hasLength(logicalType, value.length)) {
         return Types.STRING
-      }
-    }
-
-    else if (hasRoot(logicalType, TIMESTAMP_WITHOUT_TIME_ZONE)) {
-      if (getPrecision(logicalType) <= 3) {
-        return Types.SQL_TIMESTAMP
       }
     }
 

@@ -29,10 +29,11 @@ fi
 
 export M2_HOME="${MAVEN_VERSIONED_DIR}"
 export PATH=${M2_HOME}/bin:${PATH}
-export MAVEN_OPTS="-Dorg.slf4j.simpleLogger.showDateTime=true -Dorg.slf4j.simpleLogger.dateTimeFormat=HH:mm:ss.SSS"
+export MAVEN_OPTS="${MAVEN_OPTS} -Dorg.slf4j.simpleLogger.showDateTime=true -Dorg.slf4j.simpleLogger.dateTimeFormat=HH:mm:ss.SSS"
 
 # just in case: clean up the .m2 home and remove invalid jar files
 if [ -d "${HOME}/.m2/repository/" ]; then
   find ${HOME}/.m2/repository/ -name "*.jar" -exec sh -c 'if ! zip -T {} >/dev/null ; then echo "deleting invalid file: {}"; rm -f {} ; fi' \;
 fi
 
+echo "Installed Maven ${MAVEN_VERSION} to ${M2_HOME}"

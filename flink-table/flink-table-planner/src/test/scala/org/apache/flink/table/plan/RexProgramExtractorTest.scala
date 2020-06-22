@@ -28,10 +28,13 @@ import org.apache.calcite.sql.`type`.SqlTypeName
 import org.apache.calcite.sql.`type`.SqlTypeName.{BIGINT, INTEGER, VARCHAR}
 import org.apache.calcite.sql.fun.SqlStdOperatorTable
 import org.apache.calcite.util.{DateString, TimeString, TimestampString}
+import org.apache.flink.table.api.TableConfig
+import org.apache.flink.table.catalog.FunctionCatalog
 import org.apache.flink.table.expressions._
+import org.apache.flink.table.module.ModuleManager
 import org.apache.flink.table.plan.util.{RexNodeToExpressionConverter, RexProgramExtractor}
+import org.apache.flink.table.utils.CatalogManagerMocks
 import org.apache.flink.table.utils.InputTypeBuilder.inputOf
-import org.apache.flink.table.validate.FunctionCatalog
 import org.hamcrest.CoreMatchers.is
 import org.junit.Assert.{assertArrayEquals, assertEquals, assertThat}
 import org.junit.Test
@@ -41,7 +44,11 @@ import scala.collection.mutable
 
 class RexProgramExtractorTest extends RexProgramTestBase {
 
-  private val functionCatalog: FunctionCatalog = new FunctionCatalog()
+  private val functionCatalog: FunctionCatalog = new FunctionCatalog(
+    TableConfig.getDefault,
+    CatalogManagerMocks.createEmptyCatalogManager(),
+    new ModuleManager
+  )
   private val expressionBridge: ExpressionBridge[PlannerExpression] =
     new ExpressionBridge[PlannerExpression](
       functionCatalog,

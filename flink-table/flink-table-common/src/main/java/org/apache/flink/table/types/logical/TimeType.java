@@ -30,12 +30,13 @@ import java.util.Set;
  * Logical type of a time WITHOUT time zone consisting of {@code hour:minute:second[.fractional]} with
  * up to nanosecond precision and values ranging from {@code 00:00:00.000000000} to
  * {@code 23:59:59.999999999}. Compared to the SQL standard, leap seconds (23:59:60 and 23:59:61) are
- * not supported as the semantics are closer to {@link java.time.LocalTime}. A time WITH time zone is
+ * not supported as the semantics are closer to {@link java.time.LocalTime}. A time WITH time zone
  * is not provided.
  *
  * <p>The serialized string representation is {@code TIME(p)} where {@code p} is the number of digits
  * of fractional seconds (=precision). {@code p} must have a value between 0 and 9 (both inclusive).
- * If no precision is specified, {@code p} is equal to 0.
+ * If no precision is specified, {@code p} is equal to 0. {@code TIME(p) WITHOUT TIME ZONE} is a synonym
+ * for this type.
  *
  * <p>A conversion from and to {@code int} describes the number of milliseconds of the day. A
  * conversion from and to {@code long} describes the number of nanoseconds of the day.
@@ -43,22 +44,26 @@ import java.util.Set;
 @PublicEvolving
 public final class TimeType extends LogicalType {
 
-	private static final int MIN_PRECISION = 0;
+	public static final int MIN_PRECISION = 0;
 
-	private static final int MAX_PRECISION = 9;
+	public static final int MAX_PRECISION = 9;
 
-	private static final int DEFAULT_PRECISION = 0;
+	public static final int DEFAULT_PRECISION = 0;
 
 	private static final String FORMAT = "TIME(%d)";
 
 	private static final Set<String> NULL_OUTPUT_CONVERSION = conversionSet(
 		java.sql.Time.class.getName(),
-		java.time.LocalTime.class.getName());
+		java.time.LocalTime.class.getName(),
+		Integer.class.getName(),
+		Long.class.getName());
 
 	private static final Set<String> NOT_NULL_INPUT_OUTPUT_CONVERSION = conversionSet(
 		java.sql.Time.class.getName(),
 		java.time.LocalTime.class.getName(),
+		Integer.class.getName(),
 		int.class.getName(),
+		Long.class.getName(),
 		long.class.getName());
 
 	private static final Class<?> DEFAULT_CONVERSION = java.time.LocalTime.class;
@@ -83,6 +88,10 @@ public final class TimeType extends LogicalType {
 
 	public TimeType() {
 		this(DEFAULT_PRECISION);
+	}
+
+	public int getPrecision() {
+		return precision;
 	}
 
 	@Override

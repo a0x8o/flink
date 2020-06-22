@@ -19,8 +19,10 @@
 package org.apache.flink.table.types.logical;
 
 import org.apache.flink.annotation.PublicEvolving;
+import org.apache.flink.table.api.ValidationException;
 import org.apache.flink.types.Row;
 import org.apache.flink.util.Preconditions;
+import org.apache.flink.util.StringUtils;
 
 import javax.annotation.Nullable;
 
@@ -33,6 +35,9 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import static org.apache.flink.table.utils.EncodingUtils.escapeIdentifier;
+import static org.apache.flink.table.utils.EncodingUtils.escapeSingleQuotes;
+
 /**
  * Logical type of a sequence of fields. A field consists of a field name, field type, and an optional
  * description. The most specific type of a row of a table is a row type. In this case, each column
@@ -41,8 +46,8 @@ import java.util.stream.Collectors;
  * complex structures.
  *
  * <p>The serialized string representation is {@code ROW<n0 t0 'd0', n1 t1 'd1', ...>} where
- * {@code n} is the name of a field, {@code t} is the logical type of a field, {@code d} is the description
- * of a field.
+ * {@code n} is the unique name of a field, {@code t} is the logical type of a field, {@code d} is
+ * the description of a field. {@code ROW(...)} is a synonym for being closer to the SQL standard.
  */
 @PublicEvolving
 public final class RowType extends LogicalType {
@@ -149,6 +154,8 @@ public final class RowType extends LogicalType {
 		this.fields = Collections.unmodifiableList(
 			new ArrayList<>(
 				Preconditions.checkNotNull(fields, "Fields must not be null.")));
+
+		validateFields(fields);
 	}
 
 	public RowType(List<RowField> fields) {
@@ -157,6 +164,27 @@ public final class RowType extends LogicalType {
 
 	public List<RowField> getFields() {
 		return fields;
+	}
+
+	public List<String> getFieldNames() {
+		return fields.stream().map(RowField::getName).collect(Collectors.toList());
+	}
+
+	public LogicalType getTypeAt(int i) {
+		return fields.get(i).getType();
+	}
+
+	public int getFieldCount() {
+		return fields.size();
+	}
+
+	public int getFieldIndex(String fieldName) {
+		for (int i = 0; i < fields.size(); i++) {
+			if (fields.get(i).getName().equals(fieldName)) {
+				return i;
+			}
+		}
+		return -1;
 	}
 
 	@Override
@@ -230,5 +258,39 @@ public final class RowType extends LogicalType {
 	@Override
 	public int hashCode() {
 		return Objects.hash(super.hashCode(), fields);
+	}
+
+	// --------------------------------------------------------------------------------------------
+
+	private static void validateFields(List<RowField> fields) {
+		final List<String> fieldNames = fields.stream()
+			.map(f -> f.name)
+			.collect(Collectors.toList());
+		if (fieldNames.stream().anyMatch(StringUtils::isNullOrWhitespaceOnly)) {
+			throw new ValidationException("Field names must contain at least one non-whitespace character.");
+		}
+		final Set<String> duplicates = fieldNames.stream()
+			.filter(n -> Collections.frequency(fieldNames, n) > 1)
+			.collect(Collectors.toSet());
+		if (!duplicates.isEmpty()) {
+			throw new ValidationException(
+				String.format("Field names must be unique. Found duplicates: %s", duplicates));
+		}
+	}
+
+	public static RowType of(LogicalType... types) {
+		List<RowField> fields = new ArrayList<>();
+		for (int i = 0; i < types.length; i++) {
+			fields.add(new RowField("f" + i, types[i]));
+		}
+		return new RowType(fields);
+	}
+
+	public static RowType of(LogicalType[] types, String[] names) {
+		List<RowField> fields = new ArrayList<>();
+		for (int i = 0; i < types.length; i++) {
+			fields.add(new RowField(names[i], types[i]));
+		}
+		return new RowType(fields);
 	}
 }

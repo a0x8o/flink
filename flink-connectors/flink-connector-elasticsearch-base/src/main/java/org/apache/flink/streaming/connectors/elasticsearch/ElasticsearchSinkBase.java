@@ -297,6 +297,7 @@ public abstract class ElasticsearchSinkBase<T, C extends AutoCloseable> extends 
 	@Override
 	public void open(Configuration parameters) throws Exception {
 		client = callBridge.createClient(userConfig);
+		callBridge.verifyClientConnection(client);
 		bulkProcessor = buildBulkProcessor(new BulkProcessorListener());
 		requestIndexer = callBridge.createBulkProcessorIndexer(bulkProcessor, flushOnCheckpoint, numPendingRequests);
 		failureRequestIndexer = new BufferingNoOpRequestIndexer();
@@ -427,7 +428,7 @@ public abstract class ElasticsearchSinkBase<T, C extends AutoCloseable> extends 
 
 		@Override
 		public void afterBulk(long executionId, BulkRequest request, Throwable failure) {
-			LOG.error("Failed Elasticsearch bulk request: {}", failure.getMessage(), failure.getCause());
+			LOG.error("Failed Elasticsearch bulk request: {}", failure.getMessage(), failure);
 
 			try {
 				for (ActionRequest action : request.requests()) {

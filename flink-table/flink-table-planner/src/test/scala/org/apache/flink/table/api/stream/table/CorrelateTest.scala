@@ -45,7 +45,7 @@ class CorrelateTest extends TableTestBase {
       "DataStreamCalc",
       unaryNode(
         "DataStreamCorrelate",
-        streamTableNode(0),
+        streamTableNode(table),
         term("invocation", s"${function.functionIdentifier}($$2)"),
         term("correlate", s"table(${function.getClass.getSimpleName}(c))"),
         term("select", "a", "b", "c", "s"),
@@ -66,7 +66,7 @@ class CorrelateTest extends TableTestBase {
       "DataStreamCalc",
       unaryNode(
         "DataStreamCorrelate",
-        streamTableNode(0),
+        streamTableNode(table),
         term("invocation", s"${function.functionIdentifier}($$2, '$$')"),
         term("correlate", s"table(${function.getClass.getSimpleName}(c, '$$'))"),
         term("select", "a", "b", "c", "s"),
@@ -92,7 +92,7 @@ class CorrelateTest extends TableTestBase {
       "DataStreamCalc",
       unaryNode(
         "DataStreamCorrelate",
-        streamTableNode(0),
+        streamTableNode(table),
         term("invocation", s"${function.functionIdentifier}($$2)"),
         term("correlate", s"table(${function.getClass.getSimpleName}(c))"),
         term("select", "a", "b", "c", "s"),
@@ -120,7 +120,7 @@ class CorrelateTest extends TableTestBase {
       "DataStreamCalc",
       unaryNode(
         "DataStreamCorrelate",
-        streamTableNode(0),
+        streamTableNode(table),
         term("invocation",
              s"${function.functionIdentifier}(${scalarFunc.functionIdentifier}($$2))"),
         term("correlate", s"table(${function.getClass.getSimpleName}(Func13(c)))"),
@@ -146,7 +146,7 @@ class CorrelateTest extends TableTestBase {
 
     val expected = unaryNode(
       "DataStreamCorrelate",
-      streamTableNode(0),
+      streamTableNode(table),
       term("invocation", s"${function.functionIdentifier}($$2)"),
       term("correlate", "table(HierarchyTableFunction(c))"),
       term("select", "a", "b", "c", "name", "adult", "len"),
@@ -169,7 +169,7 @@ class CorrelateTest extends TableTestBase {
 
     val expected = unaryNode(
       "DataStreamCorrelate",
-      streamTableNode(0),
+      streamTableNode(table),
       term("invocation", s"${function.functionIdentifier}($$2)"),
       term("correlate", s"table(${function.getClass.getSimpleName}(c))"),
       term("select", "a", "b", "c", "age", "name"),
@@ -197,7 +197,7 @@ class CorrelateTest extends TableTestBase {
       "DataStreamCalc",
       unaryNode(
         "DataStreamCorrelate",
-        streamTableNode(0),
+        streamTableNode(table),
         term("invocation", s"${function.functionIdentifier}($$2)"),
         term("correlate", s"table(${function.getClass.getSimpleName}(c))"),
         term("select", "a", "b", "c", "name", "len"),
@@ -223,7 +223,7 @@ class CorrelateTest extends TableTestBase {
 
     val expected = unaryNode(
         "DataStreamCorrelate",
-        streamTableNode(0),
+        streamTableNode(table),
         term("invocation",  s"${function.functionIdentifier}(SUBSTRING($$2, 2, CHAR_LENGTH($$2)))"),
         term("correlate",
              s"table(${function.getClass.getSimpleName}(SUBSTRING(c, 2, CHAR_LENGTH(c))))"),
@@ -253,7 +253,7 @@ class CorrelateTest extends TableTestBase {
       "DataStreamCalc",
       unaryNode(
         "DataStreamCorrelate",
-        streamTableNode(0),
+        streamTableNode(sourceTable),
         term("invocation", s"${function.functionIdentifier}($$2)"),
         term("correlate", s"table(${function.getClass.getSimpleName}(c))"),
         term("select", "a", "b", "c", "d", "e"),
@@ -299,7 +299,7 @@ class CorrelateTest extends TableTestBase {
       "DataStreamCalc",
       unaryNode(
         "DataStreamCorrelate",
-        streamTableNode(0),
+        streamTableNode(sourceTable),
         term("invocation", s"${function.functionIdentifier}($$2)"),
         term("correlate", s"table(${function.getClass.getSimpleName}(c))"),
         term("select", "a", "b", "c", "d", "e"),
@@ -320,14 +320,15 @@ class CorrelateTest extends TableTestBase {
     val util = streamTestUtil()
 
     val func2 = new TableFunc2
-    val resultTable = util.addTable[(Int, Long, String)]("MyTable", 'f1, 'f2, 'f3)
+    val sourceTable = util.addTable[(Int, Long, String)]("MyTable", 'f1, 'f2, 'f3)
+    val resultTable = sourceTable
       .flatMap(func2('f3))
 
     val expected = unaryNode(
       "DataStreamCalc",
       unaryNode(
         "DataStreamCorrelate",
-        streamTableNode(0),
+        streamTableNode(sourceTable),
         term("invocation", s"${func2.functionIdentifier}($$2)"),
         term("correlate", "table(TableFunc2(f3))"),
         term("select", "f1", "f2", "f3", "f0", "f1_0"),
@@ -339,6 +340,50 @@ class CorrelateTest extends TableTestBase {
       term("select", "f0", "f1_0 AS f1")
     )
 
+    util.verifyTable(resultTable, expected)
+  }
+
+  @Test
+  def testNonCompositeResultType(): Unit = {
+    val util = streamTestUtil()
+
+    val tableFunc1 = new RichTableFunc1
+    val sourceTable = util.addTable[(Int, Long, String)]("MyTable", 'f0, 'f1, 'f2)
+    val resultTable = sourceTable
+      .joinLateral(tableFunc1('f2))
+
+    val expected = unaryNode(
+      "DataStreamCorrelate",
+      streamTableNode(sourceTable),
+      term("invocation", s"${tableFunc1.functionIdentifier}($$2)"),
+      term("correlate", "table(RichTableFunc1(f2))"),
+      term("select", "f0", "f1", "f2", "f0_0"),
+      term("rowType",
+        "RecordType(INTEGER f0, BIGINT f1, VARCHAR(65536) f2, VARCHAR(65536) f0_0)"),
+      term("joinType", "INNER")
+    )
+
+    util.verifyTable(resultTable, expected)
+  }
+
+  @Test
+  def testCorrelatePythonTableFunction(): Unit = {
+    val util = streamTestUtil()
+    val table = util.addTable[(Int, Int, Int)]("MyTable", 'a, 'b, 'c)
+    val func = new MockPythonTableFunction
+
+    val resultTable = table.joinLateral(func('a, 'b) as('x, 'y))
+
+    val expected = unaryNode(
+      "DataStreamPythonCorrelate",
+      streamTableNode(table),
+      term("invocation", s"${func.functionIdentifier}($$0, $$1)"),
+      term("correlate", s"table(${func.getClass.getSimpleName}(a, b))"),
+      term("select", "a, b, c, x, y"),
+      term("rowType",
+           "RecordType(INTEGER a, INTEGER b, INTEGER c, INTEGER x, INTEGER y)"),
+      term("joinType", "INNER")
+      )
     util.verifyTable(resultTable, expected)
   }
 }

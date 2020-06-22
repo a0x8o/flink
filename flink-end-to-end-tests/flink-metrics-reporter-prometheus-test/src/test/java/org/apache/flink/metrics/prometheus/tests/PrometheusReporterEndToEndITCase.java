@@ -24,8 +24,11 @@ import org.apache.flink.metrics.prometheus.PrometheusReporter;
 import org.apache.flink.tests.util.AutoClosableProcess;
 import org.apache.flink.tests.util.CommandLineWrapper;
 import org.apache.flink.tests.util.FlinkDistribution;
+import org.apache.flink.tests.util.cache.DownloadCache;
+import org.apache.flink.tests.util.categories.TravisGroup1;
 import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.OperatingSystem;
+import org.apache.flink.util.ProcessorArchitecture;
 import org.apache.flink.util.TestLogger;
 
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.databind.ObjectMapper;
@@ -37,13 +40,13 @@ import org.junit.Assume;
 import org.junit.BeforeClass;
 import org.junit.Rule;
 import org.junit.Test;
+import org.junit.experimental.categories.Category;
 import org.junit.rules.TemporaryFolder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Duration;
 import java.util.List;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -54,6 +57,7 @@ import static org.apache.flink.tests.util.AutoClosableProcess.runNonBlocking;
 /**
  * End-to-end test for the PrometheusReporter.
  */
+@Category(TravisGroup1.class)
 public class PrometheusReporterEndToEndITCase extends TestLogger {
 
 	private static final Logger LOG = LoggerFactory.getLogger(PrometheusReporterEndToEndITCase.class);
@@ -65,17 +69,38 @@ public class PrometheusReporterEndToEndITCase extends TestLogger {
 
 	static {
 		final String base = "prometheus-" + PROMETHEUS_VERSION + '.';
+		final String os;
+		final String platform;
 		switch (OperatingSystem.getCurrentOperatingSystem()) {
 			case MAC_OS:
-				PROMETHEUS_FILE_NAME = base + "darwin-amd64";
+				os = "darwin";
 				break;
 			case WINDOWS:
-				PROMETHEUS_FILE_NAME = base + "windows-amd64";
+				os = "windows";
 				break;
 			default:
-				PROMETHEUS_FILE_NAME = base + "linux-amd64";
+				os = "linux";
 				break;
 		}
+		switch (ProcessorArchitecture.getProcessorArchitecture()) {
+			case X86:
+				platform = "386";
+				break;
+			case AMD64:
+				platform = "amd64";
+				break;
+			case ARMv7:
+				platform = "armv7";
+				break;
+			case AARCH64:
+				platform = "arm64";
+				break;
+			default:
+				platform = "Unknown";
+				break;
+		}
+
+		PROMETHEUS_FILE_NAME = base + os + "-" + platform;
 	}
 
 	private static final Pattern LOG_REPORTER_PORT_PATTERN = Pattern.compile(".*Started PrometheusReporter HTTP server on port ([0-9]+).*");
@@ -90,6 +115,9 @@ public class PrometheusReporterEndToEndITCase extends TestLogger {
 
 	@Rule
 	public final TemporaryFolder tmp = new TemporaryFolder();
+
+	@Rule
+	public final DownloadCache downloadCache = DownloadCache.get();
 
 	@Test
 	public void testReporter() throws Exception {
@@ -108,15 +136,13 @@ public class PrometheusReporterEndToEndITCase extends TestLogger {
 		final Path prometheusBinary = prometheusBinDir.resolve("prometheus");
 		Files.createDirectory(tmpPrometheusDir);
 
-		runBlocking(
-			"Download of Prometheus",
-			Duration.ofMinutes(5),
-			CommandLineWrapper
-				.wget("https://github.com/prometheus/prometheus/releases/download/v" + PROMETHEUS_VERSION + '/' + prometheusArchive.getFileName())
-				.targetDir(tmpPrometheusDir)
-				.build());
+		downloadCache.getOrDownload(
+			"https://github.com/prometheus/prometheus/releases/download/v" + PROMETHEUS_VERSION + '/' + prometheusArchive.getFileName(),
+			tmpPrometheusDir
+		);
 
-		runBlocking("Extraction of Prometheus archive",
+		LOG.info("Unpacking Prometheus.");
+		runBlocking(
 			CommandLineWrapper
 				.tar(prometheusArchive)
 				.extract()
@@ -124,7 +150,8 @@ public class PrometheusReporterEndToEndITCase extends TestLogger {
 				.targetDir(tmpPrometheusDir)
 				.build());
 
-		runBlocking("Set Prometheus scrape interval",
+		LOG.info("Setting Prometheus scrape interval.");
+		runBlocking(
 			CommandLineWrapper
 				.sed("s/\\(scrape_interval:\\).*/\\1 1s/", prometheusConfig)
 				.inPlace()
@@ -141,14 +168,15 @@ public class PrometheusReporterEndToEndITCase extends TestLogger {
 			.map(port -> "'localhost:" + port + "'")
 			.collect(Collectors.joining(", "));
 
-		runBlocking("Set Prometheus scrape targets to (" + scrapeTargets + ")",
+		LOG.info("Setting Prometheus scrape targets to {}.", scrapeTargets);
+		runBlocking(
 			CommandLineWrapper
 				.sed("s/\\(targets:\\).*/\\1 [" + scrapeTargets + "]/", prometheusConfig)
 				.inPlace()
 				.build());
 
+		LOG.info("Starting Prometheus server.");
 		try (AutoClosableProcess prometheus = runNonBlocking(
-			"Start Prometheus server",
 			prometheusBinary.toAbsolutePath().toString(),
 			"--config.file=" + prometheusConfig.toAbsolutePath(),
 			"--storage.tsdb.path=" + prometheusBinDir.resolve("data").toAbsolutePath())) {

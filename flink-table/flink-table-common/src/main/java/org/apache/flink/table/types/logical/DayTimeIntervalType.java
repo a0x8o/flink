@@ -38,33 +38,35 @@ import java.util.Set;
  * ranging from {@code -999999 23:59:59.999999999} to {@code +999999 23:59:59.999999999}. The value
  * representation is the same for all types of resolutions. For example, an interval of seconds of 70
  * is always represented in an interval-of-days-to-seconds format (with default precisions):
- * {@code +00 00:01:10.000000}).
+ * {@code +00 00:01:10.000000}.
  *
  * <p>The serialized string representation is {@code INTERVAL DAY(p1)}, {@code INTERVAL DAY(p1) TO HOUR},
  * {@code INTERVAL DAY(p1) TO MINUTE}, {@code INTERVAL DAY(p1) TO SECOND(p2)}, {@code INTERVAL HOUR},
  * {@code INTERVAL HOUR TO MINUTE}, {@code INTERVAL HOUR TO SECOND(p2)}, {@code INTERVAL  MINUTE},
- * {@code INTERVAL  MINUTE TO SECOND(p2)}, or {@code INTERVAL SECOND(p2)} where {@code p1} is the number
+ * {@code INTERVAL MINUTE TO SECOND(p2)}, or {@code INTERVAL SECOND(p2)} where {@code p1} is the number
  * of digits of days (=day precision) and {@code p2} is the number of digits of fractional seconds
  * (=fractional precision). {@code p1} must have a value between 1 and 6 (both inclusive). {@code p2}
  * must have a value between 0 and 9 (both inclusive). If no {@code p1} is specified, it is equal to 2 by
  * default. If no {@code p2} is specified, it is equal to 6 by default.
  *
  * <p>A conversion from and to {@code long} describes the number of milliseconds.
+ *
+ * @see YearMonthIntervalType
  */
 @PublicEvolving
 public final class DayTimeIntervalType extends LogicalType {
 
-	private static final int MIN_DAY_PRECISION = 1;
+	public static final int MIN_DAY_PRECISION = 1;
 
-	private static final int MAX_DAY_PRECISION = 6;
+	public static final int MAX_DAY_PRECISION = 6;
 
-	private static final int DEFAULT_DAY_PRECISION = 2;
+	public static final int DEFAULT_DAY_PRECISION = 2;
 
-	private static final int MIN_FRACTIONAL_PRECISION = 0;
+	public static final int MIN_FRACTIONAL_PRECISION = 0;
 
-	private static final int MAX_FRACTIONAL_PRECISION = 9;
+	public static final int MAX_FRACTIONAL_PRECISION = 9;
 
-	private static final int DEFAULT_FRACTIONAL_PRECISION = 6;
+	public static final int DEFAULT_FRACTIONAL_PRECISION = 6;
 
 	private static final String DAY_FORMAT = "INTERVAL DAY(%1$d)";
 
@@ -87,16 +89,20 @@ public final class DayTimeIntervalType extends LogicalType {
 	private static final String SECOND_FORMAT = "INTERVAL SECOND(%2$d)";
 
 	private static final Set<String> NULL_OUTPUT_CONVERSION = conversionSet(
-		java.time.Duration.class.getName());
+		java.time.Duration.class.getName(),
+		Long.class.getName());
 
 	private static final Set<String> NOT_NULL_INPUT_OUTPUT_CONVERSION = conversionSet(
 		java.time.Duration.class.getName(),
+		Long.class.getName(),
 		long.class.getName());
 
 	private static final Class<?> DEFAULT_CONVERSION = java.time.Duration.class;
 
 	/**
 	 * Supported resolutions of this type.
+	 *
+	 * <p>Note: The order of this enum reflects the granularity from coarse to fine.
 	 */
 	public enum DayTimeResolution {
 		DAY,

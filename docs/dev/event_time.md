@@ -103,7 +103,7 @@ env.setStreamTimeCharacteristic(TimeCharacteristic.ProcessingTime);
 // env.setStreamTimeCharacteristic(TimeCharacteristic.IngestionTime);
 // env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
 
-DataStream<MyEvent> stream = env.addSource(new FlinkKafkaConsumer09<MyEvent>(topic, schema, props));
+DataStream<MyEvent> stream = env.addSource(new FlinkKafkaConsumer010<MyEvent>(topic, schema, props));
 
 stream
     .keyBy( (event) -> event.getUser() )
@@ -122,13 +122,24 @@ env.setStreamTimeCharacteristic(TimeCharacteristic.ProcessingTime)
 // env.setStreamTimeCharacteristic(TimeCharacteristic.IngestionTime)
 // env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime)
 
-val stream: DataStream[MyEvent] = env.addSource(new FlinkKafkaConsumer09[MyEvent](topic, schema, props))
+val stream: DataStream[MyEvent] = env.addSource(new FlinkKafkaConsumer010[MyEvent](topic, schema, props))
 
 stream
     .keyBy( _.getUser )
     .timeWindow(Time.hours(1))
     .reduce( (a, b) => a.add(b) )
     .addSink(...)
+{% endhighlight %}
+</div>
+<div data-lang="python" markdown="1">
+{% highlight python %}
+env = StreamExecutionEnvironment.get_execution_environment()
+
+env.set_stream_time_characteristic(TimeCharacteristic.ProcessingTime)
+
+# alternatively:
+# env.set_stream_time_characteristic(TimeCharacteristic.IngestionTime)
+# env.set_stream_time_characteristic(TimeCharacteristic.EventTime)
 {% endhighlight %}
 </div>
 </div>

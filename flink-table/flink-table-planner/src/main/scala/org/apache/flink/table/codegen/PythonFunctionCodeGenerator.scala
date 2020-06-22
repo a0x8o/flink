@@ -20,7 +20,7 @@ package org.apache.flink.table.codegen
 import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.table.codegen.CodeGenUtils.{primitiveDefaultValue, primitiveTypeTermForTypeInfo, newName}
 import org.apache.flink.table.codegen.Indenter.toISC
-import org.apache.flink.table.functions.{UserDefinedFunction, FunctionLanguage, ScalarFunction}
+import org.apache.flink.table.functions.{UserDefinedFunction, ScalarFunction}
 import org.apache.flink.table.functions.python.{PythonEnv, PythonFunction}
 import org.apache.flink.table.utils.EncodingUtils
 
@@ -34,7 +34,7 @@ object PythonFunctionCodeGenerator extends Compiler[UserDefinedFunction] {
   /**
     * Generates a [[ScalarFunction]] for the specified Python user-defined function.
     *
-    * @param name class name of the user-defined function. Must be a valid Java class identifier
+    * @param name name of the user-defined function
     * @param serializedScalarFunction serialized Python scalar function
     * @param inputTypes input data types
     * @param resultType expected result type
@@ -89,11 +89,6 @@ object PythonFunctionCodeGenerator extends Compiler[UserDefinedFunction] {
       |  public $typeInfoTypeTerm getResultType(Class<?>[] signature) {
       |    return ($typeInfoTypeTerm) $encodingUtilsTypeTerm.decodeStringToObject(
       |      "$encodedResultType", $typeInfoTypeTerm.class);
-      |  }
-      |
-      |  @Override
-      |  public ${classOf[FunctionLanguage].getCanonicalName} getLanguage() {
-      |    return ${classOf[FunctionLanguage].getCanonicalName}.PYTHON;
       |  }
       |
       |  @Override

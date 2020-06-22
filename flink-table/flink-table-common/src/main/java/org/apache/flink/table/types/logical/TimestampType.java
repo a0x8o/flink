@@ -35,7 +35,8 @@ import java.util.Set;
  *
  * <p>The serialized string representation is {@code TIMESTAMP(p)} where {@code p} is the number of
  * digits of fractional seconds (=precision). {@code p} must have a value between 0 and 9 (both inclusive).
- * If no precision is specified, {@code p} is equal to 6.
+ * If no precision is specified, {@code p} is equal to 6. {@code TIMESTAMP(p) WITHOUT TIME ZONE} is a
+ * synonym for this type.
  *
  * <p>A conversion from and to {@code long} is not supported as this would imply a time zone. However,
  * this type is time zone free. For more {@link java.time.Instant}-like semantics use
@@ -47,17 +48,18 @@ import java.util.Set;
 @PublicEvolving
 public final class TimestampType extends LogicalType {
 
-	private static final int MIN_PRECISION = 0;
+	public static final int MIN_PRECISION = 0;
 
-	private static final int MAX_PRECISION = 9;
+	public static final int MAX_PRECISION = 9;
 
-	private static final int DEFAULT_PRECISION = 6;
+	public static final int DEFAULT_PRECISION = 6;
 
 	private static final String FORMAT = "TIMESTAMP(%d)";
 
 	private static final Set<String> INPUT_OUTPUT_CONVERSION = conversionSet(
 		java.sql.Timestamp.class.getName(),
-		java.time.LocalDateTime.class.getName());
+		java.time.LocalDateTime.class.getName(),
+		"org.apache.flink.table.dataformat.SqlTimestamp");
 
 	private static final Class<?> DEFAULT_CONVERSION = java.time.LocalDateTime.class;
 
@@ -114,6 +116,14 @@ public final class TimestampType extends LogicalType {
 	@Override
 	public String asSerializableString() {
 		return withNullability(FORMAT, precision);
+	}
+
+	@Override
+	public String asSummaryString() {
+		if (kind != TimestampKind.REGULAR) {
+			return String.format("%s *%s*", asSerializableString(), kind);
+		}
+		return asSerializableString();
 	}
 
 	@Override

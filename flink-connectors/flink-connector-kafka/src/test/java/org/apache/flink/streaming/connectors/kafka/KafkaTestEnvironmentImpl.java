@@ -21,7 +21,6 @@ import org.apache.flink.networking.NetworkFailuresProxy;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.DataStreamSink;
 import org.apache.flink.streaming.api.operators.StreamSink;
-import org.apache.flink.streaming.connectors.kafka.partitioner.FlinkFixedPartitioner;
 import org.apache.flink.streaming.connectors.kafka.partitioner.FlinkKafkaPartitioner;
 import org.apache.flink.streaming.util.serialization.KeyedSerializationSchema;
 import org.apache.flink.util.NetUtils;
@@ -48,6 +47,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.net.BindException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -58,6 +58,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -149,11 +150,20 @@ public class KafkaTestEnvironmentImpl extends KafkaTestEnvironment {
 	@Override
 	public void deleteTestTopic(String topic) {
 		LOG.info("Deleting topic {}", topic);
-		try (AdminClient adminClient = AdminClient.create(getStandardProperties())) {
+		Properties props = getSecureProperties();
+		props.putAll(getStandardProperties());
+		String clientId = Long.toString(new Random().nextLong());
+		props.put("client.id", clientId);
+		AdminClient adminClient = AdminClient.create(props);
+		// We do not use a try-catch clause here so we can apply a timeout to the admin client closure.
+		try {
 			tryDelete(adminClient, topic);
 		} catch (Exception e) {
 			e.printStackTrace();
 			fail(String.format("Delete test topic : %s failed, %s", topic, e.getMessage()));
+		} finally {
+			adminClient.close(Duration.ofMillis(5000L));
+			maybePrintDanglingThreadStacktrace(clientId);
 		}
 	}
 
@@ -162,7 +172,7 @@ public class KafkaTestEnvironmentImpl extends KafkaTestEnvironment {
 		try {
 			adminClient.deleteTopics(Collections.singleton(topic)).all().get(DELETE_TIMEOUT_SECONDS, TimeUnit.SECONDS);
 		} catch (TimeoutException e) {
-			LOG.info("Did not receive delete topic response within %d seconds. Checking if it succeeded",
+			LOG.info("Did not receive delete topic response within {} seconds. Checking if it succeeded",
 				DELETE_TIMEOUT_SECONDS);
 			if (adminClient.listTopics().names().get(DELETE_TIMEOUT_SECONDS, TimeUnit.SECONDS).contains(topic)) {
 				throw new Exception("Topic still exists after timeout");
@@ -274,18 +284,12 @@ public class KafkaTestEnvironmentImpl extends KafkaTestEnvironment {
 	}
 
 	@Override
-	public <T> DataStreamSink<T> writeToKafkaWithTimestamps(DataStream<T> stream, String topic, KeyedSerializationSchema<T> serSchema, Properties props) {
-		FlinkKafkaProducer<T> prod = new FlinkKafkaProducer<T>(
-			topic,
-			serSchema,
-			props,
-			Optional.of(new FlinkFixedPartitioner<>()),
-			producerSemantic,
-			FlinkKafkaProducer.DEFAULT_KAFKA_PRODUCERS_POOL_SIZE);
-
-		prod.setWriteTimestampToKafka(true);
-
-		return stream.addSink(prod);
+	public <T> DataStreamSink<T> produceIntoKafka(DataStream<T> stream, String topic, KafkaSerializationSchema<T> serSchema, Properties props) {
+		return stream.addSink(new FlinkKafkaProducer<T>(
+				topic,
+				serSchema,
+				props,
+				producerSemantic));
 	}
 
 	@Override

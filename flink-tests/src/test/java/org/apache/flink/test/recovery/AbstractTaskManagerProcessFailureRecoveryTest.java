@@ -24,6 +24,7 @@ import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.HeartbeatManagerOptions;
 import org.apache.flink.configuration.HighAvailabilityOptions;
 import org.apache.flink.configuration.JobManagerOptions;
+import org.apache.flink.configuration.MemorySize;
 import org.apache.flink.configuration.RestOptions;
 import org.apache.flink.configuration.TaskManagerOptions;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
@@ -70,7 +71,6 @@ public abstract class AbstractTaskManagerProcessFailureRecoveryTest extends Test
 
 	protected static final String READY_MARKER_FILE_PREFIX = "ready_";
 	protected static final String PROCEED_MARKER_FILE = "proceed";
-	protected static final String FINISH_MARKER_FILE_PREFIX = "finish_";
 
 	protected static final int PARALLELISM = 4;
 
@@ -102,8 +102,12 @@ public abstract class AbstractTaskManagerProcessFailureRecoveryTest extends Test
 		config.setString(HighAvailabilityOptions.HA_ZOOKEEPER_QUORUM, zooKeeperResource.getConnectString());
 		config.setString(HighAvailabilityOptions.HA_STORAGE_PATH, temporaryFolder.newFolder().getAbsolutePath());
 		config.setInteger(TaskManagerOptions.NUM_TASK_SLOTS, 2);
-		config.setString(TaskManagerOptions.MANAGED_MEMORY_SIZE, "4m");
-		config.setInteger(TaskManagerOptions.NETWORK_NUM_BUFFERS, 100);
+		config.set(TaskManagerOptions.MANAGED_MEMORY_SIZE, MemorySize.parse("4m"));
+		config.set(TaskManagerOptions.NETWORK_MEMORY_MIN, MemorySize.parse("3200k"));
+		config.set(TaskManagerOptions.NETWORK_MEMORY_MAX, MemorySize.parse("3200k"));
+		config.set(TaskManagerOptions.TASK_HEAP_MEMORY, MemorySize.parse("128m"));
+		config.set(TaskManagerOptions.CPU_CORES, 1.0);
+		config.setString(JobManagerOptions.EXECUTION_FAILOVER_STRATEGY, "full");
 
 		try (final StandaloneSessionClusterEntrypoint clusterEntrypoint = new StandaloneSessionClusterEntrypoint(config)) {
 
@@ -172,7 +176,7 @@ public abstract class AbstractTaskManagerProcessFailureRecoveryTest extends Test
 
 			// kill one of the previous TaskManagers, triggering a failure and recovery
 			taskManagerProcess1.destroy();
-			taskManagerProcess1 = null;
+			waitForShutdown("TaskManager 1", taskManagerProcess1);
 
 			// we create the marker file which signals the program functions tasks that they can complete
 			touchFile(new File(coordinateTempDir, PROCEED_MARKER_FILE));

@@ -23,6 +23,7 @@ import org.apache.flink.table.catalog.TestExternalTableSourceFactory.TestExterna
 import org.apache.flink.table.catalog.exceptions.DatabaseNotExistException;
 import org.apache.flink.table.catalog.exceptions.TableAlreadyExistException;
 import org.apache.flink.table.plan.schema.TableSourceTable;
+import org.apache.flink.table.utils.CatalogManagerMocks;
 
 import org.apache.calcite.schema.Table;
 import org.junit.Test;
@@ -48,10 +49,13 @@ public class DatabaseCalciteSchemaTest {
 	@Test
 	public void testCatalogTable() throws TableAlreadyExistException, DatabaseNotExistException {
 		GenericInMemoryCatalog catalog = new GenericInMemoryCatalog(catalogName, databaseName);
+		CatalogManager catalogManager = CatalogManagerMocks.preparedCatalogManager()
+			.defaultCatalog(catalogName, catalog)
+			.build();
 		DatabaseCalciteSchema calciteSchema = new DatabaseCalciteSchema(true,
 			databaseName,
 			catalogName,
-			catalog);
+			catalogManager);
 
 		catalog.createTable(new ObjectPath(databaseName, tableName), new TestCatalogBaseTable(), false);
 		Table table = calciteSchema.getTable(tableName);

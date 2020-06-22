@@ -18,162 +18,63 @@
 
 package org.apache.flink.table.catalog.hive;
 
-import org.apache.flink.table.catalog.CatalogDatabase;
-import org.apache.flink.table.catalog.CatalogTable;
-import org.apache.flink.table.catalog.CatalogTestBase;
+import org.apache.flink.table.api.DataTypes;
+import org.apache.flink.table.api.TableSchema;
+import org.apache.flink.table.catalog.CatalogTableImpl;
+import org.apache.flink.table.catalog.ObjectPath;
+import org.apache.flink.table.catalog.config.CatalogConfig;
+import org.apache.flink.table.descriptors.FileSystem;
 
-import org.junit.BeforeClass;
+import org.apache.hadoop.hive.metastore.api.Table;
 import org.junit.Test;
 
-import java.io.IOException;
 import java.util.HashMap;
+import java.util.Map;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 /**
  * Test for HiveCatalog.
  */
-public class HiveCatalogTest extends CatalogTestBase {
-	@BeforeClass
-	public static void init() throws IOException {
-		catalog = HiveTestUtils.createGenericHiveMetastoreCatalog();
-		catalog.open();
-	}
+public class HiveCatalogTest {
 
-	// =====================
-	// HiveCatalog doesn't support table operation yet
-	// Thus, overriding the following tests which involve table operation in CatalogTestBase so they won't run against HiveCatalog
-	// =====================
-
-	// TODO: re-enable these tests once HiveCatalog support table operations
-	@Test
-	public void testDropDb_DatabaseNotEmptyException() throws Exception {
-	}
+	TableSchema schema = TableSchema.builder()
+		.field("name", DataTypes.STRING())
+		.field("age", DataTypes.INT())
+		.build();
 
 	@Test
-	public void testCreateTable_Streaming() throws Exception {
-	}
+	public void testCreateGenericTable() {
+		Table hiveTable = HiveCatalog.instantiateHiveTable(
+			new ObjectPath("test", "test"),
+			new CatalogTableImpl(
+				schema,
+				new FileSystem().path("/test_path").toProperties(),
+				null
+			));
 
-	@Test
-	public void testCreateTable_Batch() throws Exception {
+		Map<String, String> prop = hiveTable.getParameters();
+		assertEquals(prop.remove(CatalogConfig.IS_GENERIC), String.valueOf("true"));
+		assertTrue(prop.keySet().stream().allMatch(k -> k.startsWith(CatalogConfig.FLINK_PROPERTY_PREFIX)));
 	}
 
 	@Test
-	public void testCreateTable_DatabaseNotExistException() throws Exception {
-	}
+	public void testCreateHiveTable() {
+		Map<String, String> map = new HashMap<>(new FileSystem().path("/test_path").toProperties());
 
-	@Test
-	public void testCreateTable_TableAlreadyExistException() throws Exception {
-	}
+		map.put(CatalogConfig.IS_GENERIC, String.valueOf(false));
 
-	@Test
-	public void testCreateTable_TableAlreadyExist_ignored() throws Exception {
-	}
+		Table hiveTable = HiveCatalog.instantiateHiveTable(
+			new ObjectPath("test", "test"),
+			new CatalogTableImpl(
+				schema,
+				map,
+				null
+			));
 
-	@Test
-	public void testGetTable_TableNotExistException() throws Exception {
-	}
-
-	@Test
-	public void testGetTable_TableNotExistException_NoDb() throws Exception {
-	}
-
-	@Test
-	public void testDropTable_nonPartitionedTable() throws Exception {
-	}
-
-	@Test
-	public void testDropTable_TableNotExistException() throws Exception {
-	}
-
-	@Test
-	public void testDropTable_TableNotExist_ignored() throws Exception {
-	}
-
-	@Test
-	public void testAlterTable() throws Exception {
-	}
-
-	@Test
-	public void testAlterTable_TableNotExistException() throws Exception {
-	}
-
-	@Test
-	public void testAlterTable_TableNotExist_ignored() throws Exception {
-	}
-
-	@Test
-	public void testRenameTable_nonPartitionedTable() throws Exception {
-	}
-
-	@Test
-	public void testRenameTable_TableNotExistException() throws Exception {
-	}
-
-	@Test
-	public void testRenameTable_TableNotExistException_ignored() throws Exception {
-	}
-
-	@Test
-	public void testRenameTable_TableAlreadyExistException() throws Exception {
-	}
-
-	@Test
-	public void testTableExists() throws Exception {
-	}
-
-	// ------ utils ------
-
-	@Override
-	public String getBuiltInDefaultDatabase() {
-		return HiveCatalogBase.DEFAULT_DB;
-	}
-
-	@Override
-	public CatalogDatabase createDb() {
-		return new HiveCatalogDatabase(
-			new HashMap<String, String>() {{
-				put("k1", "v1");
-			}},
-			TEST_COMMENT
-		);
-	}
-
-	@Override
-	public CatalogDatabase createAnotherDb() {
-		return new HiveCatalogDatabase(
-			new HashMap<String, String>() {{
-				put("k2", "v2");
-			}},
-			TEST_COMMENT
-		);
-	}
-
-	@Override
-	public CatalogTable createTable() {
-		// TODO: implement this once HiveCatalog support table operations
-		return null;
-	}
-
-	@Override
-	public CatalogTable createAnotherTable() {
-		// TODO: implement this once HiveCatalog support table operations
-		return null;
-	}
-
-	@Override
-	public CatalogTable createStreamingTable() {
-		// TODO: implement this once HiveCatalog support table operations
-		return null;
-	}
-
-	@Override
-	public CatalogTable createPartitionedTable() {
-		// TODO: implement this once HiveCatalog support table operations
-		return null;
-	}
-
-	@Override
-	public CatalogTable createAnotherPartitionedTable() {
-		// TODO: implement this once HiveCatalog support table operations
-		return null;
+		Map<String, String> prop = hiveTable.getParameters();
+		assertEquals(prop.remove(CatalogConfig.IS_GENERIC), String.valueOf(false));
+		assertTrue(prop.keySet().stream().noneMatch(k -> k.startsWith(CatalogConfig.FLINK_PROPERTY_PREFIX)));
 	}
 }

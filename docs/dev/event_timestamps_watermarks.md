@@ -44,6 +44,12 @@ val env = StreamExecutionEnvironment.getExecutionEnvironment
 env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime)
 {% endhighlight %}
 </div>
+<div data-lang="python" markdown="1">
+{% highlight python %}
+env = StreamExecutionEnvironment.get_execution_environment()
+env.set_stream_time_characteristic(TimeCharacteristic.EventTime)
+{% endhighlight %}
+</div>
 </div>
 
 ## Assigning Timestamps
@@ -345,7 +351,7 @@ streaming dataflow in that case.
 <div class="codetabs" markdown="1">
 <div data-lang="java" markdown="1">
 {% highlight java %}
-FlinkKafkaConsumer09<MyType> kafkaSource = new FlinkKafkaConsumer09<>("myTopic", schema, props);
+FlinkKafkaConsumer010<MyType> kafkaSource = new FlinkKafkaConsumer010<>("myTopic", schema, props);
 kafkaSource.assignTimestampsAndWatermarks(new AscendingTimestampExtractor<MyType>() {
 
     @Override
@@ -359,7 +365,7 @@ DataStream<MyType> stream = env.addSource(kafkaSource);
 </div>
 <div data-lang="scala" markdown="1">
 {% highlight scala %}
-val kafkaSource = new FlinkKafkaConsumer09[MyType]("myTopic", schema, props)
+val kafkaSource = new FlinkKafkaConsumer010[MyType]("myTopic", schema, props)
 kafkaSource.assignTimestampsAndWatermarks(new AscendingTimestampExtractor[MyType] {
     def extractAscendingTimestamp(element: MyType): Long = element.eventTimestamp
 })

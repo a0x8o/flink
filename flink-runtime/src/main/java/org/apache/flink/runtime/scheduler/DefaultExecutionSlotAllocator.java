@@ -19,11 +19,11 @@
 package org.apache.flink.runtime.scheduler;
 
 import org.apache.flink.annotation.VisibleForTesting;
-import org.apache.flink.api.common.time.Time;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.clusterframework.types.SlotProfile;
 import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.executiongraph.ExecutionVertex;
+import org.apache.flink.runtime.executiongraph.SlotProviderStrategy;
 import org.apache.flink.runtime.instance.SlotSharingGroupId;
 import org.apache.flink.runtime.jobmanager.scheduler.ScheduledUnit;
 import org.apache.flink.runtime.jobmaster.LogicalSlot;
@@ -36,7 +36,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -66,26 +65,22 @@ public class DefaultExecutionSlotAllocator implements ExecutionSlotAllocator {
 	 */
 	private final Map<ExecutionVertexID, SlotExecutionVertexAssignment> pendingSlotAssignments;
 
-	private final SlotProvider slotProvider;
+	private final SlotProviderStrategy slotProviderStrategy;
 
 	private final InputsLocationsRetriever inputsLocationsRetriever;
 
-	private final Time allocationTimeout;
-
 	public DefaultExecutionSlotAllocator(
-			SlotProvider slotProvider,
-			InputsLocationsRetriever inputsLocationsRetriever,
-			Time allocationTimeout) {
-		this.slotProvider = checkNotNull(slotProvider);
+			SlotProviderStrategy slotProviderStrategy,
+			InputsLocationsRetriever inputsLocationsRetriever) {
+		this.slotProviderStrategy = checkNotNull(slotProviderStrategy);
 		this.inputsLocationsRetriever = checkNotNull(inputsLocationsRetriever);
-		this.allocationTimeout = checkNotNull(allocationTimeout);
 
 		pendingSlotAssignments = new HashMap<>();
 	}
 
 	@Override
-	public Collection<SlotExecutionVertexAssignment> allocateSlotsFor(
-			Collection<ExecutionVertexSchedulingRequirements> executionVertexSchedulingRequirements) {
+	public List<SlotExecutionVertexAssignment> allocateSlotsFor(
+			List<ExecutionVertexSchedulingRequirements> executionVertexSchedulingRequirements) {
 
 		validateSchedulingRequirements(executionVertexSchedulingRequirements);
 
@@ -106,19 +101,18 @@ public class DefaultExecutionSlotAllocator implements ExecutionSlotAllocator {
 					schedulingRequirements.getPreferredLocations(),
 					inputsLocationsRetriever).thenCompose(
 							(Collection<TaskManagerLocation> preferredLocations) ->
-									slotProvider.allocateSlot(
-											slotRequestId,
-											new ScheduledUnit(
-													executionVertexId.getJobVertexId(),
-													slotSharingGroupId,
-													schedulingRequirements.getCoLocationConstraint()),
-											new SlotProfile(
-													schedulingRequirements.getResourceProfile(),
-													preferredLocations,
-													Arrays.asList(schedulingRequirements.getPreviousAllocationId()),
-													allPreviousAllocationIds),
-											true,
-											allocationTimeout));
+								slotProviderStrategy.allocateSlot(
+									slotRequestId,
+									new ScheduledUnit(
+										executionVertexId.getJobVertexId(),
+										slotSharingGroupId,
+										schedulingRequirements.getCoLocationConstraint()),
+									SlotProfile.priorAllocation(
+										schedulingRequirements.getTaskResourceProfile(),
+										schedulingRequirements.getPhysicalSlotResourceProfile(),
+										preferredLocations,
+										Collections.singletonList(schedulingRequirements.getPreviousAllocationId()),
+										allPreviousAllocationIds)));
 
 			SlotExecutionVertexAssignment slotExecutionVertexAssignment =
 					new SlotExecutionVertexAssignment(executionVertexId, slotFuture);
@@ -129,7 +123,7 @@ public class DefaultExecutionSlotAllocator implements ExecutionSlotAllocator {
 					(ignored, throwable) -> {
 						pendingSlotAssignments.remove(executionVertexId);
 						if (throwable != null) {
-							slotProvider.cancelSlotRequest(slotRequestId, slotSharingGroupId, throwable);
+							slotProviderStrategy.cancelSlotRequest(slotRequestId, slotSharingGroupId, throwable);
 						}
 					});
 

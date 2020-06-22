@@ -29,18 +29,17 @@ import org.apache.flink.runtime.dispatcher.ArchivedExecutionGraphStore;
 import org.apache.flink.runtime.dispatcher.DispatcherGateway;
 import org.apache.flink.runtime.dispatcher.DispatcherId;
 import org.apache.flink.runtime.dispatcher.HistoryServerArchivist;
-import org.apache.flink.runtime.dispatcher.JobDispatcherFactory;
 import org.apache.flink.runtime.dispatcher.PartialDispatcherServices;
 import org.apache.flink.runtime.dispatcher.SessionDispatcherFactory;
+import org.apache.flink.runtime.dispatcher.runner.DefaultDispatcherRunnerFactory;
 import org.apache.flink.runtime.dispatcher.runner.DispatcherRunner;
 import org.apache.flink.runtime.dispatcher.runner.DispatcherRunnerFactory;
-import org.apache.flink.runtime.dispatcher.runner.DispatcherRunnerFactoryImpl;
 import org.apache.flink.runtime.entrypoint.ClusterInformation;
 import org.apache.flink.runtime.heartbeat.HeartbeatServices;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
+import org.apache.flink.runtime.jobmanager.HaServicesJobGraphStoreFactory;
 import org.apache.flink.runtime.leaderretrieval.LeaderRetrievalService;
 import org.apache.flink.runtime.metrics.MetricRegistry;
-import org.apache.flink.runtime.metrics.groups.JobManagerMetricGroup;
 import org.apache.flink.runtime.metrics.groups.ResourceManagerMetricGroup;
 import org.apache.flink.runtime.metrics.util.MetricUtils;
 import org.apache.flink.runtime.resourcemanager.ResourceManager;
@@ -71,6 +70,7 @@ import javax.annotation.Nonnull;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 
 /**
@@ -101,6 +101,7 @@ public class DefaultDispatcherResourceManagerComponentFactory implements Dispatc
 	@Override
 	public DispatcherResourceManagerComponent create(
 			Configuration configuration,
+			Executor ioExecutor,
 			RpcService rpcService,
 			HighAvailabilityServices highAvailabilityServices,
 			BlobServer blobServer,
@@ -114,7 +115,6 @@ public class DefaultDispatcherResourceManagerComponentFactory implements Dispatc
 		LeaderRetrievalService resourceManagerRetrievalService = null;
 		WebMonitorEndpoint<?> webMonitorEndpoint = null;
 		ResourceManager<?> resourceManager = null;
-		JobManagerMetricGroup jobManagerMetricGroup = null;
 		ResourceManagerMetricGroup resourceManagerMetricGroup = null;
 		DispatcherRunner dispatcherRunner = null;
 
@@ -180,17 +180,13 @@ public class DefaultDispatcherResourceManagerComponentFactory implements Dispatc
 
 			final HistoryServerArchivist historyServerArchivist = HistoryServerArchivist.createHistoryServerArchivist(configuration, webMonitorEndpoint);
 
-			jobManagerMetricGroup = MetricUtils.instantiateJobManagerMetricGroup(
-				metricRegistry,
-				hostname);
-
 			final PartialDispatcherServices partialDispatcherServices = new PartialDispatcherServices(
 				configuration,
 				highAvailabilityServices,
 				resourceManagerGatewayRetriever,
 				blobServer,
 				heartbeatServices,
-				jobManagerMetricGroup,
+				() -> MetricUtils.instantiateJobManagerMetricGroup(metricRegistry, hostname),
 				archivedExecutionGraphStore,
 				fatalErrorHandler,
 				historyServerArchivist,
@@ -198,6 +194,10 @@ public class DefaultDispatcherResourceManagerComponentFactory implements Dispatc
 
 			log.debug("Starting Dispatcher.");
 			dispatcherRunner = dispatcherRunnerFactory.createDispatcherRunner(
+				highAvailabilityServices.getDispatcherLeaderElectionService(),
+				fatalErrorHandler,
+				new HaServicesJobGraphStoreFactory(highAvailabilityServices),
+				ioExecutor,
 				rpcService,
 				partialDispatcherServices);
 
@@ -254,10 +254,6 @@ public class DefaultDispatcherResourceManagerComponentFactory implements Dispatc
 				exception = ExceptionUtils.firstOrSuppressed(e, exception);
 			}
 
-			if (jobManagerMetricGroup != null) {
-				jobManagerMetricGroup.close();
-			}
-
 			if (resourceManagerMetricGroup != null) {
 				resourceManagerMetricGroup.close();
 			}
@@ -269,7 +265,7 @@ public class DefaultDispatcherResourceManagerComponentFactory implements Dispatc
 	public static DefaultDispatcherResourceManagerComponentFactory createSessionComponentFactory(
 			ResourceManagerFactory<?> resourceManagerFactory) {
 		return new DefaultDispatcherResourceManagerComponentFactory(
-			new DispatcherRunnerFactoryImpl(SessionDispatcherFactory.INSTANCE),
+			DefaultDispatcherRunnerFactory.createSessionRunner(SessionDispatcherFactory.INSTANCE),
 			resourceManagerFactory,
 			SessionRestEndpointFactory.INSTANCE);
 	}
@@ -278,7 +274,7 @@ public class DefaultDispatcherResourceManagerComponentFactory implements Dispatc
 			ResourceManagerFactory<?> resourceManagerFactory,
 			JobGraphRetriever jobGraphRetriever) {
 		return new DefaultDispatcherResourceManagerComponentFactory(
-			new DispatcherRunnerFactoryImpl(new JobDispatcherFactory(jobGraphRetriever)),
+			DefaultDispatcherRunnerFactory.createJobRunner(jobGraphRetriever),
 			resourceManagerFactory,
 			JobRestEndpointFactory.INSTANCE);
 	}

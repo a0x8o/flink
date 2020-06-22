@@ -22,13 +22,12 @@ under the License.
 	<parent>
 		<artifactId>flink-end-to-end-tests</artifactId>
 		<groupId>org.apache.flink</groupId>
-		<version>1.9-SNAPSHOT</version>
+		<version>1.11-SNAPSHOT</version>
 	</parent>
 
 	<modelVersion>4.0.0</modelVersion>
 
 	<artifactId>flink-end-to-end-tests-common</artifactId>
-	<version>1.9-SNAPSHOT</version>
 
 	<dependencies>
 		<dependency>
@@ -52,6 +51,11 @@ under the License.
 			<scope>compile</scope>
 		</dependency>
 		<dependency>
+			<groupId>org.apache.flink</groupId>
+			<artifactId>flink-test-utils-junit</artifactId>
+			<scope>compile</scope>
+		</dependency>
+		<dependency>
 			<!-- To ensure that flink-dist is built beforehand -->
 			<groupId>org.apache.flink</groupId>
 			<artifactId>flink-dist_${scala.binary.version}</artifactId>
@@ -59,5 +63,20 @@ under the License.
 			<scope>provided</scope>
 		</dependency>
 	</dependencies>
+
+	<build>
+		<plugins>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-surefire-plugin</artifactId>
+				<executions>
+					<execution>
+						<id>default-test</id>
+						<phase>test</phase>
+					</execution>
+				</executions>
+			</plugin>
+		</plugins>
+	</build>
 
 </project>

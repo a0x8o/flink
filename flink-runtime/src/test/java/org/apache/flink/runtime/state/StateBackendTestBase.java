@@ -65,10 +65,12 @@ import org.apache.flink.runtime.checkpoint.StateAssignmentOperation;
 import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.operators.testutils.DummyEnvironment;
+import org.apache.flink.runtime.operators.testutils.MockEnvironment;
 import org.apache.flink.runtime.query.KvStateRegistry;
 import org.apache.flink.runtime.query.KvStateRegistryListener;
 import org.apache.flink.runtime.state.heap.AbstractHeapState;
 import org.apache.flink.runtime.state.heap.NestedMapsStateTable;
+import org.apache.flink.runtime.state.heap.NestedStateMap;
 import org.apache.flink.runtime.state.heap.StateTable;
 import org.apache.flink.runtime.state.internal.InternalAggregatingState;
 import org.apache.flink.runtime.state.internal.InternalKvState;
@@ -83,6 +85,8 @@ import org.apache.flink.util.IOUtils;
 import org.apache.flink.util.StateMigrationException;
 import org.apache.flink.util.TestLogger;
 import org.hamcrest.Matchers;
+import org.junit.After;
+import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.ExpectedException;
@@ -138,8 +142,20 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 	@Rule
 	public final ExpectedException expectedException = ExpectedException.none();
 
+	@Before
+	public void before() {
+		env = buildMockEnv();
+	}
+
+	@After
+	public void after() {
+		IOUtils.closeQuietly(env);
+	}
+
 	// lazily initialized stream storage
 	private CheckpointStreamFactory checkpointStreamFactory;
+
+	private MockEnvironment env;
 
 	protected abstract B getStateBackend() throws Exception;
 
@@ -156,7 +172,7 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 	}
 
 	protected <K> AbstractKeyedStateBackend<K> createKeyedBackend(TypeSerializer<K> keySerializer) throws Exception {
-		return createKeyedBackend(keySerializer, new DummyEnvironment());
+		return createKeyedBackend(keySerializer, env);
 	}
 
 	protected <K> AbstractKeyedStateBackend<K> createKeyedBackend(TypeSerializer<K> keySerializer, Environment env) throws Exception {
@@ -190,7 +206,7 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 	}
 
 	protected <K> AbstractKeyedStateBackend<K> restoreKeyedBackend(TypeSerializer<K> keySerializer, KeyedStateHandle state) throws Exception {
-		return restoreKeyedBackend(keySerializer, state, new DummyEnvironment());
+		return restoreKeyedBackend(keySerializer, state, env);
 	}
 
 	protected <K> AbstractKeyedStateBackend<K> restoreKeyedBackend(
@@ -293,7 +309,6 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 	@SuppressWarnings("unchecked")
 	public void testBackendUsesRegisteredKryoDefaultSerializer() throws Exception {
 		CheckpointStreamFactory streamFactory = createStreamFactory();
-		Environment env = new DummyEnvironment();
 		SharedStateRegistry sharedStateRegistry = new SharedStateRegistry();
 		AbstractKeyedStateBackend<Integer> backend = createKeyedBackend(IntSerializer.INSTANCE, env);
 
@@ -351,7 +366,6 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 	@SuppressWarnings("unchecked")
 	public void testBackendUsesRegisteredKryoDefaultSerializerUsingGetOrCreate() throws Exception {
 		CheckpointStreamFactory streamFactory = createStreamFactory();
-		Environment env = new DummyEnvironment();
 		SharedStateRegistry sharedStateRegistry = new SharedStateRegistry();
 		AbstractKeyedStateBackend<Integer> backend = createKeyedBackend(IntSerializer.INSTANCE, env);
 
@@ -413,7 +427,6 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 	@Test
 	public void testBackendUsesRegisteredKryoSerializer() throws Exception {
 		CheckpointStreamFactory streamFactory = createStreamFactory();
-		Environment env = new DummyEnvironment();
 		SharedStateRegistry sharedStateRegistry = new SharedStateRegistry();
 		AbstractKeyedStateBackend<Integer> backend = createKeyedBackend(IntSerializer.INSTANCE, env);
 		env.getExecutionConfig()
@@ -470,7 +483,6 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 	@SuppressWarnings("unchecked")
 	public void testBackendUsesRegisteredKryoSerializerUsingGetOrCreate() throws Exception {
 		CheckpointStreamFactory streamFactory = createStreamFactory();
-		Environment env = new DummyEnvironment();
 		SharedStateRegistry sharedStateRegistry = new SharedStateRegistry();
 		AbstractKeyedStateBackend<Integer> backend = createKeyedBackend(IntSerializer.INSTANCE, env);
 
@@ -537,7 +549,6 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 	@Test
 	public void testKryoRegisteringRestoreResilienceWithRegisteredType() throws Exception {
 		CheckpointStreamFactory streamFactory = createStreamFactory();
-		Environment env = new DummyEnvironment();
 		SharedStateRegistry sharedStateRegistry = new SharedStateRegistry();
 		AbstractKeyedStateBackend<Integer> backend = createKeyedBackend(IntSerializer.INSTANCE, env);
 
@@ -602,7 +613,6 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 	public void testKryoRegisteringRestoreResilienceWithDefaultSerializer() throws Exception {
 		CheckpointStreamFactory streamFactory = createStreamFactory();
 		SharedStateRegistry sharedStateRegistry = new SharedStateRegistry();
-		Environment env = new DummyEnvironment();
 		AbstractKeyedStateBackend<Integer> backend = null;
 
 		try {
@@ -706,7 +716,6 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 	public void testKryoRegisteringRestoreResilienceWithRegisteredSerializer() throws Exception {
 		CheckpointStreamFactory streamFactory = createStreamFactory();
 		SharedStateRegistry sharedStateRegistry = new SharedStateRegistry();
-		Environment env = new DummyEnvironment();
 
 		AbstractKeyedStateBackend<Integer> backend = null;
 
@@ -799,7 +808,6 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 	@SuppressWarnings("unchecked")
 	public void testKryoRestoreResilienceWithDifferentRegistrationOrder() throws Exception {
 		CheckpointStreamFactory streamFactory = createStreamFactory();
-		Environment env = new DummyEnvironment();
 		SharedStateRegistry sharedStateRegistry = new SharedStateRegistry();
 
 		// register A first then B
@@ -848,7 +856,8 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 
 			// ========== restore snapshot, with a different registration order in the configuration ==========
 
-			env = new DummyEnvironment();
+			env.close();
+			env = buildMockEnv();
 
 			env.getExecutionConfig().registerKryoType(TestNestedPojoClassB.class); // this time register B first
 			env.getExecutionConfig().registerKryoType(TestNestedPojoClassA.class);
@@ -891,7 +900,6 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 	@Test
 	public void testPojoRestoreResilienceWithDifferentRegistrationOrder() throws Exception {
 		CheckpointStreamFactory streamFactory = createStreamFactory();
-		Environment env = new DummyEnvironment();
 		SharedStateRegistry sharedStateRegistry = new SharedStateRegistry();
 
 		// register A first then B
@@ -931,7 +939,8 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 
 			// ========== restore snapshot, with a different registration order in the configuration ==========
 
-			env = new DummyEnvironment();
+			env.close();
+			env = buildMockEnv();
 
 			env.getExecutionConfig().registerPojoType(TestNestedPojoClassB.class); // this time register B first
 			env.getExecutionConfig().registerPojoType(TestNestedPojoClassA.class);
@@ -1203,7 +1212,7 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 				IntSerializer.INSTANCE,
 				1,
 				new KeyGroupRange(0, 0),
-				new DummyEnvironment());
+				env);
 
 		ValueStateDescriptor<String> desc1 = new ValueStateDescriptor<>("a-string", StringSerializer.INSTANCE);
 		ValueStateDescriptor<Integer> desc2 = new ValueStateDescriptor<>("an-integer", IntSerializer.INSTANCE);
@@ -1238,7 +1247,7 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 				1,
 				new KeyGroupRange(0, 0),
 				Collections.singletonList(snapshot1),
-				new DummyEnvironment());
+				env);
 
 		snapshot1.discardState();
 
@@ -2572,7 +2581,6 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 		List<Integer> expectedKeys = Arrays.asList(103, 1031, 1032);
 		assertEquals(keys.size(), expectedKeys.size());
 		keys.removeAll(expectedKeys);
-		assertTrue(keys.isEmpty());
 
 		List<String> values = new ArrayList<>();
 		for (String value : state.values()) {
@@ -2581,7 +2589,6 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 		List<String> expectedValues = Arrays.asList("103", "1031", "1032");
 		assertEquals(values.size(), expectedValues.size());
 		values.removeAll(expectedValues);
-		assertTrue(values.isEmpty());
 
 		// make some more modifications
 		backend.setCurrentKey("1");
@@ -2652,6 +2659,34 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 				getSerializedMap(restoredKvState2, "3", keySerializer, VoidNamespace.INSTANCE, namespaceSerializer, userKeySerializer, userValueSerializer));
 
 		backend.dispose();
+	}
+
+	@Test
+	public void testMapStateIsEmpty() throws Exception {
+		MapStateDescriptor<Integer, Long> kvId = new MapStateDescriptor<>("id", Integer.class, Long.class);
+
+		AbstractKeyedStateBackend<Integer> backend = createKeyedBackend(IntSerializer.INSTANCE);
+
+		try {
+			MapState<Integer, Long> state = backend.getPartitionedState(VoidNamespace.INSTANCE, VoidNamespaceSerializer.INSTANCE, kvId);
+			backend.setCurrentKey(1);
+			assertTrue(state.isEmpty());
+
+			int stateSize = 1024;
+			for (int i = 0; i < stateSize; i++) {
+				state.put(i, i * 2L);
+				assertFalse(state.isEmpty());
+			}
+
+			for (int i = 0; i < stateSize; i++) {
+				assertFalse(state.isEmpty());
+				state.remove(i);
+			}
+			assertTrue(state.isEmpty());
+
+		} finally {
+			backend.dispose();
+		}
 	}
 
 	/**
@@ -2925,7 +2960,7 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 				IntSerializer.INSTANCE,
 				MAX_PARALLELISM,
 				new KeyGroupRange(0, MAX_PARALLELISM - 1),
-				new DummyEnvironment());
+				env);
 
 		ValueStateDescriptor<String> kvId = new ValueStateDescriptor<>("id", String.class);
 
@@ -2972,7 +3007,7 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 				MAX_PARALLELISM,
 				new KeyGroupRange(0, 4),
 				firstHalfKeyGroupStates,
-				new DummyEnvironment());
+				env);
 
 		// backend for the second half of the key group range
 		final AbstractKeyedStateBackend<Integer> secondHalfBackend = restoreKeyedBackend(
@@ -2980,7 +3015,7 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 				MAX_PARALLELISM,
 				new KeyGroupRange(5, 9),
 				secondHalfKeyGroupStates,
-				new DummyEnvironment());
+				env);
 
 
 		ValueState<String> firstHalfState = firstHalfBackend.getPartitionedState(VoidNamespace.INSTANCE, VoidNamespaceSerializer.INSTANCE, kvId);
@@ -3428,8 +3463,9 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 		if (stateTable instanceof NestedMapsStateTable) {
 			int keyGroupIndex = KeyGroupRangeAssignment.assignToKeyGroup(1, numberOfKeyGroups);
 			NestedMapsStateTable<?, ?, ?> nestedMapsStateTable = (NestedMapsStateTable<?, ?, ?>) stateTable;
-			assertTrue(nestedMapsStateTable.getState()[keyGroupIndex] instanceof ConcurrentHashMap);
-			assertTrue(nestedMapsStateTable.getState()[keyGroupIndex].get(VoidNamespace.INSTANCE) instanceof ConcurrentHashMap);
+			NestedStateMap<?, ?, ?>[] nestedStateMaps = (NestedStateMap<?, ?, ?>[]) nestedMapsStateTable.getState();
+			assertTrue(nestedStateMaps[keyGroupIndex].getNamespaceMap() instanceof ConcurrentHashMap);
+			assertTrue(nestedStateMaps[keyGroupIndex].getNamespaceMap().get(VoidNamespace.INSTANCE) instanceof ConcurrentHashMap);
 		}
 	}
 
@@ -3438,7 +3474,6 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 	 */
 	@Test
 	public void testQueryableStateRegistration() throws Exception {
-		DummyEnvironment env = new DummyEnvironment();
 		KvStateRegistry registry = env.getKvStateRegistry();
 
 		CheckpointStreamFactory streamFactory = createStreamFactory();
@@ -3953,7 +3988,6 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 	public void testCheckConcurrencyProblemWhenPerformingCheckpointAsync() throws Exception {
 
 		CheckpointStreamFactory streamFactory = createStreamFactory();
-		Environment env = new DummyEnvironment();
 		AbstractKeyedStateBackend<Integer> backend = createKeyedBackend(IntSerializer.INSTANCE, env);
 
 		ExecutorService executorService = Executors.newScheduledThreadPool(1);
@@ -4400,5 +4434,9 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> exten
 
 	private static final class MutableLong {
 		long value;
+	}
+
+	private MockEnvironment buildMockEnv() {
+		return MockEnvironment.builder().build();
 	}
 }

@@ -18,7 +18,7 @@
 ################################################################################
 
 # lint-python.sh
-# This script will prepare a virtual environment for many kinds of checks, such as pytest, flake8 codestyle.
+# This script will prepare a virtual environment for many kinds of checks, such as tox check, flake8 check.
 #
 # You can refer to the README.MD in ${flink-python} to learn how easy to run the script.
 #
@@ -27,7 +27,8 @@
 function download() {
     local DOWNLOAD_STATUS=
     if hash "wget" 2>/dev/null; then
-        wget "$1" -O "$2" -q --show-progress
+        # because of the difference of all versions of wget, so we turn of the option --show-progress
+        wget "$1" -O "$2" -q
         DOWNLOAD_STATUS="$?"
     else
         curl "$1" -o "$2" --progress-bar
@@ -39,7 +40,7 @@ function download() {
     fi
 }
 
-# for print infos both in log and console
+# Printing infos both in log and console
 function print_function() {
     local STAGE_LENGTH=48
     local left_edge_len=
@@ -59,6 +60,24 @@ function print_function() {
             ;;
     esac
     echo $str | tee -a $LOG_FILE
+}
+
+function regexp_match() {
+    if echo $1 | grep -e $2 &>/dev/null; then
+        echo true
+    else
+        echo false
+    fi
+}
+
+# decide whether a array contains a specified element.
+function contains_element() {
+    arr=($1)
+    if echo "${arr[@]}" | grep -w "$2" &>/dev/null; then
+        echo true
+    else
+        echo false
+    fi
 }
 
 # Checkpoint the stage:step for convenient to re-exec the script with
@@ -98,20 +117,33 @@ function check_valid_stage() {
                 return 0
             fi
             ;;
-        "tox")
-            if [ $2 -eq 0 ]; then
-                return 0
-            fi
-            ;;
-        "flake8")
-            if [ $2 -eq 0 ]; then
-                return 0
-            fi
-            ;;
         *)
             ;;
     esac
     return 1
+}
+
+function parse_component_args() {
+    local REAL_COMPONENTS=()
+    for component in ${INSTALLATION_COMPONENTS[@]}; do
+        # because all other components depends on conda, the install of conda is
+        # required component.
+        if [[ "$component" == "basic" ]] || [[ "$component" == "miniconda" ]]; then
+            continue
+        fi
+        if [[ "$component" == "all" ]]; then
+            component="environment"
+        fi
+        if [[ `contains_element "${SUPPORTED_INSTALLATION_COMPONENTS[*]}" "${component}"` = true ]]; then
+            REAL_COMPONENTS+=(${component})
+        else
+            echo "unknown install component ${component}, currently we only support installing basic,py_env,tox,flake8,sphinx,all."
+            exit 1
+        fi
+    done
+    if [[ `contains_element "${REAL_COMPONENTS[*]}" "environment"` = false ]]; then
+        SUPPORTED_INSTALLATION_COMPONENTS=(${REAL_COMPONENTS[@]})
+    fi
 }
 
 # For convenient to index something binded to OS.
@@ -125,7 +157,7 @@ function get_os_index() {
 }
 
 # Considering the file size of miniconda.sh,
-# "wget" is better than curl in the weak network environment.
+# "wget" is better than "curl" in the weak network environment.
 function install_wget() {
     if [ $1 == "Darwin" ]; then
         hash "brew" 2>/dev/null
@@ -150,11 +182,11 @@ function install_wget() {
 
 # The script choose miniconda as our package management tool.
 # The script use miniconda to create all kinds of python versions and
-# some pakcages such as tox and flake8.
+# some pakcages including checks such as tox and flake8.
 
 function install_miniconda() {
-    OS_TO_CONDA_URL=("https://repo.continuum.io/miniconda/Miniconda3-latest-MacOSX-x86_64.sh" \
-        "https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh")
+    OS_TO_CONDA_URL=("https://repo.continuum.io/miniconda/Miniconda3-4.7.10-MacOSX-x86_64.sh" \
+        "https://repo.continuum.io/miniconda/Miniconda3-4.7.10-Linux-x86_64.sh")
     print_function "STEP" "download miniconda..."
     if [ ! -f "$CONDA_INSTALL" ]; then
         download ${OS_TO_CONDA_URL[$1]} $CONDA_INSTALL_SH
@@ -187,7 +219,7 @@ function install_miniconda() {
 
 # Install some kinds of py env.
 function install_py_env() {
-    py_env=("2.7" "3.3" "3.4" "3.5" "3.6" "3.7")
+    py_env=("3.5" "3.6" "3.7")
     for ((i=0;i<${#py_env[@]};i++)) do
         if [ -d "$CURRENT_DIR/.conda/envs/${py_env[i]}" ]; then
             rm -rf "$CURRENT_DIR/.conda/envs/${py_env[i]}"
@@ -199,7 +231,7 @@ function install_py_env() {
             fi
         fi
         print_function "STEP" "installing python${py_env[i]}..."
-        ${CONDA_PATH} create --name ${py_env[i]} -y -q python=${py_env[i]} 2>&1 >/dev/null
+        $CONDA_PATH create --name ${py_env[i]} -y -q python=${py_env[i]} 2>&1 >/dev/null
         if [ $? -ne 0 ]; then
             echo "conda install ${py_env[i]} failed.\
             You can retry to exec the script."
@@ -213,18 +245,21 @@ function install_py_env() {
 # In some situations,you need to run the script with "sudo". e.g. sudo ./lint-python.sh
 function install_tox() {
     if [ -f "$TOX_PATH" ]; then
-        ${CONDA_PATH} remove tox -y -q 2>&1 >/dev/null
+        $PIP_PATH uninstall tox -y -q 2>&1 >/dev/null
         if [ $? -ne 0 ]; then
-            echo "conda remove tox failed \
+            echo "pip uninstall tox failed \
             please try to exec the script again.\
             if failed many times, you can try to exec in the form of sudo ./lint-python.sh -f"
             exit 1
         fi
     fi
 
-    ${CONDA_PATH} install -c conda-forge tox -y -q 2>&1 >/dev/null
+    # tox 3.14.0 depends on both 0.19 and 0.23 of importlib_metadata at the same time and
+    # conda will try to install both these two versions and it will cause problems occasionally.
+    # Using pip as the package manager could avoid this problem.
+    $PIP_PATH install -q virtualenv==16.0.0 tox==3.14.0 2>&1 >/dev/null
     if [ $? -ne 0 ]; then
-        echo "conda install tox failed \
+        echo "pip install tox failed \
         please try to exec the script again.\
         if failed many times, you can try to exec in the form of sudo ./lint-python.sh -f"
         exit 1
@@ -235,7 +270,7 @@ function install_tox() {
 # In some situations,you need to run the script with "sudo". e.g. sudo ./lint-python.sh
 function install_flake8() {
     if [ -f "$FLAKE8_PATH" ]; then
-        ${CONDA_PATH} remove flake8 -y -q 2>&1 >/dev/null
+        $CONDA_PATH remove -p $CONDA_HOME flake8 -y -q 2>&1 >/dev/null
         if [ $? -ne 0 ]; then
             echo "conda remove flake8 failed \
             please try to exec the script again.\
@@ -244,7 +279,7 @@ function install_flake8() {
         fi
     fi
 
-    ${CONDA_PATH} install -c anaconda flake8 -y -q 2>&1 >/dev/null
+    $CONDA_PATH install -p $CONDA_HOME -c anaconda flake8 -y -q 2>&1 >/dev/null
     if [ $? -ne 0 ]; then
         echo "conda install flake8 failed \
         please try to exec the script again.\
@@ -253,11 +288,41 @@ function install_flake8() {
     fi
 }
 
+# Install sphinx.
+# In some situations,you need to run the script with "sudo". e.g. sudo ./lint-python.sh
+function install_sphinx() {
+    if [ -f "$SPHINX_PATH" ]; then
+        $CONDA_PATH remove -p $CONDA_HOME sphinx -y -q 2>&1 >/dev/null
+        if [ $? -ne 0 ]; then
+            echo "conda remove sphinx failed \
+            please try to exec the script again.\
+            if failed many times, you can try to exec in the form of sudo ./lint-python.sh -f"
+            exit 1
+        fi
+    fi
+
+    $CONDA_PATH install -p $CONDA_HOME -c anaconda sphinx -y -q 2>&1 >/dev/null
+    if [ $? -ne 0 ]; then
+        echo "conda install sphinx failed \
+        please try to exec the script again.\
+        if failed many times, you can try to exec in the form of sudo ./lint-python.sh -f"
+        exit 1
+    fi
+}
+
+function need_install_component() {
+    if [[ `contains_element "${SUPPORTED_INSTALLATION_COMPONENTS[*]}" "$1"` = true ]]; then
+        echo true
+    else
+        echo false
+    fi
+}
+
 
 # In this function, the script will prepare all kinds of python environments and checks.
 function install_environment() {
 
-    print_function "STAGE" "Stage 1:installing environment"
+    print_function "STAGE" "installing environment"
 
     local sys_os=`uname -s`
     #get the index of the SUPPORT_OS array for convinient to intall tool.
@@ -286,37 +351,43 @@ function install_environment() {
     print_function "STEP" "install miniconda... [SUCCESS]"
 
     # step-3 install python environment whcih includes
-    # 2.7 3.3 3.4 3.5 3.6 3.7
-    print_function "STEP" "installing python environment..."
-    if [ $STEP -lt 3 ]; then
+    # 3.5 3.6 3.7
+    if [ $STEP -lt 3 ] && [ `need_install_component "py_env"` = true ]; then
+        print_function "STEP" "installing python environment..."
         install_py_env
         STEP=3
         checkpoint_stage $STAGE $STEP
+        print_function "STEP" "install python environment... [SUCCESS]"
     fi
-    print_function "STEP" "install python environment... [SUCCESS]"
 
     # step-4 install tox
-    print_function "STEP" "installing tox..."
-    if [ $STEP -lt 4 ]; then
+    if [ $STEP -lt 4 ] && [ `need_install_component "tox"` = true ]; then
+        print_function "STEP" "installing tox..."
         install_tox
         STEP=4
         checkpoint_stage $STAGE $STEP
+        print_function "STEP" "install tox... [SUCCESS]"
     fi
-    print_function "STEP" "install tox... [SUCCESS]"
 
     # step-5 install  flake8
-    print_function "STEP" "installing flake8..."
-    if [ $STEP -lt 5 ]; then
+    if [ $STEP -lt 5 ] && [ `need_install_component "flake8"` = true ]; then
+        print_function "STEP" "installing flake8..."
         install_flake8
         STEP=5
         checkpoint_stage $STAGE $STEP
+        print_function "STEP" "install flake8... [SUCCESS]"
     fi
-    print_function "STEP" "install flake8... [SUCCESS]"
 
-    print_function "STAGE"  "Stage 1:finishing install environment"
+    # step-6 install sphinx
+    if [ $STEP -lt 6 ] && [ `need_install_component "sphinx"` = true ]; then
+        print_function "STEP" "installing sphinx..."
+        install_sphinx
+        STEP=6
+        checkpoint_stage $STAGE $STEP
+        print_function "STEP" "install sphinx... [SUCCESS]"
+    fi
 
-    STAGE="tox"
-    STEP=0
+    print_function "STAGE"  "install environment... [SUCCESS]"
 }
 
 # create dir if needed
@@ -333,20 +404,20 @@ function create_dir() {
 
 # Set created py-env in $PATH for tox's creating virtual env
 function activate () {
-    if [ ! -d ${CURRENT_DIR}/.conda/envs ]; then
-        echo "For some unkown reasons,missing the directory ${CURRENT_DIR}/.conda/envs,\
-        you should exec the script with the parameter: -f"
+    if [ ! -d $CURRENT_DIR/.conda/envs ]; then
+        echo "For some unkown reasons,missing the directory $CURRENT_DIR/.conda/envs,\
+        you should exec the script with the option: -f"
         exit 1
     fi
 
-    for py_dir in ${CURRENT_DIR}/.conda/envs/*
+    for py_dir in $CURRENT_DIR/.conda/envs/*
     do
         PATH=$py_dir/bin:$PATH
     done
     export PATH 2>/dev/null
     if [ $? -ne 0 ]; then
         echo "For some unkown reasons, the py package is not complete,\
-        you should exec the script with the parameter: -f"
+        you should exec the script with the option: -f"
         exit 1
     fi
 }
@@ -362,18 +433,106 @@ function deactivate() {
     fi
 }
 
-# Tox pytest Check
+# Collect checks
+function collect_checks() {
+    if [ ! -z "$EXCLUDE_CHECKS" ] && [ ! -z  "$INCLUDE_CHECKS" ]; then
+        echo "You can't use option -s and -e simultaneously."
+        exit 1
+    fi
+    if [ ! -z "$EXCLUDE_CHECKS" ]; then
+        for (( i = 0; i < ${#EXCLUDE_CHECKS[@]}; i++)); do
+            if [[ `contains_element "${SUPPORT_CHECKS[*]}" "${EXCLUDE_CHECKS[i]}_check"` = true ]]; then
+                SUPPORT_CHECKS=("${SUPPORT_CHECKS[@]/${EXCLUDE_CHECKS[i]}_check}")
+            else
+                echo "the check ${EXCLUDE_CHECKS[i]} is invalid."
+                exit 1
+            fi
+        done
+    fi
+    if [ ! -z "$INCLUDE_CHECKS" ]; then
+        REAL_SUPPORT_CHECKS=()
+        for (( i = 0; i < ${#INCLUDE_CHECKS[@]}; i++)); do
+            if [[ `contains_element "${SUPPORT_CHECKS[*]}" "${INCLUDE_CHECKS[i]}_check"` = true ]]; then
+                REAL_SUPPORT_CHECKS+=("${INCLUDE_CHECKS[i]}_check")
+            else
+                echo "the check ${INCLUDE_CHECKS[i]} is invalid."
+                exit 1
+            fi
+        done
+        SUPPORT_CHECKS=(${REAL_SUPPORT_CHECKS[@]})
+    fi
+}
+
+# If the check stage is needed
+function include_stage() {
+    if [[ `contains_element "${SUPPORT_CHECKS[*]}" "$1"` = true ]]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+# get all supported checks functions
+function get_all_supported_checks() {
+    _OLD_IFS=$IFS
+    IFS=$'\n'
+    SUPPORT_CHECKS=()
+    for fun in $(declare -F); do
+        if [[ `regexp_match "$fun" "_check$"` = true ]]; then
+            SUPPORT_CHECKS+=("${fun:11}")
+        fi
+    done
+    IFS=$_OLD_IFS
+}
+
+# get all supported install components functions
+function get_all_supported_install_components() {
+    _OLD_IFS=$IFS
+    IFS=$'\n'
+    for fun in $(declare -F); do
+        if [[ `regexp_match "${fun:11}" "^install_"` = true ]]; then
+            SUPPORTED_INSTALLATION_COMPONENTS+=("${fun:19}")
+        fi
+    done
+    IFS=$_OLD_IFS
+    # we don't need to expose "install_wget" to user.
+    local DELETE_COMPONENTS=("wget")
+    local REAL_COMPONENTS=()
+    for component in ${SUPPORTED_INSTALLATION_COMPONENTS[@]}; do
+        if [[ `contains_element "${DELETE_COMPONENTS[*]}" "${component}"` = false ]]; then
+            REAL_COMPONENTS+=("${component}")
+        fi
+    done
+    SUPPORTED_INSTALLATION_COMPONENTS=(${REAL_COMPONENTS[@]})
+}
+
+# exec all selected check stages
+function check_stage() {
+    print_function "STAGE" "checks starting"
+    for fun in ${SUPPORT_CHECKS[@]}; do
+        $fun
+    done
+    echo "All the checks are finished, the detailed information can be found in: $LOG_FILE"
+}
+
+
+###############################################################All Checks Definitions###############################################################
+#########################
+# This part defines all check functions such as tox_check and flake8_check
+# We make a rule that all check functions are suffixed with _ check. e.g. tox_check, flake8_chek
+#########################
+# Tox check
 function tox_check() {
-    print_function "STAGE" "Stage 2:tox check"
+    print_function "STAGE" "tox checks"
     # Set created py-env in $PATH for tox's creating virtual env
     activate
     $TOX_PATH -c $FLINK_PYTHON_DIR/tox.ini --recreate 2>&1 | tee -a $LOG_FILE
 
     TOX_RESULT=$((grep -c "congratulations :)" "$LOG_FILE") 2>&1)
     if [ $TOX_RESULT -eq '0' ]; then
-        print_function "STAGE" "tox checked ... [FAILED]"
+        print_function "STAGE" "tox checks... [FAILED]"
     else
-        print_function "STAGE" "tox checked ... [SUCCESS]"
+        print_function "STAGE" "tox checks... [SUCCESS]"
     fi
     # Reset the $PATH
     deactivate
@@ -381,15 +540,13 @@ function tox_check() {
     if [ $TOX_RESULT -eq '0' ]; then
         exit 1
     fi
-    STAGE="flake8"
-    STEP="0"
 }
 
-# Flake8 codestyle check
-function flake8_check {
+# Flake8 check
+function flake8_check() {
     local PYTHON_SOURCE="$(find . \( -path ./dev -o -path ./.tox \) -prune -o -type f -name "*.py" -print )"
 
-    print_function "STAGE" "Stage 3:flake8 code style check"
+    print_function "STAGE" "flake8 checks"
     if [ ! -f "$FLAKE8_PATH" ]; then
         echo "For some unkown reasons, the flake8 package is not complete,\
         you should exec the script with the parameter: -f"
@@ -407,13 +564,36 @@ function flake8_check {
 
     PYCODESTYLE_STATUS=$?
     if [ $PYCODESTYLE_STATUS -ne 0 ]; then
-        print_function "STAGE" "python code style checks ... [FAILED]"
+        print_function "STAGE" "flake8 checks... [FAILED]"
         # Stop the running script.
         exit 1;
     else
-        print_function "STAGE" "python code style checks ... [SUCCESS]"
+        print_function "STAGE" "flake8 checks... [SUCCESS]"
     fi
 }
+
+# Sphinx check
+function sphinx_check() {
+    export SPHINXBUILD=$SPHINX_PATH
+    # cd to $FLINK_PYTHON_DIR
+    pushd "$FLINK_PYTHON_DIR"/docs &> /dev/null
+    make clean
+
+    # the return value of a pipeline is the status of the last command to exit
+    # with a non-zero status or zero if no command exited with a non-zero status
+    set -o pipefail
+    (SPHINXOPTS="-a -W" make html) 2>&1 | tee -a $LOG_FILE
+
+    SPHINXBUILD_STATUS=$?
+    if [ $SPHINXBUILD_STATUS -ne 0 ]; then
+        print_function "STAGE" "sphinx checks... [FAILED]"
+        # Stop the running script.
+        exit 1;
+    else
+        print_function "STAGE" "sphinx checks... [SUCCESS]"
+    fi
+}
+###############################################################All Checks Definitions###############################################################
 
 # CURRENT_DIR is "flink/flink-python/dev/"
 CURRENT_DIR="$(cd "$( dirname "$0" )" && pwd)"
@@ -422,24 +602,33 @@ CURRENT_DIR="$(cd "$( dirname "$0" )" && pwd)"
 FLINK_PYTHON_DIR=$(dirname "$CURRENT_DIR")
 pushd "$FLINK_PYTHON_DIR" &> /dev/null
 
+# conda home path
+CONDA_HOME=$CURRENT_DIR/.conda
+
 # conda path
-CONDA_PATH=$CURRENT_DIR/.conda/bin/conda
+CONDA_PATH=$CONDA_HOME/bin/conda
+
+# pip path
+PIP_PATH=$CONDA_HOME/bin/pip
 
 # tox path
-TOX_PATH=$CURRENT_DIR/.conda/bin/tox
+TOX_PATH=$CONDA_HOME/bin/tox
 
 # flake8 path
-FLAKE8_PATH=$CURRENT_DIR/.conda/bin/flake8
+FLAKE8_PATH=$CONDA_HOME/bin/flake8
+
+# sphinx path
+SPHINX_PATH=$CONDA_HOME/bin/sphinx-build
 
 _OLD_PATH="$PATH"
 
 SUPPORT_OS=("Darwin" "Linux")
 
-# the file stores the success progress.
+# the file stores the success step in installing progress.
 STAGE_FILE=$CURRENT_DIR/.stage.txt
 
 # the dir includes all kinds of py env installed.
-VIRTUAL_ENV=$CURRENT_DIR/.conda/envs
+VIRTUAL_ENV=$CONDA_HOME/envs
 
 LOG_DIR=$CURRENT_DIR/log
 
@@ -461,17 +650,54 @@ echo >$LOG_FILE
 CONDA_INSTALL_SH=$CURRENT_DIR/download/miniconda.sh
 
 # stage "install" includes the num of steps.
-STAGE_INSTALL_STEPS=5
+STAGE_INSTALL_STEPS=6
 
 # whether force to restart the script.
 FORCE_START=0
+
+SUPPORT_CHECKS=()
+
+# search all supported check functions and put them into SUPPORT_CHECKS array
+get_all_supported_checks
+
+EXCLUDE_CHECKS=""
+
+INCLUDE_CHECKS=""
+
+SUPPORTED_INSTALLATION_COMPONENTS=()
+
+# search all supported install functions and put them into SUPPORTED_INSTALLATION_COMPONENTS array
+get_all_supported_install_components
+
+INSTALLATION_COMPONENTS=()
 # parse_opts
 USAGE="
-usage: $0 [options]$
--h           print this help message and exit
--f           force to exec from the start
+usage: $0 [options]
+-h          print this help message and exit
+-f          force to exec from the progress of installing environment
+-s [basic,py_env,tox,flake8,sphinx,all]
+            install environment with specified components which split by comma(,)
+            note:
+                This option is used to install environment components and will skip all subsequent checks,
+                so do not use this option with -e,-i simultaneously.
+-e [tox,flake8,sphinx]
+            exclude checks which split by comma(,)
+-i [tox,flake8,sphinx]
+            include checks which split by comma(,)
+-l          list all checks supported.
+Examples:
+  ./lint-python -s basic        =>  install environment with basic components.
+  ./lint-python -s py_env       =>  install environment with python env(3.5,3.6,3.7).
+  ./lint-python -s all          =>  install environment with all components such as python env,tox,flake8,sphinx etc.
+  ./lint-python -s tox,flake8   =>  install environment with tox,flake8.
+  ./lint-python -s tox -f       =>  reinstall environment with tox.
+  ./lint-python -e tox,flake8   =>  exclude checks tox,flake8.
+  ./lint-python -i flake8       =>  include checks flake8.
+  ./lint-python                 =>  exec all checks.
+  ./lint-python -f              =>  reinstall environment with all components and exec all checks.
+  ./lint-python -l              =>  list all checks supported.
 "
-while getopts "hf" arg; do
+while getopts "hfs:i:e:l" arg; do
     case "$arg" in
         h)
             printf "%s\\n" "$USAGE"
@@ -480,12 +706,39 @@ while getopts "hf" arg; do
         f)
             FORCE_START=1
             ;;
+        s)
+            INSTALLATION_COMPONENTS=($(echo $OPTARG | tr ',' ' ' ))
+            ;;
+        e)
+            EXCLUDE_CHECKS=($(echo $OPTARG | tr ',' ' ' ))
+            ;;
+        i)
+            INCLUDE_CHECKS=($(echo $OPTARG | tr ',' ' ' ))
+            ;;
+        l)
+            printf "current supported checks includes:\n"
+            for fun in ${SUPPORT_CHECKS[@]}; do
+                echo ${fun%%_check*}
+            done
+            exit 2
+            ;;
         ?)
             printf "ERROR: did not recognize option '%s', please try -h\\n" "$1"
             exit 1
             ;;
     esac
 done
+
+# decides whether to skip check stage
+skip_checks=0
+if [ ! -z "$INSTALLATION_COMPONENTS" ]; then
+    parse_component_args
+    skip_checks=1
+fi
+
+# collect checks according to the options
+collect_checks
+
 # If exec the script with the param: -f, all progress will be re-run
 if [ $FORCE_START -eq 1 ]; then
     STAGE="install"
@@ -494,17 +747,11 @@ if [ $FORCE_START -eq 1 ]; then
 else
     restore_stage
 fi
-# Stage 1:install environment
-if [ $STAGE == "install" ]; then
-    install_environment
-fi
-# Stage 2:tox check python compatibility
-if [ $STAGE == "tox" ]; then
-    tox_check
-fi
-# Stage 3:code style test
-if [ $STAGE == "flake8" ]; then
-    flake8_check
-fi
 
-echo "All the checks are finished, the detailed information can be found in: $LOG_FILE"
+# install environment
+install_environment
+
+# exec all selected checks
+if [ $skip_checks -eq 0 ]; then
+    check_stage
+fi

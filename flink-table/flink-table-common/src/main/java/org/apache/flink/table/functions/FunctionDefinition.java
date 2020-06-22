@@ -19,6 +19,8 @@
 package org.apache.flink.table.functions;
 
 import org.apache.flink.annotation.PublicEvolving;
+import org.apache.flink.table.catalog.DataTypeFactory;
+import org.apache.flink.table.types.inference.TypeInference;
 
 import java.util.Collections;
 import java.util.Set;
@@ -41,11 +43,18 @@ public interface FunctionDefinition {
 	FunctionKind getKind();
 
 	/**
-	 * Returns the language of function this definition describes.
+	 * Returns the logic for performing type inference of a call to this function definition.
+	 *
+	 * <p>The type inference process is responsible for inferring unknown types of input arguments,
+	 * validating input arguments, and producing result types. The type inference process happens
+	 * independent of a function body. The output of the type inference is used to search for a
+	 * corresponding runtime implementation.
+	 *
+	 * <p>Instances of type inference can be created by using {@link TypeInference#newBuilder()}.
+	 *
+	 * <p>See {@link BuiltInFunctionDefinitions} for concrete usage examples.
 	 */
-	default FunctionLanguage getLanguage() {
-		return FunctionLanguage.JVM;
-	}
+	TypeInference getTypeInference(DataTypeFactory typeFactory);
 
 	/**
 	 * Returns the set of requirements this definition demands.

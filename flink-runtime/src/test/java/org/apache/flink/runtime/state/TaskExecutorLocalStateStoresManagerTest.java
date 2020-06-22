@@ -26,6 +26,7 @@ import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.concurrent.Executors;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.metrics.groups.UnregisteredMetricGroups;
+import org.apache.flink.runtime.taskexecutor.TaskExecutorResourceUtils;
 import org.apache.flink.runtime.taskexecutor.TaskManagerServices;
 import org.apache.flink.runtime.taskexecutor.TaskManagerServicesConfiguration;
 import org.apache.flink.util.FileUtils;
@@ -45,7 +46,7 @@ public class TaskExecutorLocalStateStoresManagerTest extends TestLogger {
 	@ClassRule
 	public static TemporaryFolder temporaryFolder = new TemporaryFolder();
 
-	private static final long MEM_SIZE_PARAM = 128L * 1024 * 1024;
+	private static final int TOTAL_FLINK_MEMORY_MB = 1024;
 
 	/**
 	 * This tests that the creation of {@link TaskManagerServices} correctly creates the local state root directory
@@ -205,7 +206,11 @@ public class TaskExecutorLocalStateStoresManagerTest extends TestLogger {
 	private TaskManagerServicesConfiguration createTaskManagerServiceConfiguration(
 			Configuration config) throws IOException {
 		return TaskManagerServicesConfiguration.fromConfiguration(
-			config, MEM_SIZE_PARAM, InetAddress.getLocalHost(), true);
+			config,
+			ResourceID.generate(),
+			InetAddress.getLocalHost(),
+			true,
+			TaskExecutorResourceUtils.resourceSpecFromConfigForLocalExecution(config));
 	}
 
 	private TaskManagerServices createTaskManagerServices(
@@ -213,9 +218,6 @@ public class TaskExecutorLocalStateStoresManagerTest extends TestLogger {
 		return TaskManagerServices.fromConfiguration(
 			config,
 			UnregisteredMetricGroups.createUnregisteredTaskManagerMetricGroup(),
-			ResourceID.generate(),
-			Executors.directExecutor(),
-			MEM_SIZE_PARAM,
-			MEM_SIZE_PARAM);
+			Executors.directExecutor());
 	}
 }

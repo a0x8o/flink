@@ -36,8 +36,9 @@ public class ResourceManagerOptions {
 		.withDescription("Timeout for jobs which don't have a job manager as leader assigned.");
 
 	/**
-	 * The number of resource managers start.
+	 * This option is not used any more.
 	 */
+	@Deprecated
 	public static final ConfigOption<Integer> LOCAL_NUMBER_RESOURCE_MANAGER = ConfigOptions
 		.key("local.number-resourcemanager")
 		.defaultValue(1)
@@ -56,24 +57,24 @@ public class ResourceManagerOptions {
 			" Its not possible to use this configuration key to define port ranges.");
 
 	/**
-	 * Percentage of heap space to remove from containers (YARN / Mesos), to compensate
+	 * Percentage of heap space to remove from Job Master containers (YARN / Mesos/ Kubernetes), to compensate
 	 * for other JVM memory usage.
 	 */
 	public static final ConfigOption<Float> CONTAINERIZED_HEAP_CUTOFF_RATIO = ConfigOptions
 		.key("containerized.heap-cutoff-ratio")
 		.defaultValue(0.25f)
 		.withDeprecatedKeys("yarn.heap-cutoff-ratio")
-		.withDescription("Percentage of heap space to remove from containers (YARN / Mesos), to compensate" +
-			" for other JVM memory usage.");
+		.withDescription("Percentage of heap space to remove from Job Master containers (YARN / Mesos / Kubernetes), " +
+			"to compensate for other JVM memory usage.");
 
 	/**
-	 * Minimum amount of heap memory to remove in containers, as a safety margin.
+	 * Minimum amount of heap memory to remove in Job Master containers, as a safety margin.
 	 */
 	public static final ConfigOption<Integer> CONTAINERIZED_HEAP_CUTOFF_MIN = ConfigOptions
 		.key("containerized.heap-cutoff-min")
 		.defaultValue(600)
 		.withDeprecatedKeys("yarn.heap-cutoff-min")
-		.withDescription("Minimum amount of heap memory to remove in containers, as a safety margin.");
+		.withDescription("Minimum amount of heap memory to remove in Job Master containers, as a safety margin.");
 
 	/**
 	 * The timeout for a slot request to be discarded, in milliseconds.
@@ -84,6 +85,23 @@ public class ResourceManagerOptions {
 		.key("slotmanager.request-timeout")
 		.defaultValue(-1L)
 		.withDescription("The timeout for a slot request to be discarded.");
+
+	/**
+	 * Time in milliseconds of the start-up period of a standalone cluster.
+	 * During this time, resource manager of the standalone cluster expects new task executors to be registered, and
+	 * will not fail slot requests that can not be satisfied by any current registered slots.
+	 * After this time, it will fail pending and new coming requests immediately that can not be satisfied by registered
+	 * slots.
+	 * If not set, {@link #SLOT_REQUEST_TIMEOUT} will be used by default.
+	 */
+	public static final ConfigOption<Long> STANDALONE_CLUSTER_STARTUP_PERIOD_TIME = ConfigOptions
+		.key("resourcemanager.standalone.start-up-time")
+		.defaultValue(-1L)
+		.withDescription("Time in milliseconds of the start-up period of a standalone cluster. During this time, "
+			+ "resource manager of the standalone cluster expects new task executors to be registered, and will not "
+			+ "fail slot requests that can not be satisfied by any current registered slots. After this time, it will "
+			+ "fail pending and new coming requests immediately that can not be satisfied by registered slots. If not "
+			+ "set, 'slotmanager.request-timeout' will be used by default.");
 
 	/**
 	 * The timeout for an idle task manager to be released, in milliseconds.
