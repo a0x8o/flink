@@ -19,8 +19,7 @@
 package org.apache.flink.table.planner.plan.stream.table.stringexpr
 
 import org.apache.flink.api.scala._
-import org.apache.flink.table.api.Over
-import org.apache.flink.table.api.scala._
+import org.apache.flink.table.api._
 import org.apache.flink.table.planner.expressions.utils.Func1
 import org.apache.flink.table.planner.plan.utils.JavaUserDefinedAggFunctions.{WeightedAvg, WeightedAvgWithRetract}
 import org.apache.flink.table.planner.utils.TableTestBase
@@ -40,7 +39,7 @@ class OverWindowStringExpressionTest extends TableTestBase {
 
     val resScala = t
       .window(Over partitionBy 'a orderBy 'rowtime preceding UNBOUNDED_ROW as 'w)
-      .select('a, 'b.sum over 'w as 'cnt, weightAvgFun('a, 'b) over 'w as 'myCnt)
+      .select('a, 'b.sum over 'w as 'cnt, call("weightAvgFun", 'a, 'b) over 'w as 'myCnt)
     val resJava = t
       .window(Over.partitionBy("a").orderBy("rowtime").preceding("unbounded_row").as("w"))
       .select("a, SUM(b) OVER w as cnt, weightAvgFun(a, b) over w as myCnt")
@@ -59,7 +58,7 @@ class OverWindowStringExpressionTest extends TableTestBase {
 
     val resScala = t
       .window(Over orderBy 'rowtime preceding UNBOUNDED_ROW following CURRENT_ROW as 'w)
-      .select('a, 'b.sum over 'w, weightAvgFun('a, 'b) over 'w as 'myCnt)
+      .select('a, 'b.sum over 'w, call("weightAvgFun", 'a, 'b) over 'w as 'myCnt)
     val resJava = t
       .window(Over.orderBy("rowtime").preceding("unbounded_row").following("current_row").as("w"))
       .select("a, SUM(b) OVER w, weightAvgFun(a, b) over w as myCnt")
@@ -78,7 +77,7 @@ class OverWindowStringExpressionTest extends TableTestBase {
 
     val resScala = t
       .window(Over partitionBy('a, 'd) orderBy 'rowtime preceding 10.rows as 'w)
-      .select('a, 'b.sum over 'w, weightAvgFun('a, 'b) over 'w as 'myCnt)
+      .select('a, 'b.sum over 'w, call("weightAvgFun", 'a, 'b) over 'w as 'myCnt)
     val resJava = t
       .window(Over.partitionBy("a, d").orderBy("rowtime").preceding("10.rows").as("w"))
       .select("a, SUM(b) OVER w, weightAvgFun(a, b) over w as myCnt")
@@ -97,7 +96,7 @@ class OverWindowStringExpressionTest extends TableTestBase {
 
     val resScala = t
       .window(Over orderBy 'rowtime preceding 10.rows following CURRENT_ROW as 'w)
-      .select('a, 'b.sum over 'w, weightAvgFun('a, 'b) over 'w as 'myCnt)
+      .select('a, 'b.sum over 'w, call("weightAvgFun", 'a, 'b) over 'w as 'myCnt)
     val resJava = t
       .window(Over.orderBy("rowtime").preceding("10.rows").following("current_row").as("w"))
       .select("a, SUM(b) OVER w, weightAvgFun(a, b) over w as myCnt")
@@ -116,7 +115,7 @@ class OverWindowStringExpressionTest extends TableTestBase {
 
     val resScala = t
       .window(Over partitionBy 'a orderBy 'rowtime preceding UNBOUNDED_RANGE as 'w)
-      .select('a, 'b.sum over 'w, weightAvgFun('a, 'b) over 'w as 'myCnt)
+      .select('a, 'b.sum over 'w, call("weightAvgFun", 'a, 'b) over 'w as 'myCnt)
     val resJava = t
       .window(Over.partitionBy("a").orderBy("rowtime").preceding("unbounded_range").as("w"))
       .select("a, SUM(b) OVER w, weightAvgFun(a, b) over w as myCnt")
@@ -135,7 +134,7 @@ class OverWindowStringExpressionTest extends TableTestBase {
 
     val resScala = t
       .window(Over orderBy 'rowtime preceding UNBOUNDED_RANGE following CURRENT_RANGE as 'w)
-      .select('a, 'b.sum over 'w, weightAvgFun('a, 'b) over 'w as 'myCnt)
+      .select('a, 'b.sum over 'w, call("weightAvgFun", 'a, 'b) over 'w as 'myCnt)
     val resJava = t
       .window(
         Over.orderBy("rowtime").preceding("unbounded_range").following("current_range").as("w"))
@@ -160,7 +159,7 @@ class OverWindowStringExpressionTest extends TableTestBase {
 
     val resScala = t
       .window(Over orderBy 'proctime preceding UNBOUNDED_RANGE following CURRENT_RANGE as 'w)
-      .select('a, 'b.sum over 'w, weightAvgFun('a, 'b) over 'w as 'myCnt)
+      .select('a, 'b.sum over 'w, call("weightAvgFun", 'a, 'b) over 'w as 'myCnt)
     val resJava = t
       .window(
         Over.orderBy("proctime").preceding("unbounded_range").following("current_range").as("w"))
@@ -185,7 +184,7 @@ class OverWindowStringExpressionTest extends TableTestBase {
 
     val resScala = t
       .window(Over partitionBy('a, 'c) orderBy 'rowtime preceding 10.minutes as 'w)
-      .select('a, 'b.sum over 'w, weightAvgFun('a, 'b) over 'w as 'myCnt)
+      .select('a, 'b.sum over 'w, call("weightAvgFun", 'a, 'b) over 'w as 'myCnt)
     val resJava = t
       .window(Over.partitionBy("a, c").orderBy("rowtime").preceding("10.minutes").as("w"))
       .select("a, SUM(b) OVER w, weightAvgFun(a, b) over w as myCnt")
@@ -204,7 +203,7 @@ class OverWindowStringExpressionTest extends TableTestBase {
 
     val resScala = t
       .window(Over orderBy 'rowtime preceding 4.hours following CURRENT_RANGE as 'w)
-      .select('a, 'b.sum over 'w, weightAvgFun('a, 'b) over 'w as 'myCnt)
+      .select('a, 'b.sum over 'w, call("weightAvgFun", 'a, 'b) over 'w as 'myCnt)
     val resJava = t
       .window(Over.orderBy("rowtime").preceding("4.hours").following("current_range").as("w"))
       .select("a, SUM(b) OVER w, weightAvgFun(a, b) over w as myCnt")
@@ -227,10 +226,10 @@ class OverWindowStringExpressionTest extends TableTestBase {
       .window(Over partitionBy 'a orderBy 'rowtime preceding UNBOUNDED_ROW as 'w)
       .select(
         array('a.sum over 'w, 'a.count over 'w),
-        plusOne('b.sum over 'w as 'wsum) as 'd,
+        call("plusOne", 'b.sum over 'w as 'wsum) as 'd,
         ('a.count over 'w).exp(),
-        (weightedAvg('a, 'b) over 'w) + 1,
-        "AVG:".toExpr + (weightedAvg('a, 'b) over 'w))
+        (call("weightedAvg", 'a, 'b) over 'w) + 1,
+        "AVG:".toExpr + (call("weightedAvg", 'a, 'b) over 'w))
 
     val resJava = t
       .window(Over.partitionBy("a").orderBy("rowtime").preceding("unbounded_row").as("w"))

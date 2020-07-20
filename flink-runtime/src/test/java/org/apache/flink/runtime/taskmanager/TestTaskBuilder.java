@@ -21,20 +21,18 @@ package org.apache.flink.runtime.taskmanager;
 import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.runtime.blob.BlobCacheService;
-import org.apache.flink.runtime.blob.PermanentBlobCache;
 import org.apache.flink.runtime.blob.PermanentBlobKey;
-import org.apache.flink.runtime.blob.TransientBlobCache;
 import org.apache.flink.runtime.broadcast.BroadcastVariableManager;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.deployment.InputGateDeploymentDescriptor;
 import org.apache.flink.runtime.deployment.ResultPartitionDeploymentDescriptor;
 import org.apache.flink.runtime.execution.ExecutionState;
-import org.apache.flink.runtime.execution.librarycache.ContextClassLoaderLibraryCacheManager;
 import org.apache.flink.runtime.execution.librarycache.LibraryCacheManager;
+import org.apache.flink.runtime.execution.librarycache.TestingClassLoaderLease;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.JobInformation;
 import org.apache.flink.runtime.executiongraph.TaskInformation;
+import org.apache.flink.runtime.externalresource.ExternalResourceInfoProvider;
 import org.apache.flink.runtime.filecache.FileCache;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.network.TaskEventDispatcher;
@@ -61,6 +59,7 @@ import org.apache.flink.util.SerializedValue;
 import java.lang.reflect.Field;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.Executor;
 
 import static org.mockito.Mockito.mock;
@@ -72,20 +71,22 @@ public final class TestTaskBuilder {
 
 	private Class<? extends AbstractInvokable> invokable = AbstractInvokable.class;
 	private TaskManagerActions taskManagerActions = new NoOpTaskManagerActions();
-	private LibraryCacheManager libraryCacheManager = ContextClassLoaderLibraryCacheManager.INSTANCE;
+	private LibraryCacheManager.ClassLoaderHandle classLoaderHandle = TestingClassLoaderLease.newBuilder().build();
 	private ResultPartitionConsumableNotifier consumableNotifier = new NoOpResultPartitionConsumableNotifier();
 	private PartitionProducerStateChecker partitionProducerStateChecker = new NoOpPartitionProducerStateChecker();
 	private final ShuffleEnvironment<?, ?> shuffleEnvironment;
 	private KvStateService kvStateService = new KvStateService(new KvStateRegistry(), null, null);
 	private Executor executor = TestingUtils.defaultExecutor();
 	private Configuration taskManagerConfig = new Configuration();
+	private Configuration taskConfig = new Configuration();
 	private ExecutionConfig executionConfig = new ExecutionConfig();
 	private Collection<PermanentBlobKey> requiredJarFileBlobKeys = Collections.emptyList();
-	private Collection<ResultPartitionDeploymentDescriptor> resultPartitions = Collections.emptyList();
-	private Collection<InputGateDeploymentDescriptor> inputGates = Collections.emptyList();
+	private List<ResultPartitionDeploymentDescriptor> resultPartitions = Collections.emptyList();
+	private List<InputGateDeploymentDescriptor> inputGates = Collections.emptyList();
 	private JobID jobId = new JobID();
 	private AllocationID allocationID = new AllocationID();
 	private ExecutionAttemptID executionAttemptId = new ExecutionAttemptID();
+	private ExternalResourceInfoProvider externalResourceInfoProvider = ExternalResourceInfoProvider.NO_EXTERNAL_RESOURCES;
 
 	public TestTaskBuilder(ShuffleEnvironment<?, ?> shuffleEnvironment) {
 		this.shuffleEnvironment = Preconditions.checkNotNull(shuffleEnvironment);
@@ -101,8 +102,8 @@ public final class TestTaskBuilder {
 		return this;
 	}
 
-	public TestTaskBuilder setLibraryCacheManager(LibraryCacheManager libraryCacheManager) {
-		this.libraryCacheManager = libraryCacheManager;
+	public TestTaskBuilder setClassLoaderHandle(LibraryCacheManager.ClassLoaderHandle classLoaderHandle) {
+		this.classLoaderHandle = classLoaderHandle;
 		return this;
 	}
 
@@ -131,6 +132,11 @@ public final class TestTaskBuilder {
 		return this;
 	}
 
+	public TestTaskBuilder setTaskConfig(Configuration taskConfig) {
+		this.taskConfig = taskConfig;
+		return this;
+	}
+
 	public TestTaskBuilder setExecutionConfig(ExecutionConfig executionConfig) {
 		this.executionConfig = executionConfig;
 		return this;
@@ -141,12 +147,12 @@ public final class TestTaskBuilder {
 		return this;
 	}
 
-	public TestTaskBuilder setResultPartitions(Collection<ResultPartitionDeploymentDescriptor> resultPartitions) {
+	public TestTaskBuilder setResultPartitions(List<ResultPartitionDeploymentDescriptor> resultPartitions) {
 		this.resultPartitions = resultPartitions;
 		return this;
 	}
 
-	public TestTaskBuilder setInputGates(Collection<InputGateDeploymentDescriptor> inputGates) {
+	public TestTaskBuilder setInputGates(List<InputGateDeploymentDescriptor> inputGates) {
 		this.inputGates = inputGates;
 		return this;
 	}
@@ -163,6 +169,11 @@ public final class TestTaskBuilder {
 
 	public TestTaskBuilder setExecutionAttemptId(ExecutionAttemptID executionAttemptId) {
 		this.executionAttemptId = executionAttemptId;
+		return this;
+	}
+
+	public TestTaskBuilder setExternalResourceInfoProvider(ExternalResourceInfoProvider externalResourceInfoProvider) {
+		this.externalResourceInfoProvider = externalResourceInfoProvider;
 		return this;
 	}
 
@@ -185,11 +196,7 @@ public final class TestTaskBuilder {
 			1,
 			1,
 			invokable.getName(),
-			new Configuration());
-
-		final BlobCacheService blobCacheService = new BlobCacheService(
-			mock(PermanentBlobCache.class),
-			mock(TransientBlobCache.class));
+			taskConfig);
 
 		final TaskMetricGroup taskMetricGroup = UnregisteredMetricGroups.createUnregisteredTaskMetricGroup();
 
@@ -209,14 +216,14 @@ public final class TestTaskBuilder {
 			kvStateService,
 			new BroadcastVariableManager(),
 			new TaskEventDispatcher(),
+			externalResourceInfoProvider,
 			new TestTaskStateManager(),
 			taskManagerActions,
 			new MockInputSplitProvider(),
 			new TestCheckpointResponder(),
 			new NoOpTaskOperatorEventGateway(),
 			new TestGlobalAggregateManager(),
-			blobCacheService,
-			libraryCacheManager,
+			classLoaderHandle,
 			mock(FileCache.class),
 			new TestingTaskManagerRuntimeInfo(taskManagerConfig),
 			taskMetricGroup,

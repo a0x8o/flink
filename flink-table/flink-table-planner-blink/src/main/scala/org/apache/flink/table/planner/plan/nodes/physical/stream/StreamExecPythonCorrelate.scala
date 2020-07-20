@@ -18,15 +18,17 @@
 package org.apache.flink.table.planner.plan.nodes.physical.stream
 
 import org.apache.flink.api.dag.Transformation
-import org.apache.flink.table.dataformat.BaseRow
+import org.apache.flink.table.api.TableException
+import org.apache.flink.table.data.RowData
 import org.apache.flink.table.planner.delegation.StreamPlanner
+import org.apache.flink.table.planner.plan.nodes.common.CommonPythonCorrelate
 import org.apache.flink.table.planner.plan.nodes.logical.FlinkLogicalTableFunctionScan
 import org.apache.calcite.plan.{RelOptCluster, RelTraitSet}
+import org.apache.calcite.rel.RelNode
 import org.apache.calcite.rel.`type`.RelDataType
 import org.apache.calcite.rel.core.JoinRelType
-import org.apache.calcite.rel.RelNode
 import org.apache.calcite.rex.{RexNode, RexProgram}
-import org.apache.flink.table.api.TableException
+import org.apache.flink.table.planner.plan.nodes.exec.ExecNode
 
 /**
   * Flink RelNode which matches along with join a python user defined table function.
@@ -48,7 +50,12 @@ class StreamExecPythonCorrelate(
     scan,
     condition,
     outputRowType,
-    joinType) {
+    joinType)
+  with CommonPythonCorrelate {
+
+  if (condition.isDefined) {
+    throw new TableException("Currently Python correlate does not support conditions in left join.")
+  }
 
   def copy(
       traitSet: RelTraitSet,
@@ -67,7 +74,20 @@ class StreamExecPythonCorrelate(
   }
 
   override protected def translateToPlanInternal(
-      planner: StreamPlanner): Transformation[BaseRow] = {
-    throw new TableException("The implementation will be FLINK-15972.")
+      planner: StreamPlanner): Transformation[RowData] = {
+    val inputTransformation = getInputNodes.get(0).translateToPlan(planner)
+      .asInstanceOf[Transformation[RowData]]
+    val ret = createPythonOneInputTransformation(
+      inputTransformation,
+      scan,
+      "StreamExecPythonCorrelate",
+      outputRowType,
+      getConfig(planner.getExecEnv, planner.getTableConfig),
+      joinType)
+    if (isPythonWorkerUsingManagedMemory(planner.getTableConfig.getConfiguration)) {
+      ExecNode.setManagedMemoryWeight(
+        ret, getPythonWorkerMemory(planner.getTableConfig.getConfiguration).getBytes)
+    }
+    ret
   }
 }

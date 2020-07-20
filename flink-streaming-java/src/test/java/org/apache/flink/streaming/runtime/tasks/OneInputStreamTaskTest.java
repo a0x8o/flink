@@ -84,6 +84,7 @@ import scala.concurrent.duration.Deadline;
 import scala.concurrent.duration.FiniteDuration;
 
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
@@ -383,11 +384,6 @@ public class OneInputStreamTaskTest extends TestLogger {
 
 		testHarness.processEvent(new CheckpointBarrier(0, 0, CheckpointOptions.forCheckpointWithDefaultLocation()), 0, 0);
 
-		// These elements should be buffered until we receive barriers from
-		// all inputs
-		testHarness.processElement(new StreamRecord<>("Hello-0-0", initialTime), 0, 0);
-		testHarness.processElement(new StreamRecord<>("Ciao-0-0", initialTime), 0, 0);
-
 		// These elements should be forwarded, since we did not yet receive a checkpoint barrier
 		// on that input, only add to same input, otherwise we would not know the ordering
 		// of the output since the Task might read the inputs in any order
@@ -406,10 +402,8 @@ public class OneInputStreamTaskTest extends TestLogger {
 
 		testHarness.waitForInputProcessing();
 
-		// now we should see the barrier and after that the buffered elements
+		// now we should see the barrier
 		expectedOutput.add(new CheckpointBarrier(0, 0, CheckpointOptions.forCheckpointWithDefaultLocation()));
-		expectedOutput.add(new StreamRecord<>("Hello-0-0", initialTime));
-		expectedOutput.add(new StreamRecord<>("Ciao-0-0", initialTime));
 
 		testHarness.endInput();
 
@@ -446,11 +440,6 @@ public class OneInputStreamTaskTest extends TestLogger {
 
 		testHarness.processEvent(new CheckpointBarrier(0, 0, CheckpointOptions.forCheckpointWithDefaultLocation()), 0, 0);
 
-		// These elements should be buffered until we receive barriers from
-		// all inputs
-		testHarness.processElement(new StreamRecord<>("Hello-0-0", initialTime), 0, 0);
-		testHarness.processElement(new StreamRecord<>("Ciao-0-0", initialTime), 0, 0);
-
 		// These elements should be forwarded, since we did not yet receive a checkpoint barrier
 		// on that input, only add to same input, otherwise we would not know the ordering
 		// of the output since the Task might read the inputs in any order
@@ -463,16 +452,13 @@ public class OneInputStreamTaskTest extends TestLogger {
 		// we should not yet see the barrier, only the two elements from non-blocked input
 		TestHarnessUtil.assertOutputEquals("Output was not correct.", expectedOutput, testHarness.getOutput());
 
-		// Now give a later barrier to all inputs, this should unblock the first channel,
-		// thereby allowing the two blocked elements through
-		testHarness.processEvent(new CheckpointBarrier(1, 1, CheckpointOptions.forCheckpointWithDefaultLocation()), 0, 0);
+		// Now give a later barrier to all inputs, this should unblock the first channel
 		testHarness.processEvent(new CheckpointBarrier(1, 1, CheckpointOptions.forCheckpointWithDefaultLocation()), 0, 1);
+		testHarness.processEvent(new CheckpointBarrier(1, 1, CheckpointOptions.forCheckpointWithDefaultLocation()), 0, 0);
 		testHarness.processEvent(new CheckpointBarrier(1, 1, CheckpointOptions.forCheckpointWithDefaultLocation()), 1, 0);
 		testHarness.processEvent(new CheckpointBarrier(1, 1, CheckpointOptions.forCheckpointWithDefaultLocation()), 1, 1);
 
 		expectedOutput.add(new CancelCheckpointMarker(0));
-		expectedOutput.add(new StreamRecord<>("Hello-0-0", initialTime));
-		expectedOutput.add(new StreamRecord<>("Ciao-0-0", initialTime));
 		expectedOutput.add(new CheckpointBarrier(1, 1, CheckpointOptions.forCheckpointWithDefaultLocation()));
 
 		testHarness.waitForInputProcessing();
@@ -602,7 +588,7 @@ public class OneInputStreamTaskTest extends TestLogger {
 	}
 
 	@Test
-	public void testHandlingEndOfInput() throws Exception {
+	public void testClosingAllOperatorsOnChainProperly() throws Exception {
 		final OneInputStreamTaskTestHarness<String, String> testHarness = new OneInputStreamTaskTestHarness<>(
 			OneInputStreamTask::new,
 			BasicTypeInfo.STRING_TYPE_INFO,
@@ -616,8 +602,6 @@ public class OneInputStreamTaskTest extends TestLogger {
 				BasicTypeInfo.STRING_TYPE_INFO.createSerializer(new ExecutionConfig()))
 			.finish();
 
-		ConcurrentLinkedQueue<Object> expectedOutput = new ConcurrentLinkedQueue<>();
-
 		testHarness.invoke();
 		testHarness.waitForTaskRunning();
 
@@ -626,15 +610,16 @@ public class OneInputStreamTaskTest extends TestLogger {
 
 		testHarness.waitForTaskCompletion();
 
-		expectedOutput.add(new StreamRecord<>("Hello"));
-		expectedOutput.add(new StreamRecord<>("[Operator0]: EndOfInput"));
-		expectedOutput.add(new StreamRecord<>("[Operator0]: Bye"));
-		expectedOutput.add(new StreamRecord<>("[Operator1]: EndOfInput"));
-		expectedOutput.add(new StreamRecord<>("[Operator1]: Bye"));
+		ArrayList<StreamRecord<String>> expected = new ArrayList<>();
+		Collections.addAll(expected,
+			new StreamRecord<>("Hello"),
+			new StreamRecord<>("[Operator0]: End of input"),
+			new StreamRecord<>("[Operator0]: Bye"),
+			new StreamRecord<>("[Operator1]: End of input"),
+			new StreamRecord<>("[Operator1]: Bye"));
 
-		TestHarnessUtil.assertOutputEquals("Output was not correct.",
-			expectedOutput,
-			testHarness.getOutput());
+		final Object[] output = testHarness.getOutput().toArray();
+		assertArrayEquals("Output was not correct.", expected.toArray(), output);
 	}
 
 	private static class TestOperator

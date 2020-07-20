@@ -22,8 +22,8 @@ import org.apache.flink.core.fs.Path;
 import org.apache.flink.orc.OrcColumnarRowSplitReader.ColumnBatchGenerator;
 import org.apache.flink.orc.shim.OrcShim;
 import org.apache.flink.table.api.DataTypes;
-import org.apache.flink.table.dataformat.vector.ColumnVector;
-import org.apache.flink.table.dataformat.vector.VectorizedColumnBatch;
+import org.apache.flink.table.data.vector.ColumnVector;
+import org.apache.flink.table.data.vector.VectorizedColumnBatch;
 import org.apache.flink.table.types.DataType;
 import org.apache.flink.table.types.logical.ArrayType;
 import org.apache.flink.table.types.logical.CharType;
@@ -134,13 +134,18 @@ public class OrcSplitReaderUtil {
 	/**
 	 * See {@code org.apache.flink.table.catalog.hive.util.HiveTypeUtil}.
 	 */
-	static TypeDescription logicalTypeToOrcType(LogicalType type) {
+	public static TypeDescription logicalTypeToOrcType(LogicalType type) {
 		type = type.copy(true);
 		switch (type.getTypeRoot()) {
 			case CHAR:
 				return TypeDescription.createChar().withMaxLength(((CharType) type).getLength());
 			case VARCHAR:
-				return TypeDescription.createVarchar().withMaxLength(((VarCharType) type).getLength());
+				int len = ((VarCharType) type).getLength();
+				if (len == VarCharType.MAX_LENGTH) {
+					return TypeDescription.createString();
+				} else {
+					return TypeDescription.createVarchar().withMaxLength(len);
+				}
 			case BOOLEAN:
 				return TypeDescription.createBoolean();
 			case VARBINARY:
@@ -153,8 +158,8 @@ public class OrcSplitReaderUtil {
 			case DECIMAL:
 				DecimalType decimalType = (DecimalType) type;
 				return TypeDescription.createDecimal()
-						.withPrecision(decimalType.getPrecision())
-						.withScale(decimalType.getScale());
+						.withScale(decimalType.getScale())
+						.withPrecision(decimalType.getPrecision());
 			case TINYINT:
 				return TypeDescription.createByte();
 			case SMALLINT:

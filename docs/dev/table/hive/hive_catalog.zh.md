@@ -49,7 +49,7 @@ as those of an overall Flink-Hive integration.
 
 ## How to use HiveCatalog
 
-Once configured properly, `HiveCatalog` should just work out of box. Users can create Flink meta-objects with DDL, and shoud
+Once configured properly, `HiveCatalog` should just work out of box. Users can create Flink meta-objects with DDL, and should
 see them immediately afterwards.
 
 `HiveCatalog` can be used to handle two kinds of tables: Hive-compatible tables and generic tables. Hive-compatible tables
@@ -153,7 +153,6 @@ catalogs:
    - name: myhive
      type: hive
      hive-conf-dir: /opt/hive-conf  # contains hive-site.xml
-     hive-version: 2.3.4
 {% endhighlight %}
 
 
@@ -191,7 +190,6 @@ Flink SQL> CREATE TABLE mykafka (name String, age Int) WITH (
    'connector.type' = 'kafka',
    'connector.version' = 'universal',
    'connector.topic' = 'test',
-   'connector.properties.zookeeper.connect' = 'localhost:2181',
    'connector.properties.bootstrap.servers' = 'localhost:9092',
    'format.type' = 'csv',
    'update-mode' = 'append'
@@ -228,7 +226,6 @@ Location:           	......
 Table Type:         	MANAGED_TABLE
 Table Parameters:
 	flink.connector.properties.bootstrap.servers	localhost:9092
-	flink.connector.properties.zookeeper.connect	localhost:2181
 	flink.connector.topic	test
 	flink.connector.type	kafka
 	flink.connector.version	universal
@@ -390,3 +387,7 @@ Something to note about the type mapping:
 * Hive's `TIMESTAMP` always has precision 9 and doesn't support other precisions. Hive UDFs, on the other hand, can process `TIMESTAMP` values with a precision <= 9.
 * Hive doesn't support Flink's `TIMESTAMP_WITH_TIME_ZONE`, `TIMESTAMP_WITH_LOCAL_TIME_ZONE`, and `MULTISET`
 * Flink's `INTERVAL` type cannot be mapped to Hive `INTERVAL` type yet
+
+## Scala Shell
+
+注意：目前 blink planner 还不能很好的支持 Scala Shell，因此 **不** 建议在 Scala Shell 中使用 Hive 连接器。

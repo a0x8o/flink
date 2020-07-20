@@ -77,6 +77,7 @@ public class ExpressionResolver {
 	 */
 	public static List<ResolverRule> getExpandingResolverRules() {
 		return Arrays.asList(
+			ResolverRules.UNWRAP_API_EXPRESSION,
 			ResolverRules.LOOKUP_CALL_BY_NAME,
 			ResolverRules.FLATTEN_STAR_REFERENCE,
 			ResolverRules.EXPAND_COLUMN_FUNCTIONS);
@@ -87,6 +88,7 @@ public class ExpressionResolver {
 	 */
 	public static List<ResolverRule> getAllResolverRules() {
 		return Arrays.asList(
+			ResolverRules.UNWRAP_API_EXPRESSION,
 			ResolverRules.LOOKUP_CALL_BY_NAME,
 			ResolverRules.FLATTEN_STAR_REFERENCE,
 			ResolverRules.EXPAND_COLUMN_FUNCTIONS,
@@ -340,6 +342,39 @@ public class ExpressionResolver {
 				lookupOfCast.getFunctionIdentifier(),
 				lookupOfCast.getFunctionDefinition(),
 				Arrays.asList(expression, typeLiteral(dataType)),
+				dataType);
+		}
+
+		public CallExpression row(DataType dataType, ResolvedExpression... expression) {
+			final FunctionLookup.Result lookupOfRow = functionLookup
+				.lookupBuiltInFunction(BuiltInFunctionDefinitions.ROW);
+
+			return new CallExpression(
+				lookupOfRow.getFunctionIdentifier(),
+				lookupOfRow.getFunctionDefinition(),
+				Arrays.asList(expression),
+				dataType);
+		}
+
+		public CallExpression array(DataType dataType, ResolvedExpression... expression) {
+			final FunctionLookup.Result lookupOfArray = functionLookup
+				.lookupBuiltInFunction(BuiltInFunctionDefinitions.ARRAY);
+
+			return new CallExpression(
+				lookupOfArray.getFunctionIdentifier(),
+				lookupOfArray.getFunctionDefinition(),
+				Arrays.asList(expression),
+				dataType);
+		}
+
+		public CallExpression map(DataType dataType, ResolvedExpression... expression) {
+			final FunctionLookup.Result lookupOfArray = functionLookup
+				.lookupBuiltInFunction(BuiltInFunctionDefinitions.MAP);
+
+			return new CallExpression(
+				lookupOfArray.getFunctionIdentifier(),
+				lookupOfArray.getFunctionDefinition(),
+				Arrays.asList(expression),
 				dataType);
 		}
 

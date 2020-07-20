@@ -26,6 +26,7 @@ import org.apache.flink.table.api.TableConfig;
 import org.apache.flink.table.api.TableException;
 import org.apache.flink.table.api.TableSchema;
 import org.apache.flink.table.api.Types;
+import org.apache.flink.table.api.internal.CatalogTableSchemaResolver;
 import org.apache.flink.table.calcite.CalciteParser;
 import org.apache.flink.table.calcite.FlinkPlannerImpl;
 import org.apache.flink.table.catalog.Catalog;
@@ -58,6 +59,7 @@ import org.apache.flink.table.planner.PlanningConfigurationBuilder;
 import org.apache.flink.table.types.DataType;
 import org.apache.flink.table.types.utils.TypeConversions;
 import org.apache.flink.table.utils.CatalogManagerMocks;
+import org.apache.flink.table.utils.ParserMock;
 
 import org.apache.calcite.sql.SqlNode;
 import org.junit.After;
@@ -95,15 +97,15 @@ public class SqlToOperationConverterTest {
 	private final PlanningConfigurationBuilder planningConfigurationBuilder =
 		new PlanningConfigurationBuilder(tableConfig,
 			functionCatalog,
-			asRootSchema(new CatalogManagerCalciteSchema(catalogManager, false)),
-			new ExpressionBridge<>(functionCatalog,
-				PlannerExpressionConverter.INSTANCE()));
+			asRootSchema(new CatalogManagerCalciteSchema(catalogManager, tableConfig, false)),
+			new ExpressionBridge<>(PlannerExpressionConverter.INSTANCE()));
 
 	@Rule
 	public ExpectedException expectedEx = ExpectedException.none();
 
 	@Before
 	public void before() throws TableAlreadyExistException, DatabaseNotExistException {
+		catalogManager.setCatalogTableSchemaResolver(new CatalogTableSchemaResolver(new ParserMock(), true));
 		final ObjectPath path1 = new ObjectPath(catalogManager.getCurrentDatabase(), "t1");
 		final ObjectPath path2 = new ObjectPath(catalogManager.getCurrentDatabase(), "t2");
 		final TableSchema tableSchema = TableSchema.builder()
@@ -246,8 +248,8 @@ public class SqlToOperationConverterTest {
 			"    'connector' = 'kafka', \n" +
 			"    'kafka.topic' = 'log.test'\n" +
 			")\n";
-		final FlinkPlannerImpl planner = getPlannerBySqlDialect(SqlDialect.HIVE);
-		SqlNode node = getParserBySqlDialect(SqlDialect.HIVE).parse(sql);
+		final FlinkPlannerImpl planner = getPlannerBySqlDialect(SqlDialect.DEFAULT);
+		SqlNode node = getParserBySqlDialect(SqlDialect.DEFAULT).parse(sql);
 		assert node instanceof SqlCreateTable;
 		Operation operation = SqlToOperationConverter.convert(planner, catalogManager, node).get();
 		assert operation instanceof CreateTableOperation;
@@ -307,8 +309,8 @@ public class SqlToOperationConverterTest {
 			"    'connector' = 'kafka', \n" +
 			"    'kafka.topic' = 'log.test'\n" +
 			")\n";
-		final FlinkPlannerImpl planner = getPlannerBySqlDialect(SqlDialect.HIVE);
-		SqlNode node = getParserBySqlDialect(SqlDialect.HIVE).parse(sql);
+		final FlinkPlannerImpl planner = getPlannerBySqlDialect(SqlDialect.DEFAULT);
+		SqlNode node = getParserBySqlDialect(SqlDialect.DEFAULT).parse(sql);
 		assert node instanceof SqlCreateTable;
 		SqlToOperationConverter.convert(planner, catalogManager, node);
 	}

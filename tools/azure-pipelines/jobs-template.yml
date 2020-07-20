@@ -18,12 +18,16 @@ parameters:
   e2e_pool_definion: # defines the hardware pool for end-to-end test execution
   stage_name: # defines a unique identifier for all jobs in a stage (in case the jobs are added multiple times to a stage)
   environment: # defines environment variables for downstream scripts
+  run_end_to_end: # if set to 'true', the end to end tests will be executed
+  container: # the container name for the build
+  jdk: # the jdk version to use
 
 jobs:
 - job: compile_${{parameters.stage_name}}
-  condition: not(eq(variables['MODE'], 'e2e'))
+  # succeeded() is needed to allow job cancellation
+  condition: and(succeeded(), not(eq(variables['MODE'], 'e2e')))
   pool: ${{parameters.test_pool_definition}}
-  container: flink-build-container
+  container: ${{parameters.container}}
   timeoutInMinutes: 240
   cancelTimeoutInMinutes: 1
   workspace:
@@ -32,6 +36,11 @@ jobs:
     # See also https://docs.microsoft.com/en-us/azure/devops/pipelines/process/phases?view=azure-devops&tabs=yaml#workspace 
 
   steps:
+  # if on Azure, free up disk space
+  - script: ./tools/azure-pipelines/free_disk_space.sh
+    target: host
+    condition: not(eq('${{parameters.test_pool_definition.name}}', 'Default'))
+    displayName: Free up disk space
   # The cache task is persisting the .m2 directory between builds, so that
   # we do not have to re-download all dependencies from maven central for 
   # each build. The hope is that downloading the cache is faster than
@@ -47,23 +56,31 @@ jobs:
       restoreKeys: $(CACHE_FALLBACK_KEY)
       path: $(MAVEN_CACHE_FOLDER)
     continueOnError: true # continue the build even if the cache fails.
+    # do not use cache on the "Default" queue
+    condition: not(eq('${{parameters.test_pool_definition.name}}', 'Default'))
     displayName: Cache Maven local repo
-
+  - script: |
+      echo "##vso[task.setvariable variable=JAVA_HOME]$JAVA_HOME_11_X64"
+      echo "##vso[task.setvariable variable=PATH]$JAVA_HOME_11_X64/bin:$PATH"
+    displayName: "Set to jdk11"
+    condition: eq('${{parameters.jdk}}', 'jdk11')
   # Compile
-  - script: STAGE=compile ${{parameters.environment}} ./tools/azure_controller.sh compile
-    displayName: Build
+  - script: |
+      ${{parameters.environment}} ./tools/ci/compile.sh || exit $?
+      ./tools/azure-pipelines/create_build_artifact.sh
+    displayName: Compile
 
   # upload artifacts for next stage
   - task: PublishPipelineArtifact@1
     inputs:
-      path: $(CACHE_FLINK_DIR)
-      artifact: FlinkCompileCacheDir-${{parameters.stage_name}}
+      targetPath: $(FLINK_ARTIFACT_DIR)
+      artifact: FlinkCompileArtifact-${{parameters.stage_name}}
 
 - job: test_${{parameters.stage_name}}
   dependsOn: compile_${{parameters.stage_name}}
-  condition: not(eq(variables['MODE'], 'e2e'))
+  condition: and(succeeded(), not(eq(variables['MODE'], 'e2e')))
   pool: ${{parameters.test_pool_definition}}
-  container: flink-build-container
+  container: ${{parameters.container}}
   timeoutInMinutes: 240
   cancelTimeoutInMinutes: 1
   workspace:
@@ -84,78 +101,140 @@ jobs:
         module: kafka/gelly
       tests:
         module: tests
-      legacy_scheduler_core:
-        module: legacy_scheduler_core
-      legacy_scheduler_tests:
-        module: legacy_scheduler_tests
       misc:
         module: misc
   steps:
+  # if on Azure, free up disk space
+  - script: ./tools/azure-pipelines/free_disk_space.sh
+    target: host
+    condition: not(eq('${{parameters.test_pool_definition.name}}', 'Default'))
+    displayName: Free up disk space
 
-  # download artifacts
+  # download artifact from compile stage
   - task: DownloadPipelineArtifact@2
     inputs:
-      path: $(CACHE_FLINK_DIR)
-      artifact: FlinkCompileCacheDir-${{parameters.stage_name}}
+      path: $(FLINK_ARTIFACT_DIR)
+      artifact: FlinkCompileArtifact-${{parameters.stage_name}}
 
-  # recreate "build-target" symlink for python tests
+  - script: ./tools/azure-pipelines/unpack_build_artifact.sh
+    displayName: "Unpack Build artifact"
+
+  - task: Cache@2
+    inputs:
+      key: $(CACHE_KEY)
+      restoreKeys: $(CACHE_FALLBACK_KEY)
+      path: $(MAVEN_CACHE_FOLDER)
+    continueOnError: true # continue the build even if the cache fails.
+    condition: not(eq('${{parameters.test_pool_definition.name}}', 'Default'))
+    displayName: Cache Maven local repo
+
   - script: |
-      ln -snf $(CACHE_FLINK_DIR)/flink-dist/target/flink-*-SNAPSHOT-bin/flink-*-SNAPSHOT $(CACHE_FLINK_DIR)/build-target
-    displayName: Recreate 'build-target' symlink
+      echo "##vso[task.setvariable variable=JAVA_HOME]$JAVA_HOME_11_X64"
+      echo "##vso[task.setvariable variable=PATH]$JAVA_HOME_11_X64/bin:$PATH"
+    displayName: "Set to jdk11"
+    condition: eq('${{parameters.jdk}}', 'jdk11')  
+
+  - script: sudo sysctl -w kernel.core_pattern=core.%p
+    displayName: Set coredump pattern
+
   # Test
-  - script: STAGE=test ${{parameters.environment}} ./tools/azure_controller.sh $(module)
+  - script: |
+      source ./tools/azure-pipelines/debug_files_utils.sh
+      prepare_debug_files $(module)
+      
+      ${{parameters.environment}} ./tools/ci/test_controller.sh $(module) ; TEST_EXIT_CODE=$?
+    
+      compress_debug_files
+      exit $TEST_EXIT_CODE
     displayName: Test - $(module)
+    env:
+      IT_CASE_S3_BUCKET: $(SECRET_S3_BUCKET)
+      IT_CASE_S3_ACCESS_KEY: $(SECRET_S3_ACCESS_KEY)
+      IT_CASE_S3_SECRET_KEY: $(SECRET_S3_SECRET_KEY)
 
   - task: PublishTestResults@2
+    condition: succeededOrFailed()
     inputs:
       testResultsFormat: 'JUnit'
 
-- job: precommit_${{parameters.stage_name}}
-  dependsOn: compile_${{parameters.stage_name}}
-  # We are not running this job on a container, but in a VM.
-  pool: ${{parameters.e2e_pool_definition}}
-  timeoutInMinutes: 240
-  cancelTimeoutInMinutes: 1
-  workspace:
-    clean: all
-  steps:
-    - task: Cache@2
-      inputs:
-        key: $(CACHE_KEY)
-        restoreKeys: $(CACHE_FALLBACK_KEY)
-        path: $(MAVEN_CACHE_FOLDER)
-      displayName: Cache Maven local repo
-    
-    # download artifacts
-    - task: DownloadPipelineArtifact@2
-      inputs:
-        path: $(CACHE_FLINK_DIR)
-        artifact: FlinkCompileCacheDir-${{parameters.stage_name}}
-    - script: ./tools/travis/setup_maven.sh
-    - script: ./tools/azure-pipelines/prepare_precommit.sh
-      displayName: prepare and build Flink
-    - script: FLINK_DIR=build-target ./flink-end-to-end-tests/run-pre-commit-tests.sh
-      displayName: Test - precommit 
+  # upload debug artifacts
+  - task: PublishPipelineArtifact@1
+    condition: and(succeededOrFailed(), not(eq('$(DEBUG_FILES_OUTPUT_DIR)', '')))
+    displayName: Upload Logs
+    inputs:
+      targetPath: $(DEBUG_FILES_OUTPUT_DIR)
+      artifact: logs-${{parameters.stage_name}}-$(DEBUG_FILES_NAME)
 
 - job: e2e_${{parameters.stage_name}}
-  condition: eq(variables['MODE'], 'e2e')
-  # We are not running this job on a container, but in a VM.
+  # uncomment below condition to run the e2e tests only on request.
+  #condition: or(eq(variables['MODE'], 'e2e'), eq(${{parameters.run_end_to_end}}, 'true'))
+  # We are running this in a separate pool
   pool: ${{parameters.e2e_pool_definition}}
-  timeoutInMinutes: 240
+  timeoutInMinutes: 260
   cancelTimeoutInMinutes: 1
   workspace:
     clean: all
   steps:
+    # Skip e2e test execution if this is a documentation only pull request (master / release builds will still be checked regularly)
+    - bash: |
+        source ./tools/azure-pipelines/build_properties.sh
+        is_docs_only_pullrequest
+        if [[ "$?" == 0 ]] ; then
+          echo "##[debug]This is a documentation-only change. Skipping e2e execution."
+          echo "##vso[task.setvariable variable=skip;]1"
+        else
+          echo "##[debug]This is a regular CI build. Continuing ..."
+          echo "##vso[task.setvariable variable=skip;]0"
+        fi
+      displayName: Check if Docs only PR
     - task: Cache@2
       inputs:
         key: $(CACHE_KEY)
         restoreKeys: $(CACHE_FALLBACK_KEY)
         path: $(MAVEN_CACHE_FOLDER)
       displayName: Cache Maven local repo
-    - script: ./tools/travis/setup_maven.sh
-    - script: ./tools/azure-pipelines/setup_kubernetes.sh
-    - script: M2_HOME=/home/vsts/maven_cache/apache-maven-3.2.5/ PATH=/home/vsts/maven_cache/apache-maven-3.2.5/bin:$PATH PROFILE="-Dinclude-hadoop -Dhadoop.version=2.8.3 -De2e-metrics -Dmaven.wagon.http.pool=false" STAGE=compile ./tools/azure_controller.sh compile
-      displayName: Build
-    - script: FLINK_DIR=`pwd`/build-target flink-end-to-end-tests/run-nightly-tests.sh
-      displayName: Run nightly e2e tests
+      continueOnError: true
+      condition: not(eq(variables['SKIP'], '1'))
+    - task: Cache@2
+      inputs:
+        key: e2e-cache | flink-end-to-end-tests/**/*.java, !**/avro/**
+        path: $(E2E_CACHE_FOLDER)
+      displayName: Cache E2E files
+      continueOnError: true
+      condition: not(eq(variables['SKIP'], '1'))
+    - script: |
+        echo "##vso[task.setvariable variable=JAVA_HOME]$JAVA_HOME_11_X64"
+        echo "##vso[task.setvariable variable=PATH]$JAVA_HOME_11_X64/bin:$PATH"
+      displayName: "Set to jdk11"
+      condition: eq('${{parameters.jdk}}', 'jdk11')
+    - script: |
+        echo "Setting up Maven"
+        source ./tools/ci/maven-utils.sh
+        setup_maven
+
+        echo "Free up disk space"
+        ./tools/azure-pipelines/free_disk_space.sh
+
+        echo "Installing required software"
+        sudo apt-get install -y bc
+      displayName: Prepare E2E run
+      condition: not(eq(variables['SKIP'], '1'))
+    - script: ${{parameters.environment}} ./tools/ci/compile.sh
+      displayName: Build Flink
+      condition: not(eq(variables['SKIP'], '1'))
+    - script: ${{parameters.environment}} FLINK_DIR=`pwd`/build-target flink-end-to-end-tests/run-nightly-tests.sh
+      displayName: Run e2e tests
+      env:
+        IT_CASE_S3_BUCKET: $(SECRET_S3_BUCKET)
+        IT_CASE_S3_ACCESS_KEY: $(SECRET_S3_ACCESS_KEY)
+        IT_CASE_S3_SECRET_KEY: $(SECRET_S3_SECRET_KEY)
+      condition: not(eq(variables['SKIP'], '1'))
+      # upload debug artifacts
+    - task: PublishPipelineArtifact@1
+      condition: and(succeededOrFailed(), not(eq(variables['SKIP'], '1')), not(eq(variables['ARTIFACT_DIR'], '')))
+      displayName: Upload Logs
+      inputs:
+        targetPath: $(ARTIFACT_DIR)
+        artifact: logs-${{parameters.stage_name}}-e2e
+        
 

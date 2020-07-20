@@ -24,6 +24,7 @@ import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.core.fs.FSDataInputStream;
 import org.apache.flink.core.io.SimpleVersionedSerializer;
 import org.apache.flink.mock.Whitebox;
+import org.apache.flink.runtime.OperatorIDPair;
 import org.apache.flink.runtime.concurrent.Executors;
 import org.apache.flink.runtime.concurrent.ManuallyTriggeredScheduledExecutor;
 import org.apache.flink.runtime.concurrent.ScheduledExecutor;
@@ -37,6 +38,7 @@ import org.apache.flink.runtime.executiongraph.utils.SimpleAckingTaskManagerGate
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.jobgraph.tasks.CheckpointCoordinatorConfiguration;
+import org.apache.flink.runtime.jobgraph.tasks.CheckpointCoordinatorConfiguration.CheckpointCoordinatorConfigurationBuilder;
 import org.apache.flink.runtime.jobmanager.slots.TaskManagerGateway;
 import org.apache.flink.runtime.jobmaster.LogicalSlot;
 import org.apache.flink.runtime.jobmaster.TestingLogicalSlotBuilder;
@@ -65,7 +67,6 @@ import java.io.IOException;
 import java.io.Serializable;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -166,11 +167,13 @@ public class CheckpointCoordinatorTestingUtils {
 			++idx;
 		}
 
-		ByteStreamStateHandle streamStateHandle = new ByteStreamStateHandle(
-			String.valueOf(UUID.randomUUID()),
-			serializationWithOffsets.f0);
+		return new OperatorStreamStateHandle(offsetsMap, generateByteStreamStateHandle(serializationWithOffsets.f0));
+	}
 
-		return new OperatorStreamStateHandle(offsetsMap, streamStateHandle);
+	private static ByteStreamStateHandle generateByteStreamStateHandle(byte[] bytes) {
+		return new ByteStreamStateHandle(
+			String.valueOf(UUID.randomUUID()),
+			bytes);
 	}
 
 	static Tuple2<byte[], List<long[]>> serializeTogetherAndTrackOffsets(
@@ -355,8 +358,11 @@ public class CheckpointCoordinatorTestingUtils {
 		when(executionJobVertex.getParallelism()).thenReturn(parallelism);
 		when(executionJobVertex.getMaxParallelism()).thenReturn(maxParallelism);
 		when(executionJobVertex.isMaxParallelismConfigured()).thenReturn(true);
-		when(executionJobVertex.getOperatorIDs()).thenReturn(jobVertexIDs);
-		when(executionJobVertex.getUserDefinedOperatorIDs()).thenReturn(Arrays.asList(new OperatorID[jobVertexIDs.size()]));
+		List<OperatorIDPair> operatorIDPairs = new ArrayList<>();
+		for (OperatorID operatorID : jobVertexIDs) {
+			operatorIDPairs.add(OperatorIDPair.generatedIDOnly(operatorID));
+		}
+		when(executionJobVertex.getOperatorIDs()).thenReturn(operatorIDPairs);
 
 		return executionJobVertex;
 	}
@@ -453,7 +459,11 @@ public class CheckpointCoordinatorTestingUtils {
 		when(vertex.getMaxParallelism()).thenReturn(maxParallelism);
 
 		ExecutionJobVertex jobVertex = mock(ExecutionJobVertex.class);
-		when(jobVertex.getOperatorIDs()).thenReturn(jobVertexIDs);
+		List<OperatorIDPair> operatorIDPairs = new ArrayList<>();
+		for (OperatorID operatorID : jobVertexIDs) {
+			operatorIDPairs.add(OperatorIDPair.generatedIDOnly(operatorID));
+		}
+		when(jobVertex.getOperatorIDs()).thenReturn(operatorIDPairs);
 
 		when(vertex.getJobVertex()).thenReturn(jobVertex);
 
@@ -470,7 +480,7 @@ public class CheckpointCoordinatorTestingUtils {
 
 		TaskStateSnapshot subtaskStates = spy(new TaskStateSnapshot());
 		OperatorSubtaskState subtaskState = spy(new OperatorSubtaskState(
-			partitionableState, null, partitionedKeyGroupState, null)
+			partitionableState, null, partitionedKeyGroupState, null, null, null)
 		);
 
 		subtaskStates.putSubtaskStateByOperatorID(OperatorID.fromJobVertexID(jobVertexID), subtaskState);
@@ -507,9 +517,7 @@ public class CheckpointCoordinatorTestingUtils {
 
 		KeyGroupRangeOffsets keyGroupRangeOffsets = new KeyGroupRangeOffsets(keyGroupRange, serializedDataWithOffsets.f1.get(0));
 
-		ByteStreamStateHandle allSerializedStatesHandle = new ByteStreamStateHandle(
-			String.valueOf(UUID.randomUUID()),
-			serializedDataWithOffsets.f0);
+		ByteStreamStateHandle allSerializedStatesHandle = generateByteStreamStateHandle(serializedDataWithOffsets.f0);
 
 		return new KeyGroupsStateHandle(keyGroupRangeOffsets, allSerializedStatesHandle);
 	}
@@ -560,88 +568,12 @@ public class CheckpointCoordinatorTestingUtils {
 		when(vertex.getMaxParallelism()).thenReturn(vertices.length);
 		when(vertex.getJobVertexId()).thenReturn(id);
 		when(vertex.getTaskVertices()).thenReturn(vertices);
-		when(vertex.getOperatorIDs()).thenReturn(Collections.singletonList(OperatorID.fromJobVertexID(id)));
-		when(vertex.getUserDefinedOperatorIDs()).thenReturn(Collections.<OperatorID>singletonList(null));
+		when(vertex.getOperatorIDs()).thenReturn(Collections.singletonList(OperatorIDPair.generatedIDOnly(OperatorID.fromJobVertexID(id))));
 
 		for (ExecutionVertex v : vertices) {
 			when(v.getJobVertex()).thenReturn(vertex);
 		}
 		return vertex;
-	}
-
-	/**
-	 * A helper builder for {@link CheckpointCoordinatorConfiguration} to deduplicate test codes.
-	 */
-	public static class CheckpointCoordinatorConfigurationBuilder {
-		private long checkpointInterval = 600000;
-
-		private long checkpointTimeout = 600000;
-
-		private long minPauseBetweenCheckpoints = 0;
-
-		private int maxConcurrentCheckpoints = Integer.MAX_VALUE;
-
-		private CheckpointRetentionPolicy checkpointRetentionPolicy =
-			CheckpointRetentionPolicy.NEVER_RETAIN_AFTER_TERMINATION;
-
-		private boolean isExactlyOnce = true;
-
-		private boolean isPreferCheckpointForRecovery = false;
-
-		private int tolerableCpFailureNumber = 0;
-
-		public CheckpointCoordinatorConfigurationBuilder setCheckpointInterval(long checkpointInterval) {
-			this.checkpointInterval = checkpointInterval;
-			return this;
-		}
-
-		public CheckpointCoordinatorConfigurationBuilder setCheckpointTimeout(long checkpointTimeout) {
-			this.checkpointTimeout = checkpointTimeout;
-			return this;
-		}
-
-		public CheckpointCoordinatorConfigurationBuilder setMinPauseBetweenCheckpoints(long minPauseBetweenCheckpoints) {
-			this.minPauseBetweenCheckpoints = minPauseBetweenCheckpoints;
-			return this;
-		}
-
-		public CheckpointCoordinatorConfigurationBuilder setMaxConcurrentCheckpoints(int maxConcurrentCheckpoints) {
-			this.maxConcurrentCheckpoints = maxConcurrentCheckpoints;
-			return this;
-		}
-
-		public CheckpointCoordinatorConfigurationBuilder setCheckpointRetentionPolicy(
-			CheckpointRetentionPolicy checkpointRetentionPolicy) {
-			this.checkpointRetentionPolicy = checkpointRetentionPolicy;
-			return this;
-		}
-
-		public CheckpointCoordinatorConfigurationBuilder setExactlyOnce(boolean exactlyOnce) {
-			isExactlyOnce = exactlyOnce;
-			return this;
-		}
-
-		public CheckpointCoordinatorConfigurationBuilder setPreferCheckpointForRecovery(boolean preferCheckpointForRecovery) {
-			isPreferCheckpointForRecovery = preferCheckpointForRecovery;
-			return this;
-		}
-
-		public CheckpointCoordinatorConfigurationBuilder setTolerableCpFailureNumber(int tolerableCpFailureNumber) {
-			this.tolerableCpFailureNumber = tolerableCpFailureNumber;
-			return this;
-		}
-
-		public CheckpointCoordinatorConfiguration build() {
-			return new CheckpointCoordinatorConfiguration(
-				checkpointInterval,
-				checkpointTimeout,
-				minPauseBetweenCheckpoints,
-				maxConcurrentCheckpoints,
-				checkpointRetentionPolicy,
-				isExactlyOnce,
-				isPreferCheckpointForRecovery,
-				tolerableCpFailureNumber);
-		}
 	}
 
 	/**
@@ -651,13 +583,15 @@ public class CheckpointCoordinatorTestingUtils {
 		private JobID jobId = new JobID();
 
 		private CheckpointCoordinatorConfiguration checkpointCoordinatorConfiguration =
-			new CheckpointCoordinatorConfigurationBuilder().build();
+			new CheckpointCoordinatorConfigurationBuilder().setMaxConcurrentCheckpoints(Integer.MAX_VALUE).build();
 
 		private ExecutionVertex[] tasksToTrigger;
 
 		private ExecutionVertex[] tasksToWaitFor;
 
 		private ExecutionVertex[] tasksToCommitTo;
+
+		private Collection<OperatorCoordinatorCheckpointContext> coordinatorsToCheckpoint = Collections.emptyList();
 
 		private CheckpointIDCounter checkpointIDCounter =
 			new StandaloneCheckpointIDCounter();
@@ -718,6 +652,10 @@ public class CheckpointCoordinatorTestingUtils {
 			return this;
 		}
 
+		public void setCoordinatorsToCheckpoint(Collection<OperatorCoordinatorCheckpointContext> coordinatorsToCheckpoint) {
+			this.coordinatorsToCheckpoint = coordinatorsToCheckpoint;
+		}
+
 		public CheckpointCoordinatorBuilder setCheckpointIDCounter(
 			CheckpointIDCounter checkpointIDCounter) {
 			this.checkpointIDCounter = checkpointIDCounter;
@@ -735,7 +673,7 @@ public class CheckpointCoordinatorTestingUtils {
 			return this;
 		}
 
-		public CheckpointCoordinatorBuilder setIoExecutor(Executor exioExecutorecutor) {
+		public CheckpointCoordinatorBuilder setIoExecutor(Executor ioExecutor) {
 			this.ioExecutor = ioExecutor;
 			return this;
 		}
@@ -764,6 +702,7 @@ public class CheckpointCoordinatorTestingUtils {
 				tasksToTrigger,
 				tasksToWaitFor,
 				tasksToCommitTo,
+				coordinatorsToCheckpoint,
 				checkpointIDCounter,
 				completedCheckpointStore,
 				checkpointStateBackend,

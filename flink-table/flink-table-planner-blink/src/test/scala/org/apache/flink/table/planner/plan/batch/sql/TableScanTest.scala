@@ -19,8 +19,7 @@
 package org.apache.flink.table.planner.plan.batch.sql
 
 import org.apache.flink.api.scala._
-import org.apache.flink.table.api.DataTypes
-import org.apache.flink.table.api.scala._
+import org.apache.flink.table.api._
 import org.apache.flink.table.descriptors.{FileSystem, OldCsv, Schema}
 import org.apache.flink.table.planner.expressions.utils.Func0
 import org.apache.flink.table.planner.utils.TableTestBase
@@ -44,8 +43,8 @@ class TableScanTest extends TableTestBase {
          |  d as to_timestamp(b),
          |  e as my_udf(a)
          |) with (
-         |  'connector' = 'COLLECTION',
-         |  'is-bounded' = 'true'
+         |  'connector' = 'values',
+         |  'bounded' = 'true'
          |)
        """.stripMargin)
 
@@ -59,14 +58,14 @@ class TableScanTest extends TableTestBase {
          |  e as my_udf(a),
          |  WATERMARK FOR d AS d - INTERVAL '0.001' SECOND
          |) with (
-         |  'connector' = 'COLLECTION',
-         |  'is-bounded' = 'true'
+         |  'connector' = 'values',
+         |  'bounded' = 'true'
          |)
        """.stripMargin)
   }
 
   @Test
-  def testTableSourceScan(): Unit = {
+  def testLegacyTableSourceScan(): Unit = {
     util.addTableSource[(Int, Long, String)]("MyTable", 'a, 'b, 'c)
     util.verifyPlan("SELECT * FROM MyTable")
   }
@@ -81,10 +80,51 @@ class TableScanTest extends TableTestBase {
         |  b DOUBLE,
         |  WATERMARK FOR ts AS ts - INTERVAL '0.001' SECOND
         |) WITH (
-        |  'connector' = 'COLLECTION',
-        |  'is-bounded' = 'true'
+        |  'connector' = 'values',
+        |  'bounded' = 'true'
         |)
       """.stripMargin)
+    util.verifyPlan("SELECT * FROM src WHERE a > 1")
+  }
+
+  @Test
+  def testScanOnUnboundedSource(): Unit = {
+    util.addTable(
+      """
+        |CREATE TABLE src (
+        |  ts TIMESTAMP(3),
+        |  a INT,
+        |  b DOUBLE,
+        |  WATERMARK FOR ts AS ts - INTERVAL '0.001' SECOND
+        |) WITH (
+        |  'connector' = 'values',
+        |  'bounded' = 'false'
+        |)
+      """.stripMargin)
+    thrown.expect(classOf[ValidationException])
+    thrown.expectMessage("Cannot query on an unbounded source in batch mode, " +
+      "but 'default_catalog.default_database.src' is unbounded")
+    util.verifyPlan("SELECT * FROM src WHERE a > 1")
+  }
+
+  @Test
+  def testScanOnChangelogSource(): Unit = {
+    util.addTable(
+      """
+        |CREATE TABLE src (
+        |  ts TIMESTAMP(3),
+        |  a INT,
+        |  b DOUBLE
+        |) WITH (
+        |  'connector' = 'values',
+        |  'bounded' = 'true',
+        |  'changelog-mode' = 'I,UA,UB'
+        |)
+      """.stripMargin)
+    thrown.expect(classOf[UnsupportedOperationException])
+    thrown.expectMessage(
+      "Currently, batch mode only supports INSERT only source, " +
+        "but 'default_catalog.default_database.src' source produces not INSERT only messages")
     util.verifyPlan("SELECT * FROM src WHERE a > 1")
   }
 
@@ -116,8 +156,8 @@ class TableScanTest extends TableTestBase {
          |  a int,
          |  b varchar
          |) with (
-         |  'connector' = 'COLLECTION',
-         |  'is-bounded' = 'true'
+         |  'connector' = 'values',
+         |  'bounded' = 'true'
          |)
        """.stripMargin)
     util.verifyPlan(util.tableEnv.from("t1"))

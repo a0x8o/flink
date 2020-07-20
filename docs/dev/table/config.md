@@ -105,6 +105,8 @@ The following options can be used to adjust the behavior of the query optimizer 
 
 {% include generated/optimizer_config_configuration.html %}
 
-### Python Options
+### Table Options
 
-{% include generated/python_configuration.html %}
+The following options can be used to adjust the behavior of the table planner.
+
+{% include generated/table_config_configuration.html %}

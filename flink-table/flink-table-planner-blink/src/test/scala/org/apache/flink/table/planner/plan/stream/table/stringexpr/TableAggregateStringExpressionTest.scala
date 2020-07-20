@@ -19,7 +19,8 @@
 package org.apache.flink.table.planner.plan.stream.table.stringexpr
 
 import org.apache.flink.api.scala._
-import org.apache.flink.table.api.scala._
+import org.apache.flink.table.api._
+import org.apache.flink.table.api.bridge.scala._
 import org.apache.flink.table.planner.expressions.utils.Func0
 import org.apache.flink.table.planner.utils.{EmptyTableAggFunc, TableTestBase}
 import org.junit.Test
@@ -37,8 +38,8 @@ class TableAggregateStringExpressionTest extends TableTestBase {
 
     // Expression / Scala API
     val resScala = t
-      .flatAggregate(top3('a))
-      .select(Func0('f0) as 'a, 'f1 as 'b)
+      .flatAggregate(call("top3", 'a))
+      .select(call("Func0", 'f0) as 'a, 'f1 as 'b)
 
     // String / Java API
     val resJava = t
@@ -60,8 +61,8 @@ class TableAggregateStringExpressionTest extends TableTestBase {
     // Expression / Scala API
     val resScala = t
       .groupBy('b % 5)
-      .flatAggregate(top3('a))
-      .select(Func0('f0) as 'a, 'f1 as 'b)
+      .flatAggregate(call("top3", 'a))
+      .select(call("Func0", 'f0) as 'a, 'f1 as 'b)
 
     // String / Java API
     val resJava = t
@@ -89,7 +90,7 @@ class TableAggregateStringExpressionTest extends TableTestBase {
     // String / Java API
     val resJava = t
       .flatAggregate("top3(a) as (d, e)")
-      .select("*")
+      .select($"*")
 
     verifyTableEquals(resJava, resScala)
   }
@@ -113,7 +114,7 @@ class TableAggregateStringExpressionTest extends TableTestBase {
     val resJava = t
       .groupBy("b")
       .flatAggregate("top3(a) as (d, e)")
-      .select("*")
+      .select($"*")
 
     verifyTableEquals(resJava, resScala)
   }

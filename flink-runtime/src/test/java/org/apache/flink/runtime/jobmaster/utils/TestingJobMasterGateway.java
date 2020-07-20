@@ -42,16 +42,18 @@ import org.apache.flink.runtime.jobmaster.SerializedInputSplit;
 import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.messages.checkpoint.DeclineCheckpoint;
 import org.apache.flink.runtime.messages.webmonitor.JobDetails;
+import org.apache.flink.runtime.operators.coordination.CoordinationRequest;
+import org.apache.flink.runtime.operators.coordination.CoordinationResponse;
 import org.apache.flink.runtime.operators.coordination.OperatorEvent;
 import org.apache.flink.runtime.query.KvStateLocation;
 import org.apache.flink.runtime.registration.RegistrationResponse;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerId;
 import org.apache.flink.runtime.rest.handler.legacy.backpressure.OperatorBackPressureStatsResponse;
 import org.apache.flink.runtime.state.KeyGroupRange;
-import org.apache.flink.runtime.taskexecutor.AccumulatorReport;
+import org.apache.flink.runtime.taskexecutor.TaskExecutorToJobManagerHeartbeatPayload;
 import org.apache.flink.runtime.taskexecutor.slot.SlotOffer;
 import org.apache.flink.runtime.taskmanager.TaskExecutionState;
-import org.apache.flink.runtime.taskmanager.TaskManagerLocation;
+import org.apache.flink.runtime.taskmanager.UnresolvedTaskManagerLocation;
 import org.apache.flink.util.SerializedValue;
 import org.apache.flink.util.function.TriConsumer;
 import org.apache.flink.util.function.TriFunction;
@@ -107,10 +109,10 @@ public class TestingJobMasterGateway implements JobMasterGateway {
 	private final TriConsumer<ResourceID, AllocationID, Throwable> failSlotConsumer;
 
 	@Nonnull
-	private final BiFunction<String, TaskManagerLocation, CompletableFuture<RegistrationResponse>> registerTaskManagerFunction;
+	private final BiFunction<String, UnresolvedTaskManagerLocation, CompletableFuture<RegistrationResponse>> registerTaskManagerFunction;
 
 	@Nonnull
-	private final BiConsumer<ResourceID, AccumulatorReport> taskManagerHeartbeatConsumer;
+	private final BiConsumer<ResourceID, TaskExecutorToJobManagerHeartbeatPayload> taskManagerHeartbeatConsumer;
 
 	@Nonnull
 	private final Consumer<ResourceID> resourceManagerHeartbeatConsumer;
@@ -157,6 +159,9 @@ public class TestingJobMasterGateway implements JobMasterGateway {
 	@Nonnull
 	private final TriFunction<ExecutionAttemptID, OperatorID, SerializedValue<OperatorEvent>, CompletableFuture<Acknowledge>> operatorEventSender;
 
+	@Nonnull
+	private final BiFunction<OperatorID, SerializedValue<CoordinationRequest>, CompletableFuture<CoordinationResponse>> deliverCoordinationRequestFunction;
+
 	public TestingJobMasterGateway(
 			@Nonnull String address,
 			@Nonnull String hostname,
@@ -169,8 +174,8 @@ public class TestingJobMasterGateway implements JobMasterGateway {
 			@Nonnull Consumer<ResourceManagerId> disconnectResourceManagerConsumer,
 			@Nonnull BiFunction<ResourceID, Collection<SlotOffer>, CompletableFuture<Collection<SlotOffer>>> offerSlotsFunction,
 			@Nonnull TriConsumer<ResourceID, AllocationID, Throwable> failSlotConsumer,
-			@Nonnull BiFunction<String, TaskManagerLocation, CompletableFuture<RegistrationResponse>> registerTaskManagerFunction,
-			@Nonnull BiConsumer<ResourceID, AccumulatorReport> taskManagerHeartbeatConsumer,
+			@Nonnull BiFunction<String, UnresolvedTaskManagerLocation, CompletableFuture<RegistrationResponse>> registerTaskManagerFunction,
+			@Nonnull BiConsumer<ResourceID, TaskExecutorToJobManagerHeartbeatPayload> taskManagerHeartbeatConsumer,
 			@Nonnull Consumer<ResourceID> resourceManagerHeartbeatConsumer,
 			@Nonnull Supplier<CompletableFuture<JobDetails>> requestJobDetailsSupplier,
 			@Nonnull Supplier<CompletableFuture<ArchivedExecutionGraph>> requestJobSupplier,
@@ -185,7 +190,8 @@ public class TestingJobMasterGateway implements JobMasterGateway {
 			@Nonnull Function<Tuple6<JobID, JobVertexID, KeyGroupRange, String, KvStateID, InetSocketAddress>, CompletableFuture<Acknowledge>> notifyKvStateRegisteredFunction,
 			@Nonnull Function<Tuple4<JobID, JobVertexID, KeyGroupRange, String>, CompletableFuture<Acknowledge>> notifyKvStateUnregisteredFunction,
 			@Nonnull TriFunction<String, Object, byte[], CompletableFuture<Object>> updateAggregateFunction,
-			@Nonnull TriFunction<ExecutionAttemptID, OperatorID, SerializedValue<OperatorEvent>, CompletableFuture<Acknowledge>> operatorEventSender) {
+			@Nonnull TriFunction<ExecutionAttemptID, OperatorID, SerializedValue<OperatorEvent>, CompletableFuture<Acknowledge>> operatorEventSender,
+			@Nonnull BiFunction<OperatorID, SerializedValue<CoordinationRequest>, CompletableFuture<CoordinationResponse>> deliverCoordinationRequestFunction) {
 		this.address = address;
 		this.hostname = hostname;
 		this.cancelFunction = cancelFunction;
@@ -214,6 +220,7 @@ public class TestingJobMasterGateway implements JobMasterGateway {
 		this.notifyKvStateUnregisteredFunction = notifyKvStateUnregisteredFunction;
 		this.updateAggregateFunction = updateAggregateFunction;
 		this.operatorEventSender = operatorEventSender;
+		this.deliverCoordinationRequestFunction = deliverCoordinationRequestFunction;
 	}
 
 	@Override
@@ -262,13 +269,13 @@ public class TestingJobMasterGateway implements JobMasterGateway {
 	}
 
 	@Override
-	public CompletableFuture<RegistrationResponse> registerTaskManager(String taskManagerRpcAddress, TaskManagerLocation taskManagerLocation, Time timeout) {
-		return registerTaskManagerFunction.apply(taskManagerRpcAddress, taskManagerLocation);
+	public CompletableFuture<RegistrationResponse> registerTaskManager(String taskManagerRpcAddress, UnresolvedTaskManagerLocation unresolvedTaskManagerLocation, Time timeout) {
+		return registerTaskManagerFunction.apply(taskManagerRpcAddress, unresolvedTaskManagerLocation);
 	}
 
 	@Override
-	public void heartbeatFromTaskManager(ResourceID resourceID, AccumulatorReport accumulatorReport) {
-		taskManagerHeartbeatConsumer.accept(resourceID, accumulatorReport);
+	public void heartbeatFromTaskManager(ResourceID resourceID, TaskExecutorToJobManagerHeartbeatPayload payload) {
+		taskManagerHeartbeatConsumer.accept(resourceID, payload);
 	}
 
 	@Override
@@ -359,5 +366,10 @@ public class TestingJobMasterGateway implements JobMasterGateway {
 	@Override
 	public CompletableFuture<Acknowledge> sendOperatorEventToCoordinator(ExecutionAttemptID task, OperatorID operatorID, SerializedValue<OperatorEvent> event) {
 		return operatorEventSender.apply(task, operatorID, event);
+	}
+
+	@Override
+	public CompletableFuture<CoordinationResponse> deliverCoordinationRequestToCoordinator(OperatorID operatorId, SerializedValue<CoordinationRequest> serializedRequest, Time timeout) {
+		return deliverCoordinationRequestFunction.apply(operatorId, serializedRequest);
 	}
 }

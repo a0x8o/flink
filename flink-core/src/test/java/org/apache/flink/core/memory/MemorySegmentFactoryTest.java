@@ -1,13 +1,12 @@
 /*
- * Licensed to the Apache Software Foundation (ASF) under one
- * or more contributor license agreements.  See the NOTICE file
- * distributed with this work for additional information
- * regarding copyright ownership.  The ASF licenses this file
- * to you under the Apache License, Version 2.0 (the
- * "License"); you may not use this file except in compliance
- * with the License.  You may obtain a copy of the License at
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -20,43 +19,46 @@ package org.apache.flink.core.memory;
 
 import org.junit.Test;
 
-import java.lang.reflect.Field;
+import static java.lang.System.arraycopy;
+import static org.junit.Assert.assertArrayEquals;
 
-import static org.junit.Assert.*;
-
+/**
+ * {@link MemorySegmentFactory} test.
+ */
 public class MemorySegmentFactoryTest {
 
 	@Test
-	public void testInitializationToHeapSegments() throws Exception {
-		clearSegmentFactory();
-
-		assertFalse(MemorySegmentFactory.isInitialized());
-		assertTrue(MemorySegmentFactory.initializeIfNotInitialized(HeapMemorySegment.FACTORY));
-		assertTrue(MemorySegmentFactory.isInitialized());
-
-		assertTrue(MemorySegmentFactory.initializeIfNotInitialized(HeapMemorySegment.FACTORY));
-		assertFalse(MemorySegmentFactory.initializeIfNotInitialized(HybridMemorySegment.FACTORY));
-
-		assertEquals(HeapMemorySegment.FACTORY, MemorySegmentFactory.getFactory());
+	public void testWrapCopyChangingData() {
+		byte[] data = {1, 2, 3, 4, 5};
+		byte[] changingData = new byte[data.length];
+		arraycopy(data, 0, changingData, 0, data.length);
+		MemorySegment segment = MemorySegmentFactory.wrapCopy(changingData, 0, changingData.length);
+		changingData[0]++;
+		assertArrayEquals(data, segment.heapMemory);
 	}
 
 	@Test
-	public void testInitializationToOffHeapSegments() throws Exception {
-		clearSegmentFactory();
-
-		assertFalse(MemorySegmentFactory.isInitialized());
-		assertTrue(MemorySegmentFactory.initializeIfNotInitialized(HybridMemorySegment.FACTORY));
-		assertTrue(MemorySegmentFactory.isInitialized());
-
-		assertTrue(MemorySegmentFactory.initializeIfNotInitialized(HybridMemorySegment.FACTORY));
-		assertFalse(MemorySegmentFactory.initializeIfNotInitialized(HeapMemorySegment.FACTORY));
-
-		assertEquals(HybridMemorySegment.FACTORY, MemorySegmentFactory.getFactory());
+	public void testWrapPartialCopy() {
+		byte[] data = {1, 2, 3, 5, 6};
+		MemorySegment segment = MemorySegmentFactory.wrapCopy(data, 0, data.length / 2);
+		byte[] exp = new byte[segment.size()];
+		arraycopy(data, 0, exp, 0, exp.length);
+		assertArrayEquals(exp, segment.heapMemory);
 	}
 
-	private static void clearSegmentFactory() throws Exception {
-		Field factoryField = MemorySegmentFactory.class.getDeclaredField("factory");
-		factoryField.setAccessible(true);
-		factoryField.set(null, null);
+	@Test
+	public void testWrapCopyEmpty() {
+		MemorySegmentFactory.wrapCopy(new byte[0], 0, 0);
 	}
+
+	@Test(expected = IllegalArgumentException.class)
+	public void testWrapCopyWrongStart() {
+		MemorySegmentFactory.wrapCopy(new byte[]{1, 2, 3}, 10, 3);
+	}
+
+	@Test(expected = IllegalArgumentException.class)
+	public void testWrapCopyWrongEnd() {
+		MemorySegmentFactory.wrapCopy(new byte[]{1, 2, 3}, 0, 10);
+	}
+
 }

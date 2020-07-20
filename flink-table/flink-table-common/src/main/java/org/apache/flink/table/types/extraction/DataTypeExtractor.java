@@ -23,13 +23,7 @@ import org.apache.flink.table.annotation.DataTypeHint;
 import org.apache.flink.table.api.DataTypes;
 import org.apache.flink.table.catalog.DataTypeFactory;
 import org.apache.flink.table.types.DataType;
-import org.apache.flink.table.types.FieldsDataType;
-import org.apache.flink.table.types.extraction.utils.DataTypeTemplate;
-import org.apache.flink.table.types.extraction.utils.ExtractionUtils;
 import org.apache.flink.table.types.logical.LogicalType;
-import org.apache.flink.table.types.logical.RawType;
-import org.apache.flink.table.types.logical.StructuredType;
-import org.apache.flink.table.types.logical.StructuredType.StructuredAttribute;
 import org.apache.flink.table.types.utils.ClassDataTypeConverter;
 import org.apache.flink.types.Row;
 
@@ -51,16 +45,18 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
-import static org.apache.flink.table.types.extraction.utils.ExtractionUtils.collectStructuredFields;
-import static org.apache.flink.table.types.extraction.utils.ExtractionUtils.collectTypeHierarchy;
-import static org.apache.flink.table.types.extraction.utils.ExtractionUtils.createRawType;
-import static org.apache.flink.table.types.extraction.utils.ExtractionUtils.extractAssigningConstructor;
-import static org.apache.flink.table.types.extraction.utils.ExtractionUtils.extractionError;
-import static org.apache.flink.table.types.extraction.utils.ExtractionUtils.isStructuredFieldMutable;
-import static org.apache.flink.table.types.extraction.utils.ExtractionUtils.resolveVariable;
-import static org.apache.flink.table.types.extraction.utils.ExtractionUtils.toClass;
-import static org.apache.flink.table.types.extraction.utils.ExtractionUtils.validateStructuredClass;
-import static org.apache.flink.table.types.extraction.utils.ExtractionUtils.validateStructuredFieldReadability;
+import static org.apache.flink.table.types.extraction.ExtractionUtils.collectStructuredFields;
+import static org.apache.flink.table.types.extraction.ExtractionUtils.collectTypeHierarchy;
+import static org.apache.flink.table.types.extraction.ExtractionUtils.createRawType;
+import static org.apache.flink.table.types.extraction.ExtractionUtils.extractAssigningConstructor;
+import static org.apache.flink.table.types.extraction.ExtractionUtils.extractionError;
+import static org.apache.flink.table.types.extraction.ExtractionUtils.hasInvokableConstructor;
+import static org.apache.flink.table.types.extraction.ExtractionUtils.isStructuredFieldMutable;
+import static org.apache.flink.table.types.extraction.ExtractionUtils.resolveVariable;
+import static org.apache.flink.table.types.extraction.ExtractionUtils.toClass;
+import static org.apache.flink.table.types.extraction.ExtractionUtils.validateStructuredClass;
+import static org.apache.flink.table.types.extraction.ExtractionUtils.validateStructuredFieldReadability;
+import static org.apache.flink.table.types.extraction.ExtractionUtils.validateStructuredSelfReference;
 
 /**
  * Reflection-based utility that analyzes a given {@link java.lang.reflect.Type}, method, or class to
@@ -315,15 +311,35 @@ public final class DataTypeExtractor {
 			return DataTypes.ARRAY(
 				extractDataTypeOrRaw(template, typeHierarchy, genericArray.getGenericComponentType()));
 		}
-		// for my.custom.Pojo[][]
-		else if (type instanceof Class) {
-			final Class<?> clazz = (Class<?>) type;
-			if (clazz.isArray()) {
-				return DataTypes.ARRAY(
-					extractDataTypeOrRaw(template, typeHierarchy, clazz.getComponentType()));
-			}
+
+		final Class<?> clazz = toClass(type);
+		if (clazz == null) {
+			return null;
 		}
-		return null;
+
+		// for my.custom.Pojo[][]
+		if (clazz.isArray()) {
+			return DataTypes.ARRAY(
+				extractDataTypeOrRaw(template, typeHierarchy, clazz.getComponentType()));
+		}
+
+		// for List<T>
+		// we only allow List here (not a subclass) because we cannot guarantee more specific
+		// data structures after conversion
+		if (clazz != List.class) {
+			return null;
+		}
+		if (!(type instanceof ParameterizedType)) {
+			throw extractionError(
+				"The class '%s' needs generic parameters for an array type.",
+				List.class.getName());
+		}
+		final ParameterizedType parameterizedType = (ParameterizedType) type;
+		final DataType element = extractDataTypeOrRaw(
+			template,
+			typeHierarchy,
+			parameterizedType.getActualTypeArguments()[0]);
+		return DataTypes.ARRAY(element).bridgedTo(List.class);
 	}
 
 	private @Nullable DataType extractEnforcedRawType(DataTypeTemplate template, Type type) {
@@ -430,11 +446,15 @@ public final class DataTypeExtractor {
 
 	private @Nullable DataType extractMapType(DataTypeTemplate template, List<Type> typeHierarchy, Type type) {
 		final Class<?> clazz = toClass(type);
+		// we only allow Map here (not a subclass) because we cannot guarantee more specific
+		// data structures after conversion
 		if (clazz != Map.class) {
 			return null;
 		}
 		if (!(type instanceof ParameterizedType)) {
-			throw extractionError("Raw map type needs generic parameters.");
+			throw extractionError(
+				"The class '%s' needs generic parameters for a map type.",
+				Map.class.getName());
 		}
 		final ParameterizedType parameterizedType = (ParameterizedType) type;
 		final DataType key = extractDataTypeOrRaw(
@@ -455,6 +475,7 @@ public final class DataTypeExtractor {
 		}
 
 		validateStructuredClass(clazz);
+		validateStructuredSelfReference(type, typeHierarchy);
 
 		final List<Field> fields = collectStructuredFields(clazz);
 
@@ -478,6 +499,12 @@ public final class DataTypeExtractor {
 				clazz.getName(),
 				fields.stream().map(Field::getName).collect(Collectors.joining(", ")));
 		}
+		// check for a default constructor otherwise
+		else if (constructor == null && !hasInvokableConstructor(clazz)) {
+			throw extractionError(
+				"Class '%s' has neither a constructor that assigns all fields nor a default constructor.",
+				clazz.getName());
+		}
 
 		final Map<String, DataType> fieldDataTypes = extractStructuredTypeFields(
 			template,
@@ -485,11 +512,11 @@ public final class DataTypeExtractor {
 			type,
 			fields);
 
-		final StructuredType.Builder builder = StructuredType.newBuilder(clazz);
-		builder.attributes(createStructuredTypeAttributes(constructor, fieldDataTypes));
-		builder.setFinal(true); // anonymous structured types should not allow inheritance
-		builder.setInstantiable(true);
-		return new FieldsDataType(builder.build(), clazz, fieldDataTypes);
+		final DataTypes.Field[] attributes = createStructuredTypeAttributes(
+			constructor,
+			fieldDataTypes);
+
+		return DataTypes.STRUCTURED(clazz, attributes);
 	}
 
 	private Map<String, DataType> extractStructuredTypeFields(
@@ -521,7 +548,7 @@ public final class DataTypeExtractor {
 		return fieldDataTypes;
 	}
 
-	private List<StructuredAttribute> createStructuredTypeAttributes(
+	private DataTypes.Field[] createStructuredTypeAttributes(
 			ExtractionUtils.AssigningConstructor constructor,
 			Map<String, DataType> fieldDataTypes) {
 		return Optional.ofNullable(constructor)
@@ -533,11 +560,8 @@ public final class DataTypeExtractor {
 				// field order is sorted
 				return fieldDataTypes.keySet().stream().sorted();
 			})
-			.map(name -> {
-				final LogicalType logicalType = fieldDataTypes.get(name).getLogicalType();
-				return new StructuredAttribute(name, logicalType);
-			})
-			.collect(Collectors.toList());
+			.map(name -> DataTypes.FIELD(name, fieldDataTypes.get(name)))
+			.toArray(DataTypes.Field[]::new);
 	}
 
 	/**
@@ -558,7 +582,6 @@ public final class DataTypeExtractor {
 	 * Use closest class for data type if possible. Even though a hint might have provided some data
 	 * type, in many cases, the conversion class can be enriched with the extraction type itself.
 	 */
-	@SuppressWarnings({"unchecked", "rawtypes"})
 	private DataType closestBridging(DataType dataType, @Nullable Class<?> clazz) {
 		// no context class or conversion class is already more specific than context class
 		if (clazz == null || clazz.isAssignableFrom(dataType.getConversionClass())) {
@@ -567,9 +590,7 @@ public final class DataTypeExtractor {
 		final LogicalType logicalType = dataType.getLogicalType();
 		final boolean supportsConversion = logicalType.supportsInputConversion(clazz) ||
 			logicalType.supportsOutputConversion(clazz);
-		if (supportsConversion && logicalType instanceof RawType) {
-			return DataTypes.RAW(clazz, ((RawType) logicalType).getTypeSerializer());
-		} else if (supportsConversion) {
+		if (supportsConversion) {
 			return dataType.bridgedTo(clazz);
 		}
 		return dataType;

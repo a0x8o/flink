@@ -28,10 +28,10 @@ import org.apache.flink.table.delegation.PlannerTypeInferenceUtil;
 import org.apache.flink.table.expressions.CallExpression;
 import org.apache.flink.table.expressions.Expression;
 import org.apache.flink.table.expressions.ResolvedExpression;
+import org.apache.flink.table.expressions.TypeLiteralExpression;
 import org.apache.flink.table.expressions.UnresolvedCallExpression;
 import org.apache.flink.table.expressions.ValueLiteralExpression;
 import org.apache.flink.table.functions.AggregateFunctionDefinition;
-import org.apache.flink.table.functions.BuiltInFunctionDefinition;
 import org.apache.flink.table.functions.BuiltInFunctionDefinitions;
 import org.apache.flink.table.functions.FunctionDefinition;
 import org.apache.flink.table.functions.FunctionIdentifier;
@@ -60,6 +60,7 @@ import java.util.stream.IntStream;
 
 import static java.util.Collections.singletonList;
 import static org.apache.flink.table.expressions.ApiExpressionUtils.valueLiteral;
+import static org.apache.flink.table.types.logical.utils.LogicalTypeCasts.supportsAvoidingCast;
 import static org.apache.flink.table.types.utils.TypeConversions.fromDataTypeToLegacyInfo;
 import static org.apache.flink.table.types.utils.TypeConversions.fromLegacyInfoToDataType;
 
@@ -173,14 +174,19 @@ final class ResolveCallByArgumentsRule implements ResolverRule {
 		 * Temporary method until all calls define a type inference.
 		 */
 		private Optional<TypeInference> getOptionalTypeInference(FunctionDefinition definition) {
-			if (definition instanceof BuiltInFunctionDefinition) {
-				final BuiltInFunctionDefinition builtInDefinition = (BuiltInFunctionDefinition) definition;
-				final TypeInference inference = builtInDefinition.getTypeInference(resolutionContext.typeFactory());
-				if (inference.getOutputTypeStrategy() != TypeStrategies.MISSING) {
-					return Optional.of(inference);
-				}
+			if (definition instanceof ScalarFunctionDefinition ||
+					definition instanceof TableFunctionDefinition ||
+					definition instanceof AggregateFunctionDefinition ||
+					definition instanceof TableAggregateFunctionDefinition) {
+				return Optional.empty();
 			}
-			return Optional.empty();
+
+			final TypeInference inference = definition.getTypeInference(resolutionContext.typeFactory());
+			if (inference.getOutputTypeStrategy() != TypeStrategies.MISSING) {
+				return Optional.of(inference);
+			} else {
+				return Optional.empty();
+			}
 		}
 
 		private ResolvedExpression runTypeInference(
@@ -231,7 +237,8 @@ final class ResolveCallByArgumentsRule implements ResolverRule {
 					final ResolvedExpression argument = resolvedArgs.get(pos);
 					final DataType argumentType = argument.getOutputDataType();
 					final DataType expectedType = inferenceResult.getExpectedArgumentTypes().get(pos);
-					if (!argumentType.equals(expectedType)) {
+
+					if (!supportsAvoidingCast(argumentType.getLogicalType(), expectedType.getLogicalType())) {
 						return resolutionContext
 							.postResolutionFactory()
 							.cast(argument, expectedType);
@@ -318,19 +325,34 @@ final class ResolveCallByArgumentsRule implements ResolverRule {
 
 		@Override
 		public boolean isArgumentLiteral(int pos) {
-			return getArgument(pos) instanceof ValueLiteralExpression;
+			final ResolvedExpression arg = getArgument(pos);
+			return arg instanceof ValueLiteralExpression || arg instanceof TypeLiteralExpression;
 		}
 
 		@Override
 		public boolean isArgumentNull(int pos) {
 			Preconditions.checkArgument(isArgumentLiteral(pos), "Argument at position %s is not a literal.", pos);
+			final ResolvedExpression arg = getArgument(pos);
+			// special case for type literals in Table API only
+			if (arg instanceof TypeLiteralExpression) {
+				return false;
+			}
 			final ValueLiteralExpression literal = (ValueLiteralExpression) getArgument(pos);
 			return literal.isNull();
 		}
 
 		@Override
+		@SuppressWarnings("unchecked")
 		public <T> Optional<T> getArgumentValue(int pos, Class<T> clazz) {
 			Preconditions.checkArgument(isArgumentLiteral(pos), "Argument at position %s is not a literal.", pos);
+			final ResolvedExpression arg = getArgument(pos);
+			// special case for type literals in Table API only
+			if (arg instanceof TypeLiteralExpression) {
+				if (!DataType.class.isAssignableFrom(clazz)) {
+					return Optional.empty();
+				}
+				return Optional.of((T) arg.getOutputDataType());
+			}
 			final ValueLiteralExpression literal = (ValueLiteralExpression) getArgument(pos);
 			return literal.getValueAs(clazz);
 		}

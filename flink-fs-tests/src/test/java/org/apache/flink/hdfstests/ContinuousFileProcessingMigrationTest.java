@@ -75,14 +75,15 @@ public class ContinuousFileProcessingMigrationTest {
 	@Parameterized.Parameters(name = "Migration Savepoint / Mod Time: {0}")
 	public static Collection<Tuple2<MigrationVersion, Long>> parameters () {
 		return Arrays.asList(
-			Tuple2.of(MigrationVersion.v1_2, 1493116191000L),
 			Tuple2.of(MigrationVersion.v1_3, 1496532000000L),
 			Tuple2.of(MigrationVersion.v1_4, 1516897628000L),
 			Tuple2.of(MigrationVersion.v1_5, 1533639934000L),
 			Tuple2.of(MigrationVersion.v1_6, 1534696817000L),
 			Tuple2.of(MigrationVersion.v1_7, 1544024599000L),
 			Tuple2.of(MigrationVersion.v1_8, 1555215710000L),
-			Tuple2.of(MigrationVersion.v1_9, 1567499868000L));
+			Tuple2.of(MigrationVersion.v1_9, 1567499868000L),
+			Tuple2.of(MigrationVersion.v1_10, 1594559333000L),
+			Tuple2.of(MigrationVersion.v1_11, 1594561663000L));
 	}
 
 	/**
@@ -417,7 +418,7 @@ public class ContinuousFileProcessingMigrationTest {
 	private OneInputStreamOperatorTestHarness<TimestampedFileInputSplit, FileInputSplit> createHarness(BlockingFileInputFormat format) throws Exception {
 		ExecutionConfig config = new ExecutionConfig();
 		return new OneInputStreamOperatorTestHarness<>(
-			new ContinuousFileReaderOperatorFactory<>(format, TypeExtractor.getInputFormatTypes(format), config),
+			new ContinuousFileReaderOperatorFactory(format, TypeExtractor.getInputFormatTypes(format), config),
 			TypeExtractor.getForClass(TimestampedFileInputSplit.class).createSerializer(config));
 	}
 

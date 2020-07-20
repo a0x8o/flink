@@ -41,6 +41,7 @@ import org.apache.flink.runtime.checkpoint.CheckpointStatsSnapshot;
 import org.apache.flink.runtime.checkpoint.CheckpointStatsTracker;
 import org.apache.flink.runtime.checkpoint.CompletedCheckpointStore;
 import org.apache.flink.runtime.checkpoint.MasterTriggerRestoreHook;
+import org.apache.flink.runtime.checkpoint.OperatorCoordinatorCheckpointContext;
 import org.apache.flink.runtime.concurrent.ComponentMainThreadExecutor;
 import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.concurrent.FutureUtils.ConjunctFuture;
@@ -48,7 +49,6 @@ import org.apache.flink.runtime.concurrent.ScheduledExecutorServiceAdapter;
 import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.execution.SuppressRestartsException;
 import org.apache.flink.runtime.executiongraph.failover.FailoverStrategy;
-import org.apache.flink.runtime.executiongraph.failover.flip1.FailoverTopology;
 import org.apache.flink.runtime.executiongraph.failover.flip1.ResultPartitionAvailabilityChecker;
 import org.apache.flink.runtime.executiongraph.failover.flip1.partitionrelease.PartitionReleaseStrategy;
 import org.apache.flink.runtime.executiongraph.restart.ExecutionGraphRestartCallback;
@@ -313,6 +313,9 @@ public class ExecutionGraph implements AccessExecutionGraph {
 	/** Shuffle master to register partitions for task deployment. */
 	private final ShuffleMaster<?> shuffleMaster;
 
+	private final ExecutionDeploymentListener executionDeploymentListener;
+	private final ExecutionStateUpdateListener executionStateUpdateListener;
+
 	// --------------------------------------------------------------------------------------------
 	//   Constructors
 	// --------------------------------------------------------------------------------------------
@@ -332,7 +335,9 @@ public class ExecutionGraph implements AccessExecutionGraph {
 			PartitionReleaseStrategy.Factory partitionReleaseStrategyFactory,
 			ShuffleMaster<?> shuffleMaster,
 			JobMasterPartitionTracker partitionTracker,
-			ScheduleMode scheduleMode) throws IOException {
+			ScheduleMode scheduleMode,
+			ExecutionDeploymentListener executionDeploymentListener,
+			ExecutionStateUpdateListener executionStateUpdateListener) throws IOException {
 
 		this.jobInformation = Preconditions.checkNotNull(jobInformation);
 
@@ -390,6 +395,9 @@ public class ExecutionGraph implements AccessExecutionGraph {
 		this.resultPartitionAvailabilityChecker = new ExecutionGraphResultPartitionAvailabilityChecker(
 			this::createResultPartitionId,
 			partitionTracker);
+
+		this.executionDeploymentListener = executionDeploymentListener;
+		this.executionStateUpdateListener = executionStateUpdateListener;
 	}
 
 	public void start(@Nonnull ComponentMainThreadExecutor jobMasterMainThreadExecutor) {
@@ -408,11 +416,7 @@ public class ExecutionGraph implements AccessExecutionGraph {
 		return this.verticesInCreationOrder.size();
 	}
 
-	public SchedulingTopology<?, ?> getSchedulingTopology() {
-		return executionTopology;
-	}
-
-	public FailoverTopology<?, ?> getFailoverTopology() {
+	public SchedulingTopology getSchedulingTopology() {
 		return executionTopology;
 	}
 
@@ -457,6 +461,8 @@ public class ExecutionGraph implements AccessExecutionGraph {
 		ExecutionVertex[] tasksToWaitFor = collectExecutionVertices(verticesToWaitFor);
 		ExecutionVertex[] tasksToCommitTo = collectExecutionVertices(verticesToCommitTo);
 
+		final Collection<OperatorCoordinatorCheckpointContext> operatorCoordinators = buildOpCoordinatorCheckpointContexts();
+
 		checkpointStatsTracker = checkNotNull(statsTracker, "CheckpointStatsTracker");
 
 		CheckpointFailureManager failureManager = new CheckpointFailureManager(
@@ -487,6 +493,7 @@ public class ExecutionGraph implements AccessExecutionGraph {
 			tasksToTrigger,
 			tasksToWaitFor,
 			tasksToCommitTo,
+			operatorCoordinators,
 			checkpointIDCounter,
 			checkpointStore,
 			checkpointStateBackend,
@@ -564,6 +571,15 @@ public class ExecutionGraph implements AccessExecutionGraph {
 			}
 			return all.toArray(new ExecutionVertex[all.size()]);
 		}
+	}
+
+	private Collection<OperatorCoordinatorCheckpointContext> buildOpCoordinatorCheckpointContexts() {
+		final ArrayList<OperatorCoordinatorCheckpointContext> contexts = new ArrayList<>();
+		for (final ExecutionJobVertex vertex : verticesInCreationOrder) {
+			contexts.addAll(vertex.getOperatorCoordinators());
+		}
+		contexts.trimToSize();
+		return contexts;
 	}
 
 	// --------------------------------------------------------------------------------------------
@@ -1525,9 +1541,9 @@ public class ExecutionGraph implements AccessExecutionGraph {
 	}
 
 	ResultPartitionID createResultPartitionId(final IntermediateResultPartitionID resultPartitionId) {
-		final SchedulingResultPartition<?, ?> schedulingResultPartition =
-			getSchedulingTopology().getResultPartitionOrThrow(resultPartitionId);
-		final SchedulingExecutionVertex<?, ?> producer = schedulingResultPartition.getProducer();
+		final SchedulingResultPartition schedulingResultPartition =
+			getSchedulingTopology().getResultPartition(resultPartitionId);
+		final SchedulingExecutionVertex producer = schedulingResultPartition.getProducer();
 		final ExecutionVertexID producerId = producer.getId();
 		final JobVertexID jobVertexId = producerId.getJobVertexId();
 		final ExecutionJobVertex jobVertex = getJobVertex(jobVertexId);
@@ -1667,6 +1683,8 @@ public class ExecutionGraph implements AccessExecutionGraph {
 			return;
 		}
 
+		executionStateUpdateListener.onStateUpdate(execution.getAttemptId(), newExecutionState);
+
 		// see what this means for us. currently, the first FAILED state means -> FAILED
 		if (newExecutionState == ExecutionState.FAILED) {
 			final Throwable ex = error != null ? error : new FlinkException("Unknown Error (missing cause)");
@@ -1717,5 +1735,9 @@ public class ExecutionGraph implements AccessExecutionGraph {
 
 	PartitionReleaseStrategy getPartitionReleaseStrategy() {
 		return partitionReleaseStrategy;
+	}
+
+	ExecutionDeploymentListener getExecutionDeploymentListener() {
+		return executionDeploymentListener;
 	}
 }

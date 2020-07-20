@@ -29,7 +29,7 @@ under the License.
 		<suppress files="org[\\/]apache[\\/]calcite.*" checks="[a-zA-Z0-9]*"/>
 
 		<!-- Temporarily fix TM Metaspace memory leak caused by Apache Beam sdk harness. -->
-		<suppress files="org[\\/]apache[\\/]beam[\\/]vendor[\\/]grpc[\\/]v1p21p0[\\/]io[\\/]netty[\\/]buffer.*.java" checks="[a-zA-Z0-9]*"/>
+		<suppress files="org[\\/]apache[\\/]beam.*.java" checks="[a-zA-Z0-9]*"/>
 
 	    <!-- Have to use guava directly -->
 	    <suppress
@@ -52,6 +52,10 @@ under the License.
 			checks=".*"/>
 		<suppress
 			files="org[\\/]apache[\\/]hadoop[\\/]util[\\/]VersionInfo.java"
+			checks=".*"/>
+		<!-- Classes copied from AWS -->
+		<suppress
+			files="com[\\/]amazonaws[\\/]services[\\/]s3[\\/]model[\\/]transform[\\/]XmlResponsesSaxParser.java"
 			checks=".*"/>
 		<!-- target directory is not relevant for checkstyle -->
 		<suppress

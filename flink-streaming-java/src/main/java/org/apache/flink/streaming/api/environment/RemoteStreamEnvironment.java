@@ -21,7 +21,6 @@ import org.apache.flink.annotation.Public;
 import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.api.common.JobExecutionResult;
 import org.apache.flink.api.java.RemoteEnvironmentConfigUtils;
-import org.apache.flink.client.program.ProgramInvocationException;
 import org.apache.flink.configuration.ConfigUtils;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.DeploymentOptions;
@@ -142,7 +141,7 @@ public class RemoteStreamEnvironment extends StreamExecutionEnvironment {
 	 */
 	@PublicEvolving
 	public RemoteStreamEnvironment(String host, int port, Configuration clientConfiguration, String[] jarFiles, URL[] globalClasspaths, SavepointRestoreSettings savepointRestoreSettings) {
-		this(DefaultExecutorServiceLoader.INSTANCE, host, port, clientConfiguration, jarFiles, globalClasspaths, savepointRestoreSettings);
+		this(new DefaultExecutorServiceLoader(), host, port, clientConfiguration, jarFiles, globalClasspaths, savepointRestoreSettings);
 	}
 
 	@PublicEvolving
@@ -215,16 +214,7 @@ public class RemoteStreamEnvironment extends StreamExecutionEnvironment {
 
 	@Override
 	public JobExecutionResult execute(StreamGraph streamGraph) throws Exception {
-		try {
-			return super.execute(streamGraph);
-		}
-		catch (ProgramInvocationException e) {
-			throw e;
-		}
-		catch (Exception e) {
-			String term = e.getMessage() == null ? "." : (": " + e.getMessage());
-			throw new ProgramInvocationException("The program execution failed" + term, e);
-		}
+		return super.execute(streamGraph);
 	}
 
 	@Override

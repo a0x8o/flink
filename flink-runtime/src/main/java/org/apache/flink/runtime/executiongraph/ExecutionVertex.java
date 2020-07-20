@@ -650,8 +650,6 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 				}
 			}
 
-			jobVertex.getOperatorCoordinators().forEach((c -> c.subtaskFailed(getParallelSubtaskIndex())));
-
 			CoLocationGroup grp = jobVertex.getCoLocationGroup();
 			if (grp != null) {
 				locationConstraint = grp.getLocationConstraint(subTaskIndex);
@@ -876,15 +874,29 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 	//   Miscellaneous
 	// --------------------------------------------------------------------------------------------
 
+	void notifyDeployment(Execution execution) {
+		// only forward this notification if the execution is still the current execution
+		// otherwise we have an outdated execution
+		if (isCurrentExecution(execution)) {
+			getExecutionGraph().getExecutionDeploymentListener().onCompletedDeployment(
+				execution.getAttemptId(),
+				execution.getAssignedResourceLocation().getResourceID());
+		}
+	}
+
 	/**
 	 * Simply forward this notification.
 	 */
 	void notifyStateTransition(Execution execution, ExecutionState newState, Throwable error) {
 		// only forward this notification if the execution is still the current execution
 		// otherwise we have an outdated execution
-		if (currentExecution == execution) {
+		if (isCurrentExecution(execution)) {
 			getExecutionGraph().notifyExecutionChange(execution, newState, error);
 		}
+	}
+
+	private boolean isCurrentExecution(Execution execution) {
+		return currentExecution == execution;
 	}
 
 	// --------------------------------------------------------------------------------------------

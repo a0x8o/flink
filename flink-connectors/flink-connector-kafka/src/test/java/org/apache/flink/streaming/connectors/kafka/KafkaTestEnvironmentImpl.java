@@ -17,6 +17,7 @@
 
 package org.apache.flink.streaming.connectors.kafka;
 
+import org.apache.flink.api.common.serialization.SerializationSchema;
 import org.apache.flink.networking.NetworkFailuresProxy;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.DataStreamSink;
@@ -25,7 +26,6 @@ import org.apache.flink.streaming.connectors.kafka.partitioner.FlinkKafkaPartiti
 import org.apache.flink.streaming.util.serialization.KeyedSerializationSchema;
 import org.apache.flink.util.NetUtils;
 
-import kafka.common.KafkaException;
 import kafka.metrics.KafkaMetricsReporter;
 import kafka.server.KafkaConfig;
 import kafka.server.KafkaServer;
@@ -38,6 +38,7 @@ import org.apache.kafka.clients.admin.TopicDescription;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
+import org.apache.kafka.common.KafkaException;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.network.ListenerName;
 import org.apache.kafka.common.security.auth.SecurityProtocol;
@@ -137,7 +138,6 @@ public class KafkaTestEnvironmentImpl extends KafkaTestEnvironment {
 		LOG.info("ZK and KafkaServer started.");
 
 		standardProps = new Properties();
-		standardProps.setProperty("zookeeper.connect", zookeeperConnectionString);
 		standardProps.setProperty("bootstrap.servers", brokerConnectionString);
 		standardProps.setProperty("group.id", "flink-tests");
 		standardProps.setProperty("enable.auto.commit", "false");
@@ -262,12 +262,16 @@ public class KafkaTestEnvironmentImpl extends KafkaTestEnvironment {
 	}
 
 	@Override
-	public <T> StreamSink<T> getProducerSink(String topic, KeyedSerializationSchema<T> serSchema, Properties props, FlinkKafkaPartitioner<T> partitioner) {
-		return new StreamSink<>(new FlinkKafkaProducer<T>(
+	public <T> StreamSink<T> getProducerSink(
+			String topic,
+			SerializationSchema<T> serSchema,
+			Properties props,
+			FlinkKafkaPartitioner<T> partitioner) {
+		return new StreamSink<>(new FlinkKafkaProducer<>(
 			topic,
 			serSchema,
 			props,
-			Optional.ofNullable(partitioner),
+			partitioner,
 			producerSemantic,
 			FlinkKafkaProducer.DEFAULT_KAFKA_PRODUCERS_POOL_SIZE));
 	}
@@ -279,6 +283,22 @@ public class KafkaTestEnvironmentImpl extends KafkaTestEnvironment {
 			serSchema,
 			props,
 			Optional.ofNullable(partitioner),
+			producerSemantic,
+			FlinkKafkaProducer.DEFAULT_KAFKA_PRODUCERS_POOL_SIZE));
+	}
+
+	@Override
+	public <T> DataStreamSink<T> produceIntoKafka(
+			DataStream<T> stream,
+			String topic,
+			SerializationSchema<T> serSchema,
+			Properties props,
+			FlinkKafkaPartitioner<T> partitioner) {
+		return stream.addSink(new FlinkKafkaProducer<T>(
+			topic,
+			serSchema,
+			props,
+			partitioner,
 			producerSemantic,
 			FlinkKafkaProducer.DEFAULT_KAFKA_PRODUCERS_POOL_SIZE));
 	}

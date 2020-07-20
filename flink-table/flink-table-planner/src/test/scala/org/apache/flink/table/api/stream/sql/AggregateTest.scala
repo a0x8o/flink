@@ -23,16 +23,16 @@ import org.apache.flink.api.java.typeutils.RowTypeInfo
 import org.apache.flink.api.scala._
 import org.apache.flink.api.scala.typeutils.CaseClassTypeInfo
 import org.apache.flink.streaming.api.scala.StreamExecutionEnvironment
-import org.apache.flink.table.api.scala._
-import org.apache.flink.table.api.scala.internal.StreamTableEnvironmentImpl
-import org.apache.flink.table.api.{TableConfig, Types}
+import org.apache.flink.table.api._
+import org.apache.flink.table.api.bridge.scala.internal.StreamTableEnvironmentImpl
 import org.apache.flink.table.catalog.{FunctionCatalog, UnresolvedIdentifier}
-import org.apache.flink.table.delegation.{Executor, Planner}
+import org.apache.flink.table.delegation.Executor
 import org.apache.flink.table.functions.{AggregateFunction, AggregateFunctionDefinition}
 import org.apache.flink.table.module.ModuleManager
 import org.apache.flink.table.utils.TableTestUtil.{streamTableNode, term, unaryNode}
-import org.apache.flink.table.utils.{CatalogManagerMocks, StreamTableTestUtil, TableTestBase}
+import org.apache.flink.table.utils.{CatalogManagerMocks, PlannerMock, StreamTableTestUtil, TableTestBase}
 import org.apache.flink.types.Row
+
 import org.junit.Assert.{assertEquals, assertTrue}
 import org.junit.Test
 import org.mockito.Mockito
@@ -77,9 +77,10 @@ class AggregateTest extends TableTestBase {
       functionCatalog,
       config,
       Mockito.mock(classOf[StreamExecutionEnvironment]),
-      Mockito.mock(classOf[Planner]),
+      new PlannerMock,
       Mockito.mock(classOf[Executor]),
-      true
+      true,
+      Thread.currentThread().getContextClassLoader
     )
 
     tablEnv.registerFunction("udag", new MyAgg)
