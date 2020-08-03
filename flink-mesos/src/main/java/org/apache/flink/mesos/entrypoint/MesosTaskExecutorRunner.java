@@ -41,7 +41,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.UndeclaredThrowableException;
-import java.util.Map;
 
 /**
  * The entry point for running a TaskManager in a Mesos container.
@@ -72,7 +71,7 @@ public class MesosTaskExecutorRunner {
 		final Configuration configuration;
 		try {
 			Configuration dynamicProperties = BootstrapTools.parseDynamicProperties(cmd);
-			LOG.debug("Mesos dynamic properties: {}", dynamicProperties);
+			LOG.info("Mesos dynamic properties: {}", dynamicProperties);
 
 			configuration = MesosUtils.loadConfiguration(dynamicProperties, LOG);
 		}
@@ -81,8 +80,6 @@ public class MesosTaskExecutorRunner {
 			System.exit(INIT_ERROR_EXIT_CODE);
 			return;
 		}
-
-		final Map<String, String> envs = System.getenv();
 
 		final PluginManager pluginManager = PluginUtils.createPluginManagerFromRootFolder(configuration);
 
