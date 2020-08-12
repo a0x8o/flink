@@ -43,3 +43,8 @@ class DataStreamTestSinkFunction(SinkFunction):
                 pickled_result = pickle.loads(result)
                 str_results.append(str(pickled_result))
             return str_results
+
+    def clear(self):
+        if self.j_data_stream_collect_sink is None:
+            return
+        self.j_data_stream_collect_sink.clear()

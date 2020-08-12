@@ -86,6 +86,74 @@ class FlatMapFunction(Function):
         pass
 
 
+class ReduceFunction(Function):
+    """
+    Base interface for Reduce functions. Reduce functions combine groups of elements to a single
+    value, by taking always two elements and combining them into one. Reduce functions may be
+    used on entire data sets, or on grouped data sets. In the latter case, each group is reduced
+    individually.
+
+    The basic syntax for using a ReduceFunction is as follows:
+    ::
+        >>> ds = ...
+        >>> new_ds = ds.key_by(lambda x: x[1]).reduce(MyReduceFunction())
+    """
+
+    @abc.abstractmethod
+    def reduce(self, value1, value2):
+        """
+        The core method of ReduceFunction, combining two values into one value of the same type.
+        The reduce function is consecutively applied to all values of a group until only a single
+        value remains.
+
+        :param value1: The first value to combine.
+        :param value2: The second value to combine.
+        :return: The combined value of both input values.
+        """
+        pass
+
+
+class KeySelector(Function):
+    """
+    The KeySelector allows to use deterministic objects for operations such as reduce, reduceGroup,
+    join coGroup, etc. If invoked multiple times on the same object, the returned key must be the
+    same. The extractor takes an object an returns the deterministic key for that object.
+    """
+
+    @abc.abstractmethod
+    def get_key(self, value):
+        """
+        User-defined function that deterministically extracts the key from an object.
+
+        :param value: The object to get the key from.
+        :return: The extracted key.
+        """
+        pass
+
+
+class FilterFunction(Function):
+    """
+    A filter function is a predicate applied individually to each record. The predicate decides
+    whether to keep the element, or to discard it.
+    The basic syntax for using a FilterFunction is as follows:
+    :
+         >>> ds = ...
+         >>> result = ds.filter(MyFilterFunction())
+    Note that the system assumes that the function does not modify the elements on which the
+    predicate is applied. Violating this assumption can lead to incorrect results.
+    """
+
+    @abc.abstractmethod
+    def filter(self, value):
+        """
+        The filter function that evaluates the predicate.
+
+        :param value: The value to be filtered.
+        :return: True for values that should be retained, false for values to be filtered out.
+        """
+        pass
+
+
 class FunctionWrapper(object):
     """
     A basic wrapper class for user defined function.
@@ -143,6 +211,69 @@ class FlatMapFunctionWrapper(FunctionWrapper):
         return self._func(value)
 
 
+class FilterFunctionWrapper(FunctionWrapper):
+    """
+        A wrapper class for FilterFunction. It's used for wrapping up user defined function in a
+        FilterFunction when user does not implement a FilterFunction but directly pass a function
+        object or a lambda function to filter() function.
+        """
+    def __init__(self, func):
+        super(FilterFunctionWrapper, self).__init__(func)
+
+    def filter(self, value):
+        return self._func(value)
+
+
+class ReduceFunctionWrapper(FunctionWrapper):
+    """
+    A wrapper class for ReduceFunction. It's used for wrapping up user defined function in a
+    ReduceFunction when user does not implement a ReduceFunction but directly pass a function
+    object or a lambda function to reduce() function.
+    """
+    def __init__(self, func):
+        """
+        The constructor of ReduceFunctionWrapper.
+
+        :param func: user defined function object.
+        """
+        super(ReduceFunctionWrapper, self).__init__(func)
+
+    def reduce(self, value1, value2):
+        """
+        A delegated reduce function to invoke user defined function.
+
+        :param value1: The first value to combine.
+        :param value2: The second value to combine.
+        :return: The combined value of both input values.
+        """
+        return self._func(value1, value2)
+
+
+class KeySelectorFunctionWrapper(FunctionWrapper):
+    """
+    A wrapper class for KeySelector. It's used for wrapping up user defined function in a
+    KeySelector when user does not implement a KeySelector but directly pass a function
+    object or a lambda function to key_by() function.
+    """
+
+    def __init__(self, func):
+        """
+        The constructor of MapFunctionWrapper.
+
+        :param func: user defined function object.
+        """
+        super(KeySelectorFunctionWrapper, self).__init__(func)
+
+    def get_key(self, value):
+        """
+        A delegated get_key function to invoke user defined function.
+
+        :param value: The input value.
+        :return: the return value of user defined get_key function.
+        """
+        return self._func(value)
+
+
 def _get_python_env():
     """
     An util function to get a python user defined function execution environment.
@@ -165,6 +296,20 @@ class JavaFunctionWrapper(object):
 
     def get_java_function(self):
         return self._j_function
+
+
+class SourceFunction(JavaFunctionWrapper):
+    """
+    Base class for all stream data source in Flink.
+    """
+
+    def __init__(self, source_func: Union[str, JavaObject]):
+        """
+        Constructor of SinkFunction.
+
+        :param source_func: The java SourceFunction object.
+        """
+        super(SourceFunction, self).__init__(source_func)
 
 
 class SinkFunction(JavaFunctionWrapper):

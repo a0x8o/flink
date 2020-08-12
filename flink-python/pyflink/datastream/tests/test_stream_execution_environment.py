@@ -26,6 +26,7 @@ from pyflink.common import ExecutionConfig, RestartStrategies
 from pyflink.common.typeinfo import Types
 from pyflink.datastream import (StreamExecutionEnvironment, CheckpointConfig,
                                 CheckpointingMode, MemoryStateBackend, TimeCharacteristic)
+from pyflink.datastream.functions import SourceFunction
 from pyflink.datastream.tests.test_util import DataStreamTestSinkFunction
 from pyflink.table import DataTypes, CsvTableSource, CsvTableSink, StreamTableEnvironment
 from pyflink.testing.test_case_utils import PyFlinkTestCase
@@ -35,6 +36,7 @@ class StreamExecutionEnvironmentTests(PyFlinkTestCase):
 
     def setUp(self):
         self.env = StreamExecutionEnvironment.get_execution_environment()
+        self.test_sink = DataStreamTestSinkFunction()
 
     def test_get_config(self):
         execution_config = self.env.get_config()
@@ -216,10 +218,9 @@ class StreamExecutionEnvironmentTests(PyFlinkTestCase):
 
     def test_from_collection_without_data_types(self):
         ds = self.env.from_collection([(1, 'Hi', 'Hello'), (2, 'Hello', 'Hi')])
-        test_sink = DataStreamTestSinkFunction()
-        ds.add_sink(test_sink)
+        ds.add_sink(self.test_sink)
         self.env.execute("test from collection")
-        results = test_sink.get_results(True)
+        results = self.test_sink.get_results(True)
         # user does not specify data types for input data, the collected result should be in
         # in tuple format as inputs.
         expected = ["(1, 'Hi', 'Hello')", "(2, 'Hello', 'Hi')"]
@@ -232,12 +233,52 @@ class StreamExecutionEnvironmentTests(PyFlinkTestCase):
                                       type_info=Types.ROW([Types.INT(),
                                                            Types.STRING(),
                                                            Types.STRING()]))
-        test_sink = DataStreamTestSinkFunction()
-        ds.add_sink(test_sink)
+        ds.add_sink(self.test_sink)
         self.env.execute("test from collection")
-        results = test_sink.get_results(False)
+        results = self.test_sink.get_results(False)
         # if user specifies data types of input data, the collected result should be in row format.
         expected = ['1,Hi,Hello', '2,Hello,Hi']
         results.sort()
         expected.sort()
         self.assertEqual(expected, results)
+
+    def test_add_custom_source(self):
+        custom_source = SourceFunction("org.apache.flink.python.util.MyCustomSourceFunction")
+        ds = self.env.add_source(custom_source, type_info=Types.ROW([Types.INT(), Types.STRING()]))
+        ds.add_sink(self.test_sink)
+        self.env.execute("test add custom source")
+        results = self.test_sink.get_results(False)
+        expected = ['3,Mike', '1,Marry', '4,Ted', '5,Jack', '0,Bob', '2,Henry']
+        results.sort()
+        expected.sort()
+        self.assertEqual(expected, results)
+
+    def test_read_text_file(self):
+        texts = ["Mike", "Marry", "Ted", "Jack", "Bob", "Henry"]
+        text_file_path = self.tempdir + '/text_file'
+        with open(text_file_path, 'a') as f:
+            for text in texts:
+                f.write(text)
+                f.write('\n')
+
+        ds = self.env.read_text_file(text_file_path)
+        ds.add_sink(self.test_sink)
+        self.env.execute("test read text file")
+        results = self.test_sink.get_results()
+        results.sort()
+        texts.sort()
+        self.assertEqual(texts, results)
+
+    def test_execute_async(self):
+        ds = self.env.from_collection([(1, 'Hi', 'Hello'), (2, 'Hello', 'Hi')],
+                                      type_info=Types.ROW(
+                                          [Types.INT(), Types.STRING(), Types.STRING()]))
+        ds.add_sink(self.test_sink)
+        job_client = self.env.execute_async("test execute async")
+        job_id = job_client.get_job_id()
+        self.assertIsNotNone(job_id)
+        execution_result = job_client.get_job_execution_result().result()
+        self.assertEqual(str(job_id), str(execution_result.get_job_id()))
+
+    def tearDown(self) -> None:
+        self.test_sink.clear()
