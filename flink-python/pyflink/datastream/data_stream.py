@@ -170,6 +170,46 @@ class DataStream(object):
         self._j_data_stream.setBufferTimeout(timeout_millis)
         return self
 
+    def start_new_chain(self) -> 'DataStream':
+        """
+        Starts a new task chain beginning at this operator. This operator will be chained (thread
+        co-located for increased performance) to any previous tasks even if possible.
+
+        :return: The operator with chaining set.
+        """
+        self._j_data_stream.startNewChain()
+        return self
+
+    def disable_chaining(self) -> 'DataStream':
+        """
+        Turns off chaining for this operator so thread co-location will not be used as an
+        optimization.
+        Chaining can be turned off for the whole job by
+        StreamExecutionEnvironment.disableOperatorChaining() however it is not advised for
+        performance consideration.
+
+        :return: The operator with chaining disabled.
+        """
+        self._j_data_stream.disableChaining()
+        return self
+
+    def slot_sharing_group(self, slot_sharing_group: str) -> 'DataStream':
+        """
+        Sets the slot sharing group of this operation. Parallel instances of operations that are in
+        the same slot sharing group will be co-located in the same TaskManager slot, if possible.
+
+        Operations inherit the slot sharing group of input operations if all input operations are in
+        the same slot sharing group and no slot sharing group was explicitly specified.
+
+        Initially an operation is in the default slot sharing group. An operation can be put into
+        the default group explicitly by setting the slot sharing group to 'default'.
+
+        :param slot_sharing_group: The slot sharing group name.
+        :return: This operator.
+        """
+        self._j_data_stream.slotSharingGroup(slot_sharing_group)
+        return self
+
     def map(self, func: Union[Callable, MapFunction], type_info: TypeInformation = None) \
             -> 'DataStream':
         """
@@ -258,10 +298,12 @@ class DataStream(object):
         if key_type_info is None:
             key_type_info = Types.PICKLED_BYTE_ARRAY()
             is_key_pickled_byte_array = True
-        generated_key_stream = KeyedStream(self.map(lambda x: (key_selector.get_key(x), x),
-                                                    type_info=Types.ROW([key_type_info,
-                                                                         output_type_info]))
-                                           ._j_data_stream
+
+        intermediate_map_stream = self.map(lambda x: (key_selector.get_key(x), x),
+                                           type_info=Types.ROW([key_type_info, output_type_info]))
+        intermediate_map_stream.name(gateway.jvm.org.apache.flink.python.util.PythonConfigUtil
+                                     .STREAM_KEY_BY_MAP_OPERATOR_NAME)
+        generated_key_stream = KeyedStream(intermediate_map_stream._j_data_stream
                                            .keyBy(PickledKeySelector(is_key_pickled_byte_array),
                                                   key_type_info.get_java_type_info()), self)
         generated_key_stream._original_data_type_info = output_type_info
@@ -436,9 +478,7 @@ class DataStream(object):
             j_python_data_stream_scalar_function,
             func_type)
 
-        j_env = self._j_data_stream.getExecutionEnvironment()
-        PythonConfigUtil = gateway.jvm.org.apache.flink.python.util.PythonConfigUtil
-        j_conf = PythonConfigUtil.getMergedConfig(j_env)
+        j_conf = gateway.jvm.org.apache.flink.configuration.Configuration()
 
         # set max bundle size to 1 to force synchronize process for reduce function.
         from pyflink.fn_execution.flink_fn_execution_pb2 import UserDefinedDataStreamFunction
@@ -686,9 +726,10 @@ class KeyedStream(DataStream):
         Since python KeyedStream is in the format of Row(key_value, original_data), it is used for
         getting the original_data.
         """
-        j_transformed_stream = super().map(lambda x: x[1],
-                                           type_info=self._original_data_type_info)._j_data_stream
-        return DataStream(j_transformed_stream)
+        transformed_stream = super().map(lambda x: x[1], type_info=self._original_data_type_info)
+        transformed_stream.name(get_gateway().jvm.org.apache.flink.python.util.PythonConfigUtil
+                                .KEYED_STREAM_VALUE_OPERATOR_NAME)
+        return DataStream(transformed_stream._j_data_stream)
 
     def set_parallelism(self, parallelism: int):
         raise Exception("Set parallelism for KeyedStream is not supported.")
@@ -713,3 +754,12 @@ class KeyedStream(DataStream):
 
     def set_buffer_timeout(self, timeout_millis: int):
         raise Exception("Set buffer timeout for KeyedStream is not supported.")
+
+    def start_new_chain(self) -> 'DataStream':
+        raise Exception("Start new chain for KeyedStream is not supported.")
+
+    def disable_chaining(self) -> 'DataStream':
+        raise Exception("Disable chaining for KeyedStream is not supported.")
+
+    def slot_sharing_group(self, slot_sharing_group: str) -> 'DataStream':
+        raise Exception("Setting slot sharing group for KeyedStream is not supported.")
