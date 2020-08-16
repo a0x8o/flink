@@ -56,6 +56,41 @@ class MapFunction(Function):
         pass
 
 
+class CoMapFunction(Function):
+    """
+    A CoMapFunction implements a map() transformation over two connected streams.
+
+    The same instance of the transformation function is used to transform both of
+    the connected streams. That way, the stream transformations can share state.
+
+    The basic syntax for using a CoMapFunction is as follows:
+    ::
+        >>> ds1 = ...
+        >>> ds2 = ...
+        >>> new_ds = ds1.connect(ds2).map(MyCoMapFunction())
+    """
+
+    @abc.abstractmethod
+    def map1(self, value):
+        """
+        This method is called for each element in the first of the connected streams.
+
+        :param value: The stream element
+        :return: The resulting element
+        """
+        pass
+
+    @abc.abstractmethod
+    def map2(self, value):
+        """
+        This method is called for each element in the second of the connected streams.
+
+        :param value: The stream element
+        :return: The resulting element
+        """
+        pass
+
+
 class FlatMapFunction(Function):
     """
     Base class for flatMap functions. FLatMap functions take elements and transform them, into zero,
@@ -79,6 +114,57 @@ class FlatMapFunction(Function):
                 >>>     def flat_map(self, value):
                 >>>         for i in range(value):
                 >>>             yield i
+
+        :param value: The input value.
+        :return: A genertaor
+        """
+        pass
+
+
+class CoFlatMapFunction(Function):
+    """
+    A CoFlatMapFunction implements a flat-map transformation over two connected streams.
+
+    The same instance of the transformation function is used to transform both of the
+    connected streams. That way, the stream transformations can share state.
+
+    An example for the use of connected streams would be to apply rules that change over time
+    onto elements of a stream. One of the connected streams has the rules, the other stream the
+    elements to apply the rules to. The operation on the connected stream maintains the
+    current set of rules in the state. It may receive either a rule update (from the first stream)
+    and update the state, or a data element (from the second stream) and apply the rules in the
+    state to the element. The result of applying the rules would be emitted.
+
+    The basic syntax for using a CoFlatMapFunction is as follows:
+    ::
+        >>> ds1 = ...
+        >>> ds2 = ...
+
+        >>> class MyCoFlatMapFunction(CoFlatMapFunction):
+        >>>     def flat_map1(self, value):
+        >>>         for i in range(value):
+        >>>             yield i
+        >>>     def flat_map2(self, value):
+        >>>         for i in range(value):
+        >>>             yield i
+
+        >>> new_ds = ds1.connect(ds2).flat_map(MyCoFlatMapFunction())
+    """
+
+    @abc.abstractmethod
+    def flat_map1(self, value):
+        """
+        This method is called for each element in the first of the connected streams.
+
+        :param value: The input value.
+        :return: A genertaor
+        """
+        pass
+
+    @abc.abstractmethod
+    def flat_map2(self, value):
+        """
+        This method is called for each element in the second of the connected streams.
 
         :param value: The input value.
         :return: A genertaor

@@ -18,8 +18,10 @@
 package org.apache.flink.datastream.runtime.operators.python;
 
 import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.api.java.typeutils.RowTypeInfo;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.core.memory.ByteArrayInputStreamWithPos;
 import org.apache.flink.core.memory.ByteArrayOutputStreamWithPos;
@@ -30,62 +32,67 @@ import org.apache.flink.datastream.runtime.runners.python.beam.BeamDataStreamPyt
 import org.apache.flink.datastream.runtime.typeutils.python.PythonTypeUtils;
 import org.apache.flink.fnexecution.v1.FlinkFnApi;
 import org.apache.flink.python.PythonFunctionRunner;
-import org.apache.flink.streaming.api.operators.python.AbstractOneInputPythonFunctionOperator;
+import org.apache.flink.streaming.api.operators.python.AbstractTwoInputPythonFunctionOperator;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.table.functions.python.PythonEnv;
 import org.apache.flink.table.runtime.util.StreamRecordCollector;
+import org.apache.flink.types.Row;
 
 import com.google.protobuf.ByteString;
 
 import java.util.Map;
 
 /**
- * {@link DataStreamPythonStatelessFunctionOperator} is responsible for launching beam runner which will start a python
- * harness to execute user defined python function.
+ * {@link DataStreamTwoInputPythonStatelessFunctionOperator} is responsible for launching beam
+ * runner which will start a python harness to execute two-input user defined python function.
  */
-public class DataStreamPythonStatelessFunctionOperator<IN, OUT>
-	extends AbstractOneInputPythonFunctionOperator<IN, OUT> {
+public class DataStreamTwoInputPythonStatelessFunctionOperator<IN1, IN2, OUT>
+	extends AbstractTwoInputPythonFunctionOperator<IN1, IN2, OUT> {
 
 	private static final long serialVersionUID = 1L;
 
-	protected static final String DATA_STREAM_STATELESS_PYTHON_FUNCTION_URN =
+	private static final String DATA_STREAM_STATELESS_PYTHON_FUNCTION_URN =
 		"flink:transform:datastream_stateless_function:v1";
-	protected static final String DATA_STREAM_MAP_FUNCTION_CODER_URN = "flink:coder:datastream:map_function:v1";
-	protected static final String DATA_STREAM_FLAT_MAP_FUNCTION_CODER_URN = "flink:coder:datastream:flatmap_function:v1";
+	private static final String DATA_STREAM_MAP_FUNCTION_CODER_URN = "flink:coder:datastream:map_function:v1";
+	private static final String DATA_STREAM_FLAT_MAP_FUNCTION_CODER_URN = "flink:coder:datastream:flatmap_function:v1";
 
 
-	protected final DataStreamPythonFunctionInfo pythonFunctionInfo;
+	private final DataStreamPythonFunctionInfo pythonFunctionInfo;
 
-	protected final TypeInformation<IN> inputTypeInfo;
+	private final TypeInformation<OUT> outputTypeInfo;
 
-	protected final TypeInformation<OUT> outputTypeInfo;
+	private final Map<String, String> jobOptions;
+	private transient TypeSerializer<OUT> outputTypeSerializer;
 
-	protected final Map<String, String> jobOptions;
+	private transient ByteArrayInputStreamWithPos bais;
 
-	protected transient TypeSerializer<IN> inputTypeSerializer;
+	private transient DataInputViewStreamWrapper baisWrapper;
 
-	protected transient TypeSerializer<OUT> outputTypeSerializer;
+	private transient ByteArrayOutputStreamWithPos baos;
 
-	protected transient ByteArrayInputStreamWithPos bais;
+	private transient DataOutputViewStreamWrapper baosWrapper;
 
-	protected transient DataInputViewStreamWrapper baisWrapper;
+	private transient StreamRecordCollector streamRecordCollector;
 
-	protected transient ByteArrayOutputStreamWithPos baos;
+	private transient TypeSerializer<Row> runnerInputTypeSerializer;
 
-	protected transient DataOutputViewStreamWrapper baosWrapper;
+	private final TypeInformation<Row> runnerInputTypeInfo;
 
-	protected transient StreamRecordCollector streamRecordCollector;
+	private transient Row reuseRow;
 
-	public DataStreamPythonStatelessFunctionOperator(
+	public DataStreamTwoInputPythonStatelessFunctionOperator(
 		Configuration config,
-		TypeInformation<IN> inputTypeInfo,
+		TypeInformation<IN1> inputTypeInfo1,
+		TypeInformation<IN2> inputTypeInfo2,
 		TypeInformation<OUT> outputTypeInfo,
 		DataStreamPythonFunctionInfo pythonFunctionInfo) {
 		super(config);
 		this.pythonFunctionInfo = pythonFunctionInfo;
 		jobOptions = config.toMap();
-		this.inputTypeInfo = inputTypeInfo;
 		this.outputTypeInfo = outputTypeInfo;
+		// The row contains three field. The first field indicate left input or right input
+		// The second field contains left input and the third field contains right input.
+		runnerInputTypeInfo = new RowTypeInfo(Types.BOOLEAN, inputTypeInfo1, inputTypeInfo2);
 	}
 
 	@Override
@@ -96,30 +103,32 @@ public class DataStreamPythonStatelessFunctionOperator<IN, OUT>
 
 		baos = new ByteArrayOutputStreamWithPos();
 		baosWrapper = new DataOutputViewStreamWrapper(baos);
-
-		this.inputTypeSerializer = PythonTypeUtils.TypeInfoToSerializerConverter
-			.typeInfoSerializerConverter(inputTypeInfo);
 		this.outputTypeSerializer = PythonTypeUtils.TypeInfoToSerializerConverter
 			.typeInfoSerializerConverter(outputTypeInfo);
+		runnerInputTypeSerializer = PythonTypeUtils.TypeInfoToSerializerConverter
+			.typeInfoSerializerConverter(runnerInputTypeInfo);
 
+		reuseRow = new Row(3);
 		this.streamRecordCollector = new StreamRecordCollector(output);
 	}
 
 	@Override
 	public PythonFunctionRunner createPythonFunctionRunner() throws Exception {
 
-		String coderUrn = null;
+		String coderUrn;
 		int functionType = this.pythonFunctionInfo.getFunctionType();
-		if (functionType == FlinkFnApi.UserDefinedDataStreamFunction.FunctionType.MAP.getNumber()) {
+		if (functionType == FlinkFnApi.UserDefinedDataStreamFunction.FunctionType.CO_MAP.getNumber()) {
 			coderUrn = DATA_STREAM_MAP_FUNCTION_CODER_URN;
-		} else if (functionType == FlinkFnApi.UserDefinedDataStreamFunction.FunctionType.FLAT_MAP.getNumber()) {
+		} else if (functionType == FlinkFnApi.UserDefinedDataStreamFunction.FunctionType.CO_FLAT_MAP.getNumber()) {
 			coderUrn = DATA_STREAM_FLAT_MAP_FUNCTION_CODER_URN;
+		} else {
+			throw new RuntimeException("Function Type for ConnectedStream should be Map or FlatMap");
 		}
 
 		return new BeamDataStreamPythonStatelessFunctionRunner(
 			getRuntimeContext().getTaskName(),
 			createPythonEnvironmentManager(),
-			inputTypeInfo,
+			runnerInputTypeInfo,
 			outputTypeInfo,
 			DATA_STREAM_STATELESS_PYTHON_FUNCTION_URN,
 			getUserDefinedDataStreamFunctionsProto(),
@@ -143,8 +152,25 @@ public class DataStreamPythonStatelessFunctionOperator<IN, OUT>
 	}
 
 	@Override
-	public void processElement(StreamRecord<IN> element) throws Exception {
-		inputTypeSerializer.serialize(element.getValue(), baosWrapper);
+	public void processElement1(StreamRecord<IN1> element) throws Exception {
+		// construct combined row.
+		reuseRow.setField(0, true);
+		reuseRow.setField(1, element.getValue());
+		reuseRow.setField(2, null);  // need to set null since it is a reuse row.
+		processElement();
+	}
+
+	@Override
+	public void processElement2(StreamRecord<IN2> element) throws Exception {
+		// construct combined row.
+		reuseRow.setField(0, false);
+		reuseRow.setField(1, null); // need to set null since it is a reuse row.
+		reuseRow.setField(2, element.getValue());
+		processElement();
+	}
+
+	private void processElement() throws Exception {
+		runnerInputTypeSerializer.serialize(reuseRow, baosWrapper);
 		pythonFunctionRunner.process(baos.toByteArray());
 		baos.reset();
 		checkInvokeFinishBundleByCount();
