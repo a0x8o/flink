@@ -19,6 +19,7 @@ import decimal
 
 from pyflink.common.typeinfo import Types
 from pyflink.datastream import StreamExecutionEnvironment
+from pyflink.datastream.data_stream import DataStream
 from pyflink.datastream.functions import FilterFunction
 from pyflink.datastream.functions import KeySelector
 from pyflink.datastream.functions import MapFunction, FlatMapFunction
@@ -132,6 +133,48 @@ class DataStreamTests(PyFlinkTestCase):
         expected = ['2', '3', '4', 'a', 'b', 'c']
         expected.sort()
         results.sort()
+        self.assertEqual(expected, results)
+
+    def test_key_by_on_connect_stream(self):
+        ds1 = self.env.from_collection([('a', 0), ('b', 0), ('c', 1), ('d', 1), ('e', 2)],
+                                       type_info=Types.ROW([Types.STRING(), Types.INT()])) \
+            .key_by(MyKeySelector(), key_type_info=Types.INT())
+        ds2 = self.env.from_collection([('a', 0), ('b', 0), ('c', 1), ('d', 1), ('e', 2)],
+                                       type_info=Types.ROW([Types.STRING(), Types.INT()]))
+
+        class AssertKeyCoMapFunction(CoMapFunction):
+            def __init__(self):
+                self.pre1 = None
+                self.pre2 = None
+
+            def map1(self, value):
+                if value[0] == 'b':
+                    assert self.pre1 == 'a'
+                if value[0] == 'd':
+                    assert self.pre1 == 'c'
+                self.pre1 = value[0]
+                return value
+
+            def map2(self, value):
+                if value[0] == 'b':
+                    assert self.pre2 == 'a'
+                if value[0] == 'd':
+                    assert self.pre2 == 'c'
+                self.pre2 = value[0]
+                return value
+
+        ds1.connect(ds2)\
+            .key_by(MyKeySelector(), MyKeySelector(), key_type_info=Types.INT())\
+            .map(AssertKeyCoMapFunction())\
+            .add_sink(self.test_sink)
+
+        self.env.execute('key_by_test')
+        results = self.test_sink.get_results(True)
+        expected = ["<Row('e', 2)>", "<Row('a', 0)>", "<Row('b', 0)>", "<Row('c', 1)>",
+                    "<Row('d', 1)>", "<Row('e', 2)>", "<Row('a', 0)>", "<Row('b', 0)>",
+                    "<Row('c', 1)>", "<Row('d', 1)>"]
+        results.sort()
+        expected.sort()
         self.assertEqual(expected, results)
 
     def test_map_function_with_data_types_and_function_object(self):
@@ -361,6 +404,29 @@ class DataStreamTests(PyFlinkTestCase):
         shuffle_node = exec_plan['nodes'][1]
         pre_ship_strategy = shuffle_node['predecessors'][0]['ship_strategy']
         self.assertEqual(pre_ship_strategy, 'SHUFFLE')
+
+    def test_partition_custom(self):
+        ds = self.env.from_collection([('a', 0), ('b', 0), ('c', 1), ('d', 1), ('e', 2),
+                                       ('f', 7), ('g', 7), ('h', 8), ('i', 8), ('j', 9)],
+                                      type_info=Types.ROW([Types.STRING(), Types.INT()]))
+
+        expected_num_partitions = 5
+
+        def my_partitioner(key, num_partitions):
+            assert expected_num_partitions, num_partitions
+            return key % num_partitions
+
+        partitioned_stream = ds.map(lambda x: x, type_info=Types.ROW([Types.STRING(),
+                                                                      Types.INT()]))\
+            .set_parallelism(4).partition_custom(my_partitioner, lambda x: x[1])
+
+        JPartitionCustomTestMapFunction = get_gateway().jvm\
+            .org.apache.flink.python.util.PartitionCustomTestMapFunction
+        test_map_stream = DataStream(partitioned_stream
+                                     ._j_data_stream.map(JPartitionCustomTestMapFunction()))
+        test_map_stream.set_parallelism(expected_num_partitions).add_sink(self.test_sink)
+
+        self.env.execute('test_partition_custom')
 
     def test_keyed_stream_partitioning(self):
         ds = self.env.from_collection([('ab', 1), ('bdc', 2), ('cfgs', 3), ('deeefg', 4)])
