@@ -68,7 +68,9 @@ import java.util.concurrent.ExecutorService;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
+import static org.apache.flink.util.IOUtils.closeQuietly;
 import static org.apache.flink.util.Preconditions.checkNotNull;
+import static org.apache.flink.util.Preconditions.checkState;
 
 class SubtaskCheckpointCoordinatorImpl implements SubtaskCheckpointCoordinator {
 
@@ -360,22 +362,22 @@ class SubtaskCheckpointCoordinatorImpl implements SubtaskCheckpointCoordinator {
 	}
 
 	private void registerAsyncCheckpointRunnable(long checkpointId, AsyncCheckpointRunnable asyncCheckpointRunnable) throws IOException {
-		StringBuilder exceptionMessage = new StringBuilder("Cannot register Closeable, ");
 		synchronized (lock) {
-			if (!closed) {
-				if (!checkpoints.containsKey(checkpointId)) {
-					checkpoints.put(checkpointId, asyncCheckpointRunnable);
-					return;
-				} else {
-					exceptionMessage.append("async checkpoint ").append(checkpointId).append(" runnable has been register. ");
-				}
+			if (closed) {
+				LOG.debug("Cannot register Closeable, this subtaskCheckpointCoordinator is already closed. Closing argument.");
+				final boolean running = asyncCheckpointRunnable.isRunning();
+				closeQuietly(asyncCheckpointRunnable);
+				checkState(
+					!running,
+					"SubtaskCheckpointCoordinatorImpl was closed without closing asyncCheckpointRunnable %s",
+					checkpointId);
+			} else if (checkpoints.containsKey(checkpointId)) {
+				closeQuietly(asyncCheckpointRunnable);
+				throw new IOException(String.format("Cannot register Closeable, async checkpoint %d runnable has been register. Closing argument.", checkpointId));
 			} else {
-				exceptionMessage.append("this subtaskCheckpointCoordinator is already closed. ");
+				checkpoints.put(checkpointId, asyncCheckpointRunnable);
 			}
 		}
-
-		IOUtils.closeQuietly(asyncCheckpointRunnable);
-		throw new IOException(exceptionMessage.append("Closing argument.").toString());
 	}
 
 	private boolean unregisterAsyncCheckpointRunnable(long checkpointId) {
@@ -393,7 +395,7 @@ class SubtaskCheckpointCoordinatorImpl implements SubtaskCheckpointCoordinator {
 		synchronized (lock) {
 			asyncCheckpointRunnable = checkpoints.remove(checkpointId);
 		}
-		IOUtils.closeQuietly(asyncCheckpointRunnable);
+		closeQuietly(asyncCheckpointRunnable);
 		return asyncCheckpointRunnable != null;
 	}
 
