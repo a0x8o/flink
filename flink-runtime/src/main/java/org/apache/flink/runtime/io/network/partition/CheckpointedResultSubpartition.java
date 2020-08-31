@@ -16,32 +16,23 @@
  * limitations under the License.
  */
 
-package org.apache.flink.runtime.rest.messages.checkpoints;
+package org.apache.flink.runtime.io.network.partition;
 
-import org.apache.flink.runtime.rest.messages.RestResponseMarshallingTestBase;
+import org.apache.flink.runtime.checkpoint.channel.ChannelStateReader;
+import org.apache.flink.runtime.checkpoint.channel.ResultSubpartitionInfo;
+import org.apache.flink.runtime.io.network.buffer.Buffer;
+
+import java.io.IOException;
+import java.util.List;
 
 /**
- * Tests for the {@link CheckpointConfigInfo}.
+ * Interface for subpartitions that are checkpointed, meaning they store data as part of unaligned checkpoints.
  */
-public class CheckpointConfigInfoTest extends RestResponseMarshallingTestBase<CheckpointConfigInfo> {
-	@Override
-	protected Class<CheckpointConfigInfo> getTestResponseClass() {
-		return CheckpointConfigInfo.class;
-	}
+public interface CheckpointedResultSubpartition {
 
-	@Override
-	protected CheckpointConfigInfo getTestResponseInstance() {
-		final CheckpointConfigInfo.ExternalizedCheckpointInfo externalizedCheckpointInfo = new CheckpointConfigInfo.ExternalizedCheckpointInfo(true, false);
+	ResultSubpartitionInfo getSubpartitionInfo();
 
-		return new CheckpointConfigInfo(
-			CheckpointConfigInfo.ProcessingMode.AT_LEAST_ONCE,
-			1L,
-			2L,
-			3L,
-			4,
-			externalizedCheckpointInfo,
-			"stateBackendName",
-			true);
+	List<Buffer> requestInflightBufferSnapshot();
 
-	}
+	void readRecoveredState(ChannelStateReader stateReader) throws IOException, InterruptedException;
 }
