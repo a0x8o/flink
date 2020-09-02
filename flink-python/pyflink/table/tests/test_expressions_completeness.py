@@ -16,43 +16,30 @@
 # limitations under the License.
 ################################################################################
 
-from pyflink.table import EnvironmentSettings
 from pyflink.testing.test_case_utils import PythonAPICompletenessTestCase, PyFlinkTestCase
+from pyflink.table import expressions
 
 
-class EnvironmentSettingsCompletenessTests(PythonAPICompletenessTestCase, PyFlinkTestCase):
+class ExpressionsCompletenessTests(PythonAPICompletenessTestCase, PyFlinkTestCase):
     """
-    Tests whether the Python :class:`EnvironmentSettings` is consistent with
-    Java `org.apache.flink.table.api.EnvironmentSettings`.
+    Tests whether the Python :module:`pyflink.table.expressions` is consistent with
+    Java `org.apache.flink.table.api.Expressions`.
     """
-
     @classmethod
     def python_class(cls):
-        return EnvironmentSettings
+        return expressions
 
     @classmethod
     def java_class(cls):
-        return "org.apache.flink.table.api.EnvironmentSettings"
+        return "org.apache.flink.table.api.Expressions"
 
     @classmethod
-    def excluded_methods(cls):
-        # internal interfaces, no need to expose to users.
-        return {'toPlannerProperties', 'toExecutorProperties'}
-
-
-class EnvironmentSettingsBuilderCompletenessTests(PythonAPICompletenessTestCase, PyFlinkTestCase):
-    """
-    Tests whether the Python :class:`EnvironmentSettings.Builder` is consistent with
-    Java `org.apache.flink.table.api.EnvironmentSettings$Builder`.
-    """
-
-    @classmethod
-    def python_class(cls):
-        return EnvironmentSettings.Builder
-
-    @classmethod
-    def java_class(cls):
-        return "org.apache.flink.table.api.EnvironmentSettings$Builder"
+    def java_method_name(cls, python_method_name):
+        return {'and_': 'and',
+                'or_': 'or',
+                'range_': 'range',
+                'col': '$',
+                'map_': 'map'}.get(python_method_name, python_method_name)
 
 
 if __name__ == '__main__':

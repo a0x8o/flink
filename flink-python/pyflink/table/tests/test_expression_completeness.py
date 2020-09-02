@@ -16,43 +16,52 @@
 # limitations under the License.
 ################################################################################
 
-from pyflink.table import EnvironmentSettings
 from pyflink.testing.test_case_utils import PythonAPICompletenessTestCase, PyFlinkTestCase
+from pyflink.table import Expression
 
 
-class EnvironmentSettingsCompletenessTests(PythonAPICompletenessTestCase, PyFlinkTestCase):
+class ExpressionCompletenessTests(PythonAPICompletenessTestCase, PyFlinkTestCase):
     """
-    Tests whether the Python :class:`EnvironmentSettings` is consistent with
-    Java `org.apache.flink.table.api.EnvironmentSettings`.
+    Tests whether the Python :class:`Expression` is consistent with
+    Java `org.apache.flink.table.api.ApiExpression`.
     """
-
     @classmethod
     def python_class(cls):
-        return EnvironmentSettings
+        return Expression
 
     @classmethod
     def java_class(cls):
-        return "org.apache.flink.table.api.EnvironmentSettings"
+        return "org.apache.flink.table.api.ApiExpression"
 
     @classmethod
     def excluded_methods(cls):
-        # internal interfaces, no need to expose to users.
-        return {'toPlannerProperties', 'toExecutorProperties'}
+        return {
+            'asSummaryString',
+            'accept',
+            'toExpr',
+            'getChildren',
 
-
-class EnvironmentSettingsBuilderCompletenessTests(PythonAPICompletenessTestCase, PyFlinkTestCase):
-    """
-    Tests whether the Python :class:`EnvironmentSettings.Builder` is consistent with
-    Java `org.apache.flink.table.api.EnvironmentSettings$Builder`.
-    """
+            # The following methods have been replaced with the built-in methods in Python,
+            # such as __and__ for and to be more Pythonic.
+            'and',
+            'or',
+            'isGreater',
+            'isGreaterOrEqual',
+            'isLess',
+            'isLessOrEqual',
+            'isEqual',
+            'isNotEqual',
+            'plus',
+            'minus',
+            'dividedBy',
+            'times',
+            'mod',
+            'power'
+        }
 
     @classmethod
-    def python_class(cls):
-        return EnvironmentSettings.Builder
-
-    @classmethod
-    def java_class(cls):
-        return "org.apache.flink.table.api.EnvironmentSettings$Builder"
+    def java_method_name(cls, python_method_name):
+        return {'alias': 'as', 'in_': 'in'}.get(python_method_name, python_method_name)
 
 
 if __name__ == '__main__':
