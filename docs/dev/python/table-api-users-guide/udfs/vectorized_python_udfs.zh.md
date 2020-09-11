@@ -29,7 +29,7 @@ under the License.
 向量化用户自定义函数的定义，与[非向量化用户自定义函数]({% link dev/python/table-api-users-guide/udfs/python_udfs.zh.md %})具有相似的方式，
 用户只需要在调用`udf`装饰器时添加一个额外的参数`udf_type="pandas"`，将其标记为一个向量化用户自定义函数即可。
 
-**注意：**要执行Python UDF，需要安装PyFlink的Python版本（3.5、3.6或3.7）。客户端和群集端都需要安装它。
+**注意：**要执行Python UDF，需要安装PyFlink的Python版本（3.5、3.6、3.7 或 3.8）。客户端和群集端都需要安装它。
 
 * This will be replaced by the TOC
 {:toc}
@@ -56,13 +56,11 @@ table_env = BatchTableEnvironment.create(env)
 # configure the off-heap memory of current taskmanager to enable the python worker uses off-heap memory.
 table_env.get_config().get_configuration().set_string("taskmanager.memory.task.off-heap.size", '80m')
 
-# register the vectorized Python scalar function
-table_env.register_function("add", add)
-
 # use the vectorized Python scalar function in Python Table API
-my_table.select("add(bigint, bigint)")
+my_table.select(add(my_table.bigint, my_table.bigint))
 
 # 在SQL API中使用Python向量化标量函数
+table_env.create_temporary_function("add", add)
 table_env.sql_query("SELECT add(bigint, bigint) FROM MyTable")
 {% endhighlight %}
 

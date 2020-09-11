@@ -87,6 +87,7 @@ import java.util.Set;
 
 import static org.apache.flink.runtime.jobgraph.tasks.CheckpointCoordinatorConfiguration.MINIMAL_CHECKPOINT_TIME;
 import static org.apache.flink.util.Preconditions.checkArgument;
+import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.apache.flink.util.Preconditions.checkState;
 
 /**
@@ -98,6 +99,10 @@ public class StreamingJobGraphGenerator {
 	private static final Logger LOG = LoggerFactory.getLogger(StreamingJobGraphGenerator.class);
 
 	private static final int MANAGED_MEMORY_FRACTION_SCALE = 16;
+
+	private static final long DEFAULT_NETWORK_BUFFER_TIMEOUT = 100L;
+
+	public static final long UNDEFINED_NETWORK_BUFFER_TIMEOUT = -1L;
 
 	// ------------------------------------------------------------------------
 
@@ -318,13 +323,12 @@ public class StreamingJobGraphGenerator {
 				config.setChainStart();
 				config.setChainIndex(0);
 				config.setOperatorName(streamGraph.getStreamNode(currentNodeId).getOperatorName());
-				config.setOutEdgesInOrder(transitiveOutEdges);
-				config.setOutEdges(streamGraph.getStreamNode(currentNodeId).getOutEdges());
 
 				for (StreamEdge edge : transitiveOutEdges) {
 					connect(startNodeId, edge);
 				}
 
+				config.setOutEdgesInOrder(transitiveOutEdges);
 				config.setTransitiveChainedTaskConfigs(chainedConfigs.get(startNodeId));
 
 			} else {
@@ -469,7 +473,6 @@ public class StreamingJobGraphGenerator {
 		StreamNode vertex = streamGraph.getStreamNode(vertexID);
 
 		config.setVertexID(vertexID);
-		config.setBufferTimeout(vertex.getBufferTimeout());
 
 		config.setTypeSerializersIn(vertex.getTypeSerializersIn());
 		config.setTypeSerializerOut(vertex.getTypeSerializerOut());
@@ -570,6 +573,8 @@ public class StreamingJobGraphGenerator {
 					edge.getShuffleMode() + " is not supported yet.");
 		}
 
+		checkAndResetBufferTimeout(resultPartitionType, edge);
+
 		JobEdge jobEdge;
 		if (isPointwisePartitioner(partitioner)) {
 			jobEdge = downStreamVertex.connectNewDataSetAsInput(
@@ -588,6 +593,19 @@ public class StreamingJobGraphGenerator {
 		if (LOG.isDebugEnabled()) {
 			LOG.debug("CONNECTED: {} - {} -> {}", partitioner.getClass().getSimpleName(),
 					headOfChain, downStreamVertexID);
+		}
+	}
+
+	private void checkAndResetBufferTimeout(ResultPartitionType type, StreamEdge edge) {
+		long bufferTimeout = edge.getBufferTimeout();
+		if (type.isBlocking() && bufferTimeout != UNDEFINED_NETWORK_BUFFER_TIMEOUT) {
+			throw new UnsupportedOperationException(
+				"Blocking partition does not support buffer timeout " + bufferTimeout + " for src operator in edge "
+					+ edge.toString() + ". \nPlease either reset buffer timeout as -1 or use the non-blocking partition.");
+		}
+
+		if (type.isPipelined() && bufferTimeout == UNDEFINED_NETWORK_BUFFER_TIMEOUT) {
+			edge.setBufferTimeout(DEFAULT_NETWORK_BUFFER_TIMEOUT);
 		}
 	}
 
@@ -679,12 +697,12 @@ public class StreamingJobGraphGenerator {
 			final JobVertex vertex = entry.getValue();
 			final String slotSharingGroupKey = streamGraph.getStreamNode(entry.getKey()).getSlotSharingGroup();
 
+			checkNotNull(slotSharingGroupKey, "StreamNode slot sharing group must not be null");
+
 			final SlotSharingGroup effectiveSlotSharingGroup;
-			if (slotSharingGroupKey == null) {
-				effectiveSlotSharingGroup = null;
-			} else if (slotSharingGroupKey.equals(StreamGraphGenerator.DEFAULT_SLOT_SHARING_GROUP)) {
+			if (slotSharingGroupKey.equals(StreamGraphGenerator.DEFAULT_SLOT_SHARING_GROUP)) {
 				// fallback to the region slot sharing group by default
-				effectiveSlotSharingGroup = vertexRegionSlotSharingGroups.get(vertex.getID());
+				effectiveSlotSharingGroup = checkNotNull(vertexRegionSlotSharingGroups.get(vertex.getID()));
 			} else {
 				effectiveSlotSharingGroup = specifiedSlotSharingGroups.computeIfAbsent(
 					slotSharingGroupKey, k -> new SlotSharingGroup());

@@ -30,7 +30,7 @@ These Python libraries are highly optimized and provide high-performance data st
 [non-vectorized user-defined functions]({% link dev/python/table-api-users-guide/udfs/python_udfs.md %}) on how to define vectorized user-defined functions.
 Users only need to add an extra parameter `udf_type="pandas"` in the decorator `udf` to mark it as a vectorized user-defined function.
 
-**NOTE:** Python UDF execution requires Python version (3.5, 3.6 or 3.7) with PyFlink installed. It's required on both the client side and the cluster side. 
+**NOTE:** Python UDF execution requires Python version (3.5, 3.6, 3.7 or 3.8) with PyFlink installed. It's required on both the client side and the cluster side. 
 
 * This will be replaced by the TOC
 {:toc}
@@ -58,13 +58,11 @@ table_env = BatchTableEnvironment.create(env)
 # configure the off-heap memory of current taskmanager to enable the python worker uses off-heap memory.
 table_env.get_config().get_configuration().set_string("taskmanager.memory.task.off-heap.size", '80m')
 
-# register the vectorized Python scalar function
-table_env.register_function("add", add)
-
 # use the vectorized Python scalar function in Python Table API
-my_table.select("add(bigint, bigint)")
+my_table.select(add(my_table.bigint, my_table.bigint))
 
 # use the vectorized Python scalar function in SQL API
+table_env.create_temporary_function("add", add)
 table_env.sql_query("SELECT add(bigint, bigint) FROM MyTable")
 {% endhighlight %}
 

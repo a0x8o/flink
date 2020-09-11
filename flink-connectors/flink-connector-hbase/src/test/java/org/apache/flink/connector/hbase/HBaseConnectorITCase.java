@@ -34,21 +34,13 @@ import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.TableConfig;
 import org.apache.flink.table.api.TableEnvironment;
-import org.apache.flink.table.api.TableSchema;
 import org.apache.flink.table.api.bridge.java.BatchTableEnvironment;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 import org.apache.flink.table.api.internal.TableEnvironmentInternal;
-import org.apache.flink.table.api.internal.TableImpl;
 import org.apache.flink.table.functions.ScalarFunction;
-import org.apache.flink.table.planner.runtime.utils.BatchTableEnvUtil;
-import org.apache.flink.table.planner.runtime.utils.TableEnvUtil;
-import org.apache.flink.table.planner.sinks.CollectRowTableSink;
-import org.apache.flink.table.planner.sinks.CollectTableSink;
-import org.apache.flink.table.planner.utils.JavaScalaConversionUtil;
 import org.apache.flink.test.util.TestBaseUtils;
 import org.apache.flink.types.Row;
-
-import org.apache.flink.shaded.guava18.com.google.common.collect.Lists;
+import org.apache.flink.util.CollectionUtil;
 
 import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.client.Scan;
@@ -61,8 +53,6 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.stream.Collectors;
-
-import scala.Option;
 
 import static org.apache.flink.connector.hbase.util.PlannerType.OLD_PLANNER;
 import static org.apache.flink.table.api.Expressions.$;
@@ -99,7 +89,7 @@ public class HBaseConnectorITCase extends HBaseTestBase {
 	// -------------------------------------------------------------------------------------
 
 	@Test
-	public void testTableSourceFullScan() throws Exception {
+	public void testTableSourceFullScan() {
 		TableEnvironment tEnv = createBatchTableEnv();
 		if (isLegacyConnector) {
 			HBaseTableSource hbaseTable = new HBaseTableSource(getConf(), TEST_TABLE_1);
@@ -135,7 +125,7 @@ public class HBaseConnectorITCase extends HBaseTestBase {
 			"  h.family3.col3 " +
 			"FROM hTable AS h");
 
-		List<Row> results = collectBatchResult(table);
+		List<Row> results = CollectionUtil.iteratorToList(table.execute().collect());
 		String expected =
 			"10,Hello-1,100,1.01,false,Welt-1\n" +
 				"20,Hello-2,200,2.02,true,Welt-2\n" +
@@ -150,7 +140,7 @@ public class HBaseConnectorITCase extends HBaseTestBase {
 	}
 
 	@Test
-	public void testTableSourceProjection() throws Exception {
+	public void testTableSourceProjection() {
 		TableEnvironment tEnv = createBatchTableEnv();
 
 		if (isLegacyConnector) {
@@ -185,7 +175,7 @@ public class HBaseConnectorITCase extends HBaseTestBase {
 			"  h.family3.col3 " +
 			"FROM hTable AS h");
 
-		List<Row> results = collectBatchResult(table);
+		List<Row> results = CollectionUtil.iteratorToList(table.execute().collect());
 		String expected =
 			"10,1.01,false,Welt-1\n" +
 				"20,2.02,true,Welt-2\n" +
@@ -200,7 +190,7 @@ public class HBaseConnectorITCase extends HBaseTestBase {
 	}
 
 	@Test
-	public void testTableSourceFieldOrder() throws Exception {
+	public void testTableSourceFieldOrder() {
 		TableEnvironment tEnv = createBatchTableEnv();
 
 		if (isLegacyConnector) {
@@ -230,7 +220,7 @@ public class HBaseConnectorITCase extends HBaseTestBase {
 
 		Table table = tEnv.sqlQuery("SELECT * FROM hTable AS h");
 
-		List<Row> results = collectBatchResult(table);
+		List<Row> results = CollectionUtil.iteratorToList(table.execute().collect());
 		String expected =
 			"1,Hello-1,100,1.01,false,Welt-1,10\n" +
 				"2,Hello-2,200,2.02,true,Welt-2,20\n" +
@@ -245,7 +235,7 @@ public class HBaseConnectorITCase extends HBaseTestBase {
 	}
 
 	@Test
-	public void testTableSourceReadAsByteArray() throws Exception {
+	public void testTableSourceReadAsByteArray() {
 		TableEnvironment tEnv = createBatchTableEnv();
 
 		if (isLegacyConnector) {
@@ -276,7 +266,7 @@ public class HBaseConnectorITCase extends HBaseTestBase {
 				"FROM hTable AS h"
 		);
 
-		List<Row> results = collectBatchResult(table);
+		List<Row> results = CollectionUtil.iteratorToList(table.execute().collect());
 		String expected =
 			"Hello-1,100\n" +
 				"Hello-2,200\n" +
@@ -323,8 +313,7 @@ public class HBaseConnectorITCase extends HBaseTestBase {
 			" family3" +
 			" FROM " + TEST_TABLE_1;
 
-		// wait to finish
-		TableEnvUtil.execInsertSqlAndWaitResult(tEnv, query);
+		tEnv.executeSql(query).await();
 
 		// start a batch scan job to verify contents in HBase table
 		TableEnvironment batchEnv = createBatchTableEnv();
@@ -341,7 +330,7 @@ public class HBaseConnectorITCase extends HBaseTestBase {
 				"  h.family3.col3 " +
 				"FROM " + TEST_TABLE_2 + " AS h"
 		);
-		List<Row> results = collectBatchResult(table);
+		List<Row> results = CollectionUtil.iteratorToList(table.execute().collect());
 		String expected =
 				"1,10,Hello-1,100,1.01,false,Welt-1\n" +
 				"2,20,Hello-2,200,2.02,true,Welt-2\n" +
@@ -381,8 +370,7 @@ public class HBaseConnectorITCase extends HBaseTestBase {
 			" family3," +
 			" family4" +
 			" from " + TEST_TABLE_1;
-		// wait to finish
-		TableEnvUtil.execInsertSqlAndWaitResult(tEnv, insertStatement);
+		tEnv.executeSql(insertStatement).await();
 
 		// start a batch scan job to verify contents in HBase table
 		TableEnvironment batchEnv = createBatchTableEnv();
@@ -401,7 +389,7 @@ public class HBaseConnectorITCase extends HBaseTestBase {
 				"  h.family4.col4 " +
 				" FROM " + TEST_TABLE_3 + " AS h";
 		Iterator<Row> collected = tEnv.executeSql(query).collect();
-		List<String> result = Lists.newArrayList(collected).stream()
+		List<String> result = CollectionUtil.iteratorToList(collected).stream()
 			.map(Row::toString)
 			.sorted()
 			.collect(Collectors.toList());
@@ -419,7 +407,7 @@ public class HBaseConnectorITCase extends HBaseTestBase {
 	}
 
 	@Test
-	public void testHBaseLookupTableSource() throws Exception {
+	public void testHBaseLookupTableSource() {
 		if (OLD_PLANNER.equals(planner) || isLegacyConnector) {
 			// lookup table source is only supported in blink planner, skip for old planner
 			// types TIMESTAMP/DATE/TIME/DECIMAL works well in new connector, skip legacy connector
@@ -465,7 +453,7 @@ public class HBaseConnectorITCase extends HBaseTestBase {
 			" h.family4.col4 " +
 			" FROM src JOIN " + TEST_TABLE_1 + " FOR SYSTEM_TIME AS OF src.proc as h ON src.a = h.rowkey";
 		Iterator<Row> collected = tEnv.executeSql(dimJoinQuery).collect();
-		List<String> result = Lists.newArrayList(collected).stream()
+		List<String> result = CollectionUtil.iteratorToList(collected).stream()
 			.map(Row::toString)
 			.sorted()
 			.collect(Collectors.toList());
@@ -507,40 +495,6 @@ public class HBaseConnectorITCase extends HBaseTestBase {
 			return BatchTableEnvironment.create(env, new TableConfig());
 		} else {
 			return TableEnvironment.create(batchSettings);
-		}
-	}
-
-	/**
-	 * Collects batch result depends on the {@link #planner} context.
-	 */
-	private List<Row> collectBatchResult(Table table) throws Exception {
-		TableImpl tableImpl = (TableImpl) table;
-		if (OLD_PLANNER.equals(planner)) {
-			BatchTableEnvironment batchTableEnv = (BatchTableEnvironment) tableImpl.getTableEnvironment();
-			DataSet<Row> resultSet = batchTableEnv.toDataSet(table, Row.class);
-			return resultSet.collect();
-		} else {
-			TableImpl t = (TableImpl) table;
-			TableSchema schema = t.getSchema();
-			List<TypeInformation> types = new ArrayList<>();
-			for (TypeInformation typeInfo : t.getSchema().getFieldTypes()) {
-				// convert LOCAL_DATE_TIME to legacy TIMESTAMP to make the output consistent with flink batch planner
-				if (typeInfo.equals(Types.LOCAL_DATE_TIME)) {
-					types.add(Types.SQL_TIMESTAMP);
-				} else if (typeInfo.equals(Types.LOCAL_DATE)) {
-					types.add(Types.SQL_DATE);
-				} else if (typeInfo.equals(Types.LOCAL_TIME)) {
-					types.add(Types.SQL_TIME);
-				} else {
-					types.add(typeInfo);
-				}
-			}
-			CollectRowTableSink sink = new CollectRowTableSink();
-			CollectTableSink<Row> configuredSink = (CollectTableSink<Row>) sink.configure(
-				schema.getFieldNames(), types.toArray(new TypeInformation[0]));
-			return JavaScalaConversionUtil.toJava(
-				BatchTableEnvUtil.collect(
-					t.getTableEnvironment(), table, configuredSink, Option.apply("JOB")));
 		}
 	}
 
