@@ -16,29 +16,30 @@
  * limitations under the License.
  */
 
-package org.apache.flink.connector.base.source.reader.fetcher;
+package org.apache.flink.connector.base.source.reader.mocks;
 
-import java.io.IOException;
+import org.apache.flink.api.connector.source.SourceSplit;
+
+import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
- * An interface similar to {@link Runnable} but allows throwing exceptions and wakeup.
+ * A {@link SourceSplit} that only has an ID.
  */
-public interface SplitFetcherTask {
+public class TestingSourceSplit implements SourceSplit {
 
-	/**
-	 * Run the logic. This method allows throwing an interrupted exception on wakeup, but the
-	 * implementation does not have to. It is preferred to finish the work elegantly
-	 * and return a boolean to indicate whether all the jobs have been done or more
-	 * invocation is needed.
-	 *
-	 * @return whether the runnable has successfully finished running.
-	 * @throws InterruptedException when interrupted.
-	 * @throws IOException when the performed I/O operation fails.
-	 */
-	boolean run() throws InterruptedException, IOException;
+	private final String splitId;
 
-	/**
-	 * Wake up the running thread.
-	 */
-	void wakeUp();
+	public TestingSourceSplit(String splitId) {
+		this.splitId = checkNotNull(splitId);
+	}
+
+	@Override
+	public String splitId() {
+		return splitId;
+	}
+
+	@Override
+	public String toString() {
+		return splitId;
+	}
 }

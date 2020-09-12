@@ -16,29 +16,32 @@
  * limitations under the License.
  */
 
-package org.apache.flink.connector.base.source.reader.fetcher;
+package org.apache.flink.connector.base.source.reader.mocks;
 
-import java.io.IOException;
+import org.apache.flink.connector.base.source.reader.RecordsBySplits;
+import org.apache.flink.connector.base.source.reader.RecordsWithSplitIds;
+
+import java.util.Arrays;
+import java.util.Collections;
 
 /**
- * An interface similar to {@link Runnable} but allows throwing exceptions and wakeup.
+ * A mock implementation of {@link RecordsWithSplitIds} that returns a given set of records.
  */
-public interface SplitFetcherTask {
+public class TestingRecordsWithSplitIds<E> extends RecordsBySplits<E> {
 
-	/**
-	 * Run the logic. This method allows throwing an interrupted exception on wakeup, but the
-	 * implementation does not have to. It is preferred to finish the work elegantly
-	 * and return a boolean to indicate whether all the jobs have been done or more
-	 * invocation is needed.
-	 *
-	 * @return whether the runnable has successfully finished running.
-	 * @throws InterruptedException when interrupted.
-	 * @throws IOException when the performed I/O operation fails.
-	 */
-	boolean run() throws InterruptedException, IOException;
+	private volatile boolean isRecycled;
 
-	/**
-	 * Wake up the running thread.
-	 */
-	void wakeUp();
+	@SafeVarargs
+	public TestingRecordsWithSplitIds(String splitId, E... records) {
+		super(Collections.singletonMap(splitId, Arrays.asList(records)), Collections.emptySet());
+	}
+
+	@Override
+	public void recycle() {
+		isRecycled = true;
+	}
+
+	public boolean isRecycled() {
+		return isRecycled;
+	}
 }

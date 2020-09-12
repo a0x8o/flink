@@ -16,29 +16,18 @@
  * limitations under the License.
  */
 
-package org.apache.flink.connector.base.source.reader.fetcher;
+package org.apache.flink.connector.base.source.reader.mocks;
 
-import java.io.IOException;
+import org.apache.flink.api.connector.source.SourceOutput;
+import org.apache.flink.connector.base.source.reader.RecordEmitter;
 
 /**
- * An interface similar to {@link Runnable} but allows throwing exceptions and wakeup.
+ * A record emitter that pipes records directly into the source output.
  */
-public interface SplitFetcherTask {
+public final class PassThroughRecordEmitter<E, SplitStateT> implements RecordEmitter<E, E, SplitStateT> {
 
-	/**
-	 * Run the logic. This method allows throwing an interrupted exception on wakeup, but the
-	 * implementation does not have to. It is preferred to finish the work elegantly
-	 * and return a boolean to indicate whether all the jobs have been done or more
-	 * invocation is needed.
-	 *
-	 * @return whether the runnable has successfully finished running.
-	 * @throws InterruptedException when interrupted.
-	 * @throws IOException when the performed I/O operation fails.
-	 */
-	boolean run() throws InterruptedException, IOException;
-
-	/**
-	 * Wake up the running thread.
-	 */
-	void wakeUp();
+	@Override
+	public void emitRecord(E element, SourceOutput<E> output, SplitStateT splitState) throws Exception {
+		output.collect(element);
+	}
 }
