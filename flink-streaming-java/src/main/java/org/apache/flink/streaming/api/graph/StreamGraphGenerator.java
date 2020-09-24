@@ -302,7 +302,10 @@ public class StreamGraphGenerator {
 			streamGraph.setResources(transform.getId(), transform.getMinResources(), transform.getPreferredResources());
 		}
 
-		streamGraph.setManagedMemoryWeight(transform.getId(), transform.getManagedMemoryWeight());
+		streamGraph.setManagedMemoryUseCaseWeights(
+			transform.getId(),
+			transform.getManagedMemoryOperatorScopeUseCaseWeights(),
+			transform.getManagedMemorySlotScopeUseCases());
 
 		return transformedIds;
 	}

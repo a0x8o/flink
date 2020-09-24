@@ -24,12 +24,12 @@ import org.apache.flink.runtime.event.TaskEvent;
 import org.apache.flink.runtime.io.network.api.CheckpointBarrier;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferPool;
-import org.apache.flink.runtime.io.network.buffer.BufferReceivedListener;
 import org.apache.flink.runtime.io.network.buffer.NetworkBufferPool;
 import org.apache.flink.runtime.io.network.partition.consumer.BufferOrEvent;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannel;
 import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
 import org.apache.flink.runtime.operators.testutils.DummyCheckpointInvokable;
+import org.apache.flink.streaming.api.operators.SyncMailboxExecutor;
 
 import org.junit.Test;
 
@@ -69,7 +69,8 @@ public class CheckpointBarrierAlignerMassiveRandomTest {
 			CheckpointedInputGate checkpointedInputGate =
 				new CheckpointedInputGate(
 					myIG,
-					new CheckpointBarrierAligner("Testing: No task associated", new DummyCheckpointInvokable(), myIG));
+					new CheckpointBarrierAligner("Testing: No task associated", new DummyCheckpointInvokable(), myIG),
+					new SyncMailboxExecutor());
 
 			for (int i = 0; i < 2000000; i++) {
 				BufferOrEvent boe = checkpointedInputGate.pollNext().get();
@@ -238,10 +239,6 @@ public class CheckpointBarrierAlignerMassiveRandomTest {
 
 		@Override
 		public void close() {
-		}
-
-		@Override
-		public void registerBufferReceivedListener(BufferReceivedListener listener) {
 		}
 	}
 }

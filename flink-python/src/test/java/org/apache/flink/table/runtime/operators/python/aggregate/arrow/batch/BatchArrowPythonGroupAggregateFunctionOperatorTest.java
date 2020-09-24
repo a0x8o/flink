@@ -193,7 +193,8 @@ public class BatchArrowPythonGroupAggregateFunctionOperatorTest
 				getUserDefinedFunctionsProto(),
 				getInputOutputCoderUrn(),
 				new HashMap<>(),
-				PythonTestUtils.createMockFlinkMetricContainer()
+				PythonTestUtils.createMockFlinkMetricContainer(),
+				false
 			);
 		}
 	}

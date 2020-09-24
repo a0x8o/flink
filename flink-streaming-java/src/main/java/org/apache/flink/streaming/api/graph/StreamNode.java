@@ -23,8 +23,8 @@ import org.apache.flink.api.common.io.InputFormat;
 import org.apache.flink.api.common.io.OutputFormat;
 import org.apache.flink.api.common.operators.ResourceSpec;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
-import org.apache.flink.api.dag.Transformation;
 import org.apache.flink.api.java.functions.KeySelector;
+import org.apache.flink.core.memory.ManagedMemoryUseCase;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
 import org.apache.flink.runtime.operators.coordination.OperatorCoordinator;
@@ -37,8 +37,13 @@ import javax.annotation.Nullable;
 
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.apache.flink.util.Preconditions.checkArgument;
 
@@ -59,7 +64,8 @@ public class StreamNode implements Serializable {
 	private int maxParallelism;
 	private ResourceSpec minResources = ResourceSpec.DEFAULT;
 	private ResourceSpec preferredResources = ResourceSpec.DEFAULT;
-	private int managedMemoryWeight = Transformation.DEFAULT_MANAGED_MEMORY_WEIGHT;
+	private final Map<ManagedMemoryUseCase, Integer> managedMemoryOperatorScopeUseCaseWeights = new HashMap<>();
+	private final Set<ManagedMemoryUseCase> managedMemorySlotScopeUseCases = new HashSet<>();
 	private long bufferTimeout;
 	private final String operatorName;
 	private @Nullable String slotSharingGroup;
@@ -196,12 +202,18 @@ public class StreamNode implements Serializable {
 		this.preferredResources = preferredResources;
 	}
 
-	public void setManagedMemoryWeight(int managedMemoryWeight) {
-		this.managedMemoryWeight = managedMemoryWeight;
+	public void setManagedMemoryUseCaseWeights(
+			Map<ManagedMemoryUseCase, Integer> operatorScopeUseCaseWeights, Set<ManagedMemoryUseCase> slotScopeUseCases) {
+		managedMemoryOperatorScopeUseCaseWeights.putAll(operatorScopeUseCaseWeights);
+		managedMemorySlotScopeUseCases.addAll(slotScopeUseCases);
 	}
 
-	public int getManagedMemoryWeight() {
-		return managedMemoryWeight;
+	public Map<ManagedMemoryUseCase, Integer> getManagedMemoryOperatorScopeUseCaseWeights() {
+		return Collections.unmodifiableMap(managedMemoryOperatorScopeUseCaseWeights);
+	}
+
+	public Set<ManagedMemoryUseCase> getManagedMemorySlotScopeUseCases() {
+		return Collections.unmodifiableSet(managedMemorySlotScopeUseCases);
 	}
 
 	public long getBufferTimeout() {
