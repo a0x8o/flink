@@ -25,7 +25,7 @@ import org.apache.flink.runtime.checkpoint.CheckpointFailureReason;
 import org.apache.flink.runtime.checkpoint.channel.InputChannelInfo;
 import org.apache.flink.runtime.io.network.api.CancelCheckpointMarker;
 import org.apache.flink.runtime.io.network.api.CheckpointBarrier;
-import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
+import org.apache.flink.runtime.io.network.partition.consumer.CheckpointableInput;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
 
 import org.slf4j.Logger;
@@ -36,8 +36,6 @@ import java.util.Arrays;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-
-import static org.apache.flink.util.Preconditions.checkState;
 
 /**
  * {@link CheckpointBarrierAligner} keep tracks of received {@link CheckpointBarrier} on given
@@ -75,17 +73,17 @@ public class CheckpointBarrierAligner extends CheckpointBarrierHandler {
 	/** The time (in nanoseconds) that the latest alignment took. */
 	private long latestAlignmentDurationNanos;
 
-	private final InputGate[] inputGates;
+	private final CheckpointableInput[] inputs;
 
 	CheckpointBarrierAligner(
 			String taskName,
 			AbstractInvokable toNotifyOnCheckpoint,
-			InputGate... inputGates) {
+			CheckpointableInput... inputs) {
 		super(toNotifyOnCheckpoint);
 
 		this.taskName = taskName;
-		this.inputGates = inputGates;
-		blockedChannels = Arrays.stream(inputGates)
+		this.inputs = inputs;
+		blockedChannels = Arrays.stream(inputs)
 			.flatMap(gate -> gate.getChannelInfos().stream())
 			.collect(Collectors.toMap(Function.identity(), info -> false));
 		totalNumberOfInputChannels = blockedChannels.size();
@@ -222,7 +220,7 @@ public class CheckpointBarrierAligner extends CheckpointBarrierHandler {
 	protected void onBarrier(InputChannelInfo channelInfo) throws IOException {
 		if (!blockedChannels.get(channelInfo)) {
 			blockedChannels.put(channelInfo, true);
-
+			blockConsumption(channelInfo);
 			numBarriersReceived++;
 
 			if (LOG.isDebugEnabled()) {
@@ -339,10 +337,13 @@ public class CheckpointBarrierAligner extends CheckpointBarrierHandler {
 	}
 
 	private void resumeConsumption(InputChannelInfo channelInfo) throws IOException {
-		InputGate inputGate = inputGates[channelInfo.getGateIdx()];
-		checkState(!inputGate.isFinished(), "InputGate already finished.");
+		CheckpointableInput input = inputs[channelInfo.getGateIdx()];
+		input.resumeConsumption(channelInfo.getInputChannelIdx());
+	}
 
-		inputGate.resumeConsumption(channelInfo.getInputChannelIdx());
+	private void blockConsumption(InputChannelInfo channelInfo) {
+		CheckpointableInput input = inputs[channelInfo.getGateIdx()];
+		input.blockConsumption(channelInfo.getInputChannelIdx());
 	}
 
 	@VisibleForTesting

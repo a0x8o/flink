@@ -30,7 +30,7 @@ cdef class BeamStatelessFunctionOperation(Operation):
     cdef object func
     cdef bint _is_python_coder
     cdef bint _metric_enabled
-    cdef object base_metric_group
+    cdef readonly object base_metric_group
 
     cdef void _update_gauge(self, base_metric_group)
 
@@ -45,3 +45,10 @@ cdef class DataStreamStatelessFunctionOperation(BeamStatelessFunctionOperation):
 
 cdef class PandasAggregateFunctionOperation(BeamStatelessFunctionOperation):
     pass
+
+cdef class PandasBatchOverWindowAggregateFunctionOperation(BeamStatelessFunctionOperation):
+    cdef list windows
+    cdef list bounded_range_window_index
+    cdef list is_bounded_range_window
+    cdef list window_indexes
+    cdef list mapper

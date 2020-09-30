@@ -2669,6 +2669,9 @@
               "dataPort" : {
                 "type" : "integer"
               },
+              "jmxPort" : {
+                "type" : "integer"
+              },
               "timeSinceLastHeartbeat" : {
                 "type" : "integer"
               },
@@ -2823,6 +2826,9 @@
         "dataPort" : {
           "type" : "integer"
         },
+        "jmxPort" : {
+          "type" : "integer"
+        },
         "timeSinceLastHeartbeat" : {
           "type" : "integer"
         },
@@ -2961,6 +2967,24 @@
               "type" : "integer"
             },
             "memorySegmentsTotal" : {
+              "type" : "integer"
+            },
+            "nettyShuffleMemorySegmentsAvailable" : {
+              "type" : "integer"
+            },
+            "nettyShuffleMemorySegmentsUsed" : {
+              "type" : "integer"
+            },
+            "nettyShuffleMemorySegmentsTotal" : {
+              "type" : "integer"
+            },
+            "nettyShuffleMemoryAvailable" : {
+              "type" : "integer"
+            },
+            "nettyShuffleMemoryUsed" : {
+              "type" : "integer"
+            },
+            "nettyShuffleMemoryTotal" : {
               "type" : "integer"
             },
             "garbageCollectors" : {

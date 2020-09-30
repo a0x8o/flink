@@ -21,8 +21,10 @@ package org.apache.flink.streaming.runtime.io;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.core.io.InputStatus;
 import org.apache.flink.metrics.Counter;
+import org.apache.flink.metrics.SimpleCounter;
 import org.apache.flink.runtime.checkpoint.channel.ChannelStateWriter;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
+import org.apache.flink.runtime.metrics.groups.TaskIOMetricGroup;
 import org.apache.flink.streaming.api.graph.StreamConfig.InputConfig;
 import org.apache.flink.streaming.api.graph.StreamConfig.NetworkInputConfig;
 import org.apache.flink.streaming.api.graph.StreamConfig.SourceInputConfig;
@@ -30,7 +32,6 @@ import org.apache.flink.streaming.api.operators.Input;
 import org.apache.flink.streaming.api.operators.InputSelection;
 import org.apache.flink.streaming.api.operators.MultipleInputStreamOperator;
 import org.apache.flink.streaming.api.operators.Output;
-import org.apache.flink.streaming.api.operators.SourceOperator;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.metrics.WatermarkGauge;
 import org.apache.flink.streaming.runtime.streamrecord.LatencyMarker;
@@ -48,6 +49,7 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
+import static org.apache.flink.util.Preconditions.checkState;
 
 /**
  * Input processor for {@link MultipleInputStreamOperator}.
@@ -68,7 +70,9 @@ public final class StreamMultipleInputProcessor implements StreamInputProcessor 
 	 */
 	private final StreamStatus[] streamStatuses;
 
-	private final Counter numRecordsIn;
+	private final Counter networkRecordsIn = new SimpleCounter();
+
+	private final Counter mainOperatorRecordsIn;
 
 	/** Always try to read from the first input. */
 	private int lastReadInputIndex = 1;
@@ -79,12 +83,13 @@ public final class StreamMultipleInputProcessor implements StreamInputProcessor 
 			CheckpointedInputGate[] checkpointedInputGates,
 			InputConfig[] configuredInputs,
 			IOManager ioManager,
+			TaskIOMetricGroup ioMetricGroup,
+			Counter mainOperatorRecordsIn,
 			StreamStatusMaintainer streamStatusMaintainer,
 			MultipleInputStreamOperator<?> mainOperator,
 			MultipleInputSelectionHandler inputSelectionHandler,
 			WatermarkGauge[] inputWatermarkGauges,
-			OperatorChain<?, ?> operatorChain,
-			Counter numRecordsIn) {
+			OperatorChain<?, ?> operatorChain) {
 
 		this.inputSelectionHandler = checkNotNull(inputSelectionHandler);
 
@@ -93,8 +98,14 @@ public final class StreamMultipleInputProcessor implements StreamInputProcessor 
 
 		this.inputProcessors = new InputProcessor[inputsCount];
 		this.streamStatuses = new StreamStatus[inputsCount];
-		this.numRecordsIn = numRecordsIn;
+		this.mainOperatorRecordsIn = mainOperatorRecordsIn;
+		ioMetricGroup.reuseRecordsInputCounter(networkRecordsIn);
 
+		checkState(
+			configuredInputs.length == inputsCount,
+			"Number of configured inputs in StreamConfig [%s] doesn't match the main operator's number of inputs [%s]",
+			configuredInputs.length,
+			inputsCount);
 		for (int i = 0; i < inputsCount; i++) {
 			InputConfig configuredInput = configuredInputs[i];
 			streamStatuses[i] = StreamStatus.ACTIVE;
@@ -118,11 +129,11 @@ public final class StreamMultipleInputProcessor implements StreamInputProcessor 
 			else if (configuredInput instanceof SourceInputConfig) {
 				SourceInputConfig sourceInput = (SourceInputConfig) configuredInput;
 				Output<StreamRecord<?>> chainedSourceOutput = operatorChain.getChainedSourceOutput(sourceInput);
-				SourceOperator<?, ?> sourceOperator = operatorChain.getSourceOperator(sourceInput);
+				StreamTaskSourceInput<?> sourceTaskInput = operatorChain.getSourceTaskInput(sourceInput);
 
 				inputProcessors[i] = new SourceInputProcessor(
-					new AsyncDataOutputToOutput(chainedSourceOutput, operatorChain),
-					new StreamTaskSourceInput(sourceOperator));
+					new StreamTaskSourceOutput(chainedSourceOutput, streamStatusMaintainer, inputWatermarkGauges[i], i),
+					sourceTaskInput);
 			}
 			else {
 				throw new UnsupportedOperationException("Unknown input type: " + configuredInput);
@@ -323,7 +334,8 @@ public final class StreamMultipleInputProcessor implements StreamInputProcessor 
 		public void emitRecord(StreamRecord<T> record) throws Exception {
 			input.setKeyContextElement(record);
 			input.processElement(record);
-			numRecordsIn.inc();
+			mainOperatorRecordsIn.inc();
+			networkRecordsIn.inc();
 			inputSelectionHandler.nextSelection();
 		}
 
@@ -335,8 +347,6 @@ public final class StreamMultipleInputProcessor implements StreamInputProcessor 
 
 		@Override
 		public void emitStreamStatus(StreamStatus streamStatus) {
-			final StreamStatus anotherStreamStatus;
-
 			streamStatuses[inputIndex] = streamStatus;
 
 			// check if we need to toggle the task's stream status
@@ -353,6 +363,34 @@ public final class StreamMultipleInputProcessor implements StreamInputProcessor 
 		@Override
 		public void emitLatencyMarker(LatencyMarker latencyMarker) throws Exception {
 			input.processLatencyMarker(latencyMarker);
+		}
+	}
+
+	private class StreamTaskSourceOutput extends AsyncDataOutputToOutput {
+		private final int inputIndex;
+
+		public StreamTaskSourceOutput(
+				Output<StreamRecord<?>> chainedSourceOutput,
+				StreamStatusMaintainer streamStatusMaintainer,
+				WatermarkGauge inputWatermarkGauge,
+				int inputIndex) {
+			super(chainedSourceOutput, streamStatusMaintainer, inputWatermarkGauge);
+			this.inputIndex = inputIndex;
+		}
+
+		@Override
+		public void emitStreamStatus(StreamStatus streamStatus) {
+			streamStatuses[inputIndex] = streamStatus;
+
+			// check if we need to toggle the task's stream status
+			if (!streamStatus.equals(streamStatusMaintainer.getStreamStatus())) {
+				if (streamStatus.isActive()) {
+					// we're no longer idle if at least one input has become active
+					streamStatusMaintainer.toggleStreamStatus(StreamStatus.ACTIVE);
+				} else if (allStreamStatusesAreIdle()) {
+					streamStatusMaintainer.toggleStreamStatus(StreamStatus.IDLE);
+				}
+			}
 		}
 	}
 }
