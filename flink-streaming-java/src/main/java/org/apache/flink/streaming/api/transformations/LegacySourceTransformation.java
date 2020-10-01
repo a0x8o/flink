@@ -21,6 +21,7 @@ package org.apache.flink.streaming.api.transformations;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.api.connector.source.Boundedness;
 import org.apache.flink.api.dag.Transformation;
 import org.apache.flink.streaming.api.operators.ChainingStrategy;
 import org.apache.flink.streaming.api.operators.SimpleOperatorFactory;
@@ -30,6 +31,8 @@ import org.apache.flink.streaming.api.operators.StreamSource;
 import java.util.Collection;
 import java.util.Collections;
 
+import static org.apache.flink.util.Preconditions.checkNotNull;
+
 /**
  * This represents a Source. This does not actually transform anything since it has no inputs but
  * it is the root {@code Transformation} of any topology.
@@ -37,9 +40,11 @@ import java.util.Collections;
  * @param <T> The type of the elements that this source produces
  */
 @Internal
-public class LegacySourceTransformation<T> extends PhysicalTransformation<T> {
+public class LegacySourceTransformation<T> extends PhysicalTransformation<T> implements WithBoundedness {
 
 	private final StreamOperatorFactory<T> operatorFactory;
+
+	private final Boundedness boundedness;
 
 	/**
 	 * Creates a new {@code LegacySourceTransformation} from the given operator.
@@ -53,17 +58,25 @@ public class LegacySourceTransformation<T> extends PhysicalTransformation<T> {
 			String name,
 			StreamSource<T, ?> operator,
 			TypeInformation<T> outputType,
-			int parallelism) {
-		this(name, SimpleOperatorFactory.of(operator), outputType, parallelism);
+			int parallelism,
+			Boundedness boundedness) {
+		this(name, SimpleOperatorFactory.of(operator), outputType, parallelism, boundedness);
 	}
 
 	public LegacySourceTransformation(
 			String name,
 			StreamOperatorFactory<T> operatorFactory,
 			TypeInformation<T> outputType,
-			int parallelism) {
+			int parallelism,
+			Boundedness boundedness) {
 		super(name, outputType, parallelism);
-		this.operatorFactory = operatorFactory;
+		this.operatorFactory = checkNotNull(operatorFactory);
+		this.boundedness = checkNotNull(boundedness);
+	}
+
+	@Override
+	public Boundedness getBoundedness() {
+		return boundedness;
 	}
 
 	@VisibleForTesting
