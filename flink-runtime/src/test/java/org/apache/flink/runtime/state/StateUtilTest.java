@@ -7,7 +7,7 @@
  * "License"); you may not use this file except in compliance
  * with the License.  You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,19 +18,38 @@
 
 package org.apache.flink.runtime.state;
 
-import org.apache.flink.util.TestLogger;
 import org.junit.Test;
 
-import java.util.concurrent.RunnableFuture;
+import static org.hamcrest.CoreMatchers.containsString;
+import static org.junit.Assert.assertThat;
 
-public class StateUtilTest extends TestLogger {
+/**
+ * Tests for {@link StateUtil}.
+ */
+public class StateUtilTest {
 
-	/**
-	 * Tests that {@link StateUtil#discardStateFuture} can handle state futures with null value.
-	 */
 	@Test
-	public void testDiscardRunnableFutureWithNullValue() throws Exception {
-		RunnableFuture<StateHandle<?>> stateFuture = DoneFuture.nullValue();
-		StateUtil.discardStateFuture(stateFuture);
+	public void unexpectedStateExceptionForSingleExpectedType() {
+		Exception exception = StateUtil.unexpectedStateHandleException(
+				KeyGroupsStateHandle.class,
+				KeyGroupsStateHandle.class);
+
+		assertThat(
+				exception.getMessage(),
+				containsString(
+						"Unexpected state handle type, expected one of: class org.apache.flink.runtime.state.KeyGroupsStateHandle, but found: class org.apache.flink.runtime.state.KeyGroupsStateHandle. This can mostly happen when a different StateBackend from the one that was used for taking a checkpoint/savepoint is used when restoring."));
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	public void unexpectedStateExceptionForMultipleExpectedTypes() {
+		Exception exception = StateUtil.unexpectedStateHandleException(
+				new Class[]{KeyGroupsStateHandle.class, KeyGroupsStateHandle.class},
+				KeyGroupsStateHandle.class);
+
+		assertThat(
+				exception.getMessage(),
+				containsString(
+						"Unexpected state handle type, expected one of: class org.apache.flink.runtime.state.KeyGroupsStateHandle, class org.apache.flink.runtime.state.KeyGroupsStateHandle, but found: class org.apache.flink.runtime.state.KeyGroupsStateHandle. This can mostly happen when a different StateBackend from the one that was used for taking a checkpoint/savepoint is used when restoring."));
 	}
 }
