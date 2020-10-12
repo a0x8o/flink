@@ -31,7 +31,7 @@ import org.apache.flink.streaming.api.operators.StreamSink;
 
 import org.apache.flink.shaded.guava18.com.google.common.collect.Lists;
 
-import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -77,13 +77,6 @@ public class SinkTransformation<T> extends PhysicalTransformation<Object> {
 		this.operatorFactory = operatorFactory;
 	}
 
-	/**
-	 * Returns the input {@code Transformation} of this {@code SinkTransformation}.
-	 */
-	public Transformation<T> getInput() {
-		return input;
-	}
-
 	@VisibleForTesting
 	public StreamSink<T> getOperator() {
 		return (StreamSink<T>) ((SimpleOperatorFactory) operatorFactory).getOperator();
@@ -124,11 +117,16 @@ public class SinkTransformation<T> extends PhysicalTransformation<Object> {
 	}
 
 	@Override
-	public Collection<Transformation<?>> getTransitivePredecessors() {
+	public List<Transformation<?>> getTransitivePredecessors() {
 		List<Transformation<?>> result = Lists.newArrayList();
 		result.add(this);
 		result.addAll(input.getTransitivePredecessors());
 		return result;
+	}
+
+	@Override
+	public List<Transformation<?>> getInputs() {
+		return Collections.singletonList(input);
 	}
 
 	@Override

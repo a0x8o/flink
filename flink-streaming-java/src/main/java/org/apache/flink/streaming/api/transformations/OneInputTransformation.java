@@ -30,7 +30,7 @@ import org.apache.flink.streaming.api.operators.StreamOperatorFactory;
 
 import org.apache.flink.shaded.guava18.com.google.common.collect.Lists;
 
-import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -82,13 +82,6 @@ public class OneInputTransformation<IN, OUT> extends PhysicalTransformation<OUT>
 	}
 
 	/**
-	 * Returns the input {@code Transformation} of this {@code OneInputTransformation}.
-	 */
-	public Transformation<IN> getInput() {
-		return input;
-	}
-
-	/**
 	 * Returns the {@code TypeInformation} for the elements of the input.
 	 */
 	public TypeInformation<IN> getInputType() {
@@ -135,11 +128,16 @@ public class OneInputTransformation<IN, OUT> extends PhysicalTransformation<OUT>
 	}
 
 	@Override
-	public Collection<Transformation<?>> getTransitivePredecessors() {
+	public List<Transformation<?>> getTransitivePredecessors() {
 		List<Transformation<?>> result = Lists.newArrayList();
 		result.add(this);
 		result.addAll(input.getTransitivePredecessors());
 		return result;
+	}
+
+	@Override
+	public List<Transformation<?>> getInputs() {
+		return Collections.singletonList(input);
 	}
 
 	@Override
