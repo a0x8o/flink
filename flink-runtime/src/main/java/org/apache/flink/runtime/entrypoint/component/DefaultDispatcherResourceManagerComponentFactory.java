@@ -209,10 +209,11 @@ public class DefaultDispatcherResourceManagerComponentFactory implements Dispatc
 
 			return new DispatcherResourceManagerComponent(
 				dispatcherRunner,
-				resourceManager,
+				DefaultResourceManagerService.createFor(resourceManager),
 				dispatcherLeaderRetrievalService,
 				resourceManagerRetrievalService,
-				webMonitorEndpoint);
+				webMonitorEndpoint,
+				fatalErrorHandler);
 
 		} catch (Exception exception) {
 			// clean up all started components
