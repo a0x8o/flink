@@ -35,7 +35,9 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.ConcurrentModificationException;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.Executor;
+import java.util.stream.Collectors;
 
 import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
@@ -143,6 +145,10 @@ public class ZooKeeperCompletedCheckpointStore implements CompletedCheckpointSto
 		int numberOfInitialCheckpoints = initialCheckpoints.size();
 
 		LOG.info("Found {} checkpoints in ZooKeeper.", numberOfInitialCheckpoints);
+		if (haveAllDownloaded(initialCheckpoints)) {
+			LOG.info("All {} checkpoints found are already downloaded.", numberOfInitialCheckpoints);
+			return;
+		}
 
 		// Try and read the state handles from storage. We try until we either successfully read
 		// all of them or when we reach a stable state, i.e. when we successfully read the same set
@@ -158,6 +164,7 @@ public class ZooKeeperCompletedCheckpointStore implements CompletedCheckpointSto
 		// of checkpoints that we don't read due to transient storage outages.
 		List<CompletedCheckpoint> lastTryRetrievedCheckpoints = new ArrayList<>(numberOfInitialCheckpoints);
 		List<CompletedCheckpoint> retrievedCheckpoints = new ArrayList<>(numberOfInitialCheckpoints);
+		Exception retrieveException = null;
 		do {
 			LOG.info("Trying to fetch {} checkpoints from storage.", numberOfInitialCheckpoints);
 
@@ -177,6 +184,7 @@ public class ZooKeeperCompletedCheckpointStore implements CompletedCheckpointSto
 					}
 				} catch (Exception e) {
 					LOG.warn("Could not retrieve checkpoint, not adding to list of recovered checkpoints.", e);
+					retrieveException = e;
 				}
 			}
 
@@ -191,13 +199,27 @@ public class ZooKeeperCompletedCheckpointStore implements CompletedCheckpointSto
 
 		if (completedCheckpoints.isEmpty() && numberOfInitialCheckpoints > 0) {
 			throw new FlinkException(
-				"Could not read any of the " + numberOfInitialCheckpoints + " checkpoints from storage.");
+				"Could not read any of the " + numberOfInitialCheckpoints + " checkpoints from storage.",
+				retrieveException);
 		} else if (completedCheckpoints.size() != numberOfInitialCheckpoints) {
 			LOG.warn(
 				"Could only fetch {} of {} checkpoints from storage.",
 				completedCheckpoints.size(),
 				numberOfInitialCheckpoints);
 		}
+	}
+
+	private boolean haveAllDownloaded(List<Tuple2<RetrievableStateHandle<CompletedCheckpoint>, String>> checkpointPointers) {
+		if (completedCheckpoints.size() != checkpointPointers.size()) {
+			return false;
+		}
+		Set<Long> localIds = completedCheckpoints.stream().map(CompletedCheckpoint::getCheckpointID).collect(Collectors.toSet());
+		for (Tuple2<RetrievableStateHandle<CompletedCheckpoint>, String> initialCheckpoint : checkpointPointers) {
+			if (!localIds.contains(pathToCheckpointId(initialCheckpoint.f1))) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	/**
