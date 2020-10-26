@@ -18,23 +18,21 @@
 
 package org.apache.flink.runtime.dispatcher;
 
+import org.apache.flink.annotation.Internal;
 import org.apache.flink.runtime.jobgraph.JobGraph;
-import org.apache.flink.runtime.rpc.RpcService;
-
-import java.util.Collection;
 
 /**
- * {@link Dispatcher} factory interface.
+ * A {@link DispatcherBootstrap} which submits the provided {@link JobGraph job graphs}
+ * for execution upon dispatcher initialization.
  */
-public interface DispatcherFactory {
+@Internal
+public class NoOpDispatcherBootstrap implements DispatcherBootstrap {
 
-	/**
-	 * Create a {@link Dispatcher}.
-	 */
-	Dispatcher createDispatcher(
-			RpcService rpcService,
-			DispatcherId fencingToken,
-			Collection<JobGraph> recoveredJobs,
-			DispatcherBootstrapFactory dispatcherBootstrapFactory,
-			PartialDispatcherServicesWithJobGraphStore partialDispatcherServicesWithJobGraphStore) throws Exception;
+	public NoOpDispatcherBootstrap() {
+	}
+
+	@Override
+	public void stop() throws Exception {
+		// do nothing
+	}
 }
