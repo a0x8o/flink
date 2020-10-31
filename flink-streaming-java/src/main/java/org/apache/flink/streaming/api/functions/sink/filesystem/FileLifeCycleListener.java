@@ -7,7 +7,7 @@
  * "License"); you may not use this file except in compliance
  * with the License.  You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,35 +16,26 @@
  * limitations under the License.
  */
 
-package org.apache.flink.table.functions.python;
+package org.apache.flink.streaming.api.functions.sink.filesystem;
 
 import org.apache.flink.annotation.Internal;
+import org.apache.flink.core.fs.Path;
 
 /**
- * PythonAggregateFunctionInfo contains the execution information of a Python aggregate function, such as:
- * the actual Python aggregation function, the input arguments, the filter arg, the distinct flag, etc.
+ * Listener about the status of file.
  */
 @Internal
-public class PythonAggregateFunctionInfo extends PythonFunctionInfo {
+public interface FileLifeCycleListener<BucketID> {
 
-	private final int filterArg;
-	private final boolean distinct;
+	/**
+	 * Notifies a new file has been opened.
+	 *
+	 * <p>Note that this does not mean that the file has been created in the file system. It is
+	 * only created logically and the actual file will be generated after it is committed.
+	 *
+	 * @param bucketID The bucketID of newly opened file.
+	 * @param newPath The path of newly opened file.
+	 */
+	void onPartFileOpened(BucketID bucketID, Path newPath);
 
-	public PythonAggregateFunctionInfo(
-			PythonFunction pythonFunction,
-			Object[] inputs,
-			int filterArg,
-			boolean isDistinct) {
-		super(pythonFunction, inputs);
-		this.filterArg = filterArg;
-		this.distinct = isDistinct;
-	}
-
-	public boolean isDistinct() {
-		return distinct;
-	}
-
-	public int getFilterArg() {
-		return filterArg;
-	}
 }
