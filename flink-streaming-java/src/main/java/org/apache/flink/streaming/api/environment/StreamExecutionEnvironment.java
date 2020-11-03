@@ -525,6 +525,22 @@ public class StreamExecutionEnvironment {
 	}
 
 	/**
+	 * Returns whether Unaligned Checkpoints are enabled.
+	 */
+	@PublicEvolving
+	public boolean isUnalignedCheckpointsEnabled() {
+		return checkpointCfg.isUnalignedCheckpointsEnabled();
+	}
+
+	/**
+	 * Returns whether Unaligned Checkpoints are force-enabled.
+	 */
+	@PublicEvolving
+	public boolean isForceUnalignedCheckpoints() {
+		return checkpointCfg.isForceUnalignedCheckpoints();
+	}
+
+	/**
 	 * Returns the checkpointing mode (exactly-once vs. at-least-once).
 	 *
 	 * <p>Shorthand for {@code getCheckpointConfig().getCheckpointingMode()}.
