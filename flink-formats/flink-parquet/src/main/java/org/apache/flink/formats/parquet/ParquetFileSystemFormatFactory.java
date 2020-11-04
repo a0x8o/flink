@@ -21,6 +21,7 @@ package org.apache.flink.formats.parquet;
 import org.apache.flink.api.common.serialization.BulkWriter;
 import org.apache.flink.configuration.ConfigOption;
 import org.apache.flink.configuration.ReadableConfig;
+import org.apache.flink.connector.file.src.FileSourceSplit;
 import org.apache.flink.connector.file.src.reader.BulkFormat;
 import org.apache.flink.formats.parquet.row.ParquetRowDataBuilder;
 import org.apache.flink.table.connector.ChangelogMode;
@@ -34,7 +35,7 @@ import org.apache.flink.table.factories.BulkReaderFormatFactory;
 import org.apache.flink.table.factories.BulkWriterFormatFactory;
 import org.apache.flink.table.factories.DynamicTableFactory;
 import org.apache.flink.table.filesystem.FileSystemOptions;
-import org.apache.flink.table.filesystem.PartitionValueConverter;
+import org.apache.flink.table.filesystem.PartitionFieldExtractor;
 import org.apache.flink.table.types.DataType;
 import org.apache.flink.table.types.logical.RowType;
 
@@ -65,17 +66,17 @@ public class ParquetFileSystemFormatFactory implements BulkReaderFormatFactory, 
 			DynamicTableFactory.Context context, ReadableConfig formatOptions) {
 		return new BulkDecodingFormat<RowData>() {
 			@Override
-			public BulkFormat<RowData> createRuntimeDecoder(
+			public BulkFormat<RowData, FileSourceSplit> createRuntimeDecoder(
 					DynamicTableSource.Context sourceContext,
 					DataType producedDataType) {
+				String defaultPartName = context.getCatalogTable().getOptions().getOrDefault(
+						FileSystemOptions.PARTITION_DEFAULT_NAME.key(),
+						FileSystemOptions.PARTITION_DEFAULT_NAME.defaultValue());
 				return ParquetColumnarRowInputFormat.createPartitionedFormat(
 						getParquetConfiguration(formatOptions),
 						(RowType) producedDataType.getLogicalType(),
 						context.getCatalogTable().getPartitionKeys(),
-						context.getCatalogTable().getOptions().getOrDefault(
-								FileSystemOptions.PARTITION_DEFAULT_NAME.key(),
-								FileSystemOptions.PARTITION_DEFAULT_NAME.defaultValue()),
-						PartitionValueConverter.DEFAULT,
+						PartitionFieldExtractor.forFileSystem(defaultPartName),
 						VectorizedColumnBatch.DEFAULT_SIZE,
 						formatOptions.get(UTC_TIMEZONE),
 						true);
