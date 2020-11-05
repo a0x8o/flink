@@ -88,6 +88,7 @@ under the License.
 		<module>flink-walkthroughs</module>
 		<module>flink-kubernetes</module>
 		<module>flink-external-resources</module>
+		<module>tools/ci/java-ci-tools</module>
 	</modules>
 
 	<properties>
@@ -548,13 +549,6 @@ under the License.
 				<groupId>junit</groupId>
 				<artifactId>junit</artifactId>
 				<version>${junit.version}</version>
-			</dependency>
-
-			<!-- For dependency convergence -->
-			<dependency>
-				<groupId>org.tukaani</groupId>
-				<artifactId>xz</artifactId>
-				<version>1.5</version>
 			</dependency>
 
 			<!-- Make sure we use a consistent commons-cli version throughout the project -->
