@@ -75,8 +75,10 @@ public class SourceReaderBaseTest extends SourceReaderTestBase<MockSourceSplit> 
 				public void handleSplitsChanges(SplitsChange<MockSourceSplit> splitsChanges) {}
 
 				@Override
-				public void wakeUp() {
-				}
+				public void wakeUp() {}
+
+				@Override
+				public void close() throws Exception {}
 			},
 			getConfig(),
 			null)) {
@@ -185,8 +187,10 @@ public class SourceReaderBaseTest extends SourceReaderTestBase<MockSourceSplit> 
 			new TestingReaderContext()) {
 
 			@Override
-			protected void onSplitFinished(Collection<String> finishedSplitIds) {
-			}
+			public void notifyCheckpointComplete(long checkpointId) throws Exception {}
+
+			@Override
+			protected void onSplitFinished(Collection<String> finishedSplitIds) {}
 
 			@Override
 			protected TestingSourceSplit initializedState(TestingSourceSplit split) {

@@ -202,8 +202,12 @@ public class SourceOperator<OUT, SplitT extends SourceSplit>
 
 	@Override
 	public void close() throws Exception {
-		sourceReader.close();
-		eventTimeLogic.stopPeriodicWatermarkEmits();
+		if (sourceReader != null) {
+			sourceReader.close();
+		}
+		if (eventTimeLogic != null) {
+			eventTimeLogic.stopPeriodicWatermarkEmits();
+		}
 		super.close();
 	}
 
@@ -234,8 +238,9 @@ public class SourceOperator<OUT, SplitT extends SourceSplit>
 
 	@Override
 	public void snapshotState(StateSnapshotContext context) throws Exception {
-		LOG.debug("Taking a snapshot for checkpoint {}", context.getCheckpointId());
-		readerState.update(sourceReader.snapshotState());
+		long checkpointId = context.getCheckpointId();
+		LOG.debug("Taking a snapshot for checkpoint {}", checkpointId);
+		readerState.update(sourceReader.snapshotState(checkpointId));
 	}
 
 	@Override
@@ -248,6 +253,18 @@ public class SourceOperator<OUT, SplitT extends SourceSplit>
 		super.initializeState(context);
 		final ListState<byte[]> rawState = context.getOperatorStateStore().getListState(SPLITS_STATE_DESC);
 		readerState = new SimpleVersionedListState<>(rawState, splitSerializer);
+	}
+
+	@Override
+	public void notifyCheckpointComplete(long checkpointId) throws Exception {
+		super.notifyCheckpointComplete(checkpointId);
+		sourceReader.notifyCheckpointComplete(checkpointId);
+	}
+
+	@Override
+	public void notifyCheckpointAborted(long checkpointId) throws Exception {
+		super.notifyCheckpointAborted(checkpointId);
+		sourceReader.notifyCheckpointAborted(checkpointId);
 	}
 
 	@SuppressWarnings("unchecked")
