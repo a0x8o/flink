@@ -53,8 +53,6 @@ import org.junit.Test;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
-import java.util.Collection;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Random;
@@ -199,7 +197,7 @@ public class ChannelPersistenceITCase {
 		int maxStateSize = sizeOfBytes(icMap) + sizeOfBytes(rsMap) + Long.BYTES * 2;
 		Map<InputChannelInfo, Buffer> icBuffers = wrapWithBuffers(icMap);
 		Map<ResultSubpartitionInfo, Buffer> rsBuffers = wrapWithBuffers(rsMap);
-		try (ChannelStateWriterImpl writer = new ChannelStateWriterImpl("test", getStreamFactoryFactory(maxStateSize))) {
+		try (ChannelStateWriterImpl writer = new ChannelStateWriterImpl("test", 0, getStreamFactoryFactory(maxStateSize))) {
 			writer.open();
 			writer.start(checkpointId, new CheckpointOptions(CHECKPOINT, new CheckpointStorageLocationReference("poly".getBytes())));
 			for (Map.Entry<InputChannelInfo, Buffer> e : icBuffers.entrySet()) {
@@ -235,21 +233,12 @@ public class ChannelPersistenceITCase {
 	}
 
 	private TaskStateSnapshot toTaskStateSnapshot(ChannelStateWriteResult t) throws Exception {
-		return new TaskStateSnapshot(singletonMap(new OperatorID(),
-			new OperatorSubtaskState(
-				StateObjectCollection.empty(),
-				StateObjectCollection.empty(),
-				StateObjectCollection.empty(),
-				StateObjectCollection.empty(),
-				new StateObjectCollection<>(t.getInputChannelStateHandles().get()),
-				new StateObjectCollection<>(t.getResultSubpartitionStateHandles().get())
-			)
-		));
-	}
-
-	@SuppressWarnings("unchecked")
-	private <C> List<C> collectBytes(Collection<StateObject> handles, Class<C> clazz) {
-		return handles.stream().filter(clazz::isInstance).map(h -> (C) h).collect(Collectors.toList());
+		return new TaskStateSnapshot(singletonMap(
+			new OperatorID(),
+			OperatorSubtaskState.builder()
+				.setInputChannelState(new StateObjectCollection<>(t.getInputChannelStateHandles().get()))
+				.setResultSubpartitionState(new StateObjectCollection<>(t.getResultSubpartitionStateHandles().get()))
+				.build()));
 	}
 
 	private static int sizeOfBytes(Map<?, byte[]> map) {
