@@ -36,7 +36,9 @@ import org.apache.flink.runtime.operators.coordination.OperatorEvent;
 import org.apache.flink.runtime.operators.coordination.OperatorEventGateway;
 import org.apache.flink.runtime.operators.coordination.OperatorEventHandler;
 import org.apache.flink.runtime.source.event.AddSplitEvent;
+import org.apache.flink.runtime.source.event.NoMoreSplitsEvent;
 import org.apache.flink.runtime.source.event.ReaderRegistrationEvent;
+import org.apache.flink.runtime.source.event.RequestSplitEvent;
 import org.apache.flink.runtime.source.event.SourceEventWrapper;
 import org.apache.flink.runtime.state.StateInitializationContext;
 import org.apache.flink.runtime.state.StateSnapshotContext;
@@ -164,6 +166,11 @@ public class SourceOperator<OUT, SplitT extends SourceSplit>
 			}
 
 			@Override
+			public void sendSplitRequest() {
+				operatorEventGateway.sendEventToCoordinator(new RequestSplitEvent(getLocalHostName()));
+			}
+
+			@Override
 			public void sendSourceEventToCoordinator(SourceEvent event) {
 				operatorEventGateway.sendEventToCoordinator(new SourceEventWrapper(event));
 			}
@@ -277,6 +284,8 @@ public class SourceOperator<OUT, SplitT extends SourceSplit>
 			}
 		} else if (event instanceof SourceEventWrapper) {
 			sourceReader.handleSourceEvents(((SourceEventWrapper) event).getSourceEvent());
+		} else if (event instanceof NoMoreSplitsEvent) {
+			sourceReader.notifyNoMoreSplits();
 		} else {
 			throw new IllegalStateException("Received unexpected operator event " + event);
 		}
