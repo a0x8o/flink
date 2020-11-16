@@ -54,15 +54,7 @@ To establish a stable mapping, we need stable operator uids provided by the user
 
 ### Choose The Right State Backend
 
-Currently, Flink's savepoint binary format is state backend specific.
-A savepoint taken with one state backend cannot be restored using another, and you should carefully consider which backend you use before going to production.
-
-In general, we recommend avoiding `MemoryStateBackend` in production because it stores its snapshots inside the JobManager as opposed to persistent disk.
-When deciding between `FsStateBackend` and `RocksDB`, it is a choice between performance and scalability.
-`FsStateBackend` is very fast as each state access and update operates on objects on the Java heap; however, state size is limited by available memory within the cluster.
-On the other hand, `RocksDB` can scale based on available disk space and is the only state backend to support incremental snapshots.
-However, each state access and update requires (de-)serialization and potentially reading from disk which leads to average performance that is an order of magnitude slower than the memory state backends.
-Carefully read through the [state backend documentation]({{ site.baseurl }}/ops/state/state_backends.html) to fully understand the pros and cons of each option.
+See the [description of state backends]({{ site.baseurl }}/ops/state/state_backends.html#choose-the-right-state-backend) for choosing the right one for your use case.
 
 ### Configure JobManager High Availability
 
