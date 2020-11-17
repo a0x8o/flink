@@ -83,6 +83,7 @@ Flink 会根据默认值或其他配置参数自动调整剩余内存部分的�
 以下场景需要使用*托管内存*：
 * 流处理作业中用于 [RocksDB State Backend]({% link ops/state/state_backends.zh.md %}#the-rocksdbstatebackend)。
 * [批处理作业]({% link dev/batch/index.zh.md %})中用于排序、哈希表及缓存中间结果。
+* 流处理和批处理作业中用于[在 Python 进程中执行用户自定义函数]({% link dev/python/table-api-users-guide/udfs/python_udfs.zh.md %})。
 
 可以通过以下两种范式指定*托管内存*的大小：
 * 通过 [`taskmanager.memory.managed.size`]({% link ops/config.zh.md %}#taskmanager-memory-managed-size) 明确指定其大小。
@@ -92,6 +93,28 @@ Flink 会根据默认值或其他配置参数自动调整剩余内存部分的�
 若二者均未指定，会根据[默认占比]({% link ops/config.zh.md %}#taskmanager-memory-managed-fraction)进行计算。
 
 请同时参考[如何配置 State Backend 内存]({% link ops/memory/mem_tuning.zh.md %}#configure-memory-for-state-backends)以及[如何配置批处理作业内存]({% link ops/memory/mem_tuning.zh.md %}#configure-memory-for-batch-jobs)。
+
+<a name="consumer-weights" />
+
+#### 消费者权重
+
+对于包含不同种类的托管内存消费者的作业，可以进一步控制托管内存如何在消费者之间分配。
+通过 [`taskmanager.memory.managed.consumer-weights`]({% link ops/config.zh.md %}#taskmanager-memory-managed-consumer-weights) 可以为每一种类型的消费者指定一个权重，Flink 会按照权重的比例进行内存分配。
+目前支持的消费者类型包括：
+* `DATAPROC`：用于流处理中的 RocksDB State Backend 和批处理中的内置算法。
+* `PYTHON`：用户 Python 进程。
+
+例如，一个流处理作业同时使用到了 RocksDB State Backend 和 Python UDF，消费者权重设置为 `DATAPROC:70,PYTHON:30`，那么 Flink 会将 `70%` 的托管内存用于 RocksDB State Backend，`30%` 留给 Python 进程。
+
+<span class="label label-info">提示</span>
+只有作业中包含某种类型的消费者时，Flink 才会为该类型分配托管内存。
+例如，一个流处理作业使用 Heap State Backend 和 Python UDF，消费者权重设置为 `DATAPROC:70,PYTHON:30`，那么 Flink 会将全部托管内存用于 Python 进程，因为 Heap State Backend 不使用托管内存。
+
+<span class="label label-info">提示</span>
+对于未出现在消费者权重中的类型，Flink 将不会为其分配托管内存。
+如果缺失的类型是作业运行所必须的，则会引发内存分配失败。
+默认情况下，消费者权重中包含了所有可能的消费者类型。
+上述问题仅可能出现在用户显式地配置了消费者权重的情况下。
 
 <a name="configure-off-heap-memory-direct-or-native" />
 
