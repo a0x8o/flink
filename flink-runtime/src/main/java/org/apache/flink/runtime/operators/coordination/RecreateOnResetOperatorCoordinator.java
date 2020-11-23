@@ -29,11 +29,12 @@ import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
 
+import java.time.Duration;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.LinkedBlockingQueue;
 
-import static org.apache.flink.util.ComponentClosingUtils.closeAsyncWithTimeout;
+import static org.apache.flink.runtime.operators.coordination.ComponentClosingUtils.closeAsyncWithTimeout;
 
 /**
  * A class that will recreate a new {@link OperatorCoordinator} instance when
@@ -226,6 +227,11 @@ public class RecreateOnResetOperatorCoordinator implements OperatorCoordinator {
 			return context.currentParallelism();
 		}
 
+		@Override
+		public ClassLoader getUserCodeClassloader() {
+			return context.getUserCodeClassloader();
+		}
+
 		@VisibleForTesting
 		synchronized void quiesce() {
 			quiesced = true;
@@ -318,7 +324,7 @@ public class RecreateOnResetOperatorCoordinator implements OperatorCoordinator {
 				return closeAsyncWithTimeout(
 					"SourceCoordinator for " + operatorId,
 					(ThrowingRunnable<Exception>) internalCoordinator::close,
-					timeoutMs).exceptionally(e -> {
+					Duration.ofMillis(timeoutMs)).exceptionally(e -> {
 						cleanAndFailJob(e);
 						return null;
 					});
