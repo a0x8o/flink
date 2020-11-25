@@ -96,6 +96,9 @@ The file system connector supports multiple formats:
  - Avro: [Apache Avro](http://avro.apache.org). Support compression by configuring `avro.codec`.
  - Parquet: [Apache Parquet](http://parquet.apache.org). Compatible with Hive.
  - Orc: [Apache Orc](http://orc.apache.org). Compatible with Hive.
+ - Debezium-JSON: [debezium-json]({% link dev/table/connectors/formats/debezium.md %}).
+ - Canal-JSON: [canal-json]({% link dev/table/connectors/formats/canal.md %}).
+ - Raw: [raw]({% link dev/table/connectors/formats/raw.md %}).
 
 ## Streaming Sink
 
@@ -334,7 +337,7 @@ The partition commit policy defines what action is taken when partitions are com
     </tr>
     <tr>
         <td><h5>sink.partition-commit.success-file.name</h5></td>
-        <td style="word-wrap: break-word;">(none)</td>
+        <td style="word-wrap: break-word;">_SUCCESS</td>
         <td>String</td>
         <td>The file name for success-file partition commit policy, default is '_SUCCESS'.</td>
     </tr>
