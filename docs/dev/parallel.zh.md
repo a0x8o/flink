@@ -73,7 +73,7 @@ env.execute("Word Count Example")
 
 ### 执行环境层次
 
-如[此节]({{ site.baseurl }}{% link dev/datastream_api.zh.md %}#anatomy-of-a-flink-program)所描述，Flink 程序运行在执行环境的上下文中。执行环境为所有执行的算子、数据源、数据接收器 (data sink) 定义了一个默认的并行度。可以显式配置算子层次的并行度去覆盖执行环境的并行度。
+如[此节]({% link dev/datastream_api.zh.md %}#anatomy-of-a-flink-program)所描述，Flink 程序运行在执行环境的上下文中。执行环境为所有执行的算子、数据源、数据接收器 (data sink) 定义了一个默认的并行度。可以显式配置算子层次的并行度去覆盖执行环境的并行度。
 
 可以通过调用 `setParallelism()` 方法指定执行环境的默认并行度。如果想以并行度`3`来执行所有的算子、数据源和数据接收器。可以在执行环境上设置默认并行度，如下所示：
 
@@ -161,7 +161,7 @@ try {
 
 ### 系统层次
 
-可以通过设置 `./conf/flink-conf.yaml` 文件中的 `parallelism.default` 参数，在系统层次来指定所有执行环境的默认并行度。你可以通过查阅[配置文档]({{ site.baseurl }}/zh/ops/config.html)获取更多细节。
+可以通过设置 `./conf/flink-conf.yaml` 文件中的 `parallelism.default` 参数，在系统层次来指定所有执行环境的默认并行度。你可以通过查阅[配置文档]({{ site.baseurl }}/zh/deployment/config.html)获取更多细节。
 
 
 ## 设置最大并行度

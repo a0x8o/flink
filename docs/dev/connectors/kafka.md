@@ -236,7 +236,7 @@ the streaming program to the state of the latest checkpoint and re-consume the r
 stored in the checkpoint.
 
 The interval of drawing checkpoints therefore defines how much the program may have to go back at most, in case of a failure.
-To use fault tolerant Kafka Consumers, checkpointing of the topology needs to be enabled in the [job]({{ site.baseurl }}/ops/config.html#execution-checkpointing-interval).
+To use fault tolerant Kafka Consumers, checkpointing of the topology needs to be enabled in the [job]({{ site.baseurl }}/deployment/config.html#execution-checkpointing-interval).
 
 If checkpointing is disabled, the Kafka consumer will periodically commit the offsets to Zookeeper.
 
@@ -413,7 +413,7 @@ stream.addSink(myProducer);
 {% highlight scala %}
 val stream: DataStream[String] = ...
 
-Properties properties = new Properties
+val properties = new Properties
 properties.setProperty("bootstrap.servers", "localhost:9092")
 
 val myProducer = new FlinkKafkaProducer[String](
@@ -502,7 +502,7 @@ application before first checkpoint completes, by factor larger than `FlinkKafka
 
 ## Kafka Connector Metrics
 
-Flink's Kafka connectors provide some metrics through Flink's [metrics system]({{ site.baseurl }}/monitoring/metrics.html) to analyze
+Flink's Kafka connectors provide some metrics through Flink's [metrics system]({% link ops/metrics.md %}) to analyze
 the behavior of the connector.
 The producers export Kafka's internal metrics through Flink's metric system for all supported versions.
 The Kafka documentation lists all exported metrics in its [documentation](http://kafka.apache.org/documentation/#selector_monitoring).
@@ -543,8 +543,8 @@ When using standalone Flink deployment, you can also use `SASL_SSL`; please see 
 - Set `sasl.kerberos.service.name` to `kafka` (default `kafka`): The value for this should match the `sasl.kerberos.service.name` used for Kafka broker configurations.
 A mismatch in service name between client and server configuration will cause the authentication to fail.
 
-For more information on Flink configuration for Kerberos security, please see [here]({{ site.baseurl}}/ops/config.html).
-You can also find [here]({{ site.baseurl}}/ops/security-kerberos.html) further details on how Flink internally setups Kerberos-based security.
+For more information on Flink configuration for Kerberos security, please see [here]({{ site.baseurl}}/deployment/config.html).
+You can also find [here]({{ site.baseurl}}/deployment/security/security-kerberos.html) further details on how Flink internally setups Kerberos-based security.
 
 ## Upgrading to the Latest Connector Version
 

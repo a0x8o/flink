@@ -218,13 +218,14 @@ public abstract class UnalignedCheckpointTestBase extends TestLogger {
 				if (split == null) {
 					return Collections.emptyList();
 				}
-				LOG.info("Snapshotted next input {} @ {} subtask (? attempt)", split.nextNumber, split.nextNumber % split.increment);
+				LOG.info("Snapshotted {} @ {} subtask (? attempt)", split, split.nextNumber % split.increment);
 				return singletonList(split);
 			}
 
 			@Override
 			public void notifyCheckpointComplete(long checkpointId) {
 				if (split != null) {
+					LOG.info("notifyCheckpointComplete {} @ {} subtask (? attempt)", split.numCompletedCheckpoints, split.nextNumber % split.increment);
 					split.numCompletedCheckpoints++;
 				}
 			}
@@ -236,7 +237,11 @@ public abstract class UnalignedCheckpointTestBase extends TestLogger {
 
 			@Override
 			public void addSplits(List<LongSplit> splits) {
+				if (split != null) {
+					throw new IllegalStateException("Tried to add " + splits + " but already got " + split);
+				}
 				split = Iterables.getOnlyElement(splits);
+				LOG.info("Added split {} @ {} subtask (? attempt)", split, split.nextNumber % split.increment);
 			}
 
 			@Override
@@ -270,6 +275,15 @@ public abstract class UnalignedCheckpointTestBase extends TestLogger {
 			public String splitId() {
 				return String.valueOf(increment);
 			}
+
+			@Override
+			public String toString() {
+				return "LongSplit{" +
+					"increment=" + increment +
+					", nextNumber=" + nextNumber +
+					", numCompletedCheckpoints=" + numCompletedCheckpoints +
+					'}';
+			}
 		}
 
 		private static class LongSplitSplitEnumerator implements SplitEnumerator<LongSplit, List<LongSplit>> {
@@ -295,7 +309,9 @@ public abstract class UnalignedCheckpointTestBase extends TestLogger {
 
 			@Override
 			public void addSplitsBack(List<LongSplit> splits, int subtaskId) {
-				unassignedSplits.addAll(splits);
+				LOG.info("addSplitsBack {}", splits);
+				// disabled due to FLINK-20290, which may duplicate splits
+				// unassignedSplits.addAll(splits);
 			}
 
 			@Override
@@ -308,13 +324,20 @@ public abstract class UnalignedCheckpointTestBase extends TestLogger {
 							.computeIfAbsent(i % numReaders, t -> new ArrayList<>())
 							.add(unassignedSplits.get(i));
 					}
+					LOG.info("Assigning splits {}", assignment);
 					context.assignSplits(new SplitsAssignment<>(assignment));
 					unassignedSplits.clear();
 				}
 			}
 
 			@Override
+			public void notifyCheckpointComplete(long checkpointId) {
+				unassignedSplits.forEach(s -> s.numCompletedCheckpoints++);
+			}
+
+			@Override
 			public List<LongSplit> snapshotState() throws Exception {
+				LOG.info("snapshotState {}", unassignedSplits);
 				return unassignedSplits;
 			}
 
@@ -448,6 +471,7 @@ public abstract class UnalignedCheckpointTestBase extends TestLogger {
 
 			conf.set(NettyShuffleEnvironmentOptions.NETWORK_BUFFERS_PER_CHANNEL, BUFFER_PER_CHANNEL);
 			conf.set(NettyShuffleEnvironmentOptions.NETWORK_EXTRA_BUFFERS_PER_GATE, slotsPerTaskManager);
+			conf.set(NettyShuffleEnvironmentOptions.NETWORK_REQUEST_BACKOFF_MAX, 60000);
 
 			final LocalStreamEnvironment env = StreamExecutionEnvironment.createLocalEnvironment(parallelism, conf);
 			env.enableCheckpointing(100);
@@ -625,7 +649,7 @@ public abstract class UnalignedCheckpointTestBase extends TestLogger {
 			final State state = createState();
 			stateList = context.getOperatorStateStore().getListState(new ListStateDescriptor<>("state", (Class<State>) state.getClass()));
 			this.state = getOnlyElement(stateList.get(), state);
-			LOG.info("Init state {} @ {} subtask ({} attempt)", state, getRuntimeContext().getIndexOfThisSubtask(), getRuntimeContext().getAttemptNumber());
+			LOG.info("Init state {} @ {} subtask ({} attempt)", this.state, getRuntimeContext().getIndexOfThisSubtask(), getRuntimeContext().getAttemptNumber());
 		}
 
 		protected abstract State createState();
@@ -654,6 +678,5 @@ public abstract class UnalignedCheckpointTestBase extends TestLogger {
 			LOG.info("Last state {} @ {} subtask ({} attempt)", state, getRuntimeContext().getIndexOfThisSubtask(), getRuntimeContext().getAttemptNumber());
 			super.close();
 		}
-
 	}
 }

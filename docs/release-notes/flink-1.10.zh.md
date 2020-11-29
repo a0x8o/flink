@@ -32,7 +32,7 @@ these notes carefully if you are planning to upgrade your Flink version to 1.10.
 ### Clusters & Deployment
 #### FileSystems should be loaded via Plugin Architecture ([FLINK-11956](https://issues.apache.org/jira/browse/FLINK-11956))
 s3-hadoop and s3-presto filesystems do no longer use class relocations and need
-to be loaded through [plugins]({{ site.baseurl }}/ops/filesystems/#pluggable-file-systems)
+to be loaded through [plugins]({{ site.baseurl }}/deployment/filesystems/#pluggable-file-systems)
 but now seamlessly integrate with all credential providers. Other filesystems
 are strongly recommended to be only used as plugins as we will continue to
 remove relocations.
@@ -157,7 +157,7 @@ If you try to reuse your previous Flink configuration without any adjustments,
 the new memory model can result in differently computed memory parameters for
 the JVM and, thus, performance changes.
 
-Please, check [the user documentation](../ops/memory/mem_setup.html) for more details.
+Please, check [the user documentation](../deployment/memory/mem_setup.html) for more details.
 
 ##### Deprecation and breaking changes
 The following options have been removed and have no effect anymore:

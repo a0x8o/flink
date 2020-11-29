@@ -36,7 +36,7 @@ Flink 的 Table & SQL API 可以处理 SQL 语言编写的查询语句，但是�
 
 本节介绍如何在命令行里启动（setup）和运行你的第一个 Flink SQL 程序。
 
-SQL 客户端捆绑在常规 Flink 发行版中，因此可以直接运行。它仅需要一个正在运行的 Flink 集群就可以在其中执行表程序。有关设置 Flink 群集的更多信息，请参见[集群和部署]({{ site.baseurl }}/zh/ops/deployment/cluster_setup.html)部分。如果仅想试用 SQL 客户端，也可以使用以下命令启动本地集群：
+SQL 客户端捆绑在常规 Flink 发行版中，因此可以直接运行。它仅需要一个正在运行的 Flink 集群就可以在其中执行表程序。有关设置 Flink 群集的更多信息，请参见[集群和部署]({{ site.baseurl }}/zh/deployment/resource-providers/standalone/index.html)部分。如果仅想试用 SQL 客户端，也可以使用以下命令启动本地集群：
 
 {% highlight bash %}
 ./bin/start-cluster.sh
@@ -469,7 +469,7 @@ SQL 客户端允许用户创建用户自定义的函数来进行 SQL 查询。�
 
 为提供 Java/Scala 的自定义函数，你首先需要实现和编译函数类，该函数继承自 `ScalarFunction`、 `AggregateFunction` 或 `TableFunction`（见[自定义函数]({{ site.baseurl }}/zh/dev/table/functions/udfs.html)）。一个或多个函数可以打包到 SQL 客户端的 JAR 依赖中。
 
-为提供 Python 的自定义函数，你需要编写 Python 函数并且用装饰器 `pyflink.table.udf.udf` 或 `pyflink.table.udf.udtf` 来装饰（见 [Python UDFs]({% link dev/python/table-api-users-guide/udfs/python_udfs.zh.md %}))）。Python 文件中可以放置一个或多个函数。其Python 文件和相关依赖需要通过在环境配置文件中或命令行选项（见 [命令行用法]({{ site.baseurl }}/zh/ops/cli.html#usage)）配置中特别指定（见 [Python 配置]({% link dev/python/python_config.zh.md %})）。
+为提供 Python 的自定义函数，你需要编写 Python 函数并且用装饰器 `pyflink.table.udf.udf` 或 `pyflink.table.udf.udtf` 来装饰（见 [Python UDFs]({% link dev/python/table-api-users-guide/udfs/python_udfs.zh.md %}))）。Python 文件中可以放置一个或多个函数。其Python 文件和相关依赖需要通过在环境配置文件中或命令行选项（见 [命令行用法]({{ site.baseurl }}/zh/deployment/cli.html#usage)）配置中特别指定（见 [Python 配置]({% link dev/python/python_config.zh.md %})）。
 
 所有函数在被调用之前，必须在环境配置文件中提前声明。`functions` 列表中每个函数类都必须指定
 

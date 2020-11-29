@@ -166,7 +166,7 @@ A SELECT statement or a VALUES statement can be executed to collect the content 
 `TableResult.collect()` method returns a closeable row iterator. The select job will not be finished unless all result data has been collected. We should actively close the job to avoid resource leak through the `CloseableIterator#close()` method. 
 We can also print the select result to client console through the `TableResult.print()` method. The result data in `TableResult` can be accessed only once. Thus, `collect()` and `print()` must not be called after each other.
 
-`TableResult.collect()` and `TableResult.print()` have slightly different behaviors under different checkpointing settings (to enable checkpointing for a streaming job, see <a href="{{ site.baseurl }}/ops/config.html#checkpointing">checkpointing config</a>).
+`TableResult.collect()` and `TableResult.print()` have slightly different behaviors under different checkpointing settings (to enable checkpointing for a streaming job, see <a href="{{ site.baseurl }}/deployment/config.html#checkpointing">checkpointing config</a>).
 * For batch jobs or streaming jobs without checkpointing, `TableResult.collect()` and `TableResult.print()` have neither exactly-once nor at-least-once guarantee. Query results are immediately accessible by the clients once they're produced, but exceptions will be thrown when the job fails and restarts.
 * For streaming jobs with exactly-once checkpointing, `TableResult.collect()` and `TableResult.print()` guarantee an end-to-end exactly-once record delivery. A result will be accessible by clients only after its corresponding checkpoint completes.
 * For streaming jobs with at-least-once checkpointing, `TableResult.collect()` and `TableResult.print()` guarantee an end-to-end at-least-once record delivery. Query results are immediately accessible by the clients once they're produced, but it is possible for the same result to be delivered multiple times.
@@ -178,7 +178,7 @@ A SELECT statement or a VALUES statement can be executed to collect the content 
 `TableResult.collect()` method returns a closeable row iterator. The select job will not be finished unless all result data has been collected. We should actively close the job to avoid resource leak through the `CloseableIterator#close()` method. 
 We can also print the select result to client console through the `TableResult.print()` method. The result data in `TableResult` can be accessed only once. Thus, `collect()` and `print()` must not be called after each other.
 
-`TableResult.collect()` and `TableResult.print()` have slightly different behaviors under different checkpointing settings (to enable checkpointing for a streaming job, see <a href="{{ site.baseurl }}/ops/config.html#checkpointing">checkpointing config</a>).
+`TableResult.collect()` and `TableResult.print()` have slightly different behaviors under different checkpointing settings (to enable checkpointing for a streaming job, see <a href="{{ site.baseurl }}/deployment/config.html#checkpointing">checkpointing config</a>).
 * For batch jobs or streaming jobs without checkpointing, `TableResult.collect()` and `TableResult.print()` have neither exactly-once nor at-least-once guarantee. Query results are immediately accessible by the clients once they're produced, but exceptions will be thrown when the job fails and restarts.
 * For streaming jobs with exactly-once checkpointing, `TableResult.collect()` and `TableResult.print()` guarantee an end-to-end exactly-once record delivery. A result will be accessible by clients only after its corresponding checkpoint completes.
 * For streaming jobs with at-least-once checkpointing, `TableResult.collect()` and `TableResult.print()` guarantee an end-to-end at-least-once record delivery. Query results are immediately accessible by the clients once they're produced, but it is possible for the same result to be delivered multiple times.
@@ -1100,7 +1100,7 @@ WHERE rownum = 1
 
 - `ROW_NUMBER()`: Assigns an unique, sequential number to each row, starting with one.
 - `PARTITION BY col1[, col2...]`: Specifies the partition columns, i.e. the deduplicate key.
-- `ORDER BY time_attr [asc|desc]`: Specifies the ordering column, it must be a [time attribute]({{ site.baseurl }}/dev/table/streaming/time_attributes.html). Currently only support [proctime attribute]({{ site.baseurl }}/dev/table/streaming/time_attributes.html#processing-time). [Rowtime atttribute]({{ site.baseurl }}/dev/table/streaming/time_attributes.html#event-time) will be supported in the future. Ordering by ASC means keeping the first row, ordering by DESC means keeping the last row.
+- `ORDER BY time_attr [asc|desc]`: Specifies the ordering column, it must be a [time attribute]({% link dev/table/streaming/time_attributes.md %}). Currently Flink supports [processing time attribute]({% link dev/table/streaming/time_attributes.md %}#processing-time) and [event time atttribute]({% link dev/table/streaming/time_attributes.md %}#event-time). Ordering by ASC means keeping the first row, ordering by DESC means keeping the last row.
 - `WHERE rownum = 1`: The `rownum = 1` is required for Flink to recognize this query is deduplication.
 
 The following examples show how to specify SQL queries with Deduplication on streaming tables.
@@ -1154,6 +1154,9 @@ val result1 = tableEnv.sqlQuery(
 </div>
 
 {% top %}
+
+Deduplication can keep the time attribute of input stream, this is very helpful when the downstream operation is window aggregation or join operation.
+Both processing-time deduplication and event-time deduplication support working on mini-batch mode, this is more performance friendly, please see also [mini-batch configuration]({% link dev/table/config.md %}#table-exec-mini-batch-enabled) for how to enable mini-batch mode..
 
 ### Group Windows
 

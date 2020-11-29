@@ -169,7 +169,7 @@ After the initial startup you should mainly see log messages for every checkpoin
 
 ### Flink CLI
 
-The [Flink CLI]({% link ops/cli.md %}) can be used from within the client container. For
+The [Flink CLI]({% link deployment/cli.md %}) can be used from within the client container. For
 example, to print the `help` message of the Flink CLI you can run
 {% highlight bash%}
 docker-compose run --no-deps client flink --help
@@ -177,7 +177,7 @@ docker-compose run --no-deps client flink --help
 
 ### Flink REST API
 
-The [Flink REST API]({% link monitoring/rest_api.md %}#api) is exposed via
+The [Flink REST API]({% link ops/rest_api.md %}#api) is exposed via
 `localhost:8081` on the host or via `jobmanager:8081` from the client container, e.g. to list all
 currently running jobs, you can run:
 {% highlight bash%}
@@ -530,7 +530,7 @@ rescaling: all windows are present with a count of exactly one thousand.
 
 ### Querying the Metrics of a Job
 
-The JobManager exposes system and user [metrics]({% link monitoring/metrics.md %})
+The JobManager exposes system and user [metrics]({% link ops/metrics.md %})
 via its REST API.
 
 The endpoint depends on the scope of these metrics. Metrics scoped to a Job can be listed via 
@@ -780,7 +780,7 @@ curl localhost:8081/jobs/<jod-id>
 }
 {% endhighlight %}
 
-Please consult the [REST API reference]({% link monitoring/rest_api.md %}#api)
+Please consult the [REST API reference]({% link ops/rest_api.md %}#api)
 for a complete list of possible queries including how to query metrics of different scopes (e.g. 
 TaskManager metrics);
 
@@ -808,7 +808,7 @@ command of the *client* container in `docker-compose.yaml`.
 
 * `--backpressure` adds an additional operator into the middle of the job that causes severe backpressure 
 during even-numbered minutes (e.g., during 10:12, but not during 10:13). This can be observed by 
-inspecting various [network metrics]({% link monitoring/metrics.md %}#default-shuffle-service) 
+inspecting various [network metrics]({% link ops/metrics.md %}#default-shuffle-service) 
 such as `outputQueueLength` and `outPoolUsage`, and/or by using the 
-[backpressure monitoring]({% link monitoring/back_pressure.md %}#monitoring-back-pressure) 
+[backpressure monitoring]({% link ops/monitoring/back_pressure.md %}#monitoring-back-pressure) 
 available in the WebUI.
