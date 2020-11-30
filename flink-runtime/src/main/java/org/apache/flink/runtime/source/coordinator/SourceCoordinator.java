@@ -183,6 +183,11 @@ public class SourceCoordinator<SplitT extends SourceSplit, EnumChkT> implements 
 	}
 
 	@Override
+	public void subtaskReset(int subtask, long checkpointId) {
+		// TODO - move the split reset logic here
+	}
+
+	@Override
 	public void checkpointCoordinator(long checkpointId, CompletableFuture<byte[]> result) {
 		runInEventLoop(
 			() -> {
@@ -223,7 +228,10 @@ public class SourceCoordinator<SplitT extends SourceSplit, EnumChkT> implements 
 	}
 
 	@Override
-	public void resetToCheckpoint(@Nullable byte[] checkpointData) throws Exception {
+	public void resetToCheckpoint(
+			final long checkpointId,
+			@Nullable final byte[] checkpointData) throws Exception {
+
 		checkState(!started, "The coordinator can only be reset if it was not yet started");
 		assert enumerator == null;
 
