@@ -27,8 +27,6 @@ under the License.
 
 Flink's [Table API]({% link dev/table/tableApi.md %}) and [SQL support]({% link dev/table/sql/index.md %}) are unified APIs for batch and stream processing.
 This means that Table API and SQL queries have the same semantics regardless whether their input is bounded batch input or unbounded stream input.
-Because the relational algebra and SQL were originally designed for batch processing,
-relational queries on unbounded streaming input are not as well understood as relational queries on bounded batch input.
 
 The following pages explain concepts, practical limitations, and stream-specific configuration parameters of Flink's relational APIs on streaming data.
 
@@ -37,8 +35,8 @@ Where to go next?
 
 * [Dynamic Tables]({% link dev/table/streaming/dynamic_tables.md %}): Describes the concept of dynamic tables.
 * [Time attributes]({% link dev/table/streaming/time_attributes.md %}): Explains time attributes and how time attributes are handled in Table API & SQL.
+* [Versioned Tables]({% link dev/table/streaming/versioned_tables.md %}): Describes the Temporal Table concept.
 * [Joins in Continuous Queries]({% link dev/table/streaming/joins.md %}): Different supported types of Joins in Continuous Queries.
-* [Temporal Tables]({% link dev/table/streaming/temporal_tables.md %}): Describes the Temporal Table concept.
 * [Query configuration]({% link dev/table/streaming/query_configuration.md %}): Lists Table API & SQL specific configuration options.
 
 {% top %}
