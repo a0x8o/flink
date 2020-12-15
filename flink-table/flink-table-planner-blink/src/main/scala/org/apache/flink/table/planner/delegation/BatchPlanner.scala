@@ -26,11 +26,12 @@ import org.apache.flink.table.delegation.Executor
 import org.apache.flink.table.operations.{CatalogSinkModifyOperation, ModifyOperation, Operation, QueryOperation}
 import org.apache.flink.table.planner.operations.PlannerQueryOperation
 import org.apache.flink.table.planner.plan.`trait`.FlinkRelDistributionTraitDef
-import org.apache.flink.table.planner.plan.nodes.exec.{LegacyBatchExecNode, ExecNode}
-import org.apache.flink.table.planner.plan.nodes.process.{DAGProcessContext, DAGProcessor}
+import org.apache.flink.table.planner.plan.nodes.exec.batch.BatchExecNode
+import org.apache.flink.table.planner.plan.nodes.exec.processor.{DAGProcessContext, DAGProcessor, DeadlockBreakupProcessor, MultipleInputNodeCreationProcessor}
+import org.apache.flink.table.planner.plan.nodes.exec.utils.ExecNodePlanDumper
+import org.apache.flink.table.planner.plan.nodes.exec.{ExecNode, LegacyBatchExecNode}
 import org.apache.flink.table.planner.plan.optimize.{BatchCommonSubGraphBasedOptimizer, Optimizer}
-import org.apache.flink.table.planner.plan.processors.{DeadlockBreakupProcessor, MultipleInputNodeCreationProcessor}
-import org.apache.flink.table.planner.plan.utils.{ExecNodePlanDumper, FlinkRelOptUtil}
+import org.apache.flink.table.planner.plan.utils.FlinkRelOptUtil
 import org.apache.flink.table.planner.sinks.{BatchSelectTableSink, SelectTableSinkBase}
 import org.apache.flink.table.planner.utils.{DummyStreamExecutionEnvironment, ExecutorUtils}
 
@@ -83,7 +84,8 @@ class BatchPlanner(
     planner.overrideEnvParallelism()
 
     execNodes.map {
-      case node: LegacyBatchExecNode[_] => node.translateToPlan(planner)
+      case legacyNode: LegacyBatchExecNode[_] => legacyNode.translateToPlan(planner)
+      case node: BatchExecNode[_] => node.translateToPlan(planner)
       case _ =>
         throw new TableException("Cannot generate BoundedStream due to an invalid logical plan. " +
             "This is a bug and should not happen. Please file an issue.")

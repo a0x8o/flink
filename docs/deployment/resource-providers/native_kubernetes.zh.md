@@ -74,7 +74,7 @@ Congratulations! You have successfully run a Flink application by deploying Flin
 
 {% top %}
 
-## Deployment Modes Supported by Flink on Kubernetes
+## Deployment Modes
 
 For production use, we recommend deploying Flink Applications in the [Application Mode]({% link deployment/index.zh.md %}#application-mode), as these modes provide a better isolation for the Applications.
 
@@ -121,7 +121,7 @@ You can override configurations set in `conf/flink-conf.yaml` by passing key-val
 
 ### Per-Job Cluster Mode
 
-Flink on Mesos does not support Per-Job Cluster Mode.
+Flink on Kubernetes does not support Per-Job Cluster Mode.
 
 ### Session Mode
 
