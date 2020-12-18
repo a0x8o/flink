@@ -45,7 +45,7 @@ public class ExecGraphGenerator {
 	private final Map<FlinkPhysicalRel, ExecNode<?>> visitedRels;
 
 	public ExecGraphGenerator() {
-		visitedRels = new IdentityHashMap<>();
+		this.visitedRels = new IdentityHashMap<>();
 	}
 
 	public List<ExecNode<?>> generate(List<FlinkPhysicalRel> relNodes) {
@@ -71,16 +71,16 @@ public class ExecGraphGenerator {
 			inputNodes.add(generate((FlinkPhysicalRel) input));
 		}
 
+		execNode = rel.translateToExecNode();
 		if (rel instanceof LegacyExecNodeBase) {
-			LegacyExecNodeBase<?, ?> baseNode = (LegacyExecNodeBase<?, ?>) rel;
-			baseNode.setInputNodes(inputNodes);
-			execNode = baseNode;
+			((LegacyExecNodeBase<?, ?>) execNode).setInputNodes(inputNodes);
 		} else {
-			throw new TableException(rel.getClass().getSimpleName() + " can't be converted to ExecNode." +
-					"This is a bug and should not happen. Please file an issue.");
+			// connects the input/output nodes
+			((ExecNodeBase<?, ?>) execNode).setInputNodes(inputNodes);
 		}
 
 		visitedRels.put(rel, execNode);
 		return execNode;
 	}
+
 }

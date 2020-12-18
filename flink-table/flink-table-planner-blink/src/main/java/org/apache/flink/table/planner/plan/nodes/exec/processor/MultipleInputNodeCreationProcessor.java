@@ -27,6 +27,7 @@ import org.apache.flink.table.planner.plan.nodes.common.CommonPhysicalTableSourc
 import org.apache.flink.table.planner.plan.nodes.exec.ExecEdge;
 import org.apache.flink.table.planner.plan.nodes.exec.ExecNode;
 import org.apache.flink.table.planner.plan.nodes.exec.batch.BatchExecMultipleInput;
+import org.apache.flink.table.planner.plan.nodes.exec.common.CommonExecExchange;
 import org.apache.flink.table.planner.plan.nodes.exec.processor.utils.InputOrderCalculator;
 import org.apache.flink.table.planner.plan.nodes.exec.processor.utils.InputPriorityConflictResolver;
 import org.apache.flink.table.planner.plan.nodes.exec.stream.StreamExecMultipleInput;
@@ -36,8 +37,6 @@ import org.apache.flink.table.planner.plan.nodes.physical.batch.BatchExecBounded
 import org.apache.flink.table.planner.plan.nodes.physical.stream.StreamExecDataStreamScan;
 import org.apache.flink.util.Preconditions;
 
-import org.apache.calcite.rel.RelDistribution;
-import org.apache.calcite.rel.core.Exchange;
 import org.apache.calcite.rel.core.Union;
 
 import java.util.ArrayList;
@@ -48,6 +47,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Queue;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * A {@link DAGProcessor} which organize {@link ExecNode}s into multiple input nodes.
@@ -75,7 +75,8 @@ public class MultipleInputNodeCreationProcessor implements DAGProcessor {
 			InputPriorityConflictResolver resolver = new InputPriorityConflictResolver(
 				roots,
 				ExecEdge.DamBehavior.BLOCKING,
-				ShuffleMode.PIPELINED);
+				ShuffleMode.PIPELINED,
+				context.getPlanner().getTableConfig().getConfiguration());
 			resolver.detectAndResolve();
 		}
 
@@ -172,7 +173,7 @@ public class MultipleInputNodeCreationProcessor implements DAGProcessor {
 			// sources cannot be a member of multiple input node
 			return false;
 		}
-		if (wrapper.execNode instanceof Exchange) {
+		if (wrapper.execNode instanceof CommonExecExchange) {
 			// exchange cannot be a member of multiple input node
 			return false;
 		}
@@ -248,7 +249,7 @@ public class MultipleInputNodeCreationProcessor implements DAGProcessor {
 				// directly shuffling large amount of records from the source without filtering
 				// by the calc
 				ExecNode<?> input = wrapper.inputs.get(0).execNode;
-				shouldRemove = !(input instanceof Exchange) && !isChainableSource(input, context);
+				shouldRemove = !(input instanceof CommonExecExchange) && !isChainableSource(input, context);
 			}
 
 			// optimization 3. for singleton operations (for example singleton global agg)
@@ -257,8 +258,8 @@ public class MultipleInputNodeCreationProcessor implements DAGProcessor {
 			// continuous singleton operations connected by forwarding shuffle will be dealt
 			// together with optimization 3
 			shouldRemove |= wrapper.inputs.stream().anyMatch(inputWrapper ->
-				inputWrapper.execNode instanceof Exchange &&
-					((Exchange) inputWrapper.execNode).distribution.getType() == RelDistribution.Type.SINGLETON);
+				inputWrapper.execNode instanceof CommonExecExchange &&
+					(inputWrapper.execNode).getInputEdges().get(0).getRequiredShuffle().getType() == ExecEdge.ShuffleType.SINGLETON);
 
 			if (shouldRemove) {
 				wrapper.group.removeMember(wrapper);
@@ -478,10 +479,12 @@ public class MultipleInputNodeCreationProcessor implements DAGProcessor {
 		}
 
 		String description = ExecNodeUtil.getMultipleInputDescription(rootNode, inputNodes, new ArrayList<>());
-		return new StreamExecMultipleInput(
-				inputNodes,
+		StreamExecMultipleInput multipleInput = new StreamExecMultipleInput(
+				inputNodes.stream().map(i -> ExecEdge.DEFAULT).collect(Collectors.toList()),
 				rootNode,
 				description);
+		multipleInput.setInputNodes(inputNodes);
+		return multipleInput;
 	}
 
 	private BatchExecMultipleInput createBatchMultipleInputNode(
@@ -514,11 +517,12 @@ public class MultipleInputNodeCreationProcessor implements DAGProcessor {
 		}
 
 		String description = ExecNodeUtil.getMultipleInputDescription(rootNode, inputNodes, inputEdges);
-		return new BatchExecMultipleInput(
-				inputNodes,
+		BatchExecMultipleInput multipleInput = new BatchExecMultipleInput(
 				inputEdges,
 				rootNode,
 				description);
+		multipleInput.setInputNodes(inputNodes);
+		return multipleInput;
 	}
 
 	// --------------------------------------------------------------------------------
