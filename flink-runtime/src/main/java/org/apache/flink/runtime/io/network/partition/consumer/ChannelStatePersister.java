@@ -21,6 +21,7 @@ import org.apache.flink.runtime.checkpoint.channel.ChannelStateWriter;
 import org.apache.flink.runtime.checkpoint.channel.InputChannelInfo;
 import org.apache.flink.runtime.event.AbstractEvent;
 import org.apache.flink.runtime.io.network.api.CheckpointBarrier;
+import org.apache.flink.runtime.io.network.api.EventAnnouncement;
 import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.util.CloseableIterator;
@@ -47,9 +48,7 @@ final class ChannelStatePersister {
 
 	private long lastSeenBarrier = -1L;
 
-	/**
-	 * Writer must be initialized before usage. {@link #startPersisting(long, List)} enforces this invariant.
-	 */
+	/** Writer must be initialized before usage. {@link #startPersisting(long, List)} enforces this invariant. */
 	private final ChannelStateWriter channelStateWriter;
 
 	ChannelStatePersister(ChannelStateWriter channelStateWriter, InputChannelInfo channelInfo) {
@@ -89,12 +88,18 @@ final class ChannelStatePersister {
 	}
 
 	protected Optional<Long> checkForBarrier(Buffer buffer) throws IOException {
-		final AbstractEvent priorityEvent = parsePriorityEvent(buffer);
-		if (priorityEvent instanceof CheckpointBarrier) {
-			if (((CheckpointBarrier) priorityEvent).getId() >= lastSeenBarrier) {
+		final AbstractEvent event = parseEvent(buffer);
+		if (event instanceof CheckpointBarrier) {
+			if (((CheckpointBarrier) event).getId() >= lastSeenBarrier) {
 				checkpointStatus = CheckpointStatus.BARRIER_RECEIVED;
-				lastSeenBarrier = ((CheckpointBarrier) priorityEvent).getId();
+				lastSeenBarrier = ((CheckpointBarrier) event).getId();
 				return Optional.of(lastSeenBarrier);
+			}
+		}
+		if (event instanceof EventAnnouncement) { // NOTE: only remote channels
+			EventAnnouncement announcement = (EventAnnouncement) event;
+			if (announcement.getAnnouncedEvent() instanceof CheckpointBarrier) {
+				return Optional.of(((CheckpointBarrier) announcement.getAnnouncedEvent()).getId());
 			}
 		}
 		return Optional.empty();
@@ -105,16 +110,16 @@ final class ChannelStatePersister {
 	 * returns null in all other cases.
 	 */
 	@Nullable
-	protected AbstractEvent parsePriorityEvent(Buffer buffer) throws IOException {
-		if (buffer.isBuffer() || !buffer.getDataType().hasPriority()) {
+	protected AbstractEvent parseEvent(Buffer buffer) throws IOException {
+		if (buffer.isBuffer()) {
 			return null;
+		} else {
+			AbstractEvent event = EventSerializer.fromBuffer(buffer, getClass().getClassLoader());
+			// reset the buffer because it would be deserialized again in SingleInputGate while getting next buffer.
+			// we can further improve to avoid double deserialization in the future.
+			buffer.setReaderIndex(0);
+			return event;
 		}
-
-		AbstractEvent event = EventSerializer.fromBuffer(buffer, getClass().getClassLoader());
-		// reset the buffer because it would be deserialized again in SingleInputGate while getting next buffer.
-		// we can further improve to avoid double deserialization in the future.
-		buffer.setReaderIndex(0);
-		return event;
 	}
 
 	protected boolean hasBarrierReceived() {

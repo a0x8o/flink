@@ -24,8 +24,10 @@ import org.apache.flink.runtime.checkpoint.channel.InputChannelInfo;
 import org.apache.flink.runtime.io.network.api.CheckpointBarrier;
 import org.apache.flink.runtime.io.network.partition.consumer.CheckpointableInput;
 import org.apache.flink.streaming.runtime.tasks.SubtaskCheckpointCoordinator;
+import org.apache.flink.util.Preconditions;
 
 import java.io.IOException;
+import java.util.Optional;
 
 /**
  * Controller for unaligned checkpoints.
@@ -44,22 +46,40 @@ public class UnalignedController implements CheckpointBarrierBehaviourController
 	}
 
 	@Override
-	public void barrierReceived(InputChannelInfo channelInfo, CheckpointBarrier barrier) {
+	public void preProcessFirstBarrierOrAnnouncement(CheckpointBarrier barrier) {
 	}
 
 	@Override
-	public boolean preProcessFirstBarrier(InputChannelInfo channelInfo, CheckpointBarrier barrier) throws IOException, CheckpointException {
+	public void barrierAnnouncement(
+			InputChannelInfo channelInfo,
+			CheckpointBarrier announcedBarrier,
+			int sequenceNumber) throws IOException {
+		Preconditions.checkState(announcedBarrier.isCheckpoint());
+		inputs[channelInfo.getGateIdx()].convertToPriorityEvent(
+			channelInfo.getInputChannelIdx(),
+			sequenceNumber);
+	}
+
+	@Override
+	public Optional<CheckpointBarrier> barrierReceived(InputChannelInfo channelInfo, CheckpointBarrier barrier) {
+		return Optional.empty();
+	}
+
+	@Override
+	public Optional<CheckpointBarrier> preProcessFirstBarrier(InputChannelInfo channelInfo, CheckpointBarrier barrier) throws IOException, CheckpointException {
+		Preconditions.checkArgument(barrier.getCheckpointOptions().isUnalignedCheckpoint(), "Aligned barrier not expected");
 		checkpointCoordinator.initCheckpoint(barrier.getId(), barrier.getCheckpointOptions());
 		for (final CheckpointableInput input : inputs) {
 			input.checkpointStarted(barrier);
 		}
-		return true;
+		return Optional.of(barrier);
 	}
 
 	@Override
-	public boolean postProcessLastBarrier(InputChannelInfo channelInfo, CheckpointBarrier barrier) {
+	public Optional<CheckpointBarrier> postProcessLastBarrier(InputChannelInfo channelInfo, CheckpointBarrier barrier) {
+		// note that barrier can be aligned if checkpoint timed out in between; event is not converted
 		resetPendingCheckpoint(barrier.getId());
-		return false;
+		return Optional.empty();
 	}
 
 	private void resetPendingCheckpoint(long cancelledId) {

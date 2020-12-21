@@ -31,6 +31,7 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -45,7 +46,8 @@ public class ValidatingCheckpointHandler extends AbstractInvokable {
 	protected long abortedCheckpointCounter = 0;
 	protected CompletableFuture<Long> lastAlignmentDurationNanos;
 	protected CompletableFuture<Long> lastBytesProcessedDuringAlignment;
-	protected List<Long> triggeredCheckpoints = new ArrayList<>();
+	protected final List<Long> triggeredCheckpoints = new ArrayList<>();
+	protected final List<CheckpointOptions> triggeredCheckpointOptions = new ArrayList<>();
 
 	public ValidatingCheckpointHandler() {
 		this(-1);
@@ -88,6 +90,10 @@ public class ValidatingCheckpointHandler extends AbstractInvokable {
 		return lastBytesProcessedDuringAlignment;
 	}
 
+	public List<CheckpointOptions> getTriggeredCheckpointOptions() {
+		return triggeredCheckpointOptions;
+	}
+
 	@Override
 	public void invoke() {
 		throw new UnsupportedOperationException();
@@ -106,8 +112,9 @@ public class ValidatingCheckpointHandler extends AbstractInvokable {
 			CheckpointMetaData checkpointMetaData,
 			CheckpointOptions checkpointOptions,
 			CheckpointMetricsBuilder checkpointMetrics) {
-		assertTrue("wrong checkpoint id", nextExpectedCheckpointId == -1L ||
-			nextExpectedCheckpointId == checkpointMetaData.getCheckpointId());
+		if (nextExpectedCheckpointId != -1L) {
+			assertEquals(nextExpectedCheckpointId, checkpointMetaData.getCheckpointId());
+		}
 		assertTrue(checkpointMetaData.getTimestamp() > 0);
 
 		nextExpectedCheckpointId = checkpointMetaData.getCheckpointId() + 1;
@@ -117,6 +124,7 @@ public class ValidatingCheckpointHandler extends AbstractInvokable {
 		lastBytesProcessedDuringAlignment = checkpointMetrics.getBytesProcessedDuringAlignment();
 
 		triggeredCheckpoints.add(checkpointMetaData.getCheckpointId());
+		triggeredCheckpointOptions.add(checkpointOptions);
 	}
 
 	@Override

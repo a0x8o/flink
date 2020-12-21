@@ -19,7 +19,6 @@
 package org.apache.flink.runtime.io.network.partition.consumer;
 
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
-import org.apache.flink.runtime.checkpoint.CheckpointType;
 import org.apache.flink.runtime.checkpoint.channel.RecordingChannelStateWriter;
 import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.execution.CancelTaskException;
@@ -29,8 +28,10 @@ import org.apache.flink.runtime.io.network.api.CheckpointBarrier;
 import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferBuilderTestUtils;
+import org.apache.flink.runtime.io.network.buffer.BufferConsumer;
 import org.apache.flink.runtime.io.network.buffer.BufferPool;
 import org.apache.flink.runtime.io.network.buffer.BufferProvider;
+import org.apache.flink.runtime.io.network.buffer.FreeingBufferRecycler;
 import org.apache.flink.runtime.io.network.buffer.NetworkBufferPool;
 import org.apache.flink.runtime.io.network.partition.BufferAvailabilityListener;
 import org.apache.flink.runtime.io.network.partition.BufferWritingResultPartition;
@@ -54,6 +55,7 @@ import org.apache.flink.util.function.CheckedSupplier;
 import org.apache.flink.shaded.guava18.com.google.common.collect.Lists;
 
 import org.hamcrest.Matchers;
+import org.junit.Assert;
 import org.junit.Test;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
@@ -73,6 +75,7 @@ import static org.apache.flink.runtime.io.network.partition.InputChannelTestUtil
 import static org.apache.flink.runtime.io.network.partition.InputChannelTestUtils.createSingleInputGate;
 import static org.apache.flink.runtime.io.network.partition.InputGateFairnessTest.setupInputGate;
 import static org.apache.flink.runtime.io.network.partition.consumer.SingleInputGateTest.TestingResultPartitionManager;
+import static org.apache.flink.runtime.state.CheckpointStorageLocationReference.getDefault;
 import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertFalse;
@@ -93,6 +96,30 @@ import static org.mockito.Mockito.when;
  * Tests for the {@link LocalInputChannel}.
  */
 public class LocalInputChannelTest {
+
+	@Test
+	public void testNoDataPersistedAfterReceivingAlignedBarrier() throws Exception {
+		CheckpointBarrier barrier = new CheckpointBarrier(1L, 0L, CheckpointOptions.alignedWithTimeout(getDefault(), 123L));
+		BufferConsumer barrierHolder = new BufferConsumer(EventSerializer.toBuffer(barrier, false).getMemorySegment(), FreeingBufferRecycler.INSTANCE, Buffer.DataType.EVENT_BUFFER);
+		BufferConsumer data = BufferBuilderTestUtils.createFilledFinishedBufferConsumer(1);
+
+		RecordingChannelStateWriter stateWriter = new RecordingChannelStateWriter();
+		LocalInputChannel channel = InputChannelBuilder
+			.newBuilder()
+			.setPartitionManager(new TestingResultPartitionManager(createResultSubpartitionView(barrierHolder, data)))
+			.setStateWriter(stateWriter)
+			.buildLocalChannel(new SingleInputGateBuilder().build());
+		channel.requestSubpartition(0);
+
+		// pull AC barrier
+		channel.getNextBuffer();
+		// pretend that alignment timed out
+		stateWriter.start(barrier.getId(), barrier.getCheckpointOptions());
+		channel.checkpointStarted(barrier);
+		// pull data
+		channel.getNextBuffer();
+		Assert.assertTrue("no data should be persisted after receiving a barrier", stateWriter.getAddedInput().isEmpty());
+	}
 
 	/**
 	 * Tests the consumption of multiple subpartitions via local input channels.
@@ -472,8 +499,8 @@ public class LocalInputChannelTest {
 		inputGate.setInputChannels(channel);
 		channel.requestSubpartition(0);
 
-		final CheckpointStorageLocationReference location = CheckpointStorageLocationReference.getDefault();
-		CheckpointOptions options = new CheckpointOptions(CheckpointType.CHECKPOINT, location, true, true, 0);
+		final CheckpointStorageLocationReference location = getDefault();
+		CheckpointOptions options = CheckpointOptions.unaligned(location);
 		stateWriter.start(0, options);
 
 		final CheckpointBarrier barrier = new CheckpointBarrier(0, 123L, options);
@@ -497,6 +524,10 @@ public class LocalInputChannelTest {
 	// ---------------------------------------------------------------------------------------------
 
 	private static ResultSubpartitionView createResultSubpartitionView(boolean addBuffer) throws IOException {
+		return addBuffer ? createResultSubpartitionView(BufferBuilderTestUtils.createFilledFinishedBufferConsumer(4096)) : createResultSubpartitionView();
+	}
+
+	private static ResultSubpartitionView createResultSubpartitionView(BufferConsumer... buffers) throws IOException {
 		int bufferSize = 4096;
 		PipelinedResultPartition parent = (PipelinedResultPartition) PartitionTestUtils.createPartition(
 			ResultPartitionType.PIPELINED,
@@ -504,8 +535,8 @@ public class LocalInputChannelTest {
 			true,
 			bufferSize);
 		ResultSubpartition subpartition = parent.getAllPartitions()[0];
-		if (addBuffer) {
-			subpartition.add(BufferBuilderTestUtils.createFilledFinishedBufferConsumer(bufferSize));
+		for (BufferConsumer buffer : buffers) {
+			subpartition.add(buffer);
 		}
 		return subpartition.createReadView(() -> {});
 	}

@@ -451,11 +451,20 @@ public class RemoteInputChannel extends InputChannel {
 				}
 				else {
 					receivedBuffers.add(sequenceBuffer);
-					channelStatePersister.maybePersist(buffer);
 					if (dataType.requiresAnnouncement()) {
 						firstPriorityEvent = addPriorityBuffer(announce(sequenceBuffer));
 					}
 				}
+				channelStatePersister
+					.checkForBarrier(sequenceBuffer.buffer)
+					.filter(id -> id > lastBarrierId)
+					.ifPresent(id -> {
+						// checkpoint was not yet started by task thread,
+						// so remember the numbers of buffers to spill for the time when it will be started
+						lastBarrierId = id;
+						lastBarrierSequenceNumber = sequenceBuffer.sequenceNumber;
+					});
+				channelStatePersister.maybePersist(buffer);
 				++expectedSequenceNumber;
 			}
 			recycleBuffer = false;
@@ -480,20 +489,14 @@ public class RemoteInputChannel extends InputChannel {
 	/**
 	 * @return {@code true} if this was first priority buffer added.
 	 */
-	private boolean addPriorityBuffer(SequenceBuffer sequenceBuffer) throws IOException {
+	private boolean addPriorityBuffer(SequenceBuffer sequenceBuffer) {
 		receivedBuffers.addPriorityElement(sequenceBuffer);
-		channelStatePersister
-			.checkForBarrier(sequenceBuffer.buffer)
-			.filter(id -> id > lastBarrierId)
-			.ifPresent(id -> {
-				lastBarrierId = id;
-				lastBarrierSequenceNumber = sequenceBuffer.sequenceNumber;
-			});
 		return receivedBuffers.getNumPriorityElements() == 1;
 	}
 
 	private SequenceBuffer announce(SequenceBuffer sequenceBuffer) throws IOException {
 		checkState(!sequenceBuffer.buffer.isBuffer(), "Only a CheckpointBarrier can be announced but found %s", sequenceBuffer.buffer);
+		checkAnnouncedOnlyOnce(sequenceBuffer);
 		AbstractEvent event = EventSerializer.fromBuffer(
 				sequenceBuffer.buffer,
 				getClass().getClassLoader());
@@ -502,6 +505,20 @@ public class RemoteInputChannel extends InputChannel {
 		return new SequenceBuffer(
 				EventSerializer.toBuffer(new EventAnnouncement(barrier, sequenceBuffer.sequenceNumber), true),
 				sequenceBuffer.sequenceNumber);
+	}
+
+	private void checkAnnouncedOnlyOnce(SequenceBuffer sequenceBuffer) {
+		Iterator<SequenceBuffer> iterator = receivedBuffers.iterator();
+		int count = 0;
+		while (iterator.hasNext()) {
+			if (iterator.next().sequenceNumber == sequenceBuffer.sequenceNumber) {
+				count++;
+			}
+		}
+		checkState(
+			count == 1,
+			"Before enqueuing the announcement there should be exactly single occurrence of the buffer, but found [%d]",
+			count);
 	}
 
 	/**
@@ -531,6 +548,40 @@ public class RemoteInputChannel extends InputChannel {
 		synchronized (receivedBuffers) {
 			return getInflightBuffersUnsafe(checkpointId);
 		}
+	}
+
+	@Override
+	public void convertToPriorityEvent(int sequenceNumber) throws IOException {
+		boolean firstPriorityEvent;
+		synchronized (receivedBuffers) {
+			checkState(channelStatePersister.hasBarrierReceived());
+			int numPriorityElementsBeforeRemoval = receivedBuffers.getNumPriorityElements();
+			SequenceBuffer toPrioritize = receivedBuffers.getAndRemove(
+				sequenceBuffer -> sequenceBuffer.sequenceNumber == sequenceNumber);
+			checkState(lastBarrierSequenceNumber == sequenceNumber);
+			checkState(!toPrioritize.buffer.isBuffer());
+			checkState(
+				numPriorityElementsBeforeRemoval == receivedBuffers.getNumPriorityElements(),
+				"Attempted to convertToPriorityEvent an event [%s] that has already been prioritized [%s]",
+				toPrioritize,
+				numPriorityElementsBeforeRemoval);
+			// set the priority flag (checked on poll)
+			// don't convert the barrier itself (barrier controller might not have been switched yet)
+			AbstractEvent e = EventSerializer.fromBuffer(toPrioritize.buffer, this.getClass().getClassLoader());
+			toPrioritize.buffer.setReaderIndex(0);
+			toPrioritize = new SequenceBuffer(EventSerializer.toBuffer(e, true), toPrioritize.sequenceNumber);
+			firstPriorityEvent = addPriorityBuffer(toPrioritize); 	// note that only position of the element is changed
+																	// converting the event itself would require switching the controller sooner
+		}
+		if (firstPriorityEvent) {
+			notifyPriorityEventForce(); // forcibly notify about the priority event
+										// instead of passing barrier SQN to be checked
+										// because this SQN might have be seen by the input gate during the announcement
+		}
+	}
+
+	private void notifyPriorityEventForce() {
+		inputGate.notifyPriorityEventForce(this);
 	}
 
 	/**
@@ -652,6 +703,15 @@ public class RemoteInputChannel extends InputChannel {
 		private SequenceBuffer(Buffer buffer, int sequenceNumber) {
 			this.buffer = buffer;
 			this.sequenceNumber = sequenceNumber;
+		}
+
+		@Override
+		public String toString() {
+			return String.format(
+				"SequenceBuffer(isEvent = %s, dataType = %s, sequenceNumber = %s)",
+				!buffer.isBuffer(),
+				buffer.getDataType(),
+				sequenceNumber);
 		}
 	}
 }

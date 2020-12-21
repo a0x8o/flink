@@ -147,7 +147,7 @@ public class JdbcLookupFunction extends TableFunction<Row> {
 			}
 		}
 
-		for (int retry = 1; retry <= maxRetryTimes; retry++) {
+		for (int retry = 0; retry <= maxRetryTimes; retry++) {
 			try {
 				statement.clearParameters();
 				for (int i = 0; i < keys.length; i++) {
@@ -205,6 +205,12 @@ public class JdbcLookupFunction extends TableFunction<Row> {
 	}
 
 	private void establishConnectionAndStatement() throws SQLException, ClassNotFoundException {
+		// Load DriverManager first to avoid deadlock between DriverManager's
+		// static initialization block and specific driver class's static
+		// initialization block.
+		//
+		// See comments in SimpleJdbcConnectionProvider for more details.
+		DriverManager.getDrivers();
 		Class.forName(drivername);
 		if (username == null) {
 			dbConn = DriverManager.getConnection(dbURL);

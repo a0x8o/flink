@@ -57,6 +57,7 @@ import java.util.Random;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+import static org.apache.flink.runtime.state.CheckpointStorageLocationReference.getDefault;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThat;
@@ -615,7 +616,7 @@ public class UnalignedControllerTest {
 			new CheckpointBarrier(
 				checkpointId,
 				timestamp,
-				CheckpointOptions.forCheckpointWithDefaultLocation()),
+				CheckpointOptions.unaligned(getDefault())),
 			new InputChannelInfo(0, channel));
 	}
 
@@ -729,7 +730,7 @@ public class UnalignedControllerTest {
 	}
 
 	private CheckpointBarrier buildCheckpointBarrier(long id) {
-		return new CheckpointBarrier(id, 0, CheckpointOptions.forCheckpointWithDefaultLocation());
+		return new CheckpointBarrier(id, 0, CheckpointOptions.unaligned(getDefault()));
 	}
 
 	// ------------------------------------------------------------------------
