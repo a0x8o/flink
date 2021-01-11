@@ -597,10 +597,6 @@ public class StreamingJobGraphGenerator {
             LOG.debug("Parallelism set: {} for {}", parallelism, streamNodeId);
         }
 
-        // TODO: inherit InputDependencyConstraint from the head operator
-        jobVertex.setInputDependencyConstraint(
-                streamGraph.getExecutionConfig().getDefaultInputDependencyConstraint());
-
         jobVertices.put(streamNodeId, jobVertex);
         builtVertices.add(streamNodeId);
         jobGraph.addVertex(jobVertex);
@@ -649,16 +645,23 @@ public class StreamingJobGraphGenerator {
                 // network input. null if we move to a new input, non-null if this is a further edge
                 // that is union-ed into the same input
                 if (inputConfigs[inputIndex] == null) {
+                    // PASS_THROUGH is a sensible default for streaming jobs. Only for BATCH
+                    // execution can we have sorted inputs
+                    StreamConfig.InputRequirement inputRequirement =
+                            vertex.getInputRequirements()
+                                    .getOrDefault(
+                                            inputIndex, StreamConfig.InputRequirement.PASS_THROUGH);
                     inputConfigs[inputIndex] =
                             new StreamConfig.NetworkInputConfig(
-                                    inputSerializers[inputIndex], inputGateCount++);
+                                    inputSerializers[inputIndex],
+                                    inputGateCount++,
+                                    inputRequirement);
                 }
             }
         }
         config.setInputs(inputConfigs);
 
         config.setTypeSerializerOut(vertex.getTypeSerializerOut());
-        config.setShouldSortInputs(vertex.getSortedInputs());
 
         // iterate edges, find sideOutput edges create and save serializers for each outputTag type
         for (StreamEdge edge : chainableOutputs) {

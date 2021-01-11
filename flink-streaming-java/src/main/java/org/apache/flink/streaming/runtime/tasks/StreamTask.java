@@ -46,7 +46,9 @@ import org.apache.flink.runtime.io.network.partition.ChannelStateHolder;
 import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
+import org.apache.flink.runtime.metrics.TimerGauge;
 import org.apache.flink.runtime.metrics.groups.OperatorMetricGroup;
+import org.apache.flink.runtime.metrics.groups.TaskIOMetricGroup;
 import org.apache.flink.runtime.operators.coordination.OperatorEvent;
 import org.apache.flink.runtime.plugable.SerializationDelegate;
 import org.apache.flink.runtime.state.CheckpointStorageWorkerView;
@@ -72,6 +74,7 @@ import org.apache.flink.streaming.runtime.partitioner.StreamPartitioner;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.runtime.streamstatus.StreamStatusMaintainer;
 import org.apache.flink.streaming.runtime.tasks.mailbox.MailboxDefaultAction;
+import org.apache.flink.streaming.runtime.tasks.mailbox.MailboxDefaultAction.Suspension;
 import org.apache.flink.streaming.runtime.tasks.mailbox.MailboxExecutorFactory;
 import org.apache.flink.streaming.runtime.tasks.mailbox.MailboxProcessor;
 import org.apache.flink.streaming.runtime.tasks.mailbox.TaskMailbox;
@@ -304,7 +307,6 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>> extends Ab
         this.recordWriter = createRecordWriterDelegate(configuration, environment);
         this.actionExecutor = Preconditions.checkNotNull(actionExecutor);
         this.mailboxProcessor = new MailboxProcessor(this::processInput, mailbox, actionExecutor);
-        this.mailboxProcessor.initMetric(environment.getMetricGroup());
         this.mainMailboxExecutor = mailboxProcessor.getMainMailboxExecutor();
         this.asyncExceptionHandler = new StreamTaskAsyncExceptionHandler(environment);
         this.asyncOperationsThreadPool =
@@ -341,6 +343,8 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>> extends Ab
                         new ExecutorThreadFactory("channel-state-unspilling"));
 
         injectChannelStateWriterIntoChannels();
+
+        environment.getMetricGroup().getIOMetricGroup().setEnableBusyTime(true);
     }
 
     private void injectChannelStateWriterIntoChannels() {
@@ -400,25 +404,20 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>> extends Ab
             controller.allActionsCompleted();
             return;
         }
-        CompletableFuture<?> jointFuture = getInputOutputJointFuture(status);
-        MailboxDefaultAction.Suspension suspendedDefaultAction = controller.suspendDefaultAction();
-        assertNoException(jointFuture.thenRun(suspendedDefaultAction::resume));
-    }
 
-    /**
-     * Considers three scenarios to combine input and output futures: 1. Both input and output are
-     * unavailable. 2. Only input is unavailable. 3. Only output is unavailable.
-     */
-    @VisibleForTesting
-    CompletableFuture<?> getInputOutputJointFuture(InputStatus status) {
-        if (status == InputStatus.NOTHING_AVAILABLE && !recordWriter.isAvailable()) {
-            return CompletableFuture.allOf(
-                    inputProcessor.getAvailableFuture(), recordWriter.getAvailableFuture());
-        } else if (status == InputStatus.NOTHING_AVAILABLE) {
-            return inputProcessor.getAvailableFuture();
+        TaskIOMetricGroup ioMetrics = getEnvironment().getMetricGroup().getIOMetricGroup();
+        TimerGauge timer;
+        CompletableFuture<?> resumeFuture;
+        if (!recordWriter.isAvailable()) {
+            timer = ioMetrics.getBackPressuredTimePerSecond();
+            resumeFuture = recordWriter.getAvailableFuture();
         } else {
-            return recordWriter.getAvailableFuture();
+            timer = ioMetrics.getIdleTimeMsPerSecond();
+            resumeFuture = inputProcessor.getAvailableFuture();
         }
+        assertNoException(
+                resumeFuture.thenRun(
+                        new ResumeWrapper(controller.suspendDefaultAction(timer), timer)));
     }
 
     private void resetSynchronousSavepointId() {
@@ -1320,5 +1319,22 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>> extends Ab
 
     protected long getAsyncCheckpointStartDelayNanos() {
         return latestAsyncCheckpointStartDelayNanos;
+    }
+
+    private static class ResumeWrapper implements Runnable {
+        private final Suspension suspendedDefaultAction;
+        private final TimerGauge timer;
+
+        public ResumeWrapper(Suspension suspendedDefaultAction, TimerGauge timer) {
+            this.suspendedDefaultAction = suspendedDefaultAction;
+            timer.markStart();
+            this.timer = timer;
+        }
+
+        @Override
+        public void run() {
+            timer.markEnd();
+            suspendedDefaultAction.resume();
+        }
     }
 }

@@ -33,9 +33,12 @@ import org.apache.flink.runtime.blob.BlobWriter;
 import org.apache.flink.runtime.checkpoint.CheckpointCoordinator;
 import org.apache.flink.runtime.checkpoint.CheckpointException;
 import org.apache.flink.runtime.checkpoint.CheckpointFailureReason;
+import org.apache.flink.runtime.checkpoint.CheckpointIDCounter;
 import org.apache.flink.runtime.checkpoint.CheckpointMetrics;
 import org.apache.flink.runtime.checkpoint.CheckpointRecoveryFactory;
+import org.apache.flink.runtime.checkpoint.CheckpointsCleaner;
 import org.apache.flink.runtime.checkpoint.CompletedCheckpoint;
+import org.apache.flink.runtime.checkpoint.CompletedCheckpointStore;
 import org.apache.flink.runtime.checkpoint.TaskStateSnapshot;
 import org.apache.flink.runtime.client.JobExecutionException;
 import org.apache.flink.runtime.concurrent.ComponentMainThreadExecutor;
@@ -67,7 +70,6 @@ import org.apache.flink.runtime.jobmanager.scheduler.CoLocationGroup;
 import org.apache.flink.runtime.jobmaster.ExecutionDeploymentTracker;
 import org.apache.flink.runtime.jobmaster.ExecutionDeploymentTrackerDeploymentListenerAdapter;
 import org.apache.flink.runtime.jobmaster.SerializedInputSplit;
-import org.apache.flink.runtime.jobmaster.slotpool.SlotProvider;
 import org.apache.flink.runtime.messages.FlinkJobNotFoundException;
 import org.apache.flink.runtime.messages.checkpoint.AcknowledgeCheckpoint;
 import org.apache.flink.runtime.messages.checkpoint.DeclineCheckpoint;
@@ -145,21 +147,23 @@ public abstract class SchedulerBase implements SchedulerNG {
 
     private final Configuration jobMasterConfiguration;
 
-    private final SlotProvider slotProvider;
-
     private final ScheduledExecutorService futureExecutor;
 
     private final ClassLoader userCodeLoader;
 
     private final CheckpointRecoveryFactory checkpointRecoveryFactory;
 
+    private final CompletedCheckpointStore completedCheckpointStore;
+
+    private final CheckpointsCleaner checkpointsCleaner;
+
+    private final CheckpointIDCounter checkpointIdCounter;
+
     private final Time rpcTimeout;
 
     private final BlobWriter blobWriter;
 
     private final JobManagerJobMetricGroup jobManagerJobMetricGroup;
-
-    private final Time slotRequestTimeout;
 
     protected final ExecutionVertexVersioner executionVertexVersioner;
 
@@ -176,14 +180,12 @@ public abstract class SchedulerBase implements SchedulerNG {
             final BackPressureStatsTracker backPressureStatsTracker,
             final Executor ioExecutor,
             final Configuration jobMasterConfiguration,
-            final SlotProvider slotProvider,
             final ScheduledExecutorService futureExecutor,
             final ClassLoader userCodeLoader,
             final CheckpointRecoveryFactory checkpointRecoveryFactory,
             final Time rpcTimeout,
             final BlobWriter blobWriter,
             final JobManagerJobMetricGroup jobManagerJobMetricGroup,
-            final Time slotRequestTimeout,
             final ShuffleMaster<?> shuffleMaster,
             final JobMasterPartitionTracker partitionTracker,
             final ExecutionVertexVersioner executionVertexVersioner,
@@ -196,7 +198,6 @@ public abstract class SchedulerBase implements SchedulerNG {
         this.backPressureStatsTracker = checkNotNull(backPressureStatsTracker);
         this.ioExecutor = checkNotNull(ioExecutor);
         this.jobMasterConfiguration = checkNotNull(jobMasterConfiguration);
-        this.slotProvider = checkNotNull(slotProvider);
         this.futureExecutor = checkNotNull(futureExecutor);
         this.userCodeLoader = checkNotNull(userCodeLoader);
         this.checkpointRecoveryFactory = checkNotNull(checkpointRecoveryFactory);
@@ -204,16 +205,32 @@ public abstract class SchedulerBase implements SchedulerNG {
 
         this.blobWriter = checkNotNull(blobWriter);
         this.jobManagerJobMetricGroup = checkNotNull(jobManagerJobMetricGroup);
-        this.slotRequestTimeout = checkNotNull(slotRequestTimeout);
         this.executionVertexVersioner = checkNotNull(executionVertexVersioner);
+
+        this.checkpointsCleaner = new CheckpointsCleaner();
+        this.completedCheckpointStore =
+                SchedulerUtils.createCompletedCheckpointStoreIfCheckpointingIsEnabled(
+                        jobGraph,
+                        jobMasterConfiguration,
+                        userCodeLoader,
+                        checkpointRecoveryFactory,
+                        log);
+        this.checkpointIdCounter =
+                SchedulerUtils.createCheckpointIDCounterIfCheckpointingIsEnabled(
+                        jobGraph, checkpointRecoveryFactory);
 
         this.executionGraph =
                 createAndRestoreExecutionGraph(
                         jobManagerJobMetricGroup,
+                        completedCheckpointStore,
+                        checkpointsCleaner,
+                        checkpointIdCounter,
                         checkNotNull(shuffleMaster),
                         checkNotNull(partitionTracker),
                         checkNotNull(executionDeploymentTracker),
                         initializationTimestamp);
+
+        registerShutDownCheckpointServicesOnExecutionGraphTermination(executionGraph);
 
         this.schedulingTopology = executionGraph.getSchedulingTopology();
 
@@ -226,8 +243,42 @@ public abstract class SchedulerBase implements SchedulerNG {
         this.coordinatorMap = createCoordinatorMap();
     }
 
+    private void registerShutDownCheckpointServicesOnExecutionGraphTermination(
+            ExecutionGraph executionGraph) {
+        FutureUtils.assertNoException(
+                executionGraph.getTerminationFuture().thenAccept(this::shutDownCheckpointServices));
+    }
+
+    private void shutDownCheckpointServices(JobStatus jobStatus) {
+        Exception exception = null;
+
+        try {
+            completedCheckpointStore.shutdown(
+                    jobStatus,
+                    checkpointsCleaner,
+                    () -> {
+                        // don't schedule anything on shutdown
+                    });
+        } catch (Exception e) {
+            exception = e;
+        }
+
+        try {
+            checkpointIdCounter.shutdown(jobStatus);
+        } catch (Exception e) {
+            exception = ExceptionUtils.firstOrSuppressed(e, exception);
+        }
+
+        if (exception != null) {
+            log.error("Error while shutting down checkpoint services.", exception);
+        }
+    }
+
     private ExecutionGraph createAndRestoreExecutionGraph(
             JobManagerJobMetricGroup currentJobManagerJobMetricGroup,
+            CompletedCheckpointStore completedCheckpointStore,
+            CheckpointsCleaner checkpointsCleaner,
+            CheckpointIDCounter checkpointIdCounter,
             ShuffleMaster<?> shuffleMaster,
             JobMasterPartitionTracker partitionTracker,
             ExecutionDeploymentTracker executionDeploymentTracker,
@@ -237,6 +288,9 @@ public abstract class SchedulerBase implements SchedulerNG {
         ExecutionGraph newExecutionGraph =
                 createExecutionGraph(
                         currentJobManagerJobMetricGroup,
+                        completedCheckpointStore,
+                        checkpointsCleaner,
+                        checkpointIdCounter,
                         shuffleMaster,
                         partitionTracker,
                         executionDeploymentTracker,
@@ -261,6 +315,9 @@ public abstract class SchedulerBase implements SchedulerNG {
 
     private ExecutionGraph createExecutionGraph(
             JobManagerJobMetricGroup currentJobManagerJobMetricGroup,
+            CompletedCheckpointStore completedCheckpointStore,
+            CheckpointsCleaner checkpointsCleaner,
+            CheckpointIDCounter checkpointIdCounter,
             ShuffleMaster<?> shuffleMaster,
             final JobMasterPartitionTracker partitionTracker,
             ExecutionDeploymentTracker executionDeploymentTracker,
@@ -277,18 +334,17 @@ public abstract class SchedulerBase implements SchedulerNG {
                 };
 
         return ExecutionGraphBuilder.buildGraph(
-                null,
                 jobGraph,
                 jobMasterConfiguration,
                 futureExecutor,
                 ioExecutor,
-                slotProvider,
                 userCodeLoader,
-                checkpointRecoveryFactory,
+                completedCheckpointStore,
+                checkpointsCleaner,
+                checkpointIdCounter,
                 rpcTimeout,
                 currentJobManagerJobMetricGroup,
                 blobWriter,
-                slotRequestTimeout,
                 log,
                 shuffleMaster,
                 partitionTracker,

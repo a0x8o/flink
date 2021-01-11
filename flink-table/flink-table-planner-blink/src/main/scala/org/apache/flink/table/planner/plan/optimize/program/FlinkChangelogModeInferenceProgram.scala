@@ -164,7 +164,7 @@ class FlinkChangelogModeInferenceProgram extends FlinkOptimizeProgram[StreamOpti
         }
         createNewNode(deduplicate, children, providedTrait, requiredTrait, requester)
 
-      case agg: StreamExecGroupAggregate =>
+      case agg: StreamPhysicalGroupAggregate =>
         // agg support all changes in input
         val children = visitChildren(agg, ModifyKindSetTrait.ALL_CHANGES)
         val inputModifyKindSet = getModifyKindSet(children.head)
@@ -178,14 +178,14 @@ class FlinkChangelogModeInferenceProgram extends FlinkOptimizeProgram[StreamOpti
         val providedTrait = new ModifyKindSetTrait(builder.build())
         createNewNode(agg, children, providedTrait, requiredTrait, requester)
 
-      case tagg: StreamExecGroupTableAggregateBase =>
+      case tagg: StreamPhysicalGroupTableAggregateBase =>
         // table agg support all changes in input
         val children = visitChildren(tagg, ModifyKindSetTrait.ALL_CHANGES)
         // table aggregate will produce all changes, including deletions
         createNewNode(
           tagg, children, ModifyKindSetTrait.ALL_CHANGES, requiredTrait, requester)
 
-      case agg: StreamExecPythonGroupAggregate =>
+      case agg: StreamPhysicalPythonGroupAggregate =>
         // agg support all changes in input
         val children = visitChildren(agg, ModifyKindSetTrait.ALL_CHANGES)
         val inputModifyKindSet = getModifyKindSet(children.head)
@@ -199,7 +199,7 @@ class FlinkChangelogModeInferenceProgram extends FlinkOptimizeProgram[StreamOpti
         val providedTrait = new ModifyKindSetTrait(builder.build())
         createNewNode(agg, children, providedTrait, requiredTrait, requester)
 
-      case window: StreamExecGroupWindowAggregateBase =>
+      case window: StreamPhysicalGroupWindowAggregateBase =>
         // WindowAggregate and WindowTableAggregate support insert-only in input
         val children = visitChildren(window, ModifyKindSetTrait.INSERT_ONLY)
         val builder = ModifyKindSet.newBuilder()
@@ -220,13 +220,13 @@ class FlinkChangelogModeInferenceProgram extends FlinkOptimizeProgram[StreamOpti
         }
         createNewNode(limit, children, providedTrait, requiredTrait, requester)
 
-      case _: StreamPhysicalRank | _: StreamExecSortLimit =>
+      case _: StreamPhysicalRank | _: StreamPhysicalSortLimit =>
         // Rank and SortLimit supports consuming all changes
         val children = visitChildren(rel, ModifyKindSetTrait.ALL_CHANGES)
         createNewNode(
           rel, children, ModifyKindSetTrait.ALL_CHANGES, requiredTrait, requester)
 
-      case sort: StreamExecSort =>
+      case sort: StreamPhysicalSort =>
         // Sort supports consuming all changes
         val children = visitChildren(rel, ModifyKindSetTrait.ALL_CHANGES)
         // Sort will buffer all inputs, and produce insert-only messages when input is finished
@@ -240,7 +240,7 @@ class FlinkChangelogModeInferenceProgram extends FlinkOptimizeProgram[StreamOpti
         createNewNode(
           cep, children, ModifyKindSetTrait.INSERT_ONLY, requiredTrait, requester)
 
-      case _: StreamExecTemporalSort | _: StreamExecOverAggregate | _: StreamExecIntervalJoin |
+      case _: StreamPhysicalTemporalSort | _: StreamExecOverAggregate | _: StreamExecIntervalJoin |
            _: StreamExecPythonOverAggregate =>
         // TemporalSort, OverAggregate, IntervalJoin only support consuming insert-only
         // and producing insert-only changes
@@ -461,19 +461,19 @@ class FlinkChangelogModeInferenceProgram extends FlinkOptimizeProgram[StreamOpti
         }
         visitSink(sink, sinkRequiredTraits)
 
-      case _: StreamExecGroupAggregate | _: StreamExecGroupTableAggregate |
-           _: StreamPhysicalLimit | _: StreamExecPythonGroupAggregate |
-           _: StreamExecPythonGroupTableAggregate =>
+      case _: StreamPhysicalGroupAggregate | _: StreamPhysicalGroupTableAggregate |
+           _: StreamPhysicalLimit | _: StreamPhysicalPythonGroupAggregate |
+           _: StreamPhysicalPythonGroupTableAggregate =>
         // Aggregate, TableAggregate and Limit requires update_before if there are updates
         val requiredChildTrait = beforeAfterOrNone(getModifyKindSet(rel.getInput(0)))
         val children = visitChildren(rel, requiredChildTrait)
         // use requiredTrait as providedTrait, because they should support all kinds of UpdateKind
         createNewNode(rel, children, requiredTrait)
 
-      case _: StreamExecGroupWindowAggregate | _: StreamExecGroupWindowTableAggregate |
-           _: StreamExecDeduplicate | _: StreamExecTemporalSort | _: StreamExecMatch |
+      case _: StreamPhysicalGroupWindowAggregate | _: StreamPhysicalGroupWindowTableAggregate |
+           _: StreamExecDeduplicate | _: StreamPhysicalTemporalSort | _: StreamExecMatch |
            _: StreamExecOverAggregate | _: StreamExecIntervalJoin |
-           _: StreamExecPythonGroupWindowAggregate | _: StreamExecPythonOverAggregate =>
+           _: StreamPhysicalPythonGroupWindowAggregate | _: StreamExecPythonOverAggregate =>
         // WindowAggregate, WindowTableAggregate, Deduplicate, TemporalSort, CEP, OverAggregate
         // and IntervalJoin require nothing about UpdateKind.
         val children = visitChildren(rel, UpdateKindTrait.NONE)
@@ -484,7 +484,7 @@ class FlinkChangelogModeInferenceProgram extends FlinkOptimizeProgram[StreamOpti
           rank, rank.partitionKey, rank.orderKey)
         visitRankStrategies(rankStrategies, requiredTrait, rankStrategy => rank.copy(rankStrategy))
 
-      case sortLimit: StreamExecSortLimit =>
+      case sortLimit: StreamPhysicalSortLimit =>
         val rankStrategies = RankProcessStrategy.analyzeRankProcessStrategies(
           sortLimit, ImmutableBitSet.of(), sortLimit.getCollation)
         visitRankStrategies(
@@ -492,7 +492,7 @@ class FlinkChangelogModeInferenceProgram extends FlinkOptimizeProgram[StreamOpti
           requiredTrait,
           rankStrategy => sortLimit.copy(rankStrategy))
 
-      case sort: StreamExecSort =>
+      case sort: StreamPhysicalSort =>
         val requiredChildTrait = beforeAfterOrNone(getModifyKindSet(sort.getInput))
         val children = visitChildren(sort, requiredChildTrait)
         createNewNode(sort, children, requiredTrait)

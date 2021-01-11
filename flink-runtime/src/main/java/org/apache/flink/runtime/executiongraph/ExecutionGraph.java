@@ -59,7 +59,6 @@ import org.apache.flink.runtime.jobgraph.JobVertex;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobgraph.ScheduleMode;
 import org.apache.flink.runtime.jobgraph.tasks.CheckpointCoordinatorConfiguration;
-import org.apache.flink.runtime.jobmaster.slotpool.SlotProvider;
 import org.apache.flink.runtime.query.KvStateLocationRegistry;
 import org.apache.flink.runtime.scheduler.InternalFailuresListener;
 import org.apache.flink.runtime.scheduler.adapter.DefaultExecutionTopology;
@@ -183,9 +182,6 @@ public class ExecutionGraph implements AccessExecutionGraph {
     /** The timeout for all messages that require a response/acknowledgement. */
     private final Time rpcTimeout;
 
-    /** The timeout for slot allocations. */
-    private final Time allocationTimeout;
-
     /** The classloader for the user code. Needed for calls into user code classes. */
     private final ClassLoader userClassLoader;
 
@@ -294,10 +290,8 @@ public class ExecutionGraph implements AccessExecutionGraph {
             Executor ioExecutor,
             Time rpcTimeout,
             int maxPriorAttemptsHistoryLength,
-            SlotProvider slotProvider,
             ClassLoader userClassLoader,
             BlobWriter blobWriter,
-            Time allocationTimeout,
             PartitionReleaseStrategy.Factory partitionReleaseStrategyFactory,
             ShuffleMaster<?> shuffleMaster,
             JobMasterPartitionTracker partitionTracker,
@@ -334,7 +328,6 @@ public class ExecutionGraph implements AccessExecutionGraph {
         this.stateTimestamps[JobStatus.CREATED.ordinal()] = System.currentTimeMillis();
 
         this.rpcTimeout = checkNotNull(rpcTimeout);
-        this.allocationTimeout = checkNotNull(allocationTimeout);
 
         this.partitionReleaseStrategyFactory = checkNotNull(partitionReleaseStrategyFactory);
 
@@ -388,10 +381,6 @@ public class ExecutionGraph implements AccessExecutionGraph {
         return scheduleMode;
     }
 
-    public Time getAllocationTimeout() {
-        return allocationTimeout;
-    }
-
     @Nonnull
     public ComponentMainThreadExecutor getJobMasterMainThreadExecutor() {
         return jobMasterMainThreadExecutor;
@@ -416,7 +405,8 @@ public class ExecutionGraph implements AccessExecutionGraph {
             CheckpointIDCounter checkpointIDCounter,
             CompletedCheckpointStore checkpointStore,
             StateBackend checkpointStateBackend,
-            CheckpointStatsTracker statsTracker) {
+            CheckpointStatsTracker statsTracker,
+            CheckpointsCleaner checkpointsCleaner) {
 
         checkState(state == JobStatus.CREATED, "Job must be in CREATED state");
         checkState(checkpointCoordinator == null, "checkpointing already enabled");
@@ -470,7 +460,7 @@ public class ExecutionGraph implements AccessExecutionGraph {
                         checkpointStore,
                         checkpointStateBackend,
                         ioExecutor,
-                        new CheckpointsCleaner(),
+                        checkpointsCleaner,
                         new ScheduledExecutorServiceAdapter(checkpointCoordinatorTimer),
                         SharedStateRegistry.DEFAULT_FACTORY,
                         failureManager);
@@ -1230,7 +1220,7 @@ public class ExecutionGraph implements AccessExecutionGraph {
             CheckpointCoordinator coord = this.checkpointCoordinator;
             this.checkpointCoordinator = null;
             if (coord != null) {
-                coord.shutdown(status);
+                coord.shutdown();
             }
             if (checkpointCoordinatorTimer != null) {
                 checkpointCoordinatorTimer.shutdownNow();

@@ -72,6 +72,7 @@ import static org.apache.flink.table.api.DataTypes.TIMESTAMP_WITH_LOCAL_TIME_ZON
 import static org.apache.flink.table.api.DataTypes.TINYINT;
 import static org.apache.flink.table.types.utils.TypeConversions.fromLogicalToDataType;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.fail;
 
 /**
@@ -375,6 +376,18 @@ public class JsonRowDataSerDeSchemaTest {
             String result = new String(serializationSchema.serialize(row));
             assertEquals(expected[i], result);
         }
+    }
+
+    @Test
+    public void testDeserializationNullRow() throws Exception {
+        DataType dataType = ROW(FIELD("name", STRING()));
+        RowType schema = (RowType) dataType.getLogicalType();
+
+        JsonRowDataDeserializationSchema deserializationSchema =
+                new JsonRowDataDeserializationSchema(
+                        schema, InternalTypeInfo.of(schema), true, false, TimestampFormat.ISO_8601);
+
+        assertNull(deserializationSchema.deserialize(null));
     }
 
     @Test
@@ -700,7 +713,10 @@ public class JsonRowDataSerDeSchemaTest {
                                     "Failed to deserialize JSON '{\"id\":\"2019-11-12T18:00:12+0800\"}'."),
                     TestSpec.json("{\"id\":1,\"factor\":799.929496989092949698}")
                             .rowType(ROW(FIELD("id", INT()), FIELD("factor", DECIMAL(38, 18))))
-                            .expect(Row.of(1, new BigDecimal("799.929496989092949698"))));
+                            .expect(Row.of(1, new BigDecimal("799.929496989092949698"))),
+                    TestSpec.json("{\"id\":\"\tstring field\"}") // test to parse control chars
+                            .rowType(ROW(FIELD("id", STRING())))
+                            .expect(Row.of("\tstring field")));
 
     private static Map<String, Integer> createHashMap(
             String k1, Integer v1, String k2, Integer v2) {

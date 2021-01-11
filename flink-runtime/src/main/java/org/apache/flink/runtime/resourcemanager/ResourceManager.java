@@ -464,7 +464,11 @@ public abstract class ResourceManager<WorkerType extends ResourceIDRetrievable>
                 taskExecutors.get(taskManagerResourceId);
 
         if (workerTypeWorkerRegistration.getInstanceID().equals(taskManagerRegistrationId)) {
-            if (slotManager.registerTaskManager(workerTypeWorkerRegistration, slotReport)) {
+            if (slotManager.registerTaskManager(
+                    workerTypeWorkerRegistration,
+                    slotReport,
+                    workerTypeWorkerRegistration.getTotalResourceProfile(),
+                    workerTypeWorkerRegistration.getDefaultSlotResourceProfile())) {
                 onWorkerRegistered(workerTypeWorkerRegistration.getWorker());
             }
             return CompletableFuture.completedFuture(Acknowledge.get());
@@ -946,7 +950,9 @@ public abstract class ResourceManager<WorkerType extends ResourceIDRetrievable>
                             taskExecutorRegistration.getDataPort(),
                             taskExecutorRegistration.getJmxPort(),
                             taskExecutorRegistration.getHardwareDescription(),
-                            taskExecutorRegistration.getMemoryConfiguration());
+                            taskExecutorRegistration.getMemoryConfiguration(),
+                            taskExecutorRegistration.getTotalResourceProfile(),
+                            taskExecutorRegistration.getDefaultSlotResourceProfile());
 
             log.info(
                     "Registering TaskManager with ResourceID {} ({}) at ResourceManager",

@@ -410,27 +410,27 @@ object FlinkStreamRuleSets {
     // union
     StreamPhysicalUnionRule.INSTANCE,
     // sort
-    StreamExecSortRule.INSTANCE,
+    StreamPhysicalSortRule.INSTANCE,
     StreamPhysicalLimitRule.INSTANCE,
-    StreamExecSortLimitRule.INSTANCE,
-    StreamExecTemporalSortRule.INSTANCE,
+    StreamPhysicalSortLimitRule.INSTANCE,
+    StreamPhysicalTemporalSortRule.INSTANCE,
     // rank
     StreamPhysicalRankRule.INSTANCE,
     StreamExecDeduplicateRule.RANK_INSTANCE,
     // expand
     StreamPhysicalExpandRule.INSTANCE,
     // group agg
-    StreamExecGroupAggregateRule.INSTANCE,
-    StreamExecGroupTableAggregateRule.INSTANCE,
-    StreamExecPythonGroupAggregateRule.INSTANCE,
-    StreamExecPythonGroupTableAggregateRule.INSTANCE,
+    StreamPhysicalGroupAggregateRule.INSTANCE,
+    StreamPhysicalGroupTableAggregateRule.INSTANCE,
+    StreamPhysicalPythonGroupAggregateRule.INSTANCE,
+    StreamPhysicalPythonGroupTableAggregateRule.INSTANCE,
     // over agg
     StreamExecOverAggregateRule.INSTANCE,
     StreamExecPythonOverAggregateRule.INSTANCE,
     // window agg
-    StreamExecGroupWindowAggregateRule.INSTANCE,
-    StreamExecGroupWindowTableAggregateRule.INSTANCE,
-    StreamExecPythonGroupWindowAggregateRule.INSTANCE,
+    StreamPhysicalGroupWindowAggregateRule.INSTANCE,
+    StreamPhysicalGroupWindowTableAggregateRule.INSTANCE,
+    StreamPhysicalPythonGroupWindowAggregateRule.INSTANCE,
     // join
     StreamExecJoinRule.INSTANCE,
     StreamExecIntervalJoinRule.INSTANCE,
