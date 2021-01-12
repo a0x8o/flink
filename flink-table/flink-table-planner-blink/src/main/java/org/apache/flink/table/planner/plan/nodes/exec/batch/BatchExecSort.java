@@ -19,7 +19,6 @@
 package org.apache.flink.table.planner.plan.nodes.exec.batch;
 
 import org.apache.flink.api.dag.Transformation;
-import org.apache.flink.configuration.MemorySize;
 import org.apache.flink.streaming.api.operators.SimpleOperatorFactory;
 import org.apache.flink.streaming.api.transformations.OneInputTransformation;
 import org.apache.flink.table.api.TableConfig;
@@ -61,13 +60,7 @@ public class BatchExecSort extends ExecNodeBase<RowData> implements BatchExecNod
 
         TableConfig config = planner.getTableConfig();
         RowType inputType = (RowType) inputNode.getOutputType();
-        SortCodeGenerator codeGen =
-                new SortCodeGenerator(
-                        config,
-                        sortSpec.getFieldIndices(),
-                        sortSpec.getFieldTypes(inputType),
-                        sortSpec.getAscendingOrders(),
-                        sortSpec.getNullsIsLast());
+        SortCodeGenerator codeGen = new SortCodeGenerator(config, inputType, sortSpec);
 
         SortOperator operator =
                 new SortOperator(
@@ -75,12 +68,8 @@ public class BatchExecSort extends ExecNodeBase<RowData> implements BatchExecNod
                         codeGen.generateRecordComparator("BatchExecSortComparator"));
 
         long sortMemory =
-                MemorySize.parse(
-                                config.getConfiguration()
-                                        .getString(
-                                                ExecutionConfigOptions
-                                                        .TABLE_EXEC_RESOURCE_SORT_MEMORY))
-                        .getBytes();
+                ExecNodeUtil.getMemorySize(
+                        config, ExecutionConfigOptions.TABLE_EXEC_RESOURCE_SORT_MEMORY);
 
         OneInputTransformation<RowData, RowData> transform =
                 ExecNodeUtil.createOneInputTransformation(
