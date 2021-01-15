@@ -152,7 +152,7 @@ class FlinkChangelogModeInferenceProgram extends FlinkOptimizeProgram[StreamOpti
         // ignore required trait from context, because sink is the true root
         sink.copy(sinkTrait, children).asInstanceOf[StreamPhysicalRel]
 
-      case deduplicate: StreamExecDeduplicate =>
+      case deduplicate: StreamPhysicalDeduplicate =>
         // deduplicate only support insert only as input
         val children = visitChildren(deduplicate, ModifyKindSetTrait.INSERT_ONLY)
         val providedTrait = if (!deduplicate.keepLastRow && !deduplicate.isRowtime) {
@@ -182,8 +182,7 @@ class FlinkChangelogModeInferenceProgram extends FlinkOptimizeProgram[StreamOpti
         // table agg support all changes in input
         val children = visitChildren(tagg, ModifyKindSetTrait.ALL_CHANGES)
         // table aggregate will produce all changes, including deletions
-        createNewNode(
-          tagg, children, ModifyKindSetTrait.ALL_CHANGES, requiredTrait, requester)
+        createNewNode(tagg, children, ModifyKindSetTrait.ALL_CHANGES, requiredTrait, requester)
 
       case agg: StreamPhysicalPythonGroupAggregate =>
         // agg support all changes in input
@@ -223,38 +222,34 @@ class FlinkChangelogModeInferenceProgram extends FlinkOptimizeProgram[StreamOpti
       case _: StreamPhysicalRank | _: StreamPhysicalSortLimit =>
         // Rank and SortLimit supports consuming all changes
         val children = visitChildren(rel, ModifyKindSetTrait.ALL_CHANGES)
-        createNewNode(
-          rel, children, ModifyKindSetTrait.ALL_CHANGES, requiredTrait, requester)
+        createNewNode(rel, children, ModifyKindSetTrait.ALL_CHANGES, requiredTrait, requester)
 
       case sort: StreamPhysicalSort =>
         // Sort supports consuming all changes
         val children = visitChildren(rel, ModifyKindSetTrait.ALL_CHANGES)
         // Sort will buffer all inputs, and produce insert-only messages when input is finished
-        createNewNode(
-          sort, children, ModifyKindSetTrait.INSERT_ONLY, requiredTrait, requester)
+        createNewNode(sort, children, ModifyKindSetTrait.INSERT_ONLY, requiredTrait, requester)
 
-      case cep: StreamExecMatch =>
+      case cep: StreamPhysicalMatch =>
         // CEP only supports consuming insert-only and producing insert-only changes
         // give a better requester name for exception message
         val children = visitChildren(cep, ModifyKindSetTrait.INSERT_ONLY, "Match Recognize")
-        createNewNode(
-          cep, children, ModifyKindSetTrait.INSERT_ONLY, requiredTrait, requester)
+        createNewNode(cep, children, ModifyKindSetTrait.INSERT_ONLY, requiredTrait, requester)
 
-      case _: StreamPhysicalTemporalSort | _: StreamExecOverAggregate | _: StreamExecIntervalJoin |
-           _: StreamExecPythonOverAggregate =>
+      case _: StreamPhysicalTemporalSort | _: StreamExecIntervalJoin |
+           _: StreamPhysicalOverAggregate | _: StreamPhysicalPythonOverAggregate =>
         // TemporalSort, OverAggregate, IntervalJoin only support consuming insert-only
         // and producing insert-only changes
         val children = visitChildren(rel, ModifyKindSetTrait.INSERT_ONLY)
-        createNewNode(
-          rel, children, ModifyKindSetTrait.INSERT_ONLY, requiredTrait, requester)
+        createNewNode(rel, children, ModifyKindSetTrait.INSERT_ONLY, requiredTrait, requester)
 
       case join: StreamExecJoin =>
         // join support all changes in input
         val children = visitChildren(rel, ModifyKindSetTrait.ALL_CHANGES)
         val leftKindSet = getModifyKindSet(children.head)
         val rightKindSet = getModifyKindSet(children.last)
-        val innerOrSemi = join.flinkJoinType == FlinkJoinType.INNER ||
-            join.flinkJoinType == FlinkJoinType.SEMI
+        val innerOrSemi = join.joinSpec.getJoinType == FlinkJoinType.INNER ||
+            join.joinSpec.getJoinType == FlinkJoinType.SEMI
         val providedTrait = if (innerOrSemi) {
           // forward left and right modify operations
           new ModifyKindSetTrait(leftKindSet.union(rightKindSet))
@@ -264,7 +259,7 @@ class FlinkChangelogModeInferenceProgram extends FlinkOptimizeProgram[StreamOpti
         }
         createNewNode(join, children, providedTrait, requiredTrait, requester)
 
-      case temporalJoin: StreamExecTemporalJoin =>
+      case temporalJoin: StreamPhysicalTemporalJoin =>
         // currently, temporal join supports all kings of changes, including right side
         val children = visitChildren(temporalJoin, ModifyKindSetTrait.ALL_CHANGES)
         // forward left input changes
@@ -304,8 +299,7 @@ class FlinkChangelogModeInferenceProgram extends FlinkOptimizeProgram[StreamOpti
       case _: StreamPhysicalDataStreamScan | _: StreamPhysicalLegacyTableSourceScan |
            _: StreamPhysicalValues =>
         // DataStream, TableSource and Values only support producing insert-only messages
-        createNewNode(
-          rel, List(), ModifyKindSetTrait.INSERT_ONLY, requiredTrait, requester)
+        createNewNode(rel, List(), ModifyKindSetTrait.INSERT_ONLY, requiredTrait, requester)
 
       case scan: StreamExecIntermediateTableScan =>
         val providedTrait = new ModifyKindSetTrait(scan.intermediateTable.modifyKindSet)
@@ -471,9 +465,9 @@ class FlinkChangelogModeInferenceProgram extends FlinkOptimizeProgram[StreamOpti
         createNewNode(rel, children, requiredTrait)
 
       case _: StreamPhysicalGroupWindowAggregate | _: StreamPhysicalGroupWindowTableAggregate |
-           _: StreamExecDeduplicate | _: StreamPhysicalTemporalSort | _: StreamExecMatch |
-           _: StreamExecOverAggregate | _: StreamExecIntervalJoin |
-           _: StreamPhysicalPythonGroupWindowAggregate | _: StreamExecPythonOverAggregate =>
+           _: StreamPhysicalDeduplicate | _: StreamPhysicalTemporalSort | _: StreamPhysicalMatch |
+           _: StreamPhysicalOverAggregate | _: StreamExecIntervalJoin |
+           _: StreamPhysicalPythonGroupWindowAggregate | _: StreamPhysicalPythonOverAggregate =>
         // WindowAggregate, WindowTableAggregate, Deduplicate, TemporalSort, CEP, OverAggregate
         // and IntervalJoin require nothing about UpdateKind.
         val children = visitChildren(rel, UpdateKindTrait.NONE)
@@ -521,7 +515,7 @@ class FlinkChangelogModeInferenceProgram extends FlinkOptimizeProgram[StreamOpti
           createNewNode(join, Some(children.flatten.toList), requiredTrait)
         }
 
-      case temporalJoin: StreamExecTemporalJoin =>
+      case temporalJoin: StreamPhysicalTemporalJoin =>
         val left = temporalJoin.getLeft.asInstanceOf[StreamPhysicalRel]
         val right = temporalJoin.getRight.asInstanceOf[StreamPhysicalRel]
 

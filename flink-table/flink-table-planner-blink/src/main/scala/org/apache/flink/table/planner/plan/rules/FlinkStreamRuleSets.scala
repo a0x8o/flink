@@ -416,7 +416,7 @@ object FlinkStreamRuleSets {
     StreamPhysicalTemporalSortRule.INSTANCE,
     // rank
     StreamPhysicalRankRule.INSTANCE,
-    StreamExecDeduplicateRule.RANK_INSTANCE,
+    StreamPhysicalDeduplicateRule.RANK_INSTANCE,
     // expand
     StreamPhysicalExpandRule.INSTANCE,
     // group agg
@@ -425,8 +425,8 @@ object FlinkStreamRuleSets {
     StreamPhysicalPythonGroupAggregateRule.INSTANCE,
     StreamPhysicalPythonGroupTableAggregateRule.INSTANCE,
     // over agg
-    StreamExecOverAggregateRule.INSTANCE,
-    StreamExecPythonOverAggregateRule.INSTANCE,
+    StreamPhysicalOverAggregateRule.INSTANCE,
+    StreamPhysicalPythonOverAggregateRule.INSTANCE,
     // window agg
     StreamPhysicalGroupWindowAggregateRule.INSTANCE,
     StreamPhysicalGroupWindowTableAggregateRule.INSTANCE,
@@ -434,11 +434,11 @@ object FlinkStreamRuleSets {
     // join
     StreamExecJoinRule.INSTANCE,
     StreamExecIntervalJoinRule.INSTANCE,
-    StreamExecTemporalJoinRule.INSTANCE,
+    StreamPhysicalTemporalJoinRule.INSTANCE,
     StreamExecLookupJoinRule.SNAPSHOT_ON_TABLESCAN,
     StreamExecLookupJoinRule.SNAPSHOT_ON_CALC_TABLESCAN,
     // CEP
-    StreamExecMatchRule.INSTANCE,
+    StreamPhysicalMatchRule.INSTANCE,
     // correlate
     StreamPhysicalConstantTableFunctionScanRule.INSTANCE,
     StreamPhysicalCorrelateRule.INSTANCE,
