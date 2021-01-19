@@ -31,7 +31,7 @@ import org.apache.flink.table.functions.python.PythonAggregateFunctionInfo;
 import org.apache.flink.table.planner.delegation.PlannerBase;
 import org.apache.flink.table.planner.plan.nodes.exec.ExecEdge;
 import org.apache.flink.table.planner.plan.nodes.exec.ExecNode;
-import org.apache.flink.table.planner.plan.nodes.exec.common.CommonExecPythonAggregate;
+import org.apache.flink.table.planner.plan.nodes.exec.ExecNodeBase;
 import org.apache.flink.table.planner.plan.nodes.exec.utils.CommonPythonUtil;
 import org.apache.flink.table.planner.plan.utils.AggregateInfoList;
 import org.apache.flink.table.planner.plan.utils.AggregateUtil;
@@ -48,9 +48,10 @@ import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.Constructor;
 import java.util.Arrays;
+import java.util.Collections;
 
 /** Stream {@link ExecNode} for Python unbounded group aggregate. */
-public class StreamExecPythonGroupAggregate extends CommonExecPythonAggregate
+public class StreamExecPythonGroupAggregate extends ExecNodeBase<RowData>
         implements StreamExecNode<RowData> {
 
     private static final Logger LOG = LoggerFactory.getLogger(StreamExecPythonGroupAggregate.class);
@@ -72,7 +73,7 @@ public class StreamExecPythonGroupAggregate extends CommonExecPythonAggregate
             ExecEdge inputEdge,
             RowType outputType,
             String description) {
-        super(inputEdge, outputType, description);
+        super(Collections.singletonList(inputEdge), outputType, description);
         this.grouping = grouping;
         this.aggCalls = aggCalls;
         this.aggCallNeedRetractions = aggCallNeedRetractions;
@@ -108,12 +109,13 @@ public class StreamExecPythonGroupAggregate extends CommonExecPythonAggregate
         final boolean countStarInserted = aggInfoList.countStarInserted();
         Tuple2<PythonAggregateFunctionInfo[], DataViewUtils.DataViewSpec[][]>
                 aggInfosAndDataViewSpecs =
-                        extractPythonAggregateFunctionInfos(aggInfoList, aggCalls);
+                        CommonPythonUtil.extractPythonAggregateFunctionInfos(aggInfoList, aggCalls);
         PythonAggregateFunctionInfo[] pythonFunctionInfos = aggInfosAndDataViewSpecs.f0;
         DataViewUtils.DataViewSpec[][] dataViewSpecs = aggInfosAndDataViewSpecs.f1;
+        Configuration config = CommonPythonUtil.getMergedConfig(planner.getExecEnv(), tableConfig);
         final OneInputStreamOperator<RowData, RowData> operator =
                 getPythonAggregateFunctionOperator(
-                        CommonPythonUtil.getConfig(planner.getExecEnv(), tableConfig),
+                        config,
                         inputRowType,
                         InternalTypeInfo.of(getOutputType()).toRowType(),
                         pythonFunctionInfos,
@@ -136,7 +138,7 @@ public class StreamExecPythonGroupAggregate extends CommonExecPythonAggregate
             transform.setMaxParallelism(1);
         }
 
-        if (CommonPythonUtil.isPythonWorkerUsingManagedMemory(tableConfig.getConfiguration())) {
+        if (CommonPythonUtil.isPythonWorkerUsingManagedMemory(config)) {
             transform.declareManagedMemoryUseCaseAtSlotScope(ManagedMemoryUseCase.PYTHON);
         }
 
