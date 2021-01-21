@@ -227,7 +227,7 @@ public static class SumFunction extends ScalarFunction {
   }
 
   public Integer eval(String a, String b) {
-    return Integer.valueOf(a) + Integer.valueOf();
+    return Integer.valueOf(a) + Integer.valueOf(b);
   }
 
   public Integer eval(Double... d) {
@@ -1020,7 +1020,7 @@ env
 
 // call registered function in SQL
 env.sqlQuery(
-  "SELECT myField, WeightedAvg(value, weight) FROM MyTable GROUP BY myField"
+  "SELECT myField, WeightedAvg(`value`, weight) FROM MyTable GROUP BY myField"
 );
 {% endhighlight %}
 </div>
@@ -1096,7 +1096,7 @@ env
 
 // call registered function in SQL
 env.sqlQuery(
-  "SELECT myField, WeightedAvg(value, weight) FROM MyTable GROUP BY myField"
+  "SELECT myField, WeightedAvg(`value`, weight) FROM MyTable GROUP BY myField"
 )
 {% endhighlight %}
 </div>

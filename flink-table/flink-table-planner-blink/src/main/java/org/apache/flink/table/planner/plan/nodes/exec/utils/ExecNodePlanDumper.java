@@ -18,9 +18,10 @@
 
 package org.apache.flink.table.planner.plan.nodes.exec.utils;
 
-import org.apache.flink.table.planner.plan.nodes.calcite.LegacySink;
-import org.apache.flink.table.planner.plan.nodes.calcite.Sink;
 import org.apache.flink.table.planner.plan.nodes.exec.ExecNode;
+import org.apache.flink.table.planner.plan.nodes.exec.ExecNodeGraph;
+import org.apache.flink.table.planner.plan.nodes.exec.common.CommonExecLegacySink;
+import org.apache.flink.table.planner.plan.nodes.exec.common.CommonExecSink;
 import org.apache.flink.table.planner.plan.nodes.exec.visitor.ExecNodeVisitor;
 import org.apache.flink.table.planner.plan.nodes.exec.visitor.ExecNodeVisitorImpl;
 import org.apache.flink.util.Preconditions;
@@ -94,6 +95,14 @@ public class ExecNodePlanDumper {
     }
 
     /**
+     * Converts an {@link ExecNodeGraph} to a string as a tree style. see {@link
+     * #dagToString(List)}.
+     */
+    public static String dagToString(ExecNodeGraph execGraph) {
+        return dagToString(execGraph.getRootNodes());
+    }
+
+    /**
      * Converts an {@link ExecNode} DAG to a string as a tree style.
      *
      * <p>The following DAG of {@link ExecNode}
@@ -158,8 +167,8 @@ public class ExecNodePlanDumper {
 
                         int reuseId = reuseInfo.getReuseId(node);
                         boolean isReuseNode = reuseId >= 0;
-                        if (node instanceof LegacySink
-                                || node instanceof Sink
+                        if (node instanceof CommonExecLegacySink
+                                || node instanceof CommonExecSink
                                 || (isReuseNode && isFirstVisit)) {
                             if (isReuseNode) {
                                 reuseInfo.setFirstVisited(node, true);

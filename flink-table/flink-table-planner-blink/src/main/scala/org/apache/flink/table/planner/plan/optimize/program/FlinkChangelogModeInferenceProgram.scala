@@ -117,7 +117,7 @@ class FlinkChangelogModeInferenceProgram extends FlinkOptimizeProgram[StreamOpti
         rel: StreamPhysicalRel,
         requiredTrait: ModifyKindSetTrait,
         requester: String): StreamPhysicalRel = rel match {
-      case sink: StreamExecSink =>
+      case sink: StreamPhysicalSink =>
         val name = s"Table sink '${sink.tableIdentifier.asSummaryString()}'"
         val queryModifyKindSet = deriveQueryDefaultChangelogMode(sink.getInput, name)
         val sinkRequiredTrait = ModifyKindSetTrait.fromChangelogMode(
@@ -127,7 +127,7 @@ class FlinkChangelogModeInferenceProgram extends FlinkOptimizeProgram[StreamOpti
         // ignore required trait from context, because sink is the true root
         sink.copy(sinkTrait, children).asInstanceOf[StreamPhysicalRel]
 
-      case sink: StreamExecLegacySink[_] =>
+      case sink: StreamPhysicalLegacySink[_] =>
         val (sinkRequiredTrait, name) = sink.sink match {
           case _: UpsertStreamTableSink[_] =>
             (ModifyKindSetTrait.ALL_CHANGES, "UpsertStreamTableSink")
@@ -243,7 +243,7 @@ class FlinkChangelogModeInferenceProgram extends FlinkOptimizeProgram[StreamOpti
         val children = visitChildren(rel, ModifyKindSetTrait.INSERT_ONLY)
         createNewNode(rel, children, ModifyKindSetTrait.INSERT_ONLY, requiredTrait, requester)
 
-      case join: StreamExecJoin =>
+      case join: StreamPhysicalJoin =>
         // join support all changes in input
         val children = visitChildren(rel, ModifyKindSetTrait.ALL_CHANGES)
         val leftKindSet = getModifyKindSet(children.head)
@@ -414,7 +414,7 @@ class FlinkChangelogModeInferenceProgram extends FlinkOptimizeProgram[StreamOpti
     def visit(
         rel: StreamPhysicalRel,
         requiredTrait: UpdateKindTrait): Option[StreamPhysicalRel] = rel match {
-      case sink: StreamExecSink =>
+      case sink: StreamPhysicalSink =>
         val childModifyKindSet = getModifyKindSet(sink.getInput)
         val onlyAfter = onlyAfterOrNone(childModifyKindSet)
         val beforeAndAfter = beforeAfterOrNone(childModifyKindSet)
@@ -429,7 +429,7 @@ class FlinkChangelogModeInferenceProgram extends FlinkOptimizeProgram[StreamOpti
         }
         visitSink(sink, sinkRequiredTraits)
 
-      case sink: StreamExecLegacySink[_] =>
+      case sink: StreamPhysicalLegacySink[_] =>
         val childModifyKindSet = getModifyKindSet(sink.getInput)
         val onlyAfter = onlyAfterOrNone(childModifyKindSet)
         val beforeAndAfter = beforeAfterOrNone(childModifyKindSet)
@@ -491,7 +491,7 @@ class FlinkChangelogModeInferenceProgram extends FlinkOptimizeProgram[StreamOpti
         val children = visitChildren(sort, requiredChildTrait)
         createNewNode(sort, children, requiredTrait)
 
-      case join: StreamExecJoin =>
+      case join: StreamPhysicalJoin =>
         val onlyAfterByParent = requiredTrait.updateKind == UpdateKind.ONLY_UPDATE_AFTER
         val children = join.getInputs.zipWithIndex.map {
           case (child, childOrdinal) =>

@@ -432,7 +432,7 @@ object FlinkStreamRuleSets {
     StreamPhysicalGroupWindowTableAggregateRule.INSTANCE,
     StreamPhysicalPythonGroupWindowAggregateRule.INSTANCE,
     // join
-    StreamExecJoinRule.INSTANCE,
+    StreamPhysicalJoinRule.INSTANCE,
     StreamExecIntervalJoinRule.INSTANCE,
     StreamPhysicalTemporalJoinRule.INSTANCE,
     StreamPhysicalLookupJoinRule.SNAPSHOT_ON_TABLESCAN,
@@ -444,8 +444,8 @@ object FlinkStreamRuleSets {
     StreamPhysicalCorrelateRule.INSTANCE,
     StreamPhysicalPythonCorrelateRule.INSTANCE,
     // sink
-    StreamExecSinkRule.INSTANCE,
-    StreamExecLegacySinkRule.INSTANCE
+    StreamPhysicalSinkRule.INSTANCE,
+    StreamPhysicalLegacySinkRule.INSTANCE
   )
 
   /**
