@@ -36,12 +36,12 @@ import org.apache.flink.runtime.messages.checkpoint.AcknowledgeCheckpoint;
 import org.apache.flink.runtime.messages.checkpoint.DeclineCheckpoint;
 import org.apache.flink.runtime.operators.coordination.OperatorCoordinator;
 import org.apache.flink.runtime.operators.coordination.OperatorInfo;
+import org.apache.flink.runtime.state.CheckpointStorage;
 import org.apache.flink.runtime.state.CheckpointStorageCoordinatorView;
 import org.apache.flink.runtime.state.CheckpointStorageLocation;
 import org.apache.flink.runtime.state.CompletedCheckpointStorageLocation;
 import org.apache.flink.runtime.state.SharedStateRegistry;
 import org.apache.flink.runtime.state.SharedStateRegistryFactory;
-import org.apache.flink.runtime.state.StateBackend;
 import org.apache.flink.runtime.state.memory.ByteStreamStateHandle;
 import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.FlinkRuntimeException;
@@ -79,6 +79,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Predicate;
 
+import static java.util.stream.Collectors.toMap;
 import static org.apache.flink.util.ExceptionUtils.findThrowable;
 import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
@@ -139,7 +140,7 @@ public class CheckpointCoordinator {
      * The root checkpoint state backend, which is responsible for initializing the checkpoint,
      * storing the metadata, and cleaning up the checkpoint.
      */
-    private final CheckpointStorageCoordinatorView checkpointStorage;
+    private final CheckpointStorageCoordinatorView checkpointStorageView;
 
     /** A list of recent checkpoint IDs, to identify late messages (vs invalid ones). */
     private final ArrayDeque<Long> recentPendingCheckpoints;
@@ -222,6 +223,7 @@ public class CheckpointCoordinator {
     private boolean isTriggering = false;
 
     private final CheckpointRequestDecider requestDecider;
+    private final LinkedHashMap<ExecutionAttemptID, ExecutionVertex> cachedTasksById;
 
     // --------------------------------------------------------------------------------------------
 
@@ -234,7 +236,7 @@ public class CheckpointCoordinator {
             Collection<OperatorCoordinatorCheckpointContext> coordinatorsToCheckpoint,
             CheckpointIDCounter checkpointIDCounter,
             CompletedCheckpointStore completedCheckpointStore,
-            StateBackend checkpointStateBackend,
+            CheckpointStorage checkpointStorage,
             Executor executor,
             CheckpointsCleaner checkpointsCleaner,
             ScheduledExecutor timer,
@@ -250,7 +252,7 @@ public class CheckpointCoordinator {
                 coordinatorsToCheckpoint,
                 checkpointIDCounter,
                 completedCheckpointStore,
-                checkpointStateBackend,
+                checkpointStorage,
                 executor,
                 checkpointsCleaner,
                 timer,
@@ -269,7 +271,7 @@ public class CheckpointCoordinator {
             Collection<OperatorCoordinatorCheckpointContext> coordinatorsToCheckpoint,
             CheckpointIDCounter checkpointIDCounter,
             CompletedCheckpointStore completedCheckpointStore,
-            StateBackend checkpointStateBackend,
+            CheckpointStorage checkpointStorage,
             Executor executor,
             CheckpointsCleaner checkpointsCleaner,
             ScheduledExecutor timer,
@@ -278,7 +280,7 @@ public class CheckpointCoordinator {
             Clock clock) {
 
         // sanity checks
-        checkNotNull(checkpointStateBackend);
+        checkNotNull(checkpointStorage);
 
         // max "in between duration" can be one year - this is to prevent numeric overflows
         long minPauseBetweenCheckpoints = chkConfig.getMinPauseBetweenCheckpoints();
@@ -325,8 +327,8 @@ public class CheckpointCoordinator {
                 CheckpointProperties.forCheckpoint(chkConfig.getCheckpointRetentionPolicy());
 
         try {
-            this.checkpointStorage = checkpointStateBackend.createCheckpointStorage(job);
-            checkpointStorage.initializeBaseLocations();
+            this.checkpointStorageView = checkpointStorage.createCheckpointStorage(job);
+            checkpointStorageView.initializeBaseLocations();
         } catch (IOException e) {
             throw new FlinkRuntimeException(
                     "Failed to create checkpoint storage at checkpoint coordinator side.", e);
@@ -348,6 +350,15 @@ public class CheckpointCoordinator {
                         this.minPauseBetweenCheckpoints,
                         this.pendingCheckpoints::size,
                         this.checkpointsCleaner::getNumberOfCheckpointsToClean);
+        this.cachedTasksById =
+                new LinkedHashMap<ExecutionAttemptID, ExecutionVertex>(tasksToWaitFor.length) {
+
+                    @Override
+                    protected boolean removeEldestEntry(
+                            Map.Entry<ExecutionAttemptID, ExecutionVertex> eldest) {
+                        return size() > CheckpointCoordinator.this.tasksToWaitFor.length;
+                    }
+                };
     }
 
     // --------------------------------------------------------------------------------------------
@@ -683,9 +694,9 @@ public class CheckpointCoordinator {
 
                         CheckpointStorageLocation checkpointStorageLocation =
                                 props.isSavepoint()
-                                        ? checkpointStorage.initializeLocationForSavepoint(
+                                        ? checkpointStorageView.initializeLocationForSavepoint(
                                                 checkpointID, externalSavepointLocation)
-                                        : checkpointStorage.initializeLocationForCheckpoint(
+                                        : checkpointStorageView.initializeLocationForCheckpoint(
                                                 checkpointID);
 
                         return new CheckpointIdAndStorageLocation(
@@ -728,12 +739,7 @@ public class CheckpointCoordinator {
                         checkpointStorageLocation,
                         onCompletionPromise);
 
-        if (statsTracker != null) {
-            PendingCheckpointStats callback =
-                    statsTracker.reportPendingCheckpoint(checkpointID, timestamp, props);
-
-            checkpoint.setStatsCallback(callback);
-        }
+        reportToStatsTracker(checkpoint, ackTasks);
 
         synchronized (lock) {
             pendingCheckpoints.put(checkpointID, checkpoint);
@@ -1137,6 +1143,10 @@ public class CheckpointCoordinator {
                         "Received message for discarded but non-removed checkpoint "
                                 + checkpointId);
             } else {
+                reportStats(
+                        message.getCheckpointId(),
+                        message.getTaskExecutionId(),
+                        message.getCheckpointMetrics());
                 boolean wasPendingCheckpoint;
 
                 // message is for an unknown checkpoint, or comes too late (checkpoint disposed)
@@ -1627,7 +1637,7 @@ public class CheckpointCoordinator {
                 (allowNonRestored ? "allowing non restored state" : ""));
 
         final CompletedCheckpointStorageLocation checkpointLocation =
-                checkpointStorage.resolveCheckpoint(savepointPointer);
+                checkpointStorageView.resolveCheckpoint(savepointPointer);
 
         // Load the savepoint as a checkpoint into the system
         CompletedCheckpoint savepoint =
@@ -1682,7 +1692,7 @@ public class CheckpointCoordinator {
     }
 
     public CheckpointStorageCoordinatorView getCheckpointStorage() {
-        return checkpointStorage;
+        return checkpointStorageView;
     }
 
     public CompletedCheckpointStore getCheckpointStore() {
@@ -1835,6 +1845,14 @@ public class CheckpointCoordinator {
     int getNumQueuedRequests() {
         synchronized (lock) {
             return requestDecider.getNumQueuedRequests();
+        }
+    }
+
+    public void reportStats(long id, ExecutionAttemptID attemptId, CheckpointMetrics metrics)
+            throws CheckpointException {
+        if (statsTracker != null) {
+            getVertex(attemptId)
+                    .ifPresent(ev -> statsTracker.reportIncompleteStats(id, ev, metrics));
         }
     }
 
@@ -2107,5 +2125,37 @@ public class CheckpointCoordinator {
 
         /** Coordinators are not restored during this checkpoint restore. */
         SKIP;
+    }
+
+    private Optional<ExecutionVertex> getVertex(ExecutionAttemptID id) throws CheckpointException {
+        if (!cachedTasksById.containsKey(id)) {
+            cachedTasksById.putAll(getAckTasks());
+            if (!cachedTasksById.containsKey(id)) {
+                // the task probably gone after a restart
+                cachedTasksById.put(id, null);
+            }
+        }
+        return Optional.ofNullable(cachedTasksById.get(id));
+    }
+
+    private void reportToStatsTracker(
+            PendingCheckpoint checkpoint, Map<ExecutionAttemptID, ExecutionVertex> tasks) {
+        if (statsTracker == null) {
+            return;
+        }
+        Map<JobVertexID, Integer> vertices =
+                tasks.values().stream()
+                        .map(ExecutionVertex::getJobVertex)
+                        .distinct()
+                        .collect(
+                                toMap(
+                                        ExecutionJobVertex::getJobVertexId,
+                                        ExecutionJobVertex::getParallelism));
+        checkpoint.setStatsCallback(
+                statsTracker.reportPendingCheckpoint(
+                        checkpoint.getCheckpointID(),
+                        checkpoint.getCheckpointTimestamp(),
+                        checkpoint.getProps(),
+                        vertices));
     }
 }

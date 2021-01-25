@@ -21,6 +21,7 @@ import org.apache.flink.core.fs.FileSystemSafetyNet;
 import org.apache.flink.runtime.checkpoint.CheckpointException;
 import org.apache.flink.runtime.checkpoint.CheckpointFailureReason;
 import org.apache.flink.runtime.checkpoint.CheckpointMetaData;
+import org.apache.flink.runtime.checkpoint.CheckpointMetrics;
 import org.apache.flink.runtime.checkpoint.CheckpointMetricsBuilder;
 import org.apache.flink.runtime.checkpoint.TaskStateSnapshot;
 import org.apache.flink.runtime.execution.Environment;
@@ -194,7 +195,10 @@ final class AsyncCheckpointRunnable implements Runnable, Closeable {
                 .getTaskStateManager()
                 .reportTaskStateSnapshots(
                         checkpointMetaData,
-                        checkpointMetrics.build(),
+                        checkpointMetrics
+                                .setTotalBytesPersisted(
+                                        acknowledgedTaskStateSnapshot.getStateSize())
+                                .build(),
                         hasAckState ? acknowledgedTaskStateSnapshot : null,
                         hasLocalState ? localTaskStateSnapshot : null);
 
@@ -209,6 +213,19 @@ final class AsyncCheckpointRunnable implements Runnable, Closeable {
                 taskName,
                 checkpointMetaData.getCheckpointId(),
                 acknowledgedTaskStateSnapshot);
+    }
+
+    private void reportAbortedSnapshotStats(long stateSize) {
+        CheckpointMetrics metrics = checkpointMetrics.setTotalBytesPersisted(stateSize).build();
+        LOG.trace(
+                "{} - report failed checkpoint stats: {} {}",
+                taskName,
+                checkpointMetaData.getCheckpointId(),
+                metrics);
+
+        taskEnvironment
+                .getTaskStateManager()
+                .reportIncompleteTaskStateSnapshots(checkpointMetaData, metrics);
     }
 
     private void handleExecutionException(Exception e) {
@@ -271,7 +288,8 @@ final class AsyncCheckpointRunnable implements Runnable, Closeable {
                 AsyncCheckpointState.RUNNING, AsyncCheckpointState.DISCARDED)) {
 
             try {
-                cleanup();
+                final long stateSize = cleanup();
+                reportAbortedSnapshotStats(stateSize);
             } catch (Exception cleanupException) {
                 LOG.warn(
                         "Could not properly clean up the async checkpoint runnable.",
@@ -286,7 +304,8 @@ final class AsyncCheckpointRunnable implements Runnable, Closeable {
         return checkpointMetaData.getCheckpointId();
     }
 
-    private void cleanup() throws Exception {
+    /** @return discarded state size (if available). */
+    private long cleanup() throws Exception {
         LOG.debug(
                 "Cleanup AsyncCheckpointRunnable for checkpoint {} of {}.",
                 checkpointMetaData.getCheckpointId(),
@@ -295,11 +314,12 @@ final class AsyncCheckpointRunnable implements Runnable, Closeable {
         Exception exception = null;
 
         // clean up ongoing operator snapshot results and non partitioned state handles
+        long stateSize = 0;
         for (OperatorSnapshotFutures operatorSnapshotResult :
                 operatorSnapshotsInProgress.values()) {
             if (operatorSnapshotResult != null) {
                 try {
-                    operatorSnapshotResult.cancel();
+                    stateSize += operatorSnapshotResult.cancel();
                 } catch (Exception cancelException) {
                     exception = ExceptionUtils.firstOrSuppressed(cancelException, exception);
                 }
@@ -309,6 +329,7 @@ final class AsyncCheckpointRunnable implements Runnable, Closeable {
         if (null != exception) {
             throw exception;
         }
+        return stateSize;
     }
 
     private void logFailedCleanupAttempt() {

@@ -48,6 +48,8 @@ import org.apache.flink.runtime.jobgraph.jsonplan.JsonPlanGenerator;
 import org.apache.flink.runtime.jobgraph.tasks.CheckpointCoordinatorConfiguration;
 import org.apache.flink.runtime.jobgraph.tasks.JobCheckpointingSettings;
 import org.apache.flink.runtime.shuffle.ShuffleMaster;
+import org.apache.flink.runtime.state.CheckpointStorage;
+import org.apache.flink.runtime.state.CheckpointStorageLoader;
 import org.apache.flink.runtime.state.StateBackend;
 import org.apache.flink.runtime.state.StateBackendLoader;
 import org.apache.flink.util.DynamicCodeLoadingException;
@@ -210,7 +212,6 @@ public class ExecutionGraphBuilder {
             CheckpointStatsTracker checkpointStatsTracker =
                     new CheckpointStatsTracker(
                             historySize,
-                            ackVertices,
                             snapshotSettings.getCheckpointCoordinatorConfiguration(),
                             metrics);
 
@@ -239,6 +240,39 @@ public class ExecutionGraphBuilder {
             } catch (IllegalConfigurationException | IOException | DynamicCodeLoadingException e) {
                 throw new JobExecutionException(
                         jobId, "Could not instantiate configured state backend", e);
+            }
+
+            // load the checkpoint storage from the application settings
+            final CheckpointStorage applicationConfiguredStorage;
+            final SerializedValue<CheckpointStorage> serializedAppConfiguredStorage =
+                    snapshotSettings.getDefaultCheckpointStorage();
+
+            if (serializedAppConfiguredStorage == null) {
+                applicationConfiguredStorage = null;
+            } else {
+                try {
+                    applicationConfiguredStorage =
+                            serializedAppConfiguredStorage.deserializeValue(classLoader);
+                } catch (IOException | ClassNotFoundException e) {
+                    throw new JobExecutionException(
+                            jobId,
+                            "Could not deserialize application-defined checkpoint storage.",
+                            e);
+                }
+            }
+
+            final CheckpointStorage rootStorage;
+            try {
+                rootStorage =
+                        CheckpointStorageLoader.load(
+                                applicationConfiguredStorage,
+                                rootBackend,
+                                jobManagerConfig,
+                                classLoader,
+                                log);
+            } catch (IllegalConfigurationException | DynamicCodeLoadingException e) {
+                throw new JobExecutionException(
+                        jobId, "Could not instantiate configured checkpoint storage", e);
             }
 
             // instantiate the user-defined checkpoint hooks
@@ -284,6 +318,7 @@ public class ExecutionGraphBuilder {
                     checkpointIdCounter,
                     completedCheckpointStore,
                     rootBackend,
+                    rootStorage,
                     checkpointStatsTracker,
                     checkpointsCleaner);
         }
