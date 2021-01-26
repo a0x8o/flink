@@ -79,7 +79,8 @@ public abstract class CommonExecPythonCalc extends ExecNodeBase<RowData> {
         final Configuration config =
                 CommonPythonUtil.getMergedConfig(planner.getExecEnv(), planner.getTableConfig());
         OneInputTransformation<RowData, RowData> ret =
-                createPythonOneInputTransformation(inputTransform, calcProgram, getDesc(), config);
+                createPythonOneInputTransformation(
+                        inputTransform, calcProgram, getDescription(), config);
         if (inputsContainSingleton()) {
             ret.setParallelism(1);
             ret.setMaxParallelism(1);
@@ -187,7 +188,7 @@ public abstract class CommonExecPythonCalc extends ExecNodeBase<RowData> {
             PythonFunctionInfo[] pythonFunctionInfos,
             int[] forwardedFields,
             boolean isArrow) {
-        Class clazz;
+        Class<?> clazz;
         if (isArrow) {
             clazz = CommonPythonUtil.loadClass(ARROW_PYTHON_SCALAR_FUNCTION_OPERATOR_NAME);
         } else {
@@ -195,7 +196,7 @@ public abstract class CommonExecPythonCalc extends ExecNodeBase<RowData> {
         }
 
         try {
-            Constructor ctor =
+            Constructor<?> ctor =
                     clazz.getConstructor(
                             Configuration.class,
                             PythonFunctionInfo[].class,
