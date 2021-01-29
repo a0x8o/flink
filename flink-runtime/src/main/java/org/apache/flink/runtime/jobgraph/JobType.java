@@ -7,7 +7,7 @@
  * "License"); you may not use this file except in compliance
  * with the License.  You may obtain a copy of the License at
  *
- *    http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,18 +16,15 @@
  * limitations under the License.
  */
 
-package org.apache.flink.contrib.streaming.state.snapshot;
+package org.apache.flink.runtime.jobgraph;
 
-/**
- * Utility methods and constants around RocksDB creating and restoring snapshots for {@link
- * org.apache.flink.contrib.streaming.state.RocksDBKeyedStateBackend}.
- */
-public class RocksSnapshotUtil {
-
-    /** File suffix of sstable files. */
-    public static final String SST_FILE_SUFFIX = ".sst";
-
-    private RocksSnapshotUtil() {
-        throw new AssertionError();
-    }
+/** Enum to distinguish JobGraphs between batch and streaming, currently used by the scheduler. */
+public enum JobType {
+    /** Batch jobs are finite jobs, potentially consisting of multiple pipelined regions. */
+    BATCH,
+    /**
+     * Streaming jobs are infinite jobs, consisting of one large pipelined region, not separated by
+     * any blocking data exchanges.
+     */
+    STREAMING
 }
