@@ -31,6 +31,7 @@ import org.apache.flink.runtime.taskexecutor.TestingTaskExecutorGateway;
 import org.apache.flink.runtime.taskexecutor.TestingTaskExecutorGatewayBuilder;
 import org.apache.flink.runtime.taskexecutor.slot.SlotOffer;
 import org.apache.flink.runtime.taskmanager.LocalTaskManagerLocation;
+import org.apache.flink.runtime.util.ResourceCounter;
 import org.apache.flink.util.FlinkException;
 import org.apache.flink.util.TestLogger;
 
@@ -553,7 +554,7 @@ public class DefaultDeclarativeSlotPoolTest extends TestLogger {
     }
 
     @Nonnull
-    private static Collection<SlotOffer> createSlotOffersForResourceRequirements(
+    public static Collection<SlotOffer> createSlotOffersForResourceRequirements(
             ResourceCounter resourceRequirements) {
         Collection<SlotOffer> slotOffers = new ArrayList<>();
         int slotIndex = 0;
@@ -608,7 +609,7 @@ public class DefaultDeclarativeSlotPoolTest extends TestLogger {
     }
 
     @Nonnull
-    static Collection<SlotOffer> offerSlots(
+    public static Collection<SlotOffer> offerSlots(
             DeclarativeSlotPool slotPool, Collection<SlotOffer> slotOffers) {
         return slotPool.offerSlots(
                 slotOffers, new LocalTaskManagerLocation(), createTaskManagerGateway(null), 0);
