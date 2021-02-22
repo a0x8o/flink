@@ -32,8 +32,8 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 /**
- * Tests for undersized {@link HeapMemorySegment} and {@link HybridMemorySegment} (in both heap and
- * off-heap modes).
+ * Tests for undersized {@link HeapMemorySegment}, {@link DirectMemorySegment} and * {@link
+ * UnsafeMemorySegment}.
  */
 public class MemorySegmentUndersizedTest {
 
@@ -46,24 +46,16 @@ public class MemorySegmentUndersizedTest {
     }
 
     @Test
-    public void testZeroSizeHeapHybridSegment() {
-        MemorySegment segment = MemorySegmentFactory.allocateUnpooledSegment(0);
+    public void testZeroSizeDirectSegment() {
+        MemorySegment segment = MemorySegmentFactory.allocateDirectSegment(0);
 
         testZeroSizeBuffer(segment);
         testSegmentWithSizeLargerZero(segment);
     }
 
     @Test
-    public void testZeroSizeOffHeapHybridSegment() {
-        MemorySegment segment = MemorySegmentFactory.allocateUnpooledOffHeapMemory(0);
-
-        testZeroSizeBuffer(segment);
-        testSegmentWithSizeLargerZero(segment);
-    }
-
-    @Test
-    public void testZeroSizeOffHeapUnsafeHybridSegment() {
-        MemorySegment segment = MemorySegmentFactory.allocateOffHeapUnsafeMemory(0);
+    public void testZeroSizeUnsafeSegment() {
+        MemorySegment segment = MemorySegmentFactory.allocateUnsafeSegment(0);
 
         testZeroSizeBuffer(segment);
         testSegmentWithSizeLargerZero(segment);
@@ -75,18 +67,13 @@ public class MemorySegmentUndersizedTest {
     }
 
     @Test
-    public void testSizeOneHeapHybridSegment() {
-        testSegmentWithSizeLargerZero(MemorySegmentFactory.allocateUnpooledSegment(1));
+    public void testSizeOneDirectSegment() {
+        testSegmentWithSizeLargerZero(MemorySegmentFactory.allocateDirectSegment(1));
     }
 
     @Test
-    public void testSizeOneOffHeapHybridSegment() {
-        testSegmentWithSizeLargerZero(MemorySegmentFactory.allocateUnpooledOffHeapMemory(1));
-    }
-
-    @Test
-    public void testSizeOneOffHeapUnsafeHybridSegment() {
-        testSegmentWithSizeLargerZero(MemorySegmentFactory.allocateOffHeapUnsafeMemory(1));
+    public void testSizeOneUnsafeSegment() {
+        testSegmentWithSizeLargerZero(MemorySegmentFactory.allocateUnsafeSegment(1));
     }
 
     private static void testZeroSizeBuffer(MemorySegment segment) {

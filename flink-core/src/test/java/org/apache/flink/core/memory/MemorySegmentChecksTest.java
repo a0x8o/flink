@@ -23,8 +23,6 @@ import org.junit.Test;
 import java.io.DataInput;
 import java.io.DataOutput;
 import java.nio.ByteBuffer;
-import java.util.function.Consumer;
-import java.util.function.Function;
 
 /** Tests for the sanity checks of the memory segments. */
 public class MemorySegmentChecksTest {
@@ -40,18 +38,23 @@ public class MemorySegmentChecksTest {
     }
 
     @Test(expected = NullPointerException.class)
-    public void testHybridHeapNullBuffer2() {
-        new HybridMemorySegment((byte[]) null, new Object());
-    }
-
-    @Test(expected = NullPointerException.class)
-    public void testHybridOffHeapNullBuffer2() {
-        new HybridMemorySegment((ByteBuffer) null, new Object());
+    public void testDirectNullBuffer() {
+        new DirectMemorySegment((ByteBuffer) null, new Object());
     }
 
     @Test(expected = IllegalArgumentException.class)
-    public void testHybridNonDirectBuffer() {
-        new HybridMemorySegment(ByteBuffer.allocate(1024), new Object());
+    public void testDirectNonDirectBuffer() {
+        new DirectMemorySegment(ByteBuffer.allocate(1024), new Object());
+    }
+
+    @Test(expected = NullPointerException.class)
+    public void testUnsafeNullBuffer() {
+        new UnsafeMemorySegment((ByteBuffer) null, new Object(), () -> {});
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void testUnsafeNonDirectBuffer() {
+        new UnsafeMemorySegment(ByteBuffer.allocate(1024), new Object(), () -> {});
     }
 
     @Test(expected = IllegalArgumentException.class)
@@ -83,6 +86,11 @@ public class MemorySegmentChecksTest {
         }
 
         @Override
+        protected ByteBuffer wrapInternal(int offset, int length) {
+            return null;
+        }
+
+        @Override
         public byte get(int index) {
             return 0;
         }
@@ -91,24 +99,10 @@ public class MemorySegmentChecksTest {
         public void put(int index, byte b) {}
 
         @Override
-        public void get(int index, byte[] dst) {}
-
-        @Override
-        public void put(int index, byte[] src) {}
-
-        @Override
         public void get(int index, byte[] dst, int offset, int length) {}
 
         @Override
         public void put(int index, byte[] src, int offset, int length) {}
-
-        @Override
-        public boolean getBoolean(int index) {
-            return false;
-        }
-
-        @Override
-        public void putBoolean(int index, boolean value) {}
 
         @Override
         public void get(DataOutput out, int offset, int length) {}
@@ -121,13 +115,5 @@ public class MemorySegmentChecksTest {
 
         @Override
         public void put(int offset, ByteBuffer source, int numBytes) {}
-
-        @Override
-        public <T> T processAsByteBuffer(Function<ByteBuffer, T> processFunction) {
-            return null;
-        }
-
-        @Override
-        public void processAsByteBuffer(Consumer<ByteBuffer> processConsumer) {}
     }
 }

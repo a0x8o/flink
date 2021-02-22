@@ -25,8 +25,6 @@ import java.io.DataOutput;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Objects;
-import java.util.function.Consumer;
-import java.util.function.Function;
 
 /**
  * This class represents a piece of heap memory managed by Flink. The segment is backed by a byte
@@ -39,7 +37,6 @@ import java.util.function.Function;
  * <p>Note that memory segments should usually not be allocated manually, but rather through the
  * {@link MemorySegmentFactory}.
  */
-@SuppressWarnings("unused")
 @Internal
 public final class HeapMemorySegment extends MemorySegment {
 
@@ -82,10 +79,10 @@ public final class HeapMemorySegment extends MemorySegment {
     }
 
     @Override
-    public ByteBuffer wrap(int offset, int length) {
-        try {
+    protected ByteBuffer wrapInternal(int offset, int length) {
+        if (!isFreed()) {
             return ByteBuffer.wrap(this.memory, offset, length);
-        } catch (NullPointerException e) {
+        } else {
             throw new IllegalStateException("segment has been freed");
         }
     }
@@ -115,16 +112,6 @@ public final class HeapMemorySegment extends MemorySegment {
     }
 
     @Override
-    public final void get(int index, byte[] dst) {
-        get(index, dst, 0, dst.length);
-    }
-
-    @Override
-    public final void put(int index, byte[] src) {
-        put(index, src, 0, src.length);
-    }
-
-    @Override
     public final void get(int index, byte[] dst, int offset, int length) {
         // system arraycopy does the boundary checks anyways, no need to check extra
         System.arraycopy(this.memory, index, dst, offset, length);
@@ -134,16 +121,6 @@ public final class HeapMemorySegment extends MemorySegment {
     public final void put(int index, byte[] src, int offset, int length) {
         // system arraycopy does the boundary checks anyways, no need to check extra
         System.arraycopy(src, offset, this.memory, index, length);
-    }
-
-    @Override
-    public final boolean getBoolean(int index) {
-        return this.memory[index] != 0;
-    }
-
-    @Override
-    public final void putBoolean(int index, boolean value) {
-        this.memory[index] = (byte) (value ? 1 : 0);
     }
 
     // -------------------------------------------------------------------------
@@ -171,66 +148,4 @@ public final class HeapMemorySegment extends MemorySegment {
         // ByteBuffer performs the boundary checks
         source.get(this.memory, offset, numBytes);
     }
-
-    @Override
-    public <T> T processAsByteBuffer(Function<ByteBuffer, T> processFunction) {
-        throw new UnsupportedOperationException("Unsupported because not needed atm.");
-    }
-
-    @Override
-    public void processAsByteBuffer(Consumer<ByteBuffer> processConsumer) {
-        throw new UnsupportedOperationException("Unsupported because not needed atm.");
-    }
-
-    // -------------------------------------------------------------------------
-    //                             Factoring
-    // -------------------------------------------------------------------------
-
-    /**
-     * A memory segment factory that produces heap memory segments. Note that this factory does not
-     * support to allocate off-heap memory.
-     */
-    public static final class HeapMemorySegmentFactory {
-
-        /**
-         * Creates a new memory segment that targets the given heap memory region.
-         *
-         * @param memory The heap memory region.
-         * @return A new memory segment that targets the given heap memory region.
-         */
-        public HeapMemorySegment wrap(byte[] memory) {
-            return new HeapMemorySegment(memory);
-        }
-
-        /**
-         * Allocates some unpooled memory and creates a new memory segment that represents that
-         * memory.
-         *
-         * @param size The size of the memory segment to allocate.
-         * @param owner The owner to associate with the memory segment.
-         * @return A new memory segment, backed by unpooled heap memory.
-         */
-        public HeapMemorySegment allocateUnpooledSegment(int size, Object owner) {
-            return new HeapMemorySegment(new byte[size], owner);
-        }
-
-        /**
-         * Creates a memory segment that wraps the given byte array.
-         *
-         * <p>This method is intended to be used for components which pool memory and create memory
-         * segments around long-lived memory regions.
-         *
-         * @param memory The heap memory to be represented by the memory segment.
-         * @param owner The owner to associate with the memory segment.
-         * @return A new memory segment representing the given heap memory.
-         */
-        public HeapMemorySegment wrapPooledHeapMemory(byte[] memory, Object owner) {
-            return new HeapMemorySegment(memory, owner);
-        }
-
-        /** Prevent external instantiation. */
-        HeapMemorySegmentFactory() {}
-    }
-
-    public static final HeapMemorySegmentFactory FACTORY = new HeapMemorySegmentFactory();
 }

@@ -18,6 +18,7 @@
 
 package org.apache.flink.runtime.scheduler.declarative;
 
+import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.JobStatus;
 import org.apache.flink.configuration.CheckpointingOptions;
@@ -106,15 +107,16 @@ abstract class StateWithExecutionGraph implements State {
                                 context.getMainThreadExecutor()));
     }
 
+    @VisibleForTesting
     ExecutionGraph getExecutionGraph() {
         return executionGraph;
     }
 
-    OperatorCoordinatorHandler getOperatorCoordinatorHandler() {
+    protected OperatorCoordinatorHandler getOperatorCoordinatorHandler() {
         return operatorCoordinatorHandler;
     }
 
-    ExecutionGraphHandler getExecutionGraphHandler() {
+    protected ExecutionGraphHandler getExecutionGraphHandler() {
         return executionGraphHandler;
     }
 
@@ -128,12 +130,7 @@ abstract class StateWithExecutionGraph implements State {
 
     @Override
     public ArchivedExecutionGraph getJob() {
-        return ArchivedExecutionGraph.createFrom(executionGraph);
-    }
-
-    @Override
-    public JobStatus getJobStatus() {
-        return executionGraph.getState();
+        return ArchivedExecutionGraph.createFrom(executionGraph, getJobStatus());
     }
 
     @Override
@@ -176,6 +173,14 @@ abstract class StateWithExecutionGraph implements State {
 
     void declineCheckpoint(DeclineCheckpoint decline) {
         executionGraphHandler.declineCheckpoint(decline);
+    }
+
+    void reportCheckpointMetrics(
+            ExecutionAttemptID executionAttemptID,
+            long checkpointId,
+            CheckpointMetrics checkpointMetrics) {
+        executionGraphHandler.reportCheckpointMetrics(
+                executionAttemptID, checkpointId, checkpointMetrics);
     }
 
     void updateAccumulators(AccumulatorSnapshot accumulatorSnapshot) {
