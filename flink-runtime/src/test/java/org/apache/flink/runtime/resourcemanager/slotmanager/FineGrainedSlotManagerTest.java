@@ -243,9 +243,8 @@ public class FineGrainedSlotManagerTest extends FineGrainedSlotManagerTestBase {
                             getTaskManagerTracker()
                                     .addPendingTaskManager(
                                             new PendingTaskManager(
-                                                    PendingTaskManagerId.generate(),
                                                     getDefaultTaskManagerResourceProfile(),
-                                                    getDefaultSlotResourceProfile()));
+                                                    getDefaultNumberSlotsPerWorker()));
                             // task manager with allocated slot cannot deduct pending task manager
                             getSlotManager()
                                     .registerTaskManager(
@@ -387,9 +386,8 @@ public class FineGrainedSlotManagerTest extends FineGrainedSlotManagerTestBase {
                                 ResourceAllocationResult.builder()
                                         .addPendingTaskManagerAllocate(
                                                 new PendingTaskManager(
-                                                        PendingTaskManagerId.generate(),
                                                         getDefaultTaskManagerResourceProfile(),
-                                                        getDefaultSlotResourceProfile()))
+                                                        getDefaultNumberSlotsPerWorker()))
                                         .build()));
                 runTest(
                         () -> {
@@ -405,7 +403,9 @@ public class FineGrainedSlotManagerTest extends FineGrainedSlotManagerTestBase {
     @Test
     public void testSlotAllocationForPendingTaskManagerWillBeRespected() throws Exception {
         final JobID jobId = new JobID();
-        final PendingTaskManagerId pendingTaskManagerId = PendingTaskManagerId.generate();
+        final PendingTaskManager pendingTaskManager =
+                new PendingTaskManager(
+                        getDefaultTaskManagerResourceProfile(), getDefaultNumberSlotsPerWorker());
         final CompletableFuture<
                         Tuple6<
                                 SlotID,
@@ -430,14 +430,10 @@ public class FineGrainedSlotManagerTest extends FineGrainedSlotManagerTestBase {
                 resourceAllocationStrategyBuilder.setTryFulfillRequirementsFunction(
                         ((jobIDCollectionMap, instanceIDTuple2Map, pendingTaskManagers) ->
                                 ResourceAllocationResult.builder()
-                                        .addPendingTaskManagerAllocate(
-                                                new PendingTaskManager(
-                                                        pendingTaskManagerId,
-                                                        getDefaultTaskManagerResourceProfile(),
-                                                        getDefaultSlotResourceProfile()))
+                                        .addPendingTaskManagerAllocate(pendingTaskManager)
                                         .addAllocationOnPendingResource(
                                                 jobId,
-                                                pendingTaskManagerId,
+                                                pendingTaskManager.getPendingTaskManagerId(),
                                                 getDefaultSlotResourceProfile())
                                         .build()));
                 runTest(
