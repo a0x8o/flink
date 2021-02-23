@@ -55,11 +55,13 @@ import static org.apache.flink.runtime.resourcemanager.slotmanager.SlotManagerUt
 public class DefaultResourceAllocationStrategy implements ResourceAllocationStrategy {
     private final ResourceProfile defaultSlotResourceProfile;
     private final ResourceProfile totalResourceProfile;
+    private final int numSlotsPerWorker;
 
     public DefaultResourceAllocationStrategy(
             ResourceProfile defaultSlotResourceProfile, int numSlotsPerWorker) {
         this.defaultSlotResourceProfile = defaultSlotResourceProfile;
         this.totalResourceProfile = defaultSlotResourceProfile.multiply(numSlotsPerWorker);
+        this.numSlotsPerWorker = numSlotsPerWorker;
     }
 
     @Override
@@ -211,17 +213,15 @@ public class DefaultResourceAllocationStrategy implements ResourceAllocationStra
                 } else {
                     if (totalResourceProfile.allFieldsNoLessThan(effectiveProfile)) {
                         // Add new pending task manager
-                        final PendingTaskManagerId pendingTaskManagerId =
-                                PendingTaskManagerId.generate();
-                        resultBuilder.addPendingTaskManagerAllocate(
-                                new PendingTaskManager(
-                                        pendingTaskManagerId,
-                                        totalResourceProfile,
-                                        defaultSlotResourceProfile));
+                        final PendingTaskManager pendingTaskManager =
+                                new PendingTaskManager(totalResourceProfile, numSlotsPerWorker);
+                        resultBuilder.addPendingTaskManagerAllocate(pendingTaskManager);
                         resultBuilder.addAllocationOnPendingResource(
-                                jobId, pendingTaskManagerId, effectiveProfile);
+                                jobId,
+                                pendingTaskManager.getPendingTaskManagerId(),
+                                effectiveProfile);
                         availableResources.put(
-                                pendingTaskManagerId,
+                                pendingTaskManager.getPendingTaskManagerId(),
                                 totalResourceProfile.subtract(effectiveProfile));
                     } else {
                         resultBuilder.addUnfulfillableJob(jobId);
