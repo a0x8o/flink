@@ -7,7 +7,7 @@
  * "License"); you may not use this file except in compliance
  * with the License.  You may obtain a copy of the License at
  *
- * http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,13 +16,22 @@
  * limitations under the License.
  */
 
-package org.apache.flink.contrib.streaming.state.restore;
+package org.apache.flink.contrib.streaming.state.iterator;
 
-import org.apache.flink.runtime.state.RestoreOperation;
+import java.io.Closeable;
 
-/** Interface for RocksDB restore. */
-public interface RocksDBRestoreOperation
-        extends RestoreOperation<RocksDBRestoreResult>, AutoCloseable {
-    /** Restores state that was previously snapshot-ed from the provided state handles. */
-    RocksDBRestoreResult restore() throws Exception;
+/** An interface for iterating over a single state in a RocksDB state backend. */
+public interface SingleStateIterator extends Closeable {
+    void next();
+
+    boolean isValid();
+
+    byte[] key();
+
+    byte[] value();
+
+    int getKvStateId();
+
+    @Override
+    void close();
 }
