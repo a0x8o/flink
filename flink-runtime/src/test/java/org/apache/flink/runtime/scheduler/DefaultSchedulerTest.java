@@ -260,7 +260,11 @@ public class DefaultSchedulerTest extends TestLogger {
         final DefaultScheduler scheduler = createSchedulerAndStartScheduling(jobGraph);
 
         final ArchivedExecutionVertex archivedExecutionVertex =
-                Iterables.getOnlyElement(scheduler.requestJob().getAllExecutionVertices());
+                Iterables.getOnlyElement(
+                        scheduler
+                                .requestJob()
+                                .getArchivedExecutionGraph()
+                                .getAllExecutionVertices());
         final ExecutionAttemptID attemptId =
                 archivedExecutionVertex.getCurrentExecutionAttempt().getAttemptId();
 
@@ -294,7 +298,11 @@ public class DefaultSchedulerTest extends TestLogger {
         final DefaultScheduler scheduler = createSchedulerAndStartScheduling(jobGraph);
 
         final ArchivedExecutionVertex onlyExecutionVertex =
-                Iterables.getOnlyElement(scheduler.requestJob().getAllExecutionVertices());
+                Iterables.getOnlyElement(
+                        scheduler
+                                .requestJob()
+                                .getArchivedExecutionGraph()
+                                .getAllExecutionVertices());
         final ExecutionAttemptID attemptId =
                 onlyExecutionVertex.getCurrentExecutionAttempt().getAttemptId();
 
@@ -325,6 +333,7 @@ public class DefaultSchedulerTest extends TestLogger {
         Throwable failureCause =
                 scheduler
                         .requestJob()
+                        .getArchivedExecutionGraph()
                         .getFailureInfo()
                         .getException()
                         .deserializeError(DefaultSchedulerTest.class.getClassLoader());
@@ -388,7 +397,11 @@ public class DefaultSchedulerTest extends TestLogger {
         actionsToTriggerTaskFailure.accept(vid11);
 
         final Iterator<ArchivedExecutionVertex> vertexIterator =
-                scheduler.requestJob().getAllExecutionVertices().iterator();
+                scheduler
+                        .requestJob()
+                        .getArchivedExecutionGraph()
+                        .getAllExecutionVertices()
+                        .iterator();
         final ArchivedExecutionVertex ev11 = vertexIterator.next();
         final ArchivedExecutionVertex ev12 = vertexIterator.next();
         final ArchivedExecutionVertex ev21 = vertexIterator.next();
@@ -424,7 +437,12 @@ public class DefaultSchedulerTest extends TestLogger {
         testExecutionSlotAllocator.completePendingRequest(sourceExecutionVertexId);
 
         final ArchivedExecutionVertex sourceExecutionVertex =
-                scheduler.requestJob().getAllExecutionVertices().iterator().next();
+                scheduler
+                        .requestJob()
+                        .getArchivedExecutionGraph()
+                        .getAllExecutionVertices()
+                        .iterator()
+                        .next();
         final ExecutionAttemptID attemptId =
                 sourceExecutionVertex.getCurrentExecutionAttempt().getAttemptId();
         scheduler.updateTaskExecutionState(
@@ -437,7 +455,9 @@ public class DefaultSchedulerTest extends TestLogger {
         assertThat(
                 testExecutionVertexOperations.getDeployedVertices(),
                 containsInAnyOrder(sourceExecutionVertexId, sinkExecutionVertexId));
-        assertThat(scheduler.requestJob().getState(), is(equalTo(JobStatus.RUNNING)));
+        assertThat(
+                scheduler.requestJob().getArchivedExecutionGraph().getState(),
+                is(equalTo(JobStatus.RUNNING)));
     }
 
     @Test
@@ -478,7 +498,11 @@ public class DefaultSchedulerTest extends TestLogger {
         schedulingStrategy.schedule(Collections.singletonList(onlySchedulingVertex.getId()));
 
         final ArchivedExecutionVertex onlyExecutionVertex =
-                Iterables.getOnlyElement(scheduler.requestJob().getAllExecutionVertices());
+                Iterables.getOnlyElement(
+                        scheduler
+                                .requestJob()
+                                .getArchivedExecutionGraph()
+                                .getAllExecutionVertices());
         final ExecutionAttemptID attemptId =
                 onlyExecutionVertex.getCurrentExecutionAttempt().getAttemptId();
         scheduler.updateTaskExecutionState(
@@ -532,11 +556,15 @@ public class DefaultSchedulerTest extends TestLogger {
         scheduler.handleGlobalFailure(new Exception("forced failure"));
 
         final ArchivedExecutionVertex onlyExecutionVertex =
-                Iterables.getOnlyElement(scheduler.requestJob().getAllExecutionVertices());
+                Iterables.getOnlyElement(
+                        scheduler
+                                .requestJob()
+                                .getArchivedExecutionGraph()
+                                .getAllExecutionVertices());
         final ExecutionAttemptID attemptId =
                 onlyExecutionVertex.getCurrentExecutionAttempt().getAttemptId();
         scheduler.updateTaskExecutionState(
-                new TaskExecutionState(jobGraph.getJobID(), attemptId, ExecutionState.CANCELED));
+                new TaskExecutionState(attemptId, ExecutionState.CANCELED));
 
         taskRestartExecutor.triggerScheduledTasks();
 
@@ -554,7 +582,11 @@ public class DefaultSchedulerTest extends TestLogger {
         final DefaultScheduler scheduler = createSchedulerAndStartScheduling(jobGraph);
 
         final Iterator<ArchivedExecutionVertex> vertexIterator =
-                scheduler.requestJob().getAllExecutionVertices().iterator();
+                scheduler
+                        .requestJob()
+                        .getArchivedExecutionGraph()
+                        .getAllExecutionVertices()
+                        .iterator();
         final ArchivedExecutionVertex v1 = vertexIterator.next();
         final ArchivedExecutionVertex v2 = vertexIterator.next();
 
@@ -588,11 +620,15 @@ public class DefaultSchedulerTest extends TestLogger {
         final DefaultScheduler scheduler = createSchedulerAndStartScheduling(jobGraph);
 
         final ArchivedExecutionVertex onlyExecutionVertex =
-                Iterables.getOnlyElement(scheduler.requestJob().getAllExecutionVertices());
+                Iterables.getOnlyElement(
+                        scheduler
+                                .requestJob()
+                                .getArchivedExecutionGraph()
+                                .getAllExecutionVertices());
         final ExecutionAttemptID attemptId =
                 onlyExecutionVertex.getCurrentExecutionAttempt().getAttemptId();
         scheduler.updateTaskExecutionState(
-                new TaskExecutionState(jobGraph.getJobID(), attemptId, ExecutionState.RUNNING));
+                new TaskExecutionState(attemptId, ExecutionState.RUNNING));
 
         final CheckpointCoordinator checkpointCoordinator = getCheckpointCoordinator(scheduler);
 
@@ -616,11 +652,15 @@ public class DefaultSchedulerTest extends TestLogger {
         final DefaultScheduler scheduler = createSchedulerAndStartScheduling(jobGraph);
 
         final ArchivedExecutionVertex onlyExecutionVertex =
-                Iterables.getOnlyElement(scheduler.requestJob().getAllExecutionVertices());
+                Iterables.getOnlyElement(
+                        scheduler
+                                .requestJob()
+                                .getArchivedExecutionGraph()
+                                .getAllExecutionVertices());
         final ExecutionAttemptID attemptId =
                 onlyExecutionVertex.getCurrentExecutionAttempt().getAttemptId();
         scheduler.updateTaskExecutionState(
-                new TaskExecutionState(jobGraph.getJobID(), attemptId, ExecutionState.RUNNING));
+                new TaskExecutionState(attemptId, ExecutionState.RUNNING));
 
         final CheckpointCoordinator checkpointCoordinator = getCheckpointCoordinator(scheduler);
 
@@ -652,11 +692,15 @@ public class DefaultSchedulerTest extends TestLogger {
         final DefaultScheduler scheduler = createSchedulerAndStartScheduling(jobGraph);
 
         final ArchivedExecutionVertex onlyExecutionVertex =
-                Iterables.getOnlyElement(scheduler.requestJob().getAllExecutionVertices());
+                Iterables.getOnlyElement(
+                        scheduler
+                                .requestJob()
+                                .getArchivedExecutionGraph()
+                                .getAllExecutionVertices());
         final ExecutionAttemptID attemptId =
                 onlyExecutionVertex.getCurrentExecutionAttempt().getAttemptId();
         scheduler.updateTaskExecutionState(
-                new TaskExecutionState(jobGraph.getJobID(), attemptId, ExecutionState.RUNNING));
+                new TaskExecutionState(attemptId, ExecutionState.RUNNING));
 
         final CheckpointCoordinator checkpointCoordinator = getCheckpointCoordinator(scheduler);
 
@@ -743,7 +787,11 @@ public class DefaultSchedulerTest extends TestLogger {
         final DefaultScheduler scheduler = createSchedulerAndStartScheduling(jobGraph);
 
         final Iterator<ArchivedExecutionVertex> vertexIterator =
-                scheduler.requestJob().getAllExecutionVertices().iterator();
+                scheduler
+                        .requestJob()
+                        .getArchivedExecutionGraph()
+                        .getAllExecutionVertices()
+                        .iterator();
         final ExecutionAttemptID attemptId1 =
                 vertexIterator.next().getCurrentExecutionAttempt().getAttemptId();
         final ExecutionAttemptID attemptId2 =
@@ -751,17 +799,11 @@ public class DefaultSchedulerTest extends TestLogger {
 
         scheduler.updateTaskExecutionState(
                 new TaskExecutionState(
-                        jobId,
-                        attemptId1,
-                        ExecutionState.FAILED,
-                        new RuntimeException("expected")));
+                        attemptId1, ExecutionState.FAILED, new RuntimeException("expected")));
         final JobStatus jobStatusAfterFirstFailure = scheduler.requestJobStatus();
         scheduler.updateTaskExecutionState(
                 new TaskExecutionState(
-                        jobId,
-                        attemptId2,
-                        ExecutionState.FAILED,
-                        new RuntimeException("expected")));
+                        attemptId2, ExecutionState.FAILED, new RuntimeException("expected")));
 
         taskRestartExecutor.triggerNonPeriodicScheduledTask();
         final JobStatus jobStatusWithPendingRestarts = scheduler.requestJobStatus();
@@ -781,7 +823,11 @@ public class DefaultSchedulerTest extends TestLogger {
         final SchedulingTopology topology = scheduler.getSchedulingTopology();
 
         final Iterator<ArchivedExecutionVertex> vertexIterator =
-                scheduler.requestJob().getAllExecutionVertices().iterator();
+                scheduler
+                        .requestJob()
+                        .getArchivedExecutionGraph()
+                        .getAllExecutionVertices()
+                        .iterator();
         final ExecutionAttemptID attemptId1 =
                 vertexIterator.next().getCurrentExecutionAttempt().getAttemptId();
         final ExecutionAttemptID attemptId2 =
@@ -791,20 +837,14 @@ public class DefaultSchedulerTest extends TestLogger {
 
         scheduler.updateTaskExecutionState(
                 new TaskExecutionState(
-                        jobid,
-                        attemptId1,
-                        ExecutionState.FAILED,
-                        new RuntimeException("expected")));
+                        attemptId1, ExecutionState.FAILED, new RuntimeException("expected")));
         scheduler.cancel();
         final ExecutionState vertex2StateAfterCancel =
                 topology.getVertex(executionVertex2).getState();
         final JobStatus statusAfterCancelWhileRestarting = scheduler.requestJobStatus();
         scheduler.updateTaskExecutionState(
                 new TaskExecutionState(
-                        jobid,
-                        attemptId2,
-                        ExecutionState.CANCELED,
-                        new RuntimeException("expected")));
+                        attemptId2, ExecutionState.CANCELED, new RuntimeException("expected")));
 
         assertThat(vertex2StateAfterCancel, is(equalTo(ExecutionState.CANCELING)));
         assertThat(statusAfterCancelWhileRestarting, is(equalTo(JobStatus.CANCELLING)));
@@ -818,19 +858,21 @@ public class DefaultSchedulerTest extends TestLogger {
         final DefaultScheduler scheduler = createSchedulerAndStartScheduling(jobGraph);
 
         final ArchivedExecutionVertex onlyExecutionVertex =
-                Iterables.getOnlyElement(scheduler.requestJob().getAllExecutionVertices());
+                Iterables.getOnlyElement(
+                        scheduler
+                                .requestJob()
+                                .getArchivedExecutionGraph()
+                                .getAllExecutionVertices());
         final ExecutionAttemptID attemptId =
                 onlyExecutionVertex.getCurrentExecutionAttempt().getAttemptId();
 
         final String exceptionMessage = "expected exception";
         scheduler.updateTaskExecutionState(
                 new TaskExecutionState(
-                        jobId,
-                        attemptId,
-                        ExecutionState.FAILED,
-                        new RuntimeException(exceptionMessage)));
+                        attemptId, ExecutionState.FAILED, new RuntimeException(exceptionMessage)));
 
-        final ErrorInfo failureInfo = scheduler.requestJob().getFailureInfo();
+        final ErrorInfo failureInfo =
+                scheduler.requestJob().getArchivedExecutionGraph().getFailureInfo();
         assertThat(failureInfo, is(notNullValue()));
         assertThat(failureInfo.getExceptionAsString(), containsString(exceptionMessage));
     }
@@ -850,7 +892,11 @@ public class DefaultSchedulerTest extends TestLogger {
         scheduler.startScheduling();
 
         Iterator<ArchivedExecutionVertex> vertexIterator =
-                scheduler.requestJob().getAllExecutionVertices().iterator();
+                scheduler
+                        .requestJob()
+                        .getArchivedExecutionGraph()
+                        .getAllExecutionVertices()
+                        .iterator();
         ArchivedExecutionVertex v1 = vertexIterator.next();
 
         assertThat(testExecutionSlotAllocator.getPendingRequests().keySet(), hasSize(2));
@@ -858,12 +904,16 @@ public class DefaultSchedulerTest extends TestLogger {
         final String exceptionMessage = "expected exception";
         scheduler.updateTaskExecutionState(
                 new TaskExecutionState(
-                        jobId,
                         v1.getCurrentExecutionAttempt().getAttemptId(),
                         ExecutionState.FAILED,
                         new RuntimeException(exceptionMessage)));
 
-        vertexIterator = scheduler.requestJob().getAllExecutionVertices().iterator();
+        vertexIterator =
+                scheduler
+                        .requestJob()
+                        .getArchivedExecutionGraph()
+                        .getAllExecutionVertices()
+                        .iterator();
         v1 = vertexIterator.next();
         ArchivedExecutionVertex v2 = vertexIterator.next();
         assertThat(v1.getExecutionState(), is(ExecutionState.FAILED));
@@ -877,7 +927,11 @@ public class DefaultSchedulerTest extends TestLogger {
         final DefaultScheduler scheduler = createSchedulerAndStartScheduling(jobGraph);
 
         final ExecutionAttemptID attemptId =
-                Iterables.getOnlyElement(scheduler.requestJob().getAllExecutionVertices())
+                Iterables.getOnlyElement(
+                                scheduler
+                                        .requestJob()
+                                        .getArchivedExecutionGraph()
+                                        .getAllExecutionVertices())
                         .getCurrentExecutionAttempt()
                         .getAttemptId();
 
@@ -888,11 +942,7 @@ public class DefaultSchedulerTest extends TestLogger {
         // we have to cancel the task and trigger the restart to have the exception history
         // populated
         scheduler.updateTaskExecutionState(
-                new TaskExecutionState(
-                        jobGraph.getJobID(),
-                        attemptId,
-                        ExecutionState.CANCELED,
-                        expectedException));
+                new TaskExecutionState(attemptId, ExecutionState.CANCELED, expectedException));
         taskRestartExecutor.triggerScheduledTasks();
         final long end = System.currentTimeMillis();
 
@@ -917,7 +967,11 @@ public class DefaultSchedulerTest extends TestLogger {
 
         // initiate restartable failure
         final ExecutionAttemptID restartableAttemptId =
-                Iterables.getOnlyElement(scheduler.requestJob().getAllExecutionVertices())
+                Iterables.getOnlyElement(
+                                scheduler
+                                        .requestJob()
+                                        .getArchivedExecutionGraph()
+                                        .getAllExecutionVertices())
                         .getCurrentExecutionAttempt()
                         .getAttemptId();
         final RuntimeException restartableException = new RuntimeException("restartable exception");
@@ -930,7 +984,11 @@ public class DefaultSchedulerTest extends TestLogger {
         testRestartBackoffTimeStrategy.setCanRestart(false);
 
         final ExecutionAttemptID failingAttemptId =
-                Iterables.getOnlyElement(scheduler.requestJob().getAllExecutionVertices())
+                Iterables.getOnlyElement(
+                                scheduler
+                                        .requestJob()
+                                        .getArchivedExecutionGraph()
+                                        .getAllExecutionVertices())
                         .getCurrentExecutionAttempt()
                         .getAttemptId();
         final RuntimeException failingException = new RuntimeException("failing exception");
@@ -971,10 +1029,7 @@ public class DefaultSchedulerTest extends TestLogger {
     private static TaskExecutionState createFailedTaskExecutionState(
             JobID jobId, ExecutionAttemptID executionAttemptID) {
         return new TaskExecutionState(
-                jobId,
-                executionAttemptID,
-                ExecutionState.FAILED,
-                new Exception("Expected failure cause"));
+                executionAttemptID, ExecutionState.FAILED, new Exception("Expected failure cause"));
     }
 
     private static Range<Long> initiateFailure(
@@ -984,8 +1039,7 @@ public class DefaultSchedulerTest extends TestLogger {
             Throwable exception) {
         long start = System.currentTimeMillis();
         scheduler.updateTaskExecutionState(
-                new TaskExecutionState(
-                        jobId, executionAttemptID, ExecutionState.FAILED, exception));
+                new TaskExecutionState(executionAttemptID, ExecutionState.FAILED, exception));
         return Range.closed(start, System.currentTimeMillis());
     }
 
