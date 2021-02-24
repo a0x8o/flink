@@ -74,6 +74,7 @@ import org.apache.flink.runtime.io.network.partition.TestingJobMasterPartitionTr
 import org.apache.flink.runtime.jobgraph.DistributionPattern;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 import org.apache.flink.runtime.jobgraph.JobGraph;
+import org.apache.flink.runtime.jobgraph.JobType;
 import org.apache.flink.runtime.jobgraph.JobVertex;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobgraph.OperatorID;
@@ -105,6 +106,7 @@ import org.apache.flink.runtime.rpc.TestingRpcService;
 import org.apache.flink.runtime.rpc.akka.AkkaRpcService;
 import org.apache.flink.runtime.rpc.akka.AkkaRpcServiceConfiguration;
 import org.apache.flink.runtime.scheduler.DefaultSchedulerFactory;
+import org.apache.flink.runtime.scheduler.ExecutionGraphInfo;
 import org.apache.flink.runtime.scheduler.TestingSchedulerNG;
 import org.apache.flink.runtime.scheduler.TestingSchedulerNGFactory;
 import org.apache.flink.runtime.shuffle.NettyShuffleMaster;
@@ -126,6 +128,7 @@ import org.apache.flink.runtime.testtasks.NoOpInvokable;
 import org.apache.flink.runtime.testutils.CommonTestUtils;
 import org.apache.flink.runtime.util.TestingFatalErrorHandler;
 import org.apache.flink.testutils.ClassLoaderUtils;
+import org.apache.flink.testutils.junit.FailsWithAdaptiveScheduler;
 import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.FlinkException;
 import org.apache.flink.util.FlinkRuntimeException;
@@ -140,6 +143,7 @@ import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.ClassRule;
 import org.junit.Test;
+import org.junit.experimental.categories.Category;
 import org.junit.rules.TemporaryFolder;
 
 import javax.annotation.Nonnull;
@@ -761,6 +765,7 @@ public class JobMasterTest extends TestLogger {
      * submission.
      */
     @Test
+    @Category(FailsWithAdaptiveScheduler.class) // FLINK-21398
     public void testRestoringFromSavepoint() throws Exception {
 
         // create savepoint data
@@ -802,6 +807,7 @@ public class JobMasterTest extends TestLogger {
      * allowed.
      */
     @Test
+    @Category(FailsWithAdaptiveScheduler.class) // FLINK-21398
     public void testRestoringModifiedJobFromSavepoint() throws Exception {
 
         // create savepoint data
@@ -859,6 +865,7 @@ public class JobMasterTest extends TestLogger {
 
     /** Tests that an existing checkpoint will have precedence over an savepoint. */
     @Test
+    @Category(FailsWithAdaptiveScheduler.class) // FLINK-21398
     public void testCheckpointPrecedesSavepointRecovery() throws Exception {
 
         // create savepoint data
@@ -1044,6 +1051,7 @@ public class JobMasterTest extends TestLogger {
      * if this execution fails.
      */
     @Test
+    @Category(FailsWithAdaptiveScheduler.class) // FLINK-21450
     public void testRequestNextInputSplitWithLocalFailover() throws Exception {
 
         configuration.setString(
@@ -1057,6 +1065,7 @@ public class JobMasterTest extends TestLogger {
     }
 
     @Test
+    @Category(FailsWithAdaptiveScheduler.class) // FLINK-21399
     public void testRequestNextInputSplitWithGlobalFailover() throws Exception {
         configuration.setInteger(RestartStrategyOptions.RESTART_STRATEGY_FIXED_DELAY_ATTEMPTS, 1);
         configuration.set(
@@ -1091,6 +1100,7 @@ public class JobMasterTest extends TestLogger {
         source.setInvokableClass(AbstractInvokable.class);
 
         final JobGraph inputSplitJobGraph = new JobGraph(source);
+        jobGraph.setJobType(JobType.STREAMING);
 
         final ExecutionConfig executionConfig = new ExecutionConfig();
         executionConfig.setRestartStrategy(RestartStrategies.fixedDelayRestart(100, 0));
@@ -1134,10 +1144,7 @@ public class JobMasterTest extends TestLogger {
             // fail the first execution to trigger a failover
             jobMasterGateway
                     .updateTaskExecutionState(
-                            new TaskExecutionState(
-                                    inputSplitJobGraph.getJobID(),
-                                    initialAttemptId,
-                                    ExecutionState.FAILED))
+                            new TaskExecutionState(initialAttemptId, ExecutionState.FAILED))
                     .get();
 
             // wait until the job has been recovered
@@ -1199,7 +1206,7 @@ public class JobMasterTest extends TestLogger {
     private static Collection<AccessExecution> getExecutions(
             final JobMasterGateway jobMasterGateway) {
         final ArchivedExecutionGraph archivedExecutionGraph =
-                requestExecutionGraph(jobMasterGateway);
+                requestExecutionGraph(jobMasterGateway).getArchivedExecutionGraph();
 
         return archivedExecutionGraph.getAllVertices().values().stream()
                 .flatMap(vertex -> Arrays.stream(vertex.getTaskVertices()))
@@ -1210,7 +1217,7 @@ public class JobMasterTest extends TestLogger {
     private static List<AccessExecution> getExecutions(
             final JobMasterGateway jobMasterGateway, final JobVertexID jobVertexId) {
         final ArchivedExecutionGraph archivedExecutionGraph =
-                requestExecutionGraph(jobMasterGateway);
+                requestExecutionGraph(jobMasterGateway).getArchivedExecutionGraph();
 
         return Optional.ofNullable(archivedExecutionGraph.getAllVertices().get(jobVertexId))
                 .map(
@@ -1221,7 +1228,7 @@ public class JobMasterTest extends TestLogger {
                 .collect(Collectors.toList());
     }
 
-    private static ArchivedExecutionGraph requestExecutionGraph(
+    private static ExecutionGraphInfo requestExecutionGraph(
             final JobMasterGateway jobMasterGateway) {
         try {
             return jobMasterGateway.requestJob(testingTimeout).get();
@@ -1394,10 +1401,7 @@ public class JobMasterTest extends TestLogger {
             // finish the producer task
             jobMasterGateway
                     .updateTaskExecutionState(
-                            new TaskExecutionState(
-                                    producerConsumerJobGraph.getJobID(),
-                                    executionAttemptId,
-                                    ExecutionState.FINISHED))
+                            new TaskExecutionState(executionAttemptId, ExecutionState.FINISHED))
                     .get();
 
             // request the state of the result partition of the producer
@@ -1812,16 +1816,16 @@ public class JobMasterTest extends TestLogger {
 
             jobMasterGateway
                     .updateTaskExecutionState(
-                            new TaskExecutionState(
-                                    jobGraph.getJobID(),
-                                    executionAttemptId,
-                                    ExecutionState.RUNNING))
+                            new TaskExecutionState(executionAttemptId, ExecutionState.RUNNING))
                     .get();
 
             jobReachedRunningState.accept(taskManagerUnresolvedLocation, jobMasterGateway);
 
             final ArchivedExecutionGraph archivedExecutionGraph =
-                    onCompletionActions.getJobReachedGloballyTerminalStateFuture().get();
+                    onCompletionActions
+                            .getJobReachedGloballyTerminalStateFuture()
+                            .get()
+                            .getArchivedExecutionGraph();
 
             assertThat(archivedExecutionGraph.getState(), is(JobStatus.FAILED));
         } finally {
@@ -1922,6 +1926,7 @@ public class JobMasterTest extends TestLogger {
     private JobGraph createJobGraphFromJobVerticesWithCheckpointing(
             SavepointRestoreSettings savepointRestoreSettings, JobVertex... jobVertices) {
         final JobGraph jobGraph = new JobGraph(jobVertices);
+        jobGraph.setJobType(JobType.STREAMING);
 
         // enable checkpointing which is required to resume from a savepoint
         final CheckpointCoordinatorConfiguration checkpoinCoordinatorConfiguration =
