@@ -40,10 +40,12 @@ import org.apache.flink.core.fs.CloseableRegistry;
 import org.apache.flink.core.memory.DataInputDeserializer;
 import org.apache.flink.core.memory.DataOutputSerializer;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
+import org.apache.flink.runtime.checkpoint.CheckpointType;
 import org.apache.flink.runtime.query.TaskKvStateRegistry;
 import org.apache.flink.runtime.state.AbstractKeyedStateBackend;
 import org.apache.flink.runtime.state.CheckpointStreamFactory;
 import org.apache.flink.runtime.state.CompositeKeySerializationUtils;
+import org.apache.flink.runtime.state.HeapPriorityQueuesManager;
 import org.apache.flink.runtime.state.KeyGroupedInternalPriorityQueue;
 import org.apache.flink.runtime.state.Keyed;
 import org.apache.flink.runtime.state.KeyedStateHandle;
@@ -58,6 +60,7 @@ import org.apache.flink.runtime.state.StateSnapshotTransformer.StateSnapshotTran
 import org.apache.flink.runtime.state.StreamCompressionDecorator;
 import org.apache.flink.runtime.state.heap.HeapPriorityQueueElement;
 import org.apache.flink.runtime.state.heap.HeapPriorityQueueSetFactory;
+import org.apache.flink.runtime.state.heap.HeapPriorityQueueSnapshotRestoreWrapper;
 import org.apache.flink.runtime.state.heap.InternalKeyContext;
 import org.apache.flink.runtime.state.ttl.TtlTimeProvider;
 import org.apache.flink.util.FileUtils;
@@ -96,7 +99,6 @@ import java.util.stream.StreamSupport;
 
 import static org.apache.flink.contrib.streaming.state.RocksDBSnapshotTransformFactoryAdaptor.wrapStateSnapshotTransformFactory;
 import static org.apache.flink.runtime.state.SnapshotStrategyRunner.ExecutionType.ASYNCHRONOUS;
-import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkState;
 
 /**
@@ -182,6 +184,8 @@ public class RocksDBKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
      */
     private final LinkedHashMap<String, RocksDbKvStateInfo> kvStateInformation;
 
+    private final HeapPriorityQueuesManager heapPriorityQueuesManager;
+
     /** Number of bytes required to prefix the key groups. */
     private final int keyGroupPrefixBytes;
 
@@ -240,6 +244,7 @@ public class RocksDBKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
             TtlTimeProvider ttlTimeProvider,
             RocksDB db,
             LinkedHashMap<String, RocksDbKvStateInfo> kvStateInformation,
+            Map<String, HeapPriorityQueueSnapshotRestoreWrapper<?>> registeredPQStates,
             int keyGroupPrefixBytes,
             CloseableRegistry cancelStreamRegistry,
             StreamCompressionDecorator keyGroupCompressionDecorator,
@@ -279,7 +284,6 @@ public class RocksDBKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
 
         this.writeOptions = optionsContainer.getWriteOptions();
         this.readOptions = optionsContainer.getReadOptions();
-        checkArgument(writeBatchSize >= 0, "Write batch size have to be no negative value.");
         this.writeBatchSize = writeBatchSize;
         this.db = db;
         this.rocksDBResourceGuard = rocksDBResourceGuard;
@@ -290,6 +294,16 @@ public class RocksDBKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
         this.nativeMetricMonitor = nativeMetricMonitor;
         this.sharedRocksKeyBuilder = sharedRocksKeyBuilder;
         this.priorityQueueFactory = priorityQueueFactory;
+        if (priorityQueueFactory instanceof HeapPriorityQueueSetFactory) {
+            this.heapPriorityQueuesManager =
+                    new HeapPriorityQueuesManager(
+                            registeredPQStates,
+                            (HeapPriorityQueueSetFactory) priorityQueueFactory,
+                            keyContext.getKeyGroupRange(),
+                            keyContext.getNumberOfKeyGroups());
+        } else {
+            this.heapPriorityQueuesManager = null;
+        }
     }
 
     @SuppressWarnings("unchecked")
@@ -455,11 +469,16 @@ public class RocksDBKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
 
     @Nonnull
     @Override
-    public <T extends HeapPriorityQueueElement & PriorityComparable & Keyed>
+    public <T extends HeapPriorityQueueElement & PriorityComparable<? super T> & Keyed<?>>
             KeyGroupedInternalPriorityQueue<T> create(
                     @Nonnull String stateName,
                     @Nonnull TypeSerializer<T> byteOrderedElementSerializer) {
-        return priorityQueueFactory.create(stateName, byteOrderedElementSerializer);
+        if (this.heapPriorityQueuesManager != null) {
+            return this.heapPriorityQueuesManager.createOrUpdate(
+                    stateName, byteOrderedElementSerializer);
+        } else {
+            return priorityQueueFactory.create(stateName, byteOrderedElementSerializer);
+        }
     }
 
     private void cleanInstanceBasePath() {
@@ -640,7 +659,6 @@ public class RocksDBKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
                     TypeSerializer<SV> stateSerializer)
                     throws Exception {
 
-        @SuppressWarnings("unchecked")
         RegisteredKeyValueStateBackendMetaInfo<N, SV> restoredKvStateMetaInfo = oldStateInfo.f1;
 
         // fetch current serializer now because if it is incompatible, we can't access
@@ -814,7 +832,6 @@ public class RocksDBKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
     }
 
     @VisibleForTesting
-    @SuppressWarnings("unchecked")
     @Override
     public int numKeyValueStateEntries() {
         int count = 0;
@@ -837,8 +854,9 @@ public class RocksDBKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
     }
 
     @Override
-    public boolean requiresLegacySynchronousTimerSnapshots() {
-        return priorityQueueFactory instanceof HeapPriorityQueueSetFactory;
+    public boolean requiresLegacySynchronousTimerSnapshots(CheckpointType checkpointType) {
+        return priorityQueueFactory instanceof HeapPriorityQueueSetFactory
+                && checkpointType == CheckpointType.CHECKPOINT;
     }
 
     /** Rocks DB specific information about the k/v states. */
