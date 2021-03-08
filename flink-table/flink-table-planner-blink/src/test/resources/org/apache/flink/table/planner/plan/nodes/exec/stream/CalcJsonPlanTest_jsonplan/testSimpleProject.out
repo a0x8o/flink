@@ -19,7 +19,12 @@
         "bounded" : "false",
         "schema.0.name" : "a",
         "schema.1.data-type" : "INT NOT NULL"
-      }
+      },
+      "sourceAbilitySpecs" : [ {
+        "type" : "ProjectPushDown",
+        "projectedFields" : [ [ 0 ], [ 1 ] ],
+        "producedType" : "ROW<`a` BIGINT, `b` INT NOT NULL> NOT NULL"
+      } ]
     },
     "id" : 1,
     "outputType" : "ROW<`a` BIGINT, `b` INT NOT NULL>",
