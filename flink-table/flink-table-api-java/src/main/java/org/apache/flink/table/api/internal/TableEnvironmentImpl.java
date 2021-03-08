@@ -23,6 +23,7 @@ import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.JobExecutionResult;
 import org.apache.flink.api.dag.Pipeline;
 import org.apache.flink.api.dag.Transformation;
+import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.PipelineOptions;
 import org.apache.flink.core.execution.JobClient;
 import org.apache.flink.table.api.DataTypes;
@@ -96,6 +97,7 @@ import org.apache.flink.table.operations.ShowCurrentCatalogOperation;
 import org.apache.flink.table.operations.ShowCurrentDatabaseOperation;
 import org.apache.flink.table.operations.ShowDatabasesOperation;
 import org.apache.flink.table.operations.ShowFunctionsOperation;
+import org.apache.flink.table.operations.ShowModulesOperation;
 import org.apache.flink.table.operations.ShowPartitionsOperation;
 import org.apache.flink.table.operations.ShowTablesOperation;
 import org.apache.flink.table.operations.ShowViewsOperation;
@@ -174,20 +176,21 @@ public class TableEnvironmentImpl implements TableEnvironmentInternal {
     protected final Executor execEnv;
     protected final FunctionCatalog functionCatalog;
     protected final Planner planner;
-    protected final Parser parser;
     private final boolean isStreamingMode;
     private final ClassLoader userClassLoader;
     private static final String UNSUPPORTED_QUERY_IN_SQL_UPDATE_MSG =
             "Unsupported SQL query! sqlUpdate() only accepts a single SQL statement of type "
                     + "INSERT, CREATE TABLE, DROP TABLE, ALTER TABLE, USE CATALOG, USE [CATALOG.]DATABASE, "
                     + "CREATE DATABASE, DROP DATABASE, ALTER DATABASE, CREATE FUNCTION, DROP FUNCTION, ALTER FUNCTION, "
-                    + "CREATE CATALOG, DROP CATALOG, CREATE VIEW, DROP VIEW, LOAD MODULE, UNLOAD MODULE, USE MODULES.";
+                    + "CREATE CATALOG, DROP CATALOG, CREATE VIEW, DROP VIEW, LOAD MODULE, UNLOAD "
+                    + "MODULE, USE MODULES.";
     private static final String UNSUPPORTED_QUERY_IN_EXECUTE_SQL_MSG =
             "Unsupported SQL query! executeSql() only accepts a single SQL statement of type "
                     + "CREATE TABLE, DROP TABLE, ALTER TABLE, CREATE DATABASE, DROP DATABASE, ALTER DATABASE, "
                     + "CREATE FUNCTION, DROP FUNCTION, ALTER FUNCTION, CREATE CATALOG, DROP CATALOG, "
                     + "USE CATALOG, USE [CATALOG.]DATABASE, SHOW CATALOGS, SHOW DATABASES, SHOW TABLES, SHOW FUNCTIONS, SHOW PARTITIONS"
-                    + "CREATE VIEW, DROP VIEW, SHOW VIEWS, INSERT, DESCRIBE, LOAD MODULE, UNLOAD MODULE, USE MODULES.";
+                    + "CREATE VIEW, DROP VIEW, SHOW VIEWS, INSERT, DESCRIBE, LOAD MODULE, UNLOAD "
+                    + "MODULE, USE MODULES, SHOW [FULL] MODULES.";
 
     /** Provides necessary methods for {@link ConnectTableDescriptor}. */
     private final Registration registration =
@@ -195,7 +198,7 @@ public class TableEnvironmentImpl implements TableEnvironmentInternal {
 
                 @Override
                 public void createTemporaryTable(String path, CatalogBaseTable table) {
-                    UnresolvedIdentifier unresolvedIdentifier = parser.parseIdentifier(path);
+                    UnresolvedIdentifier unresolvedIdentifier = getParser().parseIdentifier(path);
                     ObjectIdentifier objectIdentifier =
                             catalogManager.qualifyIdentifier(unresolvedIdentifier);
                     catalogManager.createTemporaryTable(table, objectIdentifier, false);
@@ -221,18 +224,17 @@ public class TableEnvironmentImpl implements TableEnvironmentInternal {
 
         this.functionCatalog = functionCatalog;
         this.planner = planner;
-        this.parser = planner.getParser();
         this.isStreamingMode = isStreamingMode;
         this.userClassLoader = userClassLoader;
         this.operationTreeBuilder =
                 OperationTreeBuilder.create(
                         tableConfig,
-                        functionCatalog.asLookup(parser::parseIdentifier),
+                        functionCatalog.asLookup(getParser()::parseIdentifier),
                         catalogManager.getDataTypeFactory(),
                         path -> {
                             try {
                                 UnresolvedIdentifier unresolvedIdentifier =
-                                        parser.parseIdentifier(path);
+                                        getParser().parseIdentifier(path);
                                 Optional<CatalogQueryOperation> catalogQueryOperation =
                                         scanInternal(unresolvedIdentifier);
                                 return catalogQueryOperation.map(
@@ -250,7 +252,7 @@ public class TableEnvironmentImpl implements TableEnvironmentInternal {
                         },
                         (sqlExpression, inputSchema) -> {
                             try {
-                                return parser.parseSqlExpression(sqlExpression, inputSchema);
+                                return getParser().parseSqlExpression(sqlExpression, inputSchema);
                             } catch (Throwable t) {
                                 throw new ValidationException(
                                         String.format("Invalid SQL expression: %s", sqlExpression),
@@ -260,12 +262,22 @@ public class TableEnvironmentImpl implements TableEnvironmentInternal {
                         isStreamingMode);
     }
 
-    public static TableEnvironmentImpl create(EnvironmentSettings settings) {
+    public static TableEnvironmentImpl create(Configuration configuration) {
+        return create(EnvironmentSettings.fromConfiguration(configuration), configuration);
+    }
 
+    public static TableEnvironmentImpl create(EnvironmentSettings settings) {
+        return create(settings, settings.toConfiguration());
+    }
+
+    private static TableEnvironmentImpl create(
+            EnvironmentSettings settings, Configuration configuration) {
         // temporary solution until FLINK-15635 is fixed
         ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
 
+        // use configuration to init table config
         TableConfig tableConfig = new TableConfig();
+        tableConfig.addConfiguration(configuration);
 
         ModuleManager moduleManager = new ModuleManager();
 
@@ -420,14 +432,14 @@ public class TableEnvironmentImpl implements TableEnvironmentInternal {
             String path,
             Class<? extends UserDefinedFunction> functionClass,
             boolean ignoreIfExists) {
-        final UnresolvedIdentifier unresolvedIdentifier = parser.parseIdentifier(path);
+        final UnresolvedIdentifier unresolvedIdentifier = getParser().parseIdentifier(path);
         functionCatalog.registerCatalogFunction(
                 unresolvedIdentifier, functionClass, ignoreIfExists);
     }
 
     @Override
     public boolean dropFunction(String path) {
-        final UnresolvedIdentifier unresolvedIdentifier = parser.parseIdentifier(path);
+        final UnresolvedIdentifier unresolvedIdentifier = getParser().parseIdentifier(path);
         return functionCatalog.dropCatalogFunction(unresolvedIdentifier, true);
     }
 
@@ -441,14 +453,14 @@ public class TableEnvironmentImpl implements TableEnvironmentInternal {
 
     @Override
     public void createTemporaryFunction(String path, UserDefinedFunction functionInstance) {
-        final UnresolvedIdentifier unresolvedIdentifier = parser.parseIdentifier(path);
+        final UnresolvedIdentifier unresolvedIdentifier = getParser().parseIdentifier(path);
         functionCatalog.registerTemporaryCatalogFunction(
                 unresolvedIdentifier, functionInstance, false);
     }
 
     @Override
     public boolean dropTemporaryFunction(String path) {
-        final UnresolvedIdentifier unresolvedIdentifier = parser.parseIdentifier(path);
+        final UnresolvedIdentifier unresolvedIdentifier = getParser().parseIdentifier(path);
         return functionCatalog.dropTemporaryCatalogFunction(unresolvedIdentifier, true);
     }
 
@@ -460,7 +472,7 @@ public class TableEnvironmentImpl implements TableEnvironmentInternal {
 
     @Override
     public void createTemporaryView(String path, Table view) {
-        UnresolvedIdentifier identifier = parser.parseIdentifier(path);
+        UnresolvedIdentifier identifier = getParser().parseIdentifier(path);
         createTemporaryView(identifier, view);
     }
 
@@ -492,7 +504,7 @@ public class TableEnvironmentImpl implements TableEnvironmentInternal {
 
     @Override
     public Table from(String path) {
-        UnresolvedIdentifier unresolvedIdentifier = parser.parseIdentifier(path);
+        UnresolvedIdentifier unresolvedIdentifier = getParser().parseIdentifier(path);
         return scanInternal(unresolvedIdentifier)
                 .map(this::createTable)
                 .orElseThrow(
@@ -504,7 +516,7 @@ public class TableEnvironmentImpl implements TableEnvironmentInternal {
 
     @Override
     public void insertInto(String targetPath, Table table) {
-        UnresolvedIdentifier unresolvedIdentifier = parser.parseIdentifier(targetPath);
+        UnresolvedIdentifier unresolvedIdentifier = getParser().parseIdentifier(targetPath);
         insertIntoInternal(unresolvedIdentifier, table);
     }
 
@@ -587,7 +599,7 @@ public class TableEnvironmentImpl implements TableEnvironmentInternal {
 
     @Override
     public boolean dropTemporaryTable(String path) {
-        UnresolvedIdentifier unresolvedIdentifier = parser.parseIdentifier(path);
+        UnresolvedIdentifier unresolvedIdentifier = getParser().parseIdentifier(path);
         ObjectIdentifier identifier = catalogManager.qualifyIdentifier(unresolvedIdentifier);
         try {
             catalogManager.dropTemporaryTable(identifier, false);
@@ -599,7 +611,7 @@ public class TableEnvironmentImpl implements TableEnvironmentInternal {
 
     @Override
     public boolean dropTemporaryView(String path) {
-        UnresolvedIdentifier unresolvedIdentifier = parser.parseIdentifier(path);
+        UnresolvedIdentifier unresolvedIdentifier = getParser().parseIdentifier(path);
         ObjectIdentifier identifier = catalogManager.qualifyIdentifier(unresolvedIdentifier);
         try {
             catalogManager.dropTemporaryView(identifier, false);
@@ -641,7 +653,7 @@ public class TableEnvironmentImpl implements TableEnvironmentInternal {
 
     @Override
     public String explainSql(String statement, ExplainDetail... extraDetails) {
-        List<Operation> operations = parser.parse(statement);
+        List<Operation> operations = getParser().parse(statement);
 
         if (operations.size() != 1) {
             throw new TableException(
@@ -663,7 +675,7 @@ public class TableEnvironmentImpl implements TableEnvironmentInternal {
 
     @Override
     public Table sqlQuery(String query) {
-        List<Operation> operations = parser.parse(query);
+        List<Operation> operations = getParser().parse(query);
 
         if (operations.size() != 1) {
             throw new ValidationException(
@@ -683,7 +695,7 @@ public class TableEnvironmentImpl implements TableEnvironmentInternal {
 
     @Override
     public TableResult executeSql(String statement) {
-        List<Operation> operations = parser.parse(statement);
+        List<Operation> operations = getParser().parse(statement);
 
         if (operations.size() != 1) {
             throw new TableException(UNSUPPORTED_QUERY_IN_EXECUTE_SQL_MSG);
@@ -761,7 +773,7 @@ public class TableEnvironmentImpl implements TableEnvironmentInternal {
 
     @Override
     public void sqlUpdate(String stmt) {
-        List<Operation> operations = parser.parse(stmt);
+        List<Operation> operations = getParser().parse(stmt);
 
         if (operations.size() != 1) {
             throw new TableException(UNSUPPORTED_QUERY_IN_SQL_UPDATE_MSG);
@@ -1085,6 +1097,13 @@ public class TableEnvironmentImpl implements TableEnvironmentInternal {
         } else if (operation instanceof ShowCurrentDatabaseOperation) {
             return buildShowResult(
                     "current database name", new String[] {catalogManager.getCurrentDatabase()});
+        } else if (operation instanceof ShowModulesOperation) {
+            ShowModulesOperation showModulesOperation = (ShowModulesOperation) operation;
+            if (showModulesOperation.requireFull()) {
+                return buildShowFullModulesResult(listFullModules());
+            } else {
+                return buildShowResult("module name", listModules());
+            }
         } else if (operation instanceof ShowTablesOperation) {
             return buildShowResult("table name", listTables());
         } else if (operation instanceof ShowFunctionsOperation) {
@@ -1214,6 +1233,17 @@ public class TableEnvironmentImpl implements TableEnvironmentInternal {
                 new String[] {columnName},
                 new DataType[] {DataTypes.STRING()},
                 Arrays.stream(objects).map((c) -> new String[] {c}).toArray(String[][]::new));
+    }
+
+    private TableResult buildShowFullModulesResult(ModuleEntry[] moduleEntries) {
+        Object[][] rows =
+                Arrays.stream(moduleEntries)
+                        .map(entry -> new Object[] {entry.name(), entry.used()})
+                        .toArray(Object[][]::new);
+        return buildResult(
+                new String[] {"module name", "used"},
+                new DataType[] {DataTypes.STRING(), DataTypes.BOOLEAN()},
+                rows);
     }
 
     private TableResult buildDescribeResult(TableSchema schema) {
@@ -1362,7 +1392,7 @@ public class TableEnvironmentImpl implements TableEnvironmentInternal {
 
     @Override
     public Parser getParser() {
-        return parser;
+        return getPlanner().getParser();
     }
 
     @Override
@@ -1635,12 +1665,12 @@ public class TableEnvironmentImpl implements TableEnvironmentInternal {
                 this,
                 tableOperation,
                 operationTreeBuilder,
-                functionCatalog.asLookup(parser::parseIdentifier));
+                functionCatalog.asLookup(getParser()::parseIdentifier));
     }
 
     @Override
     public String getJsonPlan(String stmt) {
-        List<Operation> operations = parser.parse(stmt);
+        List<Operation> operations = getParser().parse(stmt);
         if (operations.size() != 1) {
             throw new TableException(
                     "Unsupported SQL query! getJsonPlan() only accepts a single INSERT statement.");

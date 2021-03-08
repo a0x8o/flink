@@ -48,7 +48,7 @@ import org.apache.flink.runtime.executiongraph.utils.SimpleAckingTaskManagerGate
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 import org.apache.flink.runtime.jobgraph.JobGraph;
-import org.apache.flink.runtime.jobgraph.JobType;
+import org.apache.flink.runtime.jobgraph.JobGraphTestUtils;
 import org.apache.flink.runtime.jobgraph.JobVertex;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.jobgraph.SavepointRestoreSettings;
@@ -250,6 +250,53 @@ public class AdaptiveSchedulerTest extends TestLogger {
         assertThat(
                 executionGraph.getJobVertex(JOB_VERTEX.getID()).getParallelism(),
                 is(numAvailableSlots));
+    }
+
+    @Test
+    public void testExecutionGraphGenerationSetsInitializationTimestamp() throws Exception {
+        final long initializationTimestamp = 42L;
+        final JobGraph jobGraph = createJobGraph();
+
+        final DefaultDeclarativeSlotPool declarativeSlotPool =
+                createDeclarativeSlotPool(jobGraph.getJobID());
+
+        final AdaptiveScheduler adaptiveScheduler =
+                new AdaptiveSchedulerBuilder(jobGraph, mainThreadExecutor)
+                        .setInitializationTimestamp(initializationTimestamp)
+                        .setDeclarativeSlotPool(declarativeSlotPool)
+                        .build();
+
+        adaptiveScheduler.startScheduling();
+
+        offerSlots(
+                declarativeSlotPool,
+                createSlotOffersForResourceRequirements(
+                        ResourceCounter.withResource(ResourceProfile.UNKNOWN, 1)));
+
+        final ExecutionGraph executionGraph =
+                adaptiveScheduler.createExecutionGraphWithAvailableResources();
+
+        assertThat(
+                executionGraph.getStatusTimestamp(JobStatus.INITIALIZING),
+                is(initializationTimestamp));
+    }
+
+    @Test
+    public void testInitializationTimestampForwarding() throws Exception {
+        final long expectedInitializationTimestamp = 42L;
+
+        final AdaptiveScheduler adaptiveScheduler =
+                new AdaptiveSchedulerBuilder(createJobGraph(), mainThreadExecutor)
+                        .setInitializationTimestamp(expectedInitializationTimestamp)
+                        .build();
+
+        final long initializationTimestamp =
+                adaptiveScheduler
+                        .requestJob()
+                        .getArchivedExecutionGraph()
+                        .getStatusTimestamp(JobStatus.INITIALIZING);
+
+        assertThat(initializationTimestamp, is(expectedInitializationTimestamp));
     }
 
     @Test
@@ -761,9 +808,7 @@ public class AdaptiveSchedulerTest extends TestLogger {
     }
 
     private static JobGraph createJobGraph() {
-        final JobGraph jobGraph = new JobGraph(JOB_VERTEX);
-        jobGraph.setJobType(JobType.STREAMING);
-        return jobGraph;
+        return JobGraphTestUtils.streamingJobGraph(JOB_VERTEX);
     }
 
     private static class LifecycleMethodCapturingState extends DummyState {

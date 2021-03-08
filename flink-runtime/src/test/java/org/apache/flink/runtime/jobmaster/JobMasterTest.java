@@ -36,9 +36,6 @@ import org.apache.flink.core.io.InputSplit;
 import org.apache.flink.core.io.InputSplitAssigner;
 import org.apache.flink.core.io.InputSplitSource;
 import org.apache.flink.core.testutils.OneShotLatch;
-import org.apache.flink.runtime.akka.AkkaUtils;
-import org.apache.flink.runtime.checkpoint.CheckpointException;
-import org.apache.flink.runtime.checkpoint.CheckpointFailureReason;
 import org.apache.flink.runtime.checkpoint.CheckpointProperties;
 import org.apache.flink.runtime.checkpoint.CheckpointRecoveryFactory;
 import org.apache.flink.runtime.checkpoint.CheckpointRetentionPolicy;
@@ -63,22 +60,20 @@ import org.apache.flink.runtime.heartbeat.HeartbeatServices;
 import org.apache.flink.runtime.heartbeat.TestingHeartbeatServices;
 import org.apache.flink.runtime.highavailability.TestingHighAvailabilityServices;
 import org.apache.flink.runtime.instance.SimpleSlotContext;
-import org.apache.flink.runtime.io.network.partition.NoOpJobMasterPartitionTracker;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionType;
 import org.apache.flink.runtime.io.network.partition.TestingJobMasterPartitionTracker;
 import org.apache.flink.runtime.jobgraph.DistributionPattern;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 import org.apache.flink.runtime.jobgraph.JobGraph;
-import org.apache.flink.runtime.jobgraph.JobType;
+import org.apache.flink.runtime.jobgraph.JobGraphBuilder;
+import org.apache.flink.runtime.jobgraph.JobGraphTestUtils;
 import org.apache.flink.runtime.jobgraph.JobVertex;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobgraph.SavepointRestoreSettings;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
-import org.apache.flink.runtime.jobgraph.utils.JobGraphTestUtils;
 import org.apache.flink.runtime.jobmanager.PartitionProducerDisposedException;
 import org.apache.flink.runtime.jobmanager.slots.TaskManagerGateway;
-import org.apache.flink.runtime.jobmaster.factories.UnregisteredJobManagerJobMetricGroupFactory;
 import org.apache.flink.runtime.jobmaster.slotpool.PhysicalSlot;
 import org.apache.flink.runtime.jobmaster.slotpool.SlotInfoWithUtilization;
 import org.apache.flink.runtime.jobmaster.slotpool.SlotPool;
@@ -88,28 +83,22 @@ import org.apache.flink.runtime.jobmaster.slotpool.TestingSlotPoolServiceBuilder
 import org.apache.flink.runtime.jobmaster.utils.JobMasterBuilder;
 import org.apache.flink.runtime.leaderretrieval.SettableLeaderRetrievalService;
 import org.apache.flink.runtime.messages.Acknowledge;
-import org.apache.flink.runtime.messages.checkpoint.DeclineCheckpoint;
 import org.apache.flink.runtime.registration.RegistrationResponse;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerGateway;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerId;
 import org.apache.flink.runtime.resourcemanager.utils.TestingResourceManagerGateway;
-import org.apache.flink.runtime.rpc.RpcService;
 import org.apache.flink.runtime.rpc.RpcUtils;
 import org.apache.flink.runtime.rpc.TestingRpcService;
-import org.apache.flink.runtime.rpc.akka.AkkaRpcService;
-import org.apache.flink.runtime.rpc.akka.AkkaRpcServiceConfiguration;
 import org.apache.flink.runtime.scheduler.DefaultSchedulerFactory;
 import org.apache.flink.runtime.scheduler.ExecutionGraphInfo;
 import org.apache.flink.runtime.scheduler.TestingSchedulerNG;
 import org.apache.flink.runtime.scheduler.TestingSchedulerNGFactory;
-import org.apache.flink.runtime.shuffle.NettyShuffleMaster;
 import org.apache.flink.runtime.state.CompletedCheckpointStorageLocation;
 import org.apache.flink.runtime.state.StreamStateHandle;
 import org.apache.flink.runtime.taskexecutor.TaskExecutorGateway;
 import org.apache.flink.runtime.taskexecutor.TaskExecutorToJobManagerHeartbeatPayload;
 import org.apache.flink.runtime.taskexecutor.TestingTaskExecutorGateway;
 import org.apache.flink.runtime.taskexecutor.TestingTaskExecutorGatewayBuilder;
-import org.apache.flink.runtime.taskexecutor.rpc.RpcCheckpointResponder;
 import org.apache.flink.runtime.taskexecutor.slot.SlotOffer;
 import org.apache.flink.runtime.taskmanager.LocalUnresolvedTaskManagerLocation;
 import org.apache.flink.runtime.taskmanager.TaskExecutionState;
@@ -118,7 +107,6 @@ import org.apache.flink.runtime.taskmanager.UnresolvedTaskManagerLocation;
 import org.apache.flink.runtime.testtasks.NoOpInvokable;
 import org.apache.flink.runtime.testutils.CommonTestUtils;
 import org.apache.flink.runtime.util.TestingFatalErrorHandler;
-import org.apache.flink.testutils.ClassLoaderUtils;
 import org.apache.flink.testutils.junit.FailsWithAdaptiveScheduler;
 import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.FlinkException;
@@ -126,7 +114,6 @@ import org.apache.flink.util.FlinkRuntimeException;
 import org.apache.flink.util.InstantiationUtil;
 import org.apache.flink.util.TestLogger;
 
-import akka.actor.ActorSystem;
 import org.hamcrest.Matchers;
 import org.junit.After;
 import org.junit.AfterClass;
@@ -142,7 +129,6 @@ import javax.annotation.Nullable;
 
 import java.io.File;
 import java.io.IOException;
-import java.net.URLClassLoader;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -179,7 +165,6 @@ import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.instanceOf;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.nullValue;
-import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 /** Tests for {@link JobMaster}. */
@@ -197,7 +182,7 @@ public class JobMasterTest extends TestLogger {
     private static final long heartbeatInterval = 1000L;
     private static final long heartbeatTimeout = 5_000_000L;
 
-    private static final JobGraph jobGraph = new JobGraph();
+    private static final JobGraph jobGraph = JobGraphTestUtils.singleNoOpJobGraph();
 
     private static TestingRpcService rpcService;
 
@@ -257,100 +242,6 @@ public class JobMasterTest extends TestLogger {
         if (rpcService != null) {
             rpcService.stopService();
             rpcService = null;
-        }
-    }
-
-    @Test
-    public void testDeclineCheckpointInvocationWithUserException() throws Exception {
-        RpcService rpcService1 = null;
-        RpcService rpcService2 = null;
-        try {
-            final ActorSystem actorSystem1 = AkkaUtils.createDefaultActorSystem();
-            final ActorSystem actorSystem2 = AkkaUtils.createDefaultActorSystem();
-
-            AkkaRpcServiceConfiguration akkaRpcServiceConfig =
-                    AkkaRpcServiceConfiguration.fromConfiguration(configuration);
-            rpcService1 = new AkkaRpcService(actorSystem1, akkaRpcServiceConfig);
-            rpcService2 = new AkkaRpcService(actorSystem2, akkaRpcServiceConfig);
-
-            final CompletableFuture<Throwable> declineCheckpointMessageFuture =
-                    new CompletableFuture<>();
-
-            final JobManagerSharedServices jobManagerSharedServices =
-                    new TestingJobManagerSharedServicesBuilder().build();
-            final JobMasterConfiguration jobMasterConfiguration =
-                    JobMasterConfiguration.fromConfiguration(configuration);
-
-            final JobMaster jobMaster =
-                    new JobMaster(
-                            rpcService1,
-                            JobMasterId.generate(),
-                            jobMasterConfiguration,
-                            jmResourceId,
-                            jobGraph,
-                            haServices,
-                            DefaultSlotPoolServiceSchedulerFactory.fromConfiguration(
-                                    configuration, jobGraph.getJobType()),
-                            jobManagerSharedServices,
-                            heartbeatServices,
-                            UnregisteredJobManagerJobMetricGroupFactory.INSTANCE,
-                            new JobMasterBuilder.TestingOnCompletionActions(),
-                            testingFatalErrorHandler,
-                            JobMasterTest.class.getClassLoader(),
-                            NettyShuffleMaster.INSTANCE,
-                            NoOpJobMasterPartitionTracker.FACTORY,
-                            new DefaultExecutionDeploymentTracker(),
-                            DefaultExecutionDeploymentReconciler::new,
-                            System.currentTimeMillis()) {
-                        @Override
-                        public void declineCheckpoint(DeclineCheckpoint declineCheckpoint) {
-                            declineCheckpointMessageFuture.complete(
-                                    declineCheckpoint.getSerializedCheckpointException().unwrap());
-                        }
-                    };
-
-            jobMaster.start();
-
-            final String className = "UserException";
-            final URLClassLoader userClassLoader =
-                    ClassLoaderUtils.compileAndLoadJava(
-                            temporaryFolder.newFolder(),
-                            className + ".java",
-                            String.format(
-                                    "public class %s extends RuntimeException { public %s() {super(\"UserMessage\");} }",
-                                    className, className));
-
-            Throwable userException =
-                    (Throwable) Class.forName(className, false, userClassLoader).newInstance();
-
-            CheckpointException checkpointException =
-                    new CheckpointException(
-                            CheckpointFailureReason.CHECKPOINT_DECLINED, userException);
-
-            JobMasterGateway jobMasterGateway =
-                    rpcService2
-                            .connect(
-                                    jobMaster.getAddress(),
-                                    jobMaster.getFencingToken(),
-                                    JobMasterGateway.class)
-                            .get();
-
-            RpcCheckpointResponder rpcCheckpointResponder =
-                    new RpcCheckpointResponder(jobMasterGateway);
-            rpcCheckpointResponder.declineCheckpoint(
-                    jobGraph.getJobID(), new ExecutionAttemptID(), 1, checkpointException);
-
-            Throwable throwable =
-                    declineCheckpointMessageFuture.get(
-                            testingTimeout.toMilliseconds(), TimeUnit.MILLISECONDS);
-            assertThat(throwable, instanceOf(CheckpointException.class));
-            Optional<Throwable> throwableWithMessage =
-                    ExceptionUtils.findThrowableWithMessage(throwable, userException.getMessage());
-            assertTrue(throwableWithMessage.isPresent());
-            assertThat(
-                    throwableWithMessage.get().getMessage(), equalTo(userException.getMessage()));
-        } finally {
-            RpcUtils.terminateRpcServices(testingTimeout, rpcService1, rpcService2);
         }
     }
 
@@ -454,7 +345,7 @@ public class JobMasterTest extends TestLogger {
                 new TestingJobManagerSharedServicesBuilder().build();
 
         final JobMaster jobMaster =
-                new JobMasterBuilder(JobGraphTestUtils.createSingleVertexJobGraph(), rpcService)
+                new JobMasterBuilder(JobGraphTestUtils.singleNoOpJobGraph(), rpcService)
                         .withHeartbeatServices(new HeartbeatServices(5L, 1000L))
                         .withSlotPoolServiceSchedulerFactory(
                                 DefaultSlotPoolServiceSchedulerFactory.create(
@@ -1032,12 +923,14 @@ public class JobMasterTest extends TestLogger {
         source.setInputSplitSource(inputSplitSource);
         source.setInvokableClass(AbstractInvokable.class);
 
-        final JobGraph inputSplitJobGraph = new JobGraph(source);
-        inputSplitJobGraph.setJobType(JobType.STREAMING);
-
         final ExecutionConfig executionConfig = new ExecutionConfig();
         executionConfig.setRestartStrategy(RestartStrategies.fixedDelayRestart(100, 0));
-        inputSplitJobGraph.setExecutionConfig(executionConfig);
+
+        final JobGraph inputSplitJobGraph =
+                JobGraphBuilder.newStreamingJobGraphBuilder()
+                        .addJobVertex(source)
+                        .setExecutionConfig(executionConfig)
+                        .build();
 
         final JobMaster jobMaster =
                 new JobMasterBuilder(inputSplitJobGraph, rpcService)
@@ -1513,7 +1406,7 @@ public class JobMasterTest extends TestLogger {
         final JobManagerSharedServices jobManagerSharedServices =
                 new TestingJobManagerSharedServicesBuilder().build();
 
-        final JobGraph jobGraph = JobGraphTestUtils.createSingleVertexJobGraph();
+        final JobGraph jobGraph = JobGraphTestUtils.singleNoOpJobGraph();
 
         final LocalUnresolvedTaskManagerLocation taskManagerUnresolvedLocation =
                 new LocalUnresolvedTaskManagerLocation();
@@ -1705,7 +1598,7 @@ public class JobMasterTest extends TestLogger {
             BiFunction<JobMasterGateway, ResourceID, BiConsumer<ResourceID, AllocatedSlotReport>>
                     heartbeatConsumerFunction)
             throws Exception {
-        final JobGraph jobGraph = JobGraphTestUtils.createSingleVertexJobGraph();
+        final JobGraph jobGraph = JobGraphTestUtils.singleNoOpJobGraph();
         final JobMasterBuilder.TestingOnCompletionActions onCompletionActions =
                 new JobMasterBuilder.TestingOnCompletionActions();
 
@@ -1808,7 +1701,7 @@ public class JobMasterTest extends TestLogger {
         consumer.connectNewDataSetAsInput(
                 producer, DistributionPattern.POINTWISE, ResultPartitionType.BLOCKING);
 
-        return new JobGraph(producer, consumer);
+        return JobGraphTestUtils.batchJobGraph(producer, consumer);
     }
 
     private File createSavepoint(long savepointId) throws IOException {
@@ -1826,7 +1719,7 @@ public class JobMasterTest extends TestLogger {
     }
 
     private JobGraph createSingleVertexJobWithRestartStrategy() throws IOException {
-        final JobGraph jobGraph = JobGraphTestUtils.createSingleVertexJobGraph();
+        final JobGraph jobGraph = JobGraphTestUtils.singleNoOpJobGraph();
 
         final ExecutionConfig executionConfig = new ExecutionConfig();
         executionConfig.setRestartStrategy(

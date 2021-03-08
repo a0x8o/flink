@@ -134,7 +134,7 @@ public class PlannerContext {
                 rowType);
     }
 
-    private FrameworkConfig createFrameworkConfig() {
+    public FrameworkConfig createFrameworkConfig() {
         return Frameworks.newConfigBuilder()
                 .defaultSchema(rootSchema.plus())
                 .parserConfig(getSqlParserConfig())
@@ -152,6 +152,11 @@ public class PlannerContext {
     /** Returns the {@link FlinkTypeFactory} that will be used. */
     public FlinkTypeFactory getTypeFactory() {
         return typeFactory;
+    }
+
+    /** Returns the {@link FlinkContext}. */
+    public FlinkContext getFlinkContext() {
+        return context;
     }
 
     /**
@@ -197,7 +202,7 @@ public class PlannerContext {
         return new CalciteParser(getSqlParserConfig());
     }
 
-    private FlinkCalciteCatalogReader createCatalogReader(
+    public FlinkCalciteCatalogReader createCatalogReader(
             boolean lenientCaseSensitivity, String currentCatalog, String currentDatabase) {
         SqlParser.Config sqlParserConfig = getSqlParserConfig();
         final boolean caseSensitive;
