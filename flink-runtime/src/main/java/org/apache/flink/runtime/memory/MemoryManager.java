@@ -20,8 +20,8 @@ package org.apache.flink.runtime.memory;
 
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.configuration.TaskManagerOptions;
+import org.apache.flink.core.memory.HybridMemorySegment;
 import org.apache.flink.core.memory.MemorySegment;
-import org.apache.flink.core.memory.OffHeapMemorySegment;
 import org.apache.flink.util.MathUtils;
 import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.function.LongFunctionWithException;
@@ -45,7 +45,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
-import static org.apache.flink.core.memory.MemorySegmentFactory.allocateUnsafeSegment;
+import static org.apache.flink.core.memory.MemorySegmentFactory.allocateOffHeapUnsafeMemory;
 
 /**
  * The memory manager governs the memory that Flink uses for sorting, hashing, caching or off-heap
@@ -55,7 +55,7 @@ import static org.apache.flink.core.memory.MemorySegmentFactory.allocateUnsafeSe
  * reused later.
  *
  * <p>The memory segments are represented as off-heap unsafe memory regions (both via {@link
- * OffHeapMemorySegment}). Releasing a memory segment will make it re-claimable by the garbage
+ * HybridMemorySegment}). Releasing a memory segment will make it re-claimable by the garbage
  * collector, but does not necessarily immediately releases the underlying memory.
  */
 public class MemoryManager {
@@ -91,14 +91,12 @@ public class MemoryManager {
      *
      * @param memorySize The total size of the off-heap memory to be managed by this memory manager.
      * @param pageSize The size of the pages handed out by the memory manager.
-     * @param verifyEmptyWaitGcMaxSleeps defines how long to wait for GC of all allocated memory to
-     *     check for memory leaks, see {@link UnsafeMemoryBudget} for details.
      */
-    MemoryManager(long memorySize, int pageSize, int verifyEmptyWaitGcMaxSleeps) {
+    MemoryManager(long memorySize, int pageSize) {
         sanityCheck(memorySize, pageSize);
 
         this.pageSize = pageSize;
-        this.memoryBudget = new UnsafeMemoryBudget(memorySize, verifyEmptyWaitGcMaxSleeps);
+        this.memoryBudget = new UnsafeMemoryBudget(memorySize);
         this.totalNumberOfPages = memorySize / pageSize;
         this.allocatedSegments = new ConcurrentHashMap<>();
         this.reservedMemory = new ConcurrentHashMap<>();
@@ -245,7 +243,7 @@ public class MemoryManager {
                                     : currentSegmentsForOwner;
                     for (long i = numberOfPages; i > 0; i--) {
                         MemorySegment segment =
-                                allocateUnsafeSegment(getPageSize(), owner, pageCleanup);
+                                allocateOffHeapUnsafeMemory(getPageSize(), owner, pageCleanup);
                         target.add(segment);
                         segmentsForOwner.add(segment);
                     }
@@ -663,15 +661,14 @@ public class MemoryManager {
     /**
      * Creates a memory manager with the given capacity and given page size.
      *
-     * <p>This is a production version of MemoryManager which waits for longest time to check for
-     * memory leaks ({@link #verifyEmpty()}) once the owner of the MemoryManager is ready to
-     * dispose.
+     * <p>This is a production version of MemoryManager which checks for memory leaks ({@link
+     * #verifyEmpty()}) once the owner of the MemoryManager is ready to dispose.
      *
      * @param memorySize The total size of the off-heap memory to be managed by this memory manager.
      * @param pageSize The size of the pages handed out by the memory manager.
      */
     public static MemoryManager create(long memorySize, int pageSize) {
-        return new MemoryManager(memorySize, pageSize, UnsafeMemoryBudget.MAX_SLEEPS_VERIFY_EMPTY);
+        return new MemoryManager(memorySize, pageSize);
     }
 
     private static void validateFraction(double fraction) {
