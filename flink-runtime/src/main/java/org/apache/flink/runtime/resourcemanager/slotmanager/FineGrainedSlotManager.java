@@ -90,7 +90,7 @@ public class FineGrainedSlotManager implements SlotManager {
 
     private boolean sendNotEnoughResourceNotifications = true;
 
-    private Set<JobID> unfulfillableJobs = new HashSet<>();
+    private final Set<JobID> unfulfillableJobs = new HashSet<>();
 
     /** ResourceManager's id. */
     @Nullable private ResourceManagerId resourceManagerId;
@@ -585,8 +585,11 @@ public class FineGrainedSlotManager implements SlotManager {
     @Override
     public Map<WorkerResourceSpec, Integer> getRequiredResources() {
         return taskManagerTracker.getPendingTaskManagers().stream()
-                .map(PendingTaskManager::getTotalResourceProfile)
-                .map(WorkerResourceSpec::fromTotalResourceProfile)
+                .map(
+                        pendingTaskManager ->
+                                WorkerResourceSpec.fromTotalResourceProfile(
+                                        pendingTaskManager.getTotalResourceProfile(),
+                                        pendingTaskManager.getNumSlots()))
                 .collect(Collectors.groupingBy(Function.identity(), Collectors.summingInt(e -> 1)));
     }
 
@@ -668,7 +671,8 @@ public class FineGrainedSlotManager implements SlotManager {
     private boolean allocateResource(PendingTaskManager pendingTaskManager) {
         if (!resourceActions.allocateResource(
                 WorkerResourceSpec.fromTotalResourceProfile(
-                        pendingTaskManager.getTotalResourceProfile()))) {
+                        pendingTaskManager.getTotalResourceProfile(),
+                        pendingTaskManager.getNumSlots()))) {
             // resource cannot be allocated
             return false;
         }
