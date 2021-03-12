@@ -16,15 +16,29 @@
  * limitations under the License.
  */
 
-package org.apache.flink.runtime.registration;
+package org.apache.flink.runtime.jobmaster;
 
-import org.apache.flink.runtime.rpc.RpcGateway;
+import org.apache.flink.runtime.registration.RegistrationResponse;
 
-import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
+/**
+ * Message indicating a registration rejection from the {@link JobMaster} for the {@link
+ * org.apache.flink.runtime.taskexecutor.TaskExecutor}.
+ */
+public class JMTMRegistrationRejection extends RegistrationResponse.Rejection {
+    private static final long serialVersionUID = -5763721635090700901L;
 
-/** Testing interface for the {@link RetryingRegistrationTest}. */
-public interface TestRegistrationGateway extends RpcGateway {
+    private final String reason;
 
-    CompletableFuture<RegistrationResponse> registrationCall(UUID leaderId, long timeout);
+    public JMTMRegistrationRejection(String reason) {
+        this.reason = reason;
+    }
+
+    public String getReason() {
+        return reason;
+    }
+
+    @Override
+    public String toString() {
+        return "The JobManager has rejected the registration attempt because: " + reason;
+    }
 }

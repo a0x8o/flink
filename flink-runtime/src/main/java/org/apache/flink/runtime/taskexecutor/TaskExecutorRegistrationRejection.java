@@ -16,15 +16,27 @@
  * limitations under the License.
  */
 
-package org.apache.flink.runtime.registration;
+package org.apache.flink.runtime.taskexecutor;
 
-import org.apache.flink.runtime.rpc.RpcGateway;
+import org.apache.flink.runtime.registration.RegistrationResponse;
+import org.apache.flink.runtime.resourcemanager.ResourceManager;
 
-import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
+/** Rejection response from the {@link ResourceManager} for the {@link TaskExecutor}. */
+public class TaskExecutorRegistrationRejection extends RegistrationResponse.Rejection {
+    private static final long serialVersionUID = -7447810107639038319L;
 
-/** Testing interface for the {@link RetryingRegistrationTest}. */
-public interface TestRegistrationGateway extends RpcGateway {
+    private final String reason;
 
-    CompletableFuture<RegistrationResponse> registrationCall(UUID leaderId, long timeout);
+    public TaskExecutorRegistrationRejection(String reason) {
+        this.reason = reason;
+    }
+
+    public String getReason() {
+        return reason;
+    }
+
+    @Override
+    public String toString() {
+        return "Rejected TaskExecutor registration at the ResourceManger because: " + reason;
+    }
 }
