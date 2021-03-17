@@ -22,31 +22,21 @@ import org.apache.flink.annotation.Internal;
 
 import java.math.BigDecimal;
 
-import static java.math.BigDecimal.ROUND_HALF_UP;
-
-/** Represents CPU resource. */
+/** An external resource. */
 @Internal
-public class CPUResource extends Resource<CPUResource> {
+public class ExternalResource extends Resource<ExternalResource> {
+    private static final long serialVersionUID = 1L;
 
-    private static final long serialVersionUID = 7228645888210984393L;
-
-    public static final String NAME = "CPU";
-
-    public CPUResource(double value) {
-        super(NAME, value);
+    public ExternalResource(String name, double value) {
+        super(name, value);
     }
 
-    private CPUResource(BigDecimal value) {
-        super(NAME, value);
+    private ExternalResource(String name, BigDecimal value) {
+        super(name, value);
     }
 
     @Override
-    public CPUResource create(BigDecimal value) {
-        return new CPUResource(value);
-    }
-
-    public String toHumanReadableString() {
-        return String.format(
-                "%.2f cores", getValue().setScale(2, ROUND_HALF_UP).stripTrailingZeros());
+    protected ExternalResource create(BigDecimal value) {
+        return new ExternalResource(getName(), value);
     }
 }
