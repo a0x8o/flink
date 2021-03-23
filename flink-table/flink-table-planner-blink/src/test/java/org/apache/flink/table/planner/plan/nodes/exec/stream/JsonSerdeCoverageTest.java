@@ -51,10 +51,8 @@ public class JsonSerdeCoverageTest {
                     "StreamExecPythonOverAggregate",
                     "StreamExecPythonCorrelate",
                     "StreamExecPythonCalc",
-                    "StreamExecTemporalSort",
                     "StreamExecSort",
                     "StreamExecMultipleInput",
-                    "StreamExecMatch",
                     "StreamExecValues");
 
     @SuppressWarnings({"rawtypes"})
