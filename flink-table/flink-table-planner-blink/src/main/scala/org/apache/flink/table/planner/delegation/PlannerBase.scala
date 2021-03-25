@@ -153,7 +153,7 @@ abstract class PlannerBase(
 
   override def translate(
       modifyOperations: util.List[ModifyOperation]): util.List[Transformation[_]] = {
-    validateAndOverrideConfiguration
+    validateAndOverrideConfiguration()
     if (modifyOperations.isEmpty) {
       return List.empty[Transformation[_]]
     }
@@ -171,11 +171,6 @@ abstract class PlannerBase(
     if (defaultParallelism > 0) {
       getExecEnv.getConfig.setParallelism(defaultParallelism)
     }
-  }
-
-  override def getCompletionHints(statement: String, position: Int): Array[String] = {
-    val planner = createFlinkPlanner
-    planner.getCompletionHints(statement, position)
   }
 
   /**
@@ -314,7 +309,6 @@ abstract class PlannerBase(
     val reusedPlan = SubplanReuser.reuseDuplicatedSubplan(relsWithoutSameObj, config)
     // convert FlinkPhysicalRel DAG to ExecNodeGraph
     val generator = new ExecNodeGraphGenerator()
-    generator.generate(reusedPlan.map(_.asInstanceOf[FlinkPhysicalRel]))
     val execGraph = generator.generate(reusedPlan.map(_.asInstanceOf[FlinkPhysicalRel]))
 
     // process the graph

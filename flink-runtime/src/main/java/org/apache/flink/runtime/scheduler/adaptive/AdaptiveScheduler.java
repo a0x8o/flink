@@ -22,7 +22,6 @@ import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.JobStatus;
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.configuration.JobManagerOptions;
 import org.apache.flink.metrics.Gauge;
 import org.apache.flink.queryablestate.KvStateID;
 import org.apache.flink.runtime.JobException;
@@ -79,6 +78,7 @@ import org.apache.flink.runtime.operators.coordination.TaskNotRunningException;
 import org.apache.flink.runtime.query.KvStateLocation;
 import org.apache.flink.runtime.query.UnknownKvStateLocation;
 import org.apache.flink.runtime.rpc.FatalErrorHandler;
+import org.apache.flink.runtime.scheduler.DefaultOperatorCoordinatorHandler;
 import org.apache.flink.runtime.scheduler.ExecutionGraphFactory;
 import org.apache.flink.runtime.scheduler.ExecutionGraphHandler;
 import org.apache.flink.runtime.scheduler.ExecutionGraphInfo;
@@ -174,7 +174,9 @@ public class AdaptiveScheduler
 
     private final ScaleUpController scaleUpController;
 
-    private final Duration resourceTimeout;
+    private final Duration initialResourceAllocationTimeout;
+
+    private final Duration resourceStabilizationTimeout;
 
     private final ExecutionGraphFactory executionGraphFactory;
 
@@ -197,6 +199,8 @@ public class AdaptiveScheduler
             Executor ioExecutor,
             ClassLoader userCodeClassLoader,
             CheckpointRecoveryFactory checkpointRecoveryFactory,
+            Duration initialResourceAllocationTimeout,
+            Duration resourceStabilizationTimeout,
             JobManagerJobMetricGroup jobManagerJobMetricGroup,
             RestartBackoffTimeStrategy restartBackoffTimeStrategy,
             long initializationTimestamp,
@@ -206,7 +210,7 @@ public class AdaptiveScheduler
             ExecutionGraphFactory executionGraphFactory)
             throws JobExecutionException {
 
-        ensureFullyPipelinedStreamingJob(jobGraph);
+        assertPreconditions(jobGraph);
 
         this.jobInformation = new JobGraphJobInformation(jobGraph);
         this.declarativeSlotPool = declarativeSlotPool;
@@ -237,20 +241,25 @@ public class AdaptiveScheduler
 
         this.scaleUpController = new ReactiveScaleUpController(configuration);
 
-        this.resourceTimeout = configuration.get(JobManagerOptions.RESOURCE_WAIT_TIMEOUT);
+        this.initialResourceAllocationTimeout = initialResourceAllocationTimeout;
+
+        this.resourceStabilizationTimeout = resourceStabilizationTimeout;
 
         this.executionGraphFactory = executionGraphFactory;
 
         registerMetrics();
     }
 
-    private static void ensureFullyPipelinedStreamingJob(JobGraph jobGraph)
-            throws RuntimeException {
+    private static void assertPreconditions(JobGraph jobGraph) throws RuntimeException {
         Preconditions.checkState(
                 jobGraph.getJobType() == JobType.STREAMING,
                 "The adaptive scheduler only supports streaming jobs.");
 
         for (JobVertex vertex : jobGraph.getVertices()) {
+            Preconditions.checkState(
+                    vertex.getParallelism() > 0,
+                    "The adaptive scheduler expects the parallelism being set for each JobVertex (violated JobVertex: %s).",
+                    vertex.getID());
             for (JobEdge jobEdge : vertex.getInputs()) {
                 Preconditions.checkState(
                         jobEdge.getSource().getResultType().isPipelined(),
@@ -566,7 +575,7 @@ public class AdaptiveScheduler
     // ----------------------------------------------------------------
 
     @Override
-    public boolean hasEnoughResources(ResourceCounter desiredResources) {
+    public boolean hasDesiredResources(ResourceCounter desiredResources) {
         final Collection<? extends SlotInfo> allSlots =
                 declarativeSlotPool.getFreeSlotsInformation();
         ResourceCounter outstandingResources = desiredResources;
@@ -585,6 +594,13 @@ public class AdaptiveScheduler
         }
 
         return outstandingResources.isEmpty();
+    }
+
+    @Override
+    public boolean hasSufficientResources() {
+        return slotAllocator
+                .determineParallelism(jobInformation, declarativeSlotPool.getAllSlotsInformation())
+                .isPresent();
     }
 
     private VertexParallelism determineParallelism(SlotAllocator slotAllocator)
@@ -616,7 +632,12 @@ public class AdaptiveScheduler
         declarativeSlotPool.setResourceRequirements(desiredResources);
 
         transitionToState(
-                new WaitingForResources.Factory(this, LOG, desiredResources, this.resourceTimeout));
+                new WaitingForResources.Factory(
+                        this,
+                        LOG,
+                        desiredResources,
+                        this.initialResourceAllocationTimeout,
+                        this.resourceStabilizationTimeout));
     }
 
     private ResourceCounter calculateDesiredResources() {
@@ -629,7 +650,7 @@ public class AdaptiveScheduler
                 new ExecutionGraphHandler(
                         executionGraph, LOG, ioExecutor, componentMainThreadExecutor);
         final OperatorCoordinatorHandler operatorCoordinatorHandler =
-                new OperatorCoordinatorHandler(executionGraph, this::handleGlobalFailure);
+                new DefaultOperatorCoordinatorHandler(executionGraph, this::handleGlobalFailure);
         operatorCoordinatorHandler.initializeOperatorCoordinators(componentMainThreadExecutor);
         operatorCoordinatorHandler.startAllOperatorCoordinators();
 
