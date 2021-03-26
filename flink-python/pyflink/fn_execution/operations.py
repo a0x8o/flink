@@ -36,7 +36,8 @@ from pyflink.fn_execution.beam.beam_coders import DataViewFilterCoder
 from pyflink.fn_execution.operation_utils import extract_user_defined_aggregate_function
 from pyflink.fn_execution.state_impl import RemoteKeyedStateBackend
 
-from pyflink.fn_execution.window_assigner import TumblingWindowAssigner, CountTumblingWindowAssigner
+from pyflink.fn_execution.window_assigner import TumblingWindowAssigner, \
+    CountTumblingWindowAssigner, SlidingWindowAssigner, CountSlidingWindowAssigner
 from pyflink.fn_execution.window_trigger import EventTimeTrigger, ProcessingTimeTrigger, \
     CountTrigger
 
@@ -442,8 +443,13 @@ class StreamGroupWindowAggregateOperation(AbstractStreamGroupAggregateOperation)
             else:
                 window_assigner = CountTumblingWindowAssigner(self._window.window_size)
         elif self._window.window_type == flink_fn_execution_pb2.GroupWindow.SLIDING_GROUP_WINDOW:
-            raise Exception("General Python UDAF in Sliding window will be implemented in "
-                            "FLINK-21629")
+            if self._is_time_window:
+                window_assigner = SlidingWindowAssigner(
+                    self._window.window_size, self._window.window_slide, 0,
+                    self._window.is_row_time)
+            else:
+                window_assigner = CountSlidingWindowAssigner(
+                    self._window.window_size, self._window.window_slide)
         else:
             raise Exception("General Python UDAF in Sessiong window will be implemented in "
                             "FLINK-21630")
@@ -544,7 +550,8 @@ class StreamingRuntimeContext(RuntimeContext):
                  index_of_this_subtask: int,
                  attempt_number: int,
                  job_parameters: Dict[str, str],
-                 keyed_state_backend: Union[RemoteKeyedStateBackend, None]):
+                 keyed_state_backend: Union[RemoteKeyedStateBackend, None],
+                 in_batch_execution_mode: bool):
         self._task_name = task_name
         self._task_name_with_subtasks = task_name_with_subtasks
         self._number_of_parallel_subtasks = number_of_parallel_subtasks
@@ -553,6 +560,7 @@ class StreamingRuntimeContext(RuntimeContext):
         self._attempt_number = attempt_number
         self._job_parameters = job_parameters
         self._keyed_state_backend = keyed_state_backend
+        self._in_batch_execution_mode = in_batch_execution_mode
 
     def get_task_name(self) -> str:
         """
@@ -652,7 +660,8 @@ class DataStreamStatelessFunctionOperation(Operation):
                     self.spec.serialized_fn.runtime_context.attempt_number,
                     {p.key: p.value
                      for p in self.spec.serialized_fn.runtime_context.job_parameters},
-                    None
+                    None,
+                    self.spec.serialized_fn.runtime_context.in_batch_execution_mode
                 )
                 user_defined_func.open(runtime_context)
 
@@ -746,7 +755,8 @@ class KeyedProcessFunctionOperation(StatefulFunctionOperation):
                     self.spec.serialized_fn.runtime_context.attempt_number,
                     {p.key: p.value for p in
                      self.spec.serialized_fn.runtime_context.job_parameters},
-                    self.keyed_state_backend)
+                    self.keyed_state_backend,
+                    self.spec.serialized_fn.runtime_context.in_batch_execution_mode)
                 user_defined_func.open(runtime_context)
 
     class InternalCollector(object):
