@@ -19,7 +19,7 @@
 package org.apache.flink.table.operations;
 
 /** Operation to describe a BEGIN STATEMENT SET statement. */
-public class BeginStatementSetOperation implements Operation {
+public class BeginStatementSetOperation implements StatementSetOperation {
 
     @Override
     public String asSummaryString() {

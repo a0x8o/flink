@@ -30,18 +30,14 @@ import org.apache.flink.types.Row;
  */
 public class KeyedTwoInputWithTimerRowFactory {
 
-    private final Row reuseRunnerInput;
-
     /** Reusable row for normal data runner inputs. */
     private final Row reuseNormalData;
 
-    /** Reusable row for timer data runner inputs. */
-    private final Row reuseTimerData;
+    private final KeyedInputWithTimerRowFactory oneInputFactory;
 
     public KeyedTwoInputWithTimerRowFactory() {
-        this.reuseRunnerInput = new Row(5);
         this.reuseNormalData = new Row(3);
-        this.reuseTimerData = new Row(3);
+        this.oneInputFactory = new KeyedInputWithTimerRowFactory();
     }
 
     public Row fromNormalData(boolean isLeft, long timestamp, long watermark, Row userInput) {
@@ -58,30 +54,16 @@ public class KeyedTwoInputWithTimerRowFactory {
             reuseNormalData.setField(2, userInput);
         }
 
-        reuseRunnerInput.setField(0, RunnerInputType.NORMAL_RECORD.value);
-        reuseRunnerInput.setField(1, reuseNormalData);
-        reuseRunnerInput.setField(2, timestamp);
-        reuseRunnerInput.setField(3, watermark);
-        reuseRunnerInput.setField(4, null);
-
-        return reuseRunnerInput;
+        return oneInputFactory.fromNormalData(timestamp, watermark, reuseNormalData);
     }
 
-    public Row fromTimer(TimeDomain timeDomain, long timestamp, long watermark, Row key) {
-        if (timeDomain == TimeDomain.PROCESSING_TIME) {
-            reuseTimerData.setField(0, TimerType.PROCESSING_TIME.value);
-        } else {
-            reuseTimerData.setField(0, TimerType.EVENT_TIME.value);
-        }
-        reuseTimerData.setField(1, key);
-        reuseTimerData.setField(2, null);
-
-        reuseRunnerInput.setField(0, RunnerInputType.TRIGGER_TIMER.value);
-        reuseRunnerInput.setField(1, null);
-        reuseRunnerInput.setField(2, timestamp);
-        reuseRunnerInput.setField(3, watermark);
-        reuseRunnerInput.setField(4, reuseTimerData);
-        return reuseRunnerInput;
+    public Row fromTimer(
+            TimeDomain timeDomain,
+            long timestamp,
+            long watermark,
+            Row key,
+            byte[] encodedNamespace) {
+        return oneInputFactory.fromTimer(timeDomain, timestamp, watermark, key, encodedNamespace);
     }
 
     public static TypeInformation<Row> getRunnerInputTypeInfo(

@@ -47,6 +47,7 @@ import org.apache.flink.runtime.state.CheckpointStorageLocationReference;
 import org.apache.flink.streaming.runtime.tasks.StreamTaskActionExecutor;
 import org.apache.flink.streaming.runtime.tasks.mailbox.MailboxExecutorImpl;
 import org.apache.flink.streaming.runtime.tasks.mailbox.TaskMailboxImpl;
+import org.apache.flink.util.clock.SystemClock;
 
 import org.apache.flink.shaded.guava18.com.google.common.io.Closer;
 
@@ -224,8 +225,8 @@ public class CheckpointedInputGateTest {
 
                 ValidatingCheckpointHandler validatingHandler = new ValidatingCheckpointHandler(1);
                 SingleCheckpointBarrierHandler barrierHandler =
-                        AlternatingControllerTest.barrierHandler(
-                                singleInputGate, validatingHandler, new MockChannelStateWriter());
+                        TestBarrierHandlerFactory.forTarget(validatingHandler)
+                                .create(singleInputGate, new MockChannelStateWriter());
                 CheckpointedInputGate checkpointedInputGate =
                         new CheckpointedInputGate(
                                 singleInputGate,
@@ -340,7 +341,8 @@ public class CheckpointedInputGateTest {
                         new AbstractInvokable(new DummyEnvironment()) {
                             @Override
                             public void invoke() {}
-                        });
+                        },
+                        SystemClock.getInstance());
 
         CheckpointedInputGate checkpointedInputGate =
                 new CheckpointedInputGate(
@@ -380,8 +382,8 @@ public class CheckpointedInputGateTest {
                         new TaskMailboxImpl(), 0, StreamTaskActionExecutor.IMMEDIATE);
 
         SingleCheckpointBarrierHandler barrierHandler =
-                AlternatingControllerTest.barrierHandler(
-                        singleInputGate, abstractInvokable, stateWriter);
+                TestBarrierHandlerFactory.forTarget(abstractInvokable)
+                        .create(singleInputGate, stateWriter);
         CheckpointedInputGate checkpointedInputGate =
                 new CheckpointedInputGate(
                         singleInputGate,
