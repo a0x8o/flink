@@ -24,9 +24,9 @@ import org.apache.flink.api.common.state.CheckpointListener;
 import org.apache.flink.api.common.typeinfo.BasicTypeInfo;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.common.typeutils.base.StringSerializer;
-import org.apache.flink.configuration.CheckpointingOptions;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.ReadableConfig;
+import org.apache.flink.configuration.StateBackendOptions;
 import org.apache.flink.core.fs.FSDataInputStream;
 import org.apache.flink.core.io.InputStatus;
 import org.apache.flink.core.testutils.OneShotLatch;
@@ -433,7 +433,7 @@ public class StreamTaskTest extends TestLogger {
     public void testStateBackendLoadingAndClosing() throws Exception {
         Configuration taskManagerConfig = new Configuration();
         taskManagerConfig.setString(
-                CheckpointingOptions.STATE_BACKEND, TestMemoryStateBackendFactory.class.getName());
+                StateBackendOptions.STATE_BACKEND, TestMemoryStateBackendFactory.class.getName());
 
         StreamConfig cfg = new StreamConfig(new Configuration());
         cfg.setStateKeySerializer(mock(TypeSerializer.class));
@@ -474,7 +474,7 @@ public class StreamTaskTest extends TestLogger {
     public void testStateBackendClosingOnFailure() throws Exception {
         Configuration taskManagerConfig = new Configuration();
         taskManagerConfig.setString(
-                CheckpointingOptions.STATE_BACKEND, TestMemoryStateBackendFactory.class.getName());
+                StateBackendOptions.STATE_BACKEND, TestMemoryStateBackendFactory.class.getName());
 
         StreamConfig cfg = new StreamConfig(new Configuration());
         cfg.setStateKeySerializer(mock(TypeSerializer.class));

@@ -2716,8 +2716,32 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=@pa
           "type" : "array",
           "items" : {
             "type" : "object",
-            "id" : "urn:jsonschema:org:apache:flink:runtime:rest:messages:JobExceptionsInfoWithHistory:ExceptionInfo",
+            "id" : "urn:jsonschema:org:apache:flink:runtime:rest:messages:JobExceptionsInfoWithHistory:RootExceptionInfo",
             "properties" : {
+              "concurrentExceptions" : {
+                "type" : "array",
+                "items" : {
+                  "type" : "object",
+                  "id" : "urn:jsonschema:org:apache:flink:runtime:rest:messages:JobExceptionsInfoWithHistory:ExceptionInfo",
+                  "properties" : {
+                    "exceptionName" : {
+                      "type" : "string"
+                    },
+                    "location" : {
+                      "type" : "string"
+                    },
+                    "stacktrace" : {
+                      "type" : "string"
+                    },
+                    "taskName" : {
+                      "type" : "string"
+                    },
+                    "timestamp" : {
+                      "type" : "integer"
+                    }
+                  }
+                }
+              },
               "exceptionName" : {
                 "type" : "string"
               },
