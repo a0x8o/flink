@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 ################################################################################
 #  Licensed to the Apache Software Foundation (ASF) under one
 #  or more contributor license agreements.  See the NOTICE file
@@ -16,14 +17,36 @@
 # limitations under the License.
 ################################################################################
 
-global-exclude *.py[cod] __pycache__ .DS_Store
-graft deps/bin
-graft deps/conf
-graft deps/log
-recursive-include deps/examples *.py
-include README.md
-include LICENSE
-include NOTICE
-include pyflink/README.txt
-recursive-include pyflink/fn_execution *.pxd
-recursive-include pyflink/fn_execution *.pyx
+function test_module() {
+    module="$FLINK_PYTHON_DIR/pyflink/$1"
+    echo "test module $module"
+    pytest --durations=20 ${module}
+    if [[ $? -ne 0 ]]; then
+        echo "test module $module failed"
+        exit 1
+    fi
+}
+
+# CURRENT_DIR is "flink/flink-python/dev/"
+CURRENT_DIR="$(cd "$( dirname "$0" )" && pwd)"
+
+# FLINK_PYTHON_DIR is "flink/flink-python"
+FLINK_PYTHON_DIR=$(dirname "$CURRENT_DIR")
+
+# test common module
+test_module "common"
+
+# test dataset module
+test_module "dataset"
+
+# test datastream module
+test_module "datastream"
+
+# test fn_execution module
+test_module "fn_execution"
+
+# test metrics module
+test_module "metrics"
+
+# test table module
+test_module "table"
