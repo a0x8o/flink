@@ -46,7 +46,6 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Function;
-import java.util.stream.Collectors;
 
 import static org.apache.flink.connector.jdbc.xa.JdbcXaSinkFunctionState.of;
 
@@ -121,7 +120,7 @@ import static org.apache.flink.connector.jdbc.xa.JdbcXaSinkFunctionState.of;
  * </tbody>
  * </table>
  *
- * @since 1.11
+ * @since 1.13
  */
 @Internal
 public class JdbcXaSinkFunction<T> extends AbstractRichFunction
@@ -236,7 +235,6 @@ public class JdbcXaSinkFunction<T> extends AbstractRichFunction
     @Override
     public void snapshotState(FunctionSnapshotContext context) throws Exception {
         LOG.debug("snapshot state, checkpointId={}", context.getCheckpointId());
-        rollbackPreparedFromCheckpoint(context.getCheckpointId());
         prepareCurrentTx(context.getCheckpointId());
         beginTx(context.getCheckpointId() + 1);
         stateHandler.store(of(preparedXids, hangingXids));
@@ -318,26 +316,6 @@ public class JdbcXaSinkFunction<T> extends AbstractRichFunction
                                     options.getMaxCommitAttempts())
                             .getForRetry());
         }
-    }
-
-    private void rollbackPreparedFromCheckpoint(long fromCheckpointInclusive) {
-        Tuple2<List<CheckpointAndXid>, List<CheckpointAndXid>> splittedXids =
-                split(preparedXids, fromCheckpointInclusive, false);
-        if (splittedXids.f1.isEmpty()) {
-            return;
-        }
-        preparedXids = splittedXids.f0;
-        LOG.warn(
-                "state snapshots have already been taken for checkpoint >= {}, rolling back {} transactions",
-                fromCheckpointInclusive,
-                splittedXids.f1.size());
-        xaGroupOps
-                .failOrRollback(
-                        splittedXids.f1.stream()
-                                .map(CheckpointAndXid::getXid)
-                                .collect(Collectors.toList()))
-                .getForRetry()
-                .forEach(hangingXids::offerFirst);
     }
 
     private Tuple2<List<CheckpointAndXid>, List<CheckpointAndXid>> split(
