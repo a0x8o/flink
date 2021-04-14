@@ -231,6 +231,7 @@ public abstract class ResourceManager<WorkerType extends ResourceIDRetrievable>
     @Override
     public final void onStart() throws Exception {
         try {
+            log.info("Starting the resource manager.");
             startResourceManagerServices();
         } catch (Throwable t) {
             final ResourceManagerException exception =
@@ -564,11 +565,6 @@ public abstract class ResourceManager<WorkerType extends ResourceIDRetrievable>
 
         if (null != jobManagerRegistration) {
             if (Objects.equals(jobMasterId, jobManagerRegistration.getJobMasterId())) {
-                log.info(
-                        "Received resource declaration for job {}: {}",
-                        jobId,
-                        resourceRequirements.getResourceRequirements());
-
                 slotManager.processResourceRequirements(resourceRequirements);
 
                 return CompletableFuture.completedFuture(Acknowledge.get());
