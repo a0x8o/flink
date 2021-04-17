@@ -19,6 +19,7 @@
 package org.apache.flink.runtime.jobmaster;
 
 import org.apache.flink.api.common.ExecutionConfig;
+import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.JobStatus;
 import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.api.common.time.Deadline;
@@ -38,6 +39,7 @@ import org.apache.flink.runtime.jobgraph.JobVertex;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
 import org.apache.flink.runtime.jobgraph.tasks.CheckpointCoordinatorConfiguration;
 import org.apache.flink.runtime.jobgraph.tasks.JobCheckpointingSettings;
+import org.apache.flink.runtime.testutils.CommonTestUtils;
 import org.apache.flink.streaming.runtime.tasks.StreamTask;
 import org.apache.flink.streaming.runtime.tasks.StreamTaskTest.NoOpStreamTask;
 import org.apache.flink.streaming.runtime.tasks.mailbox.MailboxDefaultAction;
@@ -45,7 +47,6 @@ import org.apache.flink.test.util.AbstractTestBase;
 import org.apache.flink.util.ExceptionUtils;
 
 import org.junit.Assume;
-import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -78,7 +79,6 @@ import static org.junit.Assert.fail;
  * ITCases testing the stop with savepoint functionality. This includes checking both SUSPEND and
  * TERMINATE.
  */
-@Ignore("FLINK-22249, FLINK-22248")
 public class JobMasterStopWithSavepointITCase extends AbstractTestBase {
 
     @Rule public TemporaryFolder temporaryFolder = new TemporaryFolder();
@@ -99,13 +99,13 @@ public class JobMasterStopWithSavepointITCase extends AbstractTestBase {
 
     private JobGraph jobGraph;
 
-    @Test(timeout = 5000)
+    @Test
     public void suspendWithSavepointWithoutComplicationsShouldSucceedAndLeadJobToFinished()
             throws Exception {
         stopWithSavepointNormalExecutionHelper(false);
     }
 
-    @Test(timeout = 5000)
+    @Test
     public void terminateWithSavepointWithoutComplicationsShouldSucceedAndLeadJobToFinished()
             throws Exception {
         stopWithSavepointNormalExecutionHelper(true);
@@ -130,12 +130,12 @@ public class JobMasterStopWithSavepointITCase extends AbstractTestBase {
         assertThat(savepoints, hasItem(Paths.get(savepointLocation).getFileName()));
     }
 
-    @Test(timeout = 5000)
+    @Test
     public void throwingExceptionOnCallbackWithNoRestartsShouldFailTheSuspend() throws Exception {
         throwingExceptionOnCallbackWithoutRestartsHelper(false);
     }
 
-    @Test(timeout = 5000)
+    @Test
     public void throwingExceptionOnCallbackWithNoRestartsShouldFailTheTerminate() throws Exception {
         throwingExceptionOnCallbackWithoutRestartsHelper(true);
     }
@@ -154,16 +154,17 @@ public class JobMasterStopWithSavepointITCase extends AbstractTestBase {
 
         // verifying that we actually received a synchronous checkpoint
         assertTrue(syncSavepointId.get() > 0);
-        assertThat(getJobStatus(), equalTo(JobStatus.FAILED));
+        assertThat(
+                getJobStatus(), either(equalTo(JobStatus.FAILED)).or(equalTo(JobStatus.FAILING)));
     }
 
-    @Test(timeout = 5000)
+    @Test
     public void throwingExceptionOnCallbackWithRestartsShouldSimplyRestartInSuspend()
             throws Exception {
         throwingExceptionOnCallbackWithRestartsHelper(false);
     }
 
-    @Test(timeout = 5000)
+    @Test
     public void throwingExceptionOnCallbackWithRestartsShouldSimplyRestartInTerminate()
             throws Exception {
         throwingExceptionOnCallbackWithRestartsHelper(true);
@@ -209,7 +210,7 @@ public class JobMasterStopWithSavepointITCase extends AbstractTestBase {
                 either(equalTo(JobStatus.CANCELLING)).or(equalTo(JobStatus.CANCELED)));
     }
 
-    @Test(timeout = 5000)
+    @Test
     public void testRestartCheckpointCoordinatorIfStopWithSavepointFails() throws Exception {
         setUpJobGraph(CheckpointCountingTask.class, RestartStrategies.noRestart());
 
@@ -312,20 +313,15 @@ public class JobMasterStopWithSavepointITCase extends AbstractTestBase {
     }
 
     private void waitForJob() throws Exception {
-        for (int i = 0; i < 60; i++) {
-            try {
-                final JobStatus jobStatus =
-                        clusterClient.getJobStatus(jobGraph.getJobID()).get(60, TimeUnit.SECONDS);
-                assertThat(jobStatus.isGloballyTerminalState(), equalTo(false));
-                if (jobStatus == JobStatus.RUNNING) {
-                    return;
-                }
-            } catch (ExecutionException ignored) {
-                // JobManagerRunner is not yet registered in Dispatcher
-            }
-            Thread.sleep(1000);
-        }
-        throw new AssertionError("Job did not become running within timeout.");
+        Deadline deadline = Deadline.fromNow(Duration.ofMinutes(5));
+        JobID jobID = jobGraph.getJobID();
+        CommonTestUtils.waitForAllTaskRunning(
+                () ->
+                        miniClusterResource
+                                .getMiniCluster()
+                                .getExecutionGraph(jobID)
+                                .get(60, TimeUnit.SECONDS),
+                deadline);
     }
 
     /**

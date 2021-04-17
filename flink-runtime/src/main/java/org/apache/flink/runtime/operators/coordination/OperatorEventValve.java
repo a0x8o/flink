@@ -21,38 +21,30 @@ package org.apache.flink.runtime.operators.coordination;
 import org.apache.flink.runtime.concurrent.ComponentMainThreadExecutor;
 import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.messages.Acknowledge;
-import org.apache.flink.util.FlinkException;
-import org.apache.flink.util.SerializedValue;
+import org.apache.flink.util.ExceptionUtils;
 
 import javax.annotation.Nullable;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
-import java.util.function.BiFunction;
 
 /**
  * The event value is the connection through which operator events are sent, from coordinator to
- * operator.It can temporarily block events from going through, buffering them, and releasing them
- * later.
- *
- * <p>The valve can also drop buffered events for all or selected targets.
+ * operator. It can temporarily block events from going through, buffering them, and releasing them
+ * later. It is used for "alignment" of operator event streams with checkpoint barrier injection,
+ * similar to how the input channels are aligned during a common checkpoint.
  *
  * <p>This class is NOT thread safe, but assumed to be used in a single threaded context. To guard
  * that, one can register a "main thread executor" (as used by the mailbox components like RPC
  * components) via {@link #setMainThreadExecutorForValidation(ComponentMainThreadExecutor)}.
  */
-final class OperatorEventValve {
+final class OperatorEventValve implements EventSender {
 
     private static final long NO_CHECKPOINT = Long.MIN_VALUE;
 
-    private final BiFunction<
-                    SerializedValue<OperatorEvent>, Integer, CompletableFuture<Acknowledge>>
-            eventSender;
-
-    private final Map<Integer, List<BlockedEvent>> blockedEvents = new LinkedHashMap<>();
+    private final List<BlockedEvent> blockedEvents = new ArrayList<>();
 
     private long currentCheckpointId;
 
@@ -62,15 +54,8 @@ final class OperatorEventValve {
 
     @Nullable private ComponentMainThreadExecutor mainThreadExecutor;
 
-    /**
-     * Constructs a new OperatorEventValve, passing the events to the given function when the valve
-     * is open or opened again. The second parameter of the BiFunction is the target operator
-     * subtask index.
-     */
-    public OperatorEventValve(
-            BiFunction<SerializedValue<OperatorEvent>, Integer, CompletableFuture<Acknowledge>>
-                    eventSender) {
-        this.eventSender = eventSender;
+    /** Constructs a new OperatorEventValve. */
+    OperatorEventValve() {
         this.currentCheckpointId = NO_CHECKPOINT;
         this.lastCheckpointId = Long.MIN_VALUE;
     }
@@ -92,28 +77,22 @@ final class OperatorEventValve {
      * future.
      *
      * <p>If the valve is closed this buffers the event and returns an incomplete future. The future
-     * is completed with the original result once the valve is opened. If the event is never sent
-     * (because it gets dropped through a call to {@link #reset()} or {@link #resetForTask(int)},
-     * then the returned future till be completed exceptionally.
+     * is completed with the original result once the valve is opened again.
      *
      * <p>This method makes no assumptions and gives no guarantees from which thread the result
      * future gets completed.
      */
+    @Override
     public void sendEvent(
-            SerializedValue<OperatorEvent> event,
-            int subtask,
+            Callable<CompletableFuture<Acknowledge>> sendAction,
             CompletableFuture<Acknowledge> result) {
         checkRunsInMainThread();
 
-        if (!shut) {
-            final CompletableFuture<Acknowledge> ack = eventSender.apply(event, subtask);
-            FutureUtils.forward(ack, result);
-            return;
+        if (shut) {
+            blockedEvents.add(new BlockedEvent(sendAction, result));
+        } else {
+            callSendAction(sendAction, result);
         }
-
-        final List<BlockedEvent> eventsForTask =
-                blockedEvents.computeIfAbsent(subtask, (key) -> new ArrayList<>());
-        eventsForTask.add(new BlockedEvent(event, subtask, result));
     }
 
     /**
@@ -150,21 +129,14 @@ final class OperatorEventValve {
      * Shuts the value. All events sent through this valve are blocked until the valve is re-opened.
      * If the valve is already shut, this does nothing.
      */
-    public void shutValve(long checkpointId) {
+    public boolean tryShutValve(long checkpointId) {
         checkRunsInMainThread();
 
         if (checkpointId == currentCheckpointId) {
             shut = true;
-        } else {
-            throw new IllegalStateException(
-                    String.format(
-                            "Cannot shut valve for non-prepared checkpoint. "
-                                    + "Prepared checkpoint = %s, attempting-to-close checkpoint = %d",
-                            (currentCheckpointId == NO_CHECKPOINT
-                                    ? "(none)"
-                                    : String.valueOf(currentCheckpointId)),
-                            checkpointId));
+            return true;
         }
+        return false;
     }
 
     public void openValveAndUnmarkCheckpoint(long expectedCheckpointId) {
@@ -188,52 +160,11 @@ final class OperatorEventValve {
             return;
         }
 
-        for (List<BlockedEvent> eventsForTask : blockedEvents.values()) {
-            for (BlockedEvent blockedEvent : eventsForTask) {
-                final CompletableFuture<Acknowledge> ackFuture =
-                        eventSender.apply(blockedEvent.event, blockedEvent.subtask);
-                FutureUtils.forward(ackFuture, blockedEvent.future);
-            }
+        for (BlockedEvent blockedEvent : blockedEvents) {
+            callSendAction(blockedEvent.sendAction, blockedEvent.future);
         }
         blockedEvents.clear();
         shut = false;
-    }
-
-    /** Drops all blocked events for a specific subtask. */
-    public void resetForTask(int subtask) {
-        checkRunsInMainThread();
-
-        final List<BlockedEvent> events = blockedEvents.remove(subtask);
-        failAllFutures(events);
-    }
-
-    /** Resets the valve, dropping all blocked events and opening the valve. */
-    public void reset() {
-        checkRunsInMainThread();
-
-        final List<BlockedEvent> events = new ArrayList<>();
-        for (List<BlockedEvent> taskEvents : blockedEvents.values()) {
-            if (taskEvents != null) {
-                events.addAll(taskEvents);
-            }
-        }
-        blockedEvents.clear();
-        shut = false;
-        currentCheckpointId = NO_CHECKPOINT;
-
-        failAllFutures(events);
-    }
-
-    private static void failAllFutures(@Nullable List<BlockedEvent> events) {
-        if (events == null || events.isEmpty()) {
-            return;
-        }
-
-        final Exception failureCause =
-                new FlinkException("Event discarded due to failure of target task");
-        for (BlockedEvent evt : events) {
-            evt.future.completeExceptionally(failureCause);
-        }
     }
 
     private void checkRunsInMainThread() {
@@ -242,21 +173,30 @@ final class OperatorEventValve {
         }
     }
 
+    private void callSendAction(
+            Callable<CompletableFuture<Acknowledge>> sendAction,
+            CompletableFuture<Acknowledge> result) {
+        try {
+            final CompletableFuture<Acknowledge> sendResult = sendAction.call();
+            FutureUtils.forward(sendResult, result);
+        } catch (Throwable t) {
+            ExceptionUtils.rethrowIfFatalError(t);
+            result.completeExceptionally(t);
+        }
+    }
+
     // ------------------------------------------------------------------------
 
     private static final class BlockedEvent {
 
-        final SerializedValue<OperatorEvent> event;
+        final Callable<CompletableFuture<Acknowledge>> sendAction;
         final CompletableFuture<Acknowledge> future;
-        final int subtask;
 
         BlockedEvent(
-                SerializedValue<OperatorEvent> event,
-                int subtask,
+                Callable<CompletableFuture<Acknowledge>> sendAction,
                 CompletableFuture<Acknowledge> future) {
-            this.event = event;
+            this.sendAction = sendAction;
             this.future = future;
-            this.subtask = subtask;
         }
     }
 }
