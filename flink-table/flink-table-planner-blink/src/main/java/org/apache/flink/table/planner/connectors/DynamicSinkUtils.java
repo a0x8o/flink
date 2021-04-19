@@ -54,6 +54,7 @@ import org.apache.flink.table.types.utils.TypeConversions;
 
 import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.rel.hint.RelHint;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rex.RexBuilder;
 import org.apache.calcite.rex.RexNode;
@@ -103,8 +104,9 @@ public final class DynamicSinkUtils {
         return convertSinkToRel(
                 relBuilder,
                 input,
+                Collections.emptyMap(), // dynamicOptions
                 collectModifyOperation.getTableIdentifier(),
-                Collections.emptyMap(),
+                Collections.emptyMap(), // staticPartitions
                 false,
                 tableSink,
                 catalogTable);
@@ -141,6 +143,7 @@ public final class DynamicSinkUtils {
         return convertSinkToRel(
                 relBuilder,
                 input,
+                Collections.emptyMap(),
                 externalModifyOperation.getTableIdentifier(),
                 Collections.emptyMap(),
                 false,
@@ -161,6 +164,7 @@ public final class DynamicSinkUtils {
         return convertSinkToRel(
                 relBuilder,
                 input,
+                sinkModifyOperation.getDynamicOptions(),
                 sinkModifyOperation.getTableIdentifier(),
                 sinkModifyOperation.getStaticPartitions(),
                 sinkModifyOperation.isOverwrite(),
@@ -171,6 +175,7 @@ public final class DynamicSinkUtils {
     private static RelNode convertSinkToRel(
             FlinkRelBuilder relBuilder,
             RelNode input,
+            Map<String, String> dynamicOptions,
             ObjectIdentifier sinkIdentifier,
             Map<String, String> staticPartitions,
             boolean isOverwrite,
@@ -200,10 +205,15 @@ public final class DynamicSinkUtils {
             pushMetadataProjection(relBuilder, typeFactory, schema, sink);
         }
 
+        List<RelHint> hints = new ArrayList<>();
+        if (!dynamicOptions.isEmpty()) {
+            hints.add(RelHint.builder("OPTIONS").hintOptions(dynamicOptions).build());
+        }
         final RelNode finalQuery = relBuilder.build();
 
         return LogicalSink.create(
                 finalQuery,
+                hints,
                 sinkIdentifier,
                 table,
                 sink,
