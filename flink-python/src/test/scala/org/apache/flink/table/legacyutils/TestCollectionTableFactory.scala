@@ -21,10 +21,8 @@ package org.apache.flink.table.legacyutils
 import org.apache.flink.api.common.ExecutionConfig
 import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.api.common.typeutils.TypeSerializer
-import org.apache.flink.api.java.io.{CollectionInputFormat, LocalCollectionOutputFormat}
-import org.apache.flink.api.java.operators.DataSink
+import org.apache.flink.api.java.io.CollectionInputFormat
 import org.apache.flink.api.java.typeutils.RowTypeInfo
-import org.apache.flink.api.java.{DataSet, ExecutionEnvironment}
 import org.apache.flink.configuration.Configuration
 import org.apache.flink.streaming.api.datastream.{DataStream, DataStreamSink, DataStreamSource}
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment
@@ -32,11 +30,11 @@ import org.apache.flink.streaming.api.functions.sink.RichSinkFunction
 import org.apache.flink.table.api.TableSchema
 import org.apache.flink.table.descriptors.ConnectorDescriptorValidator.CONNECTOR
 import org.apache.flink.table.descriptors.{DescriptorProperties, Schema}
-import org.apache.flink.table.factories.{BatchTableSinkFactory, BatchTableSourceFactory, StreamTableSinkFactory, StreamTableSourceFactory}
+import org.apache.flink.table.factories.{StreamTableSinkFactory, StreamTableSourceFactory}
 import org.apache.flink.table.functions.{AsyncTableFunction, TableFunction}
 import org.apache.flink.table.legacyutils.TestCollectionTableFactory.{getCollectionSink, getCollectionSource}
-import org.apache.flink.table.sinks.{AppendStreamTableSink, BatchTableSink, StreamTableSink, TableSink}
-import org.apache.flink.table.sources.{BatchTableSource, LookupableTableSource, StreamTableSource, TableSource}
+import org.apache.flink.table.sinks.{AppendStreamTableSink, StreamTableSink, TableSink}
+import org.apache.flink.table.sources.{LookupableTableSource, StreamTableSource, TableSource}
 import org.apache.flink.types.Row
 
 import java.io.IOException
@@ -52,8 +50,6 @@ import scala.collection.JavaConversions._
 class TestCollectionTableFactory
   extends StreamTableSourceFactory[Row]
   with StreamTableSinkFactory[Row]
-  with BatchTableSourceFactory[Row]
-  with BatchTableSinkFactory[Row]
 {
 
   override def createTableSource(properties: JMap[String, String]): TableSource[Row] = {
@@ -69,14 +65,6 @@ class TestCollectionTableFactory
   }
 
   override def createStreamTableSink(properties: JMap[String, String]): StreamTableSink[Row] = {
-    getCollectionSink(properties)
-  }
-
-  override def createBatchTableSource(properties: JMap[String, String]): BatchTableSource[Row] = {
-    getCollectionSource(properties, isStreaming = false)
-  }
-
-  override def createBatchTableSink(properties: JMap[String, String]): BatchTableSink[Row] = {
     getCollectionSink(properties)
   }
 
@@ -141,24 +129,12 @@ object TestCollectionTableFactory {
       val schema: TableSchema,
       val isStreaming: Boolean,
       val parallelism: Optional[Integer])
-    extends BatchTableSource[Row]
-    with StreamTableSource[Row]
+    extends StreamTableSource[Row]
     with LookupableTableSource[Row] {
 
     private val rowType: TypeInformation[Row] = schema.toRowType
 
     override def isBounded: Boolean = !isStreaming
-
-    def getDataSet(execEnv: ExecutionEnvironment): DataSet[Row] = {
-      val dataSet = execEnv.createInput(new TestCollectionInputFormat[Row](emitIntervalMs,
-        SOURCE_DATA,
-        rowType.createSerializer(new ExecutionConfig)),
-        rowType)
-      if (parallelism.isPresent) {
-        dataSet.setParallelism(parallelism.get())
-      }
-      dataSet
-    }
 
     override def getDataStream(streamEnv: StreamExecutionEnvironment): DataStreamSource[Row] = {
       val dataStream = streamEnv.createInput(new TestCollectionInputFormat[Row](emitIntervalMs,
@@ -190,11 +166,7 @@ object TestCollectionTableFactory {
     * Table sink of collection.
     */
   class CollectionTableSink(val outputType: RowTypeInfo)
-      extends BatchTableSink[Row]
-      with AppendStreamTableSink[Row] {
-    override def consumeDataSet(dataSet: DataSet[Row]): DataSink[_] = {
-      dataSet.output(new LocalCollectionOutputFormat[Row](RESULT)).setParallelism(1)
-    }
+      extends AppendStreamTableSink[Row] {
 
     override def getOutputType: RowTypeInfo = outputType
 

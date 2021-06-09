@@ -65,7 +65,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import static org.hamcrest.CoreMatchers.is;
-import static org.junit.Assert.assertThat;
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.junit.Assume.assumeTrue;
@@ -73,7 +73,7 @@ import static org.junit.Assume.assumeTrue;
 /** Tests for the {@link ClusterEntrypoint}. */
 public class ClusterEntrypointTest extends TestLogger {
 
-    private static final long TIMEOUT_MS = 3000;
+    private static final long TIMEOUT_MS = 10000;
 
     private Configuration flinkConfig;
 
@@ -196,8 +196,11 @@ public class ClusterEntrypointTest extends TestLogger {
         final File markerFile = new File(TEMPORARY_FOLDER.getRoot(), UUID.randomUUID() + ".marker");
         final TestingClusterEntrypointProcess clusterEntrypointProcess =
                 new TestingClusterEntrypointProcess(markerFile);
+
+        clusterEntrypointProcess.startProcess();
+
+        boolean success = false;
         try {
-            clusterEntrypointProcess.startProcess();
             final long pid = clusterEntrypointProcess.getProcessId();
             assertTrue("Cannot determine process ID", pid != -1);
 
@@ -216,7 +219,12 @@ public class ClusterEntrypointTest extends TestLogger {
                     "markerFile should be deleted in closeAsync shutdownHook",
                     markerFile.exists(),
                     is(false));
+            success = true;
         } finally {
+            if (!success) {
+                clusterEntrypointProcess.printProcessLog();
+            }
+
             clusterEntrypointProcess.destroy();
         }
     }

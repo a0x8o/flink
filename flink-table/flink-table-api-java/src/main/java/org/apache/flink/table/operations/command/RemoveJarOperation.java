@@ -7,7 +7,7 @@
  * "License"); you may not use this file except in compliance
  * with the License.  You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,21 +16,25 @@
  * limitations under the License.
  */
 
-package org.apache.flink.table.sources;
+package org.apache.flink.table.operations.command;
 
-import org.apache.flink.annotation.PublicEvolving;
-import org.apache.flink.table.factories.StreamTableSourceFactory;
-import org.apache.flink.types.Row;
+import org.apache.flink.table.operations.Operation;
 
-import java.util.Map;
+/** Operation to describe an REMOVE JAR statement. */
+public class RemoveJarOperation implements Operation {
 
-/** Factory for creating configured instances of {@link CsvTableSource} in a batch environment. */
-@PublicEvolving
-public class CsvBatchTableSourceFactory extends CsvTableSourceFactoryBase
-        implements StreamTableSourceFactory<Row> {
+    private final String path;
+
+    public RemoveJarOperation(String path) {
+        this.path = path;
+    }
+
+    public String getPath() {
+        return path;
+    }
 
     @Override
-    public StreamTableSource<Row> createStreamTableSource(Map<String, String> properties) {
-        return createTableSource(false, properties);
+    public String asSummaryString() {
+        return String.format("REMOVE JAR '%s'", path);
     }
 }
