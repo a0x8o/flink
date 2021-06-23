@@ -21,11 +21,10 @@ package org.apache.flink.runtime.rpc.akka;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.configuration.AkkaOptions;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.SecurityOptions;
 import org.apache.flink.runtime.akka.AkkaUtils;
-import org.apache.flink.runtime.clusterframework.BootstrapTools;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServicesUtils;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServicesUtils.AddressResolution;
-import org.apache.flink.runtime.net.SSLUtils;
 import org.apache.flink.util.NetUtils;
 import org.apache.flink.util.Preconditions;
 
@@ -40,7 +39,6 @@ import javax.annotation.Nullable;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.Optional;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiFunction;
 
 import static org.apache.flink.util.NetUtils.isValidClientPort;
@@ -65,8 +63,6 @@ public class AkkaRpcServiceUtils {
 
     private static final String MAXIMUM_FRAME_SIZE_PATH =
             "akka.remote.netty.tcp.maximum-frame-size";
-
-    private static final AtomicLong nextNameOffset = new AtomicLong(0L);
 
     // ------------------------------------------------------------------------
     //  RPC instantiation
@@ -133,7 +129,8 @@ public class AkkaRpcServiceUtils {
         checkNotNull(config, "config is null");
 
         final boolean sslEnabled =
-                config.getBoolean(AkkaOptions.SSL_ENABLED) && SSLUtils.isInternalSSLEnabled(config);
+                config.getBoolean(AkkaOptions.SSL_ENABLED)
+                        && SecurityOptions.isInternalSSLEnabled(config);
 
         return getRpcUrl(
                 hostname,
@@ -226,35 +223,6 @@ public class AkkaRpcServiceUtils {
         SSL_TCP
     }
 
-    /**
-     * Creates a random name of the form prefix_X, where X is an increasing number.
-     *
-     * @param prefix Prefix string to prepend to the monotonically increasing name offset number
-     * @return A random name of the form prefix_X where X is an increasing number
-     */
-    public static String createRandomName(String prefix) {
-        Preconditions.checkNotNull(prefix, "Prefix must not be null.");
-
-        long nameOffset;
-
-        // obtain the next name offset by incrementing it atomically
-        do {
-            nameOffset = nextNameOffset.get();
-        } while (!nextNameOffset.compareAndSet(nameOffset, nameOffset + 1L));
-
-        return prefix + '_' + nameOffset;
-    }
-
-    /**
-     * Creates a wildcard name symmetric to {@link #createRandomName(String)}.
-     *
-     * @param prefix prefix of the wildcard name
-     * @return wildcard name starting with the prefix
-     */
-    public static String createWildcardName(String prefix) {
-        return prefix + "_*";
-    }
-
     // ------------------------------------------------------------------------
     //  RPC service configuration
     // ------------------------------------------------------------------------
@@ -281,8 +249,8 @@ public class AkkaRpcServiceUtils {
         private String actorSystemName = AkkaUtils.getFlinkActorSystemName();
 
         @Nullable
-        private BootstrapTools.ActorSystemExecutorConfiguration actorSystemExecutorConfiguration =
-                null;
+        private AkkaBootstrapTools.ActorSystemExecutorConfiguration
+                actorSystemExecutorConfiguration = null;
 
         @Nullable private Config customConfig = null;
         private String bindAddress = NetUtils.getWildcardIPAddress();
@@ -317,7 +285,7 @@ public class AkkaRpcServiceUtils {
         }
 
         public AkkaRpcServiceBuilder withActorSystemExecutorConfiguration(
-                final BootstrapTools.ActorSystemExecutorConfiguration
+                final AkkaBootstrapTools.ActorSystemExecutorConfiguration
                         actorSystemExecutorConfiguration) {
             this.actorSystemExecutorConfiguration = actorSystemExecutorConfiguration;
             return this;
@@ -349,7 +317,7 @@ public class AkkaRpcServiceUtils {
                 throws Exception {
             if (actorSystemExecutorConfiguration == null) {
                 actorSystemExecutorConfiguration =
-                        BootstrapTools.ForkJoinExecutorConfiguration.fromConfiguration(
+                        AkkaBootstrapTools.ForkJoinExecutorConfiguration.fromConfiguration(
                                 configuration);
             }
 
@@ -358,7 +326,7 @@ public class AkkaRpcServiceUtils {
             if (externalAddress == null) {
                 // create local actor system
                 actorSystem =
-                        BootstrapTools.startLocalActorSystem(
+                        AkkaBootstrapTools.startLocalActorSystem(
                                 configuration,
                                 actorSystemName,
                                 logger,
@@ -367,7 +335,7 @@ public class AkkaRpcServiceUtils {
             } else {
                 // create remote actor system
                 actorSystem =
-                        BootstrapTools.startRemoteActorSystem(
+                        AkkaBootstrapTools.startRemoteActorSystem(
                                 configuration,
                                 actorSystemName,
                                 externalAddress,

@@ -24,6 +24,7 @@ import org.apache.flink.configuration.HighAvailabilityOptions;
 import org.apache.flink.configuration.IllegalConfigurationException;
 import org.apache.flink.configuration.JobManagerOptions;
 import org.apache.flink.configuration.RestOptions;
+import org.apache.flink.configuration.SecurityOptions;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.runtime.blob.BlobStoreService;
 import org.apache.flink.runtime.blob.BlobUtils;
@@ -34,8 +35,8 @@ import org.apache.flink.runtime.highavailability.nonha.standalone.StandaloneHaSe
 import org.apache.flink.runtime.highavailability.zookeeper.ZooKeeperClientHAServices;
 import org.apache.flink.runtime.highavailability.zookeeper.ZooKeeperHaServices;
 import org.apache.flink.runtime.jobmanager.HighAvailabilityMode;
-import org.apache.flink.runtime.net.SSLUtils;
 import org.apache.flink.runtime.resourcemanager.ResourceManager;
+import org.apache.flink.runtime.rpc.RpcServiceUtils;
 import org.apache.flink.runtime.rpc.akka.AkkaRpcServiceUtils;
 import org.apache.flink.runtime.util.ZooKeeperUtils;
 import org.apache.flink.util.ConfigurationException;
@@ -94,7 +95,7 @@ public class HighAvailabilityServicesUtils {
                         AkkaRpcServiceUtils.getRpcUrl(
                                 hostnamePort.f0,
                                 hostnamePort.f1,
-                                AkkaRpcServiceUtils.createWildcardName(
+                                RpcServiceUtils.createWildcardName(
                                         ResourceManager.RESOURCE_MANAGER_NAME),
                                 addressResolution,
                                 configuration);
@@ -102,7 +103,7 @@ public class HighAvailabilityServicesUtils {
                         AkkaRpcServiceUtils.getRpcUrl(
                                 hostnamePort.f0,
                                 hostnamePort.f1,
-                                AkkaRpcServiceUtils.createWildcardName(Dispatcher.DISPATCHER_NAME),
+                                RpcServiceUtils.createWildcardName(Dispatcher.DISPATCHER_NAME),
                                 addressResolution,
                                 configuration);
                 final String webMonitorAddress =
@@ -205,7 +206,7 @@ public class HighAvailabilityServicesUtils {
         }
 
         final int port = configuration.getInteger(RestOptions.PORT);
-        final boolean enableSSL = SSLUtils.isRestSSLEnabled(configuration);
+        final boolean enableSSL = SecurityOptions.isRestSSLEnabled(configuration);
         final String protocol = enableSSL ? "https://" : "http://";
 
         return String.format("%s%s:%s", protocol, address, port);
