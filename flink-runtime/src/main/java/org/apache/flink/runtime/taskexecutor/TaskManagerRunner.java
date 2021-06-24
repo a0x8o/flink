@@ -21,6 +21,7 @@ package org.apache.flink.runtime.taskexecutor;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.configuration.AkkaOptions;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.JMXServerOptions;
 import org.apache.flink.configuration.TaskManagerOptions;
@@ -30,7 +31,6 @@ import org.apache.flink.core.plugin.PluginManager;
 import org.apache.flink.core.plugin.PluginUtils;
 import org.apache.flink.core.security.FlinkSecurityManager;
 import org.apache.flink.metrics.MetricGroup;
-import org.apache.flink.runtime.akka.AkkaUtils;
 import org.apache.flink.runtime.blob.BlobCacheService;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.concurrent.FutureUtils;
@@ -49,6 +49,7 @@ import org.apache.flink.runtime.metrics.MetricRegistryImpl;
 import org.apache.flink.runtime.metrics.ReporterSetup;
 import org.apache.flink.runtime.metrics.groups.TaskManagerMetricGroup;
 import org.apache.flink.runtime.metrics.util.MetricUtils;
+import org.apache.flink.runtime.rpc.AddressResolution;
 import org.apache.flink.runtime.rpc.FatalErrorHandler;
 import org.apache.flink.runtime.rpc.RpcService;
 import org.apache.flink.runtime.rpc.akka.AkkaRpcServiceUtils;
@@ -132,7 +133,7 @@ public class TaskManagerRunner implements FatalErrorHandler {
             throws Exception {
         this.configuration = checkNotNull(configuration);
 
-        timeout = AkkaUtils.getTimeoutAsTime(configuration);
+        timeout = Time.fromDuration(configuration.get(AkkaOptions.ASK_TIMEOUT_DURATION));
 
         this.executor =
                 java.util.concurrent.Executors.newScheduledThreadPool(
@@ -141,9 +142,7 @@ public class TaskManagerRunner implements FatalErrorHandler {
 
         highAvailabilityServices =
                 HighAvailabilityServicesUtils.createHighAvailabilityServices(
-                        configuration,
-                        executor,
-                        HighAvailabilityServicesUtils.AddressResolution.NO_ADDRESS_RESOLUTION);
+                        configuration, executor, AddressResolution.NO_ADDRESS_RESOLUTION);
 
         JMXService.startInstance(configuration.getString(JMXServerOptions.JMX_SERVER_PORT));
 
@@ -580,7 +579,7 @@ public class TaskManagerRunner implements FatalErrorHandler {
             final Configuration configuration, final HighAvailabilityServices haServices)
             throws LeaderRetrievalException {
 
-        final Duration lookupTimeout = AkkaUtils.getLookupTimeout(configuration);
+        final Duration lookupTimeout = configuration.get(AkkaOptions.LOOKUP_TIMEOUT_DURATION);
 
         final InetAddress taskManagerAddress =
                 LeaderRetrievalUtils.findConnectingAddress(
