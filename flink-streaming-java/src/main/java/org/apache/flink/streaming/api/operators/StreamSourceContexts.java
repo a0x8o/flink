@@ -24,6 +24,7 @@ import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.runtime.streamstatus.StreamStatus;
 import org.apache.flink.streaming.runtime.tasks.ProcessingTimeCallback;
 import org.apache.flink.streaming.runtime.tasks.ProcessingTimeService;
+import org.apache.flink.util.FlinkRuntimeException;
 import org.apache.flink.util.Preconditions;
 
 import java.util.concurrent.ScheduledFuture;
@@ -73,7 +74,95 @@ public class StreamSourceContexts {
             default:
                 throw new IllegalArgumentException(String.valueOf(timeCharacteristic));
         }
-        return ctx;
+        return new SwitchingOnClose<>(ctx);
+    }
+
+    /**
+     * A thin wrapper that will substitute on close, a regular {@link SourceFunction.SourceContext}
+     * with a one that throws an exception on any interaction. We do that instead of adding a flag
+     * in {@link WatermarkContext} for performance reasons.
+     */
+    private static class SwitchingOnClose<T> implements SourceFunction.SourceContext<T> {
+
+        private SourceFunction.SourceContext<T> nestedContext;
+
+        private SwitchingOnClose(SourceFunction.SourceContext<T> nestedContext) {
+            this.nestedContext = nestedContext;
+        }
+
+        @Override
+        public void collect(T element) {
+            nestedContext.collect(element);
+        }
+
+        @Override
+        public void collectWithTimestamp(T element, long timestamp) {
+            nestedContext.collectWithTimestamp(element, timestamp);
+        }
+
+        @Override
+        public void emitWatermark(Watermark mark) {
+            nestedContext.emitWatermark(mark);
+        }
+
+        @Override
+        public void markAsTemporarilyIdle() {
+            nestedContext.markAsTemporarilyIdle();
+        }
+
+        @Override
+        public Object getCheckpointLock() {
+            return nestedContext.getCheckpointLock();
+        }
+
+        @Override
+        public void close() {
+            nestedContext.close();
+            this.nestedContext = new ClosedContext<>(nestedContext.getCheckpointLock());
+        }
+    }
+
+    private static class ClosedContext<T> implements SourceFunction.SourceContext<T> {
+
+        private final Object checkpointLock;
+
+        private ClosedContext(Object checkpointLock) {
+            this.checkpointLock = checkpointLock;
+        }
+
+        @Override
+        public void collect(T element) {
+            throwException();
+        }
+
+        @Override
+        public void collectWithTimestamp(T element, long timestamp) {
+            throwException();
+        }
+
+        @Override
+        public void emitWatermark(Watermark mark) {
+            throwException();
+        }
+
+        @Override
+        public void markAsTemporarilyIdle() {
+            throwException();
+        }
+
+        @Override
+        public Object getCheckpointLock() {
+            return checkpointLock;
+        }
+
+        @Override
+        public void close() {
+            // nothing to be done
+        }
+
+        private void throwException() {
+            throw new FlinkRuntimeException("The Source Context has been closed already.");
+        }
     }
 
     /**
@@ -227,7 +316,6 @@ public class StreamSourceContexts {
         @Override
         public void close() {
             super.close();
-
             final ScheduledFuture<?> nextWatermarkTimer = this.nextWatermarkTimer;
             if (nextWatermarkTimer != null) {
                 nextWatermarkTimer.cancel(true);
@@ -401,7 +489,7 @@ public class StreamSourceContexts {
         }
 
         @Override
-        public void collect(T element) {
+        public final void collect(T element) {
             synchronized (checkpointLock) {
                 processAndEmitStreamStatus(StreamStatus.ACTIVE);
 
@@ -416,7 +504,7 @@ public class StreamSourceContexts {
         }
 
         @Override
-        public void collectWithTimestamp(T element, long timestamp) {
+        public final void collectWithTimestamp(T element, long timestamp) {
             synchronized (checkpointLock) {
                 processAndEmitStreamStatus(StreamStatus.ACTIVE);
 
@@ -431,7 +519,7 @@ public class StreamSourceContexts {
         }
 
         @Override
-        public void emitWatermark(Watermark mark) {
+        public final void emitWatermark(Watermark mark) {
             if (allowWatermark(mark)) {
                 synchronized (checkpointLock) {
                     processAndEmitStreamStatus(StreamStatus.ACTIVE);
@@ -448,7 +536,7 @@ public class StreamSourceContexts {
         }
 
         @Override
-        public void markAsTemporarilyIdle() {
+        public final void markAsTemporarilyIdle() {
             synchronized (checkpointLock) {
                 processAndEmitStreamStatus(StreamStatus.IDLE);
             }
