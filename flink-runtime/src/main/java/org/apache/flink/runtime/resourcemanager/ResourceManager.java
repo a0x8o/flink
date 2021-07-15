@@ -101,8 +101,6 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * <ul>
  *   <li>{@link #registerJobManager(JobMasterId, ResourceID, String, JobID, Time)} registers a
  *       {@link JobMaster} at the resource manager
- *   <li>{@link #requestSlot(JobMasterId, SlotRequest, Time)} requests a slot from the resource
- *       manager
  * </ul>
  */
 public abstract class ResourceManager<WorkerType extends ResourceIDRetrievable>
@@ -508,45 +506,6 @@ public abstract class ResourceManager<WorkerType extends ResourceIDRetrievable>
     }
 
     @Override
-    public CompletableFuture<Acknowledge> requestSlot(
-            JobMasterId jobMasterId, SlotRequest slotRequest, final Time timeout) {
-
-        JobID jobId = slotRequest.getJobId();
-        JobManagerRegistration jobManagerRegistration = jobManagerRegistrations.get(jobId);
-
-        if (null != jobManagerRegistration) {
-            if (Objects.equals(jobMasterId, jobManagerRegistration.getJobMasterId())) {
-                log.info(
-                        "Request slot with profile {} for job {} with allocation id {}.",
-                        slotRequest.getResourceProfile(),
-                        slotRequest.getJobId(),
-                        slotRequest.getAllocationId());
-
-                try {
-                    slotManager.registerSlotRequest(slotRequest);
-                } catch (ResourceManagerException e) {
-                    return FutureUtils.completedExceptionally(e);
-                }
-
-                return CompletableFuture.completedFuture(Acknowledge.get());
-            } else {
-                return FutureUtils.completedExceptionally(
-                        new ResourceManagerException(
-                                "The job leader's id "
-                                        + jobManagerRegistration.getJobMasterId()
-                                        + " does not match the received id "
-                                        + jobMasterId
-                                        + '.'));
-            }
-
-        } else {
-            return FutureUtils.completedExceptionally(
-                    new ResourceManagerException(
-                            "Could not find registered job manager for job " + jobId + '.'));
-        }
-    }
-
-    @Override
     public CompletableFuture<Acknowledge> declareRequiredResources(
             JobMasterId jobMasterId, ResourceRequirements resourceRequirements, Time timeout) {
         final JobID jobId = resourceRequirements.getJobId();
@@ -571,13 +530,6 @@ public abstract class ResourceManager<WorkerType extends ResourceIDRetrievable>
                     new ResourceManagerException(
                             "Could not find registered job manager for job " + jobId + '.'));
         }
-    }
-
-    @Override
-    public void cancelSlotRequest(AllocationID allocationID) {
-        // As the slot allocations are async, it can not avoid all redundant slots, but should best
-        // effort.
-        slotManager.unregisterSlotRequest(allocationID);
     }
 
     @Override

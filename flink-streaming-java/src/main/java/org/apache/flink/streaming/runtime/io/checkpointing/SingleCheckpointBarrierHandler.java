@@ -221,9 +221,9 @@ public class SingleCheckpointBarrierHandler extends CheckpointBarrierHandler {
         alignedChannels.add(channelInfo);
         if (alignedChannels.size() == 1) {
             if (targetChannelCount == 1) {
-                markAlignmentStartAndEnd(barrier.getTimestamp());
+                markAlignmentStartAndEnd(barrierId, barrier.getTimestamp());
             } else {
-                markAlignmentStart(barrier.getTimestamp());
+                markAlignmentStart(barrierId, barrier.getTimestamp());
             }
         }
 
@@ -378,6 +378,9 @@ public class SingleCheckpointBarrierHandler extends CheckpointBarrierHandler {
         targetChannelCount = 0;
         resetAlignmentTimer();
         currentState = currentState.abort(cancelledId);
+        if (cancelledId == currentCheckpointId) {
+            resetAlignment();
+        }
         notifyAbort(cancelledId, exception);
         allBarriersReceivedFuture.completeExceptionally(exception);
     }

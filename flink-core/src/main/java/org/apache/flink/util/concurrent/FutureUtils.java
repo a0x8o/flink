@@ -72,7 +72,7 @@ public class FutureUtils {
 
     /**
      * Fakes asynchronous execution by immediately executing the operation and completing the
-     * supplied future either noramlly or exceptionally.
+     * supplied future either normally or exceptionally.
      *
      * @param operation to executed
      * @param <T> type of the result
@@ -1259,6 +1259,42 @@ public class FutureUtils {
      */
     public static void assertNoException(CompletableFuture<?> completableFuture) {
         handleUncaughtException(completableFuture, FatalExitExceptionHandler.INSTANCE);
+    }
+
+    /**
+     * Checks that the given {@link CompletableFuture} is not completed exceptionally with the
+     * specified class. If the future is completed exceptionally with the specific class, then try
+     * to recover using a given exception handler. If the exception does not match the specified
+     * class, just pass it through to later stages.
+     *
+     * @param completableFuture to assert for a given exception
+     * @param exceptionClass exception class to assert for
+     * @param exceptionHandler to call if the future is completed exceptionally with the specific
+     *     exception
+     * @return completable future, that can recover from a specified exception
+     */
+    public static <T, E extends Throwable> CompletableFuture<T> handleException(
+            CompletableFuture<? extends T> completableFuture,
+            Class<E> exceptionClass,
+            Function<? super E, ? extends T> exceptionHandler) {
+        final CompletableFuture<T> handledFuture = new CompletableFuture<>();
+        checkNotNull(completableFuture)
+                .whenComplete(
+                        (result, throwable) -> {
+                            if (throwable == null) {
+                                handledFuture.complete(result);
+                            } else if (exceptionClass.isAssignableFrom(throwable.getClass())) {
+                                final E exception = exceptionClass.cast(throwable);
+                                try {
+                                    handledFuture.complete(exceptionHandler.apply(exception));
+                                } catch (Throwable t) {
+                                    handledFuture.completeExceptionally(t);
+                                }
+                            } else {
+                                handledFuture.completeExceptionally(throwable);
+                            }
+                        });
+        return handledFuture;
     }
 
     /**
