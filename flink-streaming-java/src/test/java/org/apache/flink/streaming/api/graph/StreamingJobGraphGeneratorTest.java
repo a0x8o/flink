@@ -53,6 +53,7 @@ import org.apache.flink.runtime.jobgraph.SavepointRestoreSettings;
 import org.apache.flink.runtime.jobgraph.tasks.JobCheckpointingSettings;
 import org.apache.flink.runtime.jobmanager.scheduler.CoLocationGroup;
 import org.apache.flink.runtime.jobmanager.scheduler.SlotSharingGroup;
+import org.apache.flink.runtime.mailbox.MailboxExecutor;
 import org.apache.flink.runtime.operators.coordination.OperatorCoordinator;
 import org.apache.flink.runtime.operators.util.TaskConfig;
 import org.apache.flink.streaming.api.CheckpointingMode;
@@ -70,7 +71,6 @@ import org.apache.flink.streaming.api.functions.source.ParallelSourceFunction;
 import org.apache.flink.streaming.api.operators.AbstractStreamOperatorFactory;
 import org.apache.flink.streaming.api.operators.ChainingStrategy;
 import org.apache.flink.streaming.api.operators.CoordinatedOperatorFactory;
-import org.apache.flink.streaming.api.operators.MailboxExecutor;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperatorFactory;
 import org.apache.flink.streaming.api.operators.SimpleOperatorFactory;
 import org.apache.flink.streaming.api.operators.SourceOperatorFactory;
@@ -757,7 +757,7 @@ public class StreamingJobGraphGeneratorTest extends TestLogger {
         List<JobVertex> verticesSorted = jobGraph.getVerticesSortedTopologicallyFromSources();
         assertThat(
                 verticesSorted.get(0) /* source - forward */,
-                hasOutputPartitionType(ResultPartitionType.PIPELINED_BOUNDED));
+                hasOutputPartitionType(ResultPartitionType.BLOCKING));
         assertThat(
                 verticesSorted.get(1) /* rescale */,
                 hasOutputPartitionType(ResultPartitionType.BLOCKING));
@@ -769,7 +769,7 @@ public class StreamingJobGraphGeneratorTest extends TestLogger {
                 hasOutputPartitionType(ResultPartitionType.BLOCKING));
         assertThat(
                 verticesSorted.get(4) /* forward - sink */,
-                hasOutputPartitionType(ResultPartitionType.PIPELINED_BOUNDED));
+                hasOutputPartitionType(ResultPartitionType.BLOCKING));
     }
 
     private Matcher<JobVertex> hasOutputPartitionType(ResultPartitionType partitionType) {
