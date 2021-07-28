@@ -39,6 +39,7 @@ import org.apache.flink.runtime.state.CheckpointStorageLocationReference;
 import org.apache.flink.runtime.state.StateInitializationContext;
 import org.apache.flink.runtime.state.StateSnapshotContext;
 import org.apache.flink.runtime.taskmanager.TestCheckpointResponder;
+import org.apache.flink.streaming.api.environment.ExecutionCheckpointingOptions;
 import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
@@ -77,7 +78,7 @@ public class StreamTaskFinalCheckpointsTest {
         harness.streamTask.operatorChain.finishOperators(harness.streamTask.getActionExecutor());
         assertTrue(FinishingOperator.finished);
 
-        harness.getTaskStateManager().setWaitForReportLatch(new OneShotLatch());
+        harness.getTaskStateManager().getWaitForReportLatch().reset();
         harness.streamTask.triggerCheckpointOnBarrier(
                 new CheckpointMetaData(2, 0),
                 CheckpointOptions.forCheckpointWithDefaultLocation(),
@@ -138,19 +139,19 @@ public class StreamTaskFinalCheckpointsTest {
                                     OneInputStreamTask::new, BasicTypeInfo.STRING_TYPE_INFO)
                             .addInput(BasicTypeInfo.STRING_TYPE_INFO, 3)
                             .addAdditionalOutput(partitionWriters)
-                            .modifyStreamConfig(config -> config.setCheckpointingEnabled(true))
+                            .modifyStreamConfig(
+                                    config -> {
+                                        config.setCheckpointingEnabled(true);
+                                        config.getConfiguration()
+                                                .set(
+                                                        ExecutionCheckpointingOptions
+                                                                .ENABLE_CHECKPOINTS_AFTER_TASKS_FINISH,
+                                                        true);
+                                    })
                             .setupOperatorChain(new EmptyOperator())
                             .finishForSingletonOperatorChain(StringSerializer.INSTANCE)
                             .build()) {
-                testHarness
-                        .getStreamTask()
-                        .getCheckpointCoordinator()
-                        .setEnableCheckpointAfterTasksFinished(true);
-                testHarness
-                        .getStreamTask()
-                        .getCheckpointBarrierHandler()
-                        .get()
-                        .setEnableCheckpointAfterTasksFinished(true);
+                testHarness.getStreamTask().getCheckpointBarrierHandler().get();
 
                 // Tests triggering checkpoint when all the inputs are alive.
                 Future<Boolean> checkpointFuture = triggerCheckpoint(testHarness, 2);
@@ -204,7 +205,7 @@ public class StreamTaskFinalCheckpointsTest {
 
     static Future<Boolean> triggerCheckpoint(
             StreamTaskMailboxTestHarness<String> testHarness, long checkpointId) {
-        testHarness.getTaskStateManager().setWaitForReportLatch(new OneShotLatch());
+        testHarness.getTaskStateManager().getWaitForReportLatch().reset();
         return testHarness
                 .getStreamTask()
                 .triggerCheckpointAsync(
@@ -260,18 +261,19 @@ public class StreamTaskFinalCheckpointsTest {
                                                         BasicTypeInfo.STRING_TYPE_INFO)
                                                 .addInput(BasicTypeInfo.STRING_TYPE_INFO, 3)
                                                 .modifyStreamConfig(
-                                                        config ->
-                                                                config.setCheckpointingEnabled(
-                                                                        true))
+                                                        config -> {
+                                                            config.setCheckpointingEnabled(true);
+                                                            config.getConfiguration()
+                                                                    .set(
+                                                                            ExecutionCheckpointingOptions
+                                                                                    .ENABLE_CHECKPOINTS_AFTER_TASKS_FINISH,
+                                                                            true);
+                                                        })
                                                 .setCheckpointResponder(responder)
                                                 .setupOperatorChain(new EmptyOperator())
                                                 .finishForSingletonOperatorChain(
                                                         StringSerializer.INSTANCE)
                                                 .build()) {
-
-                                    harness.streamTask
-                                            .getCheckpointCoordinator()
-                                            .setEnableCheckpointAfterTasksFinished(true);
 
                                     harness.streamTask.triggerCheckpointOnBarrier(
                                             new CheckpointMetaData(1, 101),
@@ -315,7 +317,7 @@ public class StreamTaskFinalCheckpointsTest {
             harness.processAll();
 
             // Try trigger a checkpoint.
-            harness.getTaskStateManager().setWaitForReportLatch(new OneShotLatch());
+            harness.getTaskStateManager().getWaitForReportLatch().reset();
             harness.streamTask.triggerCheckpointOnBarrier(
                     new CheckpointMetaData(2, 2),
                     new CheckpointOptions(CheckpointType.CHECKPOINT, getDefault()),

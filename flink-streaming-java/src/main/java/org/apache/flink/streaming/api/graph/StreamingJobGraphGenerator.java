@@ -56,6 +56,7 @@ import org.apache.flink.runtime.util.config.memory.ManagedMemoryUtils;
 import org.apache.flink.streaming.api.CheckpointingMode;
 import org.apache.flink.streaming.api.checkpoint.WithMasterCheckpointHook;
 import org.apache.flink.streaming.api.environment.CheckpointConfig;
+import org.apache.flink.streaming.api.environment.ExecutionCheckpointingOptions;
 import org.apache.flink.streaming.api.operators.ChainingStrategy;
 import org.apache.flink.streaming.api.operators.InputSelectable;
 import org.apache.flink.streaming.api.operators.SourceOperatorFactory;
@@ -726,6 +727,10 @@ public class StreamingJobGraphGenerator {
         config.setGraphContainingLoops(streamGraph.isIterative());
         config.setTimerServiceProvider(streamGraph.getTimerServiceProvider());
         config.setCheckpointingEnabled(checkpointCfg.isCheckpointingEnabled());
+        config.getConfiguration()
+                .set(
+                        ExecutionCheckpointingOptions.ENABLE_CHECKPOINTS_AFTER_TASKS_FINISH,
+                        streamGraph.isEnableCheckpointsAfterTasksFinish());
         config.setCheckpointMode(getCheckpointingMode(checkpointCfg));
         config.setUnalignedCheckpointsEnabled(checkpointCfg.isUnalignedCheckpointsEnabled());
         config.setAlignedCheckpointTimeout(checkpointCfg.getAlignedCheckpointTimeout());
@@ -1317,6 +1322,8 @@ public class StreamingJobGraphGenerator {
                                         cfg.getCheckpointIdOfIgnoredInFlightData())
                                 .setAlignedCheckpointTimeout(
                                         cfg.getAlignedCheckpointTimeout().toMillis())
+                                .setEnableCheckpointsAfterTasksFinish(
+                                        streamGraph.isEnableCheckpointsAfterTasksFinish())
                                 .build(),
                         serializedStateBackend,
                         streamGraph.isChangelogStateBackendEnabled(),
