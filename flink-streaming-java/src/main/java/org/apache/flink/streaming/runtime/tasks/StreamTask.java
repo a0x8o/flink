@@ -62,6 +62,7 @@ import org.apache.flink.runtime.state.StateBackend;
 import org.apache.flink.runtime.state.StateBackendLoader;
 import org.apache.flink.runtime.state.ttl.TtlTimeProvider;
 import org.apache.flink.runtime.taskmanager.DispatcherThreadFactory;
+import org.apache.flink.runtime.throughput.ThroughputCalculator;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.environment.ExecutionCheckpointingOptions;
 import org.apache.flink.streaming.api.graph.StreamConfig;
@@ -78,10 +79,12 @@ import org.apache.flink.streaming.runtime.io.checkpointing.CheckpointBarrierHand
 import org.apache.flink.streaming.runtime.partitioner.ConfigurableStreamPartitioner;
 import org.apache.flink.streaming.runtime.partitioner.StreamPartitioner;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
+import org.apache.flink.streaming.runtime.tasks.mailbox.GaugePeriodTimer;
 import org.apache.flink.streaming.runtime.tasks.mailbox.MailboxDefaultAction;
 import org.apache.flink.streaming.runtime.tasks.mailbox.MailboxDefaultAction.Suspension;
 import org.apache.flink.streaming.runtime.tasks.mailbox.MailboxExecutorFactory;
 import org.apache.flink.streaming.runtime.tasks.mailbox.MailboxProcessor;
+import org.apache.flink.streaming.runtime.tasks.mailbox.PeriodTimer;
 import org.apache.flink.streaming.runtime.tasks.mailbox.TaskMailbox;
 import org.apache.flink.streaming.runtime.tasks.mailbox.TaskMailboxImpl;
 import org.apache.flink.util.ExceptionUtils;
@@ -115,6 +118,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadFactory;
 
+import static org.apache.flink.configuration.TaskManagerOptions.AUTOMATIC_BUFFER_ADJUSTMENT_PERIOD;
 import static org.apache.flink.util.ExceptionUtils.firstOrSuppressed;
 import static org.apache.flink.util.ExceptionUtils.rethrowException;
 import static org.apache.flink.util.Preconditions.checkState;
@@ -258,6 +262,8 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>> extends Ab
 
     private final CompletableFuture<Void> terminationFuture = new CompletableFuture<>();
 
+    private final ThroughputCalculator throughputCalculator;
+
     // ------------------------------------------------------------------------
 
     /**
@@ -377,6 +383,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>> extends Ab
         injectChannelStateWriterIntoChannels();
 
         environment.getMetricGroup().getIOMetricGroup().setEnableBusyTime(true);
+        this.throughputCalculator = environment.getThroughputMeter();
     }
 
     private TimerService createTimerService(String timerThreadName) {
@@ -449,13 +456,15 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>> extends Ab
         }
 
         TaskIOMetricGroup ioMetrics = getEnvironment().getMetricGroup().getIOMetricGroup();
-        TimerGauge timer;
+        PeriodTimer timer;
         CompletableFuture<?> resumeFuture;
         if (!recordWriter.isAvailable()) {
-            timer = ioMetrics.getBackPressuredTimePerSecond();
+            timer = new GaugePeriodTimer(ioMetrics.getBackPressuredTimePerSecond());
             resumeFuture = recordWriter.getAvailableFuture();
         } else {
-            timer = ioMetrics.getIdleTimeMsPerSecond();
+            timer =
+                    new ThroughputPeriodTimer(
+                            ioMetrics.getIdleTimeMsPerSecond(), throughputCalculator);
             resumeFuture = inputProcessor.getAvailableFuture();
         }
         assertNoException(
@@ -659,6 +668,8 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>> extends Ab
         // final check to exit early before starting to run
         ensureNotCanceled();
 
+        throughputCalculationSetup();
+
         // let the task do its work
         runMailboxLoop();
 
@@ -667,6 +678,19 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>> extends Ab
         ensureNotCanceled();
 
         afterInvoke();
+    }
+
+    private void throughputCalculationSetup() {
+        systemTimerService.registerTimer(
+                systemTimerService.getCurrentProcessingTime()
+                        + getTaskConfiguration().get(AUTOMATIC_BUFFER_ADJUSTMENT_PERIOD),
+                timestamp ->
+                        mainMailboxExecutor.submit(
+                                () -> {
+                                    throughputCalculator.calculateThroughput();
+                                    throughputCalculationSetup();
+                                },
+                                "Throughput recalculation"));
     }
 
     private void runWithCleanUpOnFail(RunnableWithException run) throws Exception {
@@ -713,6 +737,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>> extends Ab
         getCompletionFuture().exceptionally(unused -> null).join();
 
         final CompletableFuture<Void> timersFinishedFuture = new CompletableFuture<>();
+        final CompletableFuture<Void> systemTimersFinishedFuture = new CompletableFuture<>();
 
         // close all operators in a chain effect way
         operatorChain.finishOperators(actionExecutor);
@@ -747,6 +772,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>> extends Ab
 
                     // make sure no new timers can come
                     FutureUtils.forward(timerService.quiesce(), timersFinishedFuture);
+                    FutureUtils.forward(systemTimerService.quiesce(), systemTimersFinishedFuture);
 
                     // let mailbox execution reject all new letters from this point
                     mailboxProcessor.prepareClose();
@@ -766,6 +792,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>> extends Ab
 
         // make sure all timers finish
         timersFinishedFuture.get();
+        systemTimersFinishedFuture.get();
 
         LOG.debug("Closed operators for task {}", getName());
 
@@ -1529,9 +1556,9 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>> extends Ab
 
     private static class ResumeWrapper implements Runnable {
         private final Suspension suspendedDefaultAction;
-        private final TimerGauge timer;
+        private final PeriodTimer timer;
 
-        public ResumeWrapper(Suspension suspendedDefaultAction, TimerGauge timer) {
+        public ResumeWrapper(Suspension suspendedDefaultAction, PeriodTimer timer) {
             this.suspendedDefaultAction = suspendedDefaultAction;
             timer.markStart();
             this.timer = timer;
@@ -1541,6 +1568,33 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>> extends Ab
         public void run() {
             timer.markEnd();
             suspendedDefaultAction.resume();
+        }
+    }
+
+    /**
+     * Implementation of {@link org.apache.flink.streaming.runtime.tasks.mailbox.PeriodTimer} which
+     * combine signal for metric and the throughput.
+     */
+    private static class ThroughputPeriodTimer implements PeriodTimer {
+        private final TimerGauge idleTimerGauge;
+        private final ThroughputCalculator throughputCalculator;
+
+        private ThroughputPeriodTimer(
+                TimerGauge idleTimerGauge, ThroughputCalculator throughputCalculator) {
+            this.idleTimerGauge = idleTimerGauge;
+            this.throughputCalculator = throughputCalculator;
+        }
+
+        @Override
+        public void markStart() {
+            idleTimerGauge.markStart();
+            throughputCalculator.pauseMeasurement();
+        }
+
+        @Override
+        public void markEnd() {
+            idleTimerGauge.markEnd();
+            throughputCalculator.resumeMeasurement();
         }
     }
 
