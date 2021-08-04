@@ -1560,12 +1560,13 @@ public class StreamTaskTest extends TestLogger {
                     waitingThread::start,
                     "Start WaitingThread after Task starts processing input.");
 
-            long startTs = System.currentTimeMillis();
-            throughputCalculator.calculateThroughput();
+            SystemClock clock = SystemClock.getInstance();
+
+            long startTs = clock.relativeTimeMillis();
             throughputCalculator.incomingDataSize(incomingDataSize);
             task.invoke();
             long resultThroughput = throughputCalculator.calculateThroughput();
-            long totalDuration = System.currentTimeMillis() - startTs;
+            long totalDuration = clock.relativeTimeMillis() - startTs;
 
             assertThat(
                     resultThroughput,
