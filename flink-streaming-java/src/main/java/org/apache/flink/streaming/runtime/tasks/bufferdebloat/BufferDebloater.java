@@ -22,6 +22,8 @@ import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.TaskManagerOptions;
 import org.apache.flink.runtime.io.network.partition.consumer.IndexedInputGate;
 
+import java.time.Duration;
+
 import static org.apache.flink.configuration.TaskManagerOptions.BUFFER_DEBLOAT_TARGET;
 import static org.apache.flink.configuration.TaskManagerOptions.BUFFER_DEBLOAT_THRESHOLD_PERCENTAGES;
 import static org.apache.flink.util.Preconditions.checkArgument;
@@ -31,25 +33,20 @@ import static org.apache.flink.util.Preconditions.checkArgument;
  * configuration.
  */
 public class BufferDebloater {
-    private static final double MILLIS_IN_SECOND = 1000.0;
+    private static final long MILLIS_IN_SECOND = 1000;
 
-    /**
-     * How different should be the total buffer size compare to throughput (when it is 1.0 then
-     * bufferSize == throughput).
-     */
-    private final double targetBufferSizeFactor;
-
+    private final Duration targetTotalBufferSize;
     private final IndexedInputGate[] inputGates;
     private final long maxBufferSize;
     private final long minBufferSize;
     private final int bufferDebloatThresholdPercentages;
 
     private int lastBufferSize;
+    private Duration lastEstimatedTimeToConsumeBuffers = Duration.ZERO;
 
     public BufferDebloater(Configuration taskConfig, IndexedInputGate[] inputGates) {
         this.inputGates = inputGates;
-        this.targetBufferSizeFactor =
-                taskConfig.get(BUFFER_DEBLOAT_TARGET).toMillis() / MILLIS_IN_SECOND;
+        this.targetTotalBufferSize = taskConfig.get(BUFFER_DEBLOAT_TARGET);
         this.maxBufferSize = taskConfig.get(TaskManagerOptions.MEMORY_SEGMENT_SIZE).getBytes();
         this.minBufferSize = taskConfig.get(TaskManagerOptions.MIN_MEMORY_SEGMENT_SIZE).getBytes();
 
@@ -64,11 +61,12 @@ public class BufferDebloater {
         checkArgument(maxBufferSize > 0);
         checkArgument(minBufferSize > 0);
         checkArgument(maxBufferSize >= minBufferSize);
-        checkArgument(targetBufferSizeFactor > 0.0);
+        checkArgument(targetTotalBufferSize.toMillis() > 0.0);
     }
 
     public void recalculateBufferSize(long currentThroughput) {
-        long desiredTotalBufferSizeInBytes = (long) (currentThroughput * targetBufferSizeFactor);
+        long desiredTotalBufferSizeInBytes =
+                (currentThroughput * targetTotalBufferSize.toMillis()) / MILLIS_IN_SECOND;
 
         int totalNumber = 0;
         for (IndexedInputGate inputGate : inputGates) {
@@ -81,6 +79,9 @@ public class BufferDebloater {
                                 Math.min(
                                         desiredTotalBufferSizeInBytes / totalNumber,
                                         maxBufferSize));
+        lastEstimatedTimeToConsumeBuffers =
+                Duration.ofMillis(
+                        newSize * totalNumber * MILLIS_IN_SECOND / Math.max(1, currentThroughput));
 
         boolean skipUpdate =
                 Math.abs(1 - ((double) lastBufferSize) / newSize) * 100
@@ -95,5 +96,13 @@ public class BufferDebloater {
         for (IndexedInputGate inputGate : inputGates) {
             inputGate.announceBufferSize(newSize);
         }
+    }
+
+    public int getLastBufferSize() {
+        return lastBufferSize;
+    }
+
+    public Duration getLastEstimatedTimeToConsumeBuffers() {
+        return lastEstimatedTimeToConsumeBuffers;
     }
 }
