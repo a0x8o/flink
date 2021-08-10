@@ -43,6 +43,7 @@ import org.apache.flink.metrics.Metric;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.io.network.api.CancelCheckpointMarker;
 import org.apache.flink.runtime.io.network.api.CheckpointBarrier;
+import org.apache.flink.runtime.io.network.api.EndOfData;
 import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
 import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
 import org.apache.flink.runtime.io.network.partition.PartitionTestUtils;
@@ -113,10 +114,10 @@ import static org.apache.flink.streaming.runtime.tasks.StreamTaskFinalCheckpoint
 import static org.apache.flink.streaming.runtime.tasks.StreamTaskFinalCheckpointsTest.triggerCheckpoint;
 import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkState;
+import static org.hamcrest.CoreMatchers.not;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.containsInAnyOrder;
-import static org.hamcrest.Matchers.not;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
@@ -846,8 +847,8 @@ public class MultipleInputStreamTaskTest {
 
             finishAddingRecords(testHarness, 1);
             testHarness.endInput();
-            testHarness.finishProcessing();
             testHarness.waitForTaskCompletion();
+            testHarness.finishProcessing();
         }
     }
 
@@ -948,12 +949,15 @@ public class MultipleInputStreamTaskTest {
                 assertEquals(2, testHarness.getTaskStateManager().getReportedCheckpointId());
 
                 // Tests triggering checkpoint after some inputs have received EndOfPartition.
+                testHarness.processEvent(EndOfData.INSTANCE, 0, 0);
                 testHarness.processEvent(EndOfPartitionEvent.INSTANCE, 0, 0);
                 checkpointFuture = triggerCheckpoint(testHarness, 4);
                 processMailTillCheckpointSucceeds(testHarness, checkpointFuture);
                 assertEquals(4, testHarness.getTaskStateManager().getReportedCheckpointId());
 
                 // Tests triggering checkpoint after all the inputs have received EndOfPartition.
+                testHarness.processEvent(EndOfData.INSTANCE, 1, 0);
+                testHarness.processEvent(EndOfData.INSTANCE, 2, 0);
                 testHarness.processEvent(EndOfPartitionEvent.INSTANCE, 1, 0);
                 testHarness.processEvent(EndOfPartitionEvent.INSTANCE, 2, 0);
                 checkpointFuture = triggerCheckpoint(testHarness, 6);
@@ -967,7 +971,7 @@ public class MultipleInputStreamTaskTest {
                         .thenAccept(
                                 (ignored) -> {
                                     for (ResultPartition resultPartition : partitionWriters) {
-                                        resultPartition.onSubpartitionAllRecordsProcessed(0);
+                                        resultPartition.onSubpartitionAllDataProcessed(0);
                                     }
                                 });
 
@@ -997,13 +1001,22 @@ public class MultipleInputStreamTaskTest {
         private static final long serialVersionUID = 1L;
 
         private final int numberOfInputs;
+        private final boolean emitOnFinish;
         private boolean openCalled;
         private boolean closeCalled;
 
         public MapToStringMultipleInputOperator(
                 StreamOperatorParameters<String> parameters, int numberOfInputs) {
+            this(parameters, numberOfInputs, false);
+        }
+
+        public MapToStringMultipleInputOperator(
+                StreamOperatorParameters<String> parameters,
+                int numberOfInputs,
+                boolean emitOnFinish) {
             super(parameters, numberOfInputs);
             this.numberOfInputs = numberOfInputs;
+            this.emitOnFinish = emitOnFinish;
         }
 
         @Override
@@ -1013,6 +1026,13 @@ public class MultipleInputStreamTaskTest {
                 Assert.fail("Close called before open.");
             }
             openCalled = true;
+        }
+
+        @Override
+        public void finish() throws Exception {
+            if (emitOnFinish) {
+                output.collect(new StreamRecord<>("FINISH"));
+            }
         }
 
         @Override
@@ -1065,15 +1085,22 @@ public class MultipleInputStreamTaskTest {
     protected static class MapToStringMultipleInputOperatorFactory
             extends AbstractStreamOperatorFactory<String> {
         private final int numberOfInputs;
+        private final boolean emitOnFinish;
 
         public MapToStringMultipleInputOperatorFactory(int numberOfInputs) {
+            this(numberOfInputs, false);
+        }
+
+        public MapToStringMultipleInputOperatorFactory(int numberOfInputs, boolean emitOnFinish) {
             this.numberOfInputs = numberOfInputs;
+            this.emitOnFinish = emitOnFinish;
         }
 
         @Override
         public <T extends StreamOperator<String>> T createStreamOperator(
                 StreamOperatorParameters<String> parameters) {
-            return (T) new MapToStringMultipleInputOperator(parameters, numberOfInputs);
+            return (T)
+                    new MapToStringMultipleInputOperator(parameters, numberOfInputs, emitOnFinish);
         }
 
         @Override
@@ -1120,10 +1147,23 @@ public class MultipleInputStreamTaskTest {
     static void addSourceRecords(
             StreamTaskMailboxTestHarness<String> testHarness, int sourceId, int... records)
             throws Exception {
+        addSourceRecords(testHarness, sourceId, Boundedness.BOUNDED, records);
+    }
+
+    static void addSourceRecords(
+            StreamTaskMailboxTestHarness<String> testHarness,
+            int sourceId,
+            Boundedness boundedness,
+            int... records)
+            throws Exception {
         OperatorID sourceOperatorID = getSourceOperatorID(testHarness, sourceId);
 
         // Prepare the source split and assign it to the source reader.
-        MockSourceSplit split = new MockSourceSplit(0, 0, records.length);
+        MockSourceSplit split =
+                new MockSourceSplit(
+                        0,
+                        0,
+                        boundedness == Boundedness.BOUNDED ? records.length : Integer.MAX_VALUE);
         for (int record : records) {
             split.addRecord(record);
         }
