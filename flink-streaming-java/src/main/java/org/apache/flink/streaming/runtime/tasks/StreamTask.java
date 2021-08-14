@@ -20,6 +20,7 @@ package org.apache.flink.streaming.runtime.tasks;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.operators.MailboxExecutor;
+import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.TaskManagerOptions;
 import org.apache.flink.core.fs.CloseableRegistry;
 import org.apache.flink.core.fs.Path;
@@ -111,9 +112,11 @@ import javax.annotation.Nullable;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.OptionalLong;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
@@ -263,10 +266,13 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>> extends Ab
     /** TODO it might be replaced by the global IO executor on TaskManager level future. */
     private final ExecutorService channelIOExecutor;
 
+    // ========================================================
+    //  Final  checkpoint / savepoint
+    // ========================================================
     private Long syncSavepointWithoutDrain = null;
-
     private Long syncSavepointWithDrain = null;
-    private CompletableFuture<Void> syncSavepointWithDrainCompletionFuture = null;
+    private Long finalCheckpointMinId = null;
+    private final CompletableFuture<Void> finalCheckpointCompleted = new CompletableFuture<>();
 
     private long latestReportCheckpointId = -1;
 
@@ -400,13 +406,14 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>> extends Ab
         injectChannelStateWriterIntoChannels();
 
         environment.getMetricGroup().getIOMetricGroup().setEnableBusyTime(true);
-        this.throughputCalculator = environment.getThroughputMeter();
-        this.bufferDebloatPeriod = getTaskConfiguration().get(BUFFER_DEBLOAT_PERIOD).toMillis();
+        this.throughputCalculator = environment.getThroughputCalculator();
+        Configuration taskManagerConf = environment.getTaskManagerInfo().getConfiguration();
 
-        if (getTaskConfiguration().get(TaskManagerOptions.BUFFER_DEBLOAT_ENABLED)) {
+        this.bufferDebloatPeriod = taskManagerConf.get(BUFFER_DEBLOAT_PERIOD).toMillis();
+
+        if (taskManagerConf.get(TaskManagerOptions.BUFFER_DEBLOAT_ENABLED)) {
             this.bufferDebloater =
-                    new BufferDebloater(
-                            getTaskConfiguration(), getEnvironment().getAllInputGates());
+                    new BufferDebloater(taskManagerConf, getEnvironment().getAllInputGates());
             environment
                     .getMetricGroup()
                     .gauge(
@@ -541,7 +548,6 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>> extends Ab
         if (isDrain) {
             if (syncSavepointWithDrain == null) {
                 syncSavepointWithDrain = checkpointId;
-                syncSavepointWithDrainCompletionFuture = new CompletableFuture<>();
             }
         } else {
             syncSavepointWithoutDrain = checkpointId;
@@ -642,10 +648,9 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>> extends Ab
         LOG.debug("Initializing {}.", getName());
 
         operatorChain =
-                new OperatorChain<>(
-                        this,
-                        recordWriter,
-                        getEnvironment().getTaskStateManager().isFinishedOnRestore());
+                getEnvironment().getTaskStateManager().isFinishedOnRestore()
+                        ? new FinishedOperatorChain<>(this, recordWriter)
+                        : new RegularOperatorChain<>(this, recordWriter);
         mainOperator = operatorChain.getMainOperator();
 
         // task specific initialization
@@ -819,7 +824,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>> extends Ab
         LOG.debug("Finished task {}", getName());
         getCompletionFuture().exceptionally(unused -> null).join();
 
-        List<CompletableFuture<Void>> terminationConditions = new ArrayList<>();
+        Set<CompletableFuture<Void>> terminationConditions = new HashSet<>();
         // If checkpoints are enabled, waits for all the records get processed by the downstream
         // tasks. During this process, this task could coordinate with its downstream tasks to
         // continue perform checkpoints.
@@ -829,10 +834,12 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>> extends Ab
             for (ResultPartitionWriter partitionWriter : getEnvironment().getAllWriters()) {
                 terminationConditions.add(partitionWriter.getAllDataProcessedFuture());
             }
+
+            terminationConditions.add(finalCheckpointCompleted);
         }
 
-        if (syncSavepointWithDrainCompletionFuture != null) {
-            terminationConditions.add(syncSavepointWithDrainCompletionFuture);
+        if (syncSavepointWithDrain != null) {
+            terminationConditions.add(finalCheckpointCompleted);
         }
 
         FutureUtils.waitForAll(terminationConditions)
@@ -1283,7 +1290,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>> extends Ab
             throws Exception {
 
         LOG.debug(
-                "Starting checkpoint ({}) {} on task {}",
+                "Starting checkpoint {} {} on task {}",
                 checkpointMetaData.getCheckpointId(),
                 checkpointOptions.getCheckpointType(),
                 getName());
@@ -1295,6 +1302,12 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>> extends Ab
                             setSynchronousSavepoint(
                                     checkpointMetaData.getCheckpointId(),
                                     checkpointOptions.getCheckpointType().shouldDrain());
+                        }
+
+                        if (areCheckpointsWithFinishedTasksEnabled()
+                                && endOfDataReceived
+                                && this.finalCheckpointMinId == null) {
+                            this.finalCheckpointMinId = checkpointMetaData.getCheckpointId();
                         }
 
                         subtaskCheckpointCoordinator.checkpointState(
@@ -1386,6 +1399,8 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>> extends Ab
     }
 
     private void notifyCheckpointComplete(long checkpointId) throws Exception {
+        LOG.debug("Notify checkpoint {} complete on task {}", checkpointId, getName());
+
         if (checkpointId <= latestReportCheckpointId) {
             return;
         }
@@ -1400,7 +1415,11 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>> extends Ab
                 // Reset to "notify" the internal synchronous savepoint mailbox loop.
                 syncSavepointWithoutDrain = null;
             } else if (isCurrentSavepointWithDrain(checkpointId)) {
-                syncSavepointWithDrainCompletionFuture.complete(null);
+                finalCheckpointCompleted.complete(null);
+            } else if (syncSavepointWithDrain == null
+                    && finalCheckpointMinId != null
+                    && checkpointId >= finalCheckpointMinId) {
+                finalCheckpointCompleted.complete(null);
             }
         }
     }
