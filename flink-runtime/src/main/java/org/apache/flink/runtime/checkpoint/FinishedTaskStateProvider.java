@@ -16,37 +16,22 @@
  * limitations under the License.
  */
 
-export interface JobExceptionInterface {
-  'root-exception': string;
-  timestamp: number;
-  truncated: boolean;
-  'all-exceptions': JobExceptionItemInterface[];
-  'exceptionHistory': JobExceptionHistoryInterface;
-}
+package org.apache.flink.runtime.checkpoint;
 
-export interface JobExceptionItemInterface {
-  'attempt-num': number;
-  exception: string;
-  location: string;
-  'subtask-index': number;
-  task: string;
-  timestamp: number;
-  'vertex-id': string;
-}
+import org.apache.flink.runtime.executiongraph.ExecutionVertex;
+import org.apache.flink.runtime.jobgraph.OperatorID;
 
-export interface JobExceptionHistoryInterface {
-  entries: RootExceptionInfoInterface[];
-  truncated: boolean;
-}
+import java.util.Map;
 
-export interface ExceptionInfoInterface {
-  exceptionName: string;
-  stacktrace: string;
-  timestamp: number;
-  taskName: string;
-  location: string;
-}
+/** Collects and fulfills the finished state for the subtasks or operators. */
+public interface FinishedTaskStateProvider {
 
-export interface RootExceptionInfoInterface extends ExceptionInfoInterface {
-  concurrentExceptions: ExceptionInfoInterface[];
+    /** Reports the {@code task} is finished on restoring. */
+    void reportTaskFinishedOnRestore(ExecutionVertex task);
+
+    /** Reports the {@code task} has finished all the operators. */
+    void reportTaskHasFinishedOperators(ExecutionVertex task);
+
+    /** Fulfills the state for the finished subtasks and operators to indicate they are finished. */
+    void fulfillFinishedTaskStatus(Map<OperatorID, OperatorState> operatorStates);
 }
