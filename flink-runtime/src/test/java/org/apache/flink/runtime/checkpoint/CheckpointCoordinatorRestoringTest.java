@@ -1208,10 +1208,73 @@ public class CheckpointCoordinatorRestoringTest extends TestLogger {
     }
 
     @Test
-    public void testRestoringPartiallyFinishedChainsFails() throws Exception {
+    public void testRestoreFinishedStateWithoutInFlightData() throws Exception {
+        // given: Operator with not empty states.
+        OperatorIDPair op1 = OperatorIDPair.generatedIDOnly(new OperatorID());
+        final JobVertexID jobVertexID = new JobVertexID();
+        ExecutionGraph graph =
+                new CheckpointCoordinatorTestingUtils.CheckpointExecutionGraphBuilder()
+                        .addJobVertex(jobVertexID, 1, 1, singletonList(op1), true)
+                        .build();
+
+        CompletedCheckpointStore completedCheckpointStore = new EmbeddedCompletedCheckpointStore();
+        Map<OperatorID, OperatorState> operatorStates = new HashMap<>();
+        operatorStates.put(
+                op1.getGeneratedOperatorID(),
+                new FullyFinishedOperatorState(op1.getGeneratedOperatorID(), 1, 1));
+        CompletedCheckpoint completedCheckpoint =
+                new CompletedCheckpoint(
+                        graph.getJobID(),
+                        2,
+                        System.currentTimeMillis(),
+                        System.currentTimeMillis() + 3000,
+                        operatorStates,
+                        Collections.emptyList(),
+                        CheckpointProperties.forCheckpoint(
+                                CheckpointRetentionPolicy.NEVER_RETAIN_AFTER_TERMINATION),
+                        new TestCompletedCheckpointStorageLocation());
+        completedCheckpointStore.addCheckpoint(
+                completedCheckpoint, new CheckpointsCleaner(), () -> {});
+
+        CheckpointCoordinator coord =
+                new CheckpointCoordinatorBuilder()
+                        .setExecutionGraph(graph)
+                        .setCheckpointCoordinatorConfiguration(
+                                new CheckpointCoordinatorConfigurationBuilder()
+                                        .setCheckpointIdOfIgnoredInFlightData(2)
+                                        .build())
+                        .setCompletedCheckpointStore(completedCheckpointStore)
+                        .build();
+
+        ExecutionJobVertex vertex = graph.getJobVertex(jobVertexID);
+        coord.restoreInitialCheckpointIfPresent(Collections.singleton(vertex));
+        TaskStateSnapshot restoredState =
+                vertex.getTaskVertices()[0]
+                        .getCurrentExecutionAttempt()
+                        .getTaskRestore()
+                        .getTaskStateSnapshot();
+        assertTrue(restoredState.isFinishedOnRestore());
+    }
+
+    @Test
+    public void testRestoringPartiallyFinishedChainsFailsWithoutUidHash() throws Exception {
+        // If useUidHash is set to false, the operator states would still be keyed with the
+        // generated ID, which simulates the case of restoring a checkpoint taken after jobs
+        // started. The checker should still be able to access the stored state correctly, otherwise
+        // it would mark op1 as running and pass the check wrongly.
+        testRestoringPartiallyFinishedChainsFails(false);
+    }
+
+    @Test
+    public void testRestoringPartiallyFinishedChainsFailsWithUidHash() throws Exception {
+        testRestoringPartiallyFinishedChainsFails(true);
+    }
+
+    private void testRestoringPartiallyFinishedChainsFails(boolean useUidHash) throws Exception {
         final JobVertexID jobVertexID1 = new JobVertexID();
         final JobVertexID jobVertexID2 = new JobVertexID();
-        OperatorIDPair op1 = OperatorIDPair.generatedIDOnly(new OperatorID());
+        // The op1 has uidHash set.
+        OperatorIDPair op1 = OperatorIDPair.of(new OperatorID(), new OperatorID());
         OperatorIDPair op2 = OperatorIDPair.generatedIDOnly(new OperatorID());
         OperatorIDPair op3 = OperatorIDPair.generatedIDOnly(new OperatorID());
 
@@ -1223,7 +1286,7 @@ public class CheckpointCoordinatorRestoringTest extends TestLogger {
 
         Map<OperatorID, OperatorState> operatorStates = new HashMap<>();
         operatorStates.put(
-                op1.getGeneratedOperatorID(),
+                useUidHash ? op1.getUserDefinedOperatorID().get() : op1.getGeneratedOperatorID(),
                 new FullyFinishedOperatorState(op1.getGeneratedOperatorID(), 1, 1));
         operatorStates.put(
                 op2.getGeneratedOperatorID(),
