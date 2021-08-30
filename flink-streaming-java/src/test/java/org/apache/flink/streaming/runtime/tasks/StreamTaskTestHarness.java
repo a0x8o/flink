@@ -300,6 +300,9 @@ public class StreamTaskTestHarness<OUT> {
         taskThread.start();
         // Wait until the task is set
         while (taskThread.task == null) {
+            if (taskThread.error != null) {
+                ExceptionUtils.rethrow(taskThread.error);
+            }
             Thread.sleep(10L);
         }
 
@@ -435,7 +438,7 @@ public class StreamTaskTestHarness<OUT> {
                 final CountDownLatch latch = new CountDownLatch(1);
                 mailboxExecutor.execute(
                         () -> {
-                            allInputProcessed.set(mailboxProcessor.isDefaultActionUnavailable());
+                            allInputProcessed.set(!mailboxProcessor.isDefaultActionAvailable());
                             latch.countDown();
                         },
                         "query-whether-processInput-has-suspend-itself");

@@ -162,7 +162,7 @@ completion of that savepoint, they will finish by calling their `cancel()` metho
 
 ```bash
 $ ./bin/flink stop \
-      --savepointPath /tmp-flink-savepoints \
+      --savepointPath /tmp/flink-savepoints \
       $JOB_ID
 ```
 ```
@@ -467,7 +467,7 @@ related options. Here's an overview of all the Python related options for the ac
             <td><code class="highlighter-rouge">-pyarch,--pyArchives</code></td>
             <td>
                 Add python archive files for job. The archive files will be extracted to the working directory
-                of python UDF worker. Currently only zip-format is supported. For each archive file, a target directory
+                of python UDF worker. For each archive file, a target directory
                 be specified. If the target directory name is specified, the archive file will be extracted to a
                 directory with the specified name. Otherwise, the archive file will be extracted to a
                 directory with the same name of the archive file. The files uploaded via this option are accessible

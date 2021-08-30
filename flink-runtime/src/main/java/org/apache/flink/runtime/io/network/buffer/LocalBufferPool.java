@@ -19,7 +19,6 @@
 package org.apache.flink.runtime.io.network.buffer;
 
 import org.apache.flink.core.memory.MemorySegment;
-import org.apache.flink.runtime.io.network.buffer.BufferListener.NotificationResult;
 import org.apache.flink.util.ExceptionUtils;
 
 import org.slf4j.Logger;
@@ -468,8 +467,7 @@ class LocalBufferPool implements BufferPool {
     private void recycle(MemorySegment segment, int channel) {
         BufferListener listener;
         CompletableFuture<?> toNotify = null;
-        NotificationResult notificationResult = NotificationResult.BUFFER_NOT_USED;
-        while (!notificationResult.isBufferUsed()) {
+        do {
             synchronized (availableMemorySegments) {
                 if (channel != UNKNOWN_CHANNEL) {
                     if (subpartitionBuffersCount[channel]-- == maxBuffersPerChannel) {
@@ -496,32 +494,18 @@ class LocalBufferPool implements BufferPool {
 
                 checkConsistentAvailability();
             }
-            notificationResult = fireBufferAvailableNotification(listener, segment);
-        }
+        } while (!fireBufferAvailableNotification(listener, segment));
 
         mayNotifyAvailable(toNotify);
     }
 
-    private NotificationResult fireBufferAvailableNotification(
+    private boolean fireBufferAvailableNotification(
             BufferListener listener, MemorySegment segment) {
         // We do not know which locks have been acquired before the recycle() or are needed in the
         // notification and which other threads also access them.
         // -> call notifyBufferAvailable() outside of the synchronized block to avoid a deadlock
         // (FLINK-9676)
-        NotificationResult notificationResult =
-                listener.notifyBufferAvailable(new NetworkBuffer(segment, this));
-        if (notificationResult.needsMoreBuffers()) {
-            synchronized (availableMemorySegments) {
-                if (isDestroyed) {
-                    // cleanup tasks how they would have been done if we only had one synchronized
-                    // block
-                    listener.notifyBufferDestroyed();
-                } else {
-                    registeredListeners.add(listener);
-                }
-            }
-        }
-        return notificationResult;
+        return listener.notifyBufferAvailable(new NetworkBuffer(segment, this));
     }
 
     /** Destroy is called after the produce or consume phase of a task finishes. */
