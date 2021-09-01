@@ -33,6 +33,8 @@ import org.mockito.Mockito;
 
 import javax.annotation.Nullable;
 
+import java.io.IOException;
+import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -52,6 +54,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.Mockito.times;
@@ -73,7 +76,7 @@ public class LocalBufferPoolTest extends TestLogger {
     @Rule public Timeout timeout = new Timeout(10, TimeUnit.SECONDS);
 
     @Before
-    public void setupLocalBufferPool() {
+    public void setupLocalBufferPool() throws Exception {
         networkBufferPool = new NetworkBufferPool(numBuffers, memorySegmentSize);
         localBufferPool = new LocalBufferPool(networkBufferPool, 1);
 
@@ -96,6 +99,40 @@ public class LocalBufferPoolTest extends TestLogger {
     @AfterClass
     public static void shutdownExecutor() {
         executor.shutdownNow();
+    }
+
+    @Test
+    public void testReserveSegments() throws Exception {
+        NetworkBufferPool networkBufferPool =
+                new NetworkBufferPool(2, memorySegmentSize, Duration.ofSeconds(2));
+        try {
+            BufferPool bufferPool1 = networkBufferPool.createBufferPool(1, 2);
+            assertThrows(IllegalArgumentException.class, () -> bufferPool1.reserveSegments(2));
+
+            // request all buffers
+            ArrayList<Buffer> buffers = new ArrayList<>(2);
+            buffers.add(bufferPool1.requestBuffer());
+            buffers.add(bufferPool1.requestBuffer());
+            assertEquals(2, buffers.size());
+
+            BufferPool bufferPool2 = networkBufferPool.createBufferPool(1, 10);
+            assertThrows(IOException.class, () -> bufferPool2.reserveSegments(1));
+            assertFalse(bufferPool2.isAvailable());
+
+            buffers.forEach(Buffer::recycleBuffer);
+            bufferPool1.lazyDestroy();
+            bufferPool2.lazyDestroy();
+
+            BufferPool bufferPool3 = networkBufferPool.createBufferPool(2, 10);
+            assertEquals(1, bufferPool3.getNumberOfAvailableMemorySegments());
+            bufferPool3.reserveSegments(2);
+            assertEquals(2, bufferPool3.getNumberOfAvailableMemorySegments());
+
+            bufferPool3.lazyDestroy();
+            assertThrows(IllegalStateException.class, () -> bufferPool3.reserveSegments(1));
+        } finally {
+            networkBufferPool.destroy();
+        }
     }
 
     @Test
@@ -358,7 +395,7 @@ public class LocalBufferPoolTest extends TestLogger {
     }
 
     @Test
-    public void testBoundedBuffer() {
+    public void testBoundedBuffer() throws Exception {
         localBufferPool.lazyDestroy();
 
         localBufferPool = new LocalBufferPool(networkBufferPool, 1, 2);
@@ -417,7 +454,7 @@ public class LocalBufferPoolTest extends TestLogger {
 
     /** Moves around availability of a {@link LocalBufferPool} with varying capacity. */
     @Test
-    public void testMaxBuffersPerChannelAndAvailability() throws InterruptedException {
+    public void testMaxBuffersPerChannelAndAvailability() throws Exception {
         localBufferPool.lazyDestroy();
         localBufferPool = new LocalBufferPool(networkBufferPool, 1, Integer.MAX_VALUE, 3, 2);
         localBufferPool.setNumBuffers(10);
