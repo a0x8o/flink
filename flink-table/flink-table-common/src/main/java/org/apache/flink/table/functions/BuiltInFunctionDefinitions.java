@@ -21,6 +21,9 @@ package org.apache.flink.table.functions;
 import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.table.api.DataTypes;
 import org.apache.flink.table.api.JsonExistsOnError;
+import org.apache.flink.table.api.JsonQueryOnEmptyOrError;
+import org.apache.flink.table.api.JsonQueryWrapper;
+import org.apache.flink.table.api.JsonType;
 import org.apache.flink.table.api.JsonValueOnEmptyOrError;
 import org.apache.flink.table.api.TableException;
 import org.apache.flink.table.types.inference.ArgumentTypeStrategy;
@@ -1136,7 +1139,7 @@ public final class BuiltInFunctionDefinitions {
                                     sequence(
                                             logical(LogicalTypeFamily.NUMERIC),
                                             logical(LogicalTypeRoot.INTEGER))))
-                    .outputTypeStrategy(nullableIfArgs(argument(0)))
+                    .outputTypeStrategy(nullableIfArgs(SpecificTypeStrategies.ROUND))
                     .build();
 
     // --------------------------------------------------------------------------------------------
@@ -1488,6 +1491,20 @@ public final class BuiltInFunctionDefinitions {
     // JSON functions
     // --------------------------------------------------------------------------------------------
 
+    public static final BuiltInFunctionDefinition IS_JSON =
+            BuiltInFunctionDefinition.newBuilder()
+                    .name("IS_JSON")
+                    .kind(SCALAR)
+                    .inputTypeStrategy(
+                            or(
+                                    sequence(logical(LogicalTypeFamily.CHARACTER_STRING)),
+                                    sequence(
+                                            logical(LogicalTypeFamily.CHARACTER_STRING),
+                                            symbol(JsonType.class))))
+                    .outputTypeStrategy(explicit(DataTypes.BOOLEAN().notNull()))
+                    .runtimeDeferred()
+                    .build();
+
     public static final BuiltInFunctionDefinition JSON_EXISTS =
             BuiltInFunctionDefinition.newBuilder()
                     .name("JSON_EXISTS")
@@ -1523,6 +1540,21 @@ public final class BuiltInFunctionDefinitions {
                                     symbol(JsonValueOnEmptyOrError.class),
                                     ANY))
                     .outputTypeStrategy(forceNullable(argument(2)))
+                    .runtimeDeferred()
+                    .build();
+
+    public static final BuiltInFunctionDefinition JSON_QUERY =
+            BuiltInFunctionDefinition.newBuilder()
+                    .name("JSON_QUERY")
+                    .kind(SCALAR)
+                    .inputTypeStrategy(
+                            sequence(
+                                    logical(LogicalTypeFamily.CHARACTER_STRING),
+                                    and(logical(LogicalTypeFamily.CHARACTER_STRING), LITERAL),
+                                    symbol(JsonQueryWrapper.class),
+                                    symbol(JsonQueryOnEmptyOrError.class),
+                                    symbol(JsonQueryOnEmptyOrError.class)))
+                    .outputTypeStrategy(explicit(DataTypes.STRING().nullable()))
                     .runtimeDeferred()
                     .build();
 

@@ -188,10 +188,6 @@ public class CheckpointCoordinator {
      */
     private long lastCheckpointCompletionRelativeTime;
 
-    /** The id of the latest completed checkpoint. */
-    @GuardedBy("lock")
-    private long latestCompletedCheckpointId;
-
     /**
      * Flag whether a triggered checkpoint should immediately schedule the next checkpoint.
      * Non-volatile, because only accessed in synchronized scope
@@ -209,8 +205,6 @@ public class CheckpointCoordinator {
 
     /** Registry that tracks state which is shared across (incremental) checkpoints. */
     private SharedStateRegistry sharedStateRegistry;
-
-    private boolean isPreferCheckpointForRecovery;
 
     /** Id of checkpoint for which in-flight data should be ignored on recovery. */
     private final long checkpointIdOfIgnoredInFlightData;
@@ -310,7 +304,6 @@ public class CheckpointCoordinator {
         this.checkpointsCleaner = checkNotNull(checkpointsCleaner);
         this.sharedStateRegistryFactory = checkNotNull(sharedStateRegistryFactory);
         this.sharedStateRegistry = sharedStateRegistryFactory.create(executor);
-        this.isPreferCheckpointForRecovery = chkConfig.isPreferCheckpointForRecovery();
         this.failureManager = checkNotNull(failureManager);
         this.checkpointPlanCalculator = checkNotNull(checkpointPlanCalculator);
         this.attemptMappingProvider = checkNotNull(attemptMappingProvider);
@@ -1184,8 +1177,6 @@ public class CheckpointCoordinator {
      */
     private void completePendingCheckpoint(PendingCheckpoint pendingCheckpoint)
             throws CheckpointException {
-        assert Thread.holdsLock(lock);
-
         final long checkpointId = pendingCheckpoint.getCheckpointId();
         final CompletedCheckpoint completedCheckpoint;
 
@@ -1245,10 +1236,6 @@ public class CheckpointCoordinator {
                         "Could not complete the pending checkpoint " + checkpointId + '.',
                         CheckpointFailureReason.FINALIZE_CHECKPOINT_FAILURE,
                         exception);
-            }
-
-            if (checkpointId > latestCompletedCheckpointId) {
-                latestCompletedCheckpointId = checkpointId;
             }
         } finally {
             pendingCheckpoints.remove(checkpointId);
@@ -1322,8 +1309,8 @@ public class CheckpointCoordinator {
     private void sendAbortedMessages(
             List<ExecutionVertex> tasksToAbort, long checkpointId, long timeStamp) {
         assert (Thread.holdsLock(lock));
+        long latestCompletedCheckpointId = completedCheckpointStore.getLatestCheckpointId();
 
-        final long currentLatestCompletedCheckpointId = latestCompletedCheckpointId;
         // send notification of aborted checkpoints asynchronously.
         executor.execute(
                 () -> {
@@ -1332,7 +1319,7 @@ public class CheckpointCoordinator {
                         Execution ee = ev.getCurrentExecutionAttempt();
                         if (ee != null) {
                             ee.notifyCheckpointAborted(
-                                    checkpointId, currentLatestCompletedCheckpointId, timeStamp);
+                                    checkpointId, latestCompletedCheckpointId, timeStamp);
                         }
                     }
                 });
@@ -1513,8 +1500,7 @@ public class CheckpointCoordinator {
                     sharedStateRegistry);
 
             // Restore from the latest checkpoint
-            CompletedCheckpoint latest =
-                    completedCheckpointStore.getLatestCheckpoint(isPreferCheckpointForRecovery);
+            CompletedCheckpoint latest = completedCheckpointStore.getLatestCheckpoint();
 
             if (latest == null) {
                 LOG.info("No checkpoint found during restore.");
