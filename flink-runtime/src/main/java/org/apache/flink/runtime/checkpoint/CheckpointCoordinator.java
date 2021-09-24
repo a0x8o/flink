@@ -224,6 +224,8 @@ public class CheckpointCoordinator {
 
     private final ExecutionAttemptMappingProvider attemptMappingProvider;
 
+    private boolean baseLocationsForCheckpointInitialized = false;
+
     // --------------------------------------------------------------------------------------------
 
     public CheckpointCoordinator(
@@ -326,6 +328,7 @@ public class CheckpointCoordinator {
 
             if (isPeriodicCheckpointingConfigured()) {
                 checkpointStorageView.initializeBaseLocationsForCheckpoint();
+                baseLocationsForCheckpointInitialized = true;
             }
         } catch (IOException e) {
             throw new FlinkRuntimeException(
@@ -539,6 +542,9 @@ public class CheckpointCoordinator {
             CompletableFuture<CheckpointPlan> checkpointPlanFuture =
                     checkpointPlanCalculator.calculateCheckpointPlan();
 
+            boolean initializeBaseLocations = !baseLocationsForCheckpointInitialized;
+            baseLocationsForCheckpointInitialized = true;
+
             final CompletableFuture<PendingCheckpoint> pendingCheckpointCompletableFuture =
                     checkpointPlanFuture
                             .thenApplyAsync(
@@ -548,7 +554,8 @@ public class CheckpointCoordinator {
                                                     checkpointIdAndStorageLocation =
                                                             initializeCheckpoint(
                                                                     request.props,
-                                                                    request.externalSavepointLocation);
+                                                                    request.externalSavepointLocation,
+                                                                    initializeBaseLocations);
                                             return new Tuple2<>(
                                                     plan, checkpointIdAndStorageLocation);
                                         } catch (Throwable e) {
@@ -725,7 +732,9 @@ public class CheckpointCoordinator {
      * @return the initialized result, checkpoint id and checkpoint location
      */
     private CheckpointIdAndStorageLocation initializeCheckpoint(
-            CheckpointProperties props, @Nullable String externalSavepointLocation)
+            CheckpointProperties props,
+            @Nullable String externalSavepointLocation,
+            boolean initializeBaseLocations)
             throws Exception {
 
         // this must happen outside the coordinator-wide lock, because it
@@ -733,11 +742,18 @@ public class CheckpointCoordinator {
         // with external services (in HA mode) and may block for a while.
         long checkpointID = checkpointIdCounter.getAndIncrement();
 
-        CheckpointStorageLocation checkpointStorageLocation =
-                props.isSavepoint()
-                        ? checkpointStorageView.initializeLocationForSavepoint(
-                                checkpointID, externalSavepointLocation)
-                        : checkpointStorageView.initializeLocationForCheckpoint(checkpointID);
+        final CheckpointStorageLocation checkpointStorageLocation;
+        if (props.isSavepoint()) {
+            checkpointStorageLocation =
+                    checkpointStorageView.initializeLocationForSavepoint(
+                            checkpointID, externalSavepointLocation);
+        } else {
+            if (initializeBaseLocations) {
+                checkpointStorageView.initializeBaseLocationsForCheckpoint();
+            }
+            checkpointStorageLocation =
+                    checkpointStorageView.initializeLocationForCheckpoint(checkpointID);
+        }
 
         return new CheckpointIdAndStorageLocation(checkpointID, checkpointStorageLocation);
     }
@@ -869,7 +885,13 @@ public class CheckpointCoordinator {
                 getCheckpointException(
                         CheckpointFailureReason.TRIGGER_CHECKPOINT_FAILURE, throwable);
         onCompletionPromise.completeExceptionally(checkpointException);
-        onTriggerFailure((PendingCheckpoint) null, checkpointException);
+        onTriggerFailure((PendingCheckpoint) null, onCompletionPromise.props, checkpointException);
+    }
+
+    private void onTriggerFailure(PendingCheckpoint checkpoint, Throwable throwable) {
+        checkArgument(checkpoint != null, "Pending checkpoint can not be null.");
+
+        onTriggerFailure(checkpoint, checkpoint.getProps(), throwable);
     }
 
     /**
@@ -879,13 +901,20 @@ public class CheckpointCoordinator {
      *     prematurely without a proper initialization.
      * @param throwable the reason of trigger failure
      */
-    private void onTriggerFailure(@Nullable PendingCheckpoint checkpoint, Throwable throwable) {
+    private void onTriggerFailure(
+            @Nullable PendingCheckpoint checkpoint,
+            CheckpointProperties checkpointProperties,
+            Throwable throwable) {
         // beautify the stack trace a bit
         throwable = ExceptionUtils.stripCompletionException(throwable);
 
         try {
             coordinatorsToCheckpoint.forEach(
                     OperatorCoordinatorCheckpointContext::abortCurrentTriggering);
+
+            final CheckpointException cause =
+                    getCheckpointException(
+                            CheckpointFailureReason.TRIGGER_CHECKPOINT_FAILURE, throwable);
 
             if (checkpoint != null && !checkpoint.isDisposed()) {
                 int numUnsuccessful = numUnsuccessfulCheckpointsTriggers.incrementAndGet();
@@ -895,9 +924,7 @@ public class CheckpointCoordinator {
                         job,
                         numUnsuccessful,
                         throwable);
-                final CheckpointException cause =
-                        getCheckpointException(
-                                CheckpointFailureReason.TRIGGER_CHECKPOINT_FAILURE, throwable);
+
                 synchronized (lock) {
                     abortPendingCheckpoint(checkpoint, cause);
                 }
@@ -906,6 +933,9 @@ public class CheckpointCoordinator {
                         "Failed to trigger checkpoint for job {} because {}",
                         job,
                         throwable.getMessage());
+
+                failureManager.handleCheckpointException(
+                        checkpoint, checkpointProperties, cause, null);
             }
         } finally {
             isTriggering = false;
@@ -1933,16 +1963,11 @@ public class CheckpointCoordinator {
                         executor,
                         getStatsCallback(pendingCheckpoint));
 
-                if (pendingCheckpoint.getProps().isSavepoint()
-                        && pendingCheckpoint.getProps().isSynchronous()) {
-                    failureManager.handleSynchronousSavepointFailure(exception);
-                } else if (executionAttemptID != null) {
-                    failureManager.handleTaskLevelCheckpointException(
-                            exception, pendingCheckpoint.getCheckpointId(), executionAttemptID);
-                } else {
-                    failureManager.handleJobLevelCheckpointException(
-                            exception, pendingCheckpoint.getCheckpointId());
-                }
+                failureManager.handleCheckpointException(
+                        pendingCheckpoint,
+                        pendingCheckpoint.getProps(),
+                        exception,
+                        executionAttemptID);
             } finally {
                 sendAbortedMessages(
                         pendingCheckpoint.getCheckpointPlan().getTasksToCommitTo(),
