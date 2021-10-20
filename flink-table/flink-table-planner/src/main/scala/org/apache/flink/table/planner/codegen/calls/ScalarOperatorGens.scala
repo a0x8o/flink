@@ -31,13 +31,12 @@ import org.apache.flink.table.runtime.functions.{SqlDateTimeUtils, SqlFunctionUt
 import org.apache.flink.table.runtime.types.LogicalTypeDataTypeConverter.fromLogicalTypeToDataType
 import org.apache.flink.table.runtime.types.PlannerTypeUtils
 import org.apache.flink.table.runtime.types.PlannerTypeUtils.{isInteroperable, isPrimitive}
-import org.apache.flink.table.runtime.typeutils.TypeCheckUtils
 import org.apache.flink.table.runtime.typeutils.TypeCheckUtils._
 import org.apache.flink.table.types.logical.LogicalTypeFamily.DATETIME
 import org.apache.flink.table.types.logical.LogicalTypeRoot._
 import org.apache.flink.table.types.logical._
 import org.apache.flink.table.types.logical.utils.LogicalTypeCasts.supportsExplicitCast
-import org.apache.flink.table.types.logical.utils.LogicalTypeChecks.getFieldTypes
+import org.apache.flink.table.types.logical.utils.LogicalTypeChecks.{getFieldTypes, hasFamily}
 import org.apache.flink.table.types.logical.utils.LogicalTypeMerging.findCommonType
 import org.apache.flink.util.Preconditions.checkArgument
 
@@ -996,7 +995,7 @@ object ScalarOperatorGens {
       operand.copy(resultType = targetType)
 
     // Date/Time/Timestamp -> String
-    case (_, VARCHAR | CHAR) if TypeCheckUtils.isTimePoint(operand.resultType) =>
+    case (_, VARCHAR | CHAR) if isTimePoint(operand.resultType) =>
       generateStringResultCallIfArgsNotNull(ctx, Seq(operand), targetType) {
         operandTerm =>
           s"${localTimeToStringCode(ctx, operand.resultType, operandTerm.head)}"
@@ -1085,7 +1084,7 @@ object ScalarOperatorGens {
 
     // String -> NUMERIC TYPE (not Character)
     case (VARCHAR | CHAR, _)
-      if TypeCheckUtils.isNumeric(targetType) =>
+      if isNumeric(targetType) =>
       targetType match {
         case dt: DecimalType =>
           generateUnaryOperatorIfNotNull(ctx, targetType, operand) { operandTerm =>
@@ -1180,20 +1179,14 @@ object ScalarOperatorGens {
       }
 
     // Boolean -> NUMERIC TYPE
-    case (BOOLEAN, _) if TypeCheckUtils.isNumeric(targetType) =>
+    case (BOOLEAN, _) if isNumeric(targetType) =>
       val targetTypeTerm = primitiveTypeTermForType(targetType)
       generateUnaryOperatorIfNotNull(ctx, targetType, operand) {
         operandTerm => s"($targetTypeTerm) ($operandTerm ? 1 : 0)"
       }
 
-    // DECIMAL -> Boolean
-    case (DECIMAL, BOOLEAN) =>
-      generateUnaryOperatorIfNotNull(ctx, targetType, operand) {
-        operandTerm => s"$DECIMAL_UTIL.castToBoolean($operandTerm)"
-      }
-
     // NUMERIC TYPE -> Boolean
-    case (_, BOOLEAN) if isNumeric(operand.resultType) =>
+    case (_, BOOLEAN) if hasFamily(operand.resultType, LogicalTypeFamily.INTEGER_NUMERIC) =>
       generateUnaryOperatorIfNotNull(ctx, targetType, operand) {
         operandTerm => s"$operandTerm != 0"
       }
@@ -1798,7 +1791,7 @@ object ScalarOperatorGens {
     val resultTypeTerm = boxedTypeTermForType(widerType.get)
 
     def castIfNumeric(t: GeneratedExpression): String = {
-      if (TypeCheckUtils.isNumeric(widerType.get)) {
+      if (isNumeric(widerType.get)) {
          s"${numericCasting(t.resultType, widerType.get).apply(t.resultTerm)}"
       } else {
          s"${t.resultTerm}"
