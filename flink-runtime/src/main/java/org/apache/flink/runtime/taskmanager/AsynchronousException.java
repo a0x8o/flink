@@ -7,7 +7,7 @@
  * "License"); you may not use this file except in compliance
  * with the License.  You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,26 +16,23 @@
  * limitations under the License.
  */
 
-package org.apache.flink.table.data.conversion;
+package org.apache.flink.runtime.taskmanager;
 
 import org.apache.flink.annotation.Internal;
-import org.apache.flink.table.types.logical.DateType;
-import org.apache.flink.table.utils.DateTimeUtils;
 
-/** Converter for {@link DateType} of {@link java.time.LocalDate} external type. */
+/**
+ * An exception for wrapping exceptions that are thrown by an operator in threads other than the
+ * main compute thread of that operator.
+ */
 @Internal
-public class DateLocalDateConverter
-        implements DataStructureConverter<Integer, java.time.LocalDate> {
-
+public class AsynchronousException extends Exception {
     private static final long serialVersionUID = 1L;
 
-    @Override
-    public Integer toInternal(java.time.LocalDate external) {
-        return DateTimeUtils.localDateToUnixDate(external);
+    public AsynchronousException(Throwable cause) {
+        super(cause);
     }
 
-    @Override
-    public java.time.LocalDate toExternal(Integer internal) {
-        return DateTimeUtils.unixDateToLocalDate(internal);
+    public AsynchronousException(String message, Throwable cause) {
+        super(message, cause);
     }
 }

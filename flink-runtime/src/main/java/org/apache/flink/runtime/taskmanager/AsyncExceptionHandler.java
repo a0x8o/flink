@@ -16,25 +16,17 @@
  * limitations under the License.
  */
 
-package org.apache.flink.streaming.runtime.tasks;
-
-import org.apache.flink.annotation.Internal;
-import org.apache.flink.runtime.taskmanager.AsynchronousException;
+package org.apache.flink.runtime.taskmanager;
 
 /**
- * {@code RuntimeException} for wrapping exceptions that are thrown in the timer callback of the
- * timer service in {@link StreamTask}.
+ * An interface marking a task as capable of handling exceptions thrown by different threads, other
+ * than the one executing the task itself.
  */
-@Internal
-public class TimerException extends AsynchronousException {
-    private static final long serialVersionUID = 1L;
+public interface AsyncExceptionHandler {
 
-    public TimerException(Throwable cause) {
-        super(cause);
-    }
-
-    @Override
-    public String toString() {
-        return "TimerException{" + getCause() + "}";
-    }
+    /**
+     * Handles an exception thrown by another thread (e.g. a TriggerTask), other than the one
+     * executing the main task.
+     */
+    void handleAsyncException(String message, Throwable exception);
 }
