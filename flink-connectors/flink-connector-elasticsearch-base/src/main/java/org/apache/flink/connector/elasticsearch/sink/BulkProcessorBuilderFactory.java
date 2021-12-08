@@ -16,8 +16,21 @@
  * limitations under the License.
  */
 
-package org.apache.flink.connector.file.src.reader;
+package org.apache.flink.connector.elasticsearch.sink;
 
-/** @deprecated Please use {@link TextLineInputFormat}. */
-@Deprecated
-public class TextLineFormat extends TextLineInputFormat {}
+import org.apache.flink.annotation.Internal;
+import org.apache.flink.util.function.TriFunction;
+
+import org.elasticsearch.action.bulk.BulkProcessor;
+import org.elasticsearch.client.RestHighLevelClient;
+
+import java.io.Serializable;
+
+@Internal
+interface BulkProcessorBuilderFactory
+        extends Serializable,
+                TriFunction<
+                        RestHighLevelClient,
+                        BulkProcessorConfig,
+                        BulkProcessor.Listener,
+                        BulkProcessor.Builder> {}

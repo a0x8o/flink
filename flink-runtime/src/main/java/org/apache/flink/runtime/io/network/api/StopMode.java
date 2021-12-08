@@ -16,8 +16,17 @@
  * limitations under the License.
  */
 
-package org.apache.flink.connector.file.src.reader;
+package org.apache.flink.runtime.io.network.api;
 
-/** @deprecated Please use {@link TextLineInputFormat}. */
-@Deprecated
-public class TextLineFormat extends TextLineInputFormat {}
+import org.apache.flink.annotation.Internal;
+
+/**
+ * Tells if the job is stopping because of consuming all data. {@link #DRAIN} means the job is
+ * stopping either with a stop-with-savepoint --drain or due to consuming all records in the source.
+ * A drained pipeline should call {@code StreamOperator#finish()} on all operators.
+ */
+@Internal
+public enum StopMode {
+    DRAIN,
+    NO_DRAIN
+}
