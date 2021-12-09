@@ -16,31 +16,21 @@
  * limitations under the License.
  */
 
-package org.apache.flink.table.planner.runtime.batch.sql
+package org.apache.flink.runtime.scheduler.adaptivebatch;
 
-import org.apache.flink.core.fs.Path
-import org.apache.flink.testutils.TestFileSystem
-
-import org.junit.After
-import org.junit.Assert.assertEquals
+import java.util.List;
 
 /**
-  * Test for file system table factory with testcsv format.
-  */
-class FileSystemTestCsvITCase extends BatchFileSystemITCaseBase {
+ * {@link VertexParallelismDecider} is responsible for determining the parallelism of a job vertex,
+ * based on the size of the consumed blocking results.
+ */
+public interface VertexParallelismDecider {
 
-  override def formatProperties(): Array[String] = {
-    super.formatProperties() ++ Seq("'format' = 'testcsv'")
-  }
-
-  override def getScheme: String = "test"
-
-  @After
-  def close(): Unit = {
-    val path = new Path(resultPath)
-    assertEquals(
-      s"File $resultPath is not closed",
-      0,
-      TestFileSystem.getNumberOfUnclosedOutputStream(path))
-  }
+    /**
+     * Computing the parallelism.
+     *
+     * @param consumedResults The information of consumed blocking results.
+     * @return the parallelism of the job vertex.
+     */
+    int decideParallelismForVertex(List<BlockingResultInfo> consumedResults);
 }
