@@ -19,6 +19,7 @@ package org.apache.flink.streaming.runtime.operators.sink;
 
 import org.apache.flink.runtime.state.StateInitializationContext;
 import org.apache.flink.runtime.state.StateSnapshotContext;
+import org.apache.flink.util.function.SupplierWithException;
 
 import java.io.IOException;
 import java.io.Serializable;
@@ -43,15 +44,16 @@ interface CommitterHandler<InputT, OutputT> extends AutoCloseable, Serializable 
 
     /**
      * Processes the committables by either directly transforming them or by adding them to the
-     * internal state of this handler.
+     * internal state of this handler. The supplier should only be queried once.
      *
      * @return a list of output committables that is send downstream.
      */
-    List<OutputT> processCommittables(List<InputT> committables);
+    List<OutputT> processCommittables(
+            SupplierWithException<List<InputT>, Exception> committableSupplier) throws Exception;
 
     /**
      * Called when no more committables are going to be added through {@link
-     * #processCommittables(List)}.
+     * #processCommittables(SupplierWithException)}.
      *
      * @return a list of output committables that is send downstream.
      */
@@ -64,15 +66,4 @@ interface CommitterHandler<InputT, OutputT> extends AutoCloseable, Serializable 
             throws IOException, InterruptedException {
         return Collections.emptyList();
     }
-
-    boolean needsRetry();
-
-    /**
-     * Retries all recovered committables. These committables may either be restored in {@link
-     * #initializeState(StateInitializationContext)} and have been re-added in any of the committing
-     * functions.
-     *
-     * @return true if more committables can be retried.
-     */
-    void retry() throws IOException, InterruptedException;
 }

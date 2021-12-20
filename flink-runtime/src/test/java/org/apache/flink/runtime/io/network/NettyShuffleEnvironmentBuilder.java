@@ -18,7 +18,6 @@
 
 package org.apache.flink.runtime.io.network;
 
-import org.apache.flink.configuration.Configuration;
 import org.apache.flink.metrics.MetricGroup;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.io.network.netty.NettyConfig;
@@ -26,7 +25,6 @@ import org.apache.flink.runtime.io.network.partition.BoundedBlockingSubpartition
 import org.apache.flink.runtime.io.network.partition.ResultPartitionManager;
 import org.apache.flink.runtime.metrics.groups.UnregisteredMetricGroups;
 import org.apache.flink.runtime.taskmanager.NettyShuffleEnvironmentConfiguration;
-import org.apache.flink.runtime.throughput.BufferDebloatConfiguration;
 import org.apache.flink.runtime.util.EnvironmentInformation;
 import org.apache.flink.util.concurrent.Executors;
 
@@ -78,8 +76,6 @@ public class NettyShuffleEnvironmentBuilder {
     private ResultPartitionManager resultPartitionManager = new ResultPartitionManager();
 
     private Executor ioExecutor = Executors.directExecutor();
-    private BufferDebloatConfiguration debloatConfiguration =
-            BufferDebloatConfiguration.fromConfiguration(new Configuration());
 
     public NettyShuffleEnvironmentBuilder setTaskManagerLocation(ResourceID taskManagerLocation) {
         this.taskManagerLocation = taskManagerLocation;
@@ -174,12 +170,6 @@ public class NettyShuffleEnvironmentBuilder {
         return this;
     }
 
-    public NettyShuffleEnvironmentBuilder setDebloatConfig(
-            BufferDebloatConfiguration debloatConfiguration) {
-        this.debloatConfiguration = debloatConfiguration;
-        return this;
-    }
-
     public NettyShuffleEnvironment build() {
         return NettyShuffleServiceFactory.createNettyShuffleEnvironment(
                 new NettyShuffleEnvironmentConfiguration(
@@ -199,8 +189,7 @@ public class NettyShuffleEnvironmentBuilder {
                         maxBuffersPerChannel,
                         batchShuffleReadMemoryBytes,
                         sortShuffleMinBuffers,
-                        sortShuffleMinParallelism,
-                        debloatConfiguration),
+                        sortShuffleMinParallelism),
                 taskManagerLocation,
                 new TaskEventDispatcher(),
                 resultPartitionManager,

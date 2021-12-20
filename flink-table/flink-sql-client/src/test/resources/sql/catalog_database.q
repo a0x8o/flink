@@ -259,9 +259,9 @@ describe hivecatalog.`default`.param_types_table;
 +------+-----------------+------+-----+--------+-----------+
 | name |            type | null | key | extras | watermark |
 +------+-----------------+------+-----+--------+-----------+
-|  dec | DECIMAL(10, 10) | TRUE |     |        |           |
-|   ch |         CHAR(5) | TRUE |     |        |           |
-|  vch |     VARCHAR(15) | TRUE |     |        |           |
+|  dec | DECIMAL(10, 10) | true |     |        |           |
+|   ch |         CHAR(5) | true |     |        |           |
+|  vch |     VARCHAR(15) | true |     |        |           |
 +------+-----------------+------+-----+--------+-----------+
 3 rows in set
 !ok

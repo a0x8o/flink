@@ -27,7 +27,4 @@ import org.apache.flink.state.changelog.restore.StateChangeApplier;
 @Internal
 public interface ChangelogState {
     StateChangeApplier getChangeApplier(ChangelogApplierFactory factory);
-
-    /** Enable logging meta data before next writes. */
-    void resetWritingMetaFlag();
 }

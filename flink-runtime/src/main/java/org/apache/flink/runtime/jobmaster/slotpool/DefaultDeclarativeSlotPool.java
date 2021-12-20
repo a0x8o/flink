@@ -65,21 +65,6 @@ import java.util.stream.Collectors;
  *
  * <p>The slot pool will call {@link #newSlotsListener} whenever newly offered slots are accepted or
  * if an allocated slot should become free after it is being {@link #freeReservedSlot freed}.
- *
- * <p>This class expects 1 of 2 access patterns for changing requirements, which should not be
- * mixed:
- *
- * <p>1) the legacy approach (used by the DefaultScheduler) tightly couples requirements to reserved
- * slots. When a slot is requested it increases the requirements, when the slot is freed they are
- * decreased again. In the general case what happens is that requirements are increased, a free slot
- * is reserved, (the slot is used for a bit,) the slot is freed, the requirements are reduced. To
- * this end {@link #freeReservedSlot}, {@link #releaseSlot} and {@link #releaseSlots} return a
- * {@link ResourceCounter} describing which requirement the slot(s) were fulfilling, with the
- * expectation that the scheduler will subsequently decrease the requirements by that amount.
- *
- * <p>2) The declarative approach (used by the AdaptiveScheduler) in contrast derives requirements
- * exclusively based on what a given job currently requires. It may repeatedly reserve/free slots
- * without any modifications to the requirements.
  */
 public class DefaultDeclarativeSlotPool implements DeclarativeSlotPool {
 
@@ -369,49 +354,30 @@ public class DefaultDeclarativeSlotPool implements DeclarativeSlotPool {
 
     @Override
     public ResourceCounter releaseSlots(ResourceID owner, Exception cause) {
-        final AllocatedSlotPool.AllocatedSlotsAndReservationStatus removedSlots =
-                slotPool.removeSlots(owner);
+        final Collection<AllocatedSlot> removedSlots = slotPool.removeSlots(owner);
 
-        final Collection<AllocatedSlot> slotsToFree = new ArrayList<>();
-        for (AllocatedSlot removedSlot : removedSlots.getAllocatedSlots()) {
-            if (!removedSlots.wasFree(removedSlot.getAllocationId())) {
-                slotsToFree.add(removedSlot);
-            }
-        }
+        ResourceCounter previouslyFulfilledRequirements = getFulfilledRequirements(removedSlots);
 
-        return freeAndReleaseSlots(slotsToFree, removedSlots.getAllocatedSlots(), cause);
+        releasePayload(removedSlots, cause);
+        releaseSlots(removedSlots, cause);
+
+        return previouslyFulfilledRequirements;
     }
 
     @Override
     public ResourceCounter releaseSlot(AllocationID allocationId, Exception cause) {
-        final boolean wasSlotFree = slotPool.containsFreeSlot(allocationId);
         final Optional<AllocatedSlot> removedSlot = slotPool.removeSlot(allocationId);
 
-        if (removedSlot.isPresent()) {
-            final AllocatedSlot slot = removedSlot.get();
+        Optional<ResourceCounter> previouslyFulfilledRequirement =
+                removedSlot.map(Collections::singleton).map(this::getFulfilledRequirements);
 
-            final Collection<AllocatedSlot> slotAsCollection = Collections.singleton(slot);
-            return freeAndReleaseSlots(
-                    wasSlotFree ? Collections.emptySet() : slotAsCollection,
-                    slotAsCollection,
-                    cause);
-        } else {
-            return ResourceCounter.empty();
-        }
-    }
+        removedSlot.ifPresent(
+                allocatedSlot -> {
+                    releasePayload(Collections.singleton(allocatedSlot), cause);
+                    releaseSlots(Collections.singleton(allocatedSlot), cause);
+                });
 
-    private ResourceCounter freeAndReleaseSlots(
-            Collection<AllocatedSlot> currentlyReservedSlots,
-            Collection<AllocatedSlot> slots,
-            Exception cause) {
-
-        ResourceCounter previouslyFulfilledRequirements =
-                getFulfilledRequirements(currentlyReservedSlots);
-
-        releasePayload(currentlyReservedSlots, cause);
-        releaseSlots(slots, cause);
-
-        return previouslyFulfilledRequirements;
+        return previouslyFulfilledRequirement.orElseGet(ResourceCounter::empty);
     }
 
     private void releasePayload(Iterable<? extends AllocatedSlot> allocatedSlots, Throwable cause) {

@@ -37,7 +37,8 @@ public class CheckpointCoordinatorDeActivator implements JobStatusListener {
     }
 
     @Override
-    public void jobStatusChanges(JobID jobId, JobStatus newJobStatus, long timestamp) {
+    public void jobStatusChanges(
+            JobID jobId, JobStatus newJobStatus, long timestamp, Throwable error) {
         if (newJobStatus == JobStatus.RUNNING) {
             // start the checkpoint scheduler
             coordinator.startCheckpointScheduler();

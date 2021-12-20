@@ -44,7 +44,6 @@ import org.apache.flink.streaming.api.functions.sink.filesystem.StreamingFileSin
 import org.apache.flink.streaming.api.functions.sink.filesystem.StreamingFileSink.BucketsBuilder;
 import org.apache.flink.streaming.api.functions.sink.filesystem.bucketassigners.SimpleVersionedStringSerializer;
 import org.apache.flink.streaming.api.functions.sink.filesystem.rollingpolicies.CheckpointRollingPolicy;
-import org.apache.flink.table.api.DataTypes;
 import org.apache.flink.table.api.TableException;
 import org.apache.flink.table.api.TableSchema;
 import org.apache.flink.table.api.ValidationException;
@@ -67,9 +66,7 @@ import org.apache.flink.table.filesystem.stream.compact.CompactBulkReader;
 import org.apache.flink.table.filesystem.stream.compact.CompactReader;
 import org.apache.flink.table.filesystem.stream.compact.FileInputFormatCompactReader;
 import org.apache.flink.table.types.DataType;
-import org.apache.flink.table.types.logical.LogicalType;
 import org.apache.flink.table.utils.PartitionPathUtils;
-import org.apache.flink.table.utils.TableSchemaUtils;
 import org.apache.flink.types.RowKind;
 import org.apache.flink.util.Preconditions;
 
@@ -160,8 +157,8 @@ public class FileSystemTableSink extends AbstractFileSystemTable
     private RowDataPartitionComputer partitionComputer() {
         return new RowDataPartitionComputer(
                 defaultPartName,
-                DataType.getFieldNames(getPhysicalDataType()).toArray(new String[0]),
-                DataType.getFieldDataTypes(getPhysicalDataType()).toArray(new DataType[0]),
+                schema.getFieldNames(),
+                schema.getFieldDataTypes(),
                 partitionKeys.toArray(new String[0]));
     }
 
@@ -282,47 +279,28 @@ public class FileSystemTableSink extends AbstractFileSystemTable
     }
 
     private Optional<CompactReader.Factory<RowData>> createCompactReaderFactory(Context context) {
-        // TODO FLINK-19845 old format factory, to be removed soon.
-        if (formatFactory != null) {
-            final InputFormat<RowData, ?> format =
-                    formatFactory.createReader(createReaderContext());
+        DataType producedDataType = schema.toRowDataType();
+        if (bulkReaderFormat != null) {
+            BulkFormat<RowData, FileSourceSplit> format =
+                    bulkReaderFormat.createRuntimeDecoder(
+                            createSourceContext(context), producedDataType);
+            return Optional.of(CompactBulkReader.factory(format));
+        } else if (formatFactory != null) {
+            InputFormat<RowData, ?> format = formatFactory.createReader(createReaderContext());
             if (format instanceof FileInputFormat) {
                 //noinspection unchecked
                 return Optional.of(
                         FileInputFormatCompactReader.factory((FileInputFormat<RowData>) format));
             }
-            return Optional.empty();
-        }
-
-        // Compute producedDataType (including partition fields) and physicalDataType (excluding
-        // partition fields)
-        final DataType producedDataType = getPhysicalDataType();
-        final DataType physicalDataType =
-                DataType.getFields(producedDataType).stream()
-                        .filter(field -> !partitionKeys.contains(field.getName()))
-                        .collect(Collectors.collectingAndThen(Collectors.toList(), DataTypes::ROW));
-
-        if (bulkReaderFormat != null) {
-            final BulkFormat<RowData, FileSourceSplit> format =
-                    new FileInfoExtractorBulkFormat(
-                            bulkReaderFormat.createRuntimeDecoder(
-                                    createSourceContext(context), physicalDataType),
-                            producedDataType,
-                            Collections.emptyMap(),
-                            partitionKeys,
-                            defaultPartName);
-            return Optional.of(CompactBulkReader.factory(format));
         } else if (deserializationFormat != null) {
-            final DeserializationSchema<RowData> decoder =
+            // NOTE, we need pass full format types to deserializationFormat
+            DeserializationSchema<RowData> decoder =
                     deserializationFormat.createRuntimeDecoder(
-                            createSourceContext(context), physicalDataType);
-            final BulkFormat<RowData, FileSourceSplit> format =
-                    new FileInfoExtractorBulkFormat(
-                            new DeserializationSchemaAdapter(decoder),
-                            producedDataType,
-                            Collections.emptyMap(),
-                            partitionKeys,
-                            defaultPartName);
+                            createSourceContext(context), getFormatDataType());
+            int[] projectedFields = IntStream.range(0, schema.getFieldCount()).toArray();
+            DeserializationSchemaAdapter format =
+                    new DeserializationSchemaAdapter(
+                            decoder, schema, projectedFields, partitionKeys, defaultPartName);
             return Optional.of(CompactBulkReader.factory(format));
         }
         return Optional.empty();
@@ -333,11 +311,6 @@ public class FileSystemTableSink extends AbstractFileSystemTable
             @Override
             public <T> TypeInformation<T> createTypeInformation(DataType producedDataType) {
                 return context.createTypeInformation(producedDataType);
-            }
-
-            @Override
-            public <T> TypeInformation<T> createTypeInformation(LogicalType producedLogicalType) {
-                return context.createTypeInformation(producedLogicalType);
             }
 
             @Override
@@ -352,7 +325,7 @@ public class FileSystemTableSink extends AbstractFileSystemTable
         return new FileSystemFormatFactory.ReaderContext() {
             @Override
             public TableSchema getSchema() {
-                return TableSchemaUtils.getPhysicalSchema(TableSchema.fromResolvedSchema(schema));
+                return schema;
             }
 
             @Override
@@ -377,7 +350,7 @@ public class FileSystemTableSink extends AbstractFileSystemTable
 
             @Override
             public int[] getProjectFields() {
-                return IntStream.range(0, DataType.getFieldCount(getPhysicalDataType())).toArray();
+                return IntStream.range(0, schema.getFieldCount()).toArray();
             }
 
             @Override
@@ -415,12 +388,10 @@ public class FileSystemTableSink extends AbstractFileSystemTable
 
     private Object createWriter(Context sinkContext) {
         if (bulkWriterFormat != null) {
-            return bulkWriterFormat.createRuntimeEncoder(
-                    sinkContext, getPhysicalDataTypeWithoutPartitionColumns());
+            return bulkWriterFormat.createRuntimeEncoder(sinkContext, getFormatDataType());
         } else if (serializationFormat != null) {
             return new SerializationSchemaAdapter(
-                    serializationFormat.createRuntimeEncoder(
-                            sinkContext, getPhysicalDataTypeWithoutPartitionColumns()));
+                    serializationFormat.createRuntimeEncoder(sinkContext, getFormatDataType()));
         } else {
             throw new TableException("Can not find format factory.");
         }
@@ -451,15 +422,15 @@ public class FileSystemTableSink extends AbstractFileSystemTable
             private static final long serialVersionUID = 1L;
 
             private transient BulkWriter<RowData> writer;
-            private transient FSDataOutputStream stream;
 
             @Override
             public void configure(Configuration parameters) {}
 
             @Override
             public void open(int taskNumber, int numTasks) throws IOException {
-                this.stream = path.getFileSystem().create(path, FileSystem.WriteMode.OVERWRITE);
-                this.writer = factory.create(stream);
+                this.writer =
+                        factory.create(
+                                path.getFileSystem().create(path, FileSystem.WriteMode.OVERWRITE));
             }
 
             @Override
@@ -471,7 +442,6 @@ public class FileSystemTableSink extends AbstractFileSystemTable
             public void close() throws IOException {
                 writer.flush();
                 writer.finish();
-                stream.close();
             }
         };
     }

@@ -18,20 +18,13 @@
 
 package org.apache.flink.streaming.scala.examples.iteration
 
-import org.apache.flink.api.common.serialization.SimpleStringEncoder
-
 import java.util.Random
+
 import org.apache.flink.api.java.utils.ParameterTool
 import org.apache.flink.api.scala._
-import org.apache.flink.configuration.MemorySize
-import org.apache.flink.connector.file.sink.FileSink
-import org.apache.flink.core.fs.Path
-import org.apache.flink.streaming.api.functions.sink.filesystem.rollingpolicies.DefaultRollingPolicy
 import org.apache.flink.streaming.api.functions.source.SourceFunction
 import org.apache.flink.streaming.api.functions.source.SourceFunction.SourceContext
 import org.apache.flink.streaming.api.scala.{DataStream, StreamExecutionEnvironment}
-
-import java.time.Duration
 
 /**
  * Example illustrating iterations in Flink streaming.
@@ -102,15 +95,7 @@ object IterateExample {
       )
 
     if (params.has("output")) {
-      numbers.sinkTo(FileSink.forRowFormat[((Int, Int), Int)](
-          new Path(params.get("output")),
-          new SimpleStringEncoder())
-        .withRollingPolicy(DefaultRollingPolicy.builder()
-          .withMaxPartSize(MemorySize.ofMebiBytes(1))
-          .withRolloverInterval(Duration.ofSeconds(10))
-          .build())
-        .build())
-        .name("file-sink")
+      numbers.writeAsText(params.get("output"))
     } else {
       println("Printing result to stdout. Use --output to specify output path.")
       numbers.print()

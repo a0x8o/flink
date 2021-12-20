@@ -18,25 +18,18 @@
 package org.apache.flink.table.data.binary;
 
 import org.apache.flink.core.memory.MemorySegment;
-import org.apache.flink.table.api.TableException;
 import org.apache.flink.table.data.DecimalData;
 import org.apache.flink.table.data.DecimalDataUtils;
-import org.apache.flink.table.data.StringData;
-import org.apache.flink.table.data.TimestampData;
 import org.apache.flink.table.runtime.util.SegmentsUtil;
 import org.apache.flink.table.runtime.util.StringUtf8Utils;
-import org.apache.flink.table.utils.DateTimeUtils;
 import org.apache.flink.table.utils.EncodingUtils;
 
 import java.math.BigDecimal;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.text.ParseException;
-import java.time.DateTimeException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.TimeZone;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -48,8 +41,6 @@ import static org.apache.flink.table.data.binary.BinaryStringData.numBytesForFir
 
 /** Util for {@link BinaryStringData}. */
 public class BinaryStringDataUtil {
-
-    public static final BinaryStringData NULL_STRING = fromString("NULL");
 
     public static final BinaryStringData[] EMPTY_STRING_ARRAY = new BinaryStringData[0];
     private static final List<BinaryStringData> TRUE_STRINGS =
@@ -153,16 +144,12 @@ public class BinaryStringDataUtil {
         return substrings.toArray(new BinaryStringData[0]);
     }
 
-    /** Parse a {@link StringData} to boolean. */
-    public static boolean toBoolean(BinaryStringData str) throws TableException {
+    /** Decide boolean representation of a string. */
+    public static Boolean toBooleanSQL(BinaryStringData str) {
         BinaryStringData lowerCase = str.toLowerCase();
-        if (TRUE_STRINGS.contains(lowerCase)) {
-            return true;
-        }
-        if (FALSE_STRINGS.contains(lowerCase)) {
-            return false;
-        }
-        throw new TableException("Cannot parse '" + str + "' as BOOLEAN.");
+        return TRUE_STRINGS.contains(lowerCase)
+                ? Boolean.TRUE
+                : (FALSE_STRINGS.contains(lowerCase) ? Boolean.FALSE : null);
     }
 
     /** Calculate the hash value of the given bytes use {@link MessageDigest}. */
@@ -181,30 +168,21 @@ public class BinaryStringDataUtil {
     }
 
     /**
-     * Parses a {@link BinaryStringData} to {@link DecimalData}.
+     * Parses this BinaryStringData to DecimalData.
      *
-     * @return DecimalData value if the parsing was successful.
+     * @return DecimalData value if the parsing was successful, or null if overflow
+     * @throws NumberFormatException if the parsing failed.
      */
-    public static DecimalData toDecimal(BinaryStringData str, int precision, int scale)
-            throws NumberFormatException {
+    public static DecimalData toDecimal(BinaryStringData str, int precision, int scale) {
         str.ensureMaterialized();
-
-        DecimalData data;
 
         if (DecimalDataUtils.isByteArrayDecimal(precision)
                 || DecimalDataUtils.isByteArrayDecimal(str.getSizeInBytes())) {
-            data = toBigPrecisionDecimal(str, precision, scale);
-        } else {
-            int sizeInBytes = str.getSizeInBytes();
-            data =
-                    toDecimalFromBytes(
-                            precision, scale, getTmpBytes(str, sizeInBytes), 0, sizeInBytes);
+            return toBigPrecisionDecimal(str, precision, scale);
         }
 
-        if (data == null) {
-            throw numberFormatExceptionFor(str, "Overflow.");
-        }
-        return data;
+        int sizeInBytes = str.getSizeInBytes();
+        return toDecimalFromBytes(precision, scale, getTmpBytes(str, sizeInBytes), 0, sizeInBytes);
     }
 
     private static DecimalData toDecimalFromBytes(
@@ -375,9 +353,12 @@ public class BinaryStringDataUtil {
                     break;
                 }
             }
-
-            BigDecimal bd = new BigDecimal(chars, start, end - start);
-            return DecimalData.fromBigDecimal(bd, precision, scale);
+            try {
+                BigDecimal bd = new BigDecimal(chars, start, end - start);
+                return DecimalData.fromBigDecimal(bd, precision, scale);
+            } catch (NumberFormatException nfe) {
+                return null;
+            }
         }
     }
 
@@ -390,12 +371,14 @@ public class BinaryStringDataUtil {
      * Long.MIN_VALUE is '-9223372036854775808'.
      *
      * <p>This code is mostly copied from LazyLong.parseLong in Hive.
+     *
+     * @return Long value if the parsing was successful else null.
      */
-    public static long toLong(BinaryStringData str) throws NumberFormatException {
+    public static Long toLong(BinaryStringData str) {
         int sizeInBytes = str.getSizeInBytes();
         byte[] tmpBytes = getTmpBytes(str, sizeInBytes);
         if (sizeInBytes == 0) {
-            throw numberFormatExceptionFor(str, "Input is empty.");
+            return null;
         }
         int i = 0;
 
@@ -404,7 +387,7 @@ public class BinaryStringDataUtil {
         if (negative || b == '+') {
             i++;
             if (sizeInBytes == 1) {
-                throw numberFormatExceptionFor(str, "Input has only positive or negative symbol.");
+                return null;
             }
         }
 
@@ -426,7 +409,7 @@ public class BinaryStringDataUtil {
             if (b >= '0' && b <= '9') {
                 digit = b - '0';
             } else {
-                throw numberFormatExceptionFor(str, "Invalid character found.");
+                return null;
             }
 
             // We are going to process the new digit and accumulate the result. However, before
@@ -434,7 +417,7 @@ public class BinaryStringDataUtil {
             // stopValue(Long.MIN_VALUE / radix), then result * 10 will definitely be smaller
             // than minValue, and we can stop.
             if (result < stopValue) {
-                throw numberFormatExceptionFor(str, "Overflow.");
+                return null;
             }
 
             result = result * radix - digit;
@@ -442,7 +425,7 @@ public class BinaryStringDataUtil {
             // stopValue(Long.MIN_VALUE / radix), we can just use `result > 0` to check overflow.
             // If result overflows, we should stop.
             if (result > 0) {
-                throw numberFormatExceptionFor(str, "Overflow.");
+                return null;
             }
         }
 
@@ -452,7 +435,7 @@ public class BinaryStringDataUtil {
         while (i < sizeInBytes) {
             byte currentByte = tmpBytes[i];
             if (currentByte < '0' || currentByte > '9') {
-                throw numberFormatExceptionFor(str, "Invalid character found.");
+                return null;
             }
             i++;
         }
@@ -460,7 +443,7 @@ public class BinaryStringDataUtil {
         if (!negative) {
             result = -result;
             if (result < 0) {
-                throw numberFormatExceptionFor(str, "Overflow.");
+                return null;
             }
         }
         return result;
@@ -478,12 +461,14 @@ public class BinaryStringDataUtil {
      *
      * <p>Note that, this method is almost same as `toLong`, but we leave it duplicated for
      * performance reasons, like Hive does.
+     *
+     * @return Integer value if the parsing was successful else null.
      */
-    public static int toInt(BinaryStringData str) throws NumberFormatException {
+    public static Integer toInt(BinaryStringData str) {
         int sizeInBytes = str.getSizeInBytes();
         byte[] tmpBytes = getTmpBytes(str, sizeInBytes);
         if (sizeInBytes == 0) {
-            throw numberFormatExceptionFor(str, "Input is empty.");
+            return null;
         }
         int i = 0;
 
@@ -492,7 +477,7 @@ public class BinaryStringDataUtil {
         if (negative || b == '+') {
             i++;
             if (sizeInBytes == 1) {
-                throw numberFormatExceptionFor(str, "Input has only positive or negative symbol.");
+                return null;
             }
         }
 
@@ -514,7 +499,7 @@ public class BinaryStringDataUtil {
             if (b >= '0' && b <= '9') {
                 digit = b - '0';
             } else {
-                throw numberFormatExceptionFor(str, "Invalid character found.");
+                return null;
             }
 
             // We are going to process the new digit and accumulate the result. However, before
@@ -522,7 +507,7 @@ public class BinaryStringDataUtil {
             // stopValue(Long.MIN_VALUE / radix), then result * 10 will definitely be smaller
             // than minValue, and we can stop.
             if (result < stopValue) {
-                throw numberFormatExceptionFor(str, "Overflow.");
+                return null;
             }
 
             result = result * radix - digit;
@@ -530,7 +515,7 @@ public class BinaryStringDataUtil {
             // stopValue(Long.MIN_VALUE / radix), we can just use `result > 0` to check overflow.
             // If result overflows, we should stop.
             if (result > 0) {
-                throw numberFormatExceptionFor(str, "Overflow.");
+                return null;
             }
         }
 
@@ -540,7 +525,7 @@ public class BinaryStringDataUtil {
         while (i < sizeInBytes) {
             byte currentByte = tmpBytes[i];
             if (currentByte < '0' || currentByte > '9') {
-                throw numberFormatExceptionFor(str, "Invalid character found.");
+                return null;
             }
             i++;
         }
@@ -548,73 +533,48 @@ public class BinaryStringDataUtil {
         if (!negative) {
             result = -result;
             if (result < 0) {
-                throw numberFormatExceptionFor(str, "Overflow.");
+                return null;
             }
         }
         return result;
     }
 
-    public static short toShort(BinaryStringData str) throws NumberFormatException {
-        int intValue = toInt(str);
-        short result = (short) intValue;
-        if (result == intValue) {
-            return result;
+    public static Short toShort(BinaryStringData str) {
+        Integer intValue = toInt(str);
+        if (intValue != null) {
+            short result = intValue.shortValue();
+            if (result == intValue) {
+                return result;
+            }
         }
-        throw numberFormatExceptionFor(str, "Overflow.");
+        return null;
     }
 
-    public static byte toByte(BinaryStringData str) throws NumberFormatException {
-        int intValue = toInt(str);
-        byte result = (byte) intValue;
-        if (result == intValue) {
-            return result;
+    public static Byte toByte(BinaryStringData str) {
+        Integer intValue = toInt(str);
+        if (intValue != null) {
+            byte result = intValue.byteValue();
+            if (result == intValue) {
+                return result;
+            }
         }
-        throw numberFormatExceptionFor(str, "Overflow.");
+        return null;
     }
 
-    public static double toDouble(BinaryStringData str) throws NumberFormatException {
-        return Double.parseDouble(str.toString());
-    }
-
-    public static float toFloat(BinaryStringData str) throws NumberFormatException {
-        return Float.parseFloat(str.toString());
-    }
-
-    private static NumberFormatException numberFormatExceptionFor(StringData input, String reason) {
-        return new NumberFormatException("For input string: '" + input + "'. " + reason);
-    }
-
-    public static int toDate(BinaryStringData input) throws DateTimeException {
-        Integer date = DateTimeUtils.parseDate(input.toString());
-        if (date == null) {
-            throw new DateTimeException("For input string: '" + input + "'.");
+    public static Double toDouble(BinaryStringData str) {
+        try {
+            return Double.valueOf(str.toString());
+        } catch (NumberFormatException e) {
+            return null;
         }
-
-        return date;
     }
 
-    public static int toTime(BinaryStringData input) throws DateTimeException {
-        Integer date = DateTimeUtils.parseTime(input.toString());
-        if (date == null) {
-            throw new DateTimeException("For input string: '" + input + "'.");
+    public static Float toFloat(BinaryStringData str) {
+        try {
+            return Float.valueOf(str.toString());
+        } catch (NumberFormatException e) {
+            return null;
         }
-
-        return date;
-    }
-
-    public static TimestampData toTimestamp(BinaryStringData input) throws DateTimeException {
-        TimestampData timestamp = DateTimeUtils.parseTimestampData(input.toString());
-        if (timestamp == null) {
-            throw new DateTimeException("For input string: '" + input + "'.");
-        }
-
-        return timestamp;
-    }
-
-    public static TimestampData toTimestamp(BinaryStringData input, TimeZone timeZone)
-            throws ParseException {
-        long timestamp = DateTimeUtils.parseTimestampMillis(input.toString(), timeZone);
-        return TimestampData.fromEpochMillis(timestamp);
     }
 
     /**

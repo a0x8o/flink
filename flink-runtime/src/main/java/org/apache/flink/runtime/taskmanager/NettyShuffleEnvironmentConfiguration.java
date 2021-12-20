@@ -25,7 +25,6 @@ import org.apache.flink.configuration.NettyShuffleEnvironmentOptions;
 import org.apache.flink.configuration.TaskManagerOptions;
 import org.apache.flink.runtime.io.network.netty.NettyConfig;
 import org.apache.flink.runtime.io.network.partition.BoundedBlockingSubpartitionType;
-import org.apache.flink.runtime.throughput.BufferDebloatConfiguration;
 import org.apache.flink.runtime.util.ConfigurationParserUtils;
 import org.apache.flink.util.Preconditions;
 
@@ -88,8 +87,6 @@ public class NettyShuffleEnvironmentConfiguration {
 
     private final int maxBuffersPerChannel;
 
-    private final BufferDebloatConfiguration debloatConfiguration;
-
     public NettyShuffleEnvironmentConfiguration(
             int numNetworkBuffers,
             int networkBufferSize,
@@ -107,8 +104,7 @@ public class NettyShuffleEnvironmentConfiguration {
             int maxBuffersPerChannel,
             long batchShuffleReadMemoryBytes,
             int sortShuffleMinBuffers,
-            int sortShuffleMinParallelism,
-            BufferDebloatConfiguration debloatConfiguration) {
+            int sortShuffleMinParallelism) {
 
         this.numNetworkBuffers = numNetworkBuffers;
         this.networkBufferSize = networkBufferSize;
@@ -127,7 +123,6 @@ public class NettyShuffleEnvironmentConfiguration {
         this.batchShuffleReadMemoryBytes = batchShuffleReadMemoryBytes;
         this.sortShuffleMinBuffers = sortShuffleMinBuffers;
         this.sortShuffleMinParallelism = sortShuffleMinParallelism;
-        this.debloatConfiguration = debloatConfiguration;
     }
 
     // ------------------------------------------------------------------------
@@ -190,10 +185,6 @@ public class NettyShuffleEnvironmentConfiguration {
 
     public boolean isBlockingShuffleCompressionEnabled() {
         return blockingShuffleCompressionEnabled;
-    }
-
-    public BufferDebloatConfiguration getDebloatConfiguration() {
-        return debloatConfiguration;
     }
 
     public boolean isSSLEnabled() {
@@ -306,8 +297,7 @@ public class NettyShuffleEnvironmentConfiguration {
                 maxBuffersPerChannel,
                 batchShuffleReadMemoryBytes,
                 sortShuffleMinBuffers,
-                sortShuffleMinParallelism,
-                BufferDebloatConfiguration.fromConfiguration(configuration));
+                sortShuffleMinParallelism);
     }
 
     /**

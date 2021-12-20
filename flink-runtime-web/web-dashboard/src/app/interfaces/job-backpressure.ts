@@ -16,14 +16,14 @@
  * limitations under the License.
  */
 
-export interface JobBackpressure {
+export interface JobBackpressureInterface {
   status: string;
   'backpressure-level': string;
   'end-timestamp': number;
-  subtasks: JobBackpressureSubtask[];
+  subtasks: JobBackpressureSubtaskInterface[];
 }
 
-export interface JobBackpressureSubtask {
+export interface JobBackpressureSubtaskInterface {
   subtask: number;
   'backpressure-level': string;
   ratio: number;

@@ -44,6 +44,7 @@ public class PulsarPartitionSplitState {
     public PulsarPartitionSplit toPulsarPartitionSplit() {
         return new PulsarPartitionSplit(
                 split.getPartition(),
+                split.getStartCursor(),
                 split.getStopCursor(),
                 latestConsumedId,
                 uncommittedTransactionId);

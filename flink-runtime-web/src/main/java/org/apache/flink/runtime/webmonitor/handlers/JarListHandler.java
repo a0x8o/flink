@@ -83,7 +83,8 @@ public class JarListHandler
 
     @Override
     protected CompletableFuture<JarListInfo> handleRequest(
-            @Nonnull HandlerRequest<EmptyRequestBody> request, @Nonnull RestfulGateway gateway)
+            @Nonnull HandlerRequest<EmptyRequestBody, EmptyMessageParameters> request,
+            @Nonnull RestfulGateway gateway)
             throws RestHandlerException {
         final String localAddress;
         Preconditions.checkState(localAddressFuture.isDone());

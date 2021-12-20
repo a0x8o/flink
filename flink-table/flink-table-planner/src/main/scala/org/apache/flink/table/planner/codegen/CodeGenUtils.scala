@@ -21,6 +21,7 @@ package org.apache.flink.table.planner.codegen
 import java.lang.reflect.Method
 import java.lang.{Boolean => JBoolean, Byte => JByte, Double => JDouble, Float => JFloat, Integer => JInt, Long => JLong, Object => JObject, Short => JShort}
 import java.util.concurrent.atomic.AtomicLong
+
 import org.apache.flink.api.common.ExecutionConfig
 import org.apache.flink.api.common.functions.RuntimeContext
 import org.apache.flink.core.memory.MemorySegment
@@ -32,20 +33,19 @@ import org.apache.flink.table.data.util.DataFormatConverters.IdentityConverter
 import org.apache.flink.table.data.utils.JoinedRowData
 import org.apache.flink.table.functions.UserDefinedFunction
 import org.apache.flink.table.planner.codegen.GenerateUtils.{generateInputFieldUnboxing, generateNonNullField}
-import org.apache.flink.table.planner.codegen.calls.BuiltInMethods.BINARY_STRING_DATA_FROM_STRING
 import org.apache.flink.table.runtime.dataview.StateDataViewStore
 import org.apache.flink.table.runtime.generated.{AggsHandleFunction, HashFunction, NamespaceAggsHandleFunction, TableAggsHandleFunction}
 import org.apache.flink.table.runtime.types.LogicalTypeDataTypeConverter.fromDataTypeToLogicalType
+import org.apache.flink.table.runtime.types.PlannerTypeUtils.isInteroperable
 import org.apache.flink.table.runtime.typeutils.TypeCheckUtils
 import org.apache.flink.table.runtime.util.{MurmurHashUtil, TimeWindowUtil}
 import org.apache.flink.table.types.DataType
 import org.apache.flink.table.types.logical.LogicalTypeRoot._
 import org.apache.flink.table.types.logical._
 import org.apache.flink.table.types.logical.utils.LogicalTypeChecks
-import org.apache.flink.table.types.logical.utils.LogicalTypeChecks.{getFieldCount, getPrecision, getScale}
+import org.apache.flink.table.types.logical.utils.LogicalTypeChecks.{getFieldCount, getPrecision, getScale, hasRoot}
 import org.apache.flink.table.types.logical.utils.LogicalTypeUtils.toInternalConversionClass
 import org.apache.flink.table.types.utils.DataTypeUtils.isInternal
-import org.apache.flink.table.utils.EncodingUtils
 import org.apache.flink.types.{Row, RowKind}
 
 import scala.annotation.tailrec
@@ -53,8 +53,6 @@ import scala.annotation.tailrec
 object CodeGenUtils {
 
   // ------------------------------- DEFAULT TERMS ------------------------------------------
-
-  val DEFAULT_LEGACY_CAST_BEHAVIOUR = "legacyCastBehaviour"
 
   val DEFAULT_TIMEZONE_TERM = "timeZone"
 
@@ -145,16 +143,6 @@ object CodeGenUtils {
     name
   }
 
-  def className(c: Class[_]): String = {
-    val name = c.getCanonicalName
-    if (name == null) {
-      throw new CodeGenException(
-        s"Class '${c.getName}' does not have a canonical name. " +
-          s"Make sure it is statically accessible.")
-    }
-    name
-  }
-
   /**
    * Returns a term for representing the given class in Java code.
    */
@@ -197,28 +185,6 @@ object CodeGenUtils {
     case _ => boxedTypeTermForType(t)
   }
 
-  /**
-   * Converts values to stringified representation to include in the codegen.
-   *
-   * This method doesn't support complex types.
-   */
-  def primitiveLiteralForType(value: Any): String = value match {
-    // ordered by type root definition
-    case _: JBoolean => value.toString
-    case _: JByte => s"((byte)$value)"
-    case _: JShort => s"((short)$value)"
-    case _: JInt => value.toString
-    case _: JLong => value.toString + "L"
-    case _: JFloat => value.toString + "f"
-    case _: JDouble => value.toString + "d"
-    case sd: StringData =>
-      qualifyMethod(BINARY_STRING_DATA_FROM_STRING) + "(\"" +
-        EncodingUtils.escapeJava(sd.toString) + "\")"
-    case td: TimestampData =>
-      s"$TIMESTAMP_DATA.fromEpochMillis(${td.getMillisecond}L, ${td.getNanoOfMillisecond})"
-    case _ => throw new IllegalArgumentException("Illegal literal type: " + value.getClass)
-  }
-
   @tailrec
   def boxedTypeTermForType(t: LogicalType): String = t.getTypeRoot match {
     // ordered by type root definition
@@ -238,27 +204,12 @@ object CodeGenUtils {
     case ARRAY => className[ArrayData]
     case MULTISET | MAP => className[MapData]
     case ROW | STRUCTURED_TYPE => className[RowData]
+    case TIMESTAMP_WITHOUT_TIME_ZONE | TIMESTAMP_WITH_LOCAL_TIME_ZONE => className[TimestampData]
     case DISTINCT_TYPE => boxedTypeTermForType(t.asInstanceOf[DistinctType].getSourceType)
     case NULL => className[JObject] // special case for untyped null literals
     case RAW => className[BinaryRawValueData[_]]
     case SYMBOL | UNRESOLVED =>
       throw new IllegalArgumentException("Illegal type: " + t)
-  }
-
-  /**
-   * Returns true if [[primitiveDefaultValue()]] returns a nullable Java type, that is,
-   * a non primitive type.
-   */
-  @tailrec
-  def isPrimitiveNullable(t: LogicalType): Boolean = t.getTypeRoot match {
-    // ordered by type root definition
-    case BOOLEAN | TINYINT | SMALLINT | INTEGER |
-         DATE | TIME_WITHOUT_TIME_ZONE | INTERVAL_YEAR_MONTH |
-         BIGINT | INTERVAL_DAY_TIME | FLOAT | DOUBLE => false
-
-    case DISTINCT_TYPE => isPrimitiveNullable(t.asInstanceOf[DistinctType].getSourceType)
-
-    case _ => true
   }
 
   /**
@@ -334,6 +285,69 @@ object CodeGenUtils {
       s"$BINARY_RAW_VALUE.getJavaObjectFromRawValueData($term, $serTerm).hashCode()"
     case NULL | SYMBOL | UNRESOLVED =>
       throw new IllegalArgumentException("Illegal type: " + t)
+  }
+
+  // ----------------------------------------------------------------------------------------------
+
+  // Cast numeric type to another numeric type with larger range.
+  // This function must be in sync with [[NumericOrDefaultReturnTypeInference]].
+  def getNumericCastedResultTerm(expr: GeneratedExpression, targetType: LogicalType): String = {
+    (expr.resultType.getTypeRoot, targetType.getTypeRoot) match {
+      case _ if isInteroperable(expr.resultType, targetType) => expr.resultTerm
+
+      // byte -> other numeric types
+      case (TINYINT, SMALLINT) => s"(short) ${expr.resultTerm}"
+      case (TINYINT, INTEGER) => s"(int) ${expr.resultTerm}"
+      case (TINYINT, BIGINT) => s"(long) ${expr.resultTerm}"
+      case (TINYINT, DECIMAL) =>
+        val dt = targetType.asInstanceOf[DecimalType]
+        s"$DECIMAL_UTIL.castFrom(" +
+          s"${expr.resultTerm}, ${dt.getPrecision}, ${dt.getScale})"
+      case (TINYINT, FLOAT) => s"(float) ${expr.resultTerm}"
+      case (TINYINT, DOUBLE) => s"(double) ${expr.resultTerm}"
+
+      // short -> other numeric types
+      case (SMALLINT, INTEGER) => s"(int) ${expr.resultTerm}"
+      case (SMALLINT, BIGINT) => s"(long) ${expr.resultTerm}"
+      case (SMALLINT, DECIMAL) =>
+        val dt = targetType.asInstanceOf[DecimalType]
+        s"$DECIMAL_UTIL.castFrom(" +
+          s"${expr.resultTerm}, ${dt.getPrecision}, ${dt.getScale})"
+      case (SMALLINT, FLOAT) => s"(float) ${expr.resultTerm}"
+      case (SMALLINT, DOUBLE) => s"(double) ${expr.resultTerm}"
+
+      // int -> other numeric types
+      case (INTEGER, BIGINT) => s"(long) ${expr.resultTerm}"
+      case (INTEGER, DECIMAL) =>
+        val dt = targetType.asInstanceOf[DecimalType]
+        s"$DECIMAL_UTIL.castFrom(" +
+          s"${expr.resultTerm}, ${dt.getPrecision}, ${dt.getScale})"
+      case (INTEGER, FLOAT) => s"(float) ${expr.resultTerm}"
+      case (INTEGER, DOUBLE) => s"(double) ${expr.resultTerm}"
+
+      // long -> other numeric types
+      case (BIGINT, DECIMAL) =>
+        val dt = targetType.asInstanceOf[DecimalType]
+        s"$DECIMAL_UTIL.castFrom(" +
+          s"${expr.resultTerm}, ${dt.getPrecision}, ${dt.getScale})"
+      case (BIGINT, FLOAT) => s"(float) ${expr.resultTerm}"
+      case (BIGINT, DOUBLE) => s"(double) ${expr.resultTerm}"
+
+      // decimal -> other numeric types
+      case (DECIMAL, DECIMAL) =>
+        val dt = targetType.asInstanceOf[DecimalType]
+        s"$DECIMAL_UTIL.castToDecimal(" +
+          s"${expr.resultTerm}, ${dt.getPrecision}, ${dt.getScale})"
+      case (DECIMAL, FLOAT) =>
+        s"$DECIMAL_UTIL.castToFloat(${expr.resultTerm})"
+      case (DECIMAL, DOUBLE) =>
+        s"$DECIMAL_UTIL.castToDouble(${expr.resultTerm})"
+
+      // float -> other numeric types
+      case (FLOAT, DOUBLE) => s"(double) ${expr.resultTerm}"
+
+      case _ => null
+    }
   }
 
   // -------------------------- Method & Enum ---------------------------------------
@@ -416,11 +430,19 @@ object CodeGenUtils {
 
   // -------------------------- RowData Read Access -------------------------------
 
-  def rowFieldReadAccess(index: Int, rowTerm: String, fieldType: LogicalType): String =
-    rowFieldReadAccess(index.toString, rowTerm, fieldType)
+  def rowFieldReadAccess(
+      ctx: CodeGeneratorContext,
+      index: Int,
+      rowTerm: String,
+      fieldType: LogicalType) : String =
+    rowFieldReadAccess(ctx, index.toString, rowTerm, fieldType)
 
   @tailrec
-  def rowFieldReadAccess(indexTerm: String, rowTerm: String, t: LogicalType)
+  def rowFieldReadAccess(
+      ctx: CodeGeneratorContext,
+      indexTerm: String,
+      rowTerm: String,
+      t: LogicalType)
     : String = t.getTypeRoot match {
       // ordered by type root definition
       case CHAR | VARCHAR =>
@@ -454,7 +476,7 @@ object CodeGenUtils {
       case ROW | STRUCTURED_TYPE =>
         s"$rowTerm.getRow($indexTerm, ${getFieldCount(t)})"
       case DISTINCT_TYPE =>
-        rowFieldReadAccess(indexTerm, rowTerm, t.asInstanceOf[DistinctType].getSourceType)
+        rowFieldReadAccess(ctx, indexTerm, rowTerm, t.asInstanceOf[DistinctType].getSourceType)
       case RAW =>
         s"(($BINARY_RAW_VALUE) $rowTerm.getRawValue($indexTerm))"
       case NULL | SYMBOL | UNRESOLVED =>
@@ -703,26 +725,16 @@ object CodeGenUtils {
       fieldValTerm: String,
       writerTerm: String,
       fieldType: LogicalType): String =
-    binaryWriterWriteField(
-      t => ctx.addReusableTypeSerializer(t), index.toString, fieldValTerm, writerTerm, fieldType)
+    binaryWriterWriteField(ctx, index.toString, fieldValTerm, writerTerm, fieldType)
 
+  @tailrec
   def binaryWriterWriteField(
       ctx: CodeGeneratorContext,
       indexTerm: String,
       fieldValTerm: String,
       writerTerm: String,
-      t: LogicalType): String =
-    binaryWriterWriteField(
-      t => ctx.addReusableTypeSerializer(t), indexTerm, fieldValTerm, writerTerm, t)
-
-  @tailrec
-  def binaryWriterWriteField(
-      addSerializer: LogicalType => String,
-      indexTerm: String,
-      fieldValTerm: String,
-      writerTerm: String,
       t: LogicalType)
-  : String = t.getTypeRoot match {
+    : String = t.getTypeRoot match {
     // ordered by type root definition
     case CHAR | VARCHAR =>
       s"$writerTerm.writeString($indexTerm, $fieldValTerm)"
@@ -749,23 +761,23 @@ object CodeGenUtils {
     case TIMESTAMP_WITH_TIME_ZONE =>
       throw new UnsupportedOperationException("Unsupported type: " + t)
     case ARRAY =>
-      val ser = addSerializer(t)
+      val ser = ctx.addReusableTypeSerializer(t)
       s"$writerTerm.writeArray($indexTerm, $fieldValTerm, $ser)"
     case MULTISET | MAP =>
-      val ser = addSerializer(t)
+      val ser = ctx.addReusableTypeSerializer(t)
       s"$writerTerm.writeMap($indexTerm, $fieldValTerm, $ser)"
     case ROW | STRUCTURED_TYPE =>
-      val ser = addSerializer(t)
+      val ser = ctx.addReusableTypeSerializer(t)
       s"$writerTerm.writeRow($indexTerm, $fieldValTerm, $ser)"
     case DISTINCT_TYPE =>
       binaryWriterWriteField(
-        addSerializer,
+        ctx,
         indexTerm,
         fieldValTerm,
         writerTerm,
         t.asInstanceOf[DistinctType].getSourceType)
     case RAW =>
-      val ser = addSerializer(t)
+      val ser = ctx.addReusableTypeSerializer(t)
       s"$writerTerm.writeRawValue($indexTerm, $fieldValTerm, $ser)"
     case NULL | SYMBOL | UNRESOLVED =>
       throw new IllegalArgumentException("Illegal type: " + t);
@@ -900,7 +912,7 @@ object CodeGenUtils {
     val targetTypeTerm = boxedTypeTermForType(targetType)
 
     // untyped null literal
-    if (internalExpr.resultType.is(NULL)) {
+    if (hasRoot(internalExpr.resultType, NULL)) {
       return s"($targetTypeTerm) null"
     }
 
@@ -1019,7 +1031,7 @@ object CodeGenUtils {
     val targetTypeTerm = boxedTypeTermForType(targetType)
 
     // untyped null literal
-    if (internalExpr.resultType.is(NULL)) {
+    if (hasRoot(internalExpr.resultType, NULL)) {
       return s"($targetTypeTerm) null"
     }
 

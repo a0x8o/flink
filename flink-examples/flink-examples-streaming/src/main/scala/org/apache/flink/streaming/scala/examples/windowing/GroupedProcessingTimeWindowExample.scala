@@ -19,7 +19,7 @@
 package org.apache.flink.streaming.scala.examples.windowing
 
 import org.apache.flink.api.scala._
-import org.apache.flink.streaming.api.functions.sink.{DiscardingSink, SinkFunction}
+import org.apache.flink.streaming.api.functions.sink.SinkFunction
 import org.apache.flink.streaming.api.functions.source.RichParallelSourceFunction
 import org.apache.flink.streaming.api.functions.source.SourceFunction.SourceContext
 import org.apache.flink.streaming.api.scala.{DataStream, StreamExecutionEnvironment}
@@ -35,6 +35,7 @@ object GroupedProcessingTimeWindowExample {
   def main(args: Array[String]): Unit = {
 
     val env = StreamExecutionEnvironment.getExecutionEnvironment
+    env.setParallelism(4)
 
     val stream: DataStream[(Long, Long)] = env.addSource(new DataSource)
 
@@ -42,7 +43,9 @@ object GroupedProcessingTimeWindowExample {
       .keyBy(_._1)
       .window(SlidingProcessingTimeWindows.of(Time.milliseconds(2500), Time.milliseconds(500)))
       .reduce((value1, value2) => (value1._1, value1._2 + value2._2))
-      .addSink(new DiscardingSink[(Long, Long)])
+      .addSink(new SinkFunction[(Long, Long)]() {
+        override def invoke(in: (Long, Long)): Unit = {}
+      })
 
     env.execute()
   }

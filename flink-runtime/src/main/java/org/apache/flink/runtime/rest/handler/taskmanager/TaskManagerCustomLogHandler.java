@@ -72,7 +72,8 @@ public class TaskManagerCustomLogHandler
     }
 
     @Override
-    protected String getFileName(HandlerRequest<EmptyRequestBody> handlerRequest) {
+    protected String getFileName(
+            HandlerRequest<EmptyRequestBody, TaskManagerFileMessageParameters> handlerRequest) {
         return handlerRequest.getPathParameter(LogFileNamePathParameter.class);
     }
 }

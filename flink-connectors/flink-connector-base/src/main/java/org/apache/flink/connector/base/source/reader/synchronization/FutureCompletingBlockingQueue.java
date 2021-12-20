@@ -18,9 +18,7 @@
 
 package org.apache.flink.connector.base.source.reader.synchronization;
 
-import org.apache.flink.annotation.Internal;
 import org.apache.flink.annotation.VisibleForTesting;
-import org.apache.flink.connector.base.source.reader.SourceReaderOptions;
 import org.apache.flink.util.FlinkRuntimeException;
 
 import javax.annotation.concurrent.GuardedBy;
@@ -71,7 +69,6 @@ import static org.apache.flink.util.Preconditions.checkArgument;
  *
  * @param <T> the type of the elements in the queue.
  */
-@Internal
 public class FutureCompletingBlockingQueue<T> {
 
     /**
@@ -80,6 +77,9 @@ public class FutureCompletingBlockingQueue<T> {
      * operations.
      */
     public static final CompletableFuture<Void> AVAILABLE = getAvailableFuture();
+
+    /** The default capacity for the queue. */
+    private static final int DEFAULT_CAPACITY = 2;
 
     // ------------------------------------------------------------------------
 
@@ -107,7 +107,7 @@ public class FutureCompletingBlockingQueue<T> {
     private ConditionAndFlag[] putConditionAndFlags;
 
     public FutureCompletingBlockingQueue() {
-        this(SourceReaderOptions.ELEMENT_QUEUE_CAPACITY.defaultValue());
+        this(DEFAULT_CAPACITY);
     }
 
     public FutureCompletingBlockingQueue(int capacity) {

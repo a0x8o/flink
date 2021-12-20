@@ -96,6 +96,7 @@ flink-connectors/flink-hadoop-compatibility,\
 flink-connectors,\
 flink-connectors/flink-connector-jdbc,\
 flink-connectors/flink-connector-cassandra,\
+flink-connectors/flink-connector-elasticsearch5,\
 flink-connectors/flink-connector-elasticsearch6,\
 flink-connectors/flink-connector-elasticsearch7,\
 flink-connectors/flink-sql-connector-elasticsearch6,\
@@ -124,10 +125,14 @@ flink-connectors/flink-connector-kafka,\
 flink-connectors/flink-sql-connector-kafka,"
 
 MODULES_TESTS="\
-flink-tests,\
-flink-architecture-tests"
+flink-tests"
 
 MODULES_FINEGRAINED_RESOURCE_MANAGEMENT=${MODULES_CORE},${MODULES_TESTS}
+
+# we can only build the Scala Shell when building for Scala 2.11
+if [[ $PROFILE == *"scala-2.11"* ]]; then
+    MODULES_CORE="$MODULES_CORE,flink-scala-shell"
+fi
 
 function get_compile_modules_for_stage() {
     local stage=$1

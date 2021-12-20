@@ -44,7 +44,7 @@ class StreamPhysicalJoinRule
     val left: FlinkLogicalRel = call.rel(1).asInstanceOf[FlinkLogicalRel]
     val right: FlinkLogicalRel = call.rel(2).asInstanceOf[FlinkLogicalRel]
 
-    if (!satisfyRegularJoin(join, left, right)) {
+    if (!satisfyRegularJoin(join, right)) {
       return false
     }
 

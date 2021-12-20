@@ -140,7 +140,6 @@ public class SqlToOperationConverterTest {
             new PlannerContext(
                     false,
                     tableConfig,
-                    moduleManager,
                     functionCatalog,
                     catalogManager,
                     asRootSchema(new CatalogManagerCalciteSchema(catalogManager, isStreamingMode)),

@@ -113,9 +113,7 @@ public class KubernetesClusterDescriptor implements ClusterDescriptor<String> {
                 return new RestClusterClient<>(
                         configuration,
                         clusterId,
-                        (effectiveConfiguration, fatalErrorHandler) ->
-                                new StandaloneClientHAServices(
-                                        getWebMonitorAddress(effectiveConfiguration)));
+                        new StandaloneClientHAServices(getWebMonitorAddress(configuration)));
             } catch (Exception e) {
                 throw new RuntimeException(
                         new ClusterRetrieveException("Could not create the RestClusterClient.", e));

@@ -236,7 +236,7 @@ public class TestingResourceManagerGateway implements ResourceManagerGateway {
     }
 
     @Override
-    public CompletableFuture<RegistrationResponse> registerJobMaster(
+    public CompletableFuture<RegistrationResponse> registerJobManager(
             JobMasterId jobMasterId,
             ResourceID jobMasterResourceId,
             String jobMasterAddress,

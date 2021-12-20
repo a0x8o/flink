@@ -21,6 +21,9 @@ package org.apache.flink.runtime.testtasks;
 import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
 
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Future;
+
 /**
  * Mimics a task that is doing something until some external condition is fulfilled. {@link
  * #unblock()} signals that no more work is to be done, unblocking all instances and allowing all
@@ -55,11 +58,12 @@ public class OnceBlockingNoOpInvokable extends AbstractInvokable {
     }
 
     @Override
-    public void cancel() throws Exception {
+    public Future<Void> cancel() throws Exception {
         synchronized (lock) {
             running = false;
             lock.notifyAll();
         }
+        return CompletableFuture.completedFuture(null);
     }
 
     public static void unblock() {

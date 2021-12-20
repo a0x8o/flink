@@ -27,13 +27,9 @@ import {
   Output,
   ViewChild
 } from '@angular/core';
-
-import * as d3 from 'd3';
 import { select, Selection } from 'd3-selection';
 import { zoom, ZoomBehavior } from 'd3-zoom';
-
-/* eslint-disable-next-line @typescript-eslint/no-explicit-any */
-type SafeAny = any;
+import * as d3 from 'd3';
 
 @Component({
   selector: 'flink-svg-container',
@@ -42,40 +38,47 @@ type SafeAny = any;
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class SvgContainerComponent implements OnInit, AfterContentInit {
-  public zoom = 1;
-  public width: number;
-  public height: number;
-  public transform = 'translate(0, 0) scale(1)';
-  public containerTransform = { x: 0, y: 0, k: 1 };
-  public svgSelect: Selection<SafeAny, SafeAny, SafeAny, SafeAny>;
-  public zoomController: ZoomBehavior<SafeAny, SafeAny>;
+  zoom = 1;
+  width: number;
+  height: number;
+  transform = 'translate(0, 0) scale(1)';
+  containerTransform = { x: 0, y: 0, k: 1 };
+  svgSelect: Selection<any, any, any, any>;
+  zoomController: ZoomBehavior<any, any>;
+  @ViewChild('svgContainer', { static: true }) svgContainer: ElementRef<SVGAElement>;
+  @ViewChild('svgInner', { static: true }) svgInner: ElementRef<SVGAElement>;
+  @Input() nzMaxZoom = 5;
+  @Input() nzMinZoom = 0.1;
+  @Output() clickBgEvent: EventEmitter<MouseEvent> = new EventEmitter();
+  @Output() zoomEvent: EventEmitter<number> = new EventEmitter();
+  @Output() transformEvent: EventEmitter<{ x: number; y: number; scale: number }> = new EventEmitter();
 
-  @Input() public nzMaxZoom = 5;
-  @Input() public nzMinZoom = 0.1;
-
-  @Output() public readonly clickBgEvent = new EventEmitter<MouseEvent>();
-  @Output() public readonly zoomEvent = new EventEmitter<number>();
-  @Output() public readonly transformEvent = new EventEmitter<{ x: number; y: number; scale: number }>();
-
-  @ViewChild('svgContainer', { static: true }) private readonly svgContainer: ElementRef<SVGAElement>;
-
-  public zoomTo(zoomLevel: number): void {
+  /**
+   * Zoom to spec level
+   * @param zoomLevel
+   */
+  zoomTo(zoomLevel: number) {
     this.svgSelect
       .transition()
       .duration(0)
       .call(this.zoomController.scaleTo, zoomLevel);
   }
 
-  public setPositionByTransform(transform: { x: number; y: number; k: number }, animate = false): void {
+  /**
+   * Set transform position
+   * @param transform
+   * @param animate
+   */
+  setPositionByTransform(transform: { x: number; y: number; k: number }, animate = false) {
     this.svgSelect
       .transition()
       .duration(animate ? 500 : 0)
       .call(this.zoomController.transform, transform);
   }
 
-  constructor(private readonly el: ElementRef) {}
+  constructor(private el: ElementRef) {}
 
-  public ngOnInit(): void {
+  ngOnInit() {
     this.svgSelect = select(this.svgContainer.nativeElement);
     this.zoomController = zoom()
       .scaleExtent([this.nzMinZoom, this.nzMaxZoom])
@@ -83,15 +86,17 @@ export class SvgContainerComponent implements OnInit, AfterContentInit {
         this.containerTransform = d3.event.transform;
         this.zoom = this.containerTransform.k;
         if (!isNaN(this.containerTransform.x)) {
-          this.transform = `translate(${this.containerTransform.x} ,${this.containerTransform.y})scale(${this.containerTransform.k})`;
+          this.transform = `translate(${this.containerTransform.x} ,${this.containerTransform.y})scale(${
+            this.containerTransform.k
+          })`;
         }
         this.zoomEvent.emit(this.zoom);
-        this.transformEvent.emit((this.containerTransform as unknown) as { x: number; y: number; scale: number });
+        this.transformEvent.emit(this.containerTransform as any);
       });
     this.svgSelect.call(this.zoomController).on('wheel.zoom', null);
   }
 
-  public ngAfterContentInit(): void {
+  ngAfterContentInit() {
     const hostElem = this.el.nativeElement;
     if (hostElem.parentNode !== null) {
       const dims = hostElem.parentNode.getBoundingClientRect();

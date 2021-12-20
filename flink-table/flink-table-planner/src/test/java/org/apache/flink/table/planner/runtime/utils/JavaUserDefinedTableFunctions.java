@@ -118,7 +118,10 @@ public class JavaUserDefinedTableFunctions {
 
         public void eval(String str) {
             String[] values = str.split("#");
-            collect(values[random.nextInt(values.length)]);
+            int endIndex = random.nextInt(values.length);
+            for (int i = 0; i < endIndex; ++i) {
+                collect(values[i]);
+            }
         }
 
         @Override

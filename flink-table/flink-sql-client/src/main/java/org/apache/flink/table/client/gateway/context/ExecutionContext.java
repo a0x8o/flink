@@ -135,12 +135,7 @@ public class ExecutionContext {
 
         final Planner planner =
                 PlannerFactoryUtil.createPlanner(
-                        settings.getPlanner(),
-                        executor,
-                        config,
-                        moduleManager,
-                        catalogManager,
-                        functionCatalog);
+                        settings.getPlanner(), executor, config, catalogManager, functionCatalog);
 
         return new StreamTableEnvironmentImpl(
                 catalogManager,

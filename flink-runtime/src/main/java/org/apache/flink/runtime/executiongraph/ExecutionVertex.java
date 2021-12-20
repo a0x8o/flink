@@ -342,9 +342,7 @@ public class ExecutionVertex
      * that the execution attempt will resume.
      */
     public Optional<TaskManagerLocation> getPreferredLocationBasedOnState() {
-        // only restore to same execution if it has state
-        if (currentExecution.getTaskRestore() != null
-                && currentExecution.getTaskRestore().getTaskStateSnapshot().hasState()) {
+        if (currentExecution.getTaskRestore() != null) {
             return Optional.ofNullable(getLatestPriorLocation());
         }
 
@@ -401,7 +399,7 @@ public class ExecutionVertex
             // if the execution was 'FINISHED' before, tell the ExecutionGraph that
             // we take one step back on the road to reaching global FINISHED
             if (oldState == FINISHED) {
-                getJobVertex().executionVertexUnFinished();
+                getExecutionGraphAccessor().vertexUnFinished();
             }
 
             // reset the intermediate results
@@ -522,7 +520,7 @@ public class ExecutionVertex
     // --------------------------------------------------------------------------------------------
 
     void executionFinished(Execution execution) {
-        getJobVertex().executionVertexFinished();
+        getExecutionGraphAccessor().vertexFinished();
     }
 
     // --------------------------------------------------------------------------------------------

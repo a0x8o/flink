@@ -212,8 +212,7 @@ public abstract class CommonExecLookupJoin extends ExecNodeBase<RowData>
     @Override
     @SuppressWarnings("unchecked")
     public Transformation<RowData> translateToPlanInternal(PlannerBase planner) {
-        RelOptTable temporalTable =
-                temporalTableSourceSpec.getTemporalTable(planner.getFlinkContext());
+        RelOptTable temporalTable = temporalTableSourceSpec.getTemporalTable(planner);
         // validate whether the node is valid and supported.
         validate(temporalTable);
         final ExecEdge inputEdge = getInputEdges().get(0);

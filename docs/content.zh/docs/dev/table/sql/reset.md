@@ -24,22 +24,18 @@ specific language governing permissions and limitations
 under the License.
 -->
 
-<a name="reset-statements"></a>
+# RESET Statements
 
-# RESET 语句
+`RESET` statements are used to reset the configuration to the default.
 
-`RESET` 语句用于将配置重置为默认值。
-
-<a name="run-a-reset-statement"></a>
-
-## 执行 RESET 语句
+## Run a RESET statement
 
 {{< tabs "reset statement" >}}
 {{< tab "SQL CLI" >}}
 
-`RESET` 语句可以在 [SQL CLI]({{< ref "docs/dev/table/sqlClient" >}}) 中执行。
+`RESET` statements can be executed in [SQL CLI]({{< ref "docs/dev/table/sqlClient" >}}).
 
-以下示例展示了如何在 SQL CLI 中执行一条 `RESET` 语句。
+The following examples show how to run a `RESET` statement in SQL CLI.
 
 {{< /tab >}}
 {{< /tabs >}}
@@ -56,14 +52,12 @@ Flink SQL> RESET;
 {{< /tab >}}
 {{< /tabs >}}
 
-<a name="syntax"></a>
-
 ## Syntax
 
 ```sql
 RESET ('key')?
 ```
 
-如果未指定 key，则将所有属性重置为默认值。否则，将指定的 key 重置为默认值。
+If no key is specified, it reset all the properties to the default. Otherwise, reset the specified key to the default.
 
 {{< top >}}

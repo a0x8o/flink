@@ -46,7 +46,7 @@ import java.util.Map;
 
 import static org.apache.flink.table.runtime.util.TimeWindowUtil.isWindowFired;
 
-/** A rowtime window rank processor. */
+/** An window rank processor. */
 public final class WindowRankProcessor implements SlicingWindowProcessor<Long> {
     private static final long serialVersionUID = 1L;
 
@@ -138,11 +138,6 @@ public final class WindowRankProcessor implements SlicingWindowProcessor<Long> {
         this.reuseOutput = new JoinedRowData();
         this.reuseRankRow = new GenericRowData(1);
         this.currentProgress = Long.MIN_VALUE;
-    }
-
-    @Override
-    public void initializeWatermark(long watermark) {
-        currentProgress = watermark;
     }
 
     @Override

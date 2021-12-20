@@ -20,8 +20,6 @@ package org.apache.flink.runtime.metrics;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.configuration.ConfigConstants;
-import org.apache.flink.configuration.ConfigOption;
-import org.apache.flink.configuration.ConfigOptions;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.DelegatingConfiguration;
 import org.apache.flink.configuration.MetricOptions;
@@ -48,7 +46,6 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.ServiceConfigurationError;
 import java.util.ServiceLoader;
@@ -84,25 +81,15 @@ public final class ReporterSetup {
                             + Pattern.quote(ConfigConstants.METRICS_REPORTER_FACTORY_CLASS_SUFFIX)
                             + ')');
 
-    private static final ConfigOption<Map<String, String>> ADDITIONAL_VARIABLES =
-            ConfigOptions.key(ConfigConstants.METRICS_REPORTER_ADDITIONAL_VARIABLES)
-                    .mapType()
-                    .defaultValue(Collections.emptyMap());
-
     private final String name;
     private final MetricConfig configuration;
     private final MetricReporter reporter;
-    private final Map<String, String> additionalVariables;
 
     public ReporterSetup(
-            final String name,
-            final MetricConfig configuration,
-            MetricReporter reporter,
-            final Map<String, String> additionalVariables) {
+            final String name, final MetricConfig configuration, MetricReporter reporter) {
         this.name = name;
         this.configuration = configuration;
         this.reporter = reporter;
-        this.additionalVariables = additionalVariables;
     }
 
     public Optional<String> getDelimiter() {
@@ -129,10 +116,6 @@ public final class ReporterSetup {
         }
     }
 
-    public Map<String, String> getAdditionalVariables() {
-        return additionalVariables;
-    }
-
     public String getName() {
         return name;
     }
@@ -148,24 +131,20 @@ public final class ReporterSetup {
 
     @VisibleForTesting
     public static ReporterSetup forReporter(String reporterName, MetricReporter reporter) {
-        return createReporterSetup(
-                reporterName, new MetricConfig(), reporter, Collections.emptyMap());
+        return createReporterSetup(reporterName, new MetricConfig(), reporter);
     }
 
     @VisibleForTesting
     public static ReporterSetup forReporter(
             String reporterName, MetricConfig metricConfig, MetricReporter reporter) {
-        return createReporterSetup(reporterName, metricConfig, reporter, Collections.emptyMap());
+        return createReporterSetup(reporterName, metricConfig, reporter);
     }
 
     private static ReporterSetup createReporterSetup(
-            String reporterName,
-            MetricConfig metricConfig,
-            MetricReporter reporter,
-            Map<String, String> additionalVariables) {
+            String reporterName, MetricConfig metricConfig, MetricReporter reporter) {
         reporter.open(metricConfig);
 
-        return new ReporterSetup(reporterName, metricConfig, reporter, additionalVariables);
+        return new ReporterSetup(reporterName, metricConfig, reporter);
     }
 
     public static List<ReporterSetup> fromConfiguration(
@@ -305,25 +284,12 @@ public final class ReporterSetup {
             try {
                 Optional<MetricReporter> metricReporterOptional =
                         loadReporter(reporterName, reporterConfig, reporterFactories);
-
-                // massage user variables keys into scope format for parity to variable exclusion
-                Map<String, String> additionalVariables =
-                        reporterConfig.get(ADDITIONAL_VARIABLES).entrySet().stream()
-                                .collect(
-                                        Collectors.toMap(
-                                                e -> ScopeFormat.asVariable(e.getKey()),
-                                                Entry::getValue));
-
                 metricReporterOptional.ifPresent(
                         reporter -> {
                             MetricConfig metricConfig = new MetricConfig();
                             reporterConfig.addAllToProperties(metricConfig);
                             reporterSetups.add(
-                                    createReporterSetup(
-                                            reporterName,
-                                            metricConfig,
-                                            reporter,
-                                            additionalVariables));
+                                    createReporterSetup(reporterName, metricConfig, reporter));
                         });
             } catch (Throwable t) {
                 LOG.error(

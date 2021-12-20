@@ -49,8 +49,7 @@ public class FlinkKafkaProducerMigrationTest extends KafkaMigrationTestBase {
                 MigrationVersion.v1_10,
                 MigrationVersion.v1_11,
                 MigrationVersion.v1_12,
-                MigrationVersion.v1_13,
-                MigrationVersion.v1_14);
+                MigrationVersion.v1_13);
     }
 
     public FlinkKafkaProducerMigrationTest(MigrationVersion testMigrateVersion) {

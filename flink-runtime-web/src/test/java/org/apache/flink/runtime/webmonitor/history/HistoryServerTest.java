@@ -327,9 +327,7 @@ public class HistoryServerTest extends TestLogger {
                                             new IllegalStateException(
                                                     "Expected at least one existing job"));
 
-            // trigger another fetch and delete one archive from jm
-            // we fetch again to probabilistically cause a concurrent deletion
-            hs.fetchArchives();
+            // delete one archive from jm
             Files.deleteIfExists(jmDirectory.toPath().resolve(jobIdToDelete));
 
             assertTrue(firstArchiveExpiredLatch.await(10L, TimeUnit.SECONDS));

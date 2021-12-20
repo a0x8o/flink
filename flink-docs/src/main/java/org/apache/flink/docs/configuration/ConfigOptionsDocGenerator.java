@@ -95,15 +95,7 @@ public class ConfigOptionsDocGenerator {
                         "flink-kubernetes", "org.apache.flink.kubernetes.configuration"),
                 new OptionsClassLocation("flink-clients", "org.apache.flink.client.cli"),
                 new OptionsClassLocation(
-                        "flink-table/flink-sql-client", "org.apache.flink.table.client.config"),
-                new OptionsClassLocation(
-                        "flink-connectors/flink-connector-pulsar",
-                        "org.apache.flink.connector.pulsar.common.config"),
-                new OptionsClassLocation(
-                        "flink-connectors/flink-connector-pulsar",
-                        "org.apache.flink.connector.pulsar.source"),
-                new OptionsClassLocation(
-                        "flink-libraries/flink-cep", "org.apache.flink.cep.configuration")
+                        "flink-table/flink-sql-client", "org.apache.flink.table.client.config")
             };
 
     static final Set<String> EXCLUSIONS =
@@ -114,8 +106,7 @@ public class ConfigOptionsDocGenerator {
                             "org.apache.flink.configuration.ConfigOptions",
                             "org.apache.flink.streaming.api.environment.CheckpointConfig",
                             "org.apache.flink.contrib.streaming.state.PredefinedOptions",
-                            "org.apache.flink.python.PythonConfig",
-                            "org.apache.flink.cep.configuration.SharedBufferCacheConfig"));
+                            "org.apache.flink.python.PythonConfig"));
 
     static final String DEFAULT_PATH_PREFIX = "src/main/java";
 

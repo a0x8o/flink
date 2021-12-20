@@ -25,7 +25,6 @@ import org.apache.flink.runtime.event.AbstractEvent;
 import org.apache.flink.runtime.io.disk.BatchShuffleReadBufferPool;
 import org.apache.flink.runtime.io.network.api.EndOfData;
 import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
-import org.apache.flink.runtime.io.network.api.StopMode;
 import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferCompressor;
@@ -363,7 +362,6 @@ public class SortMergeResultPartition extends ResultPartition {
     private void updateStatistics(Buffer buffer, boolean isBroadcast) {
         numBuffersOut.inc(isBroadcast ? numSubpartitions : 1);
         long readableBytes = buffer.readableBytes();
-        numBytesProduced.inc(readableBytes);
         numBytesOut.inc(isBroadcast ? readableBytes * numSubpartitions : readableBytes);
     }
 
@@ -399,10 +397,10 @@ public class SortMergeResultPartition extends ResultPartition {
     }
 
     @Override
-    public void notifyEndOfData(StopMode mode) throws IOException {
+    public void notifyEndOfData() throws IOException {
         synchronized (lock) {
             if (!hasNotifiedEndOfUserRecords) {
-                broadcastEvent(new EndOfData(mode), false);
+                broadcastEvent(EndOfData.INSTANCE, false);
                 hasNotifiedEndOfUserRecords = true;
             }
         }

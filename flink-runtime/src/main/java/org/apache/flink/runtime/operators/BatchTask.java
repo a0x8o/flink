@@ -74,6 +74,8 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Future;
 
 import static java.util.Collections.emptyList;
 
@@ -186,6 +188,7 @@ public class BatchTask<S extends Function, OT> extends AbstractInvokable
     protected Map<String, Accumulator<?, ?>> accumulatorMap;
 
     private InternalOperatorMetricGroup metrics;
+    private final CompletableFuture<Void> terminationFuture = new CompletableFuture<>();
 
     // --------------------------------------------------------------------------------------------
     //                                  Constructor
@@ -361,6 +364,7 @@ public class BatchTask<S extends Function, OT> extends AbstractInvokable
 
             clearReaders(inputReaders);
             clearWriters(eventualOutputs);
+            terminationFuture.complete(null);
         }
 
         if (this.running) {
@@ -375,7 +379,7 @@ public class BatchTask<S extends Function, OT> extends AbstractInvokable
     }
 
     @Override
-    public void cancel() throws Exception {
+    public Future<Void> cancel() throws Exception {
         this.running = false;
 
         if (LOG.isDebugEnabled()) {
@@ -389,6 +393,7 @@ public class BatchTask<S extends Function, OT> extends AbstractInvokable
         } finally {
             closeLocalStrategiesAndCaches();
         }
+        return terminationFuture;
     }
 
     // --------------------------------------------------------------------------------------------
@@ -1381,8 +1386,7 @@ public class BatchTask<S extends Function, OT> extends AbstractInvokable
             final RecordWriter<SerializationDelegate<T>> recordWriter =
                     new RecordWriterBuilder()
                             .setChannelSelector(oe)
-                            .setTaskName(
-                                    task.getEnvironment().getTaskInfo().getTaskNameWithSubtasks())
+                            .setTaskName(task.getEnvironment().getTaskInfo().getTaskName())
                             .build(task.getEnvironment().getWriter(outputOffset + i));
 
             recordWriter.setMetricGroup(task.getEnvironment().getMetricGroup().getIOMetricGroup());

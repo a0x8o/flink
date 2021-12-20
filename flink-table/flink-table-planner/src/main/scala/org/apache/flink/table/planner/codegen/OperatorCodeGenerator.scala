@@ -120,7 +120,6 @@ object OperatorCodeGenerator extends Logging {
     """.stripMargin
 
     LOG.debug(s"Compiling OneInputStreamOperator Code:\n$name")
-    LOG.trace(s"Code: \n$operatorCode")
     new GeneratedOperator(
       operatorName, operatorCode, ctx.references.toArray, ctx.tableConfig.getConfiguration)
   }
@@ -249,7 +248,6 @@ object OperatorCodeGenerator extends Logging {
     """.stripMargin
 
     LOG.debug(s"Compiling TwoInputStreamOperator Code:\n$name")
-    LOG.trace(s"Code: \n$operatorCode")
     new GeneratedOperator(
       operatorName, operatorCode, ctx.references.toArray, ctx.tableConfig.getConfiguration)
   }

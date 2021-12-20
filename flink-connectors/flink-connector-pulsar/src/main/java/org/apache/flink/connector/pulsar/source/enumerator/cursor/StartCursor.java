@@ -21,10 +21,11 @@ package org.apache.flink.connector.pulsar.source.enumerator.cursor;
 import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.connector.pulsar.source.enumerator.cursor.start.MessageIdStartCursor;
 import org.apache.flink.connector.pulsar.source.enumerator.cursor.start.TimestampStartCursor;
+import org.apache.flink.connector.pulsar.source.enumerator.topic.TopicPartition;
+import org.apache.flink.connector.pulsar.source.split.PulsarPartitionSplit;
 
-import org.apache.pulsar.client.api.Consumer;
+import org.apache.pulsar.client.admin.PulsarAdmin;
 import org.apache.pulsar.client.api.MessageId;
-import org.apache.pulsar.client.api.PulsarClientException;
 import org.apache.pulsar.client.api.SubscriptionType;
 
 import java.io.Serializable;
@@ -41,14 +42,10 @@ import java.io.Serializable;
 @FunctionalInterface
 public interface StartCursor extends Serializable {
 
-    CursorPosition position(String topic, int partitionId);
+    /** The open method for the cursor initializer. This method could be executed multiple times. */
+    default void open(PulsarAdmin admin, TopicPartition partition) {}
 
-    /** Helper method for seek the right position for given pulsar consumer. */
-    default void seekPosition(String topic, int partitionId, Consumer<?> consumer)
-            throws PulsarClientException {
-        CursorPosition position = position(topic, partitionId);
-        position.seekPosition(consumer);
-    }
+    CursorPosition position(PulsarPartitionSplit split);
 
     // --------------------------- Static Factory Methods -----------------------------
 
@@ -70,7 +67,7 @@ public interface StartCursor extends Serializable {
 
     /**
      * @param messageId Find the available message id and start consuming from it.
-     * @param inclusive {@code true} would include the given message id.
+     * @param inclusive {@code ture} would include the given message id.
      */
     static StartCursor fromMessageId(MessageId messageId, boolean inclusive) {
         return new MessageIdStartCursor(messageId, inclusive);

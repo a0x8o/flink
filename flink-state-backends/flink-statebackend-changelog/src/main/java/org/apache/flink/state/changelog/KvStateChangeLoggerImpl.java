@@ -52,9 +52,8 @@ class KvStateChangeLoggerImpl<Key, Value, Ns> extends AbstractStateChangeLogger<
             StateChangelogWriter<?> stateChangelogWriter,
             RegisteredStateMetaInfoBase metaInfo,
             StateTtlConfig ttlConfig,
-            @Nullable Value defaultValue,
-            short stateId) {
-        super(stateChangelogWriter, keyContext, metaInfo, stateId);
+            @Nullable Value defaultValue) {
+        super(stateChangelogWriter, keyContext, metaInfo);
         this.keySerializer = checkNotNull(keySerializer);
         this.valueSerializer = checkNotNull(valueSerializer);
         this.namespaceSerializer = checkNotNull(namespaceSerializer);

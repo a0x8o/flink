@@ -19,8 +19,8 @@
 package org.apache.flink.runtime.checkpoint;
 
 import org.apache.flink.api.common.JobID;
-import org.apache.flink.api.common.eventtime.WatermarkStrategyTest.DummyMetricGroup;
 import org.apache.flink.core.io.SimpleVersionedSerializer;
+import org.apache.flink.runtime.concurrent.ManuallyTriggeredScheduledExecutor;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.ExecutionGraph;
 import org.apache.flink.runtime.executiongraph.ExecutionGraphCheckpointPlanCalculatorContext;
@@ -32,7 +32,6 @@ import org.apache.flink.runtime.state.SharedStateRegistry;
 import org.apache.flink.runtime.state.memory.MemoryStateBackend;
 import org.apache.flink.runtime.state.testutils.TestCompletedCheckpointStorageLocation;
 import org.apache.flink.util.concurrent.Executors;
-import org.apache.flink.util.concurrent.ManuallyTriggeredScheduledExecutor;
 import org.apache.flink.util.concurrent.ScheduledExecutor;
 
 import org.junit.Test;
@@ -232,7 +231,7 @@ public class CheckpointCoordinatorMasterHooksTest {
         assertEquals(0, cc.getNumberOfPendingCheckpoints());
 
         assertEquals(1, cc.getNumberOfRetainedSuccessfulCheckpoints());
-        final CompletedCheckpoint chk = cc.getCheckpointStore().getLatestCheckpoint();
+        final CompletedCheckpoint chk = cc.getCheckpointStore().getLatestCheckpoint(false);
 
         final Collection<MasterState> masterStates = chk.getMasterHookStates();
         assertEquals(2, masterStates.size());
@@ -474,6 +473,7 @@ public class CheckpointCoordinatorMasterHooksTest {
                         CheckpointRetentionPolicy.NEVER_RETAIN_AFTER_TERMINATION,
                         true,
                         false,
+                        false,
                         0,
                         0);
         Executor executor = Executors.directExecutor();
@@ -494,8 +494,7 @@ public class CheckpointCoordinatorMasterHooksTest {
                         new ExecutionGraphCheckpointPlanCalculatorContext(graph),
                         graph.getVerticesTopologically(),
                         false),
-                new ExecutionAttemptMappingProvider(graph.getAllExecutionVertices()),
-                new CheckpointStatsTracker(1, new DummyMetricGroup()));
+                new ExecutionAttemptMappingProvider(graph.getAllExecutionVertices()));
     }
 
     private static <T> T mockGeneric(Class<?> clazz) {

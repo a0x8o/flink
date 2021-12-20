@@ -21,11 +21,7 @@
 import { AfterViewInit, Component, ElementRef, ChangeDetectionStrategy, Input, OnDestroy } from '@angular/core';
 import { fromEvent, merge, Subject } from 'rxjs';
 import { debounceTime, takeUntil } from 'rxjs/operators';
-
 import { MonacoEditorService } from 'share/common/monaco-editor/monaco-editor.service';
-
-import { SafeAny } from 'interfaces';
-
 import IStandaloneCodeEditor = monaco.editor.IStandaloneCodeEditor;
 
 @Component({
@@ -47,11 +43,11 @@ export class MonacoEditorComponent implements AfterViewInit, OnDestroy {
     }
   }
 
-  get value(): string {
+  get value() {
     return this.innerValue;
   }
 
-  setupMonaco(): void {
+  setupMonaco() {
     const hostElement = this.elementRef.nativeElement;
     this.editor = monaco.editor.create(hostElement, {
       scrollBeyondLastLine: false,
@@ -68,7 +64,7 @@ export class MonacoEditorComponent implements AfterViewInit, OnDestroy {
     }
   }
 
-  layout(): void {
+  layout() {
     if (this.editor) {
       this.editor.layout();
     }
@@ -76,19 +72,18 @@ export class MonacoEditorComponent implements AfterViewInit, OnDestroy {
 
   constructor(private elementRef: ElementRef, private monacoEditorService: MonacoEditorService) {}
 
-  ngAfterViewInit(): void {
-    if ((window as SafeAny).monaco) {
-      // TODO: temporary solution, the editor should render depending on its own dimension
-      setTimeout(() => this.setupMonaco());
+  ngAfterViewInit() {
+    if ((window as any).monaco) {
+      this.setupMonaco();
     } else {
       const script = document.createElement('script');
       script.type = 'text/javascript';
       script.src = 'libs/vs/loader.js';
       script.onload = () => {
-        const onGotAmdLoader = (): void => {
+        const onGotAmdLoader = () => {
           // Load monaco
-          (window as SafeAny).require.config({ paths: { vs: 'libs/vs' } });
-          (window as SafeAny).require(['vs/editor/editor.main'], () => {
+          (window as any).require.config({ paths: { vs: 'libs/vs' } });
+          (window as any).require(['vs/editor/editor.main'], () => {
             setTimeout(() => this.setupMonaco());
           });
         };
@@ -104,9 +99,9 @@ export class MonacoEditorComponent implements AfterViewInit, OnDestroy {
       });
   }
 
-  ngOnDestroy(): void {
+  ngOnDestroy() {
     this.destroy$.next();
     this.destroy$.complete();
-    this.editor?.dispose();
+    this.editor.dispose();
   }
 }

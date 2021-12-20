@@ -25,7 +25,7 @@ export class FileReadDirective {
   @Output() fileRead = new EventEmitter();
 
   @HostListener('change', ['$event'])
-  onChange(changeEvent: Event): void {
+  onChange(changeEvent: Event) {
     const target = changeEvent.target as HTMLInputElement;
     this.fileRead.emit(target!.files![0]);
   }

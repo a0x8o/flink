@@ -118,9 +118,6 @@ class TestChangeLoggerKv<State> implements KvStateChangeLogger<State, String> {
     }
 
     @Override
-    public void resetWritingMetaFlag() {}
-
-    @Override
     public void namespacesMerged(String target, Collection<String> sources) {
         stateMerged = true;
     }
@@ -134,7 +131,4 @@ class TestChangeLoggerKv<State> implements KvStateChangeLogger<State, String> {
                 || stateElementRemoved
                 || stateMerged;
     }
-
-    @Override
-    public void close() {}
 }

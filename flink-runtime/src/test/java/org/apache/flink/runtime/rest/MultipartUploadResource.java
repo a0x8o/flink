@@ -29,6 +29,7 @@ import org.apache.flink.runtime.rest.messages.EmptyMessageParameters;
 import org.apache.flink.runtime.rest.messages.EmptyRequestBody;
 import org.apache.flink.runtime.rest.messages.EmptyResponseBody;
 import org.apache.flink.runtime.rest.messages.MessageHeaders;
+import org.apache.flink.runtime.rest.messages.MessageParameters;
 import org.apache.flink.runtime.rest.messages.RequestBody;
 import org.apache.flink.runtime.rest.util.TestRestServerEndpoint;
 import org.apache.flink.runtime.rpc.RpcUtils;
@@ -61,6 +62,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
+import java.util.Random;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -88,7 +90,7 @@ public class MultipartUploadResource extends ExternalResource {
 
     private Path configuredUploadDir;
 
-    private BiConsumerWithException<HandlerRequest<?>, RestfulGateway, RestHandlerException>
+    private BiConsumerWithException<HandlerRequest<?, ?>, RestfulGateway, RestHandlerException>
             fileUploadVerifier;
 
     @Override
@@ -110,8 +112,7 @@ public class MultipartUploadResource extends ExternalResource {
 
         file1 = temporaryFolder.newFile();
         try (RandomAccessFile rw = new RandomAccessFile(file1, "rw")) {
-            // magic value that reliably reproduced https://github.com/netty/netty/issues/11668
-            rw.setLength(5043444);
+            rw.setLength(1024 * 1024 * 64);
         }
         file2 = temporaryFolder.newFile();
         Files.write(file2.toPath(), "world".getBytes(ConfigConstants.DEFAULT_CHARSET));
@@ -134,10 +135,7 @@ public class MultipartUploadResource extends ExternalResource {
                 (request, restfulGateway) -> {
                     // the default verifier checks for identiy (i.e. same name and content) of all
                     // uploaded files
-                    List<Path> expectedFiles =
-                            getFilesToUpload().stream()
-                                    .map(File::toPath)
-                                    .collect(Collectors.toList());
+                    List<Path> expectedFiles = Arrays.asList(file1.toPath(), file2.toPath());
                     List<Path> uploadedFiles =
                             request.getUploadedFiles().stream()
                                     .map(File::toPath)
@@ -166,7 +164,9 @@ public class MultipartUploadResource extends ExternalResource {
 
     public void setFileUploadVerifier(
             BiConsumerWithException<
-                            HandlerRequest<? extends RequestBody>, RestfulGateway, Exception>
+                            HandlerRequest<? extends RequestBody, ? extends MessageParameters>,
+                            RestfulGateway,
+                            Exception>
                     verifier) {
         this.fileUploadVerifier =
                 (request, restfulGateway) -> {
@@ -263,7 +263,8 @@ public class MultipartUploadResource extends ExternalResource {
 
         @Override
         protected CompletableFuture<EmptyResponseBody> handleRequest(
-                @Nonnull HandlerRequest<TestRequestBody> request, @Nonnull RestfulGateway gateway)
+                @Nonnull HandlerRequest<TestRequestBody, EmptyMessageParameters> request,
+                @Nonnull RestfulGateway gateway)
                 throws RestHandlerException {
             MultipartUploadResource.this.fileUploadVerifier.accept(request, gateway);
             this.lastReceivedRequest = request.getRequestBody();
@@ -334,7 +335,8 @@ public class MultipartUploadResource extends ExternalResource {
 
         @Override
         protected CompletableFuture<EmptyResponseBody> handleRequest(
-                @Nonnull HandlerRequest<TestRequestBody> request, @Nonnull RestfulGateway gateway)
+                @Nonnull HandlerRequest<TestRequestBody, EmptyMessageParameters> request,
+                @Nonnull RestfulGateway gateway)
                 throws RestHandlerException {
             Collection<Path> uploadedFiles =
                     request.getUploadedFiles().stream()
@@ -389,7 +391,8 @@ public class MultipartUploadResource extends ExternalResource {
 
         @Override
         protected CompletableFuture<EmptyResponseBody> handleRequest(
-                @Nonnull HandlerRequest<EmptyRequestBody> request, @Nonnull RestfulGateway gateway)
+                @Nonnull HandlerRequest<EmptyRequestBody, EmptyMessageParameters> request,
+                @Nonnull RestfulGateway gateway)
                 throws RestHandlerException {
             MultipartUploadResource.this.fileUploadVerifier.accept(request, gateway);
             return CompletableFuture.completedFuture(EmptyResponseBody.getInstance());
@@ -449,13 +452,13 @@ public class MultipartUploadResource extends ExternalResource {
     /** Simple test {@link RequestBody}. */
     protected static final class TestRequestBody implements RequestBody {
         private static final String FIELD_NAME_INDEX = "index";
+        private static final Random RANDOM = new Random();
 
         @JsonProperty(FIELD_NAME_INDEX)
         private final int index;
 
         TestRequestBody() {
-            // magic value that reliably reproduced https://github.com/netty/netty/issues/11668
-            this(-766974635);
+            this(RANDOM.nextInt());
         }
 
         @JsonCreator

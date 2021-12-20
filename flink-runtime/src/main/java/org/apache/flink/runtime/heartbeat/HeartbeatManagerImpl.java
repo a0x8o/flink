@@ -20,7 +20,6 @@ package org.apache.flink.runtime.heartbeat;
 
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.rpc.exceptions.RecipientUnreachableException;
-import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.concurrent.FutureUtils;
 import org.apache.flink.util.concurrent.ScheduledExecutor;
@@ -245,8 +244,7 @@ public class HeartbeatManagerImpl<I, O> implements HeartbeatManager<I, O> {
     protected BiConsumer<Void, Throwable> handleHeartbeatRpc(ResourceID heartbeatTarget) {
         return (unused, failure) -> {
             if (failure != null) {
-                handleHeartbeatRpcFailure(
-                        heartbeatTarget, ExceptionUtils.stripCompletionException(failure));
+                handleHeartbeatRpcFailure(heartbeatTarget, failure);
             } else {
                 handleHeartbeatRpcSuccess(heartbeatTarget);
             }

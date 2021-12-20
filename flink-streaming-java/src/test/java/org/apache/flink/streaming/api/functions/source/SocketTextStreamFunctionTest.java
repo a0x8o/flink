@@ -19,7 +19,6 @@
 package org.apache.flink.streaming.api.functions.source;
 
 import org.apache.flink.streaming.api.watermark.Watermark;
-import org.apache.flink.util.NetUtils;
 
 import org.apache.commons.io.IOUtils;
 import org.junit.Test;
@@ -51,7 +50,7 @@ public class SocketTextStreamFunctionTest {
             SocketSourceThread runner = new SocketSourceThread(source, "test1", "check");
             runner.start();
 
-            channel = NetUtils.acceptWithoutTimeout(server);
+            channel = server.accept();
             OutputStreamWriter writer = new OutputStreamWriter(channel.getOutputStream());
 
             writer.write("test1\n");
@@ -85,7 +84,7 @@ public class SocketTextStreamFunctionTest {
             SocketSourceThread runner = new SocketSourceThread(source);
             runner.start();
 
-            channel = NetUtils.acceptWithoutTimeout(server);
+            channel = server.accept();
             channel.close();
 
             try {
@@ -114,22 +113,22 @@ public class SocketTextStreamFunctionTest {
             runner.start();
 
             // first connection: nothing
-            channel = NetUtils.acceptWithoutTimeout(server);
+            channel = server.accept();
             channel.close();
 
             // second connection: first string
-            channel = NetUtils.acceptWithoutTimeout(server);
+            channel = server.accept();
             OutputStreamWriter writer = new OutputStreamWriter(channel.getOutputStream());
             writer.write("test1\n");
             writer.close();
             channel.close();
 
             // third connection: nothing
-            channel = NetUtils.acceptWithoutTimeout(server);
+            channel = server.accept();
             channel.close();
 
             // forth connection: second string
-            channel = NetUtils.acceptWithoutTimeout(server);
+            channel = server.accept();
             writer = new OutputStreamWriter(channel.getOutputStream());
             writer.write("check\n");
             writer.flush();
@@ -158,22 +157,22 @@ public class SocketTextStreamFunctionTest {
             runner.start();
 
             // first connection: nothing
-            channel = NetUtils.acceptWithoutTimeout(server);
+            channel = server.accept();
             channel.close();
 
             // second connection: first string
-            channel = NetUtils.acceptWithoutTimeout(server);
+            channel = server.accept();
             OutputStreamWriter writer = new OutputStreamWriter(channel.getOutputStream());
             writer.write("test1\n");
             writer.close();
             channel.close();
 
             // third connection: nothing
-            channel = NetUtils.acceptWithoutTimeout(server);
+            channel = server.accept();
             channel.close();
 
             // forth connection: second string
-            channel = NetUtils.acceptWithoutTimeout(server);
+            channel = server.accept();
             writer = new OutputStreamWriter(channel.getOutputStream());
             writer.write("check\n");
             writer.flush();
@@ -202,22 +201,22 @@ public class SocketTextStreamFunctionTest {
             runner.start();
 
             // first connection: nothing
-            channel = NetUtils.acceptWithoutTimeout(server);
+            channel = server.accept();
             channel.close();
 
             // second connection: first string
-            channel = NetUtils.acceptWithoutTimeout(server);
+            channel = server.accept();
             OutputStreamWriter writer = new OutputStreamWriter(channel.getOutputStream());
             writer.write("te");
             writer.close();
             channel.close();
 
             // third connection: nothing
-            channel = NetUtils.acceptWithoutTimeout(server);
+            channel = server.accept();
             channel.close();
 
             // forth connection: second string
-            channel = NetUtils.acceptWithoutTimeout(server);
+            channel = server.accept();
             writer = new OutputStreamWriter(channel.getOutputStream());
             writer.write("st1\n");
             writer.write("check1\n");

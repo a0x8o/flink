@@ -171,11 +171,11 @@ public abstract class AbstractHandler<
                 }
             }
 
-            final HandlerRequest<R> handlerRequest;
+            final HandlerRequest<R, M> handlerRequest;
 
             try {
                 handlerRequest =
-                        HandlerRequest.resolveParametersAndCreate(
+                        new HandlerRequest<R, M>(
                                 request,
                                 untypedResponseMessageHeaders.getUnresolvedMessageParameters(),
                                 routedRequest.getRouteResult().pathParams(),
@@ -316,7 +316,7 @@ public abstract class AbstractHandler<
     protected abstract CompletableFuture<Void> respondToRequest(
             ChannelHandlerContext ctx,
             HttpRequest httpRequest,
-            HandlerRequest<R> handlerRequest,
+            HandlerRequest<R, M> handlerRequest,
             T gateway)
             throws RestHandlerException;
 }

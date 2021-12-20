@@ -34,8 +34,8 @@ import org.apache.flink.optimizer.plan.OptimizedPlan;
 import org.apache.flink.optimizer.plantranslate.JobGraphGenerator;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.testutils.MiniClusterResourceConfiguration;
+import org.apache.flink.runtime.testutils.TestingUtils;
 import org.apache.flink.test.util.MiniClusterWithClientResource;
-import org.apache.flink.testutils.TestingUtils;
 import org.apache.flink.util.TestLogger;
 
 import org.junit.Assert;
@@ -45,8 +45,6 @@ import java.util.concurrent.TimeUnit;
 
 import scala.concurrent.duration.Deadline;
 import scala.concurrent.duration.FiniteDuration;
-
-import static org.junit.Assert.assertEquals;
 
 /** Base class for testing job cancellation. */
 public abstract class CancelingTestBase extends TestLogger {
@@ -129,7 +127,9 @@ public abstract class CancelingTestBase extends TestLogger {
             jobStatusAfterCancel =
                     client.getJobStatus(jobID).get(rpcTimeout, TimeUnit.MILLISECONDS);
         }
-        assertEquals(JobStatus.CANCELED, jobStatusAfterCancel);
+        if (jobStatusAfterCancel != JobStatus.CANCELED) {
+            Assert.fail("Failed to cancel job with ID " + jobID + '.');
+        }
     }
 
     private JobGraph getJobGraph(final Plan plan) {

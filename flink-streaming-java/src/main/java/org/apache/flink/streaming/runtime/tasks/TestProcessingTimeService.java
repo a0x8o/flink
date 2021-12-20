@@ -59,10 +59,6 @@ public class TestProcessingTimeService implements TimerService {
                         });
     }
 
-    public void advance(long delta) throws Exception {
-        setCurrentTime(this.currentTime + delta);
-    }
-
     public void setCurrentTime(long timestamp) throws Exception {
         this.currentTime = timestamp;
 

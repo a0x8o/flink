@@ -20,7 +20,6 @@ package org.apache.flink.streaming.runtime.operators;
 
 import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.common.typeinfo.BasicTypeInfo;
-import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.TaskManagerOptions;
 import org.apache.flink.core.testutils.OneShotLatch;
 import org.apache.flink.streaming.api.graph.StreamConfig;
@@ -39,17 +38,15 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.Timeout;
 
+import javax.annotation.Nullable;
+
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.hamcrest.Matchers.instanceOf;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThat;
+import static org.junit.Assert.fail;
 
 /** Tests for the timer service of {@link org.apache.flink.streaming.runtime.tasks.StreamTask}. */
 @SuppressWarnings("serial")
@@ -110,29 +107,26 @@ public class StreamTaskTimerTest extends TestLogger {
 
     @Test
     public void checkScheduledTimestamps() throws Exception {
-        ValidatingProcessingTimeCallback.numInSequence = 0;
-        long currentTimeMillis = System.currentTimeMillis();
-        ArrayList<ValidatingProcessingTimeCallback> timeCallbacks = new ArrayList<>();
+        final AtomicReference<Throwable> errorRef = new AtomicReference<>();
 
-        /*
-         It is not possible to test registering timer for currentTimeMillis or value slightly greater than
-         currentTimeMillis because if the during registerTimer the internal currentTime is equal
-         to this value then according to current logic the time will be increased for 1ms while
-         `currentTimeMillis - 200` is always transform to 0, so it can lead to reordering. See
-         comment in {@link ProcessingTimeServiceUtil#getRecordProcessingTimeDelay(long, long)}.
-        */
-        timeCallbacks.add(new ValidatingProcessingTimeCallback(currentTimeMillis - 1, 0));
-        timeCallbacks.add(new ValidatingProcessingTimeCallback(currentTimeMillis - 200, 1));
-        timeCallbacks.add(new ValidatingProcessingTimeCallback(currentTimeMillis + 100, 2));
-        timeCallbacks.add(new ValidatingProcessingTimeCallback(currentTimeMillis + 200, 3));
+        final long t1 = System.currentTimeMillis();
+        final long t2 = System.currentTimeMillis() - 200;
+        final long t3 = System.currentTimeMillis() + 100;
+        final long t4 = System.currentTimeMillis() + 200;
 
-        for (ValidatingProcessingTimeCallback timeCallback : timeCallbacks) {
-            timeService.registerTimer(timeCallback.expectedTimestamp, timeCallback);
+        timeService.registerTimer(t1, new ValidatingProcessingTimeCallback(errorRef, t1, 0));
+        timeService.registerTimer(t2, new ValidatingProcessingTimeCallback(errorRef, t2, 1));
+        timeService.registerTimer(t3, new ValidatingProcessingTimeCallback(errorRef, t3, 2));
+        timeService.registerTimer(t4, new ValidatingProcessingTimeCallback(errorRef, t4, 3));
+
+        long deadline = System.currentTimeMillis() + 20000;
+        while (errorRef.get() == null
+                && ValidatingProcessingTimeCallback.numInSequence < 4
+                && System.currentTimeMillis() < deadline) {
+            Thread.sleep(100);
         }
 
-        for (ValidatingProcessingTimeCallback timeCallback : timeCallbacks) {
-            timeCallback.assertExpectedValues();
-        }
+        verifyNoException(errorRef.get());
         assertEquals(4, ValidatingProcessingTimeCallback.numInSequence);
     }
 
@@ -140,12 +134,16 @@ public class StreamTaskTimerTest extends TestLogger {
 
         static int numInSequence;
 
-        private final CompletableFuture<Void> finished = new CompletableFuture<>();
+        private final AtomicReference<Throwable> errorRef;
 
         private final long expectedTimestamp;
         private final int expectedInSequence;
 
-        private ValidatingProcessingTimeCallback(long expectedTimestamp, int expectedInSequence) {
+        private ValidatingProcessingTimeCallback(
+                AtomicReference<Throwable> errorRef,
+                long expectedTimestamp,
+                int expectedInSequence) {
+            this.errorRef = errorRef;
             this.expectedTimestamp = expectedTimestamp;
             this.expectedInSequence = expectedInSequence;
         }
@@ -156,15 +154,16 @@ public class StreamTaskTimerTest extends TestLogger {
                 assertEquals(expectedTimestamp, timestamp);
                 assertEquals(expectedInSequence, numInSequence);
                 numInSequence++;
-                finished.complete(null);
             } catch (Throwable t) {
-                finished.completeExceptionally(t);
+                errorRef.compareAndSet(null, t);
             }
         }
+    }
 
-        private void assertExpectedValues()
-                throws ExecutionException, InterruptedException, TimeoutException {
-            finished.get(20, TimeUnit.SECONDS);
+    private static void verifyNoException(@Nullable Throwable exception) {
+        if (exception != null) {
+            exception.printStackTrace();
+            fail(exception.getMessage());
         }
     }
 
@@ -187,9 +186,10 @@ public class StreamTaskTimerTest extends TestLogger {
 
         testHarness.setupOutputForSingletonOperatorChain();
         // Making it impossible to execute the throughput calculation even once during the test.
-        final Configuration taskConfig = testHarness.getTaskManagerRuntimeInfo().getConfiguration();
-        taskConfig.set(TaskManagerOptions.BUFFER_DEBLOAT_ENABLED, true);
-        taskConfig.set(TaskManagerOptions.BUFFER_DEBLOAT_PERIOD, Duration.ofMinutes(10));
+        testHarness
+                .getTaskManagerRuntimeInfo()
+                .getConfiguration()
+                .set(TaskManagerOptions.BUFFER_DEBLOAT_PERIOD, Duration.ofMinutes(10));
 
         StreamConfig streamConfig = testHarness.getStreamConfig();
         streamConfig.setChainIndex(0);

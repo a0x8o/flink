@@ -24,42 +24,38 @@ specific language governing permissions and limitations
 under the License.
 -->
 
-<a name="unload-statements"></a>
+# UNLOAD Statements
 
-# UNLOAD 语句
+UNLOAD statements are used to unload a built-in or user-defined module.
 
-UNLOAD 语句用于卸载内置的或用户自定义的模块。
-
-<a name="run-a-unload-statement"></a>
-
-## 执行 UNLOAD 语句
+## Run a UNLOAD statement
 
 {{< tabs "unload statement" >}}
 {{< tab "Java" >}}
 
-可以使用 `TableEnvironment` 的 `executeSql()` 方法执行 UNLOAD 语句。如果 UNLOAD 操作执行成功，`executeSql()` 方法会返回 'OK'，否则会抛出异常。
+UNLOAD statements can be executed with the `executeSql()` method of the `TableEnvironment`. The `executeSql()` method returns 'OK' for a successful LOAD operation; otherwise it will throw an exception.
 
-以下示例展示了如何在 `TableEnvironment` 中执行一条 UNLOAD 语句。
+The following examples show how to run a UNLOAD statement in `TableEnvironment`.
 
 {{< /tab >}}
 {{< tab "Scala" >}}
 
-可以使用 `TableEnvironment` 的 `executeSql()` 方法执行 UNLOAD 语句。如果 UNLOAD 操作执行成功，`executeSql()` 方法会返回 'OK'，否则会抛出异常。
+UNLOAD statements can be executed with the `executeSql()` method of the `TableEnvironment`. The `executeSql()` method returns 'OK' for a successful LOAD operation; otherwise it will throw an exception.
 
-以下示例展示了如何在 `TableEnvironment` 中执行一条 UNLOAD 语句。
+The following examples show how to run a UNLOAD statement in `TableEnvironment`.
 {{< /tab >}}
 {{< tab "Python" >}}
 
-可以使用 `TableEnvironment` 的 `execute_sql()` 方法执行 UNLOAD 语句。如果 UNLOAD 操作执行成功，`execute_sql()` 方法会返回 'OK'，否则会抛出异常。
+UNLOAD statements can be executed with the `executeSql()` method of the `TableEnvironment`. The `executeSql()` method returns 'OK' for a successful LOAD operation; otherwise it will throw an exception.
 
-以下示例展示了如何在 `TableEnvironment` 中执行一条 UNLOAD 语句。
+The following examples show how to run a UNLOAD statement in `TableEnvironment`.
 
 {{< /tab >}}
 {{< tab "SQL CLI" >}}
 
-UNLOAD 语句可以在 [SQL CLI]({{< ref "docs/dev/table/sqlClient" >}}) 中执行。
+UNLOAD statements can be executed in [SQL CLI]({{< ref "docs/dev/table/sqlClient" >}}).
 
-以下示例展示了如何在 SQL CLI 中执行一条 UNLOAD 语句。
+The following examples show how to run a UNLOAD statement in SQL CLI.
 
 {{< /tab >}}
 {{< /tabs >}}
@@ -70,7 +66,7 @@ UNLOAD 语句可以在 [SQL CLI]({{< ref "docs/dev/table/sqlClient" >}}) 中执�
 StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
 
-// 卸载 core 模块
+// unload a core module
 tEnv.executeSql("UNLOAD MODULE core");
 tEnv.executeSql("SHOW MODULES").print();
 // Empty set
@@ -81,7 +77,7 @@ tEnv.executeSql("SHOW MODULES").print();
 val env = StreamExecutionEnvironment.getExecutionEnvironment()
 val tEnv = StreamTableEnvironment.create(env)
 
-// 卸载 core 模块
+// unload a core module
 tEnv.executeSql("UNLOAD MODULE core")
 tEnv.executeSql("SHOW MODULES").print()
 // Empty set
@@ -91,7 +87,7 @@ tEnv.executeSql("SHOW MODULES").print()
 ```python
 table_env = StreamTableEnvironment.create(...)
 
-# 卸载 core 模块
+# unload a core module
 table_env.execute_sql("UNLOAD MODULE core")
 table_env.execute_sql("SHOW MODULES").print()
 # Empty set
@@ -110,11 +106,9 @@ Empty set
 
 {{< top >}}
 
-<a name="unload-module"></a>
-
 ## UNLOAD MODULE
 
-以下语法概述了可用的语法规则：
+The following grammar gives an overview of the available syntax:
 ```sql
 UNLOAD MODULE module_name
 ```

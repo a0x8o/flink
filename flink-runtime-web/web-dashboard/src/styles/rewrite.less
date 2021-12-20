@@ -30,9 +30,9 @@ nz-table {
   }
 
   &.full-height {
-    position: relative;
     display: block;
     height: 100%;
+    position: relative;
 
     nz-spin {
       display: block;
@@ -40,8 +40,8 @@ nz-table {
 
       .ant-spin-container {
         position: relative;
-        height: 100%;
         zoom: 1;
+        height: 100%;
 
         .ant-table {
           height: 100%;
@@ -59,14 +59,7 @@ nz-table {
   }
 }
 
-.ant-table-small
-  > .ant-table-content
-  > .ant-table-scroll
-  > .ant-table-header
-  > table
-  > .ant-table-thead
-  > tr
-  > th.ant-table-column-sort {
+.ant-table-small > .ant-table-content > .ant-table-scroll > .ant-table-header > table > .ant-table-thead > tr > th.ant-table-column-sort {
   background: @table-header-sort-active-bg;
 }
 
@@ -79,16 +72,15 @@ nz-table {
 }
 
 .ant-tooltip-inner {
-  font-size: 12px;
   word-break: break-word;
+  font-size: 12px;
 }
 
 .ant-table table {
-  border-spacing: 0;
   border-collapse: separate;
+  border-spacing: 0;
 }
 
-.ant-table-tbody > tr > td,
-.ant-table-thead > tr > th {
+.ant-table-tbody>tr>td, .ant-table-thead>tr>th{
   word-break: break-word;
 }

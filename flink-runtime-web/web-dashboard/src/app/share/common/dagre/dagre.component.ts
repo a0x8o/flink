@@ -32,9 +32,7 @@ import {
 
 import { select } from 'd3-selection';
 import { zoomIdentity } from 'd3-zoom';
-
-import { NodesItemCorrect, NodesItemLink } from 'interfaces';
-
+import { NodesItemCorrectInterface, NodesItemLinkInterface } from 'interfaces';
 import { LayoutNode, NzGraph } from './graph';
 import { NodeComponent } from './node.component';
 import { SvgContainerComponent } from './svg-container.component';
@@ -58,8 +56,8 @@ export class DagreComponent extends NzGraph {
   zoom = 1;
   cacheTransform = { x: 0, y: 0, k: 1 };
   oldTransform = { x: 0, y: 0, k: 1 };
-  cacheNodes: NodesItemCorrect[] = [];
-  cacheLinks: NodesItemLink[] = [];
+  cacheNodes: NodesItemCorrectInterface[] = [];
+  cacheLinks: NodesItemLinkInterface[] = [];
   @ViewChildren('nodeElement') nodeElements: QueryList<ElementRef>;
   @ViewChildren('linkElement') linkElements: QueryList<ElementRef>;
   @ViewChildren(NodeComponent) rectNodeComponents: QueryList<NodeComponent>;
@@ -72,11 +70,10 @@ export class DagreComponent extends NzGraph {
 
   /**
    * Update Node detail
-   *
    * @param id
    * @param appendNode
    */
-  updateNode(id: string, appendNode: NodesItemCorrect): void {
+  updateNode(id: string, appendNode: NodesItemCorrectInterface) {
     const nodes = this.rectNodeComponents;
     const node = nodes.find(n => n.id === id);
     if (node) {
@@ -87,40 +84,38 @@ export class DagreComponent extends NzGraph {
 
   /**
    * Focus on specific node
-   *
    * @param node
    * @param force
    */
-  focusNode(node: NodesItemCorrect, force = false): void {
+  focusNode(node: NodesItemCorrectInterface, force = false) {
     const layoutNode = this.layoutNodes.find(n => n.id === node.id);
     this.clickNode(layoutNode, null, force, false);
   }
 
   /**
    * Zoom to level
-   *
    * @param value
    */
-  zoomToLevel(value: number): void {
+  zoomToLevel(value: number) {
     this.svgContainer.zoomTo(value);
   }
 
   /**
    * Move graph to center
    */
-  moveToCenter(): void {
+  moveToCenter() {
     if (this.graph && this.graph.graph()) {
       this.visibility = Visibility.Visible;
 
       const hostDims = this.elementRef.nativeElement.getBoundingClientRect();
-      const generatedGraph = this.graph.graph();
+      const generatedGraph = this.graph.graph() as any;
       this.cacheTransform.k = Math.min(
-        hostDims.height / (generatedGraph.height! + 200),
-        hostDims.width / (generatedGraph.width! + 120),
+        hostDims.height / (generatedGraph.height + 200),
+        hostDims.width / (generatedGraph.width + 120),
         1
       );
-      const width = generatedGraph.width! * this.cacheTransform.k;
-      const height = generatedGraph.height! * this.cacheTransform.k;
+      const width = generatedGraph.width * this.cacheTransform.k;
+      const height = generatedGraph.height * this.cacheTransform.k;
       let translateX = (hostDims.width - width) / 2;
       let translateY = (hostDims.height - height) / 2;
       if (width < 0 || height < 0) {
@@ -137,12 +132,11 @@ export class DagreComponent extends NzGraph {
 
   /**
    * Flush graph with nodes and links
-   *
    * @param nodes
    * @param links
    * @param isResizeNode
    */
-  flush(nodes: NodesItemCorrect[], links: NodesItemLink[], isResizeNode = false): Promise<void> {
+  flush(nodes: NodesItemCorrectInterface[], links: NodesItemLinkInterface[], isResizeNode = false): Promise<void> {
     return new Promise(resolve => {
       this.cacheNodes = [...nodes];
       this.cacheLinks = [...links];
@@ -173,18 +167,18 @@ export class DagreComponent extends NzGraph {
     });
   }
 
-  trackByLink(_: number, link: NodesItemLink): string {
+  trackByLink(_: number, link: NodesItemLinkInterface) {
     return link.id;
   }
 
-  trackByNode(_: number, link: NodesItemCorrect): string {
+  trackByNode(_: number, link: NodesItemCorrectInterface) {
     return link.id;
   }
 
   /**
    * Calculate node size
    */
-  resetNodeSize(): Promise<void> {
+  resetNodeSize() {
     this.graphElement.nativeElement.querySelectorAll(`.node-group`).forEach((nodeEle: HTMLElement) => {
       const contentEle = nodeEle.querySelector('.content-wrap');
       if (contentEle) {
@@ -202,7 +196,6 @@ export class DagreComponent extends NzGraph {
 
   /**
    * Redraw all lines
-   *
    * @param animate
    */
   redrawLines(animate = true): void {
@@ -223,10 +216,9 @@ export class DagreComponent extends NzGraph {
 
   /**
    * Redraw all nodes
-   *
    * @param animate
    */
-  redrawNodes(animate = true): void {
+  redrawNodes(animate = true) {
     this.nodeElements.map(nodeEl => {
       const node = this.layoutNodes.find(n => n.id === nodeEl.nativeElement.id);
       if (node) {
@@ -249,13 +241,11 @@ export class DagreComponent extends NzGraph {
 
   /**
    * Click specific node
-   *
    * @param node
    * @param $event
    * @param force
-   * @param emit
    */
-  clickNode(node: LayoutNode | undefined, $event?: MouseEvent | null, force = false, emit = true): void {
+  clickNode(node: LayoutNode | undefined, $event?: MouseEvent | null, force = false, emit = true) {
     if ($event) {
       $event.stopPropagation();
     }
@@ -308,7 +298,7 @@ export class DagreComponent extends NzGraph {
   /**
    * Redraw graph
    */
-  redrawGraph(): void {
+  redrawGraph() {
     this.selectedNodeId = null;
     this.circleNodeIds = [];
     this.focusedLinkIds = [];
@@ -329,10 +319,9 @@ export class DagreComponent extends NzGraph {
 
   /**
    * Handle svg container transform event
-   *
    * @param $event
    */
-  onTransform($event: { x: number; y: number; k: number }): void {
+  onTransform($event: { x: number; y: number; k: number }) {
     this.cd.detectChanges();
     this.cacheTransform.x = $event.x;
     this.cacheTransform.y = $event.y;
@@ -342,10 +331,9 @@ export class DagreComponent extends NzGraph {
 
   /**
    * Mouse enter node event
-   *
    * @param $event
    */
-  onNodeMouseEnter($event: MouseEvent): void {
+  onNodeMouseEnter($event: MouseEvent) {
     this.graphElement.nativeElement.appendChild($event.target);
     this.layoutLinks.forEach(l => {
       if (l.id.split('-').indexOf(($event.target as HTMLElement).id) !== -1) {
@@ -358,7 +346,7 @@ export class DagreComponent extends NzGraph {
   /**
    * Mouse leave node event
    */
-  onNodeMouseLeave(): void {
+  onNodeMouseLeave() {
     this.layoutLinks.forEach(l => {
       l.options.focused = this.focusedLinkIds.indexOf(l.id) !== -1;
     });

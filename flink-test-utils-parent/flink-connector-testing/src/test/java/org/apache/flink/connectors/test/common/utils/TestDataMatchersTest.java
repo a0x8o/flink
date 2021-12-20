@@ -41,7 +41,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 /** Unit test for {@link TestDataMatchers}. */
 public class TestDataMatchersTest {
     @Nested
-    class SingleSplitDataMatcherTest {
+    class SplitDataMatcherTest {
         private final List<String> testData = Arrays.asList("alpha", "beta", "gamma");
 
         @Test
@@ -61,7 +61,7 @@ public class TestDataMatchersTest {
             resultData.set(1, "delta");
             final Iterator<String> resultIterator = resultData.iterator();
 
-            final TestDataMatchers.SingleSplitDataMatcher<String> matcher =
+            final TestDataMatchers.SplitDataMatcher<String> matcher =
                     TestDataMatchers.matchesSplitTestData(testData);
 
             assertMatcherFailedWithDescription(
@@ -76,14 +76,11 @@ public class TestDataMatchersTest {
             resultData.add("delta");
             final Iterator<String> resultIterator = resultData.iterator();
 
-            final TestDataMatchers.SingleSplitDataMatcher<String> matcher =
+            final TestDataMatchers.SplitDataMatcher<String> matcher =
                     TestDataMatchers.matchesSplitTestData(testData);
 
             assertMatcherFailedWithDescription(
-                    resultIterator,
-                    matcher,
-                    "Expected to have exactly 3 records in result, "
-                            + "but result iterator hasn't reached the end");
+                    resultIterator, matcher, "Result data is more than test data");
         }
 
         @Test
@@ -92,13 +89,11 @@ public class TestDataMatchersTest {
             resultData.remove(testData.size() - 1);
             final Iterator<String> resultIterator = resultData.iterator();
 
-            final TestDataMatchers.SingleSplitDataMatcher<String> matcher =
+            final TestDataMatchers.SplitDataMatcher<String> matcher =
                     TestDataMatchers.matchesSplitTestData(testData);
 
             assertMatcherFailedWithDescription(
-                    resultIterator,
-                    matcher,
-                    "Expected to have 3 records in result, but only received 2 records");
+                    resultIterator, matcher, "Result data is less than test data");
         }
     }
 
@@ -107,7 +102,8 @@ public class TestDataMatchersTest {
         private final List<String> splitA = Arrays.asList("alpha", "beta", "gamma");
         private final List<String> splitB = Arrays.asList("one", "two", "three");
         private final List<String> splitC = Arrays.asList("1", "2", "3");
-        private final List<List<String>> testDataCollection = Arrays.asList(splitA, splitB, splitC);
+        private final List<Collection<String>> testDataCollection =
+                Arrays.asList(splitA, splitB, splitC);
 
         @Test
         public void testPositiveCase() {
@@ -125,22 +121,7 @@ public class TestDataMatchersTest {
             final TestDataMatchers.MultipleSplitDataMatcher<String> matcher =
                     TestDataMatchers.matchesMultipleSplitTestData(testDataCollection);
             assertMatcherFailedWithDescription(
-                    result.iterator(),
-                    matcher,
-                    "Expected to have exactly 9 records in result, but only received 8 records\n"
-                            + "Current progress of multiple split test data validation:\n"
-                            + "Split 0 (2/3): \n"
-                            + "alpha\n"
-                            + "beta\n"
-                            + "gamma\t<----\n"
-                            + "Split 1 (3/3): \n"
-                            + "one\n"
-                            + "two\n"
-                            + "three\n"
-                            + "Split 2 (3/3): \n"
-                            + "1\n"
-                            + "2\n"
-                            + "3\n");
+                    result.iterator(), matcher, "Result data is less than test data");
         }
 
         @Test
@@ -150,22 +131,7 @@ public class TestDataMatchersTest {
             final TestDataMatchers.MultipleSplitDataMatcher<String> matcher =
                     TestDataMatchers.matchesMultipleSplitTestData(testDataCollection);
             assertMatcherFailedWithDescription(
-                    result.iterator(),
-                    matcher,
-                    "Unexpected record 'delta' at position 9\n"
-                            + "Current progress of multiple split test data validation:\n"
-                            + "Split 0 (3/3): \n"
-                            + "alpha\n"
-                            + "beta\n"
-                            + "gamma\n"
-                            + "Split 1 (3/3): \n"
-                            + "one\n"
-                            + "two\n"
-                            + "three\n"
-                            + "Split 2 (3/3): \n"
-                            + "1\n"
-                            + "2\n"
-                            + "3\n");
+                    result.iterator(), matcher, "Unexpected record 'delta'");
         }
 
         @Test
@@ -175,25 +141,7 @@ public class TestDataMatchersTest {
             final List<String> result = unionLists(splitA, splitB, reverted);
             final TestDataMatchers.MultipleSplitDataMatcher<String> matcher =
                     TestDataMatchers.matchesMultipleSplitTestData(testDataCollection);
-            String expectedDescription =
-                    "Unexpected record '3' at position 6\n"
-                            + "Current progress of multiple split test data validation:\n"
-                            + "Split 0 (3/3): \n"
-                            + "alpha\n"
-                            + "beta\n"
-                            + "gamma\n"
-                            + "Split 1 (3/3): \n"
-                            + "one\n"
-                            + "two\n"
-                            + "three\n"
-                            + "Split 2 (0/3): \n"
-                            + "1\t<----\n"
-                            + "2\n"
-                            + "3\n"
-                            + "Remaining received elements after the unexpected one: \n"
-                            + "2\n"
-                            + "1\n";
-            assertMatcherFailedWithDescription(result.iterator(), matcher, expectedDescription);
+            assertMatcherFailedWithDescription(result.iterator(), matcher, "Unexpected record '3'");
         }
     }
 

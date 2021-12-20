@@ -18,7 +18,6 @@ limitations under the License.
 
 package org.apache.flink.streaming.api.operators;
 
-import org.apache.flink.annotation.Internal;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.operators.coordination.OperatorCoordinator;
 
@@ -26,7 +25,6 @@ import org.apache.flink.runtime.operators.coordination.OperatorCoordinator;
  * A factory class for the {@link StreamOperator}s implementing {@link
  * org.apache.flink.runtime.operators.coordination.OperatorEventHandler}.
  */
-@Internal
 public interface CoordinatedOperatorFactory<OUT> extends StreamOperatorFactory<OUT> {
 
     /**

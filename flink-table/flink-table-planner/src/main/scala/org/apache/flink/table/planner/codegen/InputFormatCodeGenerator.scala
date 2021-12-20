@@ -72,17 +72,17 @@ object InputFormatCodeGenerator {
 
         @Override
         public Object nextRecord(Object reuse) {
-          ${records.zipWithIndex.map { case (r, i) =>
-            s"""
-              |if (nextIdx == $i) {
-              |  $r
-              |  nextIdx++;
-              |  return $outRecordTerm;
-              |}
-              |""".stripMargin
-          }.mkString("")}
-          throw new IllegalStateException(
-            "Invalid nextIdx " + nextIdx + ". This is a bug. Please file an issue");
+          switch (nextIdx) {
+            ${records.zipWithIndex.map { case (r, i) =>
+              s"""
+                 |case $i:
+                 |  $r
+                 |break;
+                       """.stripMargin
+            }.mkString("\n")}
+          }
+          nextIdx++;
+          return $outRecordTerm;
         }
       }
     """.stripMargin

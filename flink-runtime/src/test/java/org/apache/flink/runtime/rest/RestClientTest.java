@@ -25,9 +25,8 @@ import org.apache.flink.runtime.rest.messages.EmptyRequestBody;
 import org.apache.flink.runtime.rest.messages.EmptyResponseBody;
 import org.apache.flink.runtime.rest.messages.MessageHeaders;
 import org.apache.flink.runtime.rest.versioning.RestAPIVersion;
-import org.apache.flink.testutils.TestingUtils;
+import org.apache.flink.runtime.testutils.TestingUtils;
 import org.apache.flink.util.ExceptionUtils;
-import org.apache.flink.util.NetUtils;
 import org.apache.flink.util.TestLogger;
 import org.apache.flink.util.concurrent.Executors;
 import org.apache.flink.util.function.CheckedSupplier;
@@ -111,9 +110,7 @@ public class RestClientTest extends TestLogger {
 
             // start server
             final CompletableFuture<Socket> socketCompletableFuture =
-                    CompletableFuture.supplyAsync(
-                            CheckedSupplier.unchecked(
-                                    () -> NetUtils.acceptWithoutTimeout(serverSocket)));
+                    CompletableFuture.supplyAsync(CheckedSupplier.unchecked(serverSocket::accept));
 
             final CompletableFuture<EmptyResponseBody> responseFuture =
                     restClient.sendRequest(
@@ -165,9 +162,7 @@ public class RestClientTest extends TestLogger {
 
             // start server
             final CompletableFuture<Socket> socketCompletableFuture =
-                    CompletableFuture.supplyAsync(
-                            CheckedSupplier.unchecked(
-                                    () -> NetUtils.acceptWithoutTimeout(serverSocket)));
+                    CompletableFuture.supplyAsync(CheckedSupplier.unchecked(serverSocket::accept));
 
             final CompletableFuture<EmptyResponseBody> responseFuture =
                     restClient.sendRequest(

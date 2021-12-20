@@ -29,7 +29,6 @@ import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.runtime.entrypoint.FlinkParseException;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServicesUtils;
-import org.apache.flink.runtime.rest.util.NoOpFatalErrorHandler;
 import org.apache.flink.runtime.rpc.AddressResolution;
 import org.apache.flink.runtime.rpc.RpcService;
 import org.apache.flink.runtime.rpc.RpcSystem;
@@ -247,8 +246,7 @@ public class TaskManagerRunnerConfigurationTest extends TestLogger {
                 config,
                 Executors.directExecutor(),
                 AddressResolution.NO_ADDRESS_RESOLUTION,
-                RpcSystem.load(),
-                NoOpFatalErrorHandler.INSTANCE);
+                RpcSystem.load());
     }
 
     private static ServerSocket openServerSocket() {

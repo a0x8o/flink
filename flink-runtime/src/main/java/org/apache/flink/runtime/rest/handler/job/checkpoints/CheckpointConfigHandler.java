@@ -71,7 +71,8 @@ public class CheckpointConfigHandler
 
     @Override
     protected CheckpointConfigInfo handleRequest(
-            HandlerRequest<EmptyRequestBody> request, AccessExecutionGraph executionGraph)
+            HandlerRequest<EmptyRequestBody, JobMessageParameters> request,
+            AccessExecutionGraph executionGraph)
             throws RestHandlerException {
         return createCheckpointConfigInfo(executionGraph);
     }
@@ -130,8 +131,7 @@ public class CheckpointConfigHandler
                     checkpointStorageName,
                     checkpointCoordinatorConfiguration.isUnalignedCheckpointsEnabled(),
                     checkpointCoordinatorConfiguration.getTolerableCheckpointFailureNumber(),
-                    checkpointCoordinatorConfiguration.getAlignedCheckpointTimeout(),
-                    checkpointCoordinatorConfiguration.isEnableCheckpointsAfterTasksFinish());
+                    checkpointCoordinatorConfiguration.getAlignedCheckpointTimeout());
         }
     }
 }

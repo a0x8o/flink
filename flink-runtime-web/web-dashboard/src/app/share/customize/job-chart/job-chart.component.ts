@@ -31,11 +31,10 @@ import {
   Output,
   ViewChild
 } from '@angular/core';
-import { Subject } from 'rxjs';
-import { takeUntil } from 'rxjs/operators';
-
 import { Chart } from '@antv/g2';
 import * as G2 from '@antv/g2';
+import { Subject } from 'rxjs';
+import { takeUntil } from 'rxjs/operators';
 import { JobChartService } from 'share/customize/job-chart/job-chart.service';
 
 @Component({
@@ -56,11 +55,11 @@ export class JobChartComponent implements AfterViewInit, OnDestroy {
   destroy$ = new Subject();
 
   @HostBinding('class.big')
-  get isBig(): boolean {
+  get isBig() {
     return this.size === 'big';
   }
 
-  refresh(res: { timestamp: number; values: { [id: string]: number } }): void {
+  refresh(res: { timestamp: number; values: { [id: string]: number } }) {
     this.latestValue = res.values[this.title];
     if (this.displayMode === 'numeric') {
       this.cdr.detectChanges();
@@ -79,24 +78,24 @@ export class JobChartComponent implements AfterViewInit, OnDestroy {
     }
   }
 
-  setMode(mode: 'chart' | 'numeric'): void {
+  setMode(mode: 'chart' | 'numeric') {
     this.displayMode = mode;
     this.cdr.detectChanges();
   }
 
-  resize(size: string): void {
+  resize(size: string) {
     this.size = size;
     this.cdr.detectChanges();
     setTimeout(() => this.chartInstance.forceFit());
   }
 
-  close(): void {
+  close() {
     this.closed.emit(this.title);
   }
 
   constructor(private cdr: ChangeDetectorRef, private jobChartService: JobChartService) {}
 
-  ngAfterViewInit(): void {
+  ngAfterViewInit() {
     this.cdr.detach();
     G2.track(false);
     this.chartInstance = new G2.Chart({
@@ -138,7 +137,7 @@ export class JobChartComponent implements AfterViewInit, OnDestroy {
     });
   }
 
-  ngOnDestroy(): void {
+  ngOnDestroy() {
     this.destroy$.next();
     this.destroy$.complete();
     if (this.chartInstance) {

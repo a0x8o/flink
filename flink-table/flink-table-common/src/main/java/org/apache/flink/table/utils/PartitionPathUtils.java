@@ -108,39 +108,22 @@ public class PartitionPathUtils {
      * @param path The path to escape.
      * @return An escaped path name.
      */
-    static String escapePathName(String path) {
+    private static String escapePathName(String path) {
         if (path == null || path.length() == 0) {
             throw new TableException("Path should not be null or empty: " + path);
         }
 
-        StringBuilder sb = null;
+        StringBuilder sb = new StringBuilder();
         for (int i = 0; i < path.length(); i++) {
             char c = path.charAt(i);
             if (needsEscaping(c)) {
-                if (sb == null) {
-                    sb = new StringBuilder(path.length() + 2);
-                    for (int j = 0; j < i; j++) {
-                        sb.append(path.charAt(j));
-                    }
-                }
-                escapeChar(c, sb);
-            } else if (sb != null) {
+                sb.append('%');
+                sb.append(String.format("%1$02X", (int) c));
+            } else {
                 sb.append(c);
             }
         }
-        if (sb == null) {
-            return path;
-        }
         return sb.toString();
-    }
-
-    static StringBuilder escapeChar(char c, StringBuilder sb) {
-        sb.append('%');
-        if (c < 16) {
-            sb.append('0');
-        }
-        sb.append(Integer.toHexString(c).toUpperCase());
-        return sb;
     }
 
     /**

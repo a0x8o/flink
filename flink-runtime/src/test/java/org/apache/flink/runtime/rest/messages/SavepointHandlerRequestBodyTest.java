@@ -27,6 +27,7 @@ import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.databind.ObjectMap
 import org.junit.Test;
 
 import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.CoreMatchers.nullValue;
 import static org.junit.Assert.assertThat;
 
 /** Tests for the savepoint request bodies. */
@@ -39,7 +40,7 @@ public class SavepointHandlerRequestBodyTest {
 
         assertThat(defaultParseResult.isCancelJob(), is(false));
 
-        assertThat(defaultParseResult.getTargetDirectory().isPresent(), is(false));
+        assertThat(defaultParseResult.getTargetDirectory(), nullValue());
     }
 
     @Test
@@ -50,7 +51,7 @@ public class SavepointHandlerRequestBodyTest {
 
         assertThat(defaultParseResult.shouldDrain(), is(false));
 
-        assertThat(defaultParseResult.getTargetDirectory().isPresent(), is(false));
+        assertThat(defaultParseResult.getTargetDirectory(), nullValue());
     }
 
     private static <T> T getDefaultParseResult(Class<T> clazz) throws JsonProcessingException {

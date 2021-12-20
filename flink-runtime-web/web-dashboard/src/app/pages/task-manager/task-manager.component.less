@@ -16,25 +16,14 @@
  * limitations under the License.
  */
 
+
 @import "theme";
 
-:host {
-  display: flex;
-  flex-flow: column nowrap;
+.content {
+  margin-top: @margin-md;
+}
+
+.router {
   height: 100%;
-
-  .content {
-    display: flex;
-    flex: 1;
-    margin-top: @margin-md;
-
-    .router {
-      display: flex;
-      flex: 1;
-
-      &.hide {
-        display: none;
-      }
-    }
-  }
+  width: 100%;
 }

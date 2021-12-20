@@ -84,7 +84,6 @@ public class BlockingShuffleITCase {
 
     private JobGraph createJobGraph(int numRecordsToSend) {
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
-        env.setBufferTimeout(-1);
         env.setParallelism(numTaskManagers * numSlotsPerTaskManager);
         DataStream<String> source = env.addSource(new StringSource(numRecordsToSend));
         source.rebalance()

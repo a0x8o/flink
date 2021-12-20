@@ -21,7 +21,6 @@ package org.apache.flink.runtime.io.network.buffer;
 import org.apache.flink.core.memory.MemorySegment;
 import org.apache.flink.core.testutils.CheckedThread;
 import org.apache.flink.core.testutils.OneShotLatch;
-import org.apache.flink.runtime.execution.CancelTaskException;
 import org.apache.flink.util.TestLogger;
 
 import org.junit.Rule;
@@ -221,22 +220,22 @@ public class NetworkBufferPoolTest extends TestLogger {
         // can request no more buffers
         try {
             fixedPool.requestBuffer();
-            fail("Should fail with an CancelTaskException");
-        } catch (CancelTaskException e) {
+            fail("Should fail with an IllegalStateException");
+        } catch (IllegalStateException e) {
             // yippie!
         }
 
         try {
             boundedPool.requestBuffer();
-            fail("Should fail with an CancelTaskException");
-        } catch (CancelTaskException e) {
+            fail("Should fail with an IllegalStateException");
+        } catch (IllegalStateException e) {
             // that's the way we like it, aha, aha
         }
 
         try {
             nonFixedPool.requestBuffer();
-            fail("Should fail with an CancelTaskException");
-        } catch (CancelTaskException e) {
+            fail("Should fail with an IllegalStateException");
+        } catch (IllegalStateException e) {
             // stayin' alive
         }
 

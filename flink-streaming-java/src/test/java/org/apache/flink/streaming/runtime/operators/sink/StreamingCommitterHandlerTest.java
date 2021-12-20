@@ -51,12 +51,11 @@ public class StreamingCommitterHandlerTest extends TestLogger {
         testHarness.open();
     }
 
-    @Test
-    public void supportRetry() throws Exception {
+    @Test(expected = UnsupportedOperationException.class)
+    public void doNotSupportRetry() throws Exception {
         final List<String> input = Arrays.asList("lazy", "leaf");
-        final TestSink.RetryOnceCommitter committer = new TestSink.RetryOnceCommitter();
         final OneInputStreamOperatorTestHarness<String, byte[]> testHarness =
-                createTestHarness(committer);
+                createTestHarness(new TestSink.AlwaysRetryCommitter());
 
         testHarness.initializeEmptyState();
         testHarness.open();
@@ -65,17 +64,8 @@ public class StreamingCommitterHandlerTest extends TestLogger {
         testHarness.prepareSnapshotPreBarrier(1);
         testHarness.snapshot(1L, 1L);
         testHarness.notifyOfCompletedCheckpoint(1L);
-        testHarness.snapshot(2L, 2L);
-        testHarness.notifyOfCompletedCheckpoint(2L);
 
         testHarness.close();
-
-        // committedData has the format (<input>, null, <number>)
-        final List<String> committedInputs =
-                committer.getCommittedData().stream()
-                        .map(s -> s.substring(1, s.length() - 1).split(",")[0].trim())
-                        .collect(Collectors.toList());
-        assertThat(committedInputs, Matchers.contains("lazy", "leaf"));
     }
 
     @Test

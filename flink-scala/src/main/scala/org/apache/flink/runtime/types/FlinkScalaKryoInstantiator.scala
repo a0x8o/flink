@@ -25,7 +25,6 @@ import _root_.java.io.Serializable
 
 import com.twitter.chill._
 
-import org.apache.flink.api.java.typeutils.runtime.kryo.FlinkChillPackageRegistrar
 
 import scala.collection.JavaConverters._
 
@@ -190,6 +189,6 @@ class AllScalaRegistrar extends IKryoRegistrar {
     // use the singleton serializer for boxed Unit
     val boxedUnit = scala.Unit.box(())
     k.register(boxedUnit.getClass, new SingletonSerializer(boxedUnit))
-    new FlinkChillPackageRegistrar().registerSerializers(k)
+    FlinkChillPackageRegistrar.all()(k)
   }
 }

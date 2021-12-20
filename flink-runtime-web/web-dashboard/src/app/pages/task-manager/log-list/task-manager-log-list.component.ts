@@ -15,12 +15,8 @@
  */
 
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, OnInit } from '@angular/core';
-import { first, mergeMap } from 'rxjs/operators';
-
-import { TaskManagerLogItem } from 'interfaces';
+import { first, flatMap } from 'rxjs/operators';
 import { TaskManagerService } from 'services';
-
-import { typeDefinition } from '../../../utils/strong-type';
 
 @Component({
   selector: 'flink-task-manager-log-list',
@@ -28,23 +24,18 @@ import { typeDefinition } from '../../../utils/strong-type';
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class TaskManagerLogListComponent implements OnInit {
-  public readonly trackByName = (_: number, log: TaskManagerLogItem): string => log.name;
-  public readonly narrowLogData = typeDefinition<TaskManagerLogItem>();
+  listOfLog: { name: string; size: number }[] = [];
+  isLoading = true;
 
-  public readonly sortLastModifiedTimeFn = (pre: TaskManagerLogItem, next: TaskManagerLogItem): number =>
-    pre.mtime - next.mtime;
-  public readonly sortSizeFn = (pre: TaskManagerLogItem, next: TaskManagerLogItem): number => pre.size - next.size;
+  trackByName = (_: number, log: { name: string; size: number }) => log.name;
 
-  public listOfLog: TaskManagerLogItem[] = [];
-  public isLoading = true;
+  constructor(private taskManagerService: TaskManagerService, private cdr: ChangeDetectorRef) {}
 
-  constructor(private readonly taskManagerService: TaskManagerService, private readonly cdr: ChangeDetectorRef) {}
-
-  public ngOnInit(): void {
+  ngOnInit() {
     this.taskManagerService.taskManagerDetail$
       .pipe(
         first(),
-        mergeMap(data => this.taskManagerService.loadLogList(data.id))
+        flatMap(data => this.taskManagerService.loadLogList(data.id))
       )
       .subscribe(
         data => {

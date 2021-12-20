@@ -75,8 +75,6 @@ public class FileSourceSplitStateTest {
                 new Path("file:/some/random/path"),
                 17,
                 121,
-                0,
-                150,
                 new String[] {"localhost"},
                 position);
     }

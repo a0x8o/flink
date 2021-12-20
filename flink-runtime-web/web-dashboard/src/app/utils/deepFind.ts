@@ -16,9 +16,7 @@
  * limitations under the License.
  */
 
-import { SafeAny } from 'interfaces';
-
-export function deepFind(obj: SafeAny, path: string): SafeAny {
+export function deepFind(obj: any, path: string) {
   const paths = path.split('.');
   let current = obj;
   for (let i = 0; i < paths.length; ++i) {

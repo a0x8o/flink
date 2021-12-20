@@ -16,4 +16,5 @@
  * limitations under the License.
  */
 
-export * from './is-nil';
+export * from './deepFind';
+export * from './isNil';

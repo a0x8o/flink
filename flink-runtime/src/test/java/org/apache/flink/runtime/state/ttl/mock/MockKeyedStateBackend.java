@@ -66,9 +66,6 @@ import java.util.stream.Stream;
 /** State backend which produces in memory mock state objects. */
 public class MockKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
 
-    /** Whether to create empty snapshot ({@link MockKeyedStateHandle} isn't recognized by JM). */
-    private final boolean emptySnapshot;
-
     private interface StateFactory {
         <N, SV, S extends State, IS extends S> IS createInternalState(
                 TypeSerializer<N> namespaceSerializer, StateDescriptor<S, SV> stateDesc)
@@ -108,8 +105,7 @@ public class MockKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
             Map<String, Map<K, Map<Object, Object>>> stateValues,
             Map<String, StateSnapshotTransformer<Object>> stateSnapshotFilters,
             CloseableRegistry cancelStreamRegistry,
-            InternalKeyContext<K> keyContext,
-            boolean emptySnapshot) {
+            InternalKeyContext<K> keyContext) {
         super(
                 kvStateRegistry,
                 keySerializer,
@@ -121,7 +117,6 @@ public class MockKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
                 keyContext);
         this.stateValues = stateValues;
         this.stateSnapshotFilters = stateSnapshotFilters;
-        this.emptySnapshot = emptySnapshot;
     }
 
     @Override
@@ -226,11 +221,9 @@ public class MockKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
             @Nonnull CheckpointOptions checkpointOptions) {
         return new FutureTask<>(
                 () ->
-                        emptySnapshot
-                                ? SnapshotResult.empty()
-                                : SnapshotResult.of(
-                                        new MockKeyedStateHandle<>(
-                                                copy(stateValues, stateSnapshotFilters))));
+                        SnapshotResult.of(
+                                new MockKeyedStateHandle<>(
+                                        copy(stateValues, stateSnapshotFilters))));
     }
 
     @Nonnull
@@ -316,7 +309,7 @@ public class MockKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
 
         @Override
         public long getStateSize() {
-            return 0; // state size unknown
+            throw new UnsupportedOperationException();
         }
 
         @Override

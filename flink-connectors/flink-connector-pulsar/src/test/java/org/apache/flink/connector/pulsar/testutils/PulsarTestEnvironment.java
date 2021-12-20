@@ -20,6 +20,7 @@ package org.apache.flink.connector.pulsar.testutils;
 
 import org.apache.flink.connector.pulsar.testutils.runtime.PulsarRuntime;
 import org.apache.flink.connector.pulsar.testutils.runtime.PulsarRuntimeOperator;
+import org.apache.flink.connector.pulsar.testutils.runtime.PulsarRuntimeProvider;
 import org.apache.flink.connectors.test.common.TestResource;
 import org.apache.flink.connectors.test.common.junit.annotations.ExternalSystem;
 
@@ -53,10 +54,10 @@ import java.util.List;
 public class PulsarTestEnvironment
         implements BeforeAllCallback, AfterAllCallback, TestResource, TestRule {
 
-    private final PulsarRuntime runtime;
+    private final PulsarRuntimeProvider provider;
 
     public PulsarTestEnvironment(PulsarRuntime runtime) {
-        this.runtime = runtime;
+        this.provider = runtime.provider();
     }
 
     /** JUnit 4 Rule based test logic. */
@@ -65,7 +66,7 @@ public class PulsarTestEnvironment
         return new Statement() {
             @Override
             public void evaluate() throws Throwable {
-                runtime.startUp();
+                provider.startUp();
 
                 List<Throwable> errors = new ArrayList<>();
                 try {
@@ -74,7 +75,7 @@ public class PulsarTestEnvironment
                     errors.add(t);
                 } finally {
                     try {
-                        runtime.tearDown();
+                        provider.tearDown();
                     } catch (Throwable t) {
                         errors.add(t);
                     }
@@ -87,29 +88,29 @@ public class PulsarTestEnvironment
     /** JUnit 5 Extension setup method. */
     @Override
     public void beforeAll(ExtensionContext context) {
-        runtime.startUp();
+        provider.startUp();
     }
 
     /** flink-connector-testing setup method. */
     @Override
     public void startUp() {
-        runtime.startUp();
+        provider.startUp();
     }
 
     /** JUnit 5 Extension shutdown method. */
     @Override
     public void afterAll(ExtensionContext context) {
-        runtime.tearDown();
+        provider.tearDown();
     }
 
     /** flink-connector-testing shutdown method. */
     @Override
     public void tearDown() {
-        runtime.tearDown();
+        provider.tearDown();
     }
 
     /** Get a common supported set of method for operating pulsar which is in container. */
     public PulsarRuntimeOperator operator() {
-        return runtime.operator();
+        return provider.operator();
     }
 }

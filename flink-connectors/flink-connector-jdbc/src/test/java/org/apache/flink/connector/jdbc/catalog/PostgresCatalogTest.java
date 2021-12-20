@@ -18,7 +18,7 @@
 
 package org.apache.flink.connector.jdbc.catalog;
 
-import org.apache.flink.table.api.Schema;
+import org.apache.flink.table.api.TableSchema;
 import org.apache.flink.table.catalog.CatalogBaseTable;
 import org.apache.flink.table.catalog.ObjectPath;
 import org.apache.flink.table.catalog.exceptions.DatabaseNotExistException;
@@ -124,29 +124,29 @@ public class PostgresCatalogTest extends PostgresCatalogTestBase {
     public void testGetTable()
             throws org.apache.flink.table.catalog.exceptions.TableNotExistException {
         // test postgres.public.user1
-        Schema schema = getSimpleTable().schema;
+        TableSchema schema = getSimpleTable().schema;
 
         CatalogBaseTable table = catalog.getTable(new ObjectPath("postgres", TABLE1));
 
-        assertEquals(schema, table.getUnresolvedSchema());
+        assertEquals(schema, table.getSchema());
 
         table = catalog.getTable(new ObjectPath("postgres", "public.t1"));
 
-        assertEquals(schema, table.getUnresolvedSchema());
+        assertEquals(schema, table.getSchema());
 
         // test testdb.public.user2
         table = catalog.getTable(new ObjectPath(TEST_DB, TABLE2));
 
-        assertEquals(schema, table.getUnresolvedSchema());
+        assertEquals(schema, table.getSchema());
 
         table = catalog.getTable(new ObjectPath(TEST_DB, "public.t2"));
 
-        assertEquals(schema, table.getUnresolvedSchema());
+        assertEquals(schema, table.getSchema());
 
         // test testdb.testschema.user2
         table = catalog.getTable(new ObjectPath(TEST_DB, TEST_SCHEMA + ".t3"));
 
-        assertEquals(schema, table.getUnresolvedSchema());
+        assertEquals(schema, table.getSchema());
     }
 
     @Test
@@ -155,7 +155,7 @@ public class PostgresCatalogTest extends PostgresCatalogTestBase {
                 catalog.getTable(
                         new ObjectPath(PostgresCatalog.DEFAULT_DATABASE, TABLE_PRIMITIVE_TYPE));
 
-        assertEquals(getPrimitiveTable().schema, table.getUnresolvedSchema());
+        assertEquals(getPrimitiveTable().schema, table.getSchema());
     }
 
     @Test
@@ -164,7 +164,7 @@ public class PostgresCatalogTest extends PostgresCatalogTestBase {
                 catalog.getTable(
                         new ObjectPath(PostgresCatalog.DEFAULT_DATABASE, TABLE_ARRAY_TYPE));
 
-        assertEquals(getArrayTable().schema, table.getUnresolvedSchema());
+        assertEquals(getArrayTable().schema, table.getSchema());
     }
 
     @Test
@@ -173,6 +173,6 @@ public class PostgresCatalogTest extends PostgresCatalogTestBase {
                 catalog.getTable(
                         new ObjectPath(PostgresCatalog.DEFAULT_DATABASE, TABLE_SERIAL_TYPE));
 
-        assertEquals(getSerialTable().schema, table.getUnresolvedSchema());
+        assertEquals(getSerialTable().schema, table.getSchema());
     }
 }

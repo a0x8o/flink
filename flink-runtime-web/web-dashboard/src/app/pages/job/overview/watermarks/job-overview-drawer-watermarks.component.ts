@@ -16,10 +16,9 @@
  * limitations under the License.
  */
 
-import { ChangeDetectionStrategy, ChangeDetectorRef, Component, OnDestroy, OnInit } from '@angular/core';
+import { Component, OnDestroy, OnInit, ChangeDetectionStrategy, ChangeDetectorRef } from '@angular/core';
 import { Subject } from 'rxjs';
-import { mergeMap, takeUntil } from 'rxjs/operators';
-
+import { flatMap, takeUntil } from 'rxjs/operators';
 import { JobService, MetricsService } from 'services';
 
 @Component({
@@ -29,25 +28,21 @@ import { JobService, MetricsService } from 'services';
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class JobOverviewDrawerWatermarksComponent implements OnInit, OnDestroy {
-  public readonly trackBySubtaskIndex = (_: number, node: { subTaskIndex: string; watermark: number }): string =>
-    node.subTaskIndex;
+  destroy$ = new Subject();
+  listOfWaterMark: Array<{ subTaskIndex: number; watermark: number }> = [];
+  isLoading = true;
 
-  public listOfWaterMark: Array<{ subTaskIndex: number; watermark: number }> = [];
-  public isLoading = true;
+  trackWatermarkBy(_: number, node: { subTaskIndex: string; watermark: number }) {
+    return node.subTaskIndex;
+  }
 
-  private readonly destroy$ = new Subject<void>();
+  constructor(private jobService: JobService, private metricsService: MetricsService, private cdr: ChangeDetectorRef) {}
 
-  constructor(
-    private readonly jobService: JobService,
-    private readonly metricsService: MetricsService,
-    private readonly cdr: ChangeDetectorRef
-  ) {}
-
-  public ngOnInit(): void {
+  ngOnInit() {
     this.jobService.jobWithVertex$
       .pipe(
         takeUntil(this.destroy$),
-        mergeMap(data => this.metricsService.getWatermarks(data.job.jid, data.vertex!.id))
+        flatMap(data => this.metricsService.getWatermarks(data.job.jid, data.vertex!.id))
       )
       .subscribe(
         data => {
@@ -69,7 +64,7 @@ export class JobOverviewDrawerWatermarksComponent implements OnInit, OnDestroy {
       );
   }
 
-  public ngOnDestroy(): void {
+  ngOnDestroy() {
     this.destroy$.next();
     this.destroy$.complete();
   }

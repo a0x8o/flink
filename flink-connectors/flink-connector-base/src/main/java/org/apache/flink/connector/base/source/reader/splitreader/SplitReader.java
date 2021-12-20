@@ -18,7 +18,6 @@
 
 package org.apache.flink.connector.base.source.reader.splitreader;
 
-import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.api.connector.source.SourceSplit;
 import org.apache.flink.connector.base.source.reader.RecordsWithSplitIds;
 
@@ -31,7 +30,6 @@ import java.io.IOException;
  * @param <E> the element type.
  * @param <SplitT> the split type.
  */
-@PublicEvolving
 public interface SplitReader<E, SplitT extends SourceSplit> {
 
     /**

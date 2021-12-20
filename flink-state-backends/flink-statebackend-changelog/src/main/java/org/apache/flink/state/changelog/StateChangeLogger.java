@@ -21,7 +21,6 @@ import org.apache.flink.api.common.state.ListState;
 import org.apache.flink.core.memory.DataOutputViewStreamWrapper;
 import org.apache.flink.util.function.ThrowingConsumer;
 
-import java.io.Closeable;
 import java.io.IOException;
 
 /**
@@ -42,7 +41,7 @@ import java.io.IOException;
  * @param <Value> type of state (value)
  * @param <Namespace> type of namespace
  */
-interface StateChangeLogger<Value, Namespace> extends Closeable {
+interface StateChangeLogger<Value, Namespace> {
 
     /** State updated, such as by {@link ListState#update}. */
     void valueUpdated(Value newValue, Namespace ns) throws IOException;
@@ -70,7 +69,4 @@ interface StateChangeLogger<Value, Namespace> extends Closeable {
     void valueElementRemoved(
             ThrowingConsumer<DataOutputViewStreamWrapper, IOException> dataSerializer, Namespace ns)
             throws IOException;
-
-    /** Enable logging meta data before next writes. */
-    void resetWritingMetaFlag();
 }

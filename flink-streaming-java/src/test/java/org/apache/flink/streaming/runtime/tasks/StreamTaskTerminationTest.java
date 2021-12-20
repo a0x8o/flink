@@ -72,19 +72,21 @@ import org.apache.flink.runtime.taskmanager.NoOpTaskOperatorEventGateway;
 import org.apache.flink.runtime.taskmanager.Task;
 import org.apache.flink.runtime.taskmanager.TaskManagerActions;
 import org.apache.flink.runtime.taskmanager.TaskManagerRuntimeInfo;
+import org.apache.flink.runtime.testutils.TestingUtils;
 import org.apache.flink.runtime.util.TestingTaskManagerRuntimeInfo;
 import org.apache.flink.streaming.api.graph.StreamConfig;
 import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
 import org.apache.flink.streaming.api.operators.StreamOperator;
 import org.apache.flink.streaming.runtime.tasks.mailbox.MailboxDefaultAction;
-import org.apache.flink.testutils.TestingUtils;
 import org.apache.flink.util.FlinkException;
 import org.apache.flink.util.SerializedValue;
 import org.apache.flink.util.TestLogger;
 import org.apache.flink.util.concurrent.Executors;
 
 import org.junit.Assert;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.Timeout;
 
 import javax.annotation.Nonnull;
 
@@ -109,6 +111,8 @@ public class StreamTaskTerminationTest extends TestLogger {
     private static final OneShotLatch RUN_LATCH = new OneShotLatch();
     private static final AtomicBoolean SNAPSHOT_HAS_STARTED = new AtomicBoolean();
     private static final OneShotLatch CLEANUP_LATCH = new OneShotLatch();
+
+    @Rule public final Timeout timeoutPerTest = Timeout.seconds(10);
 
     /**
      * FLINK-6833

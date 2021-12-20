@@ -20,21 +20,19 @@ package org.apache.flink.runtime.throughput;
 
 import org.apache.flink.util.clock.Clock;
 
-import static org.apache.flink.util.Preconditions.checkArgument;
-
 /** Class for measuring the throughput based on incoming data size and measurement period. */
 public class ThroughputCalculator {
     private static final long NOT_TRACKED = -1;
     private final Clock clock;
-    private static final long MILLIS_IN_SECOND = 1000;
-    private long currentThroughput;
+    private final ThroughputEMA throughputEMA;
 
     private long currentAccumulatedDataSize;
     private long currentMeasurementTime;
     private long measurementStartTime = NOT_TRACKED;
 
-    public ThroughputCalculator(Clock clock) {
+    public ThroughputCalculator(Clock clock, int numberOfSamples) {
         this.clock = clock;
+        this.throughputEMA = new ThroughputEMA(numberOfSamples);
     }
 
     public void incomingDataSize(long receivedDataSize) {
@@ -78,25 +76,12 @@ public class ThroughputCalculator {
             measurementStartTime = absoluteTimeMillis;
         }
 
-        long throughput = calculateThroughput(currentAccumulatedDataSize, currentMeasurementTime);
+        long throughput =
+                throughputEMA.calculateThroughput(
+                        currentAccumulatedDataSize, currentMeasurementTime);
 
         currentAccumulatedDataSize = currentMeasurementTime = 0;
 
         return throughput;
-    }
-
-    public long calculateThroughput(long dataSize, long time) {
-        checkArgument(dataSize >= 0, "Size of data should be non negative");
-        checkArgument(time >= 0, "Time should be non negative");
-
-        if (time == 0) {
-            return currentThroughput;
-        }
-
-        return currentThroughput = instantThroughput(dataSize, time);
-    }
-
-    static long instantThroughput(long dataSize, long time) {
-        return (long) ((double) dataSize / time * MILLIS_IN_SECOND);
     }
 }

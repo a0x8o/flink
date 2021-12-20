@@ -40,16 +40,15 @@ import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServicesUtils;
 import org.apache.flink.runtime.leaderelection.TestingListener;
 import org.apache.flink.runtime.leaderretrieval.LeaderRetrievalService;
-import org.apache.flink.runtime.rest.util.NoOpFatalErrorHandler;
 import org.apache.flink.runtime.rpc.RpcService;
 import org.apache.flink.runtime.rpc.RpcSystem;
 import org.apache.flink.runtime.rpc.RpcUtils;
 import org.apache.flink.runtime.taskexecutor.TaskExecutorResourceUtils;
 import org.apache.flink.runtime.taskexecutor.TaskManagerRunner;
 import org.apache.flink.runtime.testutils.DispatcherProcess;
+import org.apache.flink.runtime.testutils.TestingUtils;
 import org.apache.flink.runtime.testutils.ZooKeeperTestUtils;
 import org.apache.flink.runtime.zookeeper.ZooKeeperTestEnvironment;
-import org.apache.flink.testutils.TestingUtils;
 import org.apache.flink.util.Collector;
 import org.apache.flink.util.TestLogger;
 import org.apache.flink.util.concurrent.FutureUtils;
@@ -287,7 +286,7 @@ public class JobManagerHAProcessFailureRecoveryITCase extends TestLogger {
 
             highAvailabilityServices =
                     HighAvailabilityServicesUtils.createAvailableOrEmbeddedServices(
-                            config, TestingUtils.defaultExecutor(), NoOpFatalErrorHandler.INSTANCE);
+                            config, TestingUtils.defaultExecutor());
 
             final PluginManager pluginManager =
                     PluginUtils.createPluginManagerFromRootFolder(config);

@@ -18,8 +18,6 @@
 
 package org.apache.flink.kubernetes.kubeclient.resources;
 
-import org.apache.flink.annotation.VisibleForTesting;
-
 import io.fabric8.kubernetes.api.model.ContainerStateTerminated;
 import io.fabric8.kubernetes.api.model.Pod;
 
@@ -39,15 +37,8 @@ public class KubernetesPod extends KubernetesResource<Pod> {
 
     public boolean isTerminated() {
         if (getInternalResource().getStatus() != null) {
-            final boolean podFailed =
-                    PodPhase.Failed.name().equals(getInternalResource().getStatus().getPhase());
-            final boolean containersFailed =
-                    getInternalResource().getStatus().getContainerStatuses().stream()
-                            .anyMatch(
-                                    e ->
-                                            e.getState() != null
-                                                    && e.getState().getTerminated() != null);
-            return containersFailed || podFailed;
+            return getInternalResource().getStatus().getContainerStatuses().stream()
+                    .anyMatch(e -> e.getState() != null && e.getState().getTerminated() != null);
         }
         return false;
     }
@@ -88,24 +79,6 @@ public class KubernetesPod extends KubernetesResource<Pod> {
                             .collect(Collectors.joining(",")));
         }
         sb.append("]");
-        if (PodPhase.Failed.name().equals(getInternalResource().getStatus().getPhase())) {
-            sb.append(
-                    String.format(
-                            ", pod status: %s(reason=%s, message=%s)",
-                            getInternalResource().getStatus().getPhase(),
-                            getInternalResource().getStatus().getReason(),
-                            getInternalResource().getStatus().getMessage()));
-        }
         return sb.toString();
-    }
-
-    /** The phase of a Pod, high-level summary of where the Pod is in its lifecycle. */
-    @VisibleForTesting
-    enum PodPhase {
-        Pending,
-        Running,
-        Succeeded,
-        Failed,
-        Unknown
     }
 }

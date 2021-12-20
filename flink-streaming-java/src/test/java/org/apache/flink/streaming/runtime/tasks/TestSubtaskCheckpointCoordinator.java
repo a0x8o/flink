@@ -79,7 +79,7 @@ public class TestSubtaskCheckpointCoordinator implements SubtaskCheckpointCoordi
             CheckpointOptions checkpointOptions,
             CheckpointMetricsBuilder checkpointMetrics,
             OperatorChain<?, ?> operatorChain,
-            boolean isTaskFinished,
+            boolean isOperatorsFinished,
             Supplier<Boolean> isRunning) {}
 
     @Override

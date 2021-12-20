@@ -18,9 +18,7 @@
 
 package org.apache.flink.table.planner.expressions.converter.converters;
 
-import org.apache.flink.annotation.Internal;
 import org.apache.flink.table.api.JsonExistsOnError;
-import org.apache.flink.table.api.TableException;
 import org.apache.flink.table.expressions.CallExpression;
 import org.apache.flink.table.expressions.ValueLiteralExpression;
 import org.apache.flink.table.functions.BuiltInFunctionDefinitions;
@@ -34,7 +32,6 @@ import java.util.LinkedList;
 import java.util.List;
 
 /** Conversion for {@link BuiltInFunctionDefinitions#JSON_EXISTS}. */
-@Internal
 class JsonExistsConverter extends CustomizedConverter {
     @Override
     public RexNode convert(CallExpression call, CallExpressionConvertRule.ConvertContext context) {
@@ -47,7 +44,8 @@ class JsonExistsConverter extends CustomizedConverter {
         if (call.getChildren().size() >= 3) {
             ((ValueLiteralExpression) call.getChildren().get(2))
                     .getValueAs(JsonExistsOnError.class)
-                    .map(this::convertErrorBehavior)
+                    .map(JsonExistsOnError::name)
+                    .map(SqlJsonExistsErrorBehavior::valueOf)
                     .ifPresent(
                             onErrorBehavior ->
                                     operands.add(
@@ -57,20 +55,5 @@ class JsonExistsConverter extends CustomizedConverter {
         }
 
         return context.getRelBuilder().call(FlinkSqlOperatorTable.JSON_EXISTS, operands);
-    }
-
-    private SqlJsonExistsErrorBehavior convertErrorBehavior(JsonExistsOnError onError) {
-        switch (onError) {
-            case TRUE:
-                return SqlJsonExistsErrorBehavior.TRUE;
-            case FALSE:
-                return SqlJsonExistsErrorBehavior.FALSE;
-            case UNKNOWN:
-                return SqlJsonExistsErrorBehavior.UNKNOWN;
-            case ERROR:
-                return SqlJsonExistsErrorBehavior.ERROR;
-            default:
-                throw new TableException("Unknown ON ERROR behavior: " + onError);
-        }
     }
 }

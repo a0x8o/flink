@@ -19,6 +19,7 @@
 package org.apache.flink.streaming.runtime.operators.sink;
 
 import org.apache.flink.api.connector.sink.Committer;
+import org.apache.flink.util.function.SupplierWithException;
 
 import java.io.IOException;
 import java.util.List;
@@ -32,7 +33,7 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * @param <InputT> The committable type of the {@link Committer}.
  */
 final class BatchCommitterHandler<InputT, OutputT>
-        extends AbstractCommitterHandler<InputT, OutputT, InputT> {
+        extends AbstractCommitterHandler<InputT, OutputT> {
 
     /** Responsible for committing the committable to the external system. */
     private final Committer<InputT> committer;
@@ -50,30 +51,22 @@ final class BatchCommitterHandler<InputT, OutputT>
     }
 
     @Override
-    public List<OutputT> processCommittables(List<InputT> committables) {
-        super.processCommittables(committables);
-        return chainedHandler.processCommittables(committables);
-    }
-
-    @Override
-    public boolean needsRetry() {
-        return super.needsRetry() || chainedHandler.needsRetry();
-    }
-
-    @Override
-    protected void retry(List<InputT> recoveredCommittables)
-            throws IOException, InterruptedException {
-        if (!recoveredCommittables.isEmpty()) {
-            recoveredCommittables(committer.commit(recoveredCommittables));
-        }
-        chainedHandler.retry();
+    public List<OutputT> processCommittables(
+            SupplierWithException<List<InputT>, Exception> committableSupplier) throws Exception {
+        List<InputT> committables = committableSupplier.get();
+        super.processCommittables(() -> committables);
+        return chainedHandler.processCommittables(() -> committables);
     }
 
     @Override
     public List<OutputT> endOfInput() throws IOException, InterruptedException {
         List<InputT> allCommittables = pollCommittables();
         if (!allCommittables.isEmpty()) {
-            recoveredCommittables(committer.commit(allCommittables));
+            final List<InputT> neededRetryCommittables = committer.commit(allCommittables);
+            if (!neededRetryCommittables.isEmpty()) {
+                throw new UnsupportedOperationException(
+                        "Currently does not support the re-commit!");
+            }
         }
         return chainedHandler.endOfInput();
     }

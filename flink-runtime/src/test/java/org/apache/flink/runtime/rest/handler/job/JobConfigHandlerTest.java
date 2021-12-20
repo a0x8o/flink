@@ -32,7 +32,7 @@ import org.apache.flink.runtime.rest.messages.JobConfigHeaders;
 import org.apache.flink.runtime.rest.messages.JobConfigInfo;
 import org.apache.flink.runtime.rest.messages.JobIDPathParameter;
 import org.apache.flink.runtime.rest.messages.JobMessageParameters;
-import org.apache.flink.testutils.TestingUtils;
+import org.apache.flink.runtime.testutils.TestingUtils;
 import org.apache.flink.util.TestLogger;
 
 import org.junit.Test;
@@ -73,7 +73,7 @@ public class JobConfigHandlerTest extends TestLogger {
                 new ArchivedExecutionGraphBuilder()
                         .setArchivedExecutionConfig(archivedExecutionConfig)
                         .build();
-        final HandlerRequest<EmptyRequestBody> handlerRequest =
+        final HandlerRequest<EmptyRequestBody, JobMessageParameters> handlerRequest =
                 createRequest(archivedExecutionGraph.getJobID());
 
         final JobConfigInfo jobConfigInfoResponse =
@@ -91,16 +91,15 @@ public class JobConfigHandlerTest extends TestLogger {
         return ConfigurationUtils.hideSensitiveValues(globalJobParameters);
     }
 
-    private HandlerRequest<EmptyRequestBody> createRequest(JobID jobId)
+    private HandlerRequest<EmptyRequestBody, JobMessageParameters> createRequest(JobID jobId)
             throws HandlerRequestException {
         final Map<String, String> pathParameters = new HashMap<>();
         pathParameters.put(JobIDPathParameter.KEY, jobId.toString());
 
-        return HandlerRequest.resolveParametersAndCreate(
+        return new HandlerRequest<>(
                 EmptyRequestBody.getInstance(),
                 new JobMessageParameters(),
                 pathParameters,
-                Collections.emptyMap(),
-                Collections.emptyList());
+                Collections.emptyMap());
     }
 }

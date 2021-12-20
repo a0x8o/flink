@@ -114,7 +114,7 @@ public class MockInputGate extends IndexedInputGate {
     }
 
     @Override
-    public EndOfDataStatus hasReceivedEndOfData() {
+    public boolean hasReceivedEndOfData() {
         throw new UnsupportedOperationException("Not implemented yet");
     }
 
@@ -164,7 +164,12 @@ public class MockInputGate extends IndexedInputGate {
     }
 
     @Override
-    public void triggerDebloating() {}
+    public int getBuffersInUseCount() {
+        return 0;
+    }
+
+    @Override
+    public void announceBufferSize(int bufferSize) {}
 
     public Set<Integer> getBlockedChannels() {
         return blockedChannels;

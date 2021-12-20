@@ -145,8 +145,7 @@ public final class ValueSerializer<T extends Value> extends TypeSerializer<T> {
 
             this.kryo.setAsmEnabled(true);
 
-            KryoUtils.applyRegistrations(
-                    this.kryo, kryoRegistrations.values(), this.kryo.getNextRegistrationId());
+            KryoUtils.applyRegistrations(this.kryo, kryoRegistrations.values());
         }
     }
 

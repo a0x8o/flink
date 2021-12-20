@@ -37,6 +37,7 @@ import static java.util.Arrays.asList;
 import static org.apache.flink.table.expressions.ApiExpressionUtils.unresolvedCall;
 import static org.apache.flink.table.types.logical.LogicalTypeRoot.BIGINT;
 import static org.apache.flink.table.types.logical.LogicalTypeRoot.INTERVAL_DAY_TIME;
+import static org.apache.flink.table.types.logical.utils.LogicalTypeChecks.hasRoot;
 
 /**
  * Joins call to {@link BuiltInFunctionDefinitions#OVER} with corresponding over window and creates
@@ -128,9 +129,9 @@ final class OverWindowResolverRule implements ResolverRule {
         @Override
         public WindowKind visit(ValueLiteralExpression valueLiteral) {
             final LogicalType literalType = valueLiteral.getOutputDataType().getLogicalType();
-            if (literalType.is(BIGINT)) {
+            if (hasRoot(literalType, BIGINT)) {
                 return WindowKind.ROW;
-            } else if (literalType.is(INTERVAL_DAY_TIME)) {
+            } else if (hasRoot(literalType, INTERVAL_DAY_TIME)) {
                 return WindowKind.RANGE;
             }
             return defaultMethod(valueLiteral);

@@ -25,9 +25,6 @@ import org.apache.flink.table.data.RowData;
 
 /**
  * Provider of a {@link Source} instance as a runtime implementation for {@link ScanTableSource}.
- *
- * <p>{@code DataStreamScanProvider} in {@code flink-table-api-java-bridge} is available for
- * advanced connector developers.
  */
 @PublicEvolving
 public interface SourceProvider extends ScanTableSource.ScanRuntimeProvider {

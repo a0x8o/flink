@@ -57,16 +57,17 @@ public interface CheckpointStorageCoordinatorView {
     CompletedCheckpointStorageLocation resolveCheckpoint(String externalPointer) throws IOException;
 
     /**
-     * Initializes the necessary prerequisites for storage locations of checkpoints.
+     * Initializes the necessary prerequisites for storage locations of checkpoints/savepoints.
      *
      * <p>For file-based checkpoint storage, this method would initialize essential base checkpoint
      * directories on checkpoint coordinator side and should be executed before calling {@link
-     * #initializeLocationForCheckpoint(long)}.
+     * #initializeLocationForCheckpoint(long)} and {@link #initializeLocationForSavepoint(long,
+     * String)}.
      *
      * @throws IOException Thrown, if these base storage locations cannot be initialized due to an
      *     I/O exception.
      */
-    void initializeBaseLocationsForCheckpoint() throws IOException;
+    void initializeBaseLocations() throws IOException;
 
     /**
      * Initializes a storage location for new checkpoint with the given ID.

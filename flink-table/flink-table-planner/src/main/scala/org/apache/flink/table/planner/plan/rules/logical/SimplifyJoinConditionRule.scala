@@ -45,10 +45,7 @@ class SimplifyJoinConditionRule
       return
     }
 
-    val simpleCondExp = FlinkRexUtil.simplify(
-      join.getCluster.getRexBuilder,
-      condition,
-      join.getCluster.getPlanner.getExecutor)
+    val simpleCondExp = FlinkRexUtil.simplify(join.getCluster.getRexBuilder, condition)
     val newCondExp = RexUtil.pullFactors(join.getCluster.getRexBuilder, simpleCondExp)
 
     if (newCondExp.equals(condition)) {

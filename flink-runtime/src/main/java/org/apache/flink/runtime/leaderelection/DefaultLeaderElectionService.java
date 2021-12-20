@@ -54,7 +54,10 @@ public class DefaultLeaderElectionService
     private volatile UUID issuedLeaderSessionID;
 
     @GuardedBy("lock")
-    private volatile LeaderInformation confirmedLeaderInformation;
+    private volatile UUID confirmedLeaderSessionID;
+
+    @GuardedBy("lock")
+    private volatile String confirmedLeaderAddress;
 
     @GuardedBy("lock")
     private volatile boolean running;
@@ -64,15 +67,15 @@ public class DefaultLeaderElectionService
     public DefaultLeaderElectionService(LeaderElectionDriverFactory leaderElectionDriverFactory) {
         this.leaderElectionDriverFactory = checkNotNull(leaderElectionDriverFactory);
 
-        this.leaderContender = null;
+        leaderContender = null;
 
-        this.issuedLeaderSessionID = null;
+        issuedLeaderSessionID = null;
+        confirmedLeaderSessionID = null;
+        confirmedLeaderAddress = null;
 
         this.leaderElectionDriver = null;
 
-        this.confirmedLeaderInformation = LeaderInformation.empty();
-
-        this.running = false;
+        running = false;
     }
 
     @Override
@@ -173,18 +176,21 @@ public class DefaultLeaderElectionService
     @VisibleForTesting
     @Nullable
     public UUID getLeaderSessionID() {
-        return confirmedLeaderInformation.getLeaderSessionID();
+        return confirmedLeaderSessionID;
     }
 
     @GuardedBy("lock")
     private void confirmLeaderInformation(UUID leaderSessionID, String leaderAddress) {
-        confirmedLeaderInformation = LeaderInformation.known(leaderSessionID, leaderAddress);
-        leaderElectionDriver.writeLeaderInformation(confirmedLeaderInformation);
+        confirmedLeaderSessionID = leaderSessionID;
+        confirmedLeaderAddress = leaderAddress;
+        leaderElectionDriver.writeLeaderInformation(
+                LeaderInformation.known(confirmedLeaderSessionID, confirmedLeaderAddress));
     }
 
     @GuardedBy("lock")
     private void clearConfirmedLeaderInformation() {
-        confirmedLeaderInformation = LeaderInformation.empty();
+        confirmedLeaderSessionID = null;
+        confirmedLeaderAddress = null;
     }
 
     @Override
@@ -223,8 +229,8 @@ public class DefaultLeaderElectionService
                     LOG.debug(
                             "Revoke leadership of {} ({}@{}).",
                             leaderContender.getDescription(),
-                            confirmedLeaderInformation.getLeaderSessionID(),
-                            confirmedLeaderInformation.getLeaderAddress());
+                            confirmedLeaderSessionID,
+                            confirmedLeaderAddress);
                 }
 
                 issuedLeaderSessionID = null;
@@ -257,11 +263,13 @@ public class DefaultLeaderElectionService
                     LOG.trace(
                             "Leader node changed while {} is the leader with session ID {}. New leader information {}.",
                             leaderContender.getDescription(),
-                            confirmedLeaderInformation.getLeaderSessionID(),
+                            confirmedLeaderSessionID,
                             leaderInformation);
                 }
-                if (!confirmedLeaderInformation.isEmpty()) {
-                    final LeaderInformation confirmedLeaderInfo = this.confirmedLeaderInformation;
+                if (confirmedLeaderSessionID != null) {
+                    final LeaderInformation confirmedLeaderInfo =
+                            LeaderInformation.known(
+                                    confirmedLeaderSessionID, confirmedLeaderAddress);
                     if (leaderInformation.isEmpty()) {
                         if (LOG.isDebugEnabled()) {
                             LOG.debug(

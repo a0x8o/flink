@@ -22,7 +22,7 @@ import { Subject } from 'rxjs';
 @Injectable({ providedIn: 'root' })
 export class JobChartService {
   resize$ = new Subject();
-  resize(): void {
+  resize() {
     this.resize$.next();
   }
 }

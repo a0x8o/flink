@@ -24,12 +24,10 @@ import org.apache.flink.streaming.api.functions.sink.DiscardingSink;
 import org.apache.flink.table.connector.ChangelogMode;
 import org.apache.flink.table.connector.sink.DynamicTableSink;
 import org.apache.flink.table.connector.sink.SinkFunctionProvider;
-import org.apache.flink.table.connector.sink.abilities.SupportsPartitioning;
 import org.apache.flink.table.factories.DynamicTableSinkFactory;
 import org.apache.flink.types.RowKind;
 
 import java.util.HashSet;
-import java.util.Map;
 import java.util.Set;
 
 import static org.apache.flink.table.factories.FactoryUtil.createTableFactoryHelper;
@@ -65,7 +63,7 @@ public class BlackHoleTableSinkFactory implements DynamicTableSinkFactory {
         return new BlackHoleSink();
     }
 
-    private static class BlackHoleSink implements DynamicTableSink, SupportsPartitioning {
+    private static class BlackHoleSink implements DynamicTableSink {
 
         @Override
         public ChangelogMode getChangelogMode(ChangelogMode requestedMode) {
@@ -92,8 +90,5 @@ public class BlackHoleTableSinkFactory implements DynamicTableSinkFactory {
         public String asSummaryString() {
             return "BlackHole";
         }
-
-        @Override
-        public void applyStaticPartition(Map<String, String> partition) {}
     }
 }

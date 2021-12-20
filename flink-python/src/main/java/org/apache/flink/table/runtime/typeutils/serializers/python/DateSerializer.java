@@ -24,7 +24,7 @@ import org.apache.flink.api.common.typeutils.TypeSerializerSnapshot;
 import org.apache.flink.api.common.typeutils.base.TypeSerializerSingleton;
 import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataOutputView;
-import org.apache.flink.table.utils.DateTimeUtils;
+import org.apache.flink.table.runtime.typeutils.PythonTypeUtils;
 
 import java.io.IOException;
 import java.sql.Date;
@@ -76,12 +76,12 @@ public class DateSerializer extends TypeSerializerSingleton<Date> {
         if (record == null) {
             throw new IllegalArgumentException("The Date record must not be null.");
         }
-        target.writeInt(DateTimeUtils.toInternal(record));
+        target.writeInt(PythonTypeUtils.dateToInternal(record));
     }
 
     @Override
     public Date deserialize(DataInputView source) throws IOException {
-        return DateTimeUtils.toSQLDate(source.readInt());
+        return PythonTypeUtils.internalToDate(source.readInt());
     }
 
     @Override

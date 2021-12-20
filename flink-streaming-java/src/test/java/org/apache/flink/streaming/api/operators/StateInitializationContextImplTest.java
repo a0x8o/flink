@@ -70,7 +70,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.OptionalLong;
 import java.util.Set;
 
 import static org.mockito.Mockito.mock;
@@ -218,10 +217,9 @@ public class StateInitializationContextImplTest {
                         1.0,
                         false);
 
-        OptionalLong restoredCheckpointId = stateContext.getRestoredCheckpointId();
         this.initializationContext =
                 new StateInitializationContextImpl(
-                        restoredCheckpointId.isPresent() ? restoredCheckpointId.getAsLong() : null,
+                        stateContext.isRestored(),
                         stateContext.operatorStateBackend(),
                         mock(KeyedStateStore.class),
                         stateContext.rawKeyedStateInputs(),

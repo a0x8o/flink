@@ -119,7 +119,8 @@ public class JarPlanHandlerParameterTest
     }
 
     @Override
-    void handleRequest(HandlerRequest<JarPlanRequestBody> request) throws Exception {
+    void handleRequest(HandlerRequest<JarPlanRequestBody, JarPlanMessageParameters> request)
+            throws Exception {
         handler.handleRequest(request, restfulGateway).get();
     }
 }

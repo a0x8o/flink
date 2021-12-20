@@ -49,7 +49,6 @@ public final class DistinctType extends UserDefinedType {
     private static final long serialVersionUID = 1L;
 
     /** A builder for a {@link DistinctType}. Intended for future extensibility. */
-    @PublicEvolving
     public static final class Builder {
 
         private final ObjectIdentifier objectIdentifier;

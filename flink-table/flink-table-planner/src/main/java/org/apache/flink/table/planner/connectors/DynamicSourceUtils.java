@@ -43,7 +43,6 @@ import org.apache.flink.table.planner.expressions.converter.ExpressionConverter;
 import org.apache.flink.table.planner.plan.abilities.source.SourceAbilitySpec;
 import org.apache.flink.table.planner.plan.schema.TableSourceTable;
 import org.apache.flink.table.planner.plan.stats.FlinkStatistic;
-import org.apache.flink.table.planner.utils.ShortcutUtils;
 import org.apache.flink.table.runtime.connector.source.ScanRuntimeProviderContext;
 import org.apache.flink.table.types.DataType;
 import org.apache.flink.table.types.logical.LogicalType;
@@ -91,18 +90,13 @@ public final class DynamicSourceUtils {
         final DynamicTableSource tableSource =
                 new ExternalDynamicSource<>(
                         identifier, dataStream, physicalDataType, isTopLevelRecord, changelogMode);
-        final FlinkStatistic statistic =
-                FlinkStatistic.builder()
-                        // this is a temporary solution, FLINK-15123 will resolve this
-                        .uniqueKeys(catalogTable.getResolvedSchema().getPrimaryKey().orElse(null))
-                        .build();
         return convertSourceToRel(
                 isBatchMode,
                 config,
                 relBuilder,
                 identifier,
                 catalogTable,
-                statistic,
+                FlinkStatistic.UNKNOWN(),
                 Collections.emptyList(),
                 tableSource);
     }
@@ -262,7 +256,7 @@ public final class DynamicSourceUtils {
         relBuilder.watermark(rowtimeColumnIdx, watermarkRexNode);
     }
 
-    /** Creates a projection that adds computed columns and finalizes the table schema. */
+    /** Creates a projection that adds computed columns and finalizes the the table schema. */
     private static void pushGeneratedProjection(FlinkRelBuilder relBuilder, ResolvedSchema schema) {
         final ExpressionConverter converter = new ExpressionConverter(relBuilder);
         final List<RexNode> projection =
@@ -349,7 +343,7 @@ public final class DynamicSourceUtils {
                         tableSource,
                         !isBatchMode,
                         catalogTable,
-                        ShortcutUtils.unwrapContext(relBuilder),
+                        new String[0],
                         new SourceAbilitySpec[0]);
 
         final LogicalTableScan scan =

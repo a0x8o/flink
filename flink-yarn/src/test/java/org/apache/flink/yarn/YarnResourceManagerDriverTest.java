@@ -49,6 +49,7 @@ import org.apache.hadoop.yarn.api.records.LocalResourceVisibility;
 import org.apache.hadoop.yarn.api.records.NodeId;
 import org.apache.hadoop.yarn.api.records.Priority;
 import org.apache.hadoop.yarn.api.records.Resource;
+import org.apache.hadoop.yarn.api.records.impl.pb.ContainerStatusPBImpl;
 import org.apache.hadoop.yarn.client.api.AMRMClient;
 import org.apache.hadoop.yarn.client.api.async.AMRMClientAsync;
 import org.apache.hadoop.yarn.client.api.async.NMClientAsync;
@@ -709,7 +710,7 @@ public class YarnResourceManagerDriverTest extends ResourceManagerDriverTestBase
     }
 
     private ContainerStatus createSuccessfulCompletedContainerStatus() {
-        return new TestingContainerStatus(
+        return ContainerStatusPBImpl.newInstance(
                 testingContainer.getId(),
                 ContainerState.COMPLETE,
                 "success exit code",
@@ -726,7 +727,7 @@ public class YarnResourceManagerDriverTest extends ResourceManagerDriverTestBase
     }
 
     private ContainerStatus createCompletedContainerStatusBecauseItWasPreempted() {
-        return new TestingContainerStatus(
+        return ContainerStatusPBImpl.newInstance(
                 testingContainer.getId(),
                 ContainerState.COMPLETE,
                 "preempted exit code",
@@ -742,7 +743,7 @@ public class YarnResourceManagerDriverTest extends ResourceManagerDriverTestBase
     }
 
     private ContainerStatus createCompletedContainerStatusBecauseItWasInvalid() {
-        return new TestingContainerStatus(
+        return ContainerStatusPBImpl.newInstance(
                 testingContainer.getId(),
                 ContainerState.COMPLETE,
                 "invalid exit code",
@@ -760,7 +761,7 @@ public class YarnResourceManagerDriverTest extends ResourceManagerDriverTestBase
     }
 
     private ContainerStatus createCompletedContainerStatusBecauseItWasAborted() {
-        return new TestingContainerStatus(
+        return ContainerStatusPBImpl.newInstance(
                 testingContainer.getId(),
                 ContainerState.COMPLETE,
                 "aborted exit code",
@@ -779,7 +780,7 @@ public class YarnResourceManagerDriverTest extends ResourceManagerDriverTestBase
     }
 
     private ContainerStatus createCompletedContainerStatusBecauseDisksFailed() {
-        return new TestingContainerStatus(
+        return ContainerStatusPBImpl.newInstance(
                 testingContainer.getId(),
                 ContainerState.COMPLETE,
                 "disk failed exit code",
@@ -797,7 +798,7 @@ public class YarnResourceManagerDriverTest extends ResourceManagerDriverTestBase
     }
 
     private ContainerStatus createCompletedContainerStatusForUnknownCause() {
-        return new TestingContainerStatus(
+        return ContainerStatusPBImpl.newInstance(
                 testingContainer.getId(), ContainerState.COMPLETE, "unknown exit code", -1);
     }
 

@@ -56,9 +56,7 @@ import java.io.Serializable;
  * }</pre>
  *
  * @param <T> The type of the element handled by this {@code ElasticsearchSinkFunction}
- * @deprecated This has been deprecated and will be removed in the future.
  */
-@Deprecated
 @PublicEvolving
 public interface ElasticsearchSinkFunction<T> extends Serializable, Function {
 

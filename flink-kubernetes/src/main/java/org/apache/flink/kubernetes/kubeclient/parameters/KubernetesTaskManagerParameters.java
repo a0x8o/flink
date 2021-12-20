@@ -72,13 +72,8 @@ public class KubernetesTaskManagerParameters extends AbstractKubernetesParameter
                 flinkConfig
                         .getOptional(KubernetesConfigOptions.TASK_MANAGER_LABELS)
                         .orElse(Collections.emptyMap()));
-        labels.putAll(getSelectors());
+        labels.putAll(KubernetesUtils.getTaskManagerLabels(getClusterId()));
         return Collections.unmodifiableMap(labels);
-    }
-
-    @Override
-    public Map<String, String> getSelectors() {
-        return KubernetesUtils.getTaskManagerSelectors(getClusterId());
     }
 
     @Override

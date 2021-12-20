@@ -16,8 +16,6 @@
  * limitations under the License.
  */
 
-import { SafeAny } from 'interfaces';
-
-export function isNil(value: SafeAny): boolean {
+export function isNil(value: any) {
   return value == null;
 }

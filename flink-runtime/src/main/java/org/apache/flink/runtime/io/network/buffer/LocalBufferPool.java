@@ -19,7 +19,6 @@
 package org.apache.flink.runtime.io.network.buffer;
 
 import org.apache.flink.core.memory.MemorySegment;
-import org.apache.flink.runtime.execution.CancelTaskException;
 import org.apache.flink.util.ExceptionUtils;
 
 import org.slf4j.Logger;
@@ -28,7 +27,6 @@ import org.slf4j.LoggerFactory;
 import javax.annotation.Nullable;
 import javax.annotation.concurrent.GuardedBy;
 
-import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -134,8 +132,7 @@ class LocalBufferPool implements BufferPool {
      * @param networkBufferPool global network buffer pool to get buffers from
      * @param numberOfRequiredMemorySegments minimum number of network buffers
      */
-    LocalBufferPool(NetworkBufferPool networkBufferPool, int numberOfRequiredMemorySegments)
-            throws IOException {
+    LocalBufferPool(NetworkBufferPool networkBufferPool, int numberOfRequiredMemorySegments) {
         this(
                 networkBufferPool,
                 numberOfRequiredMemorySegments,
@@ -155,8 +152,7 @@ class LocalBufferPool implements BufferPool {
     LocalBufferPool(
             NetworkBufferPool networkBufferPool,
             int numberOfRequiredMemorySegments,
-            int maxNumberOfMemorySegments)
-            throws Exception {
+            int maxNumberOfMemorySegments) {
         this(
                 networkBufferPool,
                 numberOfRequiredMemorySegments,
@@ -180,8 +176,7 @@ class LocalBufferPool implements BufferPool {
             int numberOfRequiredMemorySegments,
             int maxNumberOfMemorySegments,
             int numberOfSubpartitions,
-            int maxBuffersPerChannel)
-            throws IOException {
+            int maxBuffersPerChannel) {
         checkArgument(
                 numberOfRequiredMemorySegments > 0,
                 "Required number of memory segments (%s) should be larger than 0.",
@@ -231,26 +226,6 @@ class LocalBufferPool implements BufferPool {
     // ------------------------------------------------------------------------
     // Properties
     // ------------------------------------------------------------------------
-
-    @Override
-    public void reserveSegments(int numberOfSegmentsToReserve) throws IOException {
-        checkArgument(
-                numberOfSegmentsToReserve <= numberOfRequiredMemorySegments,
-                "Can not reserve more segments than number of required segments.");
-
-        CompletableFuture<?> toNotify = null;
-        synchronized (availableMemorySegments) {
-            checkDestroyed();
-
-            if (numberOfRequestedMemorySegments < numberOfSegmentsToReserve) {
-                availableMemorySegments.addAll(
-                        networkBufferPool.requestMemorySegmentsBlocking(
-                                numberOfSegmentsToReserve - numberOfRequestedMemorySegments));
-                toNotify = availabilityHelper.getUnavailableToResetAvailable();
-            }
-        }
-        mayNotifyAvailable(toNotify);
-    }
 
     @Override
     public boolean isDestroyed() {
@@ -357,7 +332,9 @@ class LocalBufferPool implements BufferPool {
     private MemorySegment requestMemorySegment(int targetChannel) {
         MemorySegment segment;
         synchronized (availableMemorySegments) {
-            checkDestroyed();
+            if (isDestroyed) {
+                throw new IllegalStateException("Buffer pool is destroyed.");
+            }
 
             // target channel over quota; do not return a segment
             if (targetChannel != UNKNOWN_CHANNEL
@@ -384,12 +361,6 @@ class LocalBufferPool implements BufferPool {
             checkConsistentAvailability();
         }
         return segment;
-    }
-
-    private void checkDestroyed() {
-        if (isDestroyed) {
-            throw new CancelTaskException("Buffer pool has already been destroyed.");
-        }
     }
 
     @Override

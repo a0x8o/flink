@@ -369,7 +369,7 @@ public abstract class JdbcXaSinkTestBase extends JdbcTestBase {
 
     static StateInitializationContextImpl buildInitCtx(boolean restored) {
         return new StateInitializationContextImpl(
-                restored ? 1L : null,
+                restored,
                 new DefaultOperatorStateBackend(
                         new ExecutionConfig(),
                         new CloseableRegistry(),

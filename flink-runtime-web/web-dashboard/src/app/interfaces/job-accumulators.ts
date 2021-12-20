@@ -16,13 +16,13 @@
  * limitations under the License.
  */
 
-export interface UserAccumulators {
+export interface UserAccumulatorsInterface {
   name: string;
   type: string;
   value: string;
 }
 
-export interface SubTaskAccumulators {
+export interface SubTaskAccumulatorsInterface {
   name: string;
   type: string;
   value: string;

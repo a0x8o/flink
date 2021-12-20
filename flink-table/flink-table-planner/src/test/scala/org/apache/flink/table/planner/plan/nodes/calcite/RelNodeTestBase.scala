@@ -53,7 +53,6 @@ class RelNodeTestBase {
   val plannerContext: PlannerContext = new PlannerContext(
     false,
     tableConfig,
-    moduleManager,
     new FunctionCatalog(tableConfig, catalogManager, moduleManager),
     catalogManager,
     CalciteSchema.from(rootSchema),

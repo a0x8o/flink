@@ -90,7 +90,8 @@ public class JobExceptionsHandler
 
     @Override
     protected JobExceptionsInfoWithHistory handleRequest(
-            HandlerRequest<EmptyRequestBody> request, ExecutionGraphInfo executionGraph) {
+            HandlerRequest<EmptyRequestBody, JobExceptionsMessageParameters> request,
+            ExecutionGraphInfo executionGraph) {
         List<Integer> exceptionToReportMaxSizes =
                 request.getQueryParameter(UpperLimitExceptionParameter.class);
         final int exceptionToReportMaxSize =

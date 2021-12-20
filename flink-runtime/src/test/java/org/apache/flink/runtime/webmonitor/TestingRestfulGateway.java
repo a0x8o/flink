@@ -23,7 +23,6 @@ import org.apache.flink.api.common.JobStatus;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
-import org.apache.flink.runtime.dispatcher.TriggerSavepointMode;
 import org.apache.flink.runtime.executiongraph.ArchivedExecutionGraph;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.jobmaster.JobResult;
@@ -33,8 +32,6 @@ import org.apache.flink.runtime.messages.webmonitor.JobsOverview;
 import org.apache.flink.runtime.messages.webmonitor.MultipleJobsDetails;
 import org.apache.flink.runtime.operators.coordination.CoordinationRequest;
 import org.apache.flink.runtime.operators.coordination.CoordinationResponse;
-import org.apache.flink.runtime.rest.handler.async.OperationResult;
-import org.apache.flink.runtime.rest.handler.job.AsynchronousJobOperationKey;
 import org.apache.flink.runtime.scheduler.ExecutionGraphInfo;
 import org.apache.flink.util.SerializedValue;
 import org.apache.flink.util.concurrent.FutureUtils;
@@ -82,17 +79,13 @@ public class TestingRestfulGateway implements RestfulGateway {
                     () -> CompletableFuture.completedFuture(Collections.emptyList());
     static final Supplier<CompletableFuture<Acknowledge>> DEFAULT_CLUSTER_SHUTDOWN_SUPPLIER =
             () -> CompletableFuture.completedFuture(Acknowledge.get());
-    static final BiFunction<AsynchronousJobOperationKey, String, CompletableFuture<Acknowledge>>
+    static final BiFunction<JobID, String, CompletableFuture<String>>
             DEFAULT_TRIGGER_SAVEPOINT_FUNCTION =
-                    (AsynchronousJobOperationKey operationKey, String targetDirectory) ->
+                    (JobID jobId, String targetDirectory) ->
                             FutureUtils.completedExceptionally(new UnsupportedOperationException());
-    static final BiFunction<AsynchronousJobOperationKey, String, CompletableFuture<Acknowledge>>
+    static final BiFunction<JobID, String, CompletableFuture<String>>
             DEFAULT_STOP_WITH_SAVEPOINT_FUNCTION =
-                    (AsynchronousJobOperationKey operationKey, String targetDirectory) ->
-                            FutureUtils.completedExceptionally(new UnsupportedOperationException());
-    static final Function<AsynchronousJobOperationKey, CompletableFuture<OperationResult<String>>>
-            DEFAULT_GET_SAVEPOINT_STATUS_FUNCTION =
-                    (AsynchronousJobOperationKey operationKey) ->
+                    (JobID jobId, String targetDirectory) ->
                             FutureUtils.completedExceptionally(new UnsupportedOperationException());
     static final TriFunction<
                     JobID,
@@ -135,14 +128,9 @@ public class TestingRestfulGateway implements RestfulGateway {
     protected Supplier<CompletableFuture<Collection<Tuple2<ResourceID, String>>>>
             requestTaskManagerMetricQueryServiceAddressesSupplier;
 
-    protected BiFunction<AsynchronousJobOperationKey, String, CompletableFuture<Acknowledge>>
-            triggerSavepointFunction;
+    protected BiFunction<JobID, String, CompletableFuture<String>> triggerSavepointFunction;
 
-    protected BiFunction<AsynchronousJobOperationKey, String, CompletableFuture<Acknowledge>>
-            stopWithSavepointFunction;
-
-    protected Function<AsynchronousJobOperationKey, CompletableFuture<OperationResult<String>>>
-            getSavepointStatusFunction;
+    protected BiFunction<JobID, String, CompletableFuture<String>> stopWithSavepointFunction;
 
     protected TriFunction<
                     JobID,
@@ -166,7 +154,6 @@ public class TestingRestfulGateway implements RestfulGateway {
                 DEFAULT_REQUEST_TASK_MANAGER_METRIC_QUERY_SERVICE_PATHS_SUPPLIER,
                 DEFAULT_TRIGGER_SAVEPOINT_FUNCTION,
                 DEFAULT_STOP_WITH_SAVEPOINT_FUNCTION,
-                DEFAULT_GET_SAVEPOINT_STATUS_FUNCTION,
                 DEFAULT_CLUSTER_SHUTDOWN_SUPPLIER,
                 DEFAULT_DELIVER_COORDINATION_REQUEST_TO_COORDINATOR_FUNCTION);
     }
@@ -186,12 +173,8 @@ public class TestingRestfulGateway implements RestfulGateway {
                     requestMetricQueryServiceAddressesSupplier,
             Supplier<CompletableFuture<Collection<Tuple2<ResourceID, String>>>>
                     requestTaskManagerMetricQueryServiceAddressesSupplier,
-            BiFunction<AsynchronousJobOperationKey, String, CompletableFuture<Acknowledge>>
-                    triggerSavepointFunction,
-            BiFunction<AsynchronousJobOperationKey, String, CompletableFuture<Acknowledge>>
-                    stopWithSavepointFunction,
-            Function<AsynchronousJobOperationKey, CompletableFuture<OperationResult<String>>>
-                    getSavepointStatusFunction,
+            BiFunction<JobID, String, CompletableFuture<String>> triggerSavepointFunction,
+            BiFunction<JobID, String, CompletableFuture<String>> stopWithSavepointFunction,
             Supplier<CompletableFuture<Acknowledge>> clusterShutdownSupplier,
             TriFunction<
                             JobID,
@@ -214,7 +197,6 @@ public class TestingRestfulGateway implements RestfulGateway {
                 requestTaskManagerMetricQueryServiceAddressesSupplier;
         this.triggerSavepointFunction = triggerSavepointFunction;
         this.stopWithSavepointFunction = stopWithSavepointFunction;
-        this.getSavepointStatusFunction = getSavepointStatusFunction;
         this.clusterShutdownSupplier = clusterShutdownSupplier;
         this.deliverCoordinationRequestToCoordinatorFunction =
                 deliverCoordinationRequestToCoordinatorFunction;
@@ -273,27 +255,15 @@ public class TestingRestfulGateway implements RestfulGateway {
     }
 
     @Override
-    public CompletableFuture<Acknowledge> triggerSavepoint(
-            AsynchronousJobOperationKey operationKey,
-            String targetDirectory,
-            TriggerSavepointMode savepointMode,
-            Time timeout) {
-        return triggerSavepointFunction.apply(operationKey, targetDirectory);
+    public CompletableFuture<String> triggerSavepoint(
+            JobID jobId, String targetDirectory, boolean cancelJob, Time timeout) {
+        return triggerSavepointFunction.apply(jobId, targetDirectory);
     }
 
     @Override
-    public CompletableFuture<Acknowledge> stopWithSavepoint(
-            AsynchronousJobOperationKey operationKey,
-            String targetDirectory,
-            TriggerSavepointMode savepointMode,
-            Time timeout) {
-        return stopWithSavepointFunction.apply(operationKey, targetDirectory);
-    }
-
-    @Override
-    public CompletableFuture<OperationResult<String>> getTriggeredSavepointStatus(
-            AsynchronousJobOperationKey operationKey) {
-        return getSavepointStatusFunction.apply(operationKey);
+    public CompletableFuture<String> stopWithSavepoint(
+            JobID jobId, String targetDirectory, boolean terminate, Time timeout) {
+        return stopWithSavepointFunction.apply(jobId, targetDirectory);
     }
 
     @Override
@@ -339,12 +309,8 @@ public class TestingRestfulGateway implements RestfulGateway {
         protected Supplier<CompletableFuture<Collection<Tuple2<ResourceID, String>>>>
                 requestTaskManagerMetricQueryServiceGatewaysSupplier;
         protected Supplier<CompletableFuture<Acknowledge>> clusterShutdownSupplier;
-        protected BiFunction<AsynchronousJobOperationKey, String, CompletableFuture<Acknowledge>>
-                triggerSavepointFunction;
-        protected BiFunction<AsynchronousJobOperationKey, String, CompletableFuture<Acknowledge>>
-                stopWithSavepointFunction;
-        protected Function<AsynchronousJobOperationKey, CompletableFuture<OperationResult<String>>>
-                getSavepointStatusFunction;
+        protected BiFunction<JobID, String, CompletableFuture<String>> triggerSavepointFunction;
+        protected BiFunction<JobID, String, CompletableFuture<String>> stopWithSavepointFunction;
         protected TriFunction<
                         JobID,
                         OperatorID,
@@ -366,7 +332,6 @@ public class TestingRestfulGateway implements RestfulGateway {
                     DEFAULT_REQUEST_TASK_MANAGER_METRIC_QUERY_SERVICE_PATHS_SUPPLIER;
             triggerSavepointFunction = DEFAULT_TRIGGER_SAVEPOINT_FUNCTION;
             stopWithSavepointFunction = DEFAULT_STOP_WITH_SAVEPOINT_FUNCTION;
-            getSavepointStatusFunction = DEFAULT_GET_SAVEPOINT_STATUS_FUNCTION;
             clusterShutdownSupplier = DEFAULT_CLUSTER_SHUTDOWN_SUPPLIER;
             deliverCoordinationRequestToCoordinatorFunction =
                     DEFAULT_DELIVER_COORDINATION_REQUEST_TO_COORDINATOR_FUNCTION;
@@ -449,23 +414,14 @@ public class TestingRestfulGateway implements RestfulGateway {
         }
 
         public T setTriggerSavepointFunction(
-                BiFunction<AsynchronousJobOperationKey, String, CompletableFuture<Acknowledge>>
-                        triggerSavepointFunction) {
+                BiFunction<JobID, String, CompletableFuture<String>> triggerSavepointFunction) {
             this.triggerSavepointFunction = triggerSavepointFunction;
             return self();
         }
 
         public T setStopWithSavepointFunction(
-                BiFunction<AsynchronousJobOperationKey, String, CompletableFuture<Acknowledge>>
-                        stopWithSavepointFunction) {
+                BiFunction<JobID, String, CompletableFuture<String>> stopWithSavepointFunction) {
             this.stopWithSavepointFunction = stopWithSavepointFunction;
-            return self();
-        }
-
-        public T setGetSavepointStatusFunction(
-                Function<AsynchronousJobOperationKey, CompletableFuture<OperationResult<String>>>
-                        getSavepointStatusFunction) {
-            this.getSavepointStatusFunction = getSavepointStatusFunction;
             return self();
         }
 
@@ -510,7 +466,6 @@ public class TestingRestfulGateway implements RestfulGateway {
                     requestTaskManagerMetricQueryServiceGatewaysSupplier,
                     triggerSavepointFunction,
                     stopWithSavepointFunction,
-                    getSavepointStatusFunction,
                     clusterShutdownSupplier,
                     deliverCoordinationRequestToCoordinatorFunction);
         }

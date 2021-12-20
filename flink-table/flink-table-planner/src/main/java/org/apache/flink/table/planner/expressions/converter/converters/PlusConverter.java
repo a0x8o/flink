@@ -18,7 +18,6 @@
 
 package org.apache.flink.table.planner.expressions.converter.converters;
 
-import org.apache.flink.annotation.Internal;
 import org.apache.flink.table.expressions.CallExpression;
 import org.apache.flink.table.functions.BuiltInFunctionDefinitions;
 import org.apache.flink.table.planner.expressions.converter.CallExpressionConvertRule;
@@ -36,7 +35,6 @@ import static org.apache.flink.table.runtime.typeutils.TypeCheckUtils.isTemporal
 import static org.apache.flink.table.runtime.typeutils.TypeCheckUtils.isTimeInterval;
 
 /** Conversion for {@link BuiltInFunctionDefinitions#PLUS}. */
-@Internal
 class PlusConverter extends CustomizedConverter {
     @Override
     public RexNode convert(CallExpression call, CallExpressionConvertRule.ConvertContext context) {

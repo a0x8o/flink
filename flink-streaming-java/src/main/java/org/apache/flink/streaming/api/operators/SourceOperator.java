@@ -29,12 +29,10 @@ import org.apache.flink.api.connector.source.SourceReader;
 import org.apache.flink.api.connector.source.SourceReaderContext;
 import org.apache.flink.api.connector.source.SourceSplit;
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.configuration.MetricOptions;
 import org.apache.flink.core.io.InputStatus;
 import org.apache.flink.core.io.SimpleVersionedSerializer;
 import org.apache.flink.metrics.groups.SourceReaderMetricGroup;
 import org.apache.flink.runtime.io.AvailabilityProvider;
-import org.apache.flink.runtime.io.network.api.StopMode;
 import org.apache.flink.runtime.metrics.groups.InternalSourceReaderMetricGroup;
 import org.apache.flink.runtime.operators.coordination.OperatorEvent;
 import org.apache.flink.runtime.operators.coordination.OperatorEventGateway;
@@ -58,8 +56,6 @@ import org.apache.flink.util.CollectionUtil;
 import org.apache.flink.util.FlinkRuntimeException;
 import org.apache.flink.util.UserCodeClassLoader;
 import org.apache.flink.util.function.FunctionWithException;
-
-import javax.annotation.Nullable;
 
 import java.io.IOException;
 import java.util.List;
@@ -141,20 +137,16 @@ public class SourceOperator<OUT, SplitT extends SourceSplit> extends AbstractStr
     private OperatingMode operatingMode;
 
     private final CompletableFuture<Void> finished = new CompletableFuture<>();
-    private final SourceOperatorAvailabilityHelper availabilityHelper =
-            new SourceOperatorAvailabilityHelper();
+    private final CompletableFuture<Void> forcedStop = new CompletableFuture<>();
 
     private enum OperatingMode {
         READING,
         OUTPUT_NOT_INITIALIZED,
-        SOURCE_DRAINED,
         SOURCE_STOPPED,
         DATA_FINISHED
     }
 
     private InternalSourceReaderMetricGroup sourceMetricGroup;
-
-    private @Nullable LatencyMarkerEmitter<OUT> latencyMarerEmitter;
 
     public SourceOperator(
             FunctionWithException<SourceReaderContext, SourceReader<OUT, SplitT>, Exception>
@@ -307,35 +299,20 @@ public class SourceOperator<OUT, SplitT extends SourceSplit> extends AbstractStr
 
     @Override
     public void finish() throws Exception {
-        stopInternalServices();
+        if (eventTimeLogic != null) {
+            eventTimeLogic.stopPeriodicWatermarkEmits();
+        }
         super.finish();
 
         finished.complete(null);
     }
 
-    private void stopInternalServices() {
-        if (eventTimeLogic != null) {
-            eventTimeLogic.stopPeriodicWatermarkEmits();
-        }
-        if (latencyMarerEmitter != null) {
-            latencyMarerEmitter.close();
-        }
-    }
-
-    public CompletableFuture<Void> stop(StopMode mode) {
+    public CompletableFuture<Void> stop() {
         switch (operatingMode) {
             case OUTPUT_NOT_INITIALIZED:
             case READING:
-                this.operatingMode =
-                        mode == StopMode.DRAIN
-                                ? OperatingMode.SOURCE_DRAINED
-                                : OperatingMode.SOURCE_STOPPED;
-                availabilityHelper.forceStop();
-                if (this.operatingMode == OperatingMode.SOURCE_STOPPED) {
-                    stopInternalServices();
-                    finished.complete(null);
-                    return finished;
-                }
+                this.operatingMode = OperatingMode.SOURCE_STOPPED;
+                forcedStop.complete(null);
                 break;
         }
         return finished;
@@ -370,15 +347,10 @@ public class SourceOperator<OUT, SplitT extends SourceSplit> extends AbstractStr
         switch (operatingMode) {
             case OUTPUT_NOT_INITIALIZED:
                 currentMainOutput = eventTimeLogic.createMainOutput(output);
-                initializeLatencyMarkerEmitter(output);
                 lastInvokedOutput = output;
                 this.operatingMode = OperatingMode.READING;
                 return convertToInternalStatus(sourceReader.pollNext(currentMainOutput));
             case SOURCE_STOPPED:
-                this.operatingMode = OperatingMode.DATA_FINISHED;
-                sourceMetricGroup.idlingStarted();
-                return DataInputStatus.STOPPED;
-            case SOURCE_DRAINED:
                 this.operatingMode = OperatingMode.DATA_FINISHED;
                 sourceMetricGroup.idlingStarted();
                 return DataInputStatus.END_OF_DATA;
@@ -388,26 +360,6 @@ public class SourceOperator<OUT, SplitT extends SourceSplit> extends AbstractStr
             case READING:
             default:
                 throw new IllegalStateException("Unknown operating mode: " + operatingMode);
-        }
-    }
-
-    private void initializeLatencyMarkerEmitter(DataOutput<OUT> output) {
-        long latencyTrackingInterval =
-                getExecutionConfig().isLatencyTrackingConfigured()
-                        ? getExecutionConfig().getLatencyTrackingInterval()
-                        : getContainingTask()
-                                .getEnvironment()
-                                .getTaskManagerInfo()
-                                .getConfiguration()
-                                .getLong(MetricOptions.LATENCY_INTERVAL);
-        if (latencyTrackingInterval > 0) {
-            latencyMarerEmitter =
-                    new LatencyMarkerEmitter<>(
-                            getProcessingTimeService(),
-                            output::emitLatencyMarker,
-                            latencyTrackingInterval,
-                            getOperatorID(),
-                            getRuntimeContext().getIndexOfThisSubtask());
         }
     }
 
@@ -439,9 +391,11 @@ public class SourceOperator<OUT, SplitT extends SourceSplit> extends AbstractStr
         switch (operatingMode) {
             case OUTPUT_NOT_INITIALIZED:
             case READING:
-                return availabilityHelper.update(sourceReader.isAvailable());
+                CompletableFuture<Void> sourceReaderAvailable = sourceReader.isAvailable();
+                return sourceReaderAvailable == AvailabilityProvider.AVAILABLE
+                        ? sourceReaderAvailable
+                        : CompletableFuture.anyOf(sourceReaderAvailable, forcedStop);
             case SOURCE_STOPPED:
-            case SOURCE_DRAINED:
             case DATA_FINISHED:
                 return AvailabilityProvider.AVAILABLE;
             default:
@@ -502,28 +456,5 @@ public class SourceOperator<OUT, SplitT extends SourceSplit> extends AbstractStr
     @VisibleForTesting
     ListState<SplitT> getReaderState() {
         return readerState;
-    }
-
-    private static class SourceOperatorAvailabilityHelper {
-        private final CompletableFuture<Void> forcedStopFuture = new CompletableFuture<>();
-        private CompletableFuture<Void> currentReaderFuture;
-        private CompletableFuture<?> currentCombinedFuture;
-
-        public CompletableFuture<?> update(CompletableFuture<Void> sourceReaderFuture) {
-            if (sourceReaderFuture == AvailabilityProvider.AVAILABLE) {
-                return sourceReaderFuture;
-            } else if (sourceReaderFuture == currentReaderFuture) {
-                return currentCombinedFuture;
-            } else {
-                currentReaderFuture = sourceReaderFuture;
-                currentCombinedFuture =
-                        CompletableFuture.anyOf(forcedStopFuture, sourceReaderFuture);
-                return currentCombinedFuture;
-            }
-        }
-
-        public void forceStop() {
-            this.forcedStopFuture.complete(null);
-        }
     }
 }

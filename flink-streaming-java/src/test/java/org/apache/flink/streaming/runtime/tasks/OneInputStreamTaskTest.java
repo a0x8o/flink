@@ -765,8 +765,14 @@ public class OneInputStreamTaskTest extends TestLogger {
         final TaskMetricGroup taskMetricGroup =
                 TaskManagerMetricGroup.createTaskManagerMetricGroup(
                                 NoOpMetricRegistry.INSTANCE, "host", ResourceID.generate())
-                        .addJob(new JobID(), "jobname")
-                        .addTask(new JobVertexID(), new ExecutionAttemptID(), "task", 0, 0);
+                        .addTaskForJob(
+                                new JobID(),
+                                "jobname",
+                                new JobVertexID(),
+                                new ExecutionAttemptID(),
+                                "task",
+                                0,
+                                0);
 
         final StreamMockEnvironment env =
                 new StreamMockEnvironment(

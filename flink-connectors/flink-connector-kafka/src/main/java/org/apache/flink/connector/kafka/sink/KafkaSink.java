@@ -17,7 +17,6 @@
 
 package org.apache.flink.connector.kafka.sink;
 
-import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.api.connector.sink.Committer;
 import org.apache.flink.api.connector.sink.GlobalCommitter;
 import org.apache.flink.api.connector.sink.InitContextInitializationContextAdapter;
@@ -56,7 +55,6 @@ import java.util.function.Supplier;
  * @param <IN> type of the records written to Kafka
  * @see KafkaSinkBuilder on how to construct a KafkaSink
  */
-@PublicEvolving
 public class KafkaSink<IN> implements Sink<IN, KafkaCommittable, KafkaWriterState, Void> {
 
     private final DeliveryGuarantee deliveryGuarantee;

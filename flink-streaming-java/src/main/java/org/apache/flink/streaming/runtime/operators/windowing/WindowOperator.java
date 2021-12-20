@@ -58,6 +58,7 @@ import org.apache.flink.streaming.api.operators.InternalTimerService;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.streaming.api.operators.TimestampedCollector;
 import org.apache.flink.streaming.api.operators.Triggerable;
+import org.apache.flink.streaming.api.windowing.assigners.BaseAlignedWindowAssigner;
 import org.apache.flink.streaming.api.windowing.assigners.MergingWindowAssigner;
 import org.apache.flink.streaming.api.windowing.assigners.WindowAssigner;
 import org.apache.flink.streaming.api.windowing.triggers.Trigger;
@@ -187,6 +188,14 @@ public class WindowOperator<K, IN, ACC, OUT, W extends Window>
             OutputTag<IN> lateDataOutputTag) {
 
         super(windowFunction);
+
+        checkArgument(
+                !(windowAssigner instanceof BaseAlignedWindowAssigner),
+                "The "
+                        + windowAssigner.getClass().getSimpleName()
+                        + " cannot be used with a WindowOperator. "
+                        + "This assigner is only used with the AccumulatingProcessingTimeWindowOperator and "
+                        + "the AggregatingProcessingTimeWindowOperator");
 
         checkArgument(allowedLateness >= 0);
 

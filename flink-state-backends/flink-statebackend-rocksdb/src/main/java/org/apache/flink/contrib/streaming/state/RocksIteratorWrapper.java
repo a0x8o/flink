@@ -30,17 +30,11 @@ import java.io.Closeable;
 import java.nio.ByteBuffer;
 
 /**
- * This class was originally a wrapper around {@link RocksIterator} to check the iterator status for
- * all the methods mentioned to require this check in the wiki documentation: seek, next,
- * seekToFirst, seekToLast, seekForPrev, and prev. At that time, this was required because the
- * iterator may pass the blocks or files it had difficulties in reading (because of IO errors, data
- * corruptions or other issues) and continue with the next available keys. The status flag may not
- * be OK, even if the iterator is valid.
- *
- * <p>However, after <a href="https://github.com/facebook/rocksdb/pull/3810">3810</a> was merged,
- * the behaviour had changed. If the iterator is valid, the status() is guaranteed to be OK; If the
- * iterator is not valid, there are two possibilities: 1) We have reached the end of the data. And
- * in this case, status() is OK; 2) There is an error. In this case, status() is not OK; More
+ * This is a wrapper around {@link RocksIterator} to check the iterator status for all the methods
+ * mentioned to require this check in the wiki documentation: seek, next, seekToFirst, seekToLast,
+ * seekForPrev, and prev. This is required because the iterator may pass the blocks or files it had
+ * difficulties in reading (because of IO error, data corruption or other issues) and continue with
+ * the next available keys. The status flag may not be OK, even if the iterator is valid. More
  * information can be found <a
  * href="https://github.com/facebook/rocksdb/wiki/Iterator#error-handling">here</a>.
  */
@@ -54,52 +48,55 @@ public class RocksIteratorWrapper implements RocksIteratorInterface, Closeable {
 
     @Override
     public boolean isValid() {
-        boolean isValid = this.iterator.isValid();
-        if (!isValid) {
-            status();
-        }
-
-        return isValid;
+        return this.iterator.isValid();
     }
 
     @Override
     public void seekToFirst() {
         iterator.seekToFirst();
+        status();
     }
 
     @Override
     public void seekToLast() {
-        iterator.seekToLast();
+        iterator.seekToFirst();
+        status();
     }
 
     @Override
     public void seek(byte[] target) {
         iterator.seek(target);
+        status();
     }
 
     @Override
     public void seekForPrev(byte[] target) {
         iterator.seekForPrev(target);
+        status();
     }
 
     @Override
     public void seek(ByteBuffer target) {
         iterator.seek(target);
+        status();
     }
 
     @Override
     public void seekForPrev(ByteBuffer target) {
         iterator.seekForPrev(target);
+        status();
     }
 
     @Override
     public void next() {
         iterator.next();
+        status();
     }
 
     @Override
     public void prev() {
         iterator.prev();
+        status();
     }
 
     @Override

@@ -47,7 +47,8 @@ public enum CheckpointFailureReason {
 
     CHECKPOINT_DECLINED_TASK_NOT_READY(false, "Checkpoint was declined (tasks not ready)"),
 
-    CHECKPOINT_DECLINED_TASK_CLOSING(false, "Checkpoint was declined (task is closing)"),
+    CHECKPOINT_DECLINED_TASK_CLOSING(
+            false, "Checkpoint was declined (task's operators partially closed)"),
 
     CHECKPOINT_DECLINED_TASK_NOT_CHECKPOINTING(false, "Task does not support checkpointing"),
 

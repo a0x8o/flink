@@ -64,7 +64,8 @@ public class JobConfigHandler
 
     @Override
     protected JobConfigInfo handleRequest(
-            HandlerRequest<EmptyRequestBody> request, AccessExecutionGraph executionGraph) {
+            HandlerRequest<EmptyRequestBody, JobMessageParameters> request,
+            AccessExecutionGraph executionGraph) {
         return createJobConfigInfo(executionGraph);
     }
 

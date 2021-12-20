@@ -63,12 +63,12 @@ public abstract class AbstractAccessExecutionGraphHandler<
 
     @Override
     protected R handleRequest(
-            HandlerRequest<EmptyRequestBody> request, ExecutionGraphInfo executionGraphInfo)
+            HandlerRequest<EmptyRequestBody, M> request, ExecutionGraphInfo executionGraphInfo)
             throws RestHandlerException {
         return handleRequest(request, executionGraphInfo.getArchivedExecutionGraph());
     }
 
     protected abstract R handleRequest(
-            HandlerRequest<EmptyRequestBody> request, AccessExecutionGraph executionGraph)
+            HandlerRequest<EmptyRequestBody, M> request, AccessExecutionGraph executionGraph)
             throws RestHandlerException;
 }

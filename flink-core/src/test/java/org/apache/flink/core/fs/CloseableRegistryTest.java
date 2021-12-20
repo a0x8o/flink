@@ -18,15 +18,14 @@
 
 package org.apache.flink.core.fs;
 
-import org.apache.flink.util.AbstractAutoCloseableRegistry;
+import org.apache.flink.util.AbstractCloseableRegistry;
 
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /** Tests for the {@link CloseableRegistry}. */
-public class CloseableRegistryTest
-        extends AbstractAutoCloseableRegistryTest<Closeable, Closeable, Object> {
+public class CloseableRegistryTest extends AbstractCloseableRegistryTest<Closeable, Object> {
 
     @Override
     protected void registerCloseable(final Closeable closeable) throws IOException {
@@ -34,20 +33,18 @@ public class CloseableRegistryTest
     }
 
     @Override
-    protected AbstractAutoCloseableRegistry<Closeable, Closeable, Object, IOException>
-            createRegistry() {
+    protected AbstractCloseableRegistry<Closeable, Object> createRegistry() {
 
         return new CloseableRegistry();
     }
 
     @Override
-    protected ProducerThread<Closeable, Closeable, Object> createProducerThread(
-            AbstractAutoCloseableRegistry<Closeable, Closeable, Object, IOException> registry,
+    protected ProducerThread<Closeable, Object> createProducerThread(
+            AbstractCloseableRegistry<Closeable, Object> registry,
             AtomicInteger unclosedCounter,
             int maxStreams) {
 
-        return new ProducerThread<Closeable, Closeable, Object>(
-                registry, unclosedCounter, maxStreams) {
+        return new ProducerThread<Closeable, Object>(registry, unclosedCounter, maxStreams) {
             @Override
             protected void createAndRegisterStream() throws IOException {
                 TestStream testStream = new TestStream(unclosedCounter);

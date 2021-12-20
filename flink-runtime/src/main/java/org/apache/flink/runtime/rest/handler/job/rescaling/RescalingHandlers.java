@@ -35,17 +35,12 @@ import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpResponseSt
 
 import javax.annotation.Nonnull;
 
-import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 /** Rest handler to trigger and poll the rescaling of a running job. */
 public class RescalingHandlers
         extends AbstractAsynchronousOperationHandlers<AsynchronousJobOperationKey, Acknowledge> {
-
-    public RescalingHandlers(Duration cacheDuration) {
-        super(cacheDuration);
-    }
 
     private static RestHandlerException featureDisabledException() {
         return new RestHandlerException(
@@ -67,7 +62,9 @@ public class RescalingHandlers
 
         @Override
         public CompletableFuture<TriggerResponse> handleRequest(
-                @Nonnull final HandlerRequest<EmptyRequestBody> request,
+                @Nonnull
+                        final HandlerRequest<EmptyRequestBody, RescalingTriggerMessageParameters>
+                                request,
                 @Nonnull final RestfulGateway gateway)
                 throws RestHandlerException {
             throw featureDisabledException();
@@ -75,13 +72,14 @@ public class RescalingHandlers
 
         @Override
         protected CompletableFuture<Acknowledge> triggerOperation(
-                HandlerRequest<EmptyRequestBody> request, RestfulGateway gateway) {
+                HandlerRequest<EmptyRequestBody, RescalingTriggerMessageParameters> request,
+                RestfulGateway gateway) {
             throw new UnsupportedOperationException();
         }
 
         @Override
         protected AsynchronousJobOperationKey createOperationKey(
-                HandlerRequest<EmptyRequestBody> request) {
+                HandlerRequest<EmptyRequestBody, RescalingTriggerMessageParameters> request) {
             throw new UnsupportedOperationException();
         }
     }
@@ -101,7 +99,10 @@ public class RescalingHandlers
         @Override
         public CompletableFuture<AsynchronousOperationResult<AsynchronousOperationInfo>>
                 handleRequest(
-                        @Nonnull final HandlerRequest<EmptyRequestBody> request,
+                        @Nonnull
+                                final HandlerRequest<
+                                                EmptyRequestBody, RescalingStatusMessageParameters>
+                                        request,
                         @Nonnull final RestfulGateway gateway)
                         throws RestHandlerException {
             throw featureDisabledException();
@@ -109,7 +110,7 @@ public class RescalingHandlers
 
         @Override
         protected AsynchronousJobOperationKey getOperationKey(
-                HandlerRequest<EmptyRequestBody> request) {
+                HandlerRequest<EmptyRequestBody, RescalingStatusMessageParameters> request) {
             throw new UnsupportedOperationException();
         }
 

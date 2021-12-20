@@ -18,43 +18,53 @@
 
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Injectable } from '@angular/core';
-import { Observable } from 'rxjs';
-import { map } from 'rxjs/operators';
-
 import { BASE_URL } from 'config';
-import { JobManagerLogItem } from 'interfaces';
+import { map } from 'rxjs/operators';
 
 @Injectable({
   providedIn: 'root'
 })
 export class JobManagerService {
-  constructor(private readonly httpClient: HttpClient) {}
-
-  public loadConfig(): Observable<Array<{ key: string; value: string }>> {
+  /**
+   * Load JM config
+   */
+  loadConfig() {
     return this.httpClient.get<Array<{ key: string; value: string }>>(`${BASE_URL}/jobmanager/config`);
   }
 
-  public loadLogs(): Observable<string> {
+  /**
+   * Load JM logs
+   */
+  loadLogs() {
     return this.httpClient.get(`${BASE_URL}/jobmanager/log`, {
       responseType: 'text',
       headers: new HttpHeaders().append('Cache-Control', 'no-cache')
     });
   }
 
-  public loadStdout(): Observable<string> {
+  /**
+   * Load JM stdout
+   */
+  loadStdout() {
     return this.httpClient.get(`${BASE_URL}/jobmanager/stdout`, {
       responseType: 'text',
       headers: new HttpHeaders().append('Cache-Control', 'no-cache')
     });
   }
-
-  public loadLogList(): Observable<JobManagerLogItem[]> {
+  /**
+   * Load JM log list
+   */
+  loadLogList() {
     return this.httpClient
-      .get<{ logs: JobManagerLogItem[] }>(`${BASE_URL}/jobmanager/logs`)
+      .get<{ logs: Array<{ name: string; size: number }> }>(`${BASE_URL}/jobmanager/logs`)
       .pipe(map(data => data.logs));
   }
 
-  public loadLog(logName: string): Observable<{ data: string; url: string }> {
+  /**
+   * Load JM log
+   * @param logName
+   */
+  loadLog(logName: string) {
     const url = `${BASE_URL}/jobmanager/logs/${logName}`;
     return this.httpClient
       .get(url, { responseType: 'text', headers: new HttpHeaders().append('Cache-Control', 'no-cache') })
@@ -68,13 +78,20 @@ export class JobManagerService {
       );
   }
 
-  public getMetricsName(): Observable<string[]> {
+  /**
+   * Get JM metric name
+   */
+  getMetricsName() {
     return this.httpClient
       .get<Array<{ id: string }>>(`${BASE_URL}/jobmanager/metrics`)
       .pipe(map(arr => arr.map(item => item.id)));
   }
 
-  public getMetrics(listOfMetricName: string[]): Observable<{ [p: string]: number }> {
+  /**
+   * Get JM metric
+   * @param listOfMetricName
+   */
+  getMetrics(listOfMetricName: string[]) {
     const metricName = listOfMetricName.join(',');
     return this.httpClient
       .get<Array<{ id: string; value: string }>>(`${BASE_URL}/jobmanager/metrics?get=${metricName}`)
@@ -88,4 +105,6 @@ export class JobManagerService {
         })
       );
   }
+
+  constructor(private httpClient: HttpClient) {}
 }

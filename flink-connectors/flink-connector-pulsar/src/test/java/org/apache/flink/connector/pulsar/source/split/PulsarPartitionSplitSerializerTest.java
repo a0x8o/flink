@@ -18,6 +18,7 @@
 
 package org.apache.flink.connector.pulsar.source.split;
 
+import org.apache.flink.connector.pulsar.source.enumerator.cursor.StartCursor;
 import org.apache.flink.connector.pulsar.source.enumerator.cursor.StopCursor;
 import org.apache.flink.connector.pulsar.source.enumerator.topic.TopicPartition;
 
@@ -37,6 +38,7 @@ class PulsarPartitionSplitSerializerTest {
         PulsarPartitionSplit split =
                 new PulsarPartitionSplit(
                         new TopicPartition(randomAlphabetic(10), 10, createFullRange()),
+                        StartCursor.defaultStartCursor(),
                         StopCursor.defaultStopCursor());
 
         byte[] bytes = INSTANCE.serialize(split);

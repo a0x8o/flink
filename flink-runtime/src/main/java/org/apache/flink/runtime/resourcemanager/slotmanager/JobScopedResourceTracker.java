@@ -166,10 +166,6 @@ class JobScopedResourceTracker {
         return resourceRequirements.isEmpty() && excessResources.isEmpty();
     }
 
-    public boolean isRequirementEmpty() {
-        return resourceRequirements.isEmpty();
-    }
-
     private void findExcessSlots() {
         final Collection<ExcessResource> excessResources = new ArrayList<>();
 

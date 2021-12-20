@@ -20,7 +20,10 @@ package org.apache.flink.connector.pulsar.source.enumerator.topic;
 
 import org.apache.flink.util.InstantiationUtil;
 
+import org.junit.jupiter.api.RepeatedTest;
 import org.junit.jupiter.api.Test;
+
+import java.util.Random;
 
 import static org.apache.flink.connector.pulsar.source.enumerator.topic.TopicRange.MAX_RANGE;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -30,30 +33,26 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 /** Unit tests for {@link TopicRange}. */
 class TopicRangeTest {
 
+    private final Random random = new Random(System.currentTimeMillis());
+
+    @RepeatedTest(10)
+    @SuppressWarnings("java:S5778")
+    void rangeCreationHaveALimitedScope() {
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new TopicRange(-1, random.nextInt(MAX_RANGE)));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new TopicRange(1, MAX_RANGE + random.nextInt(10000)));
+
+        assertDoesNotThrow(() -> new TopicRange(1, random.nextInt(MAX_RANGE)));
+    }
+
     @Test
     void topicRangeIsSerializable() throws Exception {
-        final TopicRange range = new TopicRange(1, 5);
-        final TopicRange cloneRange = InstantiationUtil.clone(range);
+        TopicRange range = new TopicRange(10, random.nextInt(MAX_RANGE));
+        TopicRange cloneRange = InstantiationUtil.clone(range);
+
         assertEquals(range, cloneRange);
-    }
-
-    @Test
-    void negativeStart() {
-        assertThrows(IllegalArgumentException.class, () -> new TopicRange(-1, 1));
-    }
-
-    @Test
-    void endBelowTheMaximum() {
-        assertDoesNotThrow(() -> new TopicRange(1, MAX_RANGE - 1));
-    }
-
-    @Test
-    void endOnTheMaximum() {
-        assertDoesNotThrow(() -> new TopicRange(1, MAX_RANGE));
-    }
-
-    @Test
-    void endAboveTheMaximum() {
-        assertThrows(IllegalArgumentException.class, () -> new TopicRange(1, MAX_RANGE + 1));
     }
 }

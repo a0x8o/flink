@@ -48,10 +48,11 @@ class NetworkOutputProcessor(OutputProcessor):
     def process_outputs(self, windowed_value: WindowedValue, results: Iterable[Any]):
         output_stream = self._consumer.output_stream
         self._value_coder_impl.encode_to_stream(results, output_stream, True)
-        self._value_coder_impl._output_stream.maybe_flush()
+        output_stream.maybe_flush()
 
     def close(self):
-        self._value_coder_impl._output_stream.close()
+        if self._value_coder_impl._output_stream:
+            self._value_coder_impl._output_stream.close()
 
 
 class IntermediateOutputProcessor(OutputProcessor):

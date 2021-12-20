@@ -35,9 +35,8 @@ class PriorityQueueStateChangeLoggerImpl<K, T> extends AbstractStateChangeLogger
             TypeSerializer<T> serializer,
             InternalKeyContext<K> keyContext,
             StateChangelogWriter<?> stateChangelogWriter,
-            RegisteredPriorityQueueStateBackendMetaInfo<T> meta,
-            short stateId) {
-        super(stateChangelogWriter, keyContext, meta, stateId);
+            RegisteredPriorityQueueStateBackendMetaInfo<T> meta) {
+        super(stateChangelogWriter, keyContext, meta);
         this.serializer = checkNotNull(serializer);
     }
 

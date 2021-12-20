@@ -24,7 +24,6 @@ import org.apache.flink.api.common.operators.ResourceSpec;
 import org.apache.flink.api.common.time.Deadline;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.core.testutils.FlinkMatchers;
 import org.apache.flink.core.testutils.OneShotLatch;
 import org.apache.flink.runtime.checkpoint.Checkpoints;
 import org.apache.flink.runtime.checkpoint.metadata.CheckpointMetadata;
@@ -62,7 +61,6 @@ import org.apache.flink.runtime.leaderelection.LeaderElectionService;
 import org.apache.flink.runtime.leaderelection.TestingLeaderElectionService;
 import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.messages.FlinkJobNotFoundException;
-import org.apache.flink.runtime.messages.FlinkJobTerminatedWithoutCancellationException;
 import org.apache.flink.runtime.messages.webmonitor.MultipleJobsDetails;
 import org.apache.flink.runtime.rest.handler.legacy.utils.ArchivedExecutionGraphBuilder;
 import org.apache.flink.runtime.rpc.FatalErrorHandler;
@@ -99,7 +97,6 @@ import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -330,8 +327,7 @@ public class DispatcherTest extends AbstractDispatcherTest {
         // this call is supposed to fail
         try {
             dispatcherGateway
-                    .triggerSavepointAndGetLocation(
-                            jobId, "file:///tmp/savepoint", TriggerSavepointMode.SAVEPOINT, TIMEOUT)
+                    .triggerSavepoint(jobId, "file:///tmp/savepoint", false, TIMEOUT)
                     .get();
             fail("Previous statement should have failed");
         } catch (ExecutionException t) {
@@ -373,78 +369,6 @@ public class DispatcherTest extends AbstractDispatcherTest {
         assertThat(
                 dispatcherGateway.requestJobResult(jobID, TIMEOUT).get().getApplicationStatus(),
                 is(ApplicationStatus.CANCELED));
-    }
-
-    @Test
-    public void testCancellationOfCanceledTerminalDoesNotThrowException() throws Exception {
-        final CompletableFuture<JobManagerRunnerResult> jobTerminationFuture =
-                new CompletableFuture<>();
-        dispatcher =
-                createAndStartDispatcher(
-                        heartbeatServices,
-                        haServices,
-                        new FinishingJobManagerRunnerFactory(jobTerminationFuture, () -> {}));
-        jobMasterLeaderElectionService.isLeader(UUID.randomUUID());
-        DispatcherGateway dispatcherGateway = dispatcher.getSelfGateway(DispatcherGateway.class);
-
-        JobID jobId = jobGraph.getJobID();
-
-        dispatcherGateway.submitJob(jobGraph, TIMEOUT).get();
-        jobTerminationFuture.complete(
-                JobManagerRunnerResult.forSuccess(
-                        new ExecutionGraphInfo(
-                                new ArchivedExecutionGraphBuilder()
-                                        .setJobID(jobId)
-                                        .setState(JobStatus.CANCELED)
-                                        .build())));
-
-        // wait for job to finish
-        dispatcherGateway.requestJobResult(jobId, TIMEOUT).get();
-        // sanity check
-        assertThat(
-                dispatcherGateway.requestJobStatus(jobId, TIMEOUT).get(), is(JobStatus.CANCELED));
-
-        dispatcherGateway.cancelJob(jobId, TIMEOUT).get();
-    }
-
-    @Test
-    public void testCancellationOfNonCanceledTerminalJobFailsWithAppropriateException()
-            throws Exception {
-
-        final CompletableFuture<JobManagerRunnerResult> jobTerminationFuture =
-                new CompletableFuture<>();
-        dispatcher =
-                createAndStartDispatcher(
-                        heartbeatServices,
-                        haServices,
-                        new FinishingJobManagerRunnerFactory(jobTerminationFuture, () -> {}));
-        jobMasterLeaderElectionService.isLeader(UUID.randomUUID());
-        DispatcherGateway dispatcherGateway = dispatcher.getSelfGateway(DispatcherGateway.class);
-
-        JobID jobId = jobGraph.getJobID();
-
-        dispatcherGateway.submitJob(jobGraph, TIMEOUT).get();
-        jobTerminationFuture.complete(
-                JobManagerRunnerResult.forSuccess(
-                        new ExecutionGraphInfo(
-                                new ArchivedExecutionGraphBuilder()
-                                        .setJobID(jobId)
-                                        .setState(JobStatus.FINISHED)
-                                        .build())));
-
-        // wait for job to finish
-        dispatcherGateway.requestJobResult(jobId, TIMEOUT).get();
-        // sanity check
-        assertThat(
-                dispatcherGateway.requestJobStatus(jobId, TIMEOUT).get(), is(JobStatus.FINISHED));
-
-        final CompletableFuture<Acknowledge> cancelFuture =
-                dispatcherGateway.cancelJob(jobId, TIMEOUT);
-
-        assertThat(
-                cancelFuture,
-                FlinkMatchers.futureWillCompleteExceptionally(
-                        FlinkJobTerminatedWithoutCancellationException.class, Duration.ofHours(8)));
     }
 
     @Test
@@ -1054,7 +978,7 @@ public class DispatcherTest extends AbstractDispatcherTest {
                 FatalErrorHandler fatalErrorHandler,
                 long initializationTimestamp)
                 throws Exception {
-            return new BlockingTerminationJobManagerService(
+            return new BlockingTerminationJobMangerService(
                     jobIdToBlock,
                     future,
                     new DefaultJobMasterServiceProcessFactory(
@@ -1077,13 +1001,13 @@ public class DispatcherTest extends AbstractDispatcherTest {
         }
     }
 
-    private static final class BlockingTerminationJobManagerService
+    private static final class BlockingTerminationJobMangerService
             extends JobMasterServiceLeadershipRunner {
 
         private final JobID jobIdToBlock;
         private final CompletableFuture<Void> future;
 
-        public BlockingTerminationJobManagerService(
+        public BlockingTerminationJobMangerService(
                 JobID jobIdToBlock,
                 CompletableFuture<Void> future,
                 JobMasterServiceProcessFactory jobMasterServiceProcessFactory,

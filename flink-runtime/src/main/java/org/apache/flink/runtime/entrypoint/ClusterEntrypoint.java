@@ -359,11 +359,7 @@ public abstract class ClusterEntrypoint implements AutoCloseableAsync, FatalErro
             Configuration configuration, Executor executor, RpcSystemUtils rpcSystemUtils)
             throws Exception {
         return HighAvailabilityServicesUtils.createHighAvailabilityServices(
-                configuration,
-                executor,
-                AddressResolution.NO_ADDRESS_RESOLUTION,
-                rpcSystemUtils,
-                this);
+                configuration, executor, AddressResolution.NO_ADDRESS_RESOLUTION, rpcSystemUtils);
     }
 
     protected HeartbeatServices createHeartbeatServices(Configuration configuration) {

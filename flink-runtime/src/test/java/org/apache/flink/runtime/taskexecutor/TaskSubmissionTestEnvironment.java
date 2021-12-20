@@ -47,7 +47,6 @@ import org.apache.flink.runtime.rpc.TestingRpcService;
 import org.apache.flink.runtime.shuffle.ShuffleEnvironment;
 import org.apache.flink.runtime.state.TaskExecutorLocalStateStoresManager;
 import org.apache.flink.runtime.taskexecutor.rpc.RpcResultPartitionConsumableNotifier;
-import org.apache.flink.runtime.taskexecutor.slot.DefaultTimerService;
 import org.apache.flink.runtime.taskexecutor.slot.TaskSlotTable;
 import org.apache.flink.runtime.taskexecutor.slot.TaskSlotUtils;
 import org.apache.flink.runtime.taskexecutor.slot.TestingTaskSlotTable;
@@ -57,9 +56,9 @@ import org.apache.flink.runtime.taskmanager.NoOpTaskManagerActions;
 import org.apache.flink.runtime.taskmanager.Task;
 import org.apache.flink.runtime.taskmanager.TaskManagerActions;
 import org.apache.flink.runtime.taskmanager.TestCheckpointResponder;
+import org.apache.flink.runtime.testutils.TestingUtils;
 import org.apache.flink.runtime.util.ConfigurationParserUtils;
 import org.apache.flink.runtime.util.TestingFatalErrorHandler;
-import org.apache.flink.testutils.TestingUtils;
 import org.apache.flink.util.FlinkRuntimeException;
 import org.apache.flink.util.concurrent.Executors;
 
@@ -90,7 +89,7 @@ class TaskSubmissionTestEnvironment implements AutoCloseable {
     private final TestingFatalErrorHandler testingFatalErrorHandler =
             new TestingFatalErrorHandler();
     private final TimerService<AllocationID> timerService =
-            new DefaultTimerService<>(TestingUtils.defaultExecutor(), timeout.toMilliseconds());
+            new TimerService<>(TestingUtils.defaultExecutor(), timeout.toMilliseconds());
 
     private final TestingHighAvailabilityServices haServices;
     private final TemporaryFolder temporaryFolder;

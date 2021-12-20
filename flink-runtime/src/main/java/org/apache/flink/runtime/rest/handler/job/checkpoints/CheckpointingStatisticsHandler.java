@@ -78,7 +78,8 @@ public class CheckpointingStatisticsHandler
 
     @Override
     protected CheckpointingStatistics handleRequest(
-            HandlerRequest<EmptyRequestBody> request, AccessExecutionGraph executionGraph)
+            HandlerRequest<EmptyRequestBody, JobMessageParameters> request,
+            AccessExecutionGraph executionGraph)
             throws RestHandlerException {
         return createCheckpointingStatistics(executionGraph);
     }

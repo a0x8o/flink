@@ -58,7 +58,8 @@ public class ClusterOverviewHandler
 
     @Override
     public CompletableFuture<ClusterOverviewWithVersion> handleRequest(
-            @Nonnull HandlerRequest<EmptyRequestBody> request, @Nonnull RestfulGateway gateway) {
+            @Nonnull HandlerRequest<EmptyRequestBody, EmptyMessageParameters> request,
+            @Nonnull RestfulGateway gateway) {
         CompletableFuture<ClusterOverview> overviewFuture = gateway.requestClusterOverview(timeout);
 
         return overviewFuture.thenApply(

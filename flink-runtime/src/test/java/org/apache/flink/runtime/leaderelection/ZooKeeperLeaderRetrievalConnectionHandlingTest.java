@@ -24,7 +24,6 @@ import org.apache.flink.configuration.HighAvailabilityOptions;
 import org.apache.flink.runtime.leaderretrieval.LeaderRetrievalDriver;
 import org.apache.flink.runtime.leaderretrieval.LeaderRetrievalEventHandler;
 import org.apache.flink.runtime.leaderretrieval.ZooKeeperLeaderRetrievalDriver;
-import org.apache.flink.runtime.rest.util.NoOpFatalErrorHandler;
 import org.apache.flink.runtime.testutils.CommonTestUtils;
 import org.apache.flink.runtime.util.TestingFatalErrorHandlerResource;
 import org.apache.flink.runtime.util.ZooKeeperUtils;
@@ -78,8 +77,7 @@ public class ZooKeeperLeaderRetrievalConnectionHandlingTest extends TestLogger {
         config.setString(
                 HighAvailabilityOptions.HA_ZOOKEEPER_QUORUM, testingServer.getConnectString());
 
-        zooKeeperClient =
-                ZooKeeperUtils.startCuratorFramework(config, NoOpFatalErrorHandler.INSTANCE);
+        zooKeeperClient = ZooKeeperUtils.startCuratorFramework(config);
         zooKeeperClient.blockUntilConnected();
     }
 

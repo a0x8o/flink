@@ -163,10 +163,6 @@ Classes to define source & sink:
     - :class:`connectors.StreamingFileSink`:
       Sink that emits its input elements to files within buckets. This is integrated with the
       checkpointing mechanism to provide exactly once semantics.
-    - :class:`connectors.RMQSource`:
-      A streaming data source that pulls a parallel data stream from RabbitMQ.
-    - :class:`connectors.RMQSink`:
-      A Sink for publishing data into RabbitMQ.
 
 Other important classes:
 

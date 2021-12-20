@@ -20,7 +20,6 @@ package org.apache.flink.table.planner.functions.bridging;
 
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.table.catalog.DataTypeFactory;
-import org.apache.flink.table.functions.BuiltInFunctionDefinition;
 import org.apache.flink.table.functions.FunctionDefinition;
 import org.apache.flink.table.functions.FunctionIdentifier;
 import org.apache.flink.table.functions.FunctionKind;
@@ -143,12 +142,6 @@ public final class BridgingSqlFunction extends SqlFunction {
         final FlinkContext context = ShortcutUtils.unwrapContext(cluster);
         final FlinkTypeFactory typeFactory = ShortcutUtils.unwrapTypeFactory(cluster);
         return of(context, typeFactory, identifier, definition);
-    }
-
-    /** Creates an instance of a scalar or table built-in function during translation. */
-    public static BridgingSqlFunction of(
-            RelOptCluster cluster, BuiltInFunctionDefinition functionDefinition) {
-        return of(cluster, FunctionIdentifier.of(functionDefinition.getName()), functionDefinition);
     }
 
     public DataTypeFactory getDataTypeFactory() {

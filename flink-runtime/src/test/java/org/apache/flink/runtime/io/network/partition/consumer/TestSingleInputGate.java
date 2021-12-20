@@ -18,9 +18,6 @@
 
 package org.apache.flink.runtime.io.network.partition.consumer;
 
-import org.apache.flink.configuration.Configuration;
-import org.apache.flink.runtime.throughput.BufferDebloatConfiguration;
-
 import static org.apache.flink.util.Preconditions.checkArgument;
 
 /** A test input gate to mock reading data. */
@@ -31,25 +28,12 @@ public class TestSingleInputGate {
     protected final TestInputChannel[] inputChannels;
 
     public TestSingleInputGate(int numberOfInputChannels, int gateIndex, boolean initialize) {
-        this(
-                numberOfInputChannels,
-                gateIndex,
-                initialize,
-                BufferDebloatConfiguration.fromConfiguration(new Configuration()));
-    }
-
-    public TestSingleInputGate(
-            int numberOfInputChannels,
-            int gateIndex,
-            boolean initialize,
-            BufferDebloatConfiguration bufferDebloatConfiguration) {
         checkArgument(numberOfInputChannels >= 1);
 
         inputGate =
                 new SingleInputGateBuilder()
                         .setNumberOfChannels(numberOfInputChannels)
                         .setSingleInputGateIndex(gateIndex)
-                        .setBufferDebloatConfiguration(bufferDebloatConfiguration)
                         .build();
         inputChannels = new TestInputChannel[numberOfInputChannels];
 

@@ -19,7 +19,7 @@
 package org.apache.flink.connector.jdbc.table;
 
 import org.apache.flink.api.java.tuple.Tuple2;
-import org.apache.flink.connector.jdbc.dialect.JdbcDialectLoader;
+import org.apache.flink.connector.jdbc.dialect.JdbcDialects;
 import org.apache.flink.connector.jdbc.internal.options.JdbcConnectorOptions;
 import org.apache.flink.connector.jdbc.internal.options.JdbcLookupOptions;
 import org.apache.flink.connector.jdbc.internal.options.JdbcReadOptions;
@@ -194,7 +194,7 @@ public class JdbcTableSourceSinkFactory
                 JdbcConnectorOptions.builder()
                         .setDBUrl(url)
                         .setTableName(descriptorProperties.getString(CONNECTOR_TABLE))
-                        .setDialect(JdbcDialectLoader.load(url));
+                        .setDialect(JdbcDialects.get(url).get());
 
         descriptorProperties
                 .getOptionalDuration(CONNECTOR_CONNECTION_MAX_RETRY_TIMEOUT)

@@ -100,54 +100,49 @@ public class ZooKeeperHaServices extends AbstractHaServices {
 
     // ------------------------------------------------------------------------
 
-    /** The curator resource to use. */
-    private final CuratorFrameworkWithUnhandledErrorListener curatorFrameworkWrapper;
+    /** The ZooKeeper client to use. */
+    private final CuratorFramework client;
 
     public ZooKeeperHaServices(
-            CuratorFrameworkWithUnhandledErrorListener curatorFrameworkWrapper,
+            CuratorFramework client,
             Executor executor,
             Configuration configuration,
             BlobStoreService blobStoreService) {
         super(configuration, executor, blobStoreService);
-        this.curatorFrameworkWrapper = checkNotNull(curatorFrameworkWrapper);
+        this.client = checkNotNull(client);
     }
 
     @Override
     public CheckpointRecoveryFactory createCheckpointRecoveryFactory() throws Exception {
         return new ZooKeeperCheckpointRecoveryFactory(
-                ZooKeeperUtils.useNamespaceAndEnsurePath(
-                        curatorFrameworkWrapper.asCuratorFramework(), ZooKeeperUtils.getJobsPath()),
+                ZooKeeperUtils.useNamespaceAndEnsurePath(client, ZooKeeperUtils.getJobsPath()),
                 configuration,
                 ioExecutor);
     }
 
     @Override
     public JobGraphStore createJobGraphStore() throws Exception {
-        return ZooKeeperUtils.createJobGraphs(
-                curatorFrameworkWrapper.asCuratorFramework(), configuration);
+        return ZooKeeperUtils.createJobGraphs(client, configuration);
     }
 
     @Override
     public RunningJobsRegistry createRunningJobsRegistry() {
-        return new ZooKeeperRunningJobsRegistry(
-                curatorFrameworkWrapper.asCuratorFramework(), configuration);
+        return new ZooKeeperRunningJobsRegistry(client, configuration);
     }
 
     @Override
     protected LeaderElectionService createLeaderElectionService(String leaderPath) {
-        return ZooKeeperUtils.createLeaderElectionService(
-                curatorFrameworkWrapper.asCuratorFramework(), leaderPath);
+        return ZooKeeperUtils.createLeaderElectionService(client, leaderPath);
     }
 
     @Override
     protected LeaderRetrievalService createLeaderRetrievalService(String leaderPath) {
-        return ZooKeeperUtils.createLeaderRetrievalService(
-                curatorFrameworkWrapper.asCuratorFramework(), leaderPath, configuration);
+        return ZooKeeperUtils.createLeaderRetrievalService(client, leaderPath, configuration);
     }
 
     @Override
     public void internalClose() {
-        curatorFrameworkWrapper.close();
+        client.close();
     }
 
     @Override
@@ -203,17 +198,13 @@ public class ZooKeeperHaServices extends AbstractHaServices {
         // The retry logic can be removed once we upgrade to Curator version >= 4.0.1.
         boolean zNodeDeleted = false;
         while (!zNodeDeleted) {
-            Stat stat = curatorFrameworkWrapper.asCuratorFramework().checkExists().forPath(path);
+            Stat stat = client.checkExists().forPath(path);
             if (stat == null) {
                 logger.debug("znode {} has been deleted", path);
                 return;
             }
             try {
-                curatorFrameworkWrapper
-                        .asCuratorFramework()
-                        .delete()
-                        .deletingChildrenIfNeeded()
-                        .forPath(path);
+                client.delete().deletingChildrenIfNeeded().forPath(path);
                 zNodeDeleted = true;
             } catch (KeeperException.NoNodeException ignored) {
                 // concurrent delete operation. Try again.
@@ -234,12 +225,8 @@ public class ZooKeeperHaServices extends AbstractHaServices {
      */
     private void tryDeleteEmptyParentZNodes() throws Exception {
         // try to delete the parent znodes if they are empty
-        String remainingPath =
-                getParentPath(
-                        getNormalizedPath(
-                                curatorFrameworkWrapper.asCuratorFramework().getNamespace()));
-        final CuratorFramework nonNamespaceClient =
-                curatorFrameworkWrapper.asCuratorFramework().usingNamespace(null);
+        String remainingPath = getParentPath(getNormalizedPath(client.getNamespace()));
+        final CuratorFramework nonNamespaceClient = client.usingNamespace(null);
 
         while (!isRootPath(remainingPath)) {
             try {

@@ -3375,7 +3375,7 @@ public class Configuration implements Iterable<Map.Entry<String, String>>, Writa
     }
 
     /**
-     * get keys matching the regex
+     * get keys matching the the regex
      *
      * @param regex
      * @return Map<String,String> with matching keys

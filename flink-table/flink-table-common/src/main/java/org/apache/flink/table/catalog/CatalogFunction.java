@@ -18,12 +18,9 @@
 
 package org.apache.flink.table.catalog;
 
-import org.apache.flink.annotation.PublicEvolving;
-
 import java.util.Optional;
 
 /** Interface for a function in a catalog. */
-@PublicEvolving
 public interface CatalogFunction {
 
     /**

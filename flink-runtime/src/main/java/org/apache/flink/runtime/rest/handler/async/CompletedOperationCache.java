@@ -19,7 +19,7 @@
 package org.apache.flink.runtime.rest.handler.async;
 
 import org.apache.flink.annotation.VisibleForTesting;
-import org.apache.flink.configuration.RestOptions;
+import org.apache.flink.types.Either;
 import org.apache.flink.util.AutoCloseableAsync;
 import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.concurrent.FutureUtils;
@@ -36,9 +36,7 @@ import javax.annotation.Nullable;
 import javax.annotation.concurrent.GuardedBy;
 import javax.annotation.concurrent.ThreadSafe;
 
-import java.time.Duration;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
@@ -56,7 +54,9 @@ import static org.apache.flink.util.Preconditions.checkState;
  * operations will be removed from the cache automatically after a fixed timeout.
  */
 @ThreadSafe
-public class CompletedOperationCache<K extends OperationKey, R> implements AutoCloseableAsync {
+class CompletedOperationCache<K extends OperationKey, R> implements AutoCloseableAsync {
+
+    private static final long COMPLETED_OPERATION_RESULT_CACHE_DURATION_SECONDS = 300L;
 
     private static final Logger LOGGER = LoggerFactory.getLogger(CompletedOperationCache.class);
 
@@ -70,29 +70,17 @@ public class CompletedOperationCache<K extends OperationKey, R> implements AutoC
     private final Object lock = new Object();
 
     @Nullable private CompletableFuture<Void> terminationFuture;
-    private Duration cacheDuration;
 
-    public CompletedOperationCache(final Duration cacheDuration) {
-        this(cacheDuration, Ticker.systemTicker());
+    CompletedOperationCache() {
+        this(Ticker.systemTicker());
     }
 
     @VisibleForTesting
     CompletedOperationCache(final Ticker ticker) {
-        this(RestOptions.ASYNC_OPERATION_STORE_DURATION.defaultValue(), ticker);
-    }
-
-    @VisibleForTesting
-    CompletedOperationCache(final Duration cacheDuration, final Ticker ticker) {
-        this.cacheDuration = Preconditions.checkNotNull(cacheDuration);
-
-        CacheBuilder<Object, Object> cacheBuilder = CacheBuilder.newBuilder();
-
-        if (cacheDuration.getSeconds() != 0) {
-            cacheBuilder = cacheBuilder.expireAfterWrite(cacheDuration);
-        }
-
         completedOperations =
-                cacheBuilder
+                CacheBuilder.newBuilder()
+                        .expireAfterWrite(
+                                COMPLETED_OPERATION_RESULT_CACHE_DURATION_SECONDS, TimeUnit.SECONDS)
                         .removalListener(
                                 (RemovalListener<K, ResultAccessTracker<R>>)
                                         removalNotification -> {
@@ -115,7 +103,7 @@ public class CompletedOperationCache<K extends OperationKey, R> implements AutoC
                                                 LOGGER.info(
                                                         "Evicted result with trigger id {} because its TTL of {}s has expired.",
                                                         removalNotification.getKey().getTriggerId(),
-                                                        cacheDuration.getSeconds());
+                                                        COMPLETED_OPERATION_RESULT_CACHE_DURATION_SECONDS);
                                             }
                                         })
                         .ticker(ticker)
@@ -126,7 +114,7 @@ public class CompletedOperationCache<K extends OperationKey, R> implements AutoC
      * Registers an ongoing operation with the cache.
      *
      * @param operationResultFuture A future containing the operation result.
-     * @throws IllegalStateException if the cache is already shutting down
+     * @throw IllegalStateException if the cache is already shutting down
      */
     public void registerOngoingOperation(
             final K operationKey, final CompletableFuture<R> operationResultFuture) {
@@ -141,12 +129,10 @@ public class CompletedOperationCache<K extends OperationKey, R> implements AutoC
                 (result, error) -> {
                     if (error == null) {
                         completedOperations.put(
-                                operationKey,
-                                inProgress.finishOperation(OperationResult.success(result)));
+                                operationKey, inProgress.finishOperation(Either.Right(result)));
                     } else {
                         completedOperations.put(
-                                operationKey,
-                                inProgress.finishOperation(OperationResult.failure(error)));
+                                operationKey, inProgress.finishOperation(Either.Left(error)));
                     }
                     registeredOperationTriggers.remove(operationKey);
                 });
@@ -157,24 +143,22 @@ public class CompletedOperationCache<K extends OperationKey, R> implements AutoC
         return terminationFuture == null;
     }
 
-    /** Returns whether this cache contains an operation under the given operation key. */
-    public boolean containsOperation(final K operationKey) {
-        return registeredOperationTriggers.containsKey(operationKey)
-                || completedOperations.getIfPresent(operationKey) != null;
-    }
-
     /**
-     * Returns an optional containing the {@link OperationResult} for the specified key, or an empty
-     * optional if no operation is registered under the key.
+     * Returns the operation result or a {@code Throwable} if the {@code CompletableFuture}
+     * finished, otherwise {@code null}.
+     *
+     * @throws UnknownOperationKeyException If the operation is not found, and there is no ongoing
+     *     operation under the provided key.
      */
-    public Optional<OperationResult<R>> get(final K operationKey) {
+    @Nullable
+    public Either<Throwable, R> get(final K operationKey) throws UnknownOperationKeyException {
         ResultAccessTracker<R> resultAccessTracker;
         if ((resultAccessTracker = registeredOperationTriggers.get(operationKey)) == null
                 && (resultAccessTracker = completedOperations.getIfPresent(operationKey)) == null) {
-            return Optional.empty();
+            throw new UnknownOperationKeyException(operationKey);
         }
 
-        return Optional.of(resultAccessTracker.accessOperationResultOrError());
+        return resultAccessTracker.accessOperationResultOrError();
     }
 
     @Override
@@ -184,7 +168,7 @@ public class CompletedOperationCache<K extends OperationKey, R> implements AutoC
                 terminationFuture =
                         FutureUtils.orTimeout(
                                 asyncWaitForResultsToBeAccessed(),
-                                cacheDuration.getSeconds(),
+                                COMPLETED_OPERATION_RESULT_CACHE_DURATION_SECONDS,
                                 TimeUnit.SECONDS);
             }
 
@@ -209,10 +193,10 @@ public class CompletedOperationCache<K extends OperationKey, R> implements AutoC
     /** Stores the result of an asynchronous operation, and tracks accesses to it. */
     private static class ResultAccessTracker<R> {
 
-        /** Result of an asynchronous operation. */
-        private final OperationResult<R> operationResult;
+        /** Result of an asynchronous operation. Null if operation is in progress. */
+        @Nullable private final Either<Throwable, R> operationResultOrError;
 
-        /** Future that completes if {@link #operationResult} is accessed after it finished. */
+        /** Future that completes if a non-null {@link #operationResultOrError} is accessed. */
         private final CompletableFuture<Void> accessed;
 
         private static <R> ResultAccessTracker<R> inProgress() {
@@ -220,34 +204,37 @@ public class CompletedOperationCache<K extends OperationKey, R> implements AutoC
         }
 
         private ResultAccessTracker() {
-            this.operationResult = OperationResult.inProgress();
+            this.operationResultOrError = null;
             this.accessed = new CompletableFuture<>();
         }
 
         private ResultAccessTracker(
-                final OperationResult<R> operationResult, final CompletableFuture<Void> accessed) {
-            this.operationResult = checkNotNull(operationResult);
+                final Either<Throwable, R> operationResultOrError,
+                final CompletableFuture<Void> accessed) {
+            this.operationResultOrError = checkNotNull(operationResultOrError);
             this.accessed = checkNotNull(accessed);
         }
 
         /**
          * Creates a new instance of the tracker with the result of the asynchronous operation set.
          */
-        public ResultAccessTracker<R> finishOperation(final OperationResult<R> operationResult) {
-            checkState(!this.operationResult.isFinished());
+        public ResultAccessTracker<R> finishOperation(
+                final Either<Throwable, R> operationResultOrError) {
+            checkState(this.operationResultOrError == null);
 
-            return new ResultAccessTracker<>(checkNotNull(operationResult), this.accessed);
+            return new ResultAccessTracker<>(checkNotNull(operationResultOrError), this.accessed);
         }
 
         /**
-         * Returns the {@link OperationResult} of the asynchronous operation. If the operation is
-         * finished, marks the result as accessed.
+         * If present, returns the result of the asynchronous operation, and marks the result as
+         * accessed. If the result is not present, this method returns null.
          */
-        public OperationResult<R> accessOperationResultOrError() {
-            if (operationResult.isFinished()) {
+        @Nullable
+        public Either<Throwable, R> accessOperationResultOrError() {
+            if (operationResultOrError != null) {
                 markAccessed();
             }
-            return operationResult;
+            return operationResultOrError;
         }
 
         public CompletableFuture<Void> getAccessedFuture() {

@@ -56,7 +56,26 @@ public class RocksDBStateDownloaderTest extends TestLogger {
     public void testMultiThreadRestoreThreadPoolExceptionRethrow() {
         SpecifiedException expectedException =
                 new SpecifiedException("throw exception while multi thread restore.");
-        StreamStateHandle stateHandle = new ThrowingStateHandle(expectedException);
+        StreamStateHandle stateHandle =
+                new StreamStateHandle() {
+                    @Override
+                    public FSDataInputStream openInputStream() throws IOException {
+                        throw expectedException;
+                    }
+
+                    @Override
+                    public Optional<byte[]> asBytesIfInMemory() {
+                        return Optional.empty();
+                    }
+
+                    @Override
+                    public void discardState() {}
+
+                    @Override
+                    public long getStateSize() {
+                        return 0;
+                    }
+                };
 
         Map<StateHandleID, StreamStateHandle> stateHandles = new HashMap<>(1);
         stateHandles.put(new StateHandleID("state1"), stateHandle);
@@ -134,34 +153,6 @@ public class RocksDBStateDownloaderTest extends TestLogger {
     private static class SpecifiedException extends IOException {
         SpecifiedException(String message) {
             super(message);
-        }
-    }
-
-    private static class ThrowingStateHandle implements StreamStateHandle {
-        private static final long serialVersionUID = -2102069659550694805L;
-
-        private final IOException expectedException;
-
-        private ThrowingStateHandle(IOException expectedException) {
-            this.expectedException = expectedException;
-        }
-
-        @Override
-        public FSDataInputStream openInputStream() throws IOException {
-            throw expectedException;
-        }
-
-        @Override
-        public Optional<byte[]> asBytesIfInMemory() {
-            return Optional.empty();
-        }
-
-        @Override
-        public void discardState() {}
-
-        @Override
-        public long getStateSize() {
-            return 0;
         }
     }
 }

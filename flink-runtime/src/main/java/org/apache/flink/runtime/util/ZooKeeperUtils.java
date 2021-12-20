@@ -32,7 +32,6 @@ import org.apache.flink.runtime.checkpoint.DefaultLastStateConnectionStateListen
 import org.apache.flink.runtime.checkpoint.ZooKeeperCheckpointIDCounter;
 import org.apache.flink.runtime.checkpoint.ZooKeeperCheckpointStoreUtil;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServicesUtils;
-import org.apache.flink.runtime.highavailability.zookeeper.CuratorFrameworkWithUnhandledErrorListener;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.jobmanager.DefaultJobGraphStore;
 import org.apache.flink.runtime.jobmanager.HighAvailabilityMode;
@@ -49,7 +48,6 @@ import org.apache.flink.runtime.leaderretrieval.ZooKeeperLeaderRetrievalDriver;
 import org.apache.flink.runtime.leaderretrieval.ZooKeeperLeaderRetrievalDriverFactory;
 import org.apache.flink.runtime.persistence.RetrievableStateStorageHelper;
 import org.apache.flink.runtime.persistence.filesystem.FileSystemStateStorageHelper;
-import org.apache.flink.runtime.rpc.FatalErrorHandler;
 import org.apache.flink.runtime.zookeeper.ZooKeeperStateHandleStore;
 import org.apache.flink.util.concurrent.Executors;
 import org.apache.flink.util.function.RunnableWithException;
@@ -57,7 +55,6 @@ import org.apache.flink.util.function.RunnableWithException;
 import org.apache.flink.shaded.curator4.org.apache.curator.framework.CuratorFramework;
 import org.apache.flink.shaded.curator4.org.apache.curator.framework.CuratorFrameworkFactory;
 import org.apache.flink.shaded.curator4.org.apache.curator.framework.api.ACLProvider;
-import org.apache.flink.shaded.curator4.org.apache.curator.framework.api.UnhandledErrorListener;
 import org.apache.flink.shaded.curator4.org.apache.curator.framework.imps.DefaultACLProvider;
 import org.apache.flink.shaded.curator4.org.apache.curator.framework.recipes.cache.PathChildrenCache;
 import org.apache.flink.shaded.curator4.org.apache.curator.framework.recipes.cache.TreeCache;
@@ -152,12 +149,9 @@ public class ZooKeeperUtils {
      * Starts a {@link CuratorFramework} instance and connects it to the given ZooKeeper quorum.
      *
      * @param configuration {@link Configuration} object containing the configuration values
-     * @param fatalErrorHandler {@link FatalErrorHandler} fatalErrorHandler to handle unexpected
-     *     errors of {@link CuratorFramework}
-     * @return {@link CuratorFrameworkWithUnhandledErrorListener} instance
+     * @return {@link CuratorFramework} instance
      */
-    public static CuratorFrameworkWithUnhandledErrorListener startCuratorFramework(
-            Configuration configuration, FatalErrorHandler fatalErrorHandler) {
+    public static CuratorFramework startCuratorFramework(Configuration configuration) {
         checkNotNull(configuration, "configuration");
         String zkQuorum = configuration.getValue(HighAvailabilityOptions.HA_ZOOKEEPER_QUORUM);
 
@@ -230,36 +224,12 @@ public class ZooKeeperUtils {
             curatorFrameworkBuilder.connectionStateErrorPolicy(
                     new SessionConnectionStateErrorPolicy());
         }
-        return startCuratorFramework(curatorFrameworkBuilder, fatalErrorHandler);
-    }
 
-    /**
-     * Starts a {@link CuratorFramework} instance and connects it to the given ZooKeeper quorum from
-     * a builder.
-     *
-     * @param builder {@link CuratorFrameworkFactory.Builder} A builder for curatorFramework.
-     * @param fatalErrorHandler {@link FatalErrorHandler} fatalErrorHandler to handle unexpected
-     *     errors of {@link CuratorFramework}
-     * @return {@link CuratorFrameworkWithUnhandledErrorListener} instance
-     */
-    @VisibleForTesting
-    public static CuratorFrameworkWithUnhandledErrorListener startCuratorFramework(
-            CuratorFrameworkFactory.Builder builder, FatalErrorHandler fatalErrorHandler) {
-        CuratorFramework cf = builder.build();
-        UnhandledErrorListener unhandledErrorListener =
-                (message, throwable) -> {
-                    LOG.error(
-                            "Unhandled error in curator framework, error message: {}",
-                            message,
-                            throwable);
-                    // The exception thrown in UnhandledErrorListener will be caught by
-                    // CuratorFramework. So we mostly trigger exit process or interact with main
-                    // thread to inform the failure in FatalErrorHandler.
-                    fatalErrorHandler.onFatalError(throwable);
-                };
-        cf.getUnhandledErrorListenable().addListener(unhandledErrorListener);
+        CuratorFramework cf = curatorFrameworkBuilder.build();
+
         cf.start();
-        return new CuratorFrameworkWithUnhandledErrorListener(cf, unhandledErrorListener);
+
+        return cf;
     }
 
     /** Returns whether {@link HighAvailabilityMode#ZOOKEEPER} is configured. */

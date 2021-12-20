@@ -88,7 +88,7 @@ public class LocationPreferenceSlotSelectionStrategyTest extends SlotSelectionSt
     @Test
     public void matchNoRequirements() {
 
-        SlotProfile slotProfile = SlotProfileTestingUtils.noRequirements();
+        SlotProfile slotProfile = SlotProfile.noRequirements();
         Optional<SlotSelectionStrategy.SlotInfoAndLocality> match = runMatching(slotProfile);
 
         Assert.assertTrue(match.isPresent());
@@ -101,8 +101,7 @@ public class LocationPreferenceSlotSelectionStrategyTest extends SlotSelectionSt
     public void returnsHostLocalMatchingIfExactTMLocationCannotBeFulfilled() {
 
         SlotProfile slotProfile =
-                SlotProfileTestingUtils.preferredLocality(
-                        resourceProfile, Collections.singletonList(tmlX));
+                SlotProfile.preferredLocality(resourceProfile, Collections.singletonList(tmlX));
         Optional<SlotSelectionStrategy.SlotInfoAndLocality> match = runMatching(slotProfile);
 
         Assert.assertTrue(match.isPresent());
@@ -130,7 +129,7 @@ public class LocationPreferenceSlotSelectionStrategyTest extends SlotSelectionSt
                 new TaskManagerLocation(
                         new ResourceID("non-local-tm"), nonHostLocalInetAddress, 42);
         SlotProfile slotProfile =
-                SlotProfileTestingUtils.preferredLocality(
+                SlotProfile.preferredLocality(
                         resourceProfile, Collections.singletonList(nonLocalTm));
         Optional<SlotSelectionStrategy.SlotInfoAndLocality> match = runMatching(slotProfile);
 
@@ -144,21 +143,19 @@ public class LocationPreferenceSlotSelectionStrategyTest extends SlotSelectionSt
     public void matchPreferredLocation() {
 
         SlotProfile slotProfile =
-                SlotProfileTestingUtils.preferredLocality(
+                SlotProfile.preferredLocality(
                         biggerResourceProfile, Collections.singletonList(tml2));
         Optional<SlotSelectionStrategy.SlotInfoAndLocality> match = runMatching(slotProfile);
 
         Assert.assertEquals(slotInfo2, match.get().getSlotInfo());
 
-        slotProfile =
-                SlotProfileTestingUtils.preferredLocality(
-                        resourceProfile, Arrays.asList(tmlX, tml4));
+        slotProfile = SlotProfile.preferredLocality(resourceProfile, Arrays.asList(tmlX, tml4));
         match = runMatching(slotProfile);
 
         Assert.assertEquals(slotInfo4, match.get().getSlotInfo());
 
         slotProfile =
-                SlotProfileTestingUtils.preferredLocality(
+                SlotProfile.preferredLocality(
                         resourceProfile, Arrays.asList(tml3, tml1, tml3, tmlX));
         match = runMatching(slotProfile);
 

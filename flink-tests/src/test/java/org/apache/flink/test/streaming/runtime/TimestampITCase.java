@@ -202,7 +202,7 @@ public class TimestampITCase extends TestLogger {
 
                             JobID id = running.get(0);
 
-                            waitUntilAllTasksAreRunning(CLUSTER.getRestClusterClient(), id);
+                            waitUntilAllTasksAreRunning(CLUSTER.getRestAddres(), id);
                             // send stop until the job is stopped
                             do {
                                 try {

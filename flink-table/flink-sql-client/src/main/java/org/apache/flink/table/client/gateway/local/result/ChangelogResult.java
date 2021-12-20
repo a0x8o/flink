@@ -19,7 +19,7 @@
 package org.apache.flink.table.client.gateway.local.result;
 
 import org.apache.flink.table.client.gateway.TypedResult;
-import org.apache.flink.table.data.RowData;
+import org.apache.flink.types.Row;
 
 import java.util.List;
 
@@ -27,5 +27,5 @@ import java.util.List;
 public interface ChangelogResult extends DynamicResult {
 
     /** Retrieves the available result records. */
-    TypedResult<List<RowData>> retrieveChanges();
+    TypedResult<List<Row>> retrieveChanges();
 }

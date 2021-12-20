@@ -182,7 +182,6 @@ public abstract class TableColumn {
     // --------------------------------------------------------------------------------------------
 
     /** Representation of a physical column. */
-    @PublicEvolving
     public static class PhysicalColumn extends TableColumn {
 
         private PhysicalColumn(String name, DataType type) {
@@ -206,7 +205,6 @@ public abstract class TableColumn {
     }
 
     /** Representation of a computed column. */
-    @PublicEvolving
     public static class ComputedColumn extends TableColumn {
 
         private final String expression;
@@ -257,7 +255,6 @@ public abstract class TableColumn {
     }
 
     /** Representation of a metadata column. */
-    @PublicEvolving
     public static class MetadataColumn extends TableColumn {
 
         private final @Nullable String metadataAlias;

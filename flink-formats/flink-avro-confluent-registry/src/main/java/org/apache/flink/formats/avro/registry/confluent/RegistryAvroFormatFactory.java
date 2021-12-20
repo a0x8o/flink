@@ -31,10 +31,8 @@ import org.apache.flink.formats.avro.RowDataToAvroConverters;
 import org.apache.flink.formats.avro.typeutils.AvroSchemaConverter;
 import org.apache.flink.table.api.ValidationException;
 import org.apache.flink.table.connector.ChangelogMode;
-import org.apache.flink.table.connector.Projection;
 import org.apache.flink.table.connector.format.DecodingFormat;
 import org.apache.flink.table.connector.format.EncodingFormat;
-import org.apache.flink.table.connector.format.ProjectableDecodingFormat;
 import org.apache.flink.table.connector.sink.DynamicTableSink;
 import org.apache.flink.table.connector.source.DynamicTableSource;
 import org.apache.flink.table.data.RowData;
@@ -83,13 +81,10 @@ public class RegistryAvroFormatFactory
         String schemaRegistryURL = formatOptions.get(URL);
         Map<String, ?> optionalPropertiesMap = buildOptionalPropertiesMap(formatOptions);
 
-        return new ProjectableDecodingFormat<DeserializationSchema<RowData>>() {
+        return new DecodingFormat<DeserializationSchema<RowData>>() {
             @Override
             public DeserializationSchema<RowData> createRuntimeDecoder(
-                    DynamicTableSource.Context context,
-                    DataType producedDataType,
-                    int[][] projections) {
-                producedDataType = Projection.of(projections).project(producedDataType);
+                    DynamicTableSource.Context context, DataType producedDataType) {
                 final RowType rowType = (RowType) producedDataType.getLogicalType();
                 final TypeInformation<RowData> rowDataTypeInfo =
                         context.createTypeInformation(producedDataType);

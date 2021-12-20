@@ -28,7 +28,6 @@ import org.apache.flink.table.planner.plan.logical._
 import org.apache.flink.table.planner.plan.metadata.FlinkRelMetadataQuery
 import org.apache.flink.table.planner.plan.utils.AggregateUtil.inferAggAccumulatorNames
 import org.apache.flink.table.planner.plan.utils.WindowEmitStrategy.{TABLE_EXEC_EMIT_EARLY_FIRE_ENABLED, TABLE_EXEC_EMIT_LATE_FIRE_ENABLED}
-import org.apache.flink.table.planner.typeutils.RowTypeUtils
 import org.apache.flink.table.runtime.types.LogicalTypeDataTypeConverter.fromDataTypeToLogicalType
 import org.apache.flink.table.types.logical.TimestampType
 import org.apache.flink.table.types.logical.utils.LogicalTypeChecks.canBeTimeAttributeType
@@ -44,7 +43,6 @@ import java.time.Duration
 import java.util.Collections
 
 import scala.collection.JavaConversions._
-import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 
 /**
@@ -67,20 +65,6 @@ object WindowUtil {
     } else {
       false
     }
-  }
-
-  /**
-   * Excludes window_start, window_end and window_time properties from grouping keys.
-   */
-  def groupingExcludeWindowStartEndTimeColumns(
-      grouping: ImmutableBitSet,
-      windowProperties: RelWindowProperties): (
-    ImmutableBitSet, ImmutableBitSet, ImmutableBitSet, ImmutableBitSet) = {
-    val startColumns = windowProperties.getWindowStartColumns.intersect(grouping)
-    val endColumns = windowProperties.getWindowEndColumns.intersect(grouping)
-    val timeColumns = windowProperties.getWindowTimeColumns.intersect(grouping)
-    val newGrouping = grouping.except(startColumns).except(endColumns).except(timeColumns)
-    (startColumns, endColumns, timeColumns, newGrouping)
   }
 
   /**
@@ -135,10 +119,10 @@ object WindowUtil {
     var containsTimeAttribute = false
     var newTimeAttributeIndex = -1
     val calcFieldShifting = ArrayBuffer[Int]()
-    val visitedProjectNames = new mutable.ArrayBuffer[String]
+
     oldProgram.getNamedProjects.foreach { namedProject =>
       val expr = oldProgram.expandLocalRef(namedProject.left)
-      val uniqueName = RowTypeUtils.getUniqueName(namedProject.right, visitedProjectNames)
+      val name = namedProject.right
       // project columns except window columns
       expr match {
         case inputRef: RexInputRef if windowColumns.contains(inputRef.getIndex) =>
@@ -146,8 +130,7 @@ object WindowUtil {
 
         case _ =>
           try {
-            programBuilder.addProject(expr, uniqueName)
-            visitedProjectNames += uniqueName
+            programBuilder.addProject(expr, name)
           } catch {
             case e: Throwable =>
               e.printStackTrace()
@@ -166,11 +149,9 @@ object WindowUtil {
 
     // append time attribute if the calc doesn't refer it
     if (!containsTimeAttribute) {
-      val oldTimeAttributeFieldName = inputRowType.getFieldNames.get(inputTimeAttributeIndex)
-      val uniqueName = RowTypeUtils.getUniqueName(oldTimeAttributeFieldName, visitedProjectNames)
       programBuilder.addProject(
         inputTimeAttributeIndex,
-        uniqueName)
+        inputRowType.getFieldNames.get(inputTimeAttributeIndex))
       newTimeAttributeIndex = programBuilder.getProjectList.size() - 1
     }
 
@@ -181,17 +162,6 @@ object WindowUtil {
 
     val program = programBuilder.getProgram()
     (program, calcFieldShifting.toArray, newTimeAttributeIndex, !containsTimeAttribute)
-  }
-
-  def validateTimeFieldWithTimeAttribute(
-      windowCall: RexCall,
-      inputRowType: RelDataType): Unit = {
-    val timeIndex = getTimeAttributeIndex(windowCall.operands(1))
-    val fieldType = inputRowType.getFieldList.get(timeIndex).getType
-    if (!FlinkTypeFactory.isTimeIndicatorType(fieldType)) {
-      throw new ValidationException(
-        s"The window function requires the timecol is a time attribute type, but is $fieldType.")
-    }
   }
 
   /**
@@ -208,6 +178,10 @@ object WindowUtil {
 
     val timeIndex = getTimeAttributeIndex(windowCall.operands(1))
     val fieldType = inputRowType.getFieldList.get(timeIndex).getType
+    if (!FlinkTypeFactory.isTimeIndicatorType(fieldType)) {
+      throw new ValidationException("Window can only be defined on a time attribute column, " +
+        "but is type of " + fieldType)
+    }
     val timeAttributeType = FlinkTypeFactory.toLogicalType(fieldType)
     if (!canBeTimeAttributeType(timeAttributeType)) {
       throw new ValidationException("The supported time indicator type are TIMESTAMP" +
@@ -244,6 +218,10 @@ object WindowUtil {
         val step = getOperandAsLong(windowCall.operands(2))
         val maxSize = getOperandAsLong(windowCall.operands(3))
         new CumulativeWindowSpec(Duration.ofMillis(maxSize), Duration.ofMillis(step), offset)
+
+      case FlinkSqlOperatorTable.SESSION =>
+        val gap = getOperandAsLong(windowCall.operands(2))
+        new SessionWindowSpec(Duration.ofMillis(gap))
     }
 
     new TimeAttributeWindowingStrategy(windowSpec, timeAttributeType, timeIndex)

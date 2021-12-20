@@ -26,7 +26,7 @@ import org.apache.flink.runtime.testutils.CommonTestUtils;
 import org.apache.flink.streaming.environment.TestingJobClient;
 import org.apache.flink.table.api.DataTypes;
 import org.apache.flink.table.api.ResultKind;
-import org.apache.flink.table.api.internal.TableResultInternal;
+import org.apache.flink.table.api.TableResult;
 import org.apache.flink.table.catalog.Column;
 import org.apache.flink.table.catalog.ResolvedSchema;
 import org.apache.flink.table.client.cli.utils.SqlParserHelper;
@@ -37,7 +37,6 @@ import org.apache.flink.table.client.gateway.SqlExecutionException;
 import org.apache.flink.table.client.gateway.TypedResult;
 import org.apache.flink.table.client.gateway.context.DefaultContext;
 import org.apache.flink.table.client.gateway.context.SessionContext;
-import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.operations.ModifyOperation;
 import org.apache.flink.table.operations.Operation;
 import org.apache.flink.table.operations.QueryOperation;
@@ -466,7 +465,7 @@ public class CliClientTest extends TestLogger {
         }
 
         @Override
-        public TableResultInternal executeOperation(String sessionId, Operation operation)
+        public TableResult executeOperation(String sessionId, Operation operation)
                 throws SqlExecutionException {
             if (failExecution) {
                 throw new SqlExecutionException("Fail execution.");
@@ -491,7 +490,7 @@ public class CliClientTest extends TestLogger {
         }
 
         @Override
-        public TableResultInternal executeModifyOperations(
+        public TableResult executeModifyOperations(
                 String sessionId, List<ModifyOperation> operations) throws SqlExecutionException {
             if (failExecution) {
                 throw new SqlExecutionException("Fail execution.");
@@ -546,7 +545,7 @@ public class CliClientTest extends TestLogger {
         }
 
         @Override
-        public TypedResult<List<RowData>> retrieveResultChanges(String sessionId, String resultId)
+        public TypedResult<List<Row>> retrieveResultChanges(String sessionId, String resultId)
                 throws SqlExecutionException {
             return null;
         }
@@ -558,7 +557,7 @@ public class CliClientTest extends TestLogger {
         }
 
         @Override
-        public List<RowData> retrieveResultPage(String resultId, int page)
+        public List<Row> retrieveResultPage(String resultId, int page)
                 throws SqlExecutionException {
             return null;
         }

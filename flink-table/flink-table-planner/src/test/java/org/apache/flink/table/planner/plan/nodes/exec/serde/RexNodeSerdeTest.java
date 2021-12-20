@@ -78,7 +78,6 @@ public class RexNodeSerdeTest {
     @Parameterized.Parameters(name = "{0}")
     public static Object[][] parameters() {
         TableConfig tableConfig = TableConfig.getDefault();
-        ModuleManager moduleManager = new ModuleManager();
         CatalogManager catalogManager =
                 CatalogManager.newBuilder()
                         .classLoader(Thread.currentThread().getContextClassLoader())
@@ -89,8 +88,7 @@ public class RexNodeSerdeTest {
                 new FlinkContextImpl(
                         false,
                         tableConfig,
-                        moduleManager,
-                        new FunctionCatalog(tableConfig, catalogManager, moduleManager),
+                        new FunctionCatalog(tableConfig, catalogManager, new ModuleManager()),
                         catalogManager,
                         null); // toRexFactory
         RexBuilder rexBuilder = new RexBuilder(FACTORY);

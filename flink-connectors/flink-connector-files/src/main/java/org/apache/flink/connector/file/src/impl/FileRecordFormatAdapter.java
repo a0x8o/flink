@@ -37,12 +37,7 @@ import static org.apache.flink.connector.file.src.util.Utils.doWithCleanupOnExce
 import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
-/**
- * The FormatReaderAdapter turns a {@link FileRecordFormat} into a {@link BulkFormat}.
- *
- * @deprecated Please use {@link StreamFormatAdapter} instead.
- */
-@Deprecated
+/** The FormatReaderAdapter turns a {@link FileRecordFormat} into a {@link BulkFormat}. */
 @Internal
 public final class FileRecordFormatAdapter<T> implements BulkFormat<T, FileSourceSplit> {
 
@@ -128,11 +123,7 @@ public final class FileRecordFormatAdapter<T> implements BulkFormat<T, FileSourc
 
     // ------------------------------------------------------------------------
 
-    /**
-     * This interface is Deprecated, use {@link StreamFormatAdapter.Reader} instead.
-     *
-     * <p>The reader adapter, from {@link FileRecordFormat.Reader} to {@link BulkFormat.Reader}.
-     */
+    /** The reader adapter, from {@link FileRecordFormat.Reader} to {@link BulkFormat.Reader}. */
     public static final class Reader<T> implements BulkFormat.Reader<T> {
 
         private final FileRecordFormat.Reader<T> reader;

@@ -19,7 +19,6 @@
 package org.apache.flink.table.planner.expressions
 
 import org.apache.flink.api.java.typeutils.RowTypeInfo
-import org.apache.flink.table.planner.codegen.CodeGenException
 import org.apache.flink.table.planner.expressions.utils.ExpressionTestBase
 import org.apache.flink.types.Row
 
@@ -145,23 +144,6 @@ class SqlExpressionTest extends ExpressionTestBase {
     // Decimal(2,1) / Decimal(10,0) => Decimal(23,12)
     testSqlApi("2.0/(-3)", "-0.666666666667")
     testSqlApi("-7.9/2", "-3.950000000000")
-
-    // invalid division
-    val divisorZeroException = "Division by zero"
-    testExpectedSqlException(
-      "1/cast(0.00 as decimal)", divisorZeroException, classOf[ArithmeticException])
-    testExpectedSqlException(
-      "1/cast(0.00 as double)", divisorZeroException, classOf[ArithmeticException])
-    testExpectedSqlException(
-      "1/cast(0.00 as float)", divisorZeroException, classOf[ArithmeticException])
-    testExpectedSqlException(
-      "1/cast(0 as tinyint)", divisorZeroException, classOf[ArithmeticException])
-    testExpectedSqlException(
-      "1/cast(0 as smallint)", divisorZeroException, classOf[ArithmeticException])
-    testExpectedSqlException(
-      "1/0", divisorZeroException, classOf[ArithmeticException])
-    testExpectedSqlException(
-      "1/cast(0 as bigint)", divisorZeroException, classOf[ArithmeticException])
   }
 
   @Test
@@ -209,9 +191,9 @@ class SqlExpressionTest extends ExpressionTestBase {
 
   @Test
   def testValueConstructorFunctions(): Unit = {
-    testSqlApi("ROW('hello world', 12)", "(hello world, 12)")
-    testSqlApi("('hello world', 12)", "(hello world, 12)")
-    testSqlApi("('foo', ('bar', 12))", "(foo, (bar, 12))")
+    testSqlApi("ROW('hello world', 12)", "(hello world,12)")
+    testSqlApi("('hello world', 12)", "(hello world,12)")
+    testSqlApi("('foo', ('bar', 12))", "(foo,(bar,12))")
     testSqlApi("ARRAY[TRUE, FALSE][2]", "false")
     testSqlApi("ARRAY[TRUE, TRUE]", "[true, true]")
     testSqlApi("MAP['k1', 'v1', 'k2', 'v2']['k2']", "v2")

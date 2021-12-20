@@ -120,10 +120,7 @@ class FlinkCalcMergeRule[C <: Calc](calcClass: Class[C]) extends RelOptRule(
 
     val newMergedProgram = if (mergedProgram.getCondition != null) {
       val condition = mergedProgram.expandLocalRef(mergedProgram.getCondition)
-      val simplifiedCondition = FlinkRexUtil.simplify(
-        rexBuilder,
-        condition,
-        topCalc.getCluster.getPlanner.getExecutor)
+      val simplifiedCondition = FlinkRexUtil.simplify(rexBuilder, condition)
       if (simplifiedCondition.equals(condition)) {
         mergedProgram
       } else {

@@ -74,8 +74,10 @@ class StreamPhysicalWindowAggregateRule
     val relWindowProperties = fmq.getRelWindowProperties(agg.getInput)
     val grouping = agg.getGroupSet
     // we have check there is only one start and end in groupingContainsWindowStartEnd()
-    val (startColumns, endColumns, timeColumns, newGrouping) =
-      WindowUtil.groupingExcludeWindowStartEndTimeColumns(grouping, relWindowProperties)
+    val startColumns = relWindowProperties.getWindowStartColumns.intersect(grouping)
+    val endColumns = relWindowProperties.getWindowEndColumns.intersect(grouping)
+    val timeColumns = relWindowProperties.getWindowTimeColumns.intersect(grouping)
+    val newGrouping = grouping.except(startColumns).except(endColumns).except(timeColumns)
 
     // step-1: build window aggregate node
     val windowAgg = buildWindowAggregateNode(

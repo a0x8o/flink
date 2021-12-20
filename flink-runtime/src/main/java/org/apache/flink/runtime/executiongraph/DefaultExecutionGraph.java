@@ -79,6 +79,7 @@ import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.FlinkException;
 import org.apache.flink.util.IterableUtils;
 import org.apache.flink.util.OptionalFailure;
+import org.apache.flink.util.SerializedThrowable;
 import org.apache.flink.util.SerializedValue;
 import org.apache.flink.util.concurrent.FutureUtils;
 import org.apache.flink.util.concurrent.FutureUtils.ConjunctFuture;
@@ -174,8 +175,8 @@ public class DefaultExecutionGraph implements ExecutionGraph, InternalExecutionG
     /** Blob writer used to offload RPC messages. */
     private final BlobWriter blobWriter;
 
-    /** Number of total job vertices. */
-    private int numJobVerticesTotal;
+    /** The total number of vertices currently in the execution graph. */
+    private int numVerticesTotal;
 
     private final PartitionGroupReleaseStrategy.Factory partitionGroupReleaseStrategyFactory;
 
@@ -199,8 +200,7 @@ public class DefaultExecutionGraph implements ExecutionGraph, InternalExecutionG
     // ------ Execution status and progress. These values are volatile, and accessed under the lock
     // -------
 
-    /** Number of finished job vertices. */
-    private int numFinishedJobVertices;
+    private int numFinishedVertices;
 
     /** Current status of the job execution. */
     private volatile JobStatus state = JobStatus.CREATED;
@@ -234,8 +234,6 @@ public class DefaultExecutionGraph implements ExecutionGraph, InternalExecutionG
 
     // ------ Fields that are relevant to the execution and need to be cleared before archiving
     // -------
-
-    @Nullable private CheckpointCoordinatorConfiguration checkpointCoordinatorConfiguration;
 
     /** The coordinator for checkpoints, if snapshot checkpoints are enabled. */
     @Nullable private CheckpointCoordinator checkpointCoordinator;
@@ -407,8 +405,6 @@ public class DefaultExecutionGraph implements ExecutionGraph, InternalExecutionG
                 buildOpCoordinatorCheckpointContexts();
 
         checkpointStatsTracker = checkNotNull(statsTracker, "CheckpointStatsTracker");
-        checkpointCoordinatorConfiguration =
-                checkNotNull(chkConfig, "CheckpointCoordinatorConfiguration");
 
         CheckpointFailureManager failureManager =
                 new CheckpointFailureManager(
@@ -453,8 +449,7 @@ public class DefaultExecutionGraph implements ExecutionGraph, InternalExecutionG
                         failureManager,
                         createCheckpointPlanCalculator(
                                 chkConfig.isEnableCheckpointsAfterTasksFinish()),
-                        new ExecutionAttemptMappingProvider(getAllExecutionVertices()),
-                        checkpointStatsTracker);
+                        new ExecutionAttemptMappingProvider(getAllExecutionVertices()));
 
         // register the master hooks on the checkpoint coordinator
         for (MasterTriggerRestoreHook<?> hook : masterHooks) {
@@ -464,6 +459,8 @@ public class DefaultExecutionGraph implements ExecutionGraph, InternalExecutionG
                         hook.getIdentifier());
             }
         }
+
+        checkpointCoordinator.setCheckpointStatsTracker(checkpointStatsTracker);
 
         if (checkpointCoordinator.isPeriodicCheckpointingConfigured()) {
             // the periodic checkpoint scheduler is activated and deactivated as a result of
@@ -497,8 +494,8 @@ public class DefaultExecutionGraph implements ExecutionGraph, InternalExecutionG
 
     @Override
     public CheckpointCoordinatorConfiguration getCheckpointCoordinatorConfiguration() {
-        if (checkpointCoordinatorConfiguration != null) {
-            return checkpointCoordinatorConfiguration;
+        if (checkpointStatsTracker != null) {
+            return checkpointStatsTracker.getJobCheckpointingConfiguration();
         } else {
             return null;
         }
@@ -588,10 +585,7 @@ public class DefaultExecutionGraph implements ExecutionGraph, InternalExecutionG
 
     @Override
     public int getNumFinishedVertices() {
-        return IterableUtils.toStream(getVerticesTopologically())
-                .map(ExecutionJobVertex::getNumExecutionVertexFinished)
-                .mapToInt(Integer::intValue)
-                .sum();
+        return numFinishedVertices;
     }
 
     @Override
@@ -637,6 +631,11 @@ public class DefaultExecutionGraph implements ExecutionGraph, InternalExecutionG
                 };
             }
         };
+    }
+
+    @Override
+    public int getTotalNumberOfVertices() {
+        return numVerticesTotal;
     }
 
     @Override
@@ -813,7 +812,7 @@ public class DefaultExecutionGraph implements ExecutionGraph, InternalExecutionG
             }
 
             this.verticesInCreationOrder.add(ejv);
-            this.numJobVerticesTotal++;
+            this.numVerticesTotal += ejv.getParallelism();
         }
 
         registerExecutionVerticesAndResultPartitions(this.verticesInCreationOrder);
@@ -1044,7 +1043,7 @@ public class DefaultExecutionGraph implements ExecutionGraph, InternalExecutionG
                     error);
 
             stateTimestamps[newState.ordinal()] = System.currentTimeMillis();
-            notifyJobStatusChange(newState);
+            notifyJobStatusChange(newState, error);
             return true;
         } else {
             return false;
@@ -1067,14 +1066,14 @@ public class DefaultExecutionGraph implements ExecutionGraph, InternalExecutionG
     // ------------------------------------------------------------------------
 
     /**
-     * Called whenever a job vertex reaches state FINISHED (completed successfully). Once all job
-     * vertices are in the FINISHED state, the program is successfully done.
+     * Called whenever a vertex reaches state FINISHED (completed successfully). Once all vertices
+     * are in the FINISHED state, the program is successfully done.
      */
     @Override
-    public void jobVertexFinished() {
+    public void vertexFinished() {
         assertRunningInJobMasterMainThread();
-        final int numFinished = ++numFinishedJobVertices;
-        if (numFinished == numJobVerticesTotal) {
+        final int numFinished = ++numFinishedVertices;
+        if (numFinished == numVerticesTotal) {
             // done :-)
 
             // check whether we are still in "RUNNING" and trigger the final cleanup
@@ -1103,9 +1102,9 @@ public class DefaultExecutionGraph implements ExecutionGraph, InternalExecutionG
     }
 
     @Override
-    public void jobVertexUnFinished() {
+    public void vertexUnFinished() {
         assertRunningInJobMasterMainThread();
-        numFinishedJobVertices--;
+        numFinishedVertices--;
     }
 
     /**
@@ -1436,13 +1435,14 @@ public class DefaultExecutionGraph implements ExecutionGraph, InternalExecutionG
         }
     }
 
-    private void notifyJobStatusChange(JobStatus newState) {
+    private void notifyJobStatusChange(JobStatus newState, Throwable error) {
         if (jobStatusListeners.size() > 0) {
             final long timestamp = System.currentTimeMillis();
+            final Throwable serializedError = error == null ? null : new SerializedThrowable(error);
 
             for (JobStatusListener listener : jobStatusListeners) {
                 try {
-                    listener.jobStatusChanges(getJobID(), newState, timestamp);
+                    listener.jobStatusChanges(getJobID(), newState, timestamp, serializedError);
                 } catch (Throwable t) {
                     LOG.warn("Error while notifying JobStatusListener", t);
                 }

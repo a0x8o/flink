@@ -21,7 +21,6 @@ import org.apache.flink.configuration.ConfigConstants;
 import org.apache.flink.streaming.examples.socket.SocketWindowWordCount;
 import org.apache.flink.test.testdata.WordCountData;
 import org.apache.flink.test.util.AbstractTestBase;
-import org.apache.flink.util.NetUtils;
 
 import org.junit.Test;
 
@@ -139,7 +138,7 @@ public class SocketWindowWordCountITCase extends AbstractTestBase {
         @Override
         public void run() {
             try {
-                try (Socket socket = NetUtils.acceptWithoutTimeout(serverSocket);
+                try (Socket socket = serverSocket.accept();
                         PrintWriter writer = new PrintWriter(socket.getOutputStream(), true)) {
 
                     writer.println(WordCountData.TEXT);

@@ -201,9 +201,7 @@ class LookupJoinTest(legacyTableSource: Boolean) extends TableTestBase {
     testUtil.replaceBatchProgram(programs)
 
     thrown.expect(classOf[TableException])
-    thrown.expectMessage(
-      "implicit type conversion between VARCHAR(2147483647) and INTEGER " +
-        "is not supported on join's condition now")
+    thrown.expectMessage("VARCHAR(2147483647) and INTEGER does not have common type now")
 
     testUtil.verifyRelPlan("SELECT * FROM MyTable AS T JOIN LookupTable "
       + "FOR SYSTEM_TIME AS OF T.proctime AS D ON T.b = D.id")

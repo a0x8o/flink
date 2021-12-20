@@ -34,12 +34,9 @@ import javax.annotation.Nullable;
 
 import java.util.UUID;
 import java.util.concurrent.ForkJoinPool;
-import java.util.function.Function;
 
 /** Simple {@link ResourceManager} implementation for testing purposes. */
 public class TestingResourceManager extends ResourceManager<ResourceID> {
-
-    private final Function<ResourceID, Boolean> stopWorkerFunction;
 
     public TestingResourceManager(
             RpcService rpcService,
@@ -50,8 +47,7 @@ public class TestingResourceManager extends ResourceManager<ResourceID> {
             ResourceManagerPartitionTrackerFactory clusterPartitionTrackerFactory,
             JobLeaderIdService jobLeaderIdService,
             FatalErrorHandler fatalErrorHandler,
-            ResourceManagerMetricGroup resourceManagerMetricGroup,
-            Function<ResourceID, Boolean> stopWorkerFunction) {
+            ResourceManagerMetricGroup resourceManagerMetricGroup) {
         super(
                 rpcService,
                 leaderSessionId,
@@ -65,8 +61,6 @@ public class TestingResourceManager extends ResourceManager<ResourceID> {
                 resourceManagerMetricGroup,
                 RpcUtils.INF_TIMEOUT,
                 ForkJoinPool.commonPool());
-
-        this.stopWorkerFunction = stopWorkerFunction;
     }
 
     @Override
@@ -98,6 +92,7 @@ public class TestingResourceManager extends ResourceManager<ResourceID> {
 
     @Override
     public boolean stopWorker(ResourceID worker) {
-        return stopWorkerFunction.apply(worker);
+        // cannot stop workers
+        return false;
     }
 }

@@ -130,11 +130,7 @@ public class TwoPhaseCommitSinkStateSerializerUpgradeTest
                         TypeSerializerSchemaCompatibility<
                                 TwoPhaseCommitSinkFunction.State<Integer, String>>>
                 schemaCompatibilityMatcher(MigrationVersion version) {
-            if (version.isNewerVersionThan(MigrationVersion.v1_13)) {
-                return TypeSerializerMatchers.isCompatibleAsIs();
-            } else {
-                return TypeSerializerMatchers.isCompatibleAfterMigration();
-            }
+            return TypeSerializerMatchers.isCompatibleAsIs();
         }
     }
 }

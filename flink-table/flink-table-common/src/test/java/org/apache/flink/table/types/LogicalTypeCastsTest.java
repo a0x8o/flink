@@ -19,11 +19,9 @@
 package org.apache.flink.table.types;
 
 import org.apache.flink.api.common.typeinfo.Types;
-import org.apache.flink.api.common.typeutils.base.IntSerializer;
 import org.apache.flink.table.catalog.ObjectIdentifier;
 import org.apache.flink.table.types.logical.ArrayType;
 import org.apache.flink.table.types.logical.BigIntType;
-import org.apache.flink.table.types.logical.BinaryType;
 import org.apache.flink.table.types.logical.BooleanType;
 import org.apache.flink.table.types.logical.DecimalType;
 import org.apache.flink.table.types.logical.FloatType;
@@ -31,7 +29,6 @@ import org.apache.flink.table.types.logical.IntType;
 import org.apache.flink.table.types.logical.LocalZonedTimestampType;
 import org.apache.flink.table.types.logical.LogicalType;
 import org.apache.flink.table.types.logical.NullType;
-import org.apache.flink.table.types.logical.RawType;
 import org.apache.flink.table.types.logical.RowType;
 import org.apache.flink.table.types.logical.RowType.RowField;
 import org.apache.flink.table.types.logical.SmallIntType;
@@ -53,7 +50,8 @@ import org.junit.runners.Parameterized.Parameters;
 import java.util.Arrays;
 import java.util.List;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.CoreMatchers.equalTo;
+import static org.junit.Assert.assertThat;
 
 /** Tests for {@link LogicalTypeCasts}. */
 @RunWith(Parameterized.class)
@@ -255,15 +253,7 @@ public class LogicalTypeCastsTest {
                                 .build(),
                         false,
                         true
-                    },
-
-                    // raw to binary
-                    {
-                        new RawType(Integer.class, IntSerializer.INSTANCE),
-                        new BinaryType(),
-                        false,
-                        true
-                    },
+                    }
                 });
     }
 
@@ -280,13 +270,15 @@ public class LogicalTypeCastsTest {
 
     @Test
     public void testImplicitCasting() {
-        assertThat(LogicalTypeCasts.supportsImplicitCast(sourceType, targetType))
-                .isEqualTo(supportsImplicit);
+        assertThat(
+                LogicalTypeCasts.supportsImplicitCast(sourceType, targetType),
+                equalTo(supportsImplicit));
     }
 
     @Test
     public void testExplicitCasting() {
-        assertThat(LogicalTypeCasts.supportsExplicitCast(sourceType, targetType))
-                .isEqualTo(supportsExplicit);
+        assertThat(
+                LogicalTypeCasts.supportsExplicitCast(sourceType, targetType),
+                equalTo(supportsExplicit));
     }
 }

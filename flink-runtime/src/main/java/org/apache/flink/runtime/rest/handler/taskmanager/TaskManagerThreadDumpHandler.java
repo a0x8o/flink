@@ -60,7 +60,7 @@ public class TaskManagerThreadDumpHandler
 
     @Override
     protected CompletableFuture<ThreadDumpInfo> handleRequest(
-            @Nonnull HandlerRequest<EmptyRequestBody> request,
+            @Nonnull HandlerRequest<EmptyRequestBody, TaskManagerMessageParameters> request,
             @Nonnull ResourceManagerGateway gateway)
             throws RestHandlerException {
         final ResourceID taskManagerId = request.getPathParameter(TaskManagerIdPathParameter.class);

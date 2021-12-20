@@ -16,17 +16,10 @@
  * limitations under the License.
  */
 
-import { ChangeDetectionStrategy, Component, ElementRef, EventEmitter, Input, Output } from '@angular/core';
-
+import { Component, EventEmitter, Input, Output, ChangeDetectionStrategy, ElementRef } from '@angular/core';
+import { deepFind } from 'utils';
+import { NodesItemCorrectInterface } from 'interfaces';
 import { NzTableSortFn } from 'ng-zorro-antd/table/src/table.types';
-
-import { NodesItemCorrect } from 'interfaces';
-
-function createSortFn(
-  selector: (item: NodesItemCorrect) => number | string | undefined
-): NzTableSortFn<NodesItemCorrect> {
-  return (pre, next) => (selector(pre)! > selector(next)! ? 1 : -1);
-}
 
 @Component({
   selector: 'flink-job-overview-list',
@@ -35,39 +28,44 @@ function createSortFn(
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class JobOverviewListComponent {
-  public readonly trackById = (_: number, node: NodesItemCorrect): string => node.id;
-
-  public readonly sortStatusFn = createSortFn(item => item.detail?.status);
-  public readonly sortReadBytesFn = createSortFn(item => item.detail?.metrics?.['read-bytes']);
-  public readonly sortReadRecordsFn = createSortFn(item => item.detail?.metrics?.['read-records']);
-  public readonly sortWriteBytesFn = createSortFn(item => item.detail?.metrics?.['write-bytes']);
-  public readonly sortWriteRecordsFn = createSortFn(item => item.detail?.metrics?.['write-records']);
-  public readonly sortParallelismFn = createSortFn(item => item.parallelism);
-  public readonly sortStartTimeFn = createSortFn(item => item.detail?.['start-time']);
-  public readonly sortDurationFn = createSortFn(item => item.detail?.duration);
-  public readonly sortEndTimeFn = createSortFn(item => item.detail?.['end-time']);
-
-  public innerNodes: NodesItemCorrect[] = [];
-  public sortName: string;
-  public sortValue: string;
-  public left = 390;
-
-  @Output() public readonly nodeClick = new EventEmitter<NodesItemCorrect>();
-
-  @Input() public selectedNode: NodesItemCorrect;
+  innerNodes: NodesItemCorrectInterface[] = [];
+  sortName: string;
+  sortValue: string;
+  left = 390;
+  @Output() nodeClick = new EventEmitter();
+  @Input() selectedNode: NodesItemCorrectInterface;
 
   @Input()
-  public set nodes(value: NodesItemCorrect[]) {
+  set nodes(value: NodesItemCorrectInterface[]) {
     this.innerNodes = value;
   }
 
-  public get nodes(): NodesItemCorrect[] {
+  get nodes() {
     return this.innerNodes;
   }
 
-  constructor(public readonly elementRef: ElementRef) {}
+  sortStatusFn = this.sortFn('detail.status');
+  sortReadBytesFn = this.sortFn('detail.metrics.read-bytes');
+  sortReadRecordsFn = this.sortFn('detail.metrics.read-records');
+  sortWriteBytesFn = this.sortFn('detail.metrics.write-bytes');
+  sortWriteRecordsFn = this.sortFn('detail.metrics.write-records');
+  sortParallelismFn = this.sortFn('parallelism');
+  sortStartTimeFn = this.sortFn('detail.start-time');
+  sortDurationFn = this.sortFn('detail.duration');
+  sortEndTimeFn = this.sortFn('detail.end-time');
 
-  public clickNode(node: NodesItemCorrect): void {
+  sortFn(path: string): NzTableSortFn<NodesItemCorrectInterface> {
+    return (pre: NodesItemCorrectInterface, next: NodesItemCorrectInterface) =>
+      deepFind(pre, path) > deepFind(next, path) ? 1 : -1;
+  }
+
+  trackJobBy(_: number, node: NodesItemCorrectInterface) {
+    return node.id;
+  }
+
+  clickNode(node: NodesItemCorrectInterface) {
     this.nodeClick.emit(node);
   }
+
+  constructor(public elementRef: ElementRef) {}
 }

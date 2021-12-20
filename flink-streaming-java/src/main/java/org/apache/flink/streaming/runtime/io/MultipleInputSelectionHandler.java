@@ -49,8 +49,6 @@ public class MultipleInputSelectionHandler {
 
     private long dataFinishedButNotPartition;
 
-    private boolean drainOnEndOfData = true;
-
     private enum OperatingMode {
         NO_INPUT_SELECTABLE,
         INPUT_SELECTABLE_PRESENT_NO_DATA_INPUTS_FINISHED,
@@ -93,9 +91,6 @@ public class MultipleInputSelectionHandler {
             case NOTHING_AVAILABLE:
                 availableInputsMask = unsetBitMask(availableInputsMask, inputIndex);
                 break;
-            case STOPPED:
-                this.drainOnEndOfData = false;
-                // fall through
             case END_OF_DATA:
                 dataFinishedButNotPartition = setBitMask(dataFinishedButNotPartition, inputIndex);
                 updateModeOnEndOfData();
@@ -131,7 +126,7 @@ public class MultipleInputSelectionHandler {
 
         if (updatedStatus == DataInputStatus.END_OF_DATA
                 && this.operatingMode == OperatingMode.ALL_DATA_INPUTS_FINISHED) {
-            return drainOnEndOfData ? DataInputStatus.END_OF_DATA : DataInputStatus.STOPPED;
+            return DataInputStatus.END_OF_DATA;
         }
 
         if (isAnyInputAvailable()) {

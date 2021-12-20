@@ -84,7 +84,8 @@ public class TaskCheckpointStatisticDetailsHandler
 
     @Override
     protected TaskCheckpointStatisticsWithSubtaskDetails handleCheckpointRequest(
-            HandlerRequest<EmptyRequestBody> request, AbstractCheckpointStats checkpointStats)
+            HandlerRequest<EmptyRequestBody, TaskCheckpointMessageParameters> request,
+            AbstractCheckpointStats checkpointStats)
             throws RestHandlerException {
 
         final JobVertexID jobVertexId = request.getPathParameter(JobVertexIdPathParameter.class);

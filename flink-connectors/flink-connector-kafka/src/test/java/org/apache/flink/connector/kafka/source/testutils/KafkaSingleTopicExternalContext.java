@@ -42,6 +42,7 @@ import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.KafkaContainer;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -154,7 +155,7 @@ public class KafkaSingleTopicExternalContext implements ExternalContext<String> 
     }
 
     @Override
-    public List<String> generateTestData(int splitIndex, long seed) {
+    public Collection<String> generateTestData(long seed) {
         Random random = new Random(seed);
         List<String> randomStringRecords = new ArrayList<>();
         int recordNum =
@@ -162,15 +163,15 @@ public class KafkaSingleTopicExternalContext implements ExternalContext<String> 
                         + NUM_RECORDS_LOWER_BOUND;
         for (int i = 0; i < recordNum; i++) {
             int stringLength = random.nextInt(50) + 1;
-            randomStringRecords.add(generateRandomString(splitIndex, stringLength, random));
+            randomStringRecords.add(generateRandomString(stringLength, random));
         }
         return randomStringRecords;
     }
 
-    private String generateRandomString(int splitIndex, int length, Random random) {
+    private String generateRandomString(int length, Random random) {
         String alphaNumericString =
                 "ABCDEFGHIJKLMNOPQRSTUVWXYZ" + "abcdefghijklmnopqrstuvwxyz" + "0123456789";
-        StringBuilder sb = new StringBuilder().append(splitIndex).append("-");
+        StringBuilder sb = new StringBuilder();
         for (int i = 0; i < length; ++i) {
             sb.append(alphaNumericString.charAt(random.nextInt(alphaNumericString.length())));
         }

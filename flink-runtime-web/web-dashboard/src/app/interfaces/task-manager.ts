@@ -16,11 +16,11 @@
  * limitations under the License.
  */
 
-export interface TaskManagerList {
-  taskmanagers: TaskmanagersItem[];
+export interface TaskManagerListInterface {
+  taskmanagers: TaskmanagersItemInterface[];
 }
 
-export interface TaskManagerDetail {
+export interface TaskManagerDetailInterface {
   id: string;
   path: string;
   dataPort: number;
@@ -32,13 +32,11 @@ export interface TaskManagerDetail {
   memoryConfiguration: MemoryConfiguration;
 }
 
-export interface TaskManagerLogItem {
-  name: string;
-  size: number;
-  mtime: number;
+export interface TaskManagerLogInterface {
+  logs: { name: string; size: number }[];
 }
 
-export interface TaskmanagersItem {
+export interface TaskmanagersItemInterface {
   id: string;
   path: string;
   dataPort: number;
@@ -92,11 +90,11 @@ interface GarbageCollectorsItem {
   time: number;
 }
 
-export interface TaskManagerThreadDump {
-  threadInfos: TaskManagerThreadInfo[];
+export interface TaskManagerThreadDumpInterface {
+  threadInfos: TaskManagerThreadInfoInterface[];
 }
 
-interface TaskManagerThreadInfo {
+interface TaskManagerThreadInfoInterface {
   threadName: string;
   stringifiedThreadInfo: string;
 }

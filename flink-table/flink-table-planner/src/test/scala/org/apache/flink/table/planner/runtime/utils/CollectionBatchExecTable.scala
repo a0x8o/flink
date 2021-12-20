@@ -19,8 +19,7 @@ package org.apache.flink.table.planner.runtime.utils
 
 import org.apache.flink.api.scala._
 import org.apache.flink.table.api.{Table, TableEnvironment}
-import org.apache.flink.table.delegation.ExpressionParser
-import org.apache.flink.table.expressions.Expression
+import org.apache.flink.table.expressions.{Expression, ExpressionParser}
 
 import scala.collection.mutable
 import scala.util.Random
@@ -285,7 +284,7 @@ object CollectionBatchExecTable {
     if (fields == null) {
       null
     } else {
-      ExpressionParser.INSTANCE.parseExpressionList(fields).toArray(Array[Expression]())
+      ExpressionParser.parseExpressionList(fields).toArray(Array[Expression]())
     }
   }
 

@@ -28,7 +28,6 @@ import org.apache.flink.runtime.state.StateObject;
 import org.apache.commons.lang3.BooleanUtils;
 
 import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -48,13 +47,10 @@ import java.util.function.Function;
 @Internal
 public class PrioritizedOperatorSubtaskState {
 
-    private static final OperatorSubtaskState EMPTY_JM_STATE_STATE =
-            OperatorSubtaskState.builder().build();
-
     /** Singleton instance for an empty, non-restored operator state. */
     private static final PrioritizedOperatorSubtaskState EMPTY_NON_RESTORED_INSTANCE =
             new PrioritizedOperatorSubtaskState.Builder(
-                            EMPTY_JM_STATE_STATE, Collections.emptyList(), null)
+                            OperatorSubtaskState.builder().build(), Collections.emptyList(), false)
                     .build();
 
     /** List of prioritized snapshot alternatives for managed operator state. */
@@ -74,8 +70,8 @@ public class PrioritizedOperatorSubtaskState {
     private final List<StateObjectCollection<ResultSubpartitionStateHandle>>
             prioritizedResultSubpartitionState;
 
-    /** Checkpoint id for a restored operator or null if not restored. */
-    private final @Nullable Long restoredCheckpointId;
+    /** Signal flag if this represents state for a restored operator. */
+    private final boolean restored;
 
     PrioritizedOperatorSubtaskState(
             @Nonnull List<StateObjectCollection<KeyedStateHandle>> prioritizedManagedKeyedState,
@@ -90,7 +86,7 @@ public class PrioritizedOperatorSubtaskState {
             @Nonnull
                     List<StateObjectCollection<ResultSubpartitionStateHandle>>
                             prioritizedResultSubpartitionState,
-            @Nullable Long restoredCheckpointId) {
+            boolean restored) {
 
         this.prioritizedManagedOperatorState = prioritizedManagedOperatorState;
         this.prioritizedRawOperatorState = prioritizedRawOperatorState;
@@ -98,7 +94,7 @@ public class PrioritizedOperatorSubtaskState {
         this.prioritizedRawKeyedState = prioritizedRawKeyedState;
         this.prioritizedInputChannelState = prioritizedInputChannelState;
         this.prioritizedResultSubpartitionState = prioritizedResultSubpartitionState;
-        this.restoredCheckpointId = restoredCheckpointId;
+        this.restored = restored;
     }
 
     // -----------------------------------------------------------------------------------------------------------------
@@ -196,17 +192,7 @@ public class PrioritizedOperatorSubtaskState {
      * snapshots.
      */
     public boolean isRestored() {
-        return restoredCheckpointId != null;
-    }
-
-    /**
-     * Returns the checkpoint id if this was created for a restored operator, null otherwise.
-     * Restored operators are operators that participated in a previous checkpoint, even if they did
-     * not emit any state snapshots.
-     */
-    @Nullable
-    public Long getRestoredCheckpointId() {
-        return restoredCheckpointId;
+        return restored;
     }
 
     private static <T extends StateObject> StateObjectCollection<T> lastElement(
@@ -222,12 +208,6 @@ public class PrioritizedOperatorSubtaskState {
         return EMPTY_NON_RESTORED_INSTANCE;
     }
 
-    public static PrioritizedOperatorSubtaskState empty(long restoredCheckpointId) {
-        return new PrioritizedOperatorSubtaskState.Builder(
-                        EMPTY_JM_STATE_STATE, Collections.emptyList(), restoredCheckpointId)
-                .build();
-    }
-
     /** A builder for PrioritizedOperatorSubtaskState. */
     @Internal
     public static class Builder {
@@ -238,23 +218,23 @@ public class PrioritizedOperatorSubtaskState {
         /** (Local) alternatives to the job manager state. */
         @Nonnull private final List<OperatorSubtaskState> alternativesByPriority;
 
-        /** Checkpoint id of the restored checkpoint or null if not restored. */
-        private final @Nullable Long restoredCheckpointId;
+        /** Flag if the states have been restored. */
+        private final boolean restored;
 
         public Builder(
                 @Nonnull OperatorSubtaskState jobManagerState,
                 @Nonnull List<OperatorSubtaskState> alternativesByPriority) {
-            this(jobManagerState, alternativesByPriority, null);
+            this(jobManagerState, alternativesByPriority, true);
         }
 
         public Builder(
                 @Nonnull OperatorSubtaskState jobManagerState,
                 @Nonnull List<OperatorSubtaskState> alternativesByPriority,
-                @Nullable Long restoredCheckpointId) {
+                boolean restored) {
 
             this.jobManagerState = jobManagerState;
             this.alternativesByPriority = alternativesByPriority;
-            this.restoredCheckpointId = restoredCheckpointId;
+            this.restored = restored;
         }
 
         public PrioritizedOperatorSubtaskState build() {
@@ -310,7 +290,7 @@ public class PrioritizedOperatorSubtaskState {
                             jobManagerState.getResultSubpartitionState(),
                             resultSubpartitionStateAlternatives,
                             eqStateApprover(ResultSubpartitionStateHandle::getInfo)),
-                    restoredCheckpointId);
+                    restored);
         }
 
         /**

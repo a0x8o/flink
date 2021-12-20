@@ -16,23 +16,18 @@
  * limitations under the License.
  */
 
-import { formatDate } from '@angular/common';
 import { Inject, LOCALE_ID, Pipe, PipeTransform } from '@angular/core';
+import { formatDate } from '@angular/common';
 
 @Pipe({
   name: 'humanizeDate'
 })
 export class HumanizeDatePipe implements PipeTransform {
-  constructor(@Inject(LOCALE_ID) private readonly locale: string) {}
+  constructor(@Inject(LOCALE_ID) private locale: string) {}
 
-  public transform(
-    value: number | string | Date,
-    format = 'mediumDate',
-    timezone?: string,
-    locale?: string
-  ): string | null | undefined {
+  transform(value: any, format = 'mediumDate', timezone?: string, locale?: string): string | null | undefined {
     if (value == null || value === '' || value !== value || value < 0) {
-      return '–';
+      return '-';
     }
 
     try {

@@ -25,7 +25,7 @@ import { ChangeDetectionStrategy, Component } from '@angular/core';
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class JobManagerComponent {
-  public readonly listOfNavigation = [
+  listOfNavigation = [
     { path: 'metrics', title: 'Metrics' },
     { path: 'config', title: 'Configuration' },
     { path: 'logs', title: 'Logs' },

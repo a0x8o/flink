@@ -19,7 +19,6 @@
 package org.apache.flink.table.planner.plan.nodes.exec.serde;
 
 import org.apache.flink.table.api.TableConfig;
-import org.apache.flink.table.module.ModuleManager;
 import org.apache.flink.table.planner.calcite.FlinkContextImpl;
 import org.apache.flink.table.planner.calcite.FlinkTypeFactory;
 import org.apache.flink.table.planner.functions.sql.FlinkSqlOperatorTable;
@@ -44,13 +43,7 @@ public class RexWindowBoundSerdeTest {
     public void testSerde() throws JsonProcessingException {
         SerdeContext serdeCtx =
                 new SerdeContext(
-                        new FlinkContextImpl(
-                                false,
-                                TableConfig.getDefault(),
-                                new ModuleManager(),
-                                null,
-                                null,
-                                null),
+                        new FlinkContextImpl(false, TableConfig.getDefault(), null, null, null),
                         Thread.currentThread().getContextClassLoader(),
                         FlinkTypeFactory.INSTANCE(),
                         FlinkSqlOperatorTable.instance());

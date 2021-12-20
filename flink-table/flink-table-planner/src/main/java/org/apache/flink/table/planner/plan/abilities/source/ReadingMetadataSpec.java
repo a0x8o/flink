@@ -74,9 +74,4 @@ public class ReadingMetadataSpec extends SourceAbilitySpecBase {
                             tableSource.getClass().getName()));
         }
     }
-
-    @Override
-    public String getDigests(SourceAbilityContext context) {
-        return String.format("metadata=[%s]", String.join(", ", this.metadataKeys));
-    }
 }

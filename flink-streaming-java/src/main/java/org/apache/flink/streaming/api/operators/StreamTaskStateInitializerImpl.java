@@ -63,7 +63,6 @@ import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.NoSuchElementException;
-import java.util.OptionalLong;
 import java.util.stream.StreamSupport;
 
 import static org.apache.flink.runtime.state.StateUtil.unexpectedStateHandleException;
@@ -220,7 +219,7 @@ public class StreamTaskStateInitializerImpl implements StreamTaskStateInitialize
             // -------------- Preparing return value --------------
 
             return new StreamOperatorStateContextImpl(
-                    prioritizedOperatorSubtaskStates.getRestoredCheckpointId(),
+                    prioritizedOperatorSubtaskStates.isRestored(),
                     operatorStateBackend,
                     keyedStatedBackend,
                     timeServiceManager,
@@ -636,7 +635,7 @@ public class StreamTaskStateInitializerImpl implements StreamTaskStateInitialize
 
     private static class StreamOperatorStateContextImpl implements StreamOperatorStateContext {
 
-        private final @Nullable Long restoredCheckpointId;
+        private final boolean restored;
 
         private final OperatorStateBackend operatorStateBackend;
         private final CheckpointableKeyedStateBackend<?> keyedStateBackend;
@@ -646,14 +645,14 @@ public class StreamTaskStateInitializerImpl implements StreamTaskStateInitialize
         private final CloseableIterable<KeyGroupStatePartitionStreamProvider> rawKeyedStateInputs;
 
         StreamOperatorStateContextImpl(
-                @Nullable Long restoredCheckpointId,
+                boolean restored,
                 OperatorStateBackend operatorStateBackend,
                 CheckpointableKeyedStateBackend<?> keyedStateBackend,
                 InternalTimeServiceManager<?> internalTimeServiceManager,
                 CloseableIterable<StatePartitionStreamProvider> rawOperatorStateInputs,
                 CloseableIterable<KeyGroupStatePartitionStreamProvider> rawKeyedStateInputs) {
 
-            this.restoredCheckpointId = restoredCheckpointId;
+            this.restored = restored;
             this.operatorStateBackend = operatorStateBackend;
             this.keyedStateBackend = keyedStateBackend;
             this.internalTimeServiceManager = internalTimeServiceManager;
@@ -662,10 +661,8 @@ public class StreamTaskStateInitializerImpl implements StreamTaskStateInitialize
         }
 
         @Override
-        public OptionalLong getRestoredCheckpointId() {
-            return restoredCheckpointId == null
-                    ? OptionalLong.empty()
-                    : OptionalLong.of(restoredCheckpointId);
+        public boolean isRestored() {
+            return restored;
         }
 
         @Override

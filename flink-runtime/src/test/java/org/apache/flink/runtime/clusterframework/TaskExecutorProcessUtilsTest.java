@@ -33,7 +33,7 @@ import org.apache.flink.runtime.util.config.memory.ProcessMemoryUtilsTestBase;
 
 import org.junit.Test;
 
-import java.util.Arrays;
+import java.util.Collections;
 import java.util.Map;
 import java.util.function.Consumer;
 
@@ -55,8 +55,7 @@ public class TaskExecutorProcessUtilsTest
     private static final MemorySize MANAGED_MEM_SIZE = MemorySize.parse("200m");
     private static final MemorySize TOTAL_FLINK_MEM_SIZE = MemorySize.parse("1280m");
     private static final MemorySize TOTAL_PROCESS_MEM_SIZE = MemorySize.parse("1536m");
-    private static final String EXTERNAL_RESOURCE_NAME_1 = "gpu";
-    private static final String EXTERNAL_RESOURCE_NAME_2 = "custom";
+    private static final String EXTERNAL_RESOURCE_NAME = "gpu";
 
     private static final TaskExecutorProcessSpec TM_RESOURCE_SPEC =
             new TaskExecutorProcessSpec(
@@ -69,9 +68,7 @@ public class TaskExecutorProcessUtilsTest
                     MemorySize.parse("6m"),
                     MemorySize.parse("7m"),
                     MemorySize.parse("8m"),
-                    Arrays.asList(
-                            new ExternalResource(EXTERNAL_RESOURCE_NAME_1, 1),
-                            new ExternalResource(EXTERNAL_RESOURCE_NAME_2, 2)));
+                    Collections.singleton(new ExternalResource(EXTERNAL_RESOURCE_NAME, 1)));
 
     public TaskExecutorProcessUtilsTest() {
         super(
@@ -125,27 +122,16 @@ public class TaskExecutorProcessUtilsTest
                 is(TM_RESOURCE_SPEC.getNumSlots()));
         assertThat(
                 configs.get(ExternalResourceOptions.EXTERNAL_RESOURCE_LIST.key()),
-                is('"' + String.join(";", TM_RESOURCE_SPEC.getExtendedResources().keySet()) + '"'));
+                is(EXTERNAL_RESOURCE_NAME));
         assertThat(
                 configs.get(
                         ExternalResourceOptions.getAmountConfigOptionForResource(
-                                EXTERNAL_RESOURCE_NAME_1)),
+                                EXTERNAL_RESOURCE_NAME)),
                 is(
                         String.valueOf(
                                 TM_RESOURCE_SPEC
                                         .getExtendedResources()
-                                        .get(EXTERNAL_RESOURCE_NAME_1)
-                                        .getValue()
-                                        .longValue())));
-        assertThat(
-                configs.get(
-                        ExternalResourceOptions.getAmountConfigOptionForResource(
-                                EXTERNAL_RESOURCE_NAME_2)),
-                is(
-                        String.valueOf(
-                                TM_RESOURCE_SPEC
-                                        .getExtendedResources()
-                                        .get(EXTERNAL_RESOURCE_NAME_2)
+                                        .get(EXTERNAL_RESOURCE_NAME)
                                         .getValue()
                                         .longValue())));
     }
@@ -160,7 +146,7 @@ public class TaskExecutorProcessUtilsTest
                         .setNetworkMemoryMB(300)
                         .setManagedMemoryMB(400)
                         .setNumSlots(5)
-                        .setExtendedResource(new ExternalResource(EXTERNAL_RESOURCE_NAME_1, 1))
+                        .setExtendedResource(new ExternalResource(EXTERNAL_RESOURCE_NAME, 1))
                         .build();
         final TaskExecutorProcessSpec taskExecutorProcessSpec =
                 TaskExecutorProcessUtils.processSpecFromWorkerResourceSpec(
@@ -656,9 +642,9 @@ public class TaskExecutorProcessUtilsTest
     public void testProcessSpecFromConfigWithExternalResource() {
         final Configuration config = new Configuration();
         config.setString(
-                ExternalResourceOptions.EXTERNAL_RESOURCE_LIST.key(), EXTERNAL_RESOURCE_NAME_1);
+                ExternalResourceOptions.EXTERNAL_RESOURCE_LIST.key(), EXTERNAL_RESOURCE_NAME);
         config.setLong(
-                ExternalResourceOptions.getAmountConfigOptionForResource(EXTERNAL_RESOURCE_NAME_1),
+                ExternalResourceOptions.getAmountConfigOptionForResource(EXTERNAL_RESOURCE_NAME),
                 1);
         config.set(TaskManagerOptions.TOTAL_PROCESS_MEMORY, MemorySize.ofMebiBytes(4096));
         final TaskExecutorProcessSpec taskExecutorProcessSpec =
@@ -667,7 +653,7 @@ public class TaskExecutorProcessUtilsTest
         assertThat(
                 taskExecutorProcessSpec
                         .getExtendedResources()
-                        .get(EXTERNAL_RESOURCE_NAME_1)
+                        .get(EXTERNAL_RESOURCE_NAME)
                         .getValue()
                         .longValue(),
                 is(1L));

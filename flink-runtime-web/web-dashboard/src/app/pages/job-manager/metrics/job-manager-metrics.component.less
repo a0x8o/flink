@@ -19,7 +19,7 @@
 @import "theme";
 
 .wrapper {
-  margin: @margin-lg;
+  margin: 0 @margin-lg @margin-lg @margin-lg;
 }
 
 .header-icon {
@@ -27,52 +27,43 @@
   top: 1px;
 }
 
-nz-progress {
-  display: block;
-  width: 90%;
-
-  ::ng-deep {
-    .ant-progress-inner {
-      border-radius: 0 !important;
-    }
-  }
-}
-
 .flink-memory-model {
   margin-bottom: @margin-md;
-
   ::ng-deep {
     table {
       border-collapse: collapse;
     }
-
     .ant-table-small {
       border: none;
-
       .ant-table-body {
-        overflow: hidden !important;
         margin: 0;
+        overflow: hidden !important;
       }
-
-      td,
-      th {
+      tr {
+        &:hover {
+          td, th {
+            background: transparent;
+          }
+        }
+      }
+      td, th {
         border-collapse: collapse;
-
         &.table-header {
           background: @table-header-bg !important;
           color: @table-header-color;
           font-weight: 500;
         }
       }
+    }
+  }
+}
 
-      tr {
-        &:hover {
-          td,
-          th {
-            background: transparent;
-          }
-        }
-      }
+nz-progress {
+  display: block;
+  width: 90%;
+  ::ng-deep {
+    .ant-progress-inner {
+      border-radius: 0 !important;
     }
   }
 }

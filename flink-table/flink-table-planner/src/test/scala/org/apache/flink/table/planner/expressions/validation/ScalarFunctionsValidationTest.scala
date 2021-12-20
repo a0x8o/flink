@@ -32,6 +32,22 @@ class ScalarFunctionsValidationTest extends ScalarTypesTestBase {
   // Math functions
   // ----------------------------------------------------------------------------------------------
 
+  @Test
+  def testInvalidLog1(): Unit = {
+    testSqlApi(
+      "LOG(1, 100)",
+      "Infinity"
+    )
+  }
+
+  @Test
+  def testInvalidLog2(): Unit ={
+    testSqlApi(
+      "LOG(-1)",
+      "NaN"
+    )
+  }
+
   @Test(expected = classOf[ValidationException])
   def testInvalidBin1(): Unit = {
     testSqlApi("BIN(f12)", "101010") // float type
@@ -78,7 +94,7 @@ class ScalarFunctionsValidationTest extends ScalarTypesTestBase {
 
   @Test
   def testInvalidTruncate2(): Unit = {
-    thrown.expect(classOf[ValidationException])
+    thrown.expect(classOf[CodeGenException])
     // The one argument is of type String
     testSqlApi(
       "TRUNCATE('abc')",
@@ -180,18 +196,6 @@ class ScalarFunctionsValidationTest extends ScalarTypesTestBase {
     testSqlApi("EXTRACT(DOY FROM TIME '12:42:25')", "0")
   }
 
-  @Test
-  def testISODOWWithTimeWhichIsUnsupported(): Unit = {
-    thrown.expect(classOf[ValidationException])
-    testSqlApi("EXTRACT(ISODOW FROM TIME '12:42:25')", "0")
-  }
-
-  @Test
-  def testISOYEARWithTimeWhichIsUnsupported(): Unit = {
-    thrown.expect(classOf[ValidationException])
-    testSqlApi("EXTRACT(ISOYEAR FROM TIME '12:42:25')", "0")
-  }
-
   private def testExtractFromTimeZeroResult(unit: TimeUnit): Unit = {
     thrown.expect(classOf[ValidationException])
     testSqlApi("EXTRACT(" + unit + " FROM TIME '00:00:00')", "0")
@@ -207,12 +211,6 @@ class ScalarFunctionsValidationTest extends ScalarTypesTestBase {
   def testCenturyWithTime(): Unit = {
     thrown.expect(classOf[ValidationException])
     testExtractFromTimeZeroResult(TimeUnit.CENTURY)
-  }
-
-  @Test
-  def testDecadeWithTime(): Unit = {
-    thrown.expect(classOf[ValidationException])
-    testExtractFromTimeZeroResult(TimeUnit.DECADE)
   }
 
   @Test

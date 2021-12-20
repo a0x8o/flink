@@ -51,8 +51,6 @@ import static java.util.Collections.emptyList;
 import static java.util.Collections.singletonList;
 import static java.util.UUID.randomUUID;
 import static org.apache.flink.runtime.state.CheckpointedStateScope.EXCLUSIVE;
-import static org.apache.flink.util.ExceptionUtils.findThrowable;
-import static org.apache.flink.util.ExceptionUtils.rethrow;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.apache.flink.util.Preconditions.checkState;
 
@@ -101,7 +99,8 @@ class ChannelStateCheckpointWriter {
             ChannelStateWriteResult result,
             CheckpointStateOutputStream stream,
             ChannelStateSerializer serializer,
-            RunnableWithException onComplete) {
+            RunnableWithException onComplete)
+            throws Exception {
         this(
                 taskName,
                 subtaskIndex,
@@ -122,7 +121,8 @@ class ChannelStateCheckpointWriter {
             ChannelStateSerializer serializer,
             RunnableWithException onComplete,
             CheckpointStateOutputStream checkpointStateOutputStream,
-            DataOutputStream dataStream) {
+            DataOutputStream dataStream)
+            throws Exception {
         this.taskName = taskName;
         this.subtaskIndex = subtaskIndex;
         this.checkpointId = checkpointId;
@@ -134,7 +134,7 @@ class ChannelStateCheckpointWriter {
         runWithChecks(() -> serializer.writeHeader(dataStream));
     }
 
-    void writeInput(InputChannelInfo info, Buffer buffer) {
+    void writeInput(InputChannelInfo info, Buffer buffer) throws Exception {
         write(
                 inputChannelOffsets,
                 info,
@@ -143,7 +143,7 @@ class ChannelStateCheckpointWriter {
                 "ChannelStateCheckpointWriter#writeInput");
     }
 
-    void writeOutput(ResultSubpartitionInfo info, Buffer buffer) {
+    void writeOutput(ResultSubpartitionInfo info, Buffer buffer) throws Exception {
         write(
                 resultSubpartitionOffsets,
                 info,
@@ -157,7 +157,8 @@ class ChannelStateCheckpointWriter {
             K key,
             Buffer buffer,
             boolean precondition,
-            String action) {
+            String action)
+            throws Exception {
         try {
             if (result.isDone()) {
                 return;
@@ -289,30 +290,19 @@ class ChannelStateCheckpointWriter {
         }
     }
 
-    private void runWithChecks(RunnableWithException r) {
+    private void runWithChecks(RunnableWithException r) throws Exception {
         try {
             checkState(!result.isDone(), "result is already completed", result);
             r.run();
         } catch (Exception e) {
             fail(e);
-            if (!findThrowable(e, IOException.class).isPresent()) {
-                rethrow(e);
-            }
+            throw e;
         }
     }
 
-    public void fail(Throwable e) {
+    public void fail(Throwable e) throws Exception {
         result.fail(e);
-        try {
-            checkpointStream.close();
-        } catch (Exception closeException) {
-            String message = "Unable to close checkpointStream after a failure";
-            if (findThrowable(closeException, IOException.class).isPresent()) {
-                LOG.warn(message, closeException);
-            } else {
-                throw new RuntimeException(message, closeException);
-            }
-        }
+        checkpointStream.close();
     }
 
     private interface HandleFactory<I, H extends AbstractChannelStateHandle<I>> {

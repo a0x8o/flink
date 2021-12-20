@@ -30,6 +30,8 @@ import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.examples.iteration.util.IterateExampleData;
+import org.apache.flink.streaming.examples.twitter.util.TwitterExampleData;
+import org.apache.flink.streaming.examples.windowing.util.SessionWindowingData;
 import org.apache.flink.streaming.test.examples.join.WindowJoinData;
 import org.apache.flink.test.testdata.WordCountData;
 import org.apache.flink.test.util.AbstractTestBase;
@@ -108,6 +110,7 @@ public class StreamingExamplesITCase extends AbstractTestBase {
         final String resultPath = getTempDirPath("result");
         org.apache.flink.streaming.examples.twitter.TwitterExample.main(
                 new String[] {"--output", resultPath});
+        compareResultsByLinesInMemory(TwitterExampleData.STREAMING_COUNTS_AS_TUPLES, resultPath);
     }
 
     @Test
@@ -115,12 +118,13 @@ public class StreamingExamplesITCase extends AbstractTestBase {
         final String resultPath = getTempDirPath("result");
         org.apache.flink.streaming.examples.windowing.SessionWindowing.main(
                 new String[] {"--output", resultPath});
+        compareResultsByLinesInMemory(SessionWindowingData.EXPECTED, resultPath);
     }
 
     @Test
     public void testWindowWordCount() throws Exception {
-        final String windowSize = "25";
-        final String slideSize = "15";
+        final String windowSize = "250";
+        final String slideSize = "150";
         final String textPath = createTempFile("text.txt", WordCountData.TEXT);
         final String resultPath = getTempDirPath("result");
 
@@ -146,11 +150,10 @@ public class StreamingExamplesITCase extends AbstractTestBase {
         org.apache.flink.streaming.examples.wordcount.WordCount.main(
                 new String[] {
                     "--input", textPath,
-                    "--output", resultPath,
-                    "--execution-mode", "automatic"
+                    "--output", resultPath
                 });
 
-        compareResultsByLinesInMemory(WordCountData.COUNTS_AS_TUPLES, resultPath);
+        compareResultsByLinesInMemory(WordCountData.STREAMING_COUNTS_AS_TUPLES, resultPath);
     }
 
     /**

@@ -399,9 +399,8 @@ public abstract class AbstractRecoverableWriterTest extends TestLogger {
             final long fileLength = file.getLen();
             byte[] serContents = new byte[(int) fileLength];
 
-            try (FSDataInputStream stream = getFileSystem().open(file.getPath())) {
-                stream.read(serContents);
-            }
+            FSDataInputStream stream = getFileSystem().open(file.getPath());
+            stream.read(serContents);
 
             contents.put(file.getPath(), new String(serContents, StandardCharsets.UTF_8));
         }

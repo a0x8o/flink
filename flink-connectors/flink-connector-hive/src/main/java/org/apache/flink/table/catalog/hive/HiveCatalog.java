@@ -18,7 +18,6 @@
 
 package org.apache.flink.table.catalog.hive;
 
-import org.apache.flink.annotation.Internal;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.java.hadoop.mapred.utils.HadoopUtils;
 import org.apache.flink.connectors.hive.HiveDynamicTableFactory;
@@ -286,7 +285,7 @@ public class HiveCatalog extends AbstractCatalog {
         return hiveConf;
     }
 
-    @Internal
+    @VisibleForTesting
     public String getHiveVersion() {
         return hiveVersion;
     }
@@ -1657,7 +1656,7 @@ public class HiveCatalog extends AbstractCatalog {
         }
     }
 
-    @Internal
+    @VisibleForTesting
     public static boolean isHiveTable(Map<String, String> properties) {
         return IDENTIFIER.equalsIgnoreCase(properties.get(CONNECTOR.key()));
     }
@@ -1721,7 +1720,7 @@ public class HiveCatalog extends AbstractCatalog {
         }
     }
 
-    @Internal
+    @VisibleForTesting
     public static boolean isEmbeddedMetastore(HiveConf hiveConf) {
         return isNullOrWhitespaceOnly(hiveConf.getVar(HiveConf.ConfVars.METASTOREURIS));
     }

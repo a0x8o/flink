@@ -16,14 +16,7 @@
  * limitations under the License.
  */
 
-import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
-
-const colorMap: Record<string, string> = {
-  'in-progress': '#f5222d',
-  ok: '#52c41a',
-  low: '#faad14',
-  high: '#f5222d'
-};
+import { Component, ChangeDetectionStrategy, Input } from '@angular/core';
 
 @Component({
   selector: 'flink-backpressure-badge',
@@ -32,9 +25,11 @@ const colorMap: Record<string, string> = {
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class BackpressureBadgeComponent {
-  @Input() public state: string;
-
-  public get backgroundColor(): string {
-    return colorMap[this.state?.toLowerCase()];
-  }
+  @Input() state: any;
+  colorMap: any = {
+    'in-progress': '#f5222d',
+    ok: '#52c41a',
+    low: '#faad14',
+    high: '#f5222d'
+  };
 }

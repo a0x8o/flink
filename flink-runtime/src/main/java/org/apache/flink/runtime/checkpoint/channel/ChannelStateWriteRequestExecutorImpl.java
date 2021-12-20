@@ -149,11 +149,8 @@ class ChannelStateWriteRequestExecutorImpl implements ChannelStateWriteRequestEx
         // checking before is not enough because (check + enqueue) is not atomic
         if (wasClosed || !thread.isAlive()) {
             cleanupRequests();
-            IllegalStateException exception = new IllegalStateException("not running");
-            if (thrown != null) {
-                exception.addSuppressed(thrown);
-            }
-            throw exception;
+            throw ExceptionUtils.firstOrSuppressed(
+                    new IllegalStateException("not running"), thrown);
         }
     }
 

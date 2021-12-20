@@ -27,7 +27,6 @@ import org.rocksdb.ColumnFamilyDescriptor;
 import org.rocksdb.ColumnFamilyHandle;
 import org.rocksdb.ColumnFamilyOptions;
 import org.rocksdb.DBOptions;
-import org.rocksdb.InfoLogLevel;
 import org.rocksdb.ReadOptions;
 import org.rocksdb.RocksDB;
 import org.rocksdb.WriteOptions;
@@ -90,12 +89,8 @@ public class RocksDBResource extends ExternalResource {
                             LOG.error("Close previous DBOptions's instance failed.", e);
                         }
 
-                        return new DBOptions()
-                                .setMaxBackgroundJobs(4)
-                                .setUseFsync(false)
-                                .setMaxOpenFiles(-1)
-                                .setInfoLogLevel(InfoLogLevel.HEADER_LEVEL)
-                                .setStatsDumpPeriodSec(0);
+                        return PredefinedOptions.FLASH_SSD_OPTIMIZED.createDBOptions(
+                                handlesToClose);
                     }
 
                     @Override
@@ -109,7 +104,9 @@ public class RocksDBResource extends ExternalResource {
                             LOG.error("Close previous ColumnOptions's instance failed.", e);
                         }
 
-                        return new ColumnFamilyOptions().optimizeForPointLookup(40960);
+                        return PredefinedOptions.FLASH_SSD_OPTIMIZED
+                                .createColumnOptions(handlesToClose)
+                                .optimizeForPointLookup(40960);
                     }
                 });
     }
@@ -159,14 +156,13 @@ public class RocksDBResource extends ExternalResource {
         this.dbOptions =
                 optionsFactory
                         .createDBOptions(
-                                new DBOptions()
-                                        .setUseFsync(false)
-                                        .setInfoLogLevel(InfoLogLevel.HEADER_LEVEL)
-                                        .setStatsDumpPeriodSec(0),
+                                PredefinedOptions.DEFAULT.createDBOptions(handlesToClose),
                                 handlesToClose)
                         .setCreateIfMissing(true);
         this.columnFamilyOptions =
-                optionsFactory.createColumnOptions(new ColumnFamilyOptions(), handlesToClose);
+                optionsFactory.createColumnOptions(
+                        PredefinedOptions.DEFAULT.createColumnOptions(handlesToClose),
+                        handlesToClose);
         this.writeOptions = new WriteOptions();
         this.writeOptions.disableWAL();
         this.readOptions = new ReadOptions();

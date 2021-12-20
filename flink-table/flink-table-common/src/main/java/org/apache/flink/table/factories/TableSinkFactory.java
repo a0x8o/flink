@@ -75,7 +75,6 @@ public interface TableSinkFactory<T> extends TableFactory {
     }
 
     /** Context of table sink creation. Contains table information and environment information. */
-    @PublicEvolving
     interface Context {
 
         /** @return full identifier of the given {@link CatalogTable}. */

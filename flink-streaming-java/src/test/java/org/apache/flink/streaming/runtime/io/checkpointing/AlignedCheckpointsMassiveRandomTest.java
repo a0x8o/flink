@@ -168,8 +168,8 @@ public class AlignedCheckpointsMassiveRandomTest {
         }
 
         @Override
-        public EndOfDataStatus hasReceivedEndOfData() {
-            return EndOfDataStatus.NOT_END_OF_DATA;
+        public boolean hasReceivedEndOfData() {
+            return false;
         }
 
         @Override
@@ -241,7 +241,12 @@ public class AlignedCheckpointsMassiveRandomTest {
         public void checkpointStopped(long cancelledCheckpointId) {}
 
         @Override
-        public void triggerDebloating() {}
+        public int getBuffersInUseCount() {
+            return 0;
+        }
+
+        @Override
+        public void announceBufferSize(int bufferSize) {}
 
         public void acknowledgeAllRecordsProcessed(InputChannelInfo channelInfo)
                 throws IOException {}

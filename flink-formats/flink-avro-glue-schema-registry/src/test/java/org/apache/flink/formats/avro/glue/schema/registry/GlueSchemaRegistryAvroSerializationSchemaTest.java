@@ -164,7 +164,7 @@ public class GlueSchemaRegistryAvroSerializationSchemaTest extends TestLogger {
             extends GlueSchemaRegistrySerializationFacade {
 
         public MockGlueSchemaRegistrySerializationFacade() {
-            super(credentialsProvider, null, glueSchemaRegistryConfiguration, configs, null);
+            super(credentialsProvider, null, glueSchemaRegistryConfiguration);
         }
 
         @Override

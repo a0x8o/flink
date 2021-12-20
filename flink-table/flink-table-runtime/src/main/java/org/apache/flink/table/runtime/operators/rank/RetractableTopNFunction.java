@@ -224,18 +224,6 @@ public class RetractableTopNFunction extends AbstractTopNFunction {
 
     // ------------- ROW_NUMBER-------------------------------
 
-    private void processStateStaled(Iterator<Map.Entry<RowData, Long>> sortedMapIterator)
-            throws RuntimeException {
-        // Skip the data if it's state is cleared because of state ttl.
-        if (lenient) {
-            // Sync with dataState
-            sortedMapIterator.remove();
-            LOG.warn(STATE_CLEARED_WARN_MSG);
-        } else {
-            throw new RuntimeException(STATE_CLEARED_WARN_MSG);
-        }
-    }
-
     private void emitRecordsWithRowNumber(
             SortedMap<RowData, Long> sortedMap,
             RowData sortKey,
@@ -256,7 +244,12 @@ public class RetractableTopNFunction extends AbstractTopNFunction {
             } else if (findsSortKey) {
                 List<RowData> inputs = dataState.get(key);
                 if (inputs == null) {
-                    processStateStaled(iterator);
+                    // Skip the data if it's state is cleared because of state ttl.
+                    if (lenient) {
+                        LOG.warn(STATE_CLEARED_WARN_MSG);
+                    } else {
+                        throw new RuntimeException(STATE_CLEARED_WARN_MSG);
+                    }
                 } else {
                     int i = 0;
                     while (i < inputs.size() && isInRankEnd(currentRank)) {
@@ -301,7 +294,12 @@ public class RetractableTopNFunction extends AbstractTopNFunction {
             } else if (findsSortKey) {
                 List<RowData> inputs = dataState.get(key);
                 if (inputs == null) {
-                    processStateStaled(iterator);
+                    // Skip the data if it's state is cleared because of state ttl.
+                    if (lenient) {
+                        LOG.warn(STATE_CLEARED_WARN_MSG);
+                    } else {
+                        throw new RuntimeException(STATE_CLEARED_WARN_MSG);
+                    }
                 } else {
                     long count = entry.getValue();
                     // gets the rank of last record with same sortKey
@@ -348,7 +346,12 @@ public class RetractableTopNFunction extends AbstractTopNFunction {
             if (!findsSortKey && key.equals(sortKey)) {
                 List<RowData> inputs = dataState.get(key);
                 if (inputs == null) {
-                    processStateStaled(iterator);
+                    // Skip the data if it's state is cleared because of state ttl.
+                    if (lenient) {
+                        LOG.warn(STATE_CLEARED_WARN_MSG);
+                    } else {
+                        throw new RuntimeException(STATE_CLEARED_WARN_MSG);
+                    }
                 } else {
                     Iterator<RowData> inputIter = inputs.iterator();
                     while (inputIter.hasNext() && isInRankEnd(currentRank)) {
@@ -372,18 +375,14 @@ public class RetractableTopNFunction extends AbstractTopNFunction {
                 }
             } else if (findsSortKey) {
                 List<RowData> inputs = dataState.get(key);
-                if (inputs == null) {
-                    processStateStaled(iterator);
-                } else {
-                    int i = 0;
-                    while (i < inputs.size() && isInRankEnd(currentRank)) {
-                        RowData currentRow = inputs.get(i);
-                        collectUpdateBefore(out, prevRow, currentRank);
-                        collectUpdateAfter(out, currentRow, currentRank);
-                        prevRow = currentRow;
-                        currentRank += 1;
-                        i++;
-                    }
+                int i = 0;
+                while (i < inputs.size() && isInRankEnd(currentRank)) {
+                    RowData currentRow = inputs.get(i);
+                    collectUpdateBefore(out, prevRow, currentRank);
+                    collectUpdateAfter(out, currentRow, currentRank);
+                    prevRow = currentRow;
+                    currentRank += 1;
+                    i++;
                 }
             } else {
                 currentRank += entry.getValue();
@@ -418,7 +417,12 @@ public class RetractableTopNFunction extends AbstractTopNFunction {
             if (!findsSortKey && key.equals(sortKey)) {
                 List<RowData> inputs = dataState.get(key);
                 if (inputs == null) {
-                    processStateStaled(iterator);
+                    // Skip the data if it's state is cleared because of state ttl.
+                    if (lenient) {
+                        LOG.warn(STATE_CLEARED_WARN_MSG);
+                    } else {
+                        throw new RuntimeException(STATE_CLEARED_WARN_MSG);
+                    }
                 } else {
                     Iterator<RowData> inputIter = inputs.iterator();
                     while (inputIter.hasNext() && isInRankEnd(nextRank)) {
@@ -451,13 +455,9 @@ public class RetractableTopNFunction extends AbstractTopNFunction {
                     // sends the record if there is a record recently upgrades to Top-N
                     int index = Long.valueOf(rankEnd - nextRank).intValue();
                     List<RowData> inputs = dataState.get(key);
-                    if (inputs == null) {
-                        processStateStaled(iterator);
-                    } else {
-                        RowData toAdd = inputs.get(index);
-                        collectInsert(out, toAdd);
-                        break;
-                    }
+                    RowData toAdd = inputs.get(index);
+                    collectInsert(out, toAdd);
+                    break;
                 }
             } else {
                 nextRank += entry.getValue();

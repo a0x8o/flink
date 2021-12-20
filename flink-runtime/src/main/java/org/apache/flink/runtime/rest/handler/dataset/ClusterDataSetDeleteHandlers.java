@@ -38,17 +38,12 @@ import org.apache.flink.runtime.webmonitor.RestfulGateway;
 import org.apache.flink.runtime.webmonitor.retriever.GatewayRetriever;
 import org.apache.flink.util.SerializedThrowable;
 
-import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 /** Handler for {@link ClusterDataSetDeleteTriggerHeaders}. */
 public class ClusterDataSetDeleteHandlers
         extends AbstractAsynchronousOperationHandlers<OperationKey, Void> {
-
-    public ClusterDataSetDeleteHandlers(Duration cacheDuration) {
-        super(cacheDuration);
-    }
 
     /** {@link TriggerHandler} implementation for the cluster data set delete operation. */
     public class ClusterDataSetDeleteTriggerHandler
@@ -74,7 +69,9 @@ public class ClusterDataSetDeleteHandlers
 
         @Override
         protected CompletableFuture<Void> triggerOperation(
-                HandlerRequest<EmptyRequestBody> request, RestfulGateway gateway)
+                HandlerRequest<EmptyRequestBody, ClusterDataSetDeleteTriggerMessageParameters>
+                        request,
+                RestfulGateway gateway)
                 throws RestHandlerException {
             final IntermediateDataSetID clusterPartitionId =
                     request.getPathParameter(ClusterDataSetIdPathParameter.class);
@@ -85,7 +82,9 @@ public class ClusterDataSetDeleteHandlers
         }
 
         @Override
-        protected OperationKey createOperationKey(HandlerRequest<EmptyRequestBody> request) {
+        protected OperationKey createOperationKey(
+                HandlerRequest<EmptyRequestBody, ClusterDataSetDeleteTriggerMessageParameters>
+                        request) {
             return new OperationKey(new TriggerId());
         }
     }
@@ -109,7 +108,9 @@ public class ClusterDataSetDeleteHandlers
         }
 
         @Override
-        protected OperationKey getOperationKey(HandlerRequest<EmptyRequestBody> request) {
+        protected OperationKey getOperationKey(
+                HandlerRequest<EmptyRequestBody, ClusterDataSetDeleteStatusMessageParameters>
+                        request) {
             final TriggerId triggerId = request.getPathParameter(TriggerIdPathParameter.class);
             return new OperationKey(triggerId);
         }

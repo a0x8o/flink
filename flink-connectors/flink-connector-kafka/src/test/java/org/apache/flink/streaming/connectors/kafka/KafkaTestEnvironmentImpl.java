@@ -18,7 +18,6 @@
 package org.apache.flink.streaming.connectors.kafka;
 
 import org.apache.flink.api.common.serialization.SerializationSchema;
-import org.apache.flink.connector.kafka.sink.KafkaUtil;
 import org.apache.flink.connector.kafka.source.KafkaSource;
 import org.apache.flink.connector.kafka.source.KafkaSourceBuilder;
 import org.apache.flink.connector.kafka.source.reader.deserializer.KafkaRecordDeserializationSchema;
@@ -31,6 +30,7 @@ import org.apache.flink.streaming.connectors.kafka.partitioner.FlinkKafkaPartiti
 import org.apache.flink.streaming.util.serialization.KeyedSerializationSchema;
 import org.apache.flink.util.NetUtils;
 
+import kafka.metrics.KafkaMetricsReporter;
 import kafka.server.KafkaConfig;
 import kafka.server.KafkaServer;
 import org.apache.commons.collections.list.UnmodifiableList;
@@ -54,9 +54,11 @@ import java.io.File;
 import java.net.BindException;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -65,6 +67,8 @@ import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+
+import scala.collection.mutable.ArraySeq;
 
 import static org.apache.flink.util.NetUtils.hostAndPortToUrlString;
 import static org.junit.Assert.assertTrue;
@@ -104,10 +108,11 @@ public class KafkaTestEnvironmentImpl extends KafkaTestEnvironment {
         this.config = config;
 
         File tempDir = new File(System.getProperty("java.io.tmpdir"));
-        tmpZkDir = new File(tempDir, "kafkaITcase-zk-dir-" + (UUID.randomUUID()));
+        tmpZkDir = new File(tempDir, "kafkaITcase-zk-dir-" + (UUID.randomUUID().toString()));
         assertTrue("cannot create zookeeper temp dir", tmpZkDir.mkdirs());
 
-        tmpKafkaParent = new File(tempDir, "kafkaITcase-kafka-dir-" + (UUID.randomUUID()));
+        tmpKafkaParent =
+                new File(tempDir, "kafkaITcase-kafka-dir-" + (UUID.randomUUID().toString()));
         assertTrue("cannot create kafka temp dir", tmpKafkaParent.mkdirs());
 
         tmpKafkaDirs = new ArrayList<>(config.getKafkaServersNumber());
@@ -274,10 +279,32 @@ public class KafkaTestEnvironmentImpl extends KafkaTestEnvironment {
     }
 
     @Override
-    @SuppressWarnings("unchecked")
     public <K, V> Collection<ConsumerRecord<K, V>> getAllRecordsFromTopic(
-            Properties properties, String topic) {
-        return UnmodifiableList.decorate(KafkaUtil.drainAllRecordsFromTopic(topic, properties));
+            Properties properties, String topic, int partition, long timeout) {
+        List<ConsumerRecord<K, V>> result = new ArrayList<>();
+
+        try (KafkaConsumer<K, V> consumer = new KafkaConsumer<>(properties)) {
+            consumer.assign(Arrays.asList(new TopicPartition(topic, partition)));
+
+            while (true) {
+                boolean processedAtLeastOneRecord = false;
+
+                // wait for new records with timeout and break the loop if we didn't get any
+                Iterator<ConsumerRecord<K, V>> iterator = consumer.poll(timeout).iterator();
+                while (iterator.hasNext()) {
+                    ConsumerRecord<K, V> record = iterator.next();
+                    result.add(record);
+                    processedAtLeastOneRecord = true;
+                }
+
+                if (!processedAtLeastOneRecord) {
+                    break;
+                }
+            }
+            consumer.commitSync();
+        }
+
+        return UnmodifiableList.decorate(result);
     }
 
     @Override
@@ -449,7 +476,12 @@ public class KafkaTestEnvironmentImpl extends KafkaTestEnvironment {
 
             try {
                 scala.Option<String> stringNone = scala.Option.apply(null);
-                KafkaServer server = new KafkaServer(kafkaConfig, Time.SYSTEM, stringNone, false);
+                KafkaServer server =
+                        new KafkaServer(
+                                kafkaConfig,
+                                Time.SYSTEM,
+                                stringNone,
+                                new ArraySeq<KafkaMetricsReporter>(0));
                 server.startup();
                 return server;
             } catch (KafkaException e) {

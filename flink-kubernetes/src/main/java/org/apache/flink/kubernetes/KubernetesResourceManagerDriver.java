@@ -211,8 +211,7 @@ public class KubernetesResourceManagerDriver
 
     private void recoverWorkerNodesFromPreviousAttempts() throws ResourceManagerException {
         List<KubernetesPod> podList =
-                flinkKubeClient.getPodsWithLabels(
-                        KubernetesUtils.getTaskManagerSelectors(clusterId));
+                flinkKubeClient.getPodsWithLabels(KubernetesUtils.getTaskManagerLabels(clusterId));
         final List<KubernetesWorkerNode> recoveredWorkers = new ArrayList<>();
 
         for (KubernetesPod pod : podList) {
@@ -327,10 +326,10 @@ public class KubernetesResourceManagerDriver
                         });
     }
 
-    private Optional<KubernetesWatch> watchTaskManagerPods() throws Exception {
+    private Optional<KubernetesWatch> watchTaskManagerPods() {
         return Optional.of(
                 flinkKubeClient.watchPodsAndDoCallback(
-                        KubernetesUtils.getTaskManagerSelectors(clusterId),
+                        KubernetesUtils.getTaskManagerLabels(clusterId),
                         new PodCallbackHandlerImpl()));
     }
 
@@ -369,11 +368,7 @@ public class KubernetesResourceManagerDriver
                                     if (running) {
                                         podsWatchOpt.ifPresent(KubernetesWatch::close);
                                         log.info("Creating a new watch on TaskManager pods.");
-                                        try {
-                                            podsWatchOpt = watchTaskManagerPods();
-                                        } catch (Exception e) {
-                                            getResourceEventHandler().onError(e);
-                                        }
+                                        podsWatchOpt = watchTaskManagerPods();
                                     }
                                 });
             } else {

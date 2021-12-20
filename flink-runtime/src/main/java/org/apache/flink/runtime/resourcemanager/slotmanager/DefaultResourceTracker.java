@@ -31,7 +31,6 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Optional;
 
 /** Default {@link ResourceTracker} implementation. */
 public class DefaultResourceTracker implements ResourceTracker {
@@ -130,13 +129,6 @@ public class DefaultResourceTracker implements ResourceTracker {
         Preconditions.checkNotNull(jobId);
         JobScopedResourceTracker tracker = trackers.get(jobId);
         return tracker == null ? Collections.emptyList() : tracker.getAcquiredResources();
-    }
-
-    @Override
-    public boolean isRequirementEmpty(JobID jobId) {
-        return Optional.ofNullable(trackers.get(jobId))
-                .map(JobScopedResourceTracker::isRequirementEmpty)
-                .orElse(true);
     }
 
     @VisibleForTesting

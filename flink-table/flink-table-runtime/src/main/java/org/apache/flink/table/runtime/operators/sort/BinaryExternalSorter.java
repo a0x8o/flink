@@ -766,8 +766,8 @@ public class BinaryExternalSorter implements Sorter<BinaryRowData> {
         }
 
         /**
-         * Forces an immediate shutdown of the thread. Loses any state and all buffers that the
-         * thread is currently working on. This terminates cleanly for the JVM, but loses
+         * Forces an immediate shutdown of the thread. Looses any state and all buffers that the
+         * thread is currently working on. This terminates cleanly for the JVM, but looses
          * intermediate results.
          */
         public void shutdown() {

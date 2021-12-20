@@ -86,6 +86,7 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.LinkedBlockingDeque;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
@@ -732,7 +733,19 @@ public class FlinkKafkaProducer<IN>
         // See KAFKA-6119 (affects versions 0.11.0.0 and 0.11.0.1):
         // The KafkaProducer may not throw an exception if the transaction failed to commit
         if (semantic == FlinkKafkaProducer.Semantic.EXACTLY_ONCE) {
-            final long transactionTimeout = getTransactionTimeout(producerConfig);
+            final Object object =
+                    this.producerConfig.get(ProducerConfig.TRANSACTION_TIMEOUT_CONFIG);
+            final long transactionTimeout;
+            if (object instanceof String && StringUtils.isNumeric((String) object)) {
+                transactionTimeout = Long.parseLong((String) object);
+            } else if (object instanceof Number) {
+                transactionTimeout = ((Number) object).longValue();
+            } else {
+                throw new IllegalArgumentException(
+                        ProducerConfig.TRANSACTION_TIMEOUT_CONFIG
+                                + " must be numeric, was "
+                                + object);
+            }
             super.setTransactionTimeout(transactionTimeout);
             super.enableTransactionTimeoutWarnings(0.8);
         }
@@ -1039,26 +1052,16 @@ public class FlinkKafkaProducer<IN>
                 producer = initTransactionalProducer(transaction.transactionalId, false);
                 producer.resumeTransaction(transaction.producerId, transaction.epoch);
                 producer.commitTransaction();
-            } catch (InvalidTxnStateException e) {
+            } catch (InvalidTxnStateException | ProducerFencedException ex) {
+                // That means we have committed this transaction before.
                 LOG.warn(
-                        "Unable to commit recovered transaction ({}) because it's in an invalid state. "
-                                + "Most likely the transaction has been aborted for some reason. Please check the Kafka logs for more details.",
-                        transaction,
-                        e);
-            } catch (ProducerFencedException e) {
-                LOG.warn(
-                        "Unable to commit recovered transaction ({}) because its producer is already fenced."
-                                + " This means that you either have a different producer with the same '{}' or"
-                                + " recovery took longer than '{}' ({}ms). In both cases this most likely signals data loss,"
-                                + " please consult the Flink documentation for more details.",
-                        transaction,
-                        ProducerConfig.TRANSACTIONAL_ID_CONFIG,
-                        ProducerConfig.TRANSACTION_TIMEOUT_CONFIG,
-                        getTransactionTimeout(producerConfig),
-                        e);
+                        "Encountered error {} while recovering transaction {}. "
+                                + "Presumably this transaction has been already committed before",
+                        ex,
+                        transaction);
             } finally {
                 if (producer != null) {
-                    producer.close(Duration.ofSeconds(0));
+                    producer.close(0, TimeUnit.SECONDS);
                 }
             }
         }
@@ -1081,7 +1084,7 @@ public class FlinkKafkaProducer<IN>
                 producer.initTransactions();
             } finally {
                 if (producer != null) {
-                    producer.close(Duration.ofSeconds(0));
+                    producer.close(0, TimeUnit.SECONDS);
                 }
             }
         }
@@ -1487,18 +1490,6 @@ public class FlinkKafkaProducer<IN>
         }
 
         return partitions;
-    }
-
-    public static long getTransactionTimeout(Properties producerConfig) {
-        final Object object = producerConfig.get(ProducerConfig.TRANSACTION_TIMEOUT_CONFIG);
-        if (object instanceof String && StringUtils.isNumeric((String) object)) {
-            return Long.parseLong((String) object);
-        } else if (object instanceof Number) {
-            return ((Number) object).longValue();
-        } else {
-            throw new IllegalArgumentException(
-                    ProducerConfig.TRANSACTION_TIMEOUT_CONFIG + " must be numeric, was " + object);
-        }
     }
 
     /** State for handling transactions. */

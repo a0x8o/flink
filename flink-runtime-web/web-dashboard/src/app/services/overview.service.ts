@@ -18,19 +18,21 @@
 
 import { HttpClient } from '@angular/common/http';
 import { Injectable } from '@angular/core';
-import { EMPTY, Observable } from 'rxjs';
+import { EMPTY } from 'rxjs';
 import { catchError } from 'rxjs/operators';
-
-import { BASE_URL } from 'config';
-import { Overview } from 'interfaces';
+import { BASE_URL } from '../app.config';
+import { OverviewInterface } from 'interfaces';
 
 @Injectable({
   providedIn: 'root'
 })
 export class OverviewService {
-  constructor(private readonly httpClient: HttpClient) {}
+  constructor(private httpClient: HttpClient) {}
 
-  public loadOverview(): Observable<Overview> {
-    return this.httpClient.get<Overview>(`${BASE_URL}/overview`).pipe(catchError(() => EMPTY));
+  /**
+   * Get cluster overview status
+   */
+  loadOverview() {
+    return this.httpClient.get<OverviewInterface>(`${BASE_URL}/overview`).pipe(catchError(() => EMPTY));
   }
 }

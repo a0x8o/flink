@@ -17,8 +17,8 @@
 
 package org.apache.flink.connector.kafka.sink;
 
-import org.apache.flink.connector.kafka.sink.KafkaTransactionLog.TransactionRecord;
-import org.apache.flink.util.TestLogger;
+import org.apache.flink.shaded.guava30.com.google.common.collect.ImmutableList;
+import org.apache.flink.shaded.guava30.com.google.common.collect.ImmutableMap;
 
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.Producer;
@@ -32,33 +32,46 @@ import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.KafkaContainer;
+import org.testcontainers.containers.Network;
+import org.testcontainers.containers.output.Slf4jLogConsumer;
+import org.testcontainers.utility.DockerImageName;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
 import java.util.function.Consumer;
 
-import static org.apache.flink.connector.kafka.sink.KafkaTransactionLog.TransactionState.CompleteAbort;
-import static org.apache.flink.connector.kafka.sink.KafkaTransactionLog.TransactionState.CompleteCommit;
-import static org.apache.flink.connector.kafka.sink.KafkaTransactionLog.TransactionState.Empty;
-import static org.apache.flink.connector.kafka.sink.KafkaTransactionLog.TransactionState.Ongoing;
-import static org.apache.flink.connector.kafka.sink.KafkaTransactionLog.TransactionState.PrepareAbort;
-import static org.apache.flink.connector.kafka.sink.KafkaTransactionLog.TransactionState.PrepareCommit;
-import static org.apache.flink.connector.kafka.sink.KafkaUtil.createKafkaContainer;
-import static org.apache.flink.util.DockerImageVersions.KAFKA;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 
 /** Tests for {@link KafkaTransactionLog} to retrieve abortable Kafka transactions. */
-public class KafkaTransactionLogITCase extends TestLogger {
+public class KafkaTransactionLogITCase {
 
     private static final Logger LOG = LoggerFactory.getLogger(KafkaSinkITCase.class);
+    private static final Slf4jLogConsumer LOG_CONSUMER = new Slf4jLogConsumer(LOG);
+    private static final String INTER_CONTAINER_KAFKA_ALIAS = "kafka";
+    private static final Network NETWORK = Network.newNetwork();
     private static final String TOPIC_NAME = "kafkaTransactionLogTest";
     private static final String TRANSACTIONAL_ID_PREFIX = "kafka-log";
 
     @ClassRule
     public static final KafkaContainer KAFKA_CONTAINER =
-            createKafkaContainer(KAFKA, LOG).withEmbeddedZookeeper();
+            new KafkaContainer(DockerImageName.parse("confluentinc/cp-kafka:6.2.0"))
+                    .withEmbeddedZookeeper()
+                    .withEnv(
+                            ImmutableMap.of(
+                                    "KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR",
+                                    "1",
+                                    "KAFKA_TRANSACTION_MAX_TIMEOUT_MS",
+                                    String.valueOf(Duration.ofHours(2).toMillis()),
+                                    "KAFKA_TRANSACTION_STATE_LOG_MIN_ISR",
+                                    "1",
+                                    "KAFKA_MIN_INSYNC_REPLICAS",
+                                    "1"))
+                    .withNetwork(NETWORK)
+                    .withLogConsumer(LOG_CONSUMER)
+                    .withNetworkAliases(INTER_CONTAINER_KAFKA_ALIAS);
 
     private final List<Producer<byte[], Integer>> openProducers = new ArrayList<>();
 
@@ -68,35 +81,64 @@ public class KafkaTransactionLogITCase extends TestLogger {
     }
 
     @Test
-    public void testGetTransactions() {
-        committedTransaction(1);
-        abortedTransaction(2);
-        lingeringTransaction(3);
-        lingeringTransaction(4);
+    public void testGetTransactionsToAbort() {
+        committedTransaction(0, 1);
+        abortedTransaction(0, 2);
+        lingeringTransaction(0, 3);
+        lingeringTransaction(0, 4);
 
-        final KafkaTransactionLog transactionLog =
-                new KafkaTransactionLog(getKafkaClientConfiguration());
-        final List<TransactionRecord> transactions = transactionLog.getTransactions();
-        assertThat(
-                transactions,
-                containsInAnyOrder(
-                        new TransactionRecord(buildTransactionalId(1), Empty),
-                        new TransactionRecord(buildTransactionalId(1), Ongoing),
-                        new TransactionRecord(buildTransactionalId(1), PrepareCommit),
-                        new TransactionRecord(buildTransactionalId(1), CompleteCommit),
-                        new TransactionRecord(buildTransactionalId(2), Empty),
-                        new TransactionRecord(buildTransactionalId(2), Ongoing),
-                        new TransactionRecord(buildTransactionalId(2), PrepareAbort),
-                        new TransactionRecord(buildTransactionalId(2), CompleteAbort),
-                        new TransactionRecord(buildTransactionalId(3), Empty),
-                        new TransactionRecord(buildTransactionalId(3), Ongoing),
-                        new TransactionRecord(buildTransactionalId(4), Empty),
-                        new TransactionRecord(buildTransactionalId(4), Ongoing)));
+        committedTransaction(2, 1);
+        lingeringTransaction(2, 2);
+
+        committedTransaction(3, 1);
+        lingeringTransaction(3, 2);
+
+        committedTransaction(5, 1);
+        lingeringTransaction(5, 2);
+
+        committedTransaction(6, 1);
+
+        lingeringTransaction(7, 1);
+        lingeringTransaction(8, 1);
+
+        try (final KafkaTransactionLog transactionLog =
+                new KafkaTransactionLog(
+                        getKafkaClientConfiguration(),
+                        createWriterState(0, 1),
+                        ImmutableList.of(createWriterState(5, 1), createWriterState(2, 0)),
+                        2)) {
+            final List<String> transactionsToAbort = transactionLog.getTransactionsToAbort();
+            assertThat(
+                    transactionsToAbort,
+                    containsInAnyOrder(
+                            buildTransactionalId(0, 3),
+                            buildTransactionalId(0, 4),
+                            buildTransactionalId(2, 2),
+                            buildTransactionalId(5, 2),
+                            buildTransactionalId(8, 1)));
+        }
+
+        try (final KafkaTransactionLog transactionLog =
+                new KafkaTransactionLog(
+                        getKafkaClientConfiguration(),
+                        createWriterState(1, 1),
+                        ImmutableList.of(createWriterState(6, 1), createWriterState(3, 1)),
+                        2)) {
+            final List<String> transactionsToAbort = transactionLog.getTransactionsToAbort();
+            assertThat(
+                    transactionsToAbort,
+                    containsInAnyOrder(buildTransactionalId(3, 2), buildTransactionalId(7, 1)));
+        }
     }
 
-    private void committedTransaction(long id) {
+    private static KafkaWriterState createWriterState(int subtaskId, long offset) {
+        return new KafkaWriterState(TRANSACTIONAL_ID_PREFIX, subtaskId, offset);
+    }
+
+    private void committedTransaction(int subtaskId, long offset) {
         submitTransaction(
-                id,
+                subtaskId,
+                offset,
                 producer -> {
                     producer.initTransactions();
                     producer.beginTransaction();
@@ -107,9 +149,10 @@ public class KafkaTransactionLogITCase extends TestLogger {
                 });
     }
 
-    private void lingeringTransaction(long id) {
+    private void lingeringTransaction(int subtaskId, long offset) {
         submitTransaction(
-                id,
+                subtaskId,
+                offset,
                 producer -> {
                     producer.initTransactions();
                     producer.beginTransaction();
@@ -118,9 +161,10 @@ public class KafkaTransactionLogITCase extends TestLogger {
                 });
     }
 
-    private void abortedTransaction(long id) {
+    private void abortedTransaction(int subtaskId, long offset) {
         submitTransaction(
-                id,
+                subtaskId,
+                offset,
                 producer -> {
                     producer.initTransactions();
                     producer.beginTransaction();
@@ -131,15 +175,17 @@ public class KafkaTransactionLogITCase extends TestLogger {
                 });
     }
 
-    private void submitTransaction(long id, Consumer<Producer<byte[], Integer>> producerAction) {
-        Producer<byte[], Integer> producer = createProducer(buildTransactionalId(id));
+    private void submitTransaction(
+            int subtaskId, long offset, Consumer<Producer<byte[], Integer>> producerAction) {
+        final Producer<byte[], Integer> producer =
+                createProducer(buildTransactionalId(subtaskId, offset));
         openProducers.add(producer);
         producerAction.accept(producer);
-        // don't close here for lingering transactions
     }
 
-    private static String buildTransactionalId(long id) {
-        return TRANSACTIONAL_ID_PREFIX + id;
+    private static String buildTransactionalId(int subtaskId, long offset) {
+        return TransactionalIdFactory.buildTransactionalId(
+                TRANSACTIONAL_ID_PREFIX, subtaskId, offset);
     }
 
     private static Producer<byte[], Integer> createProducer(String transactionalId) {
@@ -157,7 +203,7 @@ public class KafkaTransactionLogITCase extends TestLogger {
         standardProps.put("bootstrap.servers", KAFKA_CONTAINER.getBootstrapServers());
         standardProps.put("group.id", "flink-tests");
         standardProps.put("enable.auto.commit", false);
-        standardProps.put("auto.id.reset", "earliest");
+        standardProps.put("auto.offset.reset", "earliest");
         standardProps.put("max.partition.fetch.bytes", 256);
         return standardProps;
     }

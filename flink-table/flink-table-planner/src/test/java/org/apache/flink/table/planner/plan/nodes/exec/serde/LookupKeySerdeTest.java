@@ -48,7 +48,6 @@ public class LookupKeySerdeTest {
     @Test
     public void testLookupKey() throws JsonProcessingException {
         TableConfig tableConfig = TableConfig.getDefault();
-        ModuleManager moduleManager = new ModuleManager();
         CatalogManager catalogManager =
                 CatalogManager.newBuilder()
                         .classLoader(Thread.currentThread().getContextClassLoader())
@@ -59,8 +58,7 @@ public class LookupKeySerdeTest {
                 new FlinkContextImpl(
                         false,
                         tableConfig,
-                        moduleManager,
-                        new FunctionCatalog(tableConfig, catalogManager, moduleManager),
+                        new FunctionCatalog(tableConfig, catalogManager, new ModuleManager()),
                         catalogManager,
                         null);
         SerdeContext serdeCtx =

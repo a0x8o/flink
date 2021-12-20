@@ -264,8 +264,7 @@ public class BlobServer extends Thread
     public void run() {
         try {
             while (!this.shutdownRequested.get()) {
-                BlobServerConnection conn =
-                        new BlobServerConnection(NetUtils.acceptWithoutTimeout(serverSocket), this);
+                BlobServerConnection conn = new BlobServerConnection(serverSocket.accept(), this);
                 try {
                     synchronized (activeConnections) {
                         while (activeConnections.size() >= maxConnections) {

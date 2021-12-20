@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-export interface Configuration {
+export interface ConfigurationInterface {
   'refresh-interval': number;
   'timezone-name': string;
   'timezone-offset': number;

@@ -103,7 +103,10 @@ abstract class AbstractStateTableSnapshot<K, N, S>
     }
 
     /**
-     * {@link CopyOnWriteStateTable} could naturally support a kind of prefix-compressed format
+     * Implementation note: we currently chose the same format between {@link NestedMapsStateTable}
+     * and {@link CopyOnWriteStateTable}.
+     *
+     * <p>{@link NestedMapsStateTable} could naturally support a kind of prefix-compressed format
      * (grouping by namespace, writing the namespace only once per group instead for each mapping).
      * We might implement support for different formats later (tailored towards different state
      * table implementations).

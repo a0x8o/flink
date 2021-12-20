@@ -16,11 +16,11 @@
  * limitations under the License.
  */
 
-export interface JobOverview {
-  jobs: JobsItem[];
+export interface JobOverviewInterface {
+  jobs: JobsItemInterface[];
 }
 
-export interface JobsItem {
+export interface JobsItemInterface {
   jid: string;
   name: string;
   state: string;
@@ -28,11 +28,11 @@ export interface JobsItem {
   'end-time': number;
   duration: number;
   'last-modification': number;
-  tasks: TaskStatus;
+  tasks: TaskStatusInterface;
   completed?: boolean;
 }
 
-export interface TaskStatus {
+export interface TaskStatusInterface {
   CANCELED: number;
   CANCELING: number;
   CREATED: number;

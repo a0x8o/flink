@@ -50,8 +50,8 @@ import org.apache.flink.runtime.externalresource.ExternalResourceInfoProvider;
 import org.apache.flink.runtime.filecache.FileCache;
 import org.apache.flink.runtime.heartbeat.HeartbeatListener;
 import org.apache.flink.runtime.heartbeat.HeartbeatManager;
-import org.apache.flink.runtime.heartbeat.HeartbeatReceiver;
 import org.apache.flink.runtime.heartbeat.HeartbeatServices;
+import org.apache.flink.runtime.heartbeat.HeartbeatTarget;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.instance.HardwareDescription;
 import org.apache.flink.runtime.instance.InstanceID;
@@ -77,7 +77,6 @@ import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.messages.TaskThreadInfoResponse;
 import org.apache.flink.runtime.messages.ThreadInfoSample;
 import org.apache.flink.runtime.metrics.MetricNames;
-import org.apache.flink.runtime.metrics.groups.TaskManagerJobMetricGroup;
 import org.apache.flink.runtime.metrics.groups.TaskManagerMetricGroup;
 import org.apache.flink.runtime.metrics.groups.TaskMetricGroup;
 import org.apache.flink.runtime.operators.coordination.OperatorEvent;
@@ -377,12 +376,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 
                         return Arrays.stream(logFiles)
                                 .filter(File::isFile)
-                                .map(
-                                        logFile ->
-                                                new LogInfo(
-                                                        logFile.getName(),
-                                                        logFile.length(),
-                                                        logFile.lastModified()))
+                                .map(logFile -> new LogInfo(logFile.getName(), logFile.length()))
                                 .collect(Collectors.toList());
                     }
                     return Collections.emptyList();
@@ -641,14 +635,10 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
                                 + ")");
             }
 
-            TaskManagerJobMetricGroup jobGroup =
-                    taskManagerMetricGroup.addJob(
-                            jobInformation.getJobId(), jobInformation.getJobName());
-
-            // note that a pre-existing job group can NOT be closed concurrently - this is done by
-            // the same TM thread in removeJobMetricsGroup
             TaskMetricGroup taskMetricGroup =
-                    jobGroup.addTask(
+                    taskManagerMetricGroup.addTaskForJob(
+                            jobInformation.getJobId(),
+                            jobInformation.getJobName(),
                             taskInformation.getJobVertexId(),
                             tdd.getExecutionAttemptId(),
                             taskInformation.getTaskName(),
@@ -692,7 +682,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
             try {
                 changelogStorage =
                         changelogStoragesManager.stateChangelogStorageForJob(
-                                jobId, taskManagerConfiguration.getConfiguration(), jobGroup);
+                                jobId, taskManagerConfiguration.getConfiguration());
             } catch (IOException e) {
                 throw new TaskSubmissionException(e);
             }
@@ -1375,7 +1365,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
         // monitor the resource manager as heartbeat target
         resourceManagerHeartbeatManager.monitorTarget(
                 resourceManagerResourceId,
-                new ResourceManagerHeartbeatReceiver(resourceManagerGateway));
+                new ResourceManagerHeartbeatTarget(resourceManagerGateway));
 
         // set the propagated blob server address
         final InetSocketAddress blobServerAddress =
@@ -1526,7 +1516,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
                 //   This can happen when the resource requirements of a job increases between
                 //   offers.
                 //   In this case the first response MUST be ignored, so that
-                //   the slot can be properly activated when the second response arrives.
+                //   the the slot can be properly activated when the second response arrives.
                 // 2) initially accepted, later rejected
                 //   This can happen when the resource requirements of a job decrease between
                 //   offers.
@@ -1633,7 +1623,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 
         // monitor the job manager as heartbeat target
         jobManagerHeartbeatManager.monitorTarget(
-                jobManagerResourceID, new JobManagerHeartbeatReceiver(jobMasterGateway));
+                jobManagerResourceID, new JobManagerHeartbeatTarget(jobMasterGateway));
 
         internalOfferSlotsToJobManager(establishedConnection);
     }
@@ -1793,7 +1783,6 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
                         job -> {
                             closeJob(job, cause);
                         });
-        taskManagerMetricGroup.removeJobMetricsGroup(jobId);
         changelogStoragesManager.releaseStateChangelogStorageForJob(jobId);
         currentSlotOfferPerJob.remove(jobId);
     }
@@ -2146,11 +2135,11 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
     //  Utility classes
     // ------------------------------------------------------------------------
 
-    private static final class JobManagerHeartbeatReceiver
-            extends HeartbeatReceiver<TaskExecutorToJobManagerHeartbeatPayload> {
+    private static final class JobManagerHeartbeatTarget
+            implements HeartbeatTarget<TaskExecutorToJobManagerHeartbeatPayload> {
         private final JobMasterGateway jobMasterGateway;
 
-        private JobManagerHeartbeatReceiver(JobMasterGateway jobMasterGateway) {
+        private JobManagerHeartbeatTarget(JobMasterGateway jobMasterGateway) {
             this.jobMasterGateway = jobMasterGateway;
         }
 
@@ -2159,13 +2148,20 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
                 ResourceID resourceID, TaskExecutorToJobManagerHeartbeatPayload payload) {
             return jobMasterGateway.heartbeatFromTaskManager(resourceID, payload);
         }
+
+        @Override
+        public CompletableFuture<Void> requestHeartbeat(
+                ResourceID resourceID, TaskExecutorToJobManagerHeartbeatPayload payload) {
+            // request heartbeat will never be called on the task manager side
+            return FutureUtils.unsupportedOperationFuture();
+        }
     }
 
-    private static final class ResourceManagerHeartbeatReceiver
-            extends HeartbeatReceiver<TaskExecutorHeartbeatPayload> {
+    private static final class ResourceManagerHeartbeatTarget
+            implements HeartbeatTarget<TaskExecutorHeartbeatPayload> {
         private final ResourceManagerGateway resourceManagerGateway;
 
-        private ResourceManagerHeartbeatReceiver(ResourceManagerGateway resourceManagerGateway) {
+        private ResourceManagerHeartbeatTarget(ResourceManagerGateway resourceManagerGateway) {
             this.resourceManagerGateway = resourceManagerGateway;
         }
 
@@ -2173,6 +2169,13 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
         public CompletableFuture<Void> receiveHeartbeat(
                 ResourceID resourceID, TaskExecutorHeartbeatPayload heartbeatPayload) {
             return resourceManagerGateway.heartbeatFromTaskManager(resourceID, heartbeatPayload);
+        }
+
+        @Override
+        public CompletableFuture<Void> requestHeartbeat(
+                ResourceID resourceID, TaskExecutorHeartbeatPayload heartbeatPayload) {
+            // the TaskManager won't send heartbeat requests to the ResourceManager
+            return FutureUtils.unsupportedOperationFuture();
         }
     }
 

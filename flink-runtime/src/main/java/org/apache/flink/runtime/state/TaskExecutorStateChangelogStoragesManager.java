@@ -18,10 +18,8 @@
 
 package org.apache.flink.runtime.state;
 
-import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.runtime.metrics.groups.TaskManagerJobMetricGroup;
 import org.apache.flink.runtime.state.changelog.StateChangelogStorage;
 import org.apache.flink.runtime.state.changelog.StateChangelogStorageLoader;
 import org.apache.flink.util.ShutdownHookUtil;
@@ -70,10 +68,7 @@ public class TaskExecutorStateChangelogStoragesManager {
 
     @Nullable
     public StateChangelogStorage<?> stateChangelogStorageForJob(
-            @Nonnull JobID jobId,
-            Configuration configuration,
-            TaskManagerJobMetricGroup metricGroup)
-            throws IOException {
+            @Nonnull JobID jobId, Configuration configuration) throws IOException {
         if (closed) {
             throw new IllegalStateException(
                     "TaskExecutorStateChangelogStoragesManager is already closed and cannot "
@@ -84,8 +79,7 @@ public class TaskExecutorStateChangelogStoragesManager {
                 changelogStoragesByJobId.get(jobId);
 
         if (stateChangelogStorage == null) {
-            StateChangelogStorage<?> loaded =
-                    StateChangelogStorageLoader.load(configuration, metricGroup);
+            StateChangelogStorage<?> loaded = StateChangelogStorageLoader.load(configuration);
             stateChangelogStorage = Optional.ofNullable(loaded);
             changelogStoragesByJobId.put(jobId, stateChangelogStorage);
 
@@ -150,11 +144,5 @@ public class TaskExecutorStateChangelogStoragesManager {
                 LOG.warn("Exception while disposing state changelog storage {}.", storage, e);
             }
         }
-    }
-
-    @VisibleForTesting
-    @Nullable
-    public Optional<StateChangelogStorage<?>> getChangelogStoragesByJobId(JobID jobId) {
-        return changelogStoragesByJobId.get(jobId);
     }
 }

@@ -20,19 +20,14 @@ package org.apache.flink.table.planner.plan.nodes.exec.serde;
 
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.table.api.DataTypes;
-import org.apache.flink.table.api.EnvironmentSettings;
 import org.apache.flink.table.api.TableConfig;
-import org.apache.flink.table.api.TableEnvironment;
-import org.apache.flink.table.api.internal.TableEnvironmentImpl;
 import org.apache.flink.table.catalog.CatalogTable;
 import org.apache.flink.table.catalog.Column;
 import org.apache.flink.table.catalog.ObjectIdentifier;
 import org.apache.flink.table.catalog.ResolvedCatalogTable;
 import org.apache.flink.table.catalog.ResolvedSchema;
-import org.apache.flink.table.module.ModuleManager;
 import org.apache.flink.table.planner.calcite.FlinkContextImpl;
 import org.apache.flink.table.planner.calcite.FlinkTypeFactory;
-import org.apache.flink.table.planner.delegation.PlannerBase;
 import org.apache.flink.table.planner.functions.sql.FlinkSqlOperatorTable;
 import org.apache.flink.table.planner.plan.abilities.sink.OverwriteSpec;
 import org.apache.flink.table.planner.plan.abilities.sink.PartitioningSpec;
@@ -76,7 +71,6 @@ public class DynamicTableSinkSpecSerdeTest {
                         new FlinkContextImpl(
                                 false,
                                 TableConfig.getDefault(),
-                                new ModuleManager(),
                                 null,
                                 CatalogManagerMocks.createEmptyCatalogManager(),
                                 null),
@@ -95,10 +89,7 @@ public class DynamicTableSinkSpecSerdeTest {
         actual.setClassLoader(classLoader);
         assertNull(actual.getReadableConfig());
         actual.setReadableConfig(serdeCtx.getConfiguration());
-        TableEnvironmentImpl tableEnv =
-                (TableEnvironmentImpl)
-                        TableEnvironment.create(EnvironmentSettings.inStreamingMode());
-        assertNotNull(actual.getTableSink(((PlannerBase) tableEnv.getPlanner()).getFlinkContext()));
+        assertNotNull(actual.getTableSink());
     }
 
     @Parameterized.Parameters(name = "{0}")

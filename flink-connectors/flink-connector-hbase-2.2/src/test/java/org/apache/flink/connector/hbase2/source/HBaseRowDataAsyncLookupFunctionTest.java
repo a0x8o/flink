@@ -22,8 +22,8 @@ import org.apache.flink.connector.hbase.options.HBaseLookupOptions;
 import org.apache.flink.connector.hbase.util.HBaseTableSchema;
 import org.apache.flink.connector.hbase2.util.HBaseTestBase;
 import org.apache.flink.table.api.DataTypes;
+import org.apache.flink.table.api.TableSchema;
 import org.apache.flink.table.data.RowData;
-import org.apache.flink.table.types.DataType;
 
 import org.apache.flink.shaded.guava30.com.google.common.collect.Lists;
 
@@ -38,12 +38,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.stream.Collectors;
 
-import static org.apache.flink.table.api.DataTypes.BIGINT;
-import static org.apache.flink.table.api.DataTypes.DOUBLE;
-import static org.apache.flink.table.api.DataTypes.FIELD;
-import static org.apache.flink.table.api.DataTypes.INT;
-import static org.apache.flink.table.api.DataTypes.ROW;
-import static org.apache.flink.table.api.DataTypes.STRING;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
@@ -104,18 +98,23 @@ public class HBaseRowDataAsyncLookupFunctionTest extends HBaseTestBase {
             lookupOptions =
                     HBaseLookupOptions.builder().setCacheMaxSize(4).setCacheExpireMs(10000).build();
         }
-        DataType dataType =
-                ROW(
-                        FIELD(ROW_KEY, INT()),
-                        FIELD(FAMILY1, ROW(FIELD(F1COL1, INT()))),
-                        FIELD(FAMILY2, ROW(FIELD(F2COL1, STRING()), FIELD(F2COL2, BIGINT()))),
-                        FIELD(
+        TableSchema schema =
+                TableSchema.builder()
+                        .field(ROW_KEY, DataTypes.INT())
+                        .field(FAMILY1, DataTypes.ROW(DataTypes.FIELD(F1COL1, DataTypes.INT())))
+                        .field(
+                                FAMILY2,
+                                DataTypes.ROW(
+                                        DataTypes.FIELD(F2COL1, DataTypes.STRING()),
+                                        DataTypes.FIELD(F2COL2, DataTypes.BIGINT())))
+                        .field(
                                 FAMILY3,
-                                ROW(
-                                        FIELD(F3COL1, DOUBLE()),
-                                        FIELD(F3COL2, DataTypes.BOOLEAN()),
-                                        FIELD(F3COL3, STRING()))));
-        HBaseTableSchema hbaseSchema = HBaseTableSchema.fromDataType(dataType);
+                                DataTypes.ROW(
+                                        DataTypes.FIELD(F3COL1, DataTypes.DOUBLE()),
+                                        DataTypes.FIELD(F3COL2, DataTypes.BOOLEAN()),
+                                        DataTypes.FIELD(F3COL3, DataTypes.STRING())))
+                        .build();
+        HBaseTableSchema hbaseSchema = HBaseTableSchema.fromTableSchema(schema);
         return new HBaseRowDataAsyncLookupFunction(
                 getConf(), TEST_TABLE_1, hbaseSchema, "null", lookupOptions);
     }

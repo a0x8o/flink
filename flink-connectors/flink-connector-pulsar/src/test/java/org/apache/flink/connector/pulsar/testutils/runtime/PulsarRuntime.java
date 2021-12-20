@@ -18,36 +18,33 @@
 
 package org.apache.flink.connector.pulsar.testutils.runtime;
 
-import org.apache.flink.connector.pulsar.testutils.PulsarTestEnvironment;
-import org.apache.flink.connector.pulsar.testutils.runtime.container.PulsarContainerRuntime;
-import org.apache.flink.connector.pulsar.testutils.runtime.mock.PulsarMockRuntime;
+import org.apache.flink.connector.pulsar.testutils.runtime.container.PulsarContainerProvider;
+import org.apache.flink.connector.pulsar.testutils.runtime.mock.PulsarMockProvider;
 
-import org.testcontainers.containers.GenericContainer;
+import java.util.function.Supplier;
 
 /**
- * An abstraction for different pulsar runtimes. Providing the common methods for {@link
- * PulsarTestEnvironment}.
+ * A enum class for providing a operable pulsar runtime. We support two types of runtime, the
+ * container and mock.
  */
-public interface PulsarRuntime {
+public enum PulsarRuntime {
 
-    /** Start up this pulsar runtime, block the thread until everytime is ready for this runtime. */
-    void startUp();
+    /**
+     * The whole pulsar cluster would run in a docker container, provide the full fledged test
+     * backend.
+     */
+    CONTAINER(PulsarContainerProvider::new),
 
-    /** Shutdown this pulsar runtime. */
-    void tearDown();
+    /** The bookkeeper and zookeeper would use a mock backend, and start a single pulsar broker. */
+    MOCK(PulsarMockProvider::new);
 
-    /** Return a operator for operating this pulsar runtime. */
-    PulsarRuntimeOperator operator();
+    private final Supplier<PulsarRuntimeProvider> provider;
 
-    static PulsarRuntime mock() {
-        return new PulsarMockRuntime();
+    PulsarRuntime(Supplier<PulsarRuntimeProvider> provider) {
+        this.provider = provider;
     }
 
-    static PulsarRuntime container() {
-        return new PulsarContainerRuntime();
-    }
-
-    static PulsarRuntime container(GenericContainer<?> flinkContainer) {
-        return new PulsarContainerRuntime().bindWithFlinkContainer(flinkContainer);
+    public PulsarRuntimeProvider provider() {
+        return provider.get();
     }
 }

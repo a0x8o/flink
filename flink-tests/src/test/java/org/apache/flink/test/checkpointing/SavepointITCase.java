@@ -24,7 +24,6 @@ import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.common.functions.RichFlatMapFunction;
 import org.apache.flink.api.common.functions.RichMapFunction;
 import org.apache.flink.api.common.restartstrategy.RestartStrategies;
-import org.apache.flink.api.common.state.CheckpointListener;
 import org.apache.flink.api.common.state.ValueState;
 import org.apache.flink.api.common.state.ValueStateDescriptor;
 import org.apache.flink.api.common.time.Deadline;
@@ -32,7 +31,6 @@ import org.apache.flink.api.common.time.Time;
 import org.apache.flink.api.common.typeinfo.BasicTypeInfo;
 import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.client.program.ClusterClient;
-import org.apache.flink.client.program.rest.RestClusterClient;
 import org.apache.flink.configuration.CheckpointingOptions;
 import org.apache.flink.configuration.ClusterOptions;
 import org.apache.flink.configuration.Configuration;
@@ -40,6 +38,7 @@ import org.apache.flink.configuration.HighAvailabilityOptions;
 import org.apache.flink.configuration.MemorySize;
 import org.apache.flink.configuration.StateBackendOptions;
 import org.apache.flink.configuration.TaskManagerOptions;
+import org.apache.flink.configuration.UnmodifiableConfiguration;
 import org.apache.flink.core.testutils.OneShotLatch;
 import org.apache.flink.runtime.checkpoint.CheckpointException;
 import org.apache.flink.runtime.checkpoint.CheckpointRecoveryFactory;
@@ -55,19 +54,21 @@ import org.apache.flink.runtime.highavailability.nonha.embedded.EmbeddedHaServic
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.jobgraph.JobGraphTestUtils;
 import org.apache.flink.runtime.jobgraph.JobVertex;
-import org.apache.flink.runtime.jobgraph.RestoreMode;
 import org.apache.flink.runtime.jobgraph.SavepointRestoreSettings;
 import org.apache.flink.runtime.messages.FlinkJobNotFoundException;
 import org.apache.flink.runtime.operators.testutils.ExpectedTestException;
+import org.apache.flink.runtime.rest.RestClient;
 import org.apache.flink.runtime.rest.messages.EmptyRequestBody;
 import org.apache.flink.runtime.rest.messages.JobMessageParameters;
 import org.apache.flink.runtime.rest.messages.job.JobDetailsHeaders;
+import org.apache.flink.runtime.rest.messages.job.JobDetailsInfo;
 import org.apache.flink.runtime.state.FunctionInitializationContext;
 import org.apache.flink.runtime.state.FunctionSnapshotContext;
 import org.apache.flink.runtime.state.StateSnapshotContext;
 import org.apache.flink.runtime.testtasks.BlockingNoOpInvokable;
 import org.apache.flink.runtime.testutils.CommonTestUtils;
 import org.apache.flink.runtime.testutils.MiniClusterResourceConfiguration;
+import org.apache.flink.runtime.testutils.TestingUtils;
 import org.apache.flink.streaming.api.checkpoint.CheckpointedFunction;
 import org.apache.flink.streaming.api.checkpoint.ListCheckpointed;
 import org.apache.flink.streaming.api.datastream.DataStream;
@@ -86,7 +87,6 @@ import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.test.util.MiniClusterWithClientResource;
 import org.apache.flink.testutils.EntropyInjectingTestFileSystem;
-import org.apache.flink.testutils.TestingUtils;
 import org.apache.flink.util.Collector;
 import org.apache.flink.util.FlinkException;
 import org.apache.flink.util.TestLogger;
@@ -117,7 +117,6 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.Random;
 import java.util.concurrent.CompletableFuture;
@@ -138,7 +137,6 @@ import static org.apache.flink.util.ExceptionUtils.assertThrowableWithMessage;
 import static org.apache.flink.util.ExceptionUtils.findThrowable;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
@@ -208,7 +206,6 @@ public class SavepointITCase extends TestLogger {
             client.submitJob(jobGraph).get();
 
             BoundedPassThroughOperator.getProgressLatch().await();
-            waitForAllTaskRunning(cluster.getMiniCluster(), jobId, false);
 
             client.stopWithSavepoint(jobId, drain, null).get();
 
@@ -246,7 +243,7 @@ public class SavepointITCase extends TestLogger {
         try {
             ClusterClient<?> client = cluster.getClusterClient();
             client.submitJob(jobGraph).get();
-            waitUntilAllTasksAreRunning(cluster.getRestClusterClient(), jobGraph.getJobID());
+            waitUntilAllTasksAreRunning(cluster.getRestAddres(), jobGraph.getJobID());
 
             client.stopWithSavepoint(jobGraph.getJobID(), true, savepointDir.getAbsolutePath())
                     .get();
@@ -310,56 +307,6 @@ public class SavepointITCase extends TestLogger {
     }
 
     @Test
-    public void testTriggerSavepointAndResumeWithClaim() throws Exception {
-        final int numTaskManagers = 2;
-        final int numSlotsPerTaskManager = 2;
-        final int parallelism = numTaskManagers * numSlotsPerTaskManager;
-
-        final MiniClusterResourceFactory clusterFactory =
-                new MiniClusterResourceFactory(
-                        numTaskManagers, numSlotsPerTaskManager, getFileBasedCheckpointsConfig());
-
-        final String savepointPath = submitJobAndTakeSavepoint(clusterFactory, parallelism);
-        verifySavepoint(parallelism, savepointPath);
-        restoreJobAndVerifyState(
-                clusterFactory,
-                parallelism,
-                SavepointRestoreSettings.forPath(savepointPath, false, RestoreMode.CLAIM),
-                cluster -> {
-                    cluster.after();
-
-                    assertFalse(
-                            "Savepoint not properly cleaned up.",
-                            new File(new URI(savepointPath)).exists());
-                });
-    }
-
-    @Test
-    public void testTriggerSavepointAndResumeWithLegacyMode() throws Exception {
-        final int numTaskManagers = 2;
-        final int numSlotsPerTaskManager = 2;
-        final int parallelism = numTaskManagers * numSlotsPerTaskManager;
-
-        final MiniClusterResourceFactory clusterFactory =
-                new MiniClusterResourceFactory(
-                        numTaskManagers, numSlotsPerTaskManager, getFileBasedCheckpointsConfig());
-
-        final String savepointPath = submitJobAndTakeSavepoint(clusterFactory, parallelism);
-        verifySavepoint(parallelism, savepointPath);
-        restoreJobAndVerifyState(
-                clusterFactory,
-                parallelism,
-                SavepointRestoreSettings.forPath(savepointPath, false, RestoreMode.LEGACY),
-                cluster -> {
-                    cluster.after();
-
-                    assertTrue(
-                            "Savepoint unexpectedly cleaned up.",
-                            new File(new URI(savepointPath)).exists());
-                });
-    }
-
-    @Test
     public void testTriggerSavepointAndResumeWithFileBasedCheckpointsAndRelocateBasePath()
             throws Exception {
         final int numTaskManagers = 2;
@@ -396,16 +343,7 @@ public class SavepointITCase extends TestLogger {
         final String savepointPath = submitJobAndTakeSavepoint(clusterFactory, parallelism);
         assertThat(savepointDir, hasEntropyInFileStateHandlePaths());
 
-        restoreJobAndVerifyState(
-                clusterFactory,
-                parallelism,
-                SavepointRestoreSettings.forPath(savepointPath),
-                cluster -> {
-                    final URI localURI = new URI(savepointPath.replace("test-entropy:/", "file:/"));
-                    assertTrue("Savepoint has not been created", new File(localURI).exists());
-                    cluster.getClusterClient().disposeSavepoint(savepointPath).get();
-                    assertFalse("Savepoint not properly cleaned up.", new File(localURI).exists());
-                });
+        restoreJobAndVerifyState(savepointPath, clusterFactory, parallelism);
     }
 
     private Configuration getCheckpointingWithEntropyConfig() {
@@ -467,31 +405,9 @@ public class SavepointITCase extends TestLogger {
     private void restoreJobAndVerifyState(
             String savepointPath, MiniClusterResourceFactory clusterFactory, int parallelism)
             throws Exception {
-        restoreJobAndVerifyState(
-                clusterFactory,
-                parallelism,
-                SavepointRestoreSettings.forPath(savepointPath, false),
-                cluster -> {
-                    cluster.getClusterClient().disposeSavepoint(savepointPath).get();
-                    assertFalse(
-                            "Savepoint not properly cleaned up.",
-                            new File(new URI(savepointPath)).exists());
-                });
-    }
-
-    @FunctionalInterface
-    interface PostCancelChecker {
-        void check(MiniClusterWithClientResource cluster) throws Exception;
-    }
-
-    private void restoreJobAndVerifyState(
-            MiniClusterResourceFactory clusterFactory,
-            int parallelism,
-            SavepointRestoreSettings savepointRestoreSettings,
-            PostCancelChecker postCancelChecks)
-            throws Exception {
         final JobGraph jobGraph = createJobGraph(parallelism, 0, 1000);
-        jobGraph.setSavepointRestoreSettings(savepointRestoreSettings);
+        jobGraph.setSavepointRestoreSettings(
+                SavepointRestoreSettings.forPath(savepointPath, false));
         final JobID jobId = jobGraph.getJobID();
         StatefulCounter.resetForTest(parallelism);
 
@@ -517,7 +433,9 @@ public class SavepointITCase extends TestLogger {
                     status -> status == JobStatus.CANCELED,
                     TestingUtils.defaultScheduledExecutor());
 
-            postCancelChecks.check(cluster);
+            client.disposeSavepoint(savepointPath).get();
+
+            assertFalse("Savepoint not properly cleaned up.", new File(savepointPath).exists());
         } finally {
             cluster.after();
             StatefulCounter.resetForTest(parallelism);
@@ -594,50 +512,6 @@ public class SavepointITCase extends TestLogger {
             assertThrowableWithMessage(e, graph.getJobID().toString());
             assertThrowableWithMessage(e, "is not a streaming job");
         } finally {
-            cluster.after();
-        }
-    }
-
-    @Test
-    public void testTriggerSavepointWithoutCheckpointBaseLocations() throws Exception {
-        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
-        env.getCheckpointConfig().disableCheckpointing();
-        env.setParallelism(1);
-
-        env.addSource(new IntegerStreamSource()).addSink(new DiscardingSink<>());
-
-        JobGraph jobGraph = env.getStreamGraph().getJobGraph();
-
-        Configuration config = getFileBasedCheckpointsConfig();
-        config.addAll(jobGraph.getJobConfiguration());
-
-        MiniClusterWithClientResource cluster =
-                new MiniClusterWithClientResource(
-                        new MiniClusterResourceConfiguration.Builder()
-                                .setConfiguration(config)
-                                .setNumberTaskManagers(1)
-                                .setNumberSlotsPerTaskManager(1)
-                                .build());
-        cluster.before();
-        ClusterClient<?> client = cluster.getClusterClient();
-
-        String savepointPath = null;
-        try {
-            client.submitJob(jobGraph).get();
-
-            waitForAllTaskRunning(cluster.getMiniCluster(), jobGraph.getJobID(), false);
-
-            savepointPath = client.triggerSavepoint(jobGraph.getJobID(), null).get();
-
-            assertNotNull(savepointPath);
-
-            client.cancel(jobGraph.getJobID()).get();
-            // checkpoint directory should not be initialized
-            assertEquals(0, Objects.requireNonNull(checkpointDir.listFiles()).length);
-        } finally {
-            if (null != savepointPath) {
-                client.disposeSavepoint(savepointPath);
-            }
             cluster.after();
         }
     }
@@ -734,7 +608,6 @@ public class SavepointITCase extends TestLogger {
                 client.submitJob(jobGraph).get();
 
                 BoundedPassThroughOperator.getProgressLatch().await();
-                waitForAllTaskRunning(cluster.getMiniCluster(), jobId, false);
 
                 client.stopWithSavepoint(jobId, false, null).get();
 
@@ -814,7 +687,7 @@ public class SavepointITCase extends TestLogger {
     @Test
     public void testStopWithSavepointFailingAfterSnapshotCreation() throws Exception {
         // the trigger need to be reset in case the test is run multiple times
-        CancelFailingInfiniteTestSource.checkpointCompleteTriggered = false;
+        CancelFailingInfiniteTestSource.cancelTriggered = false;
         testStopWithFailingSourceInOnePipeline(
                 new CancelFailingInfiniteTestSource(),
                 folder.newFolder(),
@@ -852,7 +725,7 @@ public class SavepointITCase extends TestLogger {
         try {
             ClusterClient<?> client = cluster.getClusterClient();
             client.submitJob(jobGraph).get();
-            waitUntilAllTasksAreRunning(cluster.getRestClusterClient(), jobGraph.getJobID());
+            waitUntilAllTasksAreRunning(cluster.getRestAddres(), jobGraph.getJobID());
 
             try {
                 client.stopWithSavepoint(jobGraph.getJobID(), true, savepointDir.getAbsolutePath())
@@ -863,7 +736,7 @@ public class SavepointITCase extends TestLogger {
             }
 
             // make sure that we restart all tasks after the savepoint failure
-            waitUntilAllTasksAreRunning(cluster.getRestClusterClient(), jobGraph.getJobID());
+            waitUntilAllTasksAreRunning(cluster.getRestAddres(), jobGraph.getJobID());
         } finally {
             cluster.after();
         }
@@ -1000,13 +873,12 @@ public class SavepointITCase extends TestLogger {
         cluster.before();
         try {
             ClusterClient<?> client = cluster.getClusterClient();
-            JobID jobID = client.submitJob(jobGraph).get();
+            client.submitJob(jobGraph).get();
 
             // we need to wait for both pipelines to be in state RUNNING because that's the only
             // state which allows creating a savepoint
             failingPipelineLatch.await();
             succeedingPipelineLatch.await();
-            waitForAllTaskRunning(cluster.getMiniCluster(), jobID, false);
 
             try {
                 client.stopWithSavepoint(jobGraph.getJobID(), false, savepointDir.getAbsolutePath())
@@ -1016,30 +888,38 @@ public class SavepointITCase extends TestLogger {
                 assertThrowable(e, ex -> exceptionAssertion.apply(jobGraph.getJobID(), e));
             }
 
-            waitUntilAllTasksAreRunning(cluster.getRestClusterClient(), jobGraph.getJobID());
+            waitUntilAllTasksAreRunning(cluster.getRestAddres(), jobGraph.getJobID());
         } finally {
             cluster.after();
         }
     }
 
-    public static void waitUntilAllTasksAreRunning(
-            RestClusterClient<?> restClusterClient, JobID jobId) throws Exception {
+    public static void waitUntilAllTasksAreRunning(URI restAddress, JobID jobId) throws Exception {
         // access the REST endpoint of the cluster to determine the state of each
         // ExecutionVertex
+        final RestClient restClient =
+                new RestClient(
+                        new UnmodifiableConfiguration(new Configuration()),
+                        TestingUtils.defaultExecutor());
 
         final JobDetailsHeaders detailsHeaders = JobDetailsHeaders.getInstance();
         final JobMessageParameters params = detailsHeaders.getUnresolvedMessageParameters();
         params.jobPathParameter.resolve(jobId);
 
         CommonTestUtils.waitUntilCondition(
-                () ->
-                        restClusterClient
-                                .sendRequest(detailsHeaders, params, EmptyRequestBody.getInstance())
-                                .thenApply(
-                                        detailsInfo ->
-                                                allVerticesRunning(
-                                                        detailsInfo.getJobVerticesPerState()))
-                                .get(),
+                () -> {
+                    JobDetailsInfo detailsInfo =
+                            restClient
+                                    .sendRequest(
+                                            restAddress.getHost(),
+                                            restAddress.getPort(),
+                                            detailsHeaders,
+                                            params,
+                                            EmptyRequestBody.getInstance())
+                                    .get();
+
+                    return allVerticesRunning(detailsInfo.getJobVerticesPerState());
+                },
                 Deadline.fromNow(Duration.ofSeconds(10)));
     }
 
@@ -1271,15 +1151,14 @@ public class SavepointITCase extends TestLogger {
      * An {@link InfiniteTestSource} implementation that fails when cancel is called for the first
      * time.
      */
-    private static class CancelFailingInfiniteTestSource extends InfiniteTestSource
-            implements CheckpointListener {
+    private static class CancelFailingInfiniteTestSource extends InfiniteTestSource {
 
-        private static volatile boolean checkpointCompleteTriggered = false;
+        private static volatile boolean cancelTriggered = false;
 
         @Override
-        public void notifyCheckpointComplete(long checkpointId) throws Exception {
-            if (!checkpointCompleteTriggered) {
-                checkpointCompleteTriggered = true;
+        public void cancel() {
+            if (!cancelTriggered) {
+                cancelTriggered = true;
                 throw new RuntimeException("Expected RuntimeException after snapshot creation.");
             }
             super.cancel();

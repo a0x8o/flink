@@ -16,12 +16,9 @@
  * limitations under the License.
  */
 
-import { ChangeDetectorRef, Component, OnInit, ChangeDetectionStrategy, OnDestroy } from '@angular/core';
+import { ChangeDetectorRef, Component, OnInit, ViewChild, ChangeDetectionStrategy } from '@angular/core';
 import { JobManagerService } from 'services';
-import { EditorOptions } from 'ng-zorro-antd/code-editor/typings';
-import { flinkEditorOptions } from 'share/common/editor/editor-config';
-import { Subject } from 'rxjs';
-import { takeUntil } from 'rxjs/operators';
+import { MonacoEditorComponent } from 'share/common/monaco-editor/monaco-editor.component';
 
 @Component({
   selector: 'flink-job-manager-logs',
@@ -29,35 +26,21 @@ import { takeUntil } from 'rxjs/operators';
   styleUrls: ['./job-manager-logs.component.less'],
   changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class JobManagerLogsComponent implements OnInit, OnDestroy {
-  public readonly editorOptions: EditorOptions = flinkEditorOptions;
+export class JobManagerLogsComponent implements OnInit {
+  logs = '';
+  @ViewChild(MonacoEditorComponent, { static: true }) monacoEditorComponent: MonacoEditorComponent;
 
-  public logs = '';
-  public loading = true;
+  reload() {
+    this.jobManagerService.loadLogs().subscribe(data => {
+      this.monacoEditorComponent.layout();
+      this.logs = data;
+      this.cdr.markForCheck();
+    });
+  }
 
-  private readonly destroy$ = new Subject<void>();
+  constructor(private jobManagerService: JobManagerService, private cdr: ChangeDetectorRef) {}
 
-  constructor(private readonly jobManagerService: JobManagerService, private readonly cdr: ChangeDetectorRef) {}
-
-  public ngOnInit() {
+  ngOnInit() {
     this.reload();
-  }
-
-  public ngOnDestroy(): void {
-    this.destroy$.next();
-    this.destroy$.complete();
-  }
-
-  public reload() {
-    this.loading = true;
-    this.cdr.markForCheck();
-    this.jobManagerService
-      .loadLogs()
-      .pipe(takeUntil(this.destroy$))
-      .subscribe(data => {
-        this.loading = false;
-        this.logs = data;
-        this.cdr.markForCheck();
-      });
   }
 }

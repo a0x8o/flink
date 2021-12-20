@@ -34,18 +34,15 @@ import org.apache.flink.table.client.gateway.Executor;
 import org.apache.flink.table.client.gateway.ResultDescriptor;
 import org.apache.flink.table.client.gateway.TypedResult;
 import org.apache.flink.table.client.gateway.context.DefaultContext;
-import org.apache.flink.table.client.gateway.utils.UserDefinedFunctions;
+import org.apache.flink.table.client.gateway.utils.TestUserClassLoaderJar;
 import org.apache.flink.table.client.gateway.utils.UserDefinedFunctions.TableUDF;
-import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.functions.AggregateFunction;
 import org.apache.flink.table.functions.ScalarFunction;
 import org.apache.flink.table.operations.Operation;
 import org.apache.flink.table.operations.QueryOperation;
-import org.apache.flink.table.utils.TestUserClassLoaderJar;
-import org.apache.flink.table.utils.print.RowDataToStringConverter;
 import org.apache.flink.test.util.MiniClusterWithClientResource;
 import org.apache.flink.test.util.TestBaseUtils;
-import org.apache.flink.util.StringUtils;
+import org.apache.flink.types.Row;
 import org.apache.flink.util.TestLogger;
 
 import org.junit.BeforeClass;
@@ -106,10 +103,7 @@ public class LocalExecutorITCase extends TestLogger {
         clusterClient = MINI_CLUSTER_RESOURCE.getClusterClient();
         File udfJar =
                 TestUserClassLoaderJar.createJarFile(
-                        tempFolder.newFolder("test-jar"),
-                        "test-classloader-udf.jar",
-                        UserDefinedFunctions.GENERATED_UDF_CLASS,
-                        UserDefinedFunctions.GENERATED_UDF_CODE);
+                        tempFolder.newFolder("test-jar"), "test-classloader-udf.jar");
         udfDependency = udfJar.toURI().toURL();
     }
 
@@ -176,19 +170,15 @@ public class LocalExecutorITCase extends TestLogger {
             assertFalse(desc.isMaterialized());
 
             final List<String> actualResults =
-                    retrieveChangelogResult(
-                            executor,
-                            sessionId,
-                            desc.getResultId(),
-                            desc.getRowDataStringConverter());
+                    retrieveChangelogResult(executor, sessionId, desc.getResultId());
 
             final List<String> expectedResults = new ArrayList<>();
-            expectedResults.add("[47, Hello World, ABC]");
-            expectedResults.add("[27, Hello World, ABC]");
-            expectedResults.add("[37, Hello World, ABC]");
-            expectedResults.add("[37, Hello World, ABC]");
-            expectedResults.add("[47, Hello World, ABC]");
-            expectedResults.add("[57, Hello World!!!!, ABC]");
+            expectedResults.add("+I[47, Hello World, ABC]");
+            expectedResults.add("+I[27, Hello World, ABC]");
+            expectedResults.add("+I[37, Hello World, ABC]");
+            expectedResults.add("+I[37, Hello World, ABC]");
+            expectedResults.add("+I[47, Hello World, ABC]");
+            expectedResults.add("+I[57, Hello World!!!!, ABC]");
 
             TestBaseUtils.compareResultCollections(
                     expectedResults, actualResults, Comparator.naturalOrder());
@@ -212,12 +202,12 @@ public class LocalExecutorITCase extends TestLogger {
         assertEquals("test-session", sessionId);
 
         final List<String> expectedResults = new ArrayList<>();
-        expectedResults.add("[47, Hello World]");
-        expectedResults.add("[27, Hello World]");
-        expectedResults.add("[37, Hello World]");
-        expectedResults.add("[37, Hello World]");
-        expectedResults.add("[47, Hello World]");
-        expectedResults.add("[57, Hello World!!!!]");
+        expectedResults.add("+I[47, Hello World]");
+        expectedResults.add("+I[27, Hello World]");
+        expectedResults.add("+I[37, Hello World]");
+        expectedResults.add("+I[37, Hello World]");
+        expectedResults.add("+I[47, Hello World]");
+        expectedResults.add("+I[57, Hello World!!!!]");
 
         initSession(executor, sessionId, replaceVars);
         try {
@@ -232,11 +222,7 @@ public class LocalExecutorITCase extends TestLogger {
                 assertFalse(desc.isMaterialized());
 
                 final List<String> actualResults =
-                        retrieveChangelogResult(
-                                executor,
-                                sessionId,
-                                desc.getResultId(),
-                                desc.getRowDataStringConverter());
+                        retrieveChangelogResult(executor, sessionId, desc.getResultId());
 
                 TestBaseUtils.compareResultCollections(
                         expectedResults, actualResults, Comparator.naturalOrder());
@@ -261,12 +247,12 @@ public class LocalExecutorITCase extends TestLogger {
                 "SELECT scalarUDF(IntegerField1, 5), StringField1, 'ABC' FROM TableNumber1";
 
         final List<String> expectedResults = new ArrayList<>();
-        expectedResults.add("[47, Hello World, ABC]");
-        expectedResults.add("[27, Hello World, ABC]");
-        expectedResults.add("[37, Hello World, ABC]");
-        expectedResults.add("[37, Hello World, ABC]");
-        expectedResults.add("[47, Hello World, ABC]");
-        expectedResults.add("[57, Hello World!!!!, ABC]");
+        expectedResults.add("+I[47, Hello World, ABC]");
+        expectedResults.add("+I[27, Hello World, ABC]");
+        expectedResults.add("+I[37, Hello World, ABC]");
+        expectedResults.add("+I[37, Hello World, ABC]");
+        expectedResults.add("+I[47, Hello World, ABC]");
+        expectedResults.add("+I[57, Hello World!!!!, ABC]");
 
         executeStreamQueryTable(replaceVars, configMap, query, expectedResults);
     }
@@ -285,12 +271,12 @@ public class LocalExecutorITCase extends TestLogger {
         final String query = "SELECT scalarUDF(IntegerField1, 5), StringField1 FROM TableNumber1";
 
         final List<String> expectedResults = new ArrayList<>();
-        expectedResults.add("[47, Hello World]");
-        expectedResults.add("[27, Hello World]");
-        expectedResults.add("[37, Hello World]");
-        expectedResults.add("[37, Hello World]");
-        expectedResults.add("[47, Hello World]");
-        expectedResults.add("[57, Hello World!!!!]");
+        expectedResults.add("+I[47, Hello World]");
+        expectedResults.add("+I[27, Hello World]");
+        expectedResults.add("+I[37, Hello World]");
+        expectedResults.add("+I[37, Hello World]");
+        expectedResults.add("+I[47, Hello World]");
+        expectedResults.add("+I[57, Hello World!!!!]");
 
         for (int i = 0; i < 3; i++) {
             executeStreamQueryTable(replaceVars, configMap, query, expectedResults);
@@ -313,7 +299,7 @@ public class LocalExecutorITCase extends TestLogger {
                 "SELECT COUNT(*), StringField1 FROM TableNumber1 GROUP BY StringField1";
 
         final List<String> expectedResults = new ArrayList<>();
-        expectedResults.add("[1, Hello World!!!!]");
+        expectedResults.add("+I[1, Hello World!!!!]");
 
         executeStreamQueryTable(replaceVars, configMap, query, expectedResults);
     }
@@ -343,19 +329,15 @@ public class LocalExecutorITCase extends TestLogger {
             assertTrue(desc.isMaterialized());
 
             final List<String> actualResults =
-                    retrieveTableResult(
-                            executor,
-                            sessionId,
-                            desc.getResultId(),
-                            desc.getRowDataStringConverter());
+                    retrieveTableResult(executor, sessionId, desc.getResultId());
 
             final List<String> expectedResults = new ArrayList<>();
-            expectedResults.add("[47, ABC]");
-            expectedResults.add("[27, ABC]");
-            expectedResults.add("[37, ABC]");
-            expectedResults.add("[37, ABC]");
-            expectedResults.add("[47, ABC]");
-            expectedResults.add("[57, ABC]");
+            expectedResults.add("+I[47, ABC]");
+            expectedResults.add("+I[27, ABC]");
+            expectedResults.add("+I[37, ABC]");
+            expectedResults.add("+I[37, ABC]");
+            expectedResults.add("+I[47, ABC]");
+            expectedResults.add("+I[57, ABC]");
 
             TestBaseUtils.compareResultCollections(
                     expectedResults, actualResults, Comparator.naturalOrder());
@@ -383,12 +365,12 @@ public class LocalExecutorITCase extends TestLogger {
         initSession(executor, sessionId, replaceVars);
 
         final List<String> expectedResults = new ArrayList<>();
-        expectedResults.add("[47]");
-        expectedResults.add("[27]");
-        expectedResults.add("[37]");
-        expectedResults.add("[37]");
-        expectedResults.add("[47]");
-        expectedResults.add("[57]");
+        expectedResults.add("+I[47]");
+        expectedResults.add("+I[27]");
+        expectedResults.add("+I[37]");
+        expectedResults.add("+I[37]");
+        expectedResults.add("+I[47]");
+        expectedResults.add("+I[57]");
 
         try {
             for (int i = 0; i < 3; i++) {
@@ -398,11 +380,7 @@ public class LocalExecutorITCase extends TestLogger {
                 assertTrue(desc.isMaterialized());
 
                 final List<String> actualResults =
-                        retrieveTableResult(
-                                executor,
-                                sessionId,
-                                desc.getResultId(),
-                                desc.getRowDataStringConverter());
+                        retrieveTableResult(executor, sessionId, desc.getResultId());
 
                 TestBaseUtils.compareResultCollections(
                         expectedResults, actualResults, Comparator.naturalOrder());
@@ -467,11 +445,7 @@ public class LocalExecutorITCase extends TestLogger {
             assertTrue(desc.isMaterialized());
 
             final List<String> actualResults =
-                    retrieveTableResult(
-                            executor,
-                            sessionId,
-                            desc.getResultId(),
-                            desc.getRowDataStringConverter());
+                    retrieveTableResult(executor, sessionId, desc.getResultId());
 
             TestBaseUtils.compareResultCollections(
                     expectedResults, actualResults, Comparator.naturalOrder());
@@ -480,11 +454,7 @@ public class LocalExecutorITCase extends TestLogger {
         }
     }
 
-    private List<String> retrieveTableResult(
-            Executor executor,
-            String sessionId,
-            String resultID,
-            RowDataToStringConverter rowDataToStringConverter)
+    private List<String> retrieveTableResult(Executor executor, String sessionId, String resultID)
             throws InterruptedException {
 
         final List<String> actualResults = new ArrayList<>();
@@ -496,11 +466,8 @@ public class LocalExecutorITCase extends TestLogger {
                 IntStream.rangeClosed(1, result.getPayload())
                         .forEach(
                                 (page) -> {
-                                    for (RowData row :
-                                            executor.retrieveResultPage(resultID, page)) {
-                                        actualResults.add(
-                                                StringUtils.arrayAwareToString(
-                                                        rowDataToStringConverter.convert(row)));
+                                    for (Row row : executor.retrieveResultPage(resultID, page)) {
+                                        actualResults.add(row.toString());
                                     }
                                 });
             } else if (result.getType() == TypedResult.ResultType.EOS) {
@@ -512,21 +479,16 @@ public class LocalExecutorITCase extends TestLogger {
     }
 
     private List<String> retrieveChangelogResult(
-            Executor executor,
-            String sessionId,
-            String resultID,
-            RowDataToStringConverter rowDataToStringConverter)
-            throws InterruptedException {
+            Executor executor, String sessionId, String resultID) throws InterruptedException {
 
         final List<String> actualResults = new ArrayList<>();
         while (true) {
             Thread.sleep(50); // slow the processing down
-            final TypedResult<List<RowData>> result =
+            final TypedResult<List<Row>> result =
                     executor.retrieveResultChanges(sessionId, resultID);
             if (result.getType() == TypedResult.ResultType.PAYLOAD) {
-                for (RowData row : result.getPayload()) {
-                    actualResults.add(
-                            StringUtils.arrayAwareToString(rowDataToStringConverter.convert(row)));
+                for (Row row : result.getPayload()) {
+                    actualResults.add(row.toString());
                 }
             } else if (result.getType() == TypedResult.ResultType.EOS) {
                 break;

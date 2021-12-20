@@ -103,7 +103,6 @@ public final class TypeInference {
     // --------------------------------------------------------------------------------------------
 
     /** Builder for configuring and creating instances of {@link TypeInference}. */
-    @PublicEvolving
     public static class Builder {
 
         private @Nullable List<String> namedArguments;

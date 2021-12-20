@@ -116,7 +116,6 @@ public class RMQSourceTest {
         source.initializeState(mockContext);
         source.open(config);
 
-        DummySourceContext.numElementsCollected = 0;
         messageId = 0;
         generateCorrelationIds = true;
 
@@ -389,14 +388,12 @@ public class RMQSourceTest {
             testHarness.snapshot(snapshotId, System.currentTimeMillis());
             source.notifyCheckpointComplete(snapshotId);
             lastMessageId = messageId;
-
-            // check if all the messages are being collected and acknowledged
-            long totalNumberOfAcks = numMsgRedelivered + lastMessageId;
-            assertEquals(lastMessageId, DummySourceContext.numElementsCollected);
-            assertEquals(totalNumberOfAcks, ((RMQTestSource) source).addIdCalls);
         }
 
-        // check if all the acks are being sent
+        // check if all the messages are being acknowledged
+        long totalNumberOfAcks = numMsgRedelivered + lastMessageId;
+        assertEquals(lastMessageId, DummySourceContext.numElementsCollected);
+        assertEquals(totalNumberOfAcks, ((RMQTestSource) source).addIdCalls);
         Mockito.verify(source.channel, Mockito.times((int) lastMessageId))
                 .basicAck(Mockito.anyLong(), Mockito.eq(false));
         Mockito.verify(source.channel, Mockito.times((int) numMsgRedelivered))

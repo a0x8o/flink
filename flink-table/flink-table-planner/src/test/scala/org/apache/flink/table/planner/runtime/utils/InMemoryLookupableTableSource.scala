@@ -141,7 +141,7 @@ object InMemoryLookupableTableSource {
   /**
     * A lookup function which find matched rows with the given fields.
     */
-  class InMemoryLookupFunction(
+  private class InMemoryLookupFunction(
       data: Map[Row, List[Row]],
       resourceCounter: AtomicInteger)
     extends TableFunction[Row] {
@@ -170,7 +170,7 @@ object InMemoryLookupableTableSource {
     * An async lookup function which find matched rows with the given fields.
     */
   @SerialVersionUID(1L)
-  class InMemoryAsyncLookupFunction(
+  private class InMemoryAsyncLookupFunction(
       data: Map[Row, List[Row]],
       resourceCounter: AtomicInteger,
       delayedReturn: Int = 0)

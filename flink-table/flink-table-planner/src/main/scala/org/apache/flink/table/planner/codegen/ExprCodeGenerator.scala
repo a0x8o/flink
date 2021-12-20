@@ -25,7 +25,7 @@ import org.apache.flink.table.data.binary.BinaryRowData
 import org.apache.flink.table.data.util.DataFormatConverters.{DataFormatConverter, getConverterForDataType}
 import org.apache.flink.table.functions.BuiltInFunctionDefinitions
 import org.apache.flink.table.planner.calcite.{FlinkRexBuilder, FlinkTypeFactory, RexDistinctKeyVariable, RexFieldVariable}
-import org.apache.flink.table.planner.codegen.CodeGenUtils._
+import org.apache.flink.table.planner.codegen.CodeGenUtils.{requireTemporal, requireTimeInterval, _}
 import org.apache.flink.table.planner.codegen.GenerateUtils._
 import org.apache.flink.table.planner.codegen.GeneratedExpression.{NEVER_NULL, NO_CODE}
 import org.apache.flink.table.planner.codegen.calls.ScalarOperatorGens._
@@ -42,10 +42,12 @@ import org.apache.flink.table.runtime.typeutils.TypeCheckUtils.{isNumeric, isTem
 import org.apache.flink.table.types.logical._
 import org.apache.flink.table.types.logical.utils.LogicalTypeChecks.{getFieldCount, isCompositeType}
 import org.apache.flink.table.typeutils.TimeIndicatorTypeInfo
+
 import org.apache.calcite.rex._
-import org.apache.calcite.sql.`type`.{ReturnTypes, SqlTypeName}
 import org.apache.calcite.sql.{SqlKind, SqlOperator}
+import org.apache.calcite.sql.`type`.{ReturnTypes, SqlTypeName}
 import org.apache.calcite.util.{Sarg, TimestampString}
+import org.apache.flink.table.functions.{BuiltInFunctionDefinitions, FunctionDefinition}
 
 import scala.collection.JavaConversions._
 
@@ -418,15 +420,7 @@ class ExprCodeGenerator(ctx: CodeGeneratorContext, nullableInput: Boolean)
       case _ =>
         literal.getValue3
     }
-    // Make sure to convert avatica time types to flink internal types
-    val convertedValue = value match {
-      case tu: org.apache.calcite.avatica.util.TimeUnit =>
-        org.apache.flink.table.utils.DateTimeUtils.TimeUnit.valueOf(tu.name())
-      case tur: org.apache.calcite.avatica.util.TimeUnitRange =>
-        org.apache.flink.table.utils.DateTimeUtils.TimeUnitRange.valueOf(tur.name())
-      case _ => value
-    }
-    generateLiteral(ctx, resultType, convertedValue)
+    generateLiteral(ctx, resultType, value)
   }
 
   override def visitCorrelVariable(correlVariable: RexCorrelVariable): GeneratedExpression = {
@@ -788,10 +782,6 @@ class ExprCodeGenerator(ctx: CodeGeneratorContext, nullableInput: Boolean)
 
       case JSON_VALUE => new JsonValueCallGen().generate(ctx, operands, resultType)
 
-      case JSON_OBJECT => new JsonObjectCallGen(call).generate(ctx, operands, resultType)
-
-      case JSON_ARRAY => new JsonArrayCallGen(call).generate(ctx, operands, resultType)
-
       case _: SqlThrowExceptionFunction =>
         val nullValue = generateNullLiteral(resultType, nullCheck = true)
         val code =
@@ -816,29 +806,21 @@ class ExprCodeGenerator(ctx: CodeGeneratorContext, nullableInput: Boolean)
 
       case bsf: BridgingSqlFunction =>
         bsf.getDefinition match {
-          case BuiltInFunctionDefinitions.CURRENT_WATERMARK =>
+          case functionDefinition : FunctionDefinition
+            if functionDefinition eq BuiltInFunctionDefinitions.CURRENT_WATERMARK =>
             generateWatermark(ctx, contextTerm, resultType)
-
-          case BuiltInFunctionDefinitions.GREATEST =>
+          case functionDefinition : FunctionDefinition
+            if functionDefinition eq BuiltInFunctionDefinitions.GREATEST =>
             operands.foreach { operand =>
               requireComparable(operand)
             }
-            generateGreatestLeast(ctx, resultType, operands)
-
-          case BuiltInFunctionDefinitions.LEAST =>
+            generateGreatestLeast(resultType, operands)
+          case functionDefinition : FunctionDefinition
+            if functionDefinition eq BuiltInFunctionDefinitions.LEAST =>
             operands.foreach { operand =>
               requireComparable(operand)
             }
-            generateGreatestLeast(ctx, resultType, operands, greatest = false)
-
-          case BuiltInFunctionDefinitions.JSON_STRING =>
-            new JsonStringCallGen(call).generate(ctx, operands, resultType)
-
-          case BuiltInFunctionDefinitions.AGG_DECIMAL_PLUS =>
-            val left = operands.head
-            val right = operands(1)
-            generateBinaryArithmeticOperator(ctx, "+", resultType, left, right)
-
+            generateGreatestLeast(resultType, operands, false)
           case _ =>
             new BridgingSqlFunctionCallGen(call).generate(ctx, operands, resultType)
         }

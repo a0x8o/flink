@@ -84,11 +84,12 @@ public class RocksDBOptions {
     public static final ConfigOption<String> OPTIONS_FACTORY =
             ConfigOptions.key("state.backend.rocksdb.options-factory")
                     .stringType()
-                    .noDefaultValue()
+                    .defaultValue(DefaultConfigurableOptionsFactory.class.getName())
                     .withDescription(
-                            "The options factory class for users to add customized options in DBOptions and ColumnFamilyOptions for RocksDB. "
-                                    + "If set, the RocksDB state backend will load the class and apply configs to DBOptions and ColumnFamilyOptions "
-                                    + "after loading ones from 'RocksDBConfigurableOptions' and pre-defined options.");
+                            String.format(
+                                    "The options factory class for RocksDB to create DBOptions and ColumnFamilyOptions. "
+                                            + "The default options factory is %s, and it would read the configured options which provided in 'RocksDBConfigurableOptions'.",
+                                    DefaultConfigurableOptionsFactory.class.getName()));
 
     @Documentation.Section(Documentation.Sections.STATE_BACKEND_ROCKSDB)
     public static final ConfigOption<Boolean> USE_MANAGED_MEMORY =

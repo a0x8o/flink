@@ -21,7 +21,6 @@ package org.apache.flink.connector.pulsar.source.enumerator;
 import org.apache.flink.api.connector.source.mocks.MockSplitEnumeratorContext;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.connector.pulsar.source.config.SourceConfiguration;
-import org.apache.flink.connector.pulsar.source.enumerator.cursor.StartCursor;
 import org.apache.flink.connector.pulsar.source.enumerator.subscriber.PulsarSubscriber;
 import org.apache.flink.connector.pulsar.source.enumerator.topic.range.FullRangeGenerator;
 import org.apache.flink.connector.pulsar.source.split.PulsarPartitionSplit;
@@ -42,8 +41,11 @@ import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
 
+import static org.apache.flink.connector.pulsar.common.config.PulsarOptions.PULSAR_ADMIN_URL;
+import static org.apache.flink.connector.pulsar.common.config.PulsarOptions.PULSAR_SERVICE_URL;
 import static org.apache.flink.connector.pulsar.source.PulsarSourceOptions.PULSAR_PARTITION_DISCOVERY_INTERVAL_MS;
 import static org.apache.flink.connector.pulsar.source.PulsarSourceOptions.PULSAR_SUBSCRIPTION_TYPE;
+import static org.apache.flink.connector.pulsar.source.enumerator.cursor.StartCursor.earliest;
 import static org.apache.flink.connector.pulsar.source.enumerator.cursor.StopCursor.latest;
 import static org.apache.flink.connector.pulsar.source.enumerator.subscriber.PulsarSubscriber.getTopicPatternSubscriber;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -126,7 +128,9 @@ class PulsarSourceEnumeratorTest extends PulsarTestSuiteBase {
         if (includeDynamicTopic) {
             topics.add(DYNAMIC_TOPIC_NAME);
         }
-        Configuration configuration = operator().config();
+        Configuration configuration = new Configuration();
+        configuration.set(PULSAR_ADMIN_URL, operator().adminUrl());
+        configuration.set(PULSAR_SERVICE_URL, operator().serviceUrl());
         configuration.set(PULSAR_SUBSCRIPTION_TYPE, SubscriptionType.Failover);
 
         PulsarSourceEnumState sourceEnumState =
@@ -168,11 +172,11 @@ class PulsarSourceEnumeratorTest extends PulsarTestSuiteBase {
         }
         SourceConfiguration sourceConfiguration = new SourceConfiguration(configuration);
         SplitsAssignmentState assignmentState =
-                new SplitsAssignmentState(latest(), sourceConfiguration, sourceEnumState);
+                new SplitsAssignmentState(
+                        earliest(), latest(), sourceConfiguration, sourceEnumState);
 
         return new PulsarSourceEnumerator(
                 subscriber,
-                StartCursor.earliest(),
                 new FullRangeGenerator(),
                 configuration,
                 sourceConfiguration,

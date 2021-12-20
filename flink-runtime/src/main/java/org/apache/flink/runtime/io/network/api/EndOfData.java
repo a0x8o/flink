@@ -23,7 +23,6 @@ import org.apache.flink.core.memory.DataOutputView;
 import org.apache.flink.runtime.event.RuntimeEvent;
 
 import java.io.IOException;
-import java.util.Objects;
 
 /**
  * This event indicates there will be no more data records in a subpartition. There still might be
@@ -36,57 +35,36 @@ import java.util.Objects;
  */
 public class EndOfData extends RuntimeEvent {
 
-    private final StopMode mode;
+    /** The singleton instance of this event. */
+    public static final EndOfData INSTANCE = new EndOfData();
 
     // ------------------------------------------------------------------------
 
-    public EndOfData(StopMode mode) {
-        this.mode = mode;
-    }
-
-    public StopMode getStopMode() {
-        return mode;
-    }
-
-    // ------------------------------------------------------------------------
-
-    //
-    //  These methods are inherited form the generic serialization of AbstractEvent
-    //  but would require the CheckpointBarrier to be mutable. Since all serialization
-    //  for events goes through the EventSerializer class, which has special serialization
-    //  for the CheckpointBarrier, we don't need these methods
-    //
-    @Override
-    public void write(DataOutputView out) throws IOException {
-        throw new UnsupportedOperationException("This method should never be called");
-    }
-
-    @Override
-    public void read(DataInputView in) throws IOException {
-        throw new UnsupportedOperationException("This method should never be called");
-    }
+    // not instantiable
+    private EndOfData() {}
 
     // ------------------------------------------------------------------------
 
     @Override
-    public boolean equals(Object o) {
-        if (this == o) {
-            return true;
-        }
-        if (o == null || getClass() != o.getClass()) {
-            return false;
-        }
-        EndOfData endOfData = (EndOfData) o;
-        return mode == endOfData.mode;
-    }
+    public void write(DataOutputView out) throws IOException {}
+
+    @Override
+    public void read(DataInputView in) throws IOException {}
+
+    // ------------------------------------------------------------------------
 
     @Override
     public int hashCode() {
-        return Objects.hash(mode);
+        return 1965146684;
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        return obj != null && obj.getClass() == EndOfData.class;
     }
 
     @Override
     public String toString() {
-        return "EndOfData{mode=" + mode + '}';
+        return getClass().getSimpleName();
     }
 }

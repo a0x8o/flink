@@ -90,7 +90,7 @@ public class SortOperator extends TableStreamOperator<RowData>
 
         collector = new StreamRecordCollector<>(output);
 
-        // register the metrics.
+        // register the the metrics.
         getMetricGroup().gauge("memoryUsedSizeInBytes", (Gauge<Long>) sorter::getUsedMemoryInBytes);
         getMetricGroup().gauge("numSpillFiles", (Gauge<Long>) sorter::getNumSpillFiles);
         getMetricGroup().gauge("spillInBytes", (Gauge<Long>) sorter::getSpillInBytes);

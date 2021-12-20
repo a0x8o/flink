@@ -52,7 +52,6 @@ import org.apache.flink.runtime.io.network.api.CancelCheckpointMarker;
 import org.apache.flink.runtime.io.network.api.CheckpointBarrier;
 import org.apache.flink.runtime.io.network.api.EndOfData;
 import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
-import org.apache.flink.runtime.io.network.api.StopMode;
 import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
 import org.apache.flink.runtime.io.network.partition.PartitionTestUtils;
 import org.apache.flink.runtime.io.network.partition.ResultPartition;
@@ -990,15 +989,15 @@ public class MultipleInputStreamTaskTest {
                 assertEquals(2, testHarness.getTaskStateManager().getReportedCheckpointId());
 
                 // Tests triggering checkpoint after some inputs have received EndOfPartition.
-                testHarness.processEvent(new EndOfData(StopMode.DRAIN), 0, 0);
+                testHarness.processEvent(EndOfData.INSTANCE, 0, 0);
                 testHarness.processEvent(EndOfPartitionEvent.INSTANCE, 0, 0);
                 checkpointFuture = triggerCheckpoint(testHarness, 4, checkpointOptions);
                 processMailTillCheckpointSucceeds(testHarness, checkpointFuture);
                 assertEquals(4, testHarness.getTaskStateManager().getReportedCheckpointId());
 
                 // Tests triggering checkpoint after all the inputs have received EndOfPartition.
-                testHarness.processEvent(new EndOfData(StopMode.DRAIN), 1, 0);
-                testHarness.processEvent(new EndOfData(StopMode.DRAIN), 2, 0);
+                testHarness.processEvent(EndOfData.INSTANCE, 1, 0);
+                testHarness.processEvent(EndOfData.INSTANCE, 2, 0);
                 testHarness.processEvent(EndOfPartitionEvent.INSTANCE, 1, 0);
                 testHarness.processEvent(EndOfPartitionEvent.INSTANCE, 2, 0);
                 checkpointFuture = triggerCheckpoint(testHarness, 6, checkpointOptions);
@@ -1059,8 +1058,7 @@ public class MultipleInputStreamTaskTest {
             testHarness.processElement(Watermark.MAX_WATERMARK, 2);
             testHarness.waitForTaskCompletion();
             assertThat(
-                    testHarness.getOutput(),
-                    contains(Watermark.MAX_WATERMARK, new EndOfData(StopMode.DRAIN)));
+                    testHarness.getOutput(), contains(Watermark.MAX_WATERMARK, EndOfData.INSTANCE));
         }
     }
 
@@ -1107,13 +1105,13 @@ public class MultipleInputStreamTaskTest {
                         .build()) {
             CompletableFuture<Boolean> triggerResult =
                     testHarness.streamTask.triggerCheckpointAsync(
-                            new CheckpointMetaData(2, 2),
+                            new CheckpointMetaData(1, 1),
                             CheckpointOptions.alignedNoTimeout(
                                     SAVEPOINT_TERMINATE,
                                     CheckpointStorageLocationReference.getDefault()));
             checkpointCompleted.whenComplete(
                     (ignored, exception) ->
-                            testHarness.streamTask.notifyCheckpointCompleteAsync(2));
+                            testHarness.streamTask.notifyCheckpointCompleteAsync(1));
             testHarness.waitForTaskCompletion();
             testHarness.finishProcessing();
 

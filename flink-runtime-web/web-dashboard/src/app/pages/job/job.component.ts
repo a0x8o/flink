@@ -16,12 +16,11 @@
  * limitations under the License.
  */
 
-import { ChangeDetectionStrategy, ChangeDetectorRef, Component, OnDestroy, OnInit } from '@angular/core';
-import { ActivatedRoute } from '@angular/router';
-import { EMPTY, Subject } from 'rxjs';
-import { catchError, mergeMap, takeUntil } from 'rxjs/operators';
-
-import { JobService, StatusService } from 'services';
+import {ChangeDetectionStrategy, ChangeDetectorRef, Component, OnDestroy, OnInit} from '@angular/core';
+import {ActivatedRoute} from '@angular/router';
+import {EMPTY, Subject} from 'rxjs';
+import {catchError, flatMap, takeUntil} from 'rxjs/operators';
+import {JobService, StatusService} from 'services';
 
 @Component({
   selector: 'flink-job',
@@ -30,31 +29,29 @@ import { JobService, StatusService } from 'services';
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class JobComponent implements OnInit, OnDestroy {
-  public isLoading = true;
-  public isError = false;
-  public errorDetails: string;
-
-  private readonly destroy$ = new Subject<void>();
+  destroy$ = new Subject();
+  isLoading = true;
+  isError = false;
+  errorDetails: string;
 
   constructor(
-    private readonly cdr: ChangeDetectorRef,
-    private readonly activatedRoute: ActivatedRoute,
-    private readonly jobService: JobService,
-    private readonly statusService: StatusService
+    private cdr: ChangeDetectorRef,
+    private activatedRoute: ActivatedRoute,
+    private jobService: JobService,
+    private statusService: StatusService
   ) {}
 
-  public ngOnInit(): void {
+  ngOnInit() {
     this.statusService.refresh$
       .pipe(
         takeUntil(this.destroy$),
-        mergeMap(() =>
+        flatMap(() =>
           this.jobService.loadJob(this.activatedRoute.snapshot.params.jid).pipe(
             catchError(() => {
               this.jobService.loadExceptions(this.activatedRoute.snapshot.params.jid, 10).subscribe(data => {
                 this.errorDetails = data['root-exception'];
                 this.cdr.markForCheck();
               });
-
               this.isError = true;
               this.isLoading = false;
               this.cdr.markForCheck();
@@ -70,7 +67,7 @@ export class JobComponent implements OnInit, OnDestroy {
       });
   }
 
-  public ngOnDestroy(): void {
+  ngOnDestroy() {
     this.destroy$.next();
     this.destroy$.complete();
   }

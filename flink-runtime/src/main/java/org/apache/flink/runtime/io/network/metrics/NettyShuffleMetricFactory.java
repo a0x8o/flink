@@ -24,7 +24,6 @@ import org.apache.flink.runtime.io.network.buffer.NetworkBufferPool;
 import org.apache.flink.runtime.io.network.partition.ResultPartition;
 import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
 import org.apache.flink.runtime.io.network.partition.consumer.SingleInputGate;
-import org.apache.flink.runtime.metrics.MetricNames;
 
 import java.util.Arrays;
 
@@ -212,11 +211,5 @@ public class NettyShuffleMetricFactory {
         buffersGroup.gauge(METRIC_INPUT_EXCLUSIVE_BUFFERS_USAGE, exclusiveBuffersUsageGauge);
         buffersGroup.gauge(METRIC_INPUT_FLOATING_BUFFERS_USAGE, floatingBuffersUsageGauge);
         buffersGroup.gauge(METRIC_INPUT_POOL_USAGE, creditBasedInputBuffersUsageGauge);
-    }
-
-    public static void registerDebloatingTaskMetrics(
-            SingleInputGate[] inputGates, MetricGroup taskGroup) {
-        taskGroup.gauge(
-                MetricNames.ESTIMATED_TIME_TO_CONSUME_BUFFERS, new TimeToConsumeGauge(inputGates));
     }
 }

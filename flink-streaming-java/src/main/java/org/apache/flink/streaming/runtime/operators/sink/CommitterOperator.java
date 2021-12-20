@@ -25,12 +25,12 @@ import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
 import org.apache.flink.streaming.api.operators.BoundedOneInput;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
-import org.apache.flink.streaming.runtime.tasks.ProcessingTimeService;
 
+import javax.annotation.Nullable;
+
+import java.io.IOException;
+import java.util.Collection;
 import java.util.Collections;
-
-import static org.apache.flink.util.IOUtils.closeAll;
-import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
  * An operator that processes committables of a {@link org.apache.flink.api.connector.sink.Sink}.
@@ -57,24 +57,29 @@ class CommitterOperator<InputT, OutputT> extends AbstractStreamOperator<byte[]>
 
     private final SimpleVersionedSerializer<InputT> inputSerializer;
     private final CommitterHandler<InputT, OutputT> committerHandler;
-    private final CommitRetrier commitRetrier;
+    @Nullable private final SimpleVersionedSerializer<OutputT> outputSerializer;
 
     public CommitterOperator(
-            ProcessingTimeService processingTimeService,
+            SimpleVersionedSerializer<InputT> inputSerializer,
+            CommitterHandler<InputT, OutputT> committerHandler,
+            SimpleVersionedSerializer<OutputT> outputSerializer) {
+        this.inputSerializer = inputSerializer;
+        this.committerHandler = committerHandler;
+        this.outputSerializer = outputSerializer;
+    }
+
+    public CommitterOperator(
             SimpleVersionedSerializer<InputT> inputSerializer,
             CommitterHandler<InputT, OutputT> committerHandler) {
-        this.inputSerializer = checkNotNull(inputSerializer);
-        this.committerHandler = checkNotNull(committerHandler);
-        this.processingTimeService = processingTimeService;
-        this.commitRetrier = new CommitRetrier(processingTimeService, committerHandler);
+        this.inputSerializer = inputSerializer;
+        this.committerHandler = committerHandler;
+        this.outputSerializer = null;
     }
 
     @Override
     public void initializeState(StateInitializationContext context) throws Exception {
         super.initializeState(context);
         committerHandler.initializeState(context);
-        // try to re-commit recovered transactions as quickly as possible
-        commitRetrier.retryWithDelay();
     }
 
     @Override
@@ -85,27 +90,38 @@ class CommitterOperator<InputT, OutputT> extends AbstractStreamOperator<byte[]>
 
     @Override
     public void endInput() throws Exception {
-        committerHandler.endOfInput();
-        commitRetrier.retryIndefinitely();
+        emitCommittables(committerHandler.endOfInput());
     }
 
     @Override
     public void notifyCheckpointComplete(long checkpointId) throws Exception {
         super.notifyCheckpointComplete(checkpointId);
-        committerHandler.notifyCheckpointCompleted(checkpointId);
-        commitRetrier.retryWithDelay();
+        emitCommittables(committerHandler.notifyCheckpointCompleted(checkpointId));
+    }
+
+    private void emitCommittables(Collection<OutputT> committables) throws IOException {
+        if (outputSerializer != null) {
+            for (OutputT committable : committables) {
+                output.collect(
+                        new StreamRecord<>(
+                                SimpleVersionedSerialization.writeVersionAndSerialize(
+                                        outputSerializer, committable)));
+            }
+        }
     }
 
     @Override
     public void processElement(StreamRecord<byte[]> element) throws Exception {
         committerHandler.processCommittables(
-                Collections.singletonList(
-                        SimpleVersionedSerialization.readVersionAndDeSerialize(
-                                inputSerializer, element.getValue())));
+                () ->
+                        Collections.singletonList(
+                                SimpleVersionedSerialization.readVersionAndDeSerialize(
+                                        inputSerializer, element.getValue())));
     }
 
     @Override
     public void close() throws Exception {
-        closeAll(committerHandler, super::close);
+        committerHandler.close();
+        super.close();
     }
 }

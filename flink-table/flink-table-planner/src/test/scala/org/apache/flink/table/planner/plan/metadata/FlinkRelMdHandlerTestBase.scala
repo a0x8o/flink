@@ -33,14 +33,13 @@ import org.apache.flink.table.planner.functions.sql.FlinkSqlOperatorTable
 import org.apache.flink.table.planner.functions.utils.AggSqlFunction
 import org.apache.flink.table.planner.plan.PartialFinalType
 import org.apache.flink.table.planner.plan.`trait`.{FlinkRelDistribution, FlinkRelDistributionTraitDef}
-import org.apache.flink.table.planner.plan.logical.{CumulativeWindowSpec, HoppingWindowSpec, LogicalWindow, TimeAttributeWindowingStrategy, TumblingGroupWindow, TumblingWindowSpec, WindowSpec}
-import org.apache.flink.table.planner.plan.nodes.calcite._
-import org.apache.flink.table.planner.plan.nodes.common.CommonPhysicalWindowTableFunction
+import org.apache.flink.table.planner.plan.logical.{LogicalWindow, TumblingGroupWindow}
 import org.apache.flink.table.planner.plan.nodes.FlinkConventions
+import org.apache.flink.table.planner.plan.nodes.calcite._
 import org.apache.flink.table.planner.plan.nodes.logical._
 import org.apache.flink.table.planner.plan.nodes.physical.batch._
 import org.apache.flink.table.planner.plan.nodes.physical.stream._
-import org.apache.flink.table.planner.plan.schema.{FlinkPreparingTableBase, IntermediateRelTable, TableSourceTable}
+import org.apache.flink.table.planner.plan.schema.{FlinkPreparingTableBase, IntermediateRelTable}
 import org.apache.flink.table.planner.plan.stream.sql.join.TestTemporalTable
 import org.apache.flink.table.planner.plan.utils._
 import org.apache.flink.table.planner.utils.Top3
@@ -72,7 +71,6 @@ import org.apache.calcite.util._
 import org.junit.{Before, BeforeClass}
 
 import java.math.BigDecimal
-import java.time.Duration
 import java.util
 import java.util.Collections
 
@@ -92,7 +90,6 @@ class FlinkRelMdHandlerTestBase {
   new PlannerContext(
     false,
     tableConfig,
-    moduleManager,
     new FunctionCatalog(tableConfig, catalogManager, moduleManager),
     catalogManager,
     CalciteSchema.from(rootSchema),
@@ -170,37 +167,6 @@ class FlinkRelMdHandlerTestBase {
     createDataStreamScan(ImmutableList.of("emp"), batchPhysicalTraits)
   protected lazy val empStreamScan: StreamPhysicalDataStreamScan =
     createDataStreamScan(ImmutableList.of("emp"), streamPhysicalTraits)
-
-  protected lazy val tableSourceTableLogicalScan: LogicalTableScan =
-    createTableSourceTable(ImmutableList.of("TableSourceTable1"), logicalTraits)
-  protected lazy val tableSourceTableFlinkLogicalScan: FlinkLogicalDataStreamTableScan =
-    createTableSourceTable(ImmutableList.of("TableSourceTable1"), flinkLogicalTraits)
-  protected lazy val tableSourceTableBatchScan: BatchPhysicalBoundedStreamScan =
-    createTableSourceTable(ImmutableList.of("TableSourceTable1"), batchPhysicalTraits)
-  protected lazy val tableSourceTableStreamScan: StreamPhysicalDataStreamScan =
-    createTableSourceTable(ImmutableList.of("TableSourceTable1"), streamPhysicalTraits)
-
-  protected lazy val tablePartiallyProjectedKeyLogicalScan: LogicalTableScan =
-    createTableSourceTable(ImmutableList.of("projected_table_source_table_with_partial_pk"),
-      logicalTraits)
-  protected lazy val tablePartiallyProjectedKeyFlinkLogicalScan: FlinkLogicalDataStreamTableScan =
-    createTableSourceTable(ImmutableList.of("projected_table_source_table_with_partial_pk"),
-      flinkLogicalTraits)
-  protected lazy val tablePartiallyProjectedKeyBatchScan: BatchPhysicalBoundedStreamScan =
-    createTableSourceTable(ImmutableList.of("projected_table_source_table_with_partial_pk"),
-      batchPhysicalTraits)
-  protected lazy val tablePartiallyProjectedKeyStreamScan: StreamPhysicalDataStreamScan =
-    createTableSourceTable(ImmutableList.of("projected_table_source_table_with_partial_pk"),
-      streamPhysicalTraits)
-
-  protected lazy val tableSourceTableNonKeyLogicalScan: LogicalTableScan =
-    createTableSourceTable(ImmutableList.of("TableSourceTable3"), logicalTraits)
-  protected lazy val tableSourceTableNonKeyFlinkLogicalScan: FlinkLogicalDataStreamTableScan =
-    createTableSourceTable(ImmutableList.of("TableSourceTable3"), flinkLogicalTraits)
-  protected lazy val tableSourceTableNonKeyBatchScan: BatchPhysicalBoundedStreamScan =
-    createTableSourceTable(ImmutableList.of("TableSourceTable3"), batchPhysicalTraits)
-  protected lazy val tableSourceTableNonKeyStreamScan: StreamPhysicalDataStreamScan =
-    createTableSourceTable(ImmutableList.of("TableSourceTable3"), streamPhysicalTraits)
 
   private lazy val valuesType = relBuilder.getTypeFactory
     .builder()
@@ -2689,120 +2655,6 @@ class FlinkRelMdHandlerTestBase {
     .scan("MyTable2")
     .minus(false).build()
 
-  protected lazy val tumbleWindowSpec = new TumblingWindowSpec(
-    Duration.ofMinutes(10L), null)
-
-  protected lazy val hopWindowSpec = new HoppingWindowSpec(
-    Duration.ofHours(1L), Duration.ofMinutes(10L), null)
-
-  protected lazy val cumulateWindowSpec = new CumulativeWindowSpec(
-    Duration.ofHours(1L), Duration.ofMinutes(10L), null)
-
-  // equivalent SQL is
-  // SELECT * FROM
-  //   TABLE(TUMBLE(TABLE t, DESCRIPTOR(rowtime), INTERVAL '10' MINUTE))
-  protected lazy val batchTumbleWindowTVFRel = createWindowTVFRel(false, tumbleWindowSpec)
-  protected lazy val streamTumbleWindowTVFRel = createWindowTVFRel(true, tumbleWindowSpec)
-
-  // equivalent SQL is
-  // SELECT * FROM
-  //   TABLE(HOP(TABLE t, DESCRIPTOR(rowtime), INTERVAL '10' MINUTE, INTERVAL '1' HOUR))
-  protected lazy val batchHopWindowTVFRel = createWindowTVFRel(false, hopWindowSpec)
-  protected lazy val streamHopWindowTVFRel = createWindowTVFRel(true, hopWindowSpec)
-
-  // equivalent SQL is
-  // SELECT * FROM
-  //   TABLE(CUMULATE(TABLE t, DESCRIPTOR(rowtime), INTERVAL '10' MINUTE, INTERVAL '1' HOUR))
-  protected lazy val batchCumulateWindowTVFRel = createWindowTVFRel(false, cumulateWindowSpec)
-  protected lazy val streamCumulateWindowTVFRel = createWindowTVFRel(true, cumulateWindowSpec)
-
-  protected def createWindowTVFRel(
-      isStreamingMode: Boolean,
-      windowSpec: WindowSpec): CommonPhysicalWindowTableFunction = {
-    val physicalTraits = if (isStreamingMode) {
-      streamPhysicalTraits
-    } else {
-      batchPhysicalTraits
-    }
-    val ts: TableScan =
-      createDataStreamScan(ImmutableList.of("TemporalTable1"), physicalTraits)
-    val tsRowType = ts.getRowType
-    val timeFieldIdx = 4
-    val windowTVFRowType = typeFactory.builder.kind(tsRowType.getStructKind)
-      .addAll(tsRowType.getFieldList)
-      .add("window_start", SqlTypeName.TIMESTAMP, 3)
-      .add("window_end", SqlTypeName.TIMESTAMP, 3)
-      .add("window_time", tsRowType.getFieldList.get(timeFieldIdx).getType)
-      .build
-    if (isStreamingMode) {
-      new StreamPhysicalWindowTableFunction(
-        cluster,
-        physicalTraits,
-        ts,
-        windowTVFRowType,
-        new TimeAttributeWindowingStrategy(
-          windowSpec,
-          new TimestampType(true, TimestampKind.ROWTIME, 3),
-          timeFieldIdx),
-        false)
-    } else {
-      new BatchPhysicalWindowTableFunction(
-        cluster,
-        physicalTraits,
-        ts,
-        windowTVFRowType,
-        new TimeAttributeWindowingStrategy(
-          windowSpec,
-          new TimestampType(3),
-          timeFieldIdx))
-    }
-  }
-
-  // select * from TableSourceTable1
-  // left join TableSourceTable2 on TableSourceTable1.b = TableSourceTable2.b
-  protected lazy val logicalLeftJoinOnContainedUniqueKeys: RelNode = relBuilder
-    .scan("TableSourceTable1")
-    .scan("TableSourceTable2")
-    .join(
-      JoinRelType.LEFT,
-      relBuilder.call(
-        EQUALS,
-        relBuilder.field(2, 0, 1),
-        relBuilder.field(2, 1, 1)
-      )
-    )
-    .build
-
-  // select * from TableSourceTable1
-  // left join TableSourceTable2 on TableSourceTable1.a = TableSourceTable2.a
-  protected lazy val logicalLeftJoinOnDisjointUniqueKeys: RelNode = relBuilder
-    .scan("TableSourceTable1")
-    .scan("TableSourceTable2")
-    .join(
-      JoinRelType.LEFT,
-      relBuilder.call(
-        EQUALS,
-        relBuilder.field(2, 0, 0),
-        relBuilder.field(2, 1, 0)
-      )
-    )
-    .build
-
-  // select * from TableSourceTable1
-  // left join TableSourceTable3 on TableSourceTable1.a = TableSourceTable3.a
-  protected lazy val logicalLeftJoinWithNoneKeyTableUniqueKeys: RelNode = relBuilder
-    .scan("TableSourceTable1")
-    .scan("TableSourceTable3")
-    .join(
-      JoinRelType.LEFT,
-      relBuilder.call(
-        EQUALS,
-        relBuilder.field(2, 0, 0),
-        relBuilder.field(2, 1, 0)
-      )
-    )
-    .build
-
   protected def createDataStreamScan[T](
       tableNames: util.List[String], traitSet: RelTraitSet): T = {
     val table = relBuilder
@@ -2810,33 +2662,6 @@ class FlinkRelMdHandlerTestBase {
       .asInstanceOf[CalciteCatalogReader]
       .getTable(tableNames)
       .asInstanceOf[FlinkPreparingTableBase]
-    val conventionTrait = traitSet.getTrait(ConventionTraitDef.INSTANCE)
-    val scan = conventionTrait match {
-      case Convention.NONE =>
-        relBuilder.clear()
-        val scan = relBuilder.scan(tableNames).build()
-        scan.copy(traitSet, scan.getInputs)
-      case FlinkConventions.LOGICAL =>
-        new FlinkLogicalDataStreamTableScan(
-          cluster, traitSet, Collections.emptyList[RelHint](), table)
-      case FlinkConventions.BATCH_PHYSICAL =>
-        new BatchPhysicalBoundedStreamScan(
-          cluster, traitSet, Collections.emptyList[RelHint](), table, table.getRowType)
-      case FlinkConventions.STREAM_PHYSICAL =>
-        new StreamPhysicalDataStreamScan(
-          cluster, traitSet, Collections.emptyList[RelHint](), table, table.getRowType)
-      case _ => throw new TableException(s"Unsupported convention trait: $conventionTrait")
-    }
-    scan.asInstanceOf[T]
-  }
-
-  protected def createTableSourceTable[T](
-      tableNames: util.List[String], traitSet: RelTraitSet): T = {
-    val table = relBuilder
-      .getRelOptSchema
-      .asInstanceOf[CalciteCatalogReader]
-      .getTable(tableNames)
-      .asInstanceOf[TableSourceTable]
     val conventionTrait = traitSet.getTrait(ConventionTraitDef.INSTANCE)
     val scan = conventionTrait match {
       case Convention.NONE =>

@@ -263,8 +263,6 @@ public class WebMonitorEndpoint<T extends RestfulGateway> extends RestServerEndp
         handlers.addAll(webSubmissionHandlers);
         final boolean hasWebSubmissionHandlers = !webSubmissionHandlers.isEmpty();
 
-        final Duration asyncOperationStoreDuration =
-                clusterConfiguration.get(RestOptions.ASYNC_OPERATION_STORE_DURATION);
         final Time timeout = restConfiguration.getTimeout();
 
         ClusterOverviewHandler clusterOverviewHandler =
@@ -500,8 +498,8 @@ public class WebMonitorEndpoint<T extends RestfulGateway> extends RestServerEndp
                 .new SavepointTriggerHandler(leaderRetriever, timeout, responseHeaders);
 
         final SavepointHandlers.SavepointStatusHandler savepointStatusHandler =
-                new SavepointHandlers.SavepointStatusHandler(
-                        leaderRetriever, timeout, responseHeaders);
+                savepointHandlers
+                .new SavepointStatusHandler(leaderRetriever, timeout, responseHeaders);
 
         final SubtaskExecutionAttemptDetailsHandler subtaskExecutionAttemptDetailsHandler =
                 new SubtaskExecutionAttemptDetailsHandler(
@@ -533,8 +531,7 @@ public class WebMonitorEndpoint<T extends RestfulGateway> extends RestServerEndp
                         executor,
                         metricFetcher);
 
-        final RescalingHandlers rescalingHandlers =
-                new RescalingHandlers(asyncOperationStoreDuration);
+        final RescalingHandlers rescalingHandlers = new RescalingHandlers();
 
         final RescalingHandlers.RescalingTriggerHandler rescalingTriggerHandler =
                 rescalingHandlers
@@ -588,8 +585,7 @@ public class WebMonitorEndpoint<T extends RestfulGateway> extends RestServerEndp
                         executor,
                         metricFetcher);
 
-        final SavepointDisposalHandlers savepointDisposalHandlers =
-                new SavepointDisposalHandlers(asyncOperationStoreDuration);
+        final SavepointDisposalHandlers savepointDisposalHandlers = new SavepointDisposalHandlers();
 
         final SavepointDisposalHandlers.SavepointDisposalTriggerHandler
                 savepointDisposalTriggerHandler =
@@ -607,7 +603,7 @@ public class WebMonitorEndpoint<T extends RestfulGateway> extends RestServerEndp
                 new ClusterDataSetListHandler(
                         leaderRetriever, timeout, responseHeaders, resourceManagerRetriever);
         final ClusterDataSetDeleteHandlers clusterDataSetDeleteHandlers =
-                new ClusterDataSetDeleteHandlers(asyncOperationStoreDuration);
+                new ClusterDataSetDeleteHandlers();
         final ClusterDataSetDeleteHandlers.ClusterDataSetDeleteTriggerHandler
                 clusterDataSetDeleteTriggerHandler =
                         clusterDataSetDeleteHandlers

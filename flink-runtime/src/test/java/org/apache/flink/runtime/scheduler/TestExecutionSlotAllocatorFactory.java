@@ -27,8 +27,6 @@ public class TestExecutionSlotAllocatorFactory implements ExecutionSlotAllocator
 
     private final TestExecutionSlotAllocator testExecutionSlotAllocator;
 
-    private ExecutionSlotAllocationContext latestExecutionSlotAllocationContext;
-
     public TestExecutionSlotAllocatorFactory() {
         this.testExecutionSlotAllocator = new TestExecutionSlotAllocator();
     }
@@ -43,15 +41,10 @@ public class TestExecutionSlotAllocatorFactory implements ExecutionSlotAllocator
 
     @Override
     public ExecutionSlotAllocator createInstance(final ExecutionSlotAllocationContext context) {
-        this.latestExecutionSlotAllocationContext = context;
         return testExecutionSlotAllocator;
     }
 
     public TestExecutionSlotAllocator getTestExecutionSlotAllocator() {
         return testExecutionSlotAllocator;
-    }
-
-    public ExecutionSlotAllocationContext getLatestExecutionSlotAllocationContext() {
-        return latestExecutionSlotAllocationContext;
     }
 }

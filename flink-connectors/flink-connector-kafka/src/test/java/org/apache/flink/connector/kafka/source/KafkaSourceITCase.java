@@ -43,7 +43,6 @@ import org.apache.flink.streaming.api.operators.StreamMap;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.util.CloseableIterator;
 import org.apache.flink.util.Collector;
-import org.apache.flink.util.DockerImageVersions;
 
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.producer.ProducerRecord;
@@ -220,32 +219,12 @@ public class KafkaSourceITCase {
                             source, WatermarkStrategy.noWatermarks(), "testRedundantParallelism");
             executeAndVerify(env, stream);
         }
-
-        @Test
-        public void testBasicReadWithoutGroupId() throws Exception {
-            KafkaSource<PartitionAndValue> source =
-                    KafkaSource.<PartitionAndValue>builder()
-                            .setBootstrapServers(KafkaSourceTestEnv.brokerConnectionStrings)
-                            .setTopics(Arrays.asList(TOPIC1, TOPIC2))
-                            .setDeserializer(new TestingKafkaRecordDeserializationSchema())
-                            .setStartingOffsets(OffsetsInitializer.earliest())
-                            .setBounded(OffsetsInitializer.latest())
-                            .build();
-
-            StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
-            env.setParallelism(1);
-            DataStream<PartitionAndValue> stream =
-                    env.fromSource(
-                            source,
-                            WatermarkStrategy.noWatermarks(),
-                            "testBasicReadWithoutGroupId");
-            executeAndVerify(env, stream);
-        }
     }
 
     /** Integration test based on connector testing framework. */
     @Nested
     class IntegrationTests extends SourceTestSuiteBase<String> {
+        private static final String KAFKA_IMAGE_NAME = "confluentinc/cp-kafka:5.5.2";
 
         // Defines test environment on Flink MiniCluster
         @SuppressWarnings("unused")
@@ -256,9 +235,7 @@ public class KafkaSourceITCase {
         @ExternalSystem
         DefaultContainerizedExternalSystem<KafkaContainer> kafka =
                 DefaultContainerizedExternalSystem.builder()
-                        .fromContainer(
-                                new KafkaContainer(
-                                        DockerImageName.parse(DockerImageVersions.KAFKA)))
+                        .fromContainer(new KafkaContainer(DockerImageName.parse(KAFKA_IMAGE_NAME)))
                         .build();
 
         // Defines 2 External context Factories, so test cases will be invoked twice using these two

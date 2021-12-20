@@ -55,17 +55,11 @@ mvn clean install -DskipTests
 
 上面的 [Maven](http://maven.apache.org) 指令（`mvn`）首先删除（`clean`）所有存在的构建，然后构建一个新的 Flink 运行包（`install`）。
 
-为了加速构建，可以：
-- 使用 ' -DskipTests' 跳过测试
-- 使用 `fast` Maven profile 跳过 QA 的插件和 JavaDocs 的生成
-- 使用 `skip-webui-build` Maven profile 跳过 WebUI 编译
-- 使用 Maven 并行构建功能，比如 'mvn package -T 1C' 会尝试并行使用多核 CPU，同时让每一个 CPU 核构建1个模块。{{< hint warning >}}maven-shade-plugin 现存的 bug 可能会在并行构建时产生死锁。建议分2步进行构建：首先使用并行方式运行 `mvn validate/test-compile/test`，然后使用单线程方式运行 `mvn package/verify/install`。{{< /hint >}} 
+为了加速构建，可以执行如下命令，以跳过测试，QA 的插件和 JavaDocs 的生成：
 
-构建脚本如下：
 ```bash
-mvn clean install -DskipTests -Dfast -Pskip-webui-build -T 1C
+mvn clean install -DskipTests -Dfast
 ```
-`fast` 和 `skip-webui-build` 这两个 Maven profiles 对整体构建时间影响比较大，特别是在存储设备比较慢的机器上，因为对应的任务会读写很多小文件。
 
 <a name="build-pyflink"/>
 
@@ -101,22 +95,22 @@ mvn clean install -DskipTests -Dfast -Pskip-webui-build -T 1C
 
 #### 安装
 
-进入 Flink 源码根目录，并执行以下命令，构建 `apache-flink` 和 `apache-flink-libraries` 的源码发布包和 wheel 包：
+进入 Flink 源码根目录，并执行以下命令，构建 apache-flink 和 apache-flink-libraries 的源码发布包和 wheel 包：
 
 ```bash
-cd flink-python; python setup.py sdist bdist_wheel; cd apache-flink-libraries; python setup.py sdist; cd ..;
+cd flink-python; python setup.py sdist bdist_wheel; cd apache-flink-libraries; python setup.py sdist bdist_wheel; cd ..;
 ```
 
-构建好的 `apache-flink-libraries` 的源码发布包位于 `./flink-python/apache-flink-libraries/dist/` 目录下。可使用 pip 安装，比如:
+构建好的 apache-flink-libraries 的源码发布包和 wheel 包位于`./flink-python/apache-flink-libraries/dist/`目录下。它们均可使用 pip 安装，比如:
 
 ```bash
 python -m pip install apache-flink-libraries/dist/*.tar.gz
 ```
 
-构建好的 `apache-flink` 的源码发布包和 wheel 包位于 `./flink-python/dist/` 目录下。它们均可使用 pip 安装，比如:
+构建好的 apache-flink 的源码发布包和 wheel 包位于`./flink-python/dist/`目录下。它们均可使用 pip 安装，比如:
 
 ```bash
-python -m pip install dist/*.whl
+python -m pip install dist/*.tar.gz
 ```
 
 ## 依赖屏蔽

@@ -59,7 +59,8 @@ public class DashboardConfigHandler
 
     @Override
     public CompletableFuture<DashboardConfiguration> handleRequest(
-            @Nonnull HandlerRequest<EmptyRequestBody> request, @Nonnull RestfulGateway gateway) {
+            @Nonnull HandlerRequest<EmptyRequestBody, EmptyMessageParameters> request,
+            @Nonnull RestfulGateway gateway) {
         return CompletableFuture.completedFuture(dashboardConfiguration);
     }
 }

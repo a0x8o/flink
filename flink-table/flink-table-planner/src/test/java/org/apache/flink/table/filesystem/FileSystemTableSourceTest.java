@@ -47,18 +47,6 @@ public class FileSystemTableSourceTest extends TableTestBase {
                         + " 'path' = '/tmp')";
         tEnv.executeSql(srcTableDdl);
 
-        String srcTableWithMetaDdl =
-                "CREATE TABLE MyTableWithMeta (\n"
-                        + "  a bigint,\n"
-                        + "  b int,\n"
-                        + "  c varchar,\n"
-                        + "  filemeta STRING METADATA FROM 'file.path'\n"
-                        + ") with (\n"
-                        + " 'connector' = 'filesystem',"
-                        + " 'format' = 'testcsv',"
-                        + " 'path' = '/tmp')";
-        tEnv.executeSql(srcTableWithMetaDdl);
-
         String sinkTableDdl =
                 "CREATE TABLE MySink (\n"
                         + "  a bigint,\n"
@@ -73,11 +61,5 @@ public class FileSystemTableSourceTest extends TableTestBase {
     @Test
     public void testFilterPushDown() {
         util.verifyRelPlanInsert("insert into MySink select * from MyTable where a > 10");
-    }
-
-    @Test
-    public void testMetadataReading() {
-        util.verifyRelPlanInsert(
-                "insert into MySink(a, b, c) select a, b, filemeta from MyTableWithMeta");
     }
 }

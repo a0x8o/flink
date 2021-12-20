@@ -23,7 +23,6 @@ import org.apache.flink.util.ExceptionUtils;
 import javax.annotation.Nonnegative;
 import javax.annotation.Nonnull;
 
-import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
 
@@ -61,7 +60,7 @@ public class IncrementalLocalKeyedStateHandle extends DirectoryKeyedStateHandle
         this.backendIdentifier = backendIdentifier;
         this.checkpointId = checkpointId;
         this.metaDataState = metaDataState;
-        this.sharedStateHandleIDs = new HashSet<>(sharedStateHandleIDs);
+        this.sharedStateHandleIDs = sharedStateHandleIDs;
     }
 
     @Nonnull

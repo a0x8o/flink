@@ -45,8 +45,7 @@ public class ClusterUncaughtExceptionHandler implements Thread.UncaughtException
             LOG.error(
                     "WARNING: Thread '{}' produced an uncaught exception. If you want to fail on uncaught exceptions, then configure {} accordingly",
                     t.getName(),
-                    ClusterOptions.UNCAUGHT_EXCEPTION_HANDLING.key(),
-                    e);
+                    ClusterOptions.UNCAUGHT_EXCEPTION_HANDLING.key());
         } else { // by default, fail the job
             FatalExitExceptionHandler.INSTANCE.uncaughtException(t, e);
         }

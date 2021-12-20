@@ -70,7 +70,7 @@ $ kubectl delete deployment/my-first-flink-cluster
 ```
 
 {{< hint info >}}
-In default, Flink’s Web UI and REST endpoint are exposed as `ClusterIP` service. To access the service, please refer to [Accessing Flink’s Web UI](#accessing-flinks-web-ui) for instructions.
+When using [Minikube](https://minikube.sigs.k8s.io/docs/), you need to call `minikube tunnel` in order to [expose Flink's LoadBalancer service on Minikube](https://minikube.sigs.k8s.io/docs/handbook/accessing/#using-minikube-tunnel).
 {{< /hint >}}
 
 Congratulations! You have successfully run a Flink application by deploying Flink on Kubernetes.

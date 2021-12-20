@@ -68,28 +68,17 @@ import static org.apache.flink.docs.util.Utils.escapeCharacters;
  * contains a series of HTML tables, one for each REST call.
  *
  * <p>The generated table for each REST call looks like this:
- *
- * <pre>
- * ----------------------------------------------------------
- * | URL                                                    |
- * ----------------------------------------------------------
- * | Verb: verb (GET|POST|...) | Response code: responseCode|
- * ----------------------------------------------------------
- * | Path parameters (if any are defined)                   |
- * ----------------------------------------------------------
- * |   - parameterName: description                         |
- * |   ...                                                  |
- * ----------------------------------------------------------
- * | Query parameters (if any are defined)                  |
- * ----------------------------------------------------------
- * |   - parameterName (requisiteness): description         |
- * |   ...                                                  |
- * ----------------------------------------------------------
- * | Request json schema (a collapsible "Request" button)   |
- * ----------------------------------------------------------
- * | Response json schema (a collapsible "Response" button) |
- * ----------------------------------------------------------
- * </pre>
+ * ---------------------------------------------------------- | URL |
+ * ---------------------------------------------------------- | Verb: verb (GET|POST|...) | Response
+ * code: responseCode| ---------------------------------------------------------- | Path parameters
+ * (if any are defined) | ---------------------------------------------------------- | -
+ * parameterName: description | | ... | ---------------------------------------------------------- |
+ * Query parameters (if any are defined) |
+ * ---------------------------------------------------------- | - parameterName (requisiteness):
+ * description | | ... | ---------------------------------------------------------- | Request json
+ * schema (a collapsible "Request" button) |
+ * ---------------------------------------------------------- | Response json schema (a collapsible
+ * "Response" button) | ----------------------------------------------------------
  */
 public class RestAPIDocGenerator {
 

@@ -228,27 +228,23 @@ public class SingleCheckpointBarrierHandler extends CheckpointBarrierHandler {
         checkNewCheckpoint(barrier);
         checkState(currentCheckpointId == barrierId);
 
-        markCheckpointAlignedAndTransformState(
-                channelInfo,
-                barrier,
+        alignedChannels.add(channelInfo);
+        if (alignedChannels.size() == 1) {
+            if (targetChannelCount == 1) {
+                markAlignmentStartAndEnd(barrierId, barrier.getTimestamp());
+            } else {
+                markAlignmentStart(barrierId, barrier.getTimestamp());
+            }
+        }
+
+        checkCheckpointAlignedAndTransformState(
                 state -> state.barrierReceived(context, channelInfo, barrier, !isRpcTriggered));
     }
 
-    protected void markCheckpointAlignedAndTransformState(
-            InputChannelInfo alignedChannel,
-            CheckpointBarrier barrier,
+    protected void checkCheckpointAlignedAndTransformState(
             FunctionWithException<BarrierHandlerState, BarrierHandlerState, Exception>
                     stateTransformer)
             throws IOException {
-
-        alignedChannels.add(alignedChannel);
-        if (alignedChannels.size() == 1) {
-            if (targetChannelCount == 1) {
-                markAlignmentStartAndEnd(barrier.getId(), barrier.getTimestamp());
-            } else {
-                markAlignmentStart(barrier.getId(), barrier.getTimestamp());
-            }
-        }
 
         // we must mark alignment end before calling currentState.barrierReceived which might
         // trigger a checkpoint with unfinished future for alignment duration
@@ -408,6 +404,7 @@ public class SingleCheckpointBarrierHandler extends CheckpointBarrierHandler {
 
     @Override
     public void processEndOfPartition(InputChannelInfo channelInfo) throws IOException {
+        alignedChannels.add(channelInfo);
         numOpenChannels--;
 
         if (!isCheckpointAfterTasksFinishedEnabled()) {
@@ -427,10 +424,7 @@ public class SingleCheckpointBarrierHandler extends CheckpointBarrierHandler {
                     pendingCheckpointBarrier != null,
                     "pending checkpoint barrier should not be null when"
                             + " there is pending checkpoint.");
-
-            markCheckpointAlignedAndTransformState(
-                    channelInfo,
-                    pendingCheckpointBarrier,
+            checkCheckpointAlignedAndTransformState(
                     state -> state.endOfPartitionReceived(context, channelInfo));
         }
     }

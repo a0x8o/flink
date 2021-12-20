@@ -93,11 +93,11 @@ public abstract class AbstractAggregatingMetricsHandler<
 
     @Nonnull
     abstract Collection<? extends MetricStore.ComponentMetricStore> getStores(
-            MetricStore store, HandlerRequest<EmptyRequestBody> request);
+            MetricStore store, HandlerRequest<EmptyRequestBody, P> request);
 
     @Override
     protected CompletableFuture<AggregatedMetricsResponseBody> handleRequest(
-            @Nonnull HandlerRequest<EmptyRequestBody> request, @Nonnull RestfulGateway gateway)
+            @Nonnull HandlerRequest<EmptyRequestBody, P> request, @Nonnull RestfulGateway gateway)
             throws RestHandlerException {
         return CompletableFuture.supplyAsync(
                 () -> {

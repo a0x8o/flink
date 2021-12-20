@@ -34,7 +34,6 @@ import org.apache.flink.table.types.inference.strategies.LiteralArgumentTypeStra
 import org.apache.flink.table.types.inference.strategies.OrArgumentTypeStrategy;
 import org.apache.flink.table.types.inference.strategies.OrInputTypeStrategy;
 import org.apache.flink.table.types.inference.strategies.OutputArgumentTypeStrategy;
-import org.apache.flink.table.types.inference.strategies.RepeatingSequenceInputTypeStrategy;
 import org.apache.flink.table.types.inference.strategies.RootArgumentTypeStrategy;
 import org.apache.flink.table.types.inference.strategies.SequenceInputTypeStrategy;
 import org.apache.flink.table.types.inference.strategies.SubsequenceInputTypeStrategy.SubsequenceStrategyBuilder;
@@ -106,11 +105,6 @@ public final class InputTypeStrategies {
             String[] argumentNames, ArgumentTypeStrategy[] strategies) {
         return new VaryingSequenceInputTypeStrategy(
                 Arrays.asList(strategies), Arrays.asList(argumentNames));
-    }
-
-    /** Arbitrarily often repeating sequence of argument type strategies. */
-    public static InputTypeStrategy repeatingSequence(ArgumentTypeStrategy... strategies) {
-        return new RepeatingSequenceInputTypeStrategy(Arrays.asList(strategies));
     }
 
     /**

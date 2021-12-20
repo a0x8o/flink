@@ -153,8 +153,7 @@ public class TaskManagerRunner implements FatalErrorHandler {
                         configuration,
                         executor,
                         AddressResolution.NO_ADDRESS_RESOLUTION,
-                        rpcSystem,
-                        this);
+                        rpcSystem);
 
         JMXService.startInstance(configuration.getString(JMXServerOptions.JMX_SERVER_PORT));
 
@@ -331,7 +330,12 @@ public class TaskManagerRunner implements FatalErrorHandler {
                 "Fatal error occurred while executing the TaskManager. Shutting it down...",
                 exception);
 
-        if (ExceptionUtils.isJvmFatalOrOutOfMemoryError(exception)) {
+        // In case of the Metaspace OutOfMemoryError, we expect that the graceful shutdown is
+        // possible,
+        // as it does not usually require more class loading to fail again with the Metaspace
+        // OutOfMemoryError.
+        if (ExceptionUtils.isJvmFatalOrOutOfMemoryError(exception)
+                && !ExceptionUtils.isMetaspaceOutOfMemoryError(exception)) {
             terminateJVM();
         } else {
             closeAsync(Result.FAILURE);

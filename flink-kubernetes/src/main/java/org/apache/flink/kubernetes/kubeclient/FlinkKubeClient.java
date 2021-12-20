@@ -106,8 +106,7 @@ public interface FlinkKubeClient extends AutoCloseable {
      * @return Return a watch for pods. It needs to be closed after use.
      */
     KubernetesWatch watchPodsAndDoCallback(
-            Map<String, String> labels, WatchCallbackHandler<KubernetesPod> podCallbackHandler)
-            throws Exception;
+            Map<String, String> labels, WatchCallbackHandler<KubernetesPod> podCallbackHandler);
 
     /**
      * Create a leader elector service based on Kubernetes api.

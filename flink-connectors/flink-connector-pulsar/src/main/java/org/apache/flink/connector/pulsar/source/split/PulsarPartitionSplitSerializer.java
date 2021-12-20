@@ -18,12 +18,12 @@
 
 package org.apache.flink.connector.pulsar.source.split;
 
+import org.apache.flink.connector.pulsar.source.enumerator.cursor.StartCursor;
 import org.apache.flink.connector.pulsar.source.enumerator.cursor.StopCursor;
 import org.apache.flink.connector.pulsar.source.enumerator.topic.TopicPartition;
 import org.apache.flink.connector.pulsar.source.enumerator.topic.TopicRange;
 import org.apache.flink.core.io.SimpleVersionedSerializer;
 
-import org.apache.pulsar.client.api.MessageId;
 import org.apache.pulsar.client.api.transaction.TxnID;
 
 import java.io.ByteArrayInputStream;
@@ -32,9 +32,7 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 
-import static org.apache.flink.connector.pulsar.common.utils.PulsarSerdeUtils.deserializeBytes;
 import static org.apache.flink.connector.pulsar.common.utils.PulsarSerdeUtils.deserializeObject;
-import static org.apache.flink.connector.pulsar.common.utils.PulsarSerdeUtils.serializeBytes;
 import static org.apache.flink.connector.pulsar.common.utils.PulsarSerdeUtils.serializeObject;
 
 /** The {@link SimpleVersionedSerializer serializer} for {@link PulsarPartitionSplit}. */
@@ -83,17 +81,11 @@ public class PulsarPartitionSplitSerializer
         // partition
         serializeTopicPartition(out, split.getPartition());
 
+        // startCursor
+        serializeObject(out, split.getStartCursor());
+
         // stopCursor
         serializeObject(out, split.getStopCursor());
-
-        // latestConsumedId
-        MessageId latestConsumedId = split.getLatestConsumedId();
-        if (latestConsumedId == null) {
-            out.writeBoolean(false);
-        } else {
-            out.writeBoolean(true);
-            serializeBytes(out, latestConsumedId.toByteArray());
-        }
 
         // uncommittedTransactionId
         TxnID uncommittedTransactionId = split.getUncommittedTransactionId();
@@ -111,15 +103,11 @@ public class PulsarPartitionSplitSerializer
         // partition
         TopicPartition partition = deserializeTopicPartition(version, in);
 
+        // startCursor
+        StartCursor startCursor = deserializeObject(in);
+
         // stopCursor
         StopCursor stopCursor = deserializeObject(in);
-
-        // latestConsumedId
-        MessageId latestConsumedId = null;
-        if (in.readBoolean()) {
-            byte[] messageIdBytes = deserializeBytes(in);
-            latestConsumedId = MessageId.fromByteArray(messageIdBytes);
-        }
 
         // uncommittedTransactionId
         TxnID uncommittedTransactionId = null;
@@ -131,7 +119,7 @@ public class PulsarPartitionSplitSerializer
 
         // Creation
         return new PulsarPartitionSplit(
-                partition, stopCursor, latestConsumedId, uncommittedTransactionId);
+                partition, startCursor, stopCursor, null, uncommittedTransactionId);
     }
 
     public void serializeTopicPartition(DataOutputStream out, TopicPartition partition)

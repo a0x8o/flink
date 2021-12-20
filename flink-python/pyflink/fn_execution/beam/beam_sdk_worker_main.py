@@ -54,7 +54,7 @@ class CustomPrint(object):
             self._msg_buffer.clear()
 
 
-def main():
+if __name__ == '__main__':
     import builtins
     import logging
     from functools import partial
@@ -67,7 +67,5 @@ def main():
 
     custom_print = CustomPrint(print)
     builtins.print = custom_print.print
-    # Remove all the built-in log handles
-    logging.getLogger().handlers = []
     apache_beam.runners.worker.sdk_worker_main.main(sys.argv)
     custom_print.close()

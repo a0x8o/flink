@@ -73,7 +73,7 @@ object SocketWindowWordCount {
           .sum("count")
 
     // print the results with a single thread, rather than in parallel
-    windowCounts.print()
+    windowCounts.print().setParallelism(1)
 
     env.execute("Socket Window WordCount")
   }

@@ -17,14 +17,13 @@
  */
 
 import { Pipe, PipeTransform } from '@angular/core';
-
 import { isNil } from 'utils';
 
 @Pipe({
   name: 'humanizeDuration'
 })
 export class HumanizeDurationPipe implements PipeTransform {
-  public transform(value: number, short: boolean = false): string {
+  transform(value: number, short: boolean = false): any {
     if (isNil(value) || isNaN(value)) {
       return '-';
     } else if (value < 0) {

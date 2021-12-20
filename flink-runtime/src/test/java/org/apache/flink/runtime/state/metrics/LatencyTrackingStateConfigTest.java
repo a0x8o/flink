@@ -50,9 +50,6 @@ public class LatencyTrackingStateConfigTest {
         Assert.assertEquals(
                 (long) StateBackendOptions.LATENCY_TRACK_HISTORY_SIZE.defaultValue(),
                 latencyTrackingStateConfig.getHistorySize());
-        Assert.assertEquals(
-                StateBackendOptions.LATENCY_TRACK_STATE_NAME_AS_VARIABLE.defaultValue(),
-                latencyTrackingStateConfig.isStateNameAsVariable());
     }
 
     @Test

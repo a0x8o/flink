@@ -602,7 +602,7 @@ public class CreditBasedPartitionRequestClientHandlerTest {
 
         try {
             inputGate.setInputChannels(inputChannel);
-            inputGate.setup();
+            inputGate.setupChannels();
             inputGate.requestPartitions();
             handler.addInputChannel(inputChannel);
 
@@ -732,7 +732,7 @@ public class CreditBasedPartitionRequestClientHandlerTest {
         SingleInputGate inputGate = createSingleInputGate(1, networkBufferPool);
         RemoteInputChannel inputChannel = new InputChannelBuilder().buildRemoteChannel(inputGate);
         inputGate.setInputChannels(inputChannel);
-        inputGate.setup();
+        inputGate.setupChannels();
 
         CreditBasedPartitionRequestClientHandler handler =
                 new CreditBasedPartitionRequestClientHandler();

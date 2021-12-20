@@ -19,7 +19,6 @@
 package org.apache.flink.runtime.checkpoint;
 
 import org.apache.flink.api.common.JobID;
-import org.apache.flink.api.common.eventtime.WatermarkStrategyTest.DummyMetricGroup;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.core.fs.FSDataInputStream;
 import org.apache.flink.core.fs.Path;
@@ -27,6 +26,7 @@ import org.apache.flink.core.io.SimpleVersionedSerializer;
 import org.apache.flink.runtime.OperatorIDPair;
 import org.apache.flink.runtime.concurrent.ComponentMainThreadExecutor;
 import org.apache.flink.runtime.concurrent.ComponentMainThreadExecutorServiceAdapter;
+import org.apache.flink.runtime.concurrent.ManuallyTriggeredScheduledExecutor;
 import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.ExecutionGraph;
@@ -63,7 +63,6 @@ import org.apache.flink.runtime.testutils.CommonTestUtils;
 import org.apache.flink.util.InstantiationUtil;
 import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.concurrent.Executors;
-import org.apache.flink.util.concurrent.ManuallyTriggeredScheduledExecutor;
 import org.apache.flink.util.concurrent.ScheduledExecutor;
 
 import org.junit.Assert;
@@ -425,8 +424,8 @@ public class CheckpointCoordinatorTestingUtils {
     }
 
     public static TaskStateSnapshot createSnapshotWithUnionListState(
-            File stateFile, OperatorID operatorId, boolean isTaskFinished) throws IOException {
-        TaskStateSnapshot taskStateSnapshot = new TaskStateSnapshot(1, isTaskFinished);
+            File stateFile, OperatorID operatorId, boolean isOperatorsFinished) throws IOException {
+        TaskStateSnapshot taskStateSnapshot = new TaskStateSnapshot(1, isOperatorsFinished);
         taskStateSnapshot.putSubtaskStateByOperatorID(
                 operatorId, createSubtaskStateWithUnionListState(stateFile));
         return taskStateSnapshot;
@@ -725,9 +724,6 @@ public class CheckpointCoordinatorTestingUtils {
 
         private boolean allowCheckpointsAfterTasksFinished;
 
-        private CheckpointStatsTracker checkpointStatsTracker =
-                new CheckpointStatsTracker(1, new DummyMetricGroup());
-
         public CheckpointCoordinatorBuilder setCheckpointCoordinatorConfiguration(
                 CheckpointCoordinatorConfiguration checkpointCoordinatorConfiguration) {
             this.checkpointCoordinatorConfiguration = checkpointCoordinatorConfiguration;
@@ -802,12 +798,6 @@ public class CheckpointCoordinatorTestingUtils {
             return this;
         }
 
-        public CheckpointCoordinatorBuilder setCheckpointStatsTracker(
-                CheckpointStatsTracker checkpointStatsTracker) {
-            this.checkpointStatsTracker = checkpointStatsTracker;
-            return this;
-        }
-
         public CheckpointCoordinator build() throws Exception {
             if (executionGraph == null) {
                 executionGraph =
@@ -836,8 +826,7 @@ public class CheckpointCoordinatorTestingUtils {
                     sharedStateRegistryFactory,
                     failureManager,
                     checkpointPlanCalculator,
-                    new ExecutionAttemptMappingProvider(executionGraph.getAllExecutionVertices()),
-                    checkpointStatsTracker);
+                    new ExecutionAttemptMappingProvider(executionGraph.getAllExecutionVertices()));
         }
     }
 

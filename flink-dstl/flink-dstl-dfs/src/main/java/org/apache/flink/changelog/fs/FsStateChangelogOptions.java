@@ -18,6 +18,7 @@
 package org.apache.flink.changelog.fs;
 
 import org.apache.flink.annotation.Experimental;
+import org.apache.flink.annotation.docs.Documentation;
 import org.apache.flink.configuration.ConfigOption;
 import org.apache.flink.configuration.ConfigOptions;
 import org.apache.flink.configuration.MemorySize;
@@ -28,6 +29,7 @@ import static org.apache.flink.streaming.api.environment.ExecutionCheckpointingO
 
 /** {@link ConfigOptions} for {@link FsStateChangelogStorage}. */
 @Experimental
+@Documentation.ExcludeFromDocumentation("ChangelogBackend is under development")
 public class FsStateChangelogOptions {
 
     public static final ConfigOption<String> BASE_PATH =
@@ -73,8 +75,7 @@ public class FsStateChangelogOptions {
                                     + ". Once reached, accumulated changes are persisted immediately. "
                                     + "This is different from "
                                     + PREEMPTIVE_PERSIST_THRESHOLD.key()
-                                    + " as it happens AFTER the checkpoint and potentially for state changes of multiple operators. "
-                                    + "Must not exceed in-flight data limit (see below)");
+                                    + " as it happens AFTER the checkpoint and potentially for state changes of multiple operators.");
 
     public static final ConfigOption<MemorySize> UPLOAD_BUFFER_SIZE =
             ConfigOptions.key("dstl.dfs.upload.buffer-size")
@@ -94,14 +95,7 @@ public class FsStateChangelogOptions {
                     .defaultValue(MemorySize.parse("100Mb"))
                     .withDescription(
                             "Max amount of data allowed to be in-flight. "
-                                    + "Upon reaching this limit the task will be back-pressured. "
-                                    + " I.e., snapshotting will block; normal processing will block if "
-                                    + PREEMPTIVE_PERSIST_THRESHOLD.key()
-                                    + " is set and reached. "
-                                    + "The limit is applied to the total size of in-flight changes if multiple "
-                                    + "operators/backends are using the same changelog storage. "
-                                    + "Must be greater than or equal to "
-                                    + PERSIST_SIZE_THRESHOLD.key());
+                                    + "Upon reaching this limit the task will fail");
 
     public static final ConfigOption<String> RETRY_POLICY =
             ConfigOptions.key("dstl.dfs.upload.retry-policy")
@@ -127,7 +121,7 @@ public class FsStateChangelogOptions {
                     .intType()
                     .defaultValue(3)
                     .withDescription(
-                            "Maximum number of attempts (including the initial one) to perform a particular upload. "
+                            "Maximum number of attempts (including the initial one) to peform a particular upload. "
                                     + "Only takes effect if "
                                     + RETRY_POLICY.key()
                                     + " is fixed.");

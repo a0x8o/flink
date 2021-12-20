@@ -79,7 +79,6 @@ class SelectivityEstimatorTest {
   private def mockScan(
       statistic: FlinkStatistic = FlinkStatistic.UNKNOWN,
       tableConfig: TableConfig = TableConfig.getDefault): TableScan = {
-    val moduleManager = new ModuleManager
     val catalogManager = CatalogManagerMocks.createEmptyCatalogManager()
     val rootSchema = CalciteSchema.createRootSchema(true, false).plus()
     val table = new MockMetaTable(relDataType, statistic)
@@ -88,8 +87,7 @@ class SelectivityEstimatorTest {
       new PlannerContext(
         false,
         tableConfig,
-        moduleManager,
-        new FunctionCatalog(tableConfig, catalogManager, moduleManager),
+        new FunctionCatalog(tableConfig, catalogManager, new ModuleManager),
         catalogManager,
         CalciteSchema.from(rootSchema),
         util.Arrays.asList(

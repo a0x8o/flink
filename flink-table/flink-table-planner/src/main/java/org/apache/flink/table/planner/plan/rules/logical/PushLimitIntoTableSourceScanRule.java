@@ -109,6 +109,9 @@ public class PushLimitIntoTableSourceScanRule extends RelOptRule {
                 FlinkStatistic.builder().statistic(statistic).tableStats(newTableStats).build();
 
         return oldTableSourceTable.copy(
-                newTableSource, newStatistic, new SourceAbilitySpec[] {limitPushDownSpec});
+                newTableSource,
+                newStatistic,
+                new String[] {"limit=[" + limit + "]"},
+                new SourceAbilitySpec[] {limitPushDownSpec});
     }
 }

@@ -85,7 +85,8 @@ public class JarDeleteHandlerTest extends TestLogger {
     public void testDeleteJarById() throws Exception {
         assertThat(Files.exists(jarDir.resolve(TEST_JAR_NAME)), equalTo(true));
 
-        final HandlerRequest<EmptyRequestBody> request = createRequest(TEST_JAR_NAME);
+        final HandlerRequest<EmptyRequestBody, JarDeleteMessageParameters> request =
+                createRequest(TEST_JAR_NAME);
         jarDeleteHandler.handleRequest(request, restfulGateway).get();
 
         assertThat(Files.exists(jarDir.resolve(TEST_JAR_NAME)), equalTo(false));
@@ -93,7 +94,8 @@ public class JarDeleteHandlerTest extends TestLogger {
 
     @Test
     public void testDeleteUnknownJar() throws Exception {
-        final HandlerRequest<EmptyRequestBody> request = createRequest("doesnotexist.jar");
+        final HandlerRequest<EmptyRequestBody, JarDeleteMessageParameters> request =
+                createRequest("doesnotexist.jar");
         try {
             jarDeleteHandler.handleRequest(request, restfulGateway).get();
         } catch (final ExecutionException e) {
@@ -116,7 +118,8 @@ public class JarDeleteHandlerTest extends TestLogger {
     public void testFailedDelete() throws Exception {
         makeJarDirReadOnly();
 
-        final HandlerRequest<EmptyRequestBody> request = createRequest(TEST_JAR_NAME);
+        final HandlerRequest<EmptyRequestBody, JarDeleteMessageParameters> request =
+                createRequest(TEST_JAR_NAME);
         try {
             jarDeleteHandler.handleRequest(request, restfulGateway).get();
         } catch (final ExecutionException e) {
@@ -131,14 +134,13 @@ public class JarDeleteHandlerTest extends TestLogger {
         }
     }
 
-    private static HandlerRequest<EmptyRequestBody> createRequest(final String jarFileName)
-            throws HandlerRequestException {
-        return HandlerRequest.resolveParametersAndCreate(
+    private static HandlerRequest<EmptyRequestBody, JarDeleteMessageParameters> createRequest(
+            final String jarFileName) throws HandlerRequestException {
+        return new HandlerRequest<>(
                 EmptyRequestBody.getInstance(),
                 new JarDeleteMessageParameters(),
                 Collections.singletonMap(JarIdPathParameter.KEY, jarFileName),
-                Collections.emptyMap(),
-                Collections.emptyList());
+                Collections.emptyMap());
     }
 
     private void makeJarDirReadOnly() {

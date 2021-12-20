@@ -61,9 +61,6 @@ public final class TestDynamicTableFactory
                     .defaultValue(100L)
                     .withFallbackKeys("fallback-buffer-size");
 
-    public static final ConfigOption<String> PASSWORD =
-            ConfigOptions.key("password").stringType().noDefaultValue();
-
     public static final ConfigOption<String> KEY_FORMAT =
             ConfigOptions.key("key" + FORMAT_SUFFIX).stringType().noDefaultValue();
 
@@ -129,7 +126,6 @@ public final class TestDynamicTableFactory
         options.add(KEY_FORMAT);
         options.add(FORMAT);
         options.add(VALUE_FORMAT);
-        options.add(PASSWORD);
         return options;
     }
 

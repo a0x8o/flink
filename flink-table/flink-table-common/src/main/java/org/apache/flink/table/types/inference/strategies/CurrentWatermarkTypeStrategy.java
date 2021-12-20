@@ -29,6 +29,8 @@ import org.apache.flink.table.types.logical.LogicalTypeRoot;
 
 import java.util.Optional;
 
+import static org.apache.flink.table.types.logical.utils.LogicalTypeChecks.hasRoot;
+
 /**
  * Type strategy for {@link BuiltInFunctionDefinitions#CURRENT_WATERMARK} which mirrors the type of
  * the passed rowtime column, but removes the rowtime kind and enforces the correct precision for
@@ -40,9 +42,9 @@ class CurrentWatermarkTypeStrategy implements TypeStrategy {
     @Override
     public Optional<DataType> inferType(CallContext callContext) {
         final LogicalType inputType = callContext.getArgumentDataTypes().get(0).getLogicalType();
-        if (inputType.is(LogicalTypeRoot.TIMESTAMP_WITHOUT_TIME_ZONE)) {
+        if (hasRoot(inputType, LogicalTypeRoot.TIMESTAMP_WITHOUT_TIME_ZONE)) {
             return Optional.of(DataTypes.TIMESTAMP(3));
-        } else if (inputType.is(LogicalTypeRoot.TIMESTAMP_WITH_LOCAL_TIME_ZONE)) {
+        } else if (hasRoot(inputType, LogicalTypeRoot.TIMESTAMP_WITH_LOCAL_TIME_ZONE)) {
             return Optional.of(DataTypes.TIMESTAMP_LTZ(3));
         }
 

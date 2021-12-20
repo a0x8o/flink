@@ -18,7 +18,6 @@
 
 package org.apache.flink.formats.avro.glue.schema.registry;
 
-import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.formats.avro.RegistryAvroSerializationSchema;
 import org.apache.flink.formats.avro.SchemaCoder;
@@ -41,7 +40,6 @@ import java.util.Map;
  *
  * @param <T> the type to be serialized
  */
-@PublicEvolving
 public class GlueSchemaRegistryAvroSerializationSchema<T>
         extends RegistryAvroSerializationSchema<T> {
     /**

@@ -159,12 +159,11 @@ class EmbeddedRocksDBStateBackendTests(PyFlinkTestCase):
         self.assertIsNone(state_backend.get_options())
 
         state_backend.set_options(
-            "org.apache.flink.contrib.streaming.state."
-            "RocksDBStateBackendConfigTest$TestOptionsFactory")
+            "org.apache.flink.contrib.streaming.state.DefaultConfigurableOptionsFactory")
 
         self.assertEqual(state_backend.get_options(),
                          "org.apache.flink.contrib.streaming.state."
-                         "RocksDBStateBackendConfigTest$TestOptionsFactory")
+                         "DefaultConfigurableOptionsFactory")
 
     def test_get_set_number_of_transfer_threads(self):
 

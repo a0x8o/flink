@@ -18,7 +18,6 @@
 
 package org.apache.flink.formats.avro.glue.schema.registry;
 
-import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.formats.avro.SchemaCoder;
 import org.apache.flink.util.Preconditions;
@@ -36,7 +35,6 @@ import java.util.Map;
  * {@link GlueSchemaRegistryAvroDeserializationSchema} and {@link
  * GlueSchemaRegistryAvroSerializationSchema}.
  */
-@PublicEvolving
 public class GlueSchemaRegistryAvroSchemaCoder implements SchemaCoder {
     private GlueSchemaRegistryInputStreamDeserializer glueSchemaRegistryInputStreamDeserializer;
     private GlueSchemaRegistryOutputStreamSerializer glueSchemaRegistryOutputStreamSerializer;

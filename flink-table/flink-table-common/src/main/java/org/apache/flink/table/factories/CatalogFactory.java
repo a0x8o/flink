@@ -63,7 +63,6 @@ public interface CatalogFactory extends TableFactory, Factory {
     }
 
     /** Context provided when a catalog is created. */
-    @PublicEvolving
     interface Context {
         /** Returns the name with which the catalog is created. */
         String getName();

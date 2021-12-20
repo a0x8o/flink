@@ -23,6 +23,7 @@ import org.apache.flink.runtime.executiongraph.ExecutionVertex;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -37,38 +38,32 @@ public class ExecutionAttemptMappingProvider {
     private final List<ExecutionVertex> tasks;
 
     /** The cached mapping, which would only be updated on miss. */
-    private Map<ExecutionAttemptID, ExecutionVertex> cachedTasksById;
+    private final LinkedHashMap<ExecutionAttemptID, ExecutionVertex> cachedTasksById;
 
     public ExecutionAttemptMappingProvider(Iterable<ExecutionVertex> tasksIterable) {
         this.tasks = new ArrayList<>();
         tasksIterable.forEach(this.tasks::add);
 
-        this.cachedTasksById = new HashMap<>(tasks.size());
+        this.cachedTasksById =
+                new LinkedHashMap<ExecutionAttemptID, ExecutionVertex>(tasks.size()) {
+
+                    @Override
+                    protected boolean removeEldestEntry(
+                            Map.Entry<ExecutionAttemptID, ExecutionVertex> eldest) {
+                        return size() > tasks.size();
+                    }
+                };
     }
 
     public Optional<ExecutionVertex> getVertex(ExecutionAttemptID id) {
-        ExecutionVertex vertex = cachedTasksById.get(id);
-        if (vertex != null || cachedTasksById.containsKey(id)) {
-            return Optional.ofNullable(vertex);
-        }
-
-        return updateAndGet(id);
-    }
-
-    private Optional<ExecutionVertex> updateAndGet(ExecutionAttemptID id) {
-        synchronized (tasks) {
-            ExecutionVertex vertex = cachedTasksById.get(id);
-            if (vertex != null || cachedTasksById.containsKey(id)) {
-                return Optional.ofNullable(vertex);
+        if (!cachedTasksById.containsKey(id)) {
+            cachedTasksById.putAll(getCurrentAttemptMappings());
+            if (!cachedTasksById.containsKey(id)) {
+                // the task probably gone after a restart
+                cachedTasksById.put(id, null);
             }
-
-            Map<ExecutionAttemptID, ExecutionVertex> mappings = getCurrentAttemptMappings();
-            if (!mappings.containsKey(id)) {
-                mappings.put(id, null);
-            }
-            cachedTasksById = mappings;
-            return Optional.ofNullable(cachedTasksById.get(id));
         }
+        return Optional.ofNullable(cachedTasksById.get(id));
     }
 
     private Map<ExecutionAttemptID, ExecutionVertex> getCurrentAttemptMappings() {

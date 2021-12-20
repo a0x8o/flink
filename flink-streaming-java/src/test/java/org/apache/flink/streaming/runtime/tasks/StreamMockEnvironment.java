@@ -56,10 +56,12 @@ import org.apache.flink.runtime.taskmanager.CheckpointResponder;
 import org.apache.flink.runtime.taskmanager.NoOpCheckpointResponder;
 import org.apache.flink.runtime.taskmanager.NoOpTaskOperatorEventGateway;
 import org.apache.flink.runtime.taskmanager.TaskManagerRuntimeInfo;
+import org.apache.flink.runtime.throughput.ThroughputCalculator;
 import org.apache.flink.runtime.util.TestingTaskManagerRuntimeInfo;
 import org.apache.flink.runtime.util.TestingUserCodeClassLoader;
 import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.UserCodeClassLoader;
+import org.apache.flink.util.clock.SystemClock;
 
 import javax.annotation.Nullable;
 
@@ -127,6 +129,8 @@ public class StreamMockEnvironment implements Environment {
 
     private CheckpointResponder checkpointResponder = NoOpCheckpointResponder.INSTANCE;
 
+    private ThroughputCalculator throughputCalculator;
+
     public StreamMockEnvironment(
             Configuration jobConfig,
             Configuration taskConfig,
@@ -145,6 +149,7 @@ public class StreamMockEnvironment implements Environment {
                 inputSplitProvider,
                 bufferSize,
                 taskStateManager,
+                new ThroughputCalculator(SystemClock.getInstance(), 10),
                 false);
     }
 
@@ -158,6 +163,7 @@ public class StreamMockEnvironment implements Environment {
             MockInputSplitProvider inputSplitProvider,
             int bufferSize,
             TaskStateManager taskStateManager,
+            ThroughputCalculator throughputCalculator,
             boolean collectNetworkEvents) {
 
         this.jobID = jobID;
@@ -188,6 +194,7 @@ public class StreamMockEnvironment implements Environment {
 
         KvStateRegistry registry = new KvStateRegistry();
         this.kvStateRegistry = registry.createTaskRegistry(jobID, getJobVertexId());
+        this.throughputCalculator = throughputCalculator;
         this.collectNetworkEvents = collectNetworkEvents;
     }
 
@@ -306,6 +313,11 @@ public class StreamMockEnvironment implements Environment {
     @Override
     public TaskEventDispatcher getTaskEventDispatcher() {
         return taskEventDispatcher;
+    }
+
+    @Override
+    public ThroughputCalculator getThroughputCalculator() {
+        return throughputCalculator;
     }
 
     @Override

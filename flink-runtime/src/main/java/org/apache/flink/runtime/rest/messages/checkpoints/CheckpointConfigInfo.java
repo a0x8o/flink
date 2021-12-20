@@ -62,9 +62,6 @@ public class CheckpointConfigInfo implements ResponseBody {
 
     public static final String FIELD_NAME_ALIGNED_CHECKPOINT_TIMEOUT = "aligned_checkpoint_timeout";
 
-    public static final String FIELD_NAME_CHECKPOINTS_AFTER_TASKS_FINISH =
-            "checkpoints_after_tasks_finish";
-
     @JsonProperty(FIELD_NAME_PROCESSING_MODE)
     private final ProcessingMode processingMode;
 
@@ -98,9 +95,6 @@ public class CheckpointConfigInfo implements ResponseBody {
     @JsonProperty(FIELD_NAME_ALIGNED_CHECKPOINT_TIMEOUT)
     private final long alignedCheckpointTimeout;
 
-    @JsonProperty(FIELD_NAME_CHECKPOINTS_AFTER_TASKS_FINISH)
-    private final boolean checkpointsWithFinishedTasks;
-
     @JsonCreator
     public CheckpointConfigInfo(
             @JsonProperty(FIELD_NAME_PROCESSING_MODE) ProcessingMode processingMode,
@@ -114,9 +108,7 @@ public class CheckpointConfigInfo implements ResponseBody {
             @JsonProperty(FIELD_NAME_CHECKPOINT_STORAGE) String checkpointStorage,
             @JsonProperty(FIELD_NAME_UNALIGNED_CHECKPOINTS) boolean unalignedCheckpoints,
             @JsonProperty(FIELD_NAME_TOLERABLE_FAILED_CHECKPOINTS) int tolerableFailedCheckpoints,
-            @JsonProperty(FIELD_NAME_ALIGNED_CHECKPOINT_TIMEOUT) long alignedCheckpointTimeout,
-            @JsonProperty(FIELD_NAME_CHECKPOINTS_AFTER_TASKS_FINISH)
-                    boolean checkpointsWithFinishedTasks) {
+            @JsonProperty(FIELD_NAME_ALIGNED_CHECKPOINT_TIMEOUT) long alignedCheckpointTimeout) {
         this.processingMode = Preconditions.checkNotNull(processingMode);
         this.checkpointInterval = checkpointInterval;
         this.checkpointTimeout = checkpointTimeout;
@@ -128,7 +120,6 @@ public class CheckpointConfigInfo implements ResponseBody {
         this.unalignedCheckpoints = unalignedCheckpoints;
         this.tolerableFailedCheckpoints = tolerableFailedCheckpoints;
         this.alignedCheckpointTimeout = alignedCheckpointTimeout;
-        this.checkpointsWithFinishedTasks = checkpointsWithFinishedTasks;
     }
 
     @Override
@@ -150,8 +141,7 @@ public class CheckpointConfigInfo implements ResponseBody {
                 && Objects.equals(checkpointStorage, that.checkpointStorage)
                 && unalignedCheckpoints == that.unalignedCheckpoints
                 && tolerableFailedCheckpoints == that.tolerableFailedCheckpoints
-                && alignedCheckpointTimeout == that.alignedCheckpointTimeout
-                && checkpointsWithFinishedTasks == that.checkpointsWithFinishedTasks;
+                && alignedCheckpointTimeout == that.alignedCheckpointTimeout;
     }
 
     @Override
@@ -167,8 +157,7 @@ public class CheckpointConfigInfo implements ResponseBody {
                 checkpointStorage,
                 unalignedCheckpoints,
                 tolerableFailedCheckpoints,
-                alignedCheckpointTimeout,
-                checkpointsWithFinishedTasks);
+                alignedCheckpointTimeout);
     }
 
     /** Contains information about the externalized checkpoint configuration. */

@@ -32,6 +32,7 @@ import org.apache.flink.table.types.logical.IntType;
 import org.apache.flink.table.types.logical.LegacyTypeInformationType;
 import org.apache.flink.table.types.logical.LocalZonedTimestampType;
 import org.apache.flink.table.types.logical.LogicalType;
+import org.apache.flink.table.types.logical.LogicalTypeFamily;
 import org.apache.flink.table.types.logical.LogicalTypeRoot;
 import org.apache.flink.table.types.logical.RowType;
 import org.apache.flink.table.types.logical.SmallIntType;
@@ -52,11 +53,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Predicate;
-
-import static org.apache.flink.table.types.logical.LogicalTypeRoot.ROW;
-import static org.apache.flink.table.types.logical.LogicalTypeRoot.STRUCTURED_TYPE;
-import static org.apache.flink.table.types.logical.LogicalTypeRoot.TIMESTAMP_WITHOUT_TIME_ZONE;
-import static org.apache.flink.table.types.logical.LogicalTypeRoot.TIMESTAMP_WITH_LOCAL_TIME_ZONE;
 
 /**
  * Utilities for checking {@link LogicalType} and avoiding a lot of type casting and repetitive
@@ -90,6 +86,10 @@ public final class LogicalTypeChecks {
 
     private static final FieldNamesExtractor FIELD_NAMES_EXTRACTOR = new FieldNamesExtractor();
 
+    public static boolean hasRoot(LogicalType logicalType, LogicalTypeRoot typeRoot) {
+        return logicalType.getTypeRoot() == typeRoot;
+    }
+
     /** Checks whether a (possibly nested) logical type fulfills the given predicate. */
     public static boolean hasNested(LogicalType logicalType, Predicate<LogicalType> predicate) {
         final NestedTypeSearcher typeSearcher = new NestedTypeSearcher(predicate);
@@ -104,22 +104,32 @@ public final class LogicalTypeChecks {
         return hasNested(logicalType, t -> t instanceof LegacyTypeInformationType);
     }
 
+    public static boolean hasFamily(LogicalType logicalType, LogicalTypeFamily family) {
+        return logicalType.getTypeRoot().getFamilies().contains(family);
+    }
+
     public static boolean isTimeAttribute(LogicalType logicalType) {
         return isRowtimeAttribute(logicalType) || isProctimeAttribute(logicalType);
     }
 
     public static boolean isRowtimeAttribute(LogicalType logicalType) {
-        return logicalType.isAnyOf(TIMESTAMP_WITHOUT_TIME_ZONE, TIMESTAMP_WITH_LOCAL_TIME_ZONE)
+        return (hasRoot(logicalType, LogicalTypeRoot.TIMESTAMP_WITHOUT_TIME_ZONE)
+                        || hasRoot(logicalType, LogicalTypeRoot.TIMESTAMP_WITH_LOCAL_TIME_ZONE))
                 && logicalType.accept(TIMESTAMP_KIND_EXTRACTOR) == TimestampKind.ROWTIME;
     }
 
     public static boolean isProctimeAttribute(LogicalType logicalType) {
-        return logicalType.is(TIMESTAMP_WITH_LOCAL_TIME_ZONE)
+        return hasRoot(logicalType, LogicalTypeRoot.TIMESTAMP_WITH_LOCAL_TIME_ZONE)
                 && logicalType.accept(TIMESTAMP_KIND_EXTRACTOR) == TimestampKind.PROCTIME;
     }
 
     public static boolean canBeTimeAttributeType(LogicalType logicalType) {
-        return logicalType.isAnyOf(TIMESTAMP_WITHOUT_TIME_ZONE, TIMESTAMP_WITH_LOCAL_TIME_ZONE);
+        LogicalTypeRoot typeRoot = logicalType.getTypeRoot();
+        if (typeRoot == LogicalTypeRoot.TIMESTAMP_WITHOUT_TIME_ZONE
+                || typeRoot == LogicalTypeRoot.TIMESTAMP_WITH_LOCAL_TIME_ZONE) {
+            return true;
+        }
+        return false;
     }
 
     /**
@@ -137,7 +147,7 @@ public final class LogicalTypeChecks {
         }
 
         LogicalTypeRoot typeRoot = logicalType.getTypeRoot();
-        return typeRoot == STRUCTURED_TYPE || typeRoot == ROW;
+        return typeRoot == LogicalTypeRoot.STRUCTURED_TYPE || typeRoot == LogicalTypeRoot.ROW;
     }
 
     public static int getLength(LogicalType logicalType) {
@@ -463,7 +473,7 @@ public final class LogicalTypeChecks {
         @Override
         protected Integer defaultMethod(LogicalType logicalType) {
             // legacy
-            if (logicalType.is(STRUCTURED_TYPE)) {
+            if (hasRoot(logicalType, LogicalTypeRoot.STRUCTURED_TYPE)) {
                 return ((LegacyTypeInformationType<?>) logicalType).getTypeInformation().getArity();
             }
             return 1;
@@ -500,7 +510,7 @@ public final class LogicalTypeChecks {
         @Override
         protected List<String> defaultMethod(LogicalType logicalType) {
             // legacy
-            if (logicalType.is(STRUCTURED_TYPE)) {
+            if (hasRoot(logicalType, LogicalTypeRoot.STRUCTURED_TYPE)) {
                 return Arrays.asList(
                         ((CompositeType<?>)
                                         ((LegacyTypeInformationType<?>) logicalType)

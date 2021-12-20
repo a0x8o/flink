@@ -82,7 +82,8 @@ public class JobDetailsHandler
 
     @Override
     protected JobDetailsInfo handleRequest(
-            HandlerRequest<EmptyRequestBody> request, AccessExecutionGraph executionGraph)
+            HandlerRequest<EmptyRequestBody, JobMessageParameters> request,
+            AccessExecutionGraph executionGraph)
             throws RestHandlerException {
         return createJobDetailsInfo(executionGraph, metricFetcher);
     }

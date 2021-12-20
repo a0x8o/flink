@@ -50,7 +50,8 @@ public class JobMetricsHandler extends AbstractMetricsHandler<JobMetricsMessageP
     @Nullable
     @Override
     protected MetricStore.ComponentMetricStore getComponentMetricStore(
-            final HandlerRequest<EmptyRequestBody> request, final MetricStore metricStore) {
+            final HandlerRequest<EmptyRequestBody, JobMetricsMessageParameters> request,
+            final MetricStore metricStore) {
         return metricStore.getJobMetricStore(
                 request.getPathParameter(JobIDPathParameter.class).toString());
     }

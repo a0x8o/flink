@@ -25,10 +25,10 @@ import org.apache.flink.runtime.rest.handler.HandlerRequest;
 import org.apache.flink.runtime.rest.messages.EmptyMessageParameters;
 import org.apache.flink.runtime.rest.messages.EmptyRequestBody;
 import org.apache.flink.runtime.rest.messages.JobPlanInfo;
+import org.apache.flink.runtime.testutils.TestingUtils;
 import org.apache.flink.runtime.webmonitor.RestfulGateway;
 import org.apache.flink.runtime.webmonitor.TestingDispatcherGateway;
 import org.apache.flink.runtime.webmonitor.retriever.GatewayRetriever;
-import org.apache.flink.testutils.TestingUtils;
 
 import java.nio.file.Path;
 import java.util.Collections;
@@ -105,11 +105,12 @@ public class JarHandlers {
 
     public static String uploadJar(
             JarUploadHandler handler, Path jar, RestfulGateway restfulGateway) throws Exception {
-
-        HandlerRequest<EmptyRequestBody> uploadRequest =
-                HandlerRequest.create(
+        HandlerRequest<EmptyRequestBody, EmptyMessageParameters> uploadRequest =
+                new HandlerRequest<>(
                         EmptyRequestBody.getInstance(),
                         EmptyMessageParameters.getInstance(),
+                        Collections.emptyMap(),
+                        Collections.emptyMap(),
                         Collections.singletonList(jar.toFile()));
         final JarUploadResponseBody uploadResponse =
                 handler.handleRequest(uploadRequest, restfulGateway).get();
@@ -118,8 +119,8 @@ public class JarHandlers {
 
     public static JarListInfo listJars(JarListHandler handler, RestfulGateway restfulGateway)
             throws Exception {
-        HandlerRequest<EmptyRequestBody> listRequest =
-                HandlerRequest.create(
+        HandlerRequest<EmptyRequestBody, EmptyMessageParameters> listRequest =
+                new HandlerRequest<>(
                         EmptyRequestBody.getInstance(), EmptyMessageParameters.getInstance());
         return handler.handleRequest(listRequest, restfulGateway).get();
     }
@@ -129,8 +130,8 @@ public class JarHandlers {
             throws Exception {
         JarPlanMessageParameters planParameters =
                 JarPlanGetHeaders.getInstance().getUnresolvedMessageParameters();
-        HandlerRequest<JarPlanRequestBody> planRequest =
-                HandlerRequest.resolveParametersAndCreate(
+        HandlerRequest<JarPlanRequestBody, JarPlanMessageParameters> planRequest =
+                new HandlerRequest<>(
                         new JarPlanRequestBody(),
                         planParameters,
                         Collections.singletonMap(
@@ -145,8 +146,8 @@ public class JarHandlers {
             throws Exception {
         final JarRunMessageParameters runParameters =
                 JarRunHeaders.getInstance().getUnresolvedMessageParameters();
-        HandlerRequest<JarRunRequestBody> runRequest =
-                HandlerRequest.resolveParametersAndCreate(
+        HandlerRequest<JarRunRequestBody, JarRunMessageParameters> runRequest =
+                new HandlerRequest<>(
                         new JarRunRequestBody(),
                         runParameters,
                         Collections.singletonMap(
@@ -161,8 +162,8 @@ public class JarHandlers {
             throws Exception {
         JarDeleteMessageParameters deleteParameters =
                 JarDeleteHeaders.getInstance().getUnresolvedMessageParameters();
-        HandlerRequest<EmptyRequestBody> deleteRequest =
-                HandlerRequest.resolveParametersAndCreate(
+        HandlerRequest<EmptyRequestBody, JarDeleteMessageParameters> deleteRequest =
+                new HandlerRequest<>(
                         EmptyRequestBody.getInstance(),
                         deleteParameters,
                         Collections.singletonMap(

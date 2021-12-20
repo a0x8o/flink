@@ -286,8 +286,11 @@ public class ArchivedExecutionGraph implements AccessExecutionGraph, Serializabl
                 statusOverride == null || !statusOverride.isGloballyTerminalState(),
                 "Status override is only allowed for non-globally-terminal states.");
 
-        Map<JobVertexID, ArchivedExecutionJobVertex> archivedTasks = new HashMap<>();
-        List<ArchivedExecutionJobVertex> archivedVerticesInCreationOrder = new ArrayList<>();
+        final int numberVertices = executionGraph.getTotalNumberOfVertices();
+
+        Map<JobVertexID, ArchivedExecutionJobVertex> archivedTasks = new HashMap<>(numberVertices);
+        List<ArchivedExecutionJobVertex> archivedVerticesInCreationOrder =
+                new ArrayList<>(numberVertices);
 
         for (ExecutionJobVertex task : executionGraph.getVerticesTopologically()) {
             ArchivedExecutionJobVertex archivedTask = task.archive();

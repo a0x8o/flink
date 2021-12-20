@@ -32,6 +32,8 @@ import org.junit.Test;
 
 import java.util.concurrent.atomic.AtomicInteger;
 
+import static org.junit.Assert.fail;
+
 /** Test program with very fast failure rate. */
 @SuppressWarnings("serial")
 public class FastFailuresITCase extends AbstractTestBase {
@@ -40,7 +42,7 @@ public class FastFailuresITCase extends AbstractTestBase {
     static final int NUM_FAILURES = 200;
 
     @Test
-    public void testThis() throws Exception {
+    public void testThis() {
         final int parallelism = 4;
 
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
@@ -81,6 +83,12 @@ public class FastFailuresITCase extends AbstractTestBase {
                             @Override
                             public void invoke(Integer value) {}
                         });
-        env.execute();
+
+        try {
+            env.execute();
+        } catch (Exception e) {
+            e.printStackTrace();
+            fail(e.getMessage());
+        }
     }
 }

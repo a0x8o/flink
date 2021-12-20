@@ -54,7 +54,7 @@ public abstract class TypeSerializerUpgradeTestBase<PreviousElementT, UpgradedEl
     public static final MigrationVersion[] MIGRATION_VERSIONS =
             MigrationVersion.v1_11.orHigher().toArray(new MigrationVersion[0]);
 
-    public static final MigrationVersion CURRENT_VERSION = MigrationVersion.v1_14;
+    public static final MigrationVersion CURRENT_VERSION = MigrationVersion.v1_13;
 
     private final TestSpecification<PreviousElementT, UpgradedElementT> testSpecification;
 
@@ -292,6 +292,7 @@ public abstract class TypeSerializerUpgradeTestBase<PreviousElementT, UpgradedEl
                     restoredSerializerSnapshot.restoreSerializer();
             assertSerializerIsValid(
                     restoredSerializer,
+                    true,
                     dataUnderTest(),
                     testSpecification.verifier.testDataMatcher());
         }
@@ -345,7 +346,10 @@ public abstract class TypeSerializerUpgradeTestBase<PreviousElementT, UpgradedEl
 
             // .. and then assert that the upgraded serializer is valid with the migrated data
             assertSerializerIsValid(
-                    upgradedSerializer, migratedData, testSpecification.verifier.testDataMatcher());
+                    upgradedSerializer,
+                    false,
+                    migratedData,
+                    testSpecification.verifier.testDataMatcher());
         }
     }
 
@@ -369,6 +373,7 @@ public abstract class TypeSerializerUpgradeTestBase<PreviousElementT, UpgradedEl
                     upgradeCompatibility.getReconfiguredSerializer();
             assertSerializerIsValid(
                     reconfiguredUpgradedSerializer,
+                    false,
                     dataUnderTest(),
                     testSpecification.verifier.testDataMatcher());
         }
@@ -392,6 +397,7 @@ public abstract class TypeSerializerUpgradeTestBase<PreviousElementT, UpgradedEl
 
             assertSerializerIsValid(
                     upgradedSerializer,
+                    false,
                     dataUnderTest(),
                     testSpecification.verifier.testDataMatcher());
         }
@@ -414,14 +420,20 @@ public abstract class TypeSerializerUpgradeTestBase<PreviousElementT, UpgradedEl
      * </ul>
      */
     private static <T> void assertSerializerIsValid(
-            TypeSerializer<T> serializer, DataInputView dataInput, Matcher<T> testDataMatcher)
+            TypeSerializer<T> serializer,
+            boolean isRestoreSerializer,
+            DataInputView dataInput,
+            Matcher<T> testDataMatcher)
             throws Exception {
 
         DataInputView serializedData =
                 readAndThenWriteData(dataInput, serializer, serializer, testDataMatcher);
-        TypeSerializerSnapshot<T> snapshot = writeAndThenReadSerializerSnapshot(serializer);
-        TypeSerializer<T> restoreSerializer = snapshot.restoreSerializer();
-        readAndThenWriteData(serializedData, restoreSerializer, restoreSerializer, testDataMatcher);
+        if (!isRestoreSerializer) {
+            TypeSerializerSnapshot<T> snapshot = writeAndThenReadSerializerSnapshot(serializer);
+            TypeSerializer<T> restoreSerializer = snapshot.restoreSerializer();
+            readAndThenWriteData(
+                    serializedData, restoreSerializer, restoreSerializer, testDataMatcher);
+        }
     }
 
     // ------------------------------------------------------------------------------

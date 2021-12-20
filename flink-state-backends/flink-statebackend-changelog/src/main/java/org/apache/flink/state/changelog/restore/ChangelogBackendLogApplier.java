@@ -31,7 +31,6 @@ import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataInputViewStreamWrapper;
 import org.apache.flink.runtime.state.RegisteredKeyValueStateBackendMetaInfo;
 import org.apache.flink.runtime.state.RegisteredPriorityQueueStateBackendMetaInfo;
-import org.apache.flink.runtime.state.RegisteredStateMetaInfoBase;
 import org.apache.flink.runtime.state.changelog.StateChange;
 import org.apache.flink.runtime.state.metainfo.StateMetaInfoReader;
 import org.apache.flink.runtime.state.metainfo.StateMetaInfoSnapshot;
@@ -49,7 +48,6 @@ import javax.annotation.Nullable;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.ObjectInputStream;
-import java.util.Map;
 
 import static org.apache.flink.runtime.state.metainfo.StateMetaInfoSnapshotReadersWriters.StateTypeHint.KEYED_STATE;
 import static org.apache.flink.state.changelog.StateChangeOperation.METADATA;
@@ -65,8 +63,7 @@ class ChangelogBackendLogApplier {
     public static void apply(
             StateChange stateChange,
             ChangelogKeyedStateBackend<?> changelogBackend,
-            ClassLoader classLoader,
-            Map<Short, StateID> stateIds)
+            ClassLoader classLoader)
             throws Exception {
         DataInputViewStreamWrapper in =
                 new DataInputViewStreamWrapper(new ByteArrayInputStream(stateChange.getChange()));
@@ -76,8 +73,7 @@ class ChangelogBackendLogApplier {
                 changelogBackend,
                 in,
                 classLoader,
-                ChangelogApplierFactoryImpl.INSTANCE,
-                stateIds);
+                ChangelogApplierFactoryImpl.INSTANCE);
     }
 
     private static void applyOperation(
@@ -86,33 +82,27 @@ class ChangelogBackendLogApplier {
             ChangelogKeyedStateBackend<?> backend,
             DataInputView in,
             ClassLoader classLoader,
-            ChangelogApplierFactory factory,
-            Map<Short, StateID> stateIds)
+            ChangelogApplierFactory factory)
             throws Exception {
         LOG.debug("apply {} in key group {}", operation, keyGroup);
         if (operation == METADATA) {
-            applyMetaDataChange(in, backend, classLoader, stateIds);
+            applyMetaDataChange(in, backend, classLoader);
         } else if (backend.getKeyGroupRange().contains(keyGroup)) {
-            applyDataChange(in, factory, backend, operation, stateIds);
+            applyDataChange(in, factory, backend, operation);
         }
     }
 
     private static void applyMetaDataChange(
-            DataInputView in,
-            ChangelogKeyedStateBackend<?> backend,
-            ClassLoader classLoader,
-            Map<Short, StateID> stateIds)
+            DataInputView in, ChangelogKeyedStateBackend<?> backend, ClassLoader classLoader)
             throws Exception {
-
         StateMetaInfoSnapshot snapshot = readStateMetaInfoSnapshot(in, classLoader);
-        RegisteredStateMetaInfoBase meta;
         switch (snapshot.getBackendStateType()) {
             case KEY_VALUE:
-                meta = restoreKvMetaData(backend, snapshot, in);
-                break;
+                restoreKvMetaData(backend, snapshot, in);
+                return;
             case PRIORITY_QUEUE:
-                meta = restorePqMetaData(backend, snapshot);
-                break;
+                restorePqMetaData(backend, snapshot);
+                return;
             default:
                 throw new RuntimeException(
                         "Unsupported state type: "
@@ -120,9 +110,6 @@ class ChangelogBackendLogApplier {
                                 + ", sate: "
                                 + snapshot.getName());
         }
-        stateIds.put(
-                in.readShort(),
-                new StateID(meta.getName(), BackendStateType.byCode(in.readByte())));
     }
 
     private static StateTtlConfig readTtlConfig(DataInputView in) throws IOException {
@@ -146,7 +133,7 @@ class ChangelogBackendLogApplier {
         return in.readBoolean() ? meta.getStateSerializer().deserialize(in) : null;
     }
 
-    private static RegisteredKeyValueStateBackendMetaInfo restoreKvMetaData(
+    private static void restoreKvMetaData(
             ChangelogKeyedStateBackend<?> backend, StateMetaInfoSnapshot snapshot, DataInputView in)
             throws Exception {
         RegisteredKeyValueStateBackendMetaInfo meta =
@@ -163,7 +150,6 @@ class ChangelogBackendLogApplier {
             stateDescriptor.enableTimeToLive(ttlConfig);
         }
         backend.getOrCreateKeyedState(meta.getNamespaceSerializer(), stateDescriptor);
-        return meta;
     }
 
     private static StateDescriptor toStateDescriptor(
@@ -193,12 +179,11 @@ class ChangelogBackendLogApplier {
         }
     }
 
-    private static RegisteredPriorityQueueStateBackendMetaInfo restorePqMetaData(
+    private static void restorePqMetaData(
             ChangelogKeyedStateBackend<?> backend, StateMetaInfoSnapshot snapshot) {
         RegisteredPriorityQueueStateBackendMetaInfo meta =
                 new RegisteredPriorityQueueStateBackendMetaInfo(snapshot);
         backend.create(meta.getName(), meta.getElementSerializer());
-        return meta;
     }
 
     private static StateMetaInfoSnapshot readStateMetaInfoSnapshot(
@@ -213,11 +198,11 @@ class ChangelogBackendLogApplier {
             DataInputView in,
             ChangelogApplierFactory factory,
             ChangelogKeyedStateBackend<?> backend,
-            StateChangeOperation operation,
-            Map<Short, StateID> stateIds)
+            StateChangeOperation operation)
             throws Exception {
-        StateID id = checkNotNull(stateIds.get(in.readShort()));
-        ChangelogState state = backend.getExistingStateForRecovery(id.stateName, id.stateType);
+        String name = checkNotNull(in.readUTF());
+        BackendStateType type = BackendStateType.byCode(in.readByte());
+        ChangelogState state = backend.getExistingStateForRecovery(name, type);
         StateChangeApplier changeApplier = state.getChangeApplier(factory);
         changeApplier.apply(operation, in);
     }

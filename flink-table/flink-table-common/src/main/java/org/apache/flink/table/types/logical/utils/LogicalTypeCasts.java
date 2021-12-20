@@ -43,7 +43,6 @@ import static org.apache.flink.table.types.logical.LogicalTypeFamily.CHARACTER_S
 import static org.apache.flink.table.types.logical.LogicalTypeFamily.CONSTRUCTED;
 import static org.apache.flink.table.types.logical.LogicalTypeFamily.DATETIME;
 import static org.apache.flink.table.types.logical.LogicalTypeFamily.EXACT_NUMERIC;
-import static org.apache.flink.table.types.logical.LogicalTypeFamily.INTEGER_NUMERIC;
 import static org.apache.flink.table.types.logical.LogicalTypeFamily.INTERVAL;
 import static org.apache.flink.table.types.logical.LogicalTypeFamily.NUMERIC;
 import static org.apache.flink.table.types.logical.LogicalTypeFamily.PREDEFINED;
@@ -75,6 +74,8 @@ import static org.apache.flink.table.types.logical.LogicalTypeRoot.TINYINT;
 import static org.apache.flink.table.types.logical.LogicalTypeRoot.VARBINARY;
 import static org.apache.flink.table.types.logical.LogicalTypeRoot.VARCHAR;
 import static org.apache.flink.table.types.logical.utils.LogicalTypeChecks.getLength;
+import static org.apache.flink.table.types.logical.utils.LogicalTypeChecks.hasFamily;
+import static org.apache.flink.table.types.logical.utils.LogicalTypeChecks.hasRoot;
 import static org.apache.flink.table.types.logical.utils.LogicalTypeChecks.isSingleFieldInterval;
 
 /**
@@ -121,23 +122,18 @@ public final class LogicalTypeCasts {
 
         castTo(VARCHAR).implicitFromFamily(CHARACTER_STRING).explicitFromFamily(PREDEFINED).build();
 
-        castTo(BOOLEAN)
-                .implicitFrom(BOOLEAN)
-                .explicitFromFamily(CHARACTER_STRING, INTEGER_NUMERIC)
-                .build();
+        castTo(BOOLEAN).implicitFrom(BOOLEAN).explicitFromFamily(CHARACTER_STRING, NUMERIC).build();
 
         castTo(BINARY)
                 .implicitFrom(BINARY)
                 .explicitFromFamily(CHARACTER_STRING)
                 .explicitFrom(VARBINARY)
-                .explicitFrom(RAW)
                 .build();
 
         castTo(VARBINARY)
                 .implicitFromFamily(BINARY_STRING)
                 .explicitFromFamily(CHARACTER_STRING)
                 .explicitFrom(BINARY)
-                .explicitFrom(RAW)
                 .build();
 
         castTo(DECIMAL)
@@ -184,17 +180,17 @@ public final class LogicalTypeCasts {
 
         castTo(DATE)
                 .implicitFrom(DATE, TIMESTAMP_WITHOUT_TIME_ZONE)
-                .explicitFromFamily(TIMESTAMP, CHARACTER_STRING)
+                .explicitFromFamily(TIMESTAMP, CHARACTER_STRING, BINARY_STRING)
                 .build();
 
         castTo(TIME_WITHOUT_TIME_ZONE)
                 .implicitFrom(TIME_WITHOUT_TIME_ZONE, TIMESTAMP_WITHOUT_TIME_ZONE)
-                .explicitFromFamily(TIME, TIMESTAMP, CHARACTER_STRING)
+                .explicitFromFamily(TIME, TIMESTAMP, CHARACTER_STRING, BINARY_STRING)
                 .build();
 
         castTo(TIMESTAMP_WITHOUT_TIME_ZONE)
                 .implicitFrom(TIMESTAMP_WITHOUT_TIME_ZONE, TIMESTAMP_WITH_LOCAL_TIME_ZONE)
-                .explicitFromFamily(DATETIME, CHARACTER_STRING, NUMERIC)
+                .explicitFromFamily(DATETIME, CHARACTER_STRING, BINARY_STRING, NUMERIC)
                 .build();
 
         castTo(TIMESTAMP_WITH_TIME_ZONE)
@@ -204,7 +200,7 @@ public final class LogicalTypeCasts {
 
         castTo(TIMESTAMP_WITH_LOCAL_TIME_ZONE)
                 .implicitFrom(TIMESTAMP_WITH_LOCAL_TIME_ZONE, TIMESTAMP_WITHOUT_TIME_ZONE)
-                .explicitFromFamily(DATETIME, CHARACTER_STRING, NUMERIC)
+                .explicitFromFamily(DATETIME, CHARACTER_STRING, BINARY_STRING, NUMERIC)
                 .build();
 
         castTo(INTERVAL_YEAR_MONTH)
@@ -310,20 +306,20 @@ public final class LogicalTypeCasts {
         } else if (targetRoot == DISTINCT_TYPE) {
             return supportsCasting(
                     sourceType, ((DistinctType) targetType).getSourceType(), allowExplicit);
-        } else if (sourceType.is(INTERVAL) && targetType.is(EXACT_NUMERIC)) {
+        } else if (hasFamily(sourceType, INTERVAL) && hasFamily(targetType, EXACT_NUMERIC)) {
             // cast between interval and exact numeric is only supported if interval has a single
             // field
             return isSingleFieldInterval(sourceType);
-        } else if (sourceType.is(EXACT_NUMERIC) && targetType.is(INTERVAL)) {
+        } else if (hasFamily(sourceType, EXACT_NUMERIC) && hasFamily(targetType, INTERVAL)) {
             // cast between interval and exact numeric is only supported if interval has a single
             // field
             return isSingleFieldInterval(targetType);
-        } else if (sourceType.is(CONSTRUCTED) || targetType.is(CONSTRUCTED)) {
+        } else if (hasFamily(sourceType, CONSTRUCTED) || hasFamily(targetType, CONSTRUCTED)) {
             return supportsConstructedCasting(sourceType, targetType, allowExplicit);
         } else if (sourceRoot == STRUCTURED_TYPE || targetRoot == STRUCTURED_TYPE) {
             return supportsStructuredCasting(
                     sourceType, targetType, (s, t) -> supportsCasting(s, t, allowExplicit));
-        } else if (sourceRoot == RAW && !targetType.is(BINARY_STRING) || targetRoot == RAW) {
+        } else if (sourceRoot == RAW || targetRoot == RAW) {
             // the two raw types are not equal (from initial invariant), casting is not possible
             return false;
         } else if (sourceRoot == SYMBOL || targetRoot == SYMBOL) {
@@ -497,7 +493,8 @@ public final class LogicalTypeCasts {
                 return false;
             }
             // CHAR and VARCHAR are very compatible within bounds
-            if (sourceType.isAnyOf(LogicalTypeRoot.CHAR, LogicalTypeRoot.VARCHAR)
+            if ((hasRoot(sourceType, LogicalTypeRoot.CHAR)
+                            || hasRoot(sourceType, LogicalTypeRoot.VARCHAR))
                     && getLength(sourceType) <= targetType.getLength()) {
                 return true;
             }
@@ -510,7 +507,8 @@ public final class LogicalTypeCasts {
                 return false;
             }
             // BINARY and VARBINARY are very compatible within bounds
-            if (sourceType.isAnyOf(LogicalTypeRoot.BINARY, LogicalTypeRoot.VARBINARY)
+            if ((hasRoot(sourceType, LogicalTypeRoot.BINARY)
+                            || hasRoot(sourceType, LogicalTypeRoot.VARBINARY))
                     && getLength(sourceType) <= targetType.getLength()) {
                 return true;
             }
@@ -523,7 +521,7 @@ public final class LogicalTypeCasts {
                 return false;
             }
             // ROW and structured types are very compatible if field types match
-            if (sourceType.is(STRUCTURED_TYPE)) {
+            if (hasRoot(sourceType, STRUCTURED_TYPE)) {
                 final List<LogicalType> sourceChildren = sourceType.getChildren();
                 final List<LogicalType> targetChildren = targetType.getChildren();
                 return supportsAvoidingCast(sourceChildren, targetChildren);
@@ -537,7 +535,7 @@ public final class LogicalTypeCasts {
                 return false;
             }
             // ROW and structured types are very compatible if field types match
-            if (sourceType.is(ROW)) {
+            if (hasRoot(sourceType, ROW)) {
                 final List<LogicalType> sourceChildren = sourceType.getChildren();
                 final List<LogicalType> targetChildren = targetType.getChildren();
                 return supportsAvoidingCast(sourceChildren, targetChildren);

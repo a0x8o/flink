@@ -258,7 +258,7 @@ public abstract class KafkaProducerTestBase extends KafkaTestBaseWithFlink {
         // KafkaProducer prior to KIP-91 (release 2.1) uses request timeout to expire the unsent
         // records.
         properties.setProperty("request.timeout.ms", "3000");
-        // KafkaProducer in 2.1.0 and above uses delivery timeout to expire the records.
+        // KafkaProducer in 2.1.0 and above uses delivery timeout to expire the the records.
         properties.setProperty("delivery.timeout.ms", "5000");
         properties.setProperty("max.block.ms", "10000");
         // increase batch.size and linger.ms - this tells KafkaProducer to batch produced events
@@ -418,7 +418,8 @@ public abstract class KafkaProducerTestBase extends KafkaTestBaseWithFlink {
 
         for (int i = 0; i < sinksCount; i++) {
             // assert that before failure we successfully snapshot/flushed all expected elements
-            assertExactlyOnceForTopic(properties, topic + i, expectedElements);
+            assertExactlyOnceForTopic(
+                    properties, topic + i, partition, expectedElements, KAFKA_READ_TIMEOUT);
             deleteTestTopic(topic + i);
         }
     }

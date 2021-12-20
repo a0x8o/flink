@@ -18,9 +18,6 @@
 
 package org.apache.flink.connector.kafka.source.enumerator.initializer;
 
-import org.apache.flink.connector.kafka.source.split.KafkaPartitionSplit;
-
-import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.OffsetResetStrategy;
 import org.apache.kafka.common.TopicPartition;
 
@@ -30,9 +27,6 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Properties;
-
-import static org.apache.flink.util.Preconditions.checkState;
 
 /**
  * An implementation of {@link OffsetsInitializer} which initializes the offsets of the partition
@@ -40,7 +34,7 @@ import static org.apache.flink.util.Preconditions.checkState;
  *
  * <p>Package private and should be instantiated via {@link OffsetsInitializer}.
  */
-class SpecifiedOffsetsInitializer implements OffsetsInitializer, OffsetsInitializerValidator {
+class SpecifiedOffsetsInitializer implements OffsetsInitializer {
     private static final long serialVersionUID = 1649702397250402877L;
     private final Map<TopicPartition, Long> initialOffsets;
     private final OffsetResetStrategy offsetResetStrategy;
@@ -90,19 +84,5 @@ class SpecifiedOffsetsInitializer implements OffsetsInitializer, OffsetsInitiali
     @Override
     public OffsetResetStrategy getAutoOffsetResetStrategy() {
         return offsetResetStrategy;
-    }
-
-    @Override
-    public void validate(Properties kafkaSourceProperties) {
-        initialOffsets.forEach(
-                (tp, offset) -> {
-                    if (offset == KafkaPartitionSplit.COMMITTED_OFFSET) {
-                        checkState(
-                                kafkaSourceProperties.containsKey(ConsumerConfig.GROUP_ID_CONFIG),
-                                String.format(
-                                        "Property %s is required because partition %s is initialized with committed offset",
-                                        ConsumerConfig.GROUP_ID_CONFIG, tp));
-                    }
-                });
     }
 }

@@ -55,7 +55,7 @@ public class MockCheckpointStorage implements CheckpointStorage {
             }
 
             @Override
-            public void initializeBaseLocationsForCheckpoint() {}
+            public void initializeBaseLocations() {}
 
             @Override
             public CheckpointStorageLocation initializeLocationForCheckpoint(long checkpointId) {

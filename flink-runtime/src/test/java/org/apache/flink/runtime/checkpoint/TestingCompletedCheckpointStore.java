@@ -41,7 +41,7 @@ public final class TestingCompletedCheckpointStore implements CompletedCheckpoin
     }
 
     @Override
-    public CompletedCheckpoint getLatestCheckpoint() {
+    public CompletedCheckpoint getLatestCheckpoint(boolean isPreferCheckpointForRecovery) {
         return null;
     }
 

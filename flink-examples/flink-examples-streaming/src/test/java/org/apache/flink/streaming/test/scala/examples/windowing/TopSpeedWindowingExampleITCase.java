@@ -34,8 +34,7 @@ public class TopSpeedWindowingExampleITCase extends AbstractTestBase {
         TopSpeedWindowing.main(
                 new String[] {
                     "--input", textPath,
-                    "--output", resultPath,
-                    "--execution-mode", "AUTOMATIC"
+                    "--output", resultPath
                 });
 
         compareResultsByLinesInMemory(

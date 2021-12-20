@@ -145,7 +145,7 @@ public class ResourceManagerJobMasterTest extends TestLogger {
     public void testRegisterJobMaster() throws Exception {
         // test response successful
         CompletableFuture<RegistrationResponse> successfulFuture =
-                resourceManagerGateway.registerJobMaster(
+                resourceManagerGateway.registerJobManager(
                         jobMasterGateway.getFencingToken(),
                         jobMasterResourceId,
                         jobMasterGateway.getAddress(),
@@ -170,7 +170,7 @@ public class ResourceManagerJobMasterTest extends TestLogger {
         // test throw exception when receive a registration from job master which takes unmatched
         // leaderSessionId
         CompletableFuture<RegistrationResponse> unMatchedLeaderFuture =
-                wronglyFencedGateway.registerJobMaster(
+                wronglyFencedGateway.registerJobManager(
                         jobMasterGateway.getFencingToken(),
                         jobMasterResourceId,
                         jobMasterGateway.getAddress(),
@@ -192,7 +192,7 @@ public class ResourceManagerJobMasterTest extends TestLogger {
         // leaderSessionId
         JobMasterId differentJobMasterId = JobMasterId.generate();
         CompletableFuture<RegistrationResponse> unMatchedLeaderFuture =
-                resourceManagerGateway.registerJobMaster(
+                resourceManagerGateway.registerJobManager(
                         differentJobMasterId,
                         jobMasterResourceId,
                         jobMasterGateway.getAddress(),
@@ -208,7 +208,7 @@ public class ResourceManagerJobMasterTest extends TestLogger {
         // address
         String invalidAddress = "/jobMasterAddress2";
         CompletableFuture<RegistrationResponse> invalidAddressFuture =
-                resourceManagerGateway.registerJobMaster(
+                resourceManagerGateway.registerJobManager(
                         new JobMasterId(HighAvailabilityServices.DEFAULT_LEADER_ID),
                         jobMasterResourceId,
                         invalidAddress,
@@ -229,7 +229,7 @@ public class ResourceManagerJobMasterTest extends TestLogger {
 
         // this should fail because we try to register a job leader listener for an unknown job id
         CompletableFuture<RegistrationResponse> registrationFuture =
-                resourceManagerGateway.registerJobMaster(
+                resourceManagerGateway.registerJobManager(
                         jobMasterGateway.getFencingToken(),
                         jobMasterResourceId,
                         jobMasterGateway.getAddress(),

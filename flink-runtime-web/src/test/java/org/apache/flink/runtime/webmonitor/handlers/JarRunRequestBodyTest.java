@@ -19,7 +19,6 @@
 package org.apache.flink.runtime.webmonitor.handlers;
 
 import org.apache.flink.api.common.JobID;
-import org.apache.flink.runtime.jobgraph.RestoreMode;
 import org.apache.flink.runtime.rest.messages.RestRequestMarshallingTestBase;
 
 import java.util.Arrays;
@@ -37,14 +36,7 @@ public class JarRunRequestBodyTest extends RestRequestMarshallingTestBase<JarRun
     @Override
     protected JarRunRequestBody getTestRequestInstance() {
         return new JarRunRequestBody(
-                "hello",
-                "world",
-                Arrays.asList("boo", "far"),
-                4,
-                new JobID(),
-                true,
-                "foo/bar",
-                RestoreMode.CLAIM);
+                "hello", "world", Arrays.asList("boo", "far"), 4, new JobID(), true, "foo/bar");
     }
 
     @Override
@@ -57,6 +49,5 @@ public class JarRunRequestBodyTest extends RestRequestMarshallingTestBase<JarRun
         assertEquals(expected.getJobId(), actual.getJobId());
         assertEquals(expected.getAllowNonRestoredState(), actual.getAllowNonRestoredState());
         assertEquals(expected.getSavepointPath(), actual.getSavepointPath());
-        assertEquals(expected.getRestoreMode(), actual.getRestoreMode());
     }
 }

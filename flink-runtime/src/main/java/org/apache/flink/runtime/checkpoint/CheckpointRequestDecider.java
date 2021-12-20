@@ -30,8 +30,8 @@ import java.util.NavigableSet;
 import java.util.Optional;
 import java.util.PriorityQueue;
 import java.util.TreeSet;
-import java.util.function.IntSupplier;
-import java.util.function.LongConsumer;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 import static java.lang.System.currentTimeMillis;
 import static java.lang.System.identityHashCode;
@@ -58,22 +58,22 @@ class CheckpointRequestDecider {
     private static final int DEFAULT_MAX_QUEUED_REQUESTS = 1000;
 
     private final int maxConcurrentCheckpointAttempts;
-    private final LongConsumer rescheduleTrigger;
+    private final Consumer<Long> rescheduleTrigger;
     private final Clock clock;
     private final long minPauseBetweenCheckpoints;
-    private final IntSupplier pendingCheckpointsSizeSupplier;
-    private final IntSupplier numberOfCleaningCheckpointsSupplier;
+    private final Supplier<Integer> pendingCheckpointsSizeSupplier;
+    private final Supplier<Integer> numberOfCleaningCheckpointsSupplier;
     private final NavigableSet<CheckpointTriggerRequest> queuedRequests =
             new TreeSet<>(checkpointTriggerRequestsComparator());
     private final int maxQueuedRequests;
 
     CheckpointRequestDecider(
             int maxConcurrentCheckpointAttempts,
-            LongConsumer rescheduleTrigger,
+            Consumer<Long> rescheduleTrigger,
             Clock clock,
             long minPauseBetweenCheckpoints,
-            IntSupplier pendingCheckpointsSizeSupplier,
-            IntSupplier numberOfCleaningCheckpointsSupplier) {
+            Supplier<Integer> pendingCheckpointsSizeSupplier,
+            Supplier<Integer> numberOfCleaningCheckpointsSupplier) {
         this(
                 maxConcurrentCheckpointAttempts,
                 rescheduleTrigger,
@@ -86,11 +86,11 @@ class CheckpointRequestDecider {
 
     CheckpointRequestDecider(
             int maxConcurrentCheckpointAttempts,
-            LongConsumer rescheduleTrigger,
+            Consumer<Long> rescheduleTrigger,
             Clock clock,
             long minPauseBetweenCheckpoints,
-            IntSupplier pendingCheckpointsSizeSupplier,
-            IntSupplier numberOfCleaningCheckpointsSupplier,
+            Supplier<Integer> pendingCheckpointsSizeSupplier,
+            Supplier<Integer> numberOfCleaningCheckpointsSupplier,
             int maxQueuedRequests) {
         Preconditions.checkArgument(maxConcurrentCheckpointAttempts > 0);
         Preconditions.checkArgument(maxQueuedRequests > 0);
@@ -153,11 +153,10 @@ class CheckpointRequestDecider {
             boolean isTriggering, long lastCompletionMs) {
         if (isTriggering
                 || queuedRequests.isEmpty()
-                || numberOfCleaningCheckpointsSupplier.getAsInt()
-                        > maxConcurrentCheckpointAttempts) {
+                || numberOfCleaningCheckpointsSupplier.get() > maxConcurrentCheckpointAttempts) {
             return Optional.empty();
         }
-        if (pendingCheckpointsSizeSupplier.getAsInt() >= maxConcurrentCheckpointAttempts) {
+        if (pendingCheckpointsSizeSupplier.get() >= maxConcurrentCheckpointAttempts) {
             return Optional.of(queuedRequests.first())
                     .filter(CheckpointTriggerRequest::isForce)
                     .map(unused -> queuedRequests.pollFirst());

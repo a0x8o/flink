@@ -18,7 +18,6 @@
 
 package org.apache.flink.table.planner.expressions.converter.converters;
 
-import org.apache.flink.annotation.Internal;
 import org.apache.flink.table.expressions.CallExpression;
 import org.apache.flink.table.expressions.Expression;
 import org.apache.flink.table.functions.BuiltInFunctionDefinitions;
@@ -33,7 +32,6 @@ import java.util.List;
 import static org.apache.flink.table.planner.expressions.converter.ExpressionConverter.toRexNodes;
 
 /** Conversion for {@link BuiltInFunctionDefinitions#MAP}. */
-@Internal
 class MapConverter extends CustomizedConverter {
     @Override
     public RexNode convert(CallExpression call, CallExpressionConvertRule.ConvertContext context) {

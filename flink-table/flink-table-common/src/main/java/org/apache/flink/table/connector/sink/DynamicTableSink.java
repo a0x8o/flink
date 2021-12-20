@@ -22,6 +22,7 @@ import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.table.catalog.ResolvedSchema;
 import org.apache.flink.table.connector.ChangelogMode;
+import org.apache.flink.table.connector.ParallelismProvider;
 import org.apache.flink.table.connector.RuntimeConverter;
 import org.apache.flink.table.connector.sink.abilities.SupportsOverwrite;
 import org.apache.flink.table.connector.sink.abilities.SupportsPartitioning;
@@ -100,11 +101,10 @@ public interface DynamicTableSink {
      * <p>The given {@link Context} offers utilities by the planner for creating runtime
      * implementation with minimal dependencies to internal data structures.
      *
-     * <p>{@link SinkProvider} is the recommended core interface. {@code SinkFunctionProvider} in
-     * {@code flink-table-api-java-bridge} and {@link OutputFormatProvider} are available for
-     * backwards compatibility.
+     * <p>See {@code org.apache.flink.table.connector.sink.SinkFunctionProvider} in {@code
+     * flink-table-api-java-bridge}.
      *
-     * @see SinkProvider
+     * @see ParallelismProvider
      */
     SinkRuntimeProvider getSinkRuntimeProvider(Context context);
 
@@ -131,7 +131,6 @@ public interface DynamicTableSink {
      * instances are {@link Serializable} and can be directly passed into the runtime implementation
      * class.
      */
-    @PublicEvolving
     interface Context {
 
         /**
@@ -149,12 +148,6 @@ public interface DynamicTableSink {
          * @see ResolvedSchema#toPhysicalRowDataType()
          */
         <T> TypeInformation<T> createTypeInformation(DataType consumedDataType);
-
-        /**
-         * Creates type information describing the internal data structures of the given {@link
-         * LogicalType}.
-         */
-        <T> TypeInformation<T> createTypeInformation(LogicalType consumedLogicalType);
 
         /**
          * Creates a converter for mapping between Flink's internal data structures and objects
@@ -179,7 +172,6 @@ public interface DynamicTableSink {
      *
      * @see LogicalType#supportsOutputConversion(Class)
      */
-    @PublicEvolving
     interface DataStructureConverter extends RuntimeConverter {
 
         /** Converts the given internal structure into an external object. */
@@ -194,13 +186,9 @@ public interface DynamicTableSink {
      * SinkRuntimeProvider} serves as the base interface. Concrete {@link SinkRuntimeProvider}
      * interfaces might be located in other Flink modules.
      *
-     * <p>{@link SinkProvider} is the recommended core interface. {@code SinkFunctionProvider} in
-     * {@code flink-table-api-java-bridge} and {@link OutputFormatProvider} are available for
-     * backwards compatibility.
-     *
-     * @see SinkProvider
+     * <p>See {@code org.apache.flink.table.connector.sink.SinkFunctionProvider} in {@code
+     * flink-table-api-java-bridge}.
      */
-    @PublicEvolving
     interface SinkRuntimeProvider {
         // marker interface
     }

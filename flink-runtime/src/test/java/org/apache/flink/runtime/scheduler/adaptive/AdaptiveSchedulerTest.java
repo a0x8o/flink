@@ -44,9 +44,6 @@ import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.TaskExecutionStateTransition;
 import org.apache.flink.runtime.executiongraph.failover.flip1.NoRestartBackoffTimeStrategy;
 import org.apache.flink.runtime.executiongraph.failover.flip1.TestRestartBackoffTimeStrategy;
-import org.apache.flink.runtime.executiongraph.metrics.DownTimeGauge;
-import org.apache.flink.runtime.executiongraph.metrics.RestartTimeGauge;
-import org.apache.flink.runtime.executiongraph.metrics.UpTimeGauge;
 import org.apache.flink.runtime.executiongraph.utils.SimpleAckingTaskManagerGateway;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
@@ -66,7 +63,6 @@ import org.apache.flink.runtime.operators.coordination.CoordinationRequest;
 import org.apache.flink.runtime.operators.coordination.TaskNotRunningException;
 import org.apache.flink.runtime.operators.coordination.TestOperatorEvent;
 import org.apache.flink.runtime.rest.handler.legacy.utils.ArchivedExecutionGraphBuilder;
-import org.apache.flink.runtime.scheduler.DefaultSchedulerTest;
 import org.apache.flink.runtime.scheduler.SchedulerBase;
 import org.apache.flink.runtime.scheduler.SchedulerNG;
 import org.apache.flink.runtime.scheduler.VertexParallelismInformation;
@@ -102,7 +98,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 import static org.apache.flink.core.testutils.FlinkMatchers.futureFailedWith;
@@ -110,9 +106,7 @@ import static org.apache.flink.runtime.executiongraph.ExecutionGraphTestUtils.cr
 import static org.apache.flink.runtime.jobgraph.JobGraphTestUtils.streamingJobGraph;
 import static org.apache.flink.runtime.jobmaster.slotpool.DefaultDeclarativeSlotPoolTest.createSlotOffersForResourceRequirements;
 import static org.apache.flink.runtime.jobmaster.slotpool.SlotPoolTestUtils.offerSlots;
-import static org.apache.flink.runtime.scheduler.SchedulerTestingUtils.enableCheckpointing;
 import static org.hamcrest.Matchers.contains;
-import static org.hamcrest.Matchers.greaterThan;
 import static org.hamcrest.Matchers.instanceOf;
 import static org.hamcrest.core.Is.is;
 import static org.junit.Assert.assertFalse;
@@ -416,13 +410,13 @@ public class AdaptiveSchedulerTest extends TestLogger {
 
     @Test
     public void testNumRestartsMetric() throws Exception {
-        final CompletableFuture<Gauge<Long>> numRestartsMetricFuture = new CompletableFuture<>();
+        final CompletableFuture<Gauge<Integer>> numRestartsMetricFuture = new CompletableFuture<>();
         final MetricRegistry metricRegistry =
                 TestingMetricRegistry.builder()
                         .setRegisterConsumer(
                                 (metric, name, group) -> {
                                     if (MetricNames.NUM_RESTARTS.equals(name)) {
-                                        numRestartsMetricFuture.complete((Gauge<Long>) metric);
+                                        numRestartsMetricFuture.complete((Gauge<Integer>) metric);
                                     }
                                 })
                         .build();
@@ -451,7 +445,7 @@ public class AdaptiveSchedulerTest extends TestLogger {
                         .setDeclarativeSlotPool(declarativeSlotPool)
                         .build();
 
-        final Gauge<Long> numRestartsMetric = numRestartsMetricFuture.get();
+        final Gauge<Integer> numRestartsMetric = numRestartsMetricFuture.get();
 
         final SubmissionBufferingTaskManagerGateway taskManagerGateway =
                 new SubmissionBufferingTaskManagerGateway(1 + PARALLELISM);
@@ -473,7 +467,7 @@ public class AdaptiveSchedulerTest extends TestLogger {
         // wait for the first task submission
         taskManagerGateway.waitForSubmissions(1, Duration.ofSeconds(5));
 
-        assertThat(numRestartsMetric.getValue(), is(0L));
+        assertThat(numRestartsMetric.getValue(), is(0));
 
         singleThreadMainThreadExecutor.execute(
                 () -> {
@@ -489,102 +483,7 @@ public class AdaptiveSchedulerTest extends TestLogger {
         // wait for the second task submissions
         taskManagerGateway.waitForSubmissions(PARALLELISM, Duration.ofSeconds(5));
 
-        assertThat(numRestartsMetric.getValue(), is(1L));
-    }
-
-    @Test
-    public void testStatusMetrics() throws Exception {
-        final CompletableFuture<UpTimeGauge> upTimeMetricFuture = new CompletableFuture<>();
-        final CompletableFuture<DownTimeGauge> downTimeMetricFuture = new CompletableFuture<>();
-        final CompletableFuture<RestartTimeGauge> restartTimeMetricFuture =
-                new CompletableFuture<>();
-        final MetricRegistry metricRegistry =
-                TestingMetricRegistry.builder()
-                        .setRegisterConsumer(
-                                (metric, name, group) -> {
-                                    switch (name) {
-                                        case UpTimeGauge.METRIC_NAME:
-                                            upTimeMetricFuture.complete((UpTimeGauge) metric);
-                                            break;
-                                        case DownTimeGauge.METRIC_NAME:
-                                            downTimeMetricFuture.complete((DownTimeGauge) metric);
-                                            break;
-                                        case RestartTimeGauge.METRIC_NAME:
-                                            restartTimeMetricFuture.complete(
-                                                    (RestartTimeGauge) metric);
-                                            break;
-                                    }
-                                })
-                        .build();
-
-        final JobGraph jobGraph = createJobGraph();
-
-        final DefaultDeclarativeSlotPool declarativeSlotPool =
-                createDeclarativeSlotPool(jobGraph.getJobID());
-
-        final Configuration configuration = new Configuration();
-        configuration.set(JobManagerOptions.MIN_PARALLELISM_INCREASE, 1);
-        configuration.set(JobManagerOptions.RESOURCE_WAIT_TIMEOUT, Duration.ofMillis(10L));
-
-        final AdaptiveScheduler scheduler =
-                new AdaptiveSchedulerBuilder(jobGraph, singleThreadMainThreadExecutor)
-                        .setJobMasterConfiguration(configuration)
-                        .setJobManagerJobMetricGroup(
-                                JobManagerMetricGroup.createJobManagerMetricGroup(
-                                                metricRegistry, "localhost")
-                                        .addJob(new JobID(), "jobName"))
-                        .setDeclarativeSlotPool(declarativeSlotPool)
-                        .build();
-
-        final UpTimeGauge upTimeGauge = upTimeMetricFuture.get();
-        final DownTimeGauge downTimeGauge = downTimeMetricFuture.get();
-        final RestartTimeGauge restartTimeGauge = restartTimeMetricFuture.get();
-
-        final SubmissionBufferingTaskManagerGateway taskManagerGateway =
-                new SubmissionBufferingTaskManagerGateway(1 + PARALLELISM);
-
-        taskManagerGateway.setCancelConsumer(createCancelConsumer(scheduler));
-
-        singleThreadMainThreadExecutor.execute(
-                () -> {
-                    scheduler.startScheduling();
-
-                    offerSlots(
-                            declarativeSlotPool,
-                            createSlotOffersForResourceRequirements(
-                                    ResourceCounter.withResource(ResourceProfile.UNKNOWN, 1)),
-                            taskManagerGateway);
-                });
-
-        // wait for the first task submission
-        taskManagerGateway.waitForSubmissions(1, Duration.ofSeconds(5));
-
-        // sleep a bit to ensure uptime is > 0
-        Thread.sleep(10L);
-
-        assertThat(upTimeGauge.getValue(), greaterThan(0L));
-        assertThat(downTimeGauge.getValue(), is(0L));
-        assertThat(restartTimeGauge.getValue(), is(0L));
-
-        singleThreadMainThreadExecutor.execute(
-                () -> {
-                    // offer more slots, which will cause a restart in order to scale up
-                    offerSlots(
-                            declarativeSlotPool,
-                            createSlotOffersForResourceRequirements(
-                                    ResourceCounter.withResource(ResourceProfile.UNKNOWN, 1)),
-                            taskManagerGateway);
-                });
-
-        // wait for the second task submissions
-        taskManagerGateway.waitForSubmissions(2, Duration.ofSeconds(5));
-
-        // sleep a bit to ensure uptime is > 0
-        Thread.sleep(10L);
-
-        assertThat(upTimeGauge.getValue(), greaterThan(0L));
-        assertThat(downTimeGauge.getValue(), is(0L));
-        assertThat(restartTimeGauge.getValue(), greaterThan(0L));
+        assertThat(numRestartsMetric.getValue(), is(1));
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -708,93 +607,21 @@ public class AdaptiveSchedulerTest extends TestLogger {
     }
 
     @Test
-    public void testJobStatusListenerOnlyCalledIfJobStatusChanges() throws Exception {
-        final AtomicInteger numStatusUpdates = new AtomicInteger();
+    public void testGoToFinishedNotifiesJobListener() throws Exception {
+        final AtomicReference<JobStatus> jobStatusUpdate = new AtomicReference<>();
         final AdaptiveScheduler scheduler =
                 new AdaptiveSchedulerBuilder(createJobGraph(), mainThreadExecutor)
                         .setJobStatusListener(
-                                (jobId, newJobStatus, timestamp) ->
-                                        numStatusUpdates.incrementAndGet())
+                                (jobId, newJobStatus, timestamp, error) ->
+                                        jobStatusUpdate.set(newJobStatus))
                         .build();
 
-        // sanity check
-        assertThat(
-                "Assumption about job status for Scheduler@Created is incorrect.",
-                scheduler.requestJobStatus(),
-                is(JobStatus.INITIALIZING));
+        final ArchivedExecutionGraph archivedExecutionGraph =
+                new ArchivedExecutionGraphBuilder().setState(JobStatus.FAILED).build();
 
-        // transition into next state, for which the job state is still INITIALIZING
-        scheduler.goToWaitingForResources();
+        scheduler.goToFinished(archivedExecutionGraph);
 
-        // sanity check
-        assertThat(
-                "Assumption about job status for Scheduler@WaitingForResources is incorrect.",
-                scheduler.requestJobStatus(),
-                is(JobStatus.INITIALIZING));
-
-        assertThat(numStatusUpdates.get(), is(0));
-    }
-
-    @Test
-    public void testJobStatusListenerNotifiedOfJobStatusChanges() throws Exception {
-        final JobGraph jobGraph = createJobGraph();
-        final DefaultDeclarativeSlotPool declarativeSlotPool =
-                createDeclarativeSlotPool(jobGraph.getJobID());
-
-        final Configuration configuration = new Configuration();
-        configuration.set(JobManagerOptions.RESOURCE_WAIT_TIMEOUT, Duration.ofMillis(1L));
-
-        final CompletableFuture<Void> jobRunningNotification = new CompletableFuture<>();
-        final CompletableFuture<Void> jobFinishedNotification = new CompletableFuture<>();
-        final CompletableFuture<JobStatus> unexpectedJobStatusNotification =
-                new CompletableFuture<>();
-        final AdaptiveScheduler scheduler =
-                new AdaptiveSchedulerBuilder(jobGraph, singleThreadMainThreadExecutor)
-                        .setJobMasterConfiguration(configuration)
-                        .setJobStatusListener(
-                                (jobId, newJobStatus, timestamp) -> {
-                                    switch (newJobStatus) {
-                                        case RUNNING:
-                                            jobRunningNotification.complete(null);
-                                            break;
-                                        case FINISHED:
-                                            jobFinishedNotification.complete(null);
-                                            break;
-                                        default:
-                                            unexpectedJobStatusNotification.complete(newJobStatus);
-                                    }
-                                })
-                        .setDeclarativeSlotPool(declarativeSlotPool)
-                        .build();
-
-        final SubmissionBufferingTaskManagerGateway taskManagerGateway =
-                new SubmissionBufferingTaskManagerGateway(1 + PARALLELISM);
-
-        singleThreadMainThreadExecutor.execute(
-                () -> {
-                    scheduler.startScheduling();
-
-                    offerSlots(
-                            declarativeSlotPool,
-                            createSlotOffersForResourceRequirements(
-                                    ResourceCounter.withResource(ResourceProfile.UNKNOWN, 1)),
-                            taskManagerGateway);
-                });
-
-        // wait for the task submission
-        final TaskDeploymentDescriptor submittedTask = taskManagerGateway.submittedTasks.take();
-
-        // let the job finish
-        singleThreadMainThreadExecutor.execute(
-                () ->
-                        scheduler.updateTaskExecutionState(
-                                new TaskExecutionState(
-                                        submittedTask.getExecutionAttemptId(),
-                                        ExecutionState.FINISHED)));
-
-        jobRunningNotification.get();
-        jobFinishedNotification.get();
-        assertThat(unexpectedJobStatusNotification.isDone(), is(false));
+        assertThat(jobStatusUpdate.get(), is(archivedExecutionGraph.getState()));
     }
 
     @Test
@@ -1115,33 +942,6 @@ public class AdaptiveSchedulerTest extends TestLogger {
         }
     }
 
-    @Test
-    public void testCheckpointCleanerIsClosedAfterCheckpointServices() throws Exception {
-        final ScheduledExecutorService executorService =
-                Executors.newSingleThreadScheduledExecutor();
-        try {
-            DefaultSchedulerTest.doTestCheckpointCleanerIsClosedAfterCheckpointServices(
-                    (checkpointRecoveryFactory, checkpointCleaner) -> {
-                        final JobGraph jobGraph = createJobGraph();
-                        enableCheckpointing(jobGraph);
-                        try {
-                            return new AdaptiveSchedulerBuilder(
-                                            jobGraph,
-                                            ComponentMainThreadExecutorServiceAdapter
-                                                    .forSingleThreadExecutor(executorService))
-                                    .setCheckpointRecoveryFactory(checkpointRecoveryFactory)
-                                    .setCheckpointCleaner(checkpointCleaner)
-                                    .build();
-                        } catch (Exception e) {
-                            throw new RuntimeException(e);
-                        }
-                    },
-                    executorService);
-        } finally {
-            executorService.shutdownNow();
-        }
-    }
-
     // ---------------------------------------------------------------------------------------------
     // Utils
     // ---------------------------------------------------------------------------------------------
@@ -1267,7 +1067,7 @@ public class AdaptiveSchedulerTest extends TestLogger {
 
         @Override
         public JobStatus getJobStatus() {
-            return JobStatus.RUNNING;
+            return null;
         }
 
         @Override

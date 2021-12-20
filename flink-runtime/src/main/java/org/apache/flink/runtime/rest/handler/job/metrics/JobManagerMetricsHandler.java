@@ -52,7 +52,8 @@ public class JobManagerMetricsHandler
     @Nullable
     @Override
     protected MetricStore.ComponentMetricStore getComponentMetricStore(
-            final HandlerRequest<EmptyRequestBody> request, final MetricStore metricStore) {
+            final HandlerRequest<EmptyRequestBody, JobManagerMetricsMessageParameters> request,
+            final MetricStore metricStore) {
         return metricStore.getJobManagerMetricStore();
     }
 }

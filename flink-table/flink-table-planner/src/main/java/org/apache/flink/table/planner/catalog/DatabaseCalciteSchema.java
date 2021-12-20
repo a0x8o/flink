@@ -25,6 +25,8 @@ import org.apache.flink.table.catalog.CatalogManager.TableLookupResult;
 import org.apache.flink.table.catalog.ObjectIdentifier;
 import org.apache.flink.table.catalog.ObjectPath;
 import org.apache.flink.table.catalog.ResolvedCatalogBaseTable;
+import org.apache.flink.table.catalog.ResolvedSchema;
+import org.apache.flink.table.catalog.UniqueConstraint;
 import org.apache.flink.table.catalog.exceptions.TableNotExistException;
 import org.apache.flink.table.catalog.stats.CatalogColumnStatistics;
 import org.apache.flink.table.catalog.stats.CatalogTableStatistics;
@@ -38,6 +40,7 @@ import org.apache.calcite.schema.Schemas;
 import org.apache.calcite.schema.Table;
 
 import java.util.HashSet;
+import java.util.Optional;
 import java.util.Set;
 
 import static java.lang.String.format;
@@ -89,8 +92,7 @@ class DatabaseCalciteSchema extends FlinkSchema {
                 return FlinkStatistic.builder()
                         .tableStats(extractTableStats(lookupResult, identifier))
                         // this is a temporary solution, FLINK-15123 will resolve this
-                        .uniqueKeys(
-                                resolvedBaseTable.getResolvedSchema().getPrimaryKey().orElse(null))
+                        .uniqueKeys(extractUniqueKeys(resolvedBaseTable.getResolvedSchema()))
                         .build();
             case VIEW:
             default:
@@ -118,6 +120,18 @@ class DatabaseCalciteSchema extends FlinkSchema {
                             tablePath.getDatabaseName(),
                             tablePath.getObjectName()),
                     e);
+        }
+    }
+
+    private static Set<Set<String>> extractUniqueKeys(ResolvedSchema schema) {
+        Optional<UniqueConstraint> primaryKeyConstraint = schema.getPrimaryKey();
+        if (primaryKeyConstraint.isPresent()) {
+            Set<String> primaryKey = new HashSet<>(primaryKeyConstraint.get().getColumns());
+            Set<Set<String>> uniqueKeys = new HashSet<>();
+            uniqueKeys.add(primaryKey);
+            return uniqueKeys;
+        } else {
+            return null;
         }
     }
 

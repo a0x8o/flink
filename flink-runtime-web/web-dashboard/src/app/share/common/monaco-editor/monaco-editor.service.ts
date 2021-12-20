@@ -28,7 +28,7 @@ export class MonacoEditorService {
   /**
    * Recalculate monaco editor layout manually
    */
-  layout(): void {
+  layout() {
     this.layout$.next();
   }
 }

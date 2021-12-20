@@ -21,6 +21,7 @@ package org.apache.flink.table.filesystem;
 import org.apache.flink.api.common.io.FileInputFormat;
 import org.apache.flink.api.common.io.InputFormat;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.api.java.io.RowCsvInputFormat;
 import org.apache.flink.api.java.typeutils.RowTypeInfo;
 import org.apache.flink.configuration.Configuration;
@@ -31,9 +32,7 @@ import org.apache.flink.table.data.GenericRowData;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.data.StringData;
 import org.apache.flink.table.data.util.DataFormatConverters;
-import org.apache.flink.table.types.DataType;
-import org.apache.flink.table.types.logical.LogicalType;
-import org.apache.flink.table.types.logical.LogicalTypeRoot;
+import org.apache.flink.table.types.utils.TypeConversions;
 import org.apache.flink.table.utils.PartitionPathUtils;
 import org.apache.flink.types.Row;
 
@@ -43,8 +42,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.stream.Collectors;
 
-import static org.apache.flink.table.types.logical.utils.LogicalTypeChecks.hasRoot;
-
 /** The {@link InputFormat} that output {@link RowData}. */
 public class TestRowDataCsvInputFormat extends FileInputFormat<RowData> {
 
@@ -53,7 +50,7 @@ public class TestRowDataCsvInputFormat extends FileInputFormat<RowData> {
     private final int[] selectFields;
     private final long limit;
     private final RowCsvInputFormat inputFormat;
-    private final List<DataType> fieldTypes;
+    private final List<TypeInformation> fieldTypes;
     private final List<String> fieldNames;
     private final List<DataFormatConverters.DataFormatConverter> csvSelectConverters;
     private final int[] csvFieldMapping;
@@ -73,8 +70,9 @@ public class TestRowDataCsvInputFormat extends FileInputFormat<RowData> {
         this.defaultPartValue = defaultPartValue;
         this.selectFields = selectFields;
         this.limit = limit;
-        this.fieldTypes = Arrays.asList(schema.getFieldDataTypes());
-        this.fieldNames = Arrays.asList(schema.getFieldNames());
+        RowTypeInfo rowType = (RowTypeInfo) schema.toRowType();
+        this.fieldTypes = Arrays.asList(rowType.getFieldTypes());
+        this.fieldNames = Arrays.asList(rowType.getFieldNames());
 
         List<String> csvFieldNames =
                 fieldNames.stream()
@@ -87,23 +85,20 @@ public class TestRowDataCsvInputFormat extends FileInputFormat<RowData> {
                 selectFieldNames.stream()
                         .filter(name -> !partitionKeys.contains(name))
                         .collect(Collectors.toList());
-        List<DataType> csvSelectTypes =
+        List<TypeInformation> csvSelectTypes =
                 csvSelectFieldNames.stream()
                         .map(name -> fieldTypes.get(fieldNames.indexOf(name)))
                         .collect(Collectors.toList());
-        RowTypeInfo rowType = (RowTypeInfo) schema.toRowType();
-        TypeInformation<?>[] fieldTypeInfos = rowType.getFieldTypes();
-        TypeInformation<?>[] csvSelectTypeInfos =
-                csvSelectFieldNames.stream()
-                        .map(name -> fieldTypeInfos[fieldNames.indexOf(name)])
-                        .toArray(TypeInformation<?>[]::new);
         this.csvSelectConverters =
                 csvSelectTypes.stream()
+                        .map(TypeConversions::fromLegacyInfoToDataType)
                         .map(DataFormatConverters::getConverterForDataType)
                         .collect(Collectors.toList());
         int[] csvSelectFields =
                 csvSelectFieldNames.stream().mapToInt(csvFieldNames::indexOf).toArray();
-        this.inputFormat = new RowCsvInputFormat(null, csvSelectTypeInfos, csvSelectFields);
+        this.inputFormat =
+                new RowCsvInputFormat(
+                        null, csvSelectTypes.toArray(new TypeInformation[0]), csvSelectFields);
         this.inputFormat.setFilePaths(paths);
 
         this.csvFieldMapping =
@@ -140,18 +135,15 @@ public class TestRowDataCsvInputFormat extends FileInputFormat<RowData> {
         this.csvRow = new Row(csvSelectConverters.size());
     }
 
-    private Object convertStringToInternal(String value, DataType dataType) {
-        final LogicalType logicalType = dataType.getLogicalType();
-        if (hasRoot(logicalType, LogicalTypeRoot.INTEGER)) {
+    private Object convertStringToInternal(String value, TypeInformation type) {
+        if (type.equals(Types.INT)) {
             return Integer.parseInt(value);
-        } else if (hasRoot(logicalType, LogicalTypeRoot.BIGINT)) {
+        } else if (type.equals(Types.LONG)) {
             return Long.parseLong(value);
-        } else if (hasRoot(logicalType, LogicalTypeRoot.CHAR)
-                || hasRoot(logicalType, LogicalTypeRoot.VARCHAR)) {
+        } else if (type.equals(Types.STRING)) {
             return StringData.fromString(value);
         } else {
-            throw new UnsupportedOperationException(
-                    "Unsupported partition type: " + logicalType.getTypeRoot().name());
+            throw new UnsupportedOperationException("Unsupported partition type: " + type);
         }
     }
 

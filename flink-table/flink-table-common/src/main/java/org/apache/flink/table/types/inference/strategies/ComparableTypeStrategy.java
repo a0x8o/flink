@@ -41,6 +41,9 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
+import static org.apache.flink.table.types.logical.utils.LogicalTypeChecks.hasFamily;
+import static org.apache.flink.table.types.logical.utils.LogicalTypeChecks.hasRoot;
+
 /**
  * An {@link InputTypeStrategy} that checks if all input arguments can be compared with each other
  * with the minimal provided comparison.
@@ -125,7 +128,7 @@ public final class ComparableTypeStrategy implements InputTypeStrategy {
         }
 
         // everything is comparable with null, it should return null in that case
-        if (firstType.is(LogicalTypeRoot.NULL) || secondType.is(LogicalTypeRoot.NULL)) {
+        if (hasRoot(firstType, LogicalTypeRoot.NULL) || hasRoot(secondType, LogicalTypeRoot.NULL)) {
             return true;
         }
 
@@ -133,24 +136,26 @@ public final class ComparableTypeStrategy implements InputTypeStrategy {
             return areTypesOfSameRootComparable(firstType, secondType);
         }
 
-        if (firstType.is(LogicalTypeFamily.NUMERIC) && secondType.is(LogicalTypeFamily.NUMERIC)) {
+        if (hasFamily(firstType, LogicalTypeFamily.NUMERIC)
+                && hasFamily(secondType, LogicalTypeFamily.NUMERIC)) {
             return true;
         }
 
         // DATE + ALL TIMESTAMPS
-        if (firstType.is(LogicalTypeFamily.DATETIME) && secondType.is(LogicalTypeFamily.DATETIME)) {
+        if (hasFamily(firstType, LogicalTypeFamily.DATETIME)
+                && hasFamily(secondType, LogicalTypeFamily.DATETIME)) {
             return true;
         }
 
         // VARCHAR + CHAR (we do not compare collations here)
-        if (firstType.is(LogicalTypeFamily.CHARACTER_STRING)
-                && secondType.is(LogicalTypeFamily.CHARACTER_STRING)) {
+        if (hasFamily(firstType, LogicalTypeFamily.CHARACTER_STRING)
+                && hasFamily(secondType, LogicalTypeFamily.CHARACTER_STRING)) {
             return true;
         }
 
         // VARBINARY + BINARY
-        if (firstType.is(LogicalTypeFamily.BINARY_STRING)
-                && secondType.is(LogicalTypeFamily.BINARY_STRING)) {
+        if (hasFamily(firstType, LogicalTypeFamily.BINARY_STRING)
+                && hasFamily(secondType, LogicalTypeFamily.BINARY_STRING)) {
             return true;
         }
 

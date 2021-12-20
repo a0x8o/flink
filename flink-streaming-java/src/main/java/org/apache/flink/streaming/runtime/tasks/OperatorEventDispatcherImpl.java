@@ -41,7 +41,7 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * <p>This class is intended for single threaded use from the stream task mailbox.
  */
 @Internal
-public final class OperatorEventDispatcherImpl implements OperatorEventDispatcher {
+final class OperatorEventDispatcherImpl implements OperatorEventDispatcher {
 
     private final Map<OperatorID, OperatorEventHandler> handlers;
 
@@ -49,8 +49,7 @@ public final class OperatorEventDispatcherImpl implements OperatorEventDispatche
 
     private final TaskOperatorEventGateway toCoordinator;
 
-    public OperatorEventDispatcherImpl(
-            ClassLoader classLoader, TaskOperatorEventGateway toCoordinator) {
+    OperatorEventDispatcherImpl(ClassLoader classLoader, TaskOperatorEventGateway toCoordinator) {
         this.classLoader = checkNotNull(classLoader);
         this.toCoordinator = checkNotNull(toCoordinator);
         this.handlers = new HashMap<>();

@@ -22,10 +22,8 @@ import org.apache.flink.connector.kafka.MetricUtil;
 import org.apache.flink.connector.kafka.source.reader.KafkaSourceReader;
 import org.apache.flink.metrics.Counter;
 import org.apache.flink.metrics.MetricGroup;
-import org.apache.flink.metrics.groups.OperatorIOMetricGroup;
 import org.apache.flink.metrics.groups.SourceReaderMetricGroup;
 import org.apache.flink.runtime.metrics.MetricNames;
-import org.apache.flink.runtime.metrics.groups.TaskIOMetricGroup;
 
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.Metric;
@@ -101,9 +99,6 @@ public class KafkaSourceReaderMetrics {
 
     // Kafka raw metric for bytes consumed total
     @Nullable private Metric bytesConsumedTotalMetric;
-
-    /** Number of bytes consumed total at the latest {@link #updateNumBytesInCounter()}. */
-    private long latestBytesConsumedTotal;
 
     public KafkaSourceReaderMetrics(SourceReaderMetricGroup sourceReaderMetricGroup) {
         this.sourceReaderMetricGroup = sourceReaderMetricGroup;
@@ -240,24 +235,12 @@ public class KafkaSourceReaderMetrics {
         }
     }
 
-    /**
-     * Update {@link org.apache.flink.runtime.metrics.MetricNames#IO_NUM_BYTES_IN}.
-     *
-     * <p>Instead of simply setting {@link OperatorIOMetricGroup#getNumBytesInCounter()} to the same
-     * value as bytes-consumed-total from Kafka consumer, which will screw {@link
-     * TaskIOMetricGroup#getNumBytesInCounter()} if chained sources exist, we track the increment of
-     * bytes-consumed-total and count it towards the counter.
-     */
+    /** Update {@link org.apache.flink.runtime.metrics.MetricNames#IO_NUM_BYTES_IN}. */
     public void updateNumBytesInCounter() {
         if (this.bytesConsumedTotalMetric != null) {
-            long bytesConsumedUntilNow =
-                    ((Number) this.bytesConsumedTotalMetric.metricValue()).longValue();
-            long bytesConsumedSinceLastUpdate = bytesConsumedUntilNow - latestBytesConsumedTotal;
-            this.sourceReaderMetricGroup
-                    .getIOMetricGroup()
-                    .getNumBytesInCounter()
-                    .inc(bytesConsumedSinceLastUpdate);
-            latestBytesConsumedTotal = bytesConsumedUntilNow;
+            MetricUtil.sync(
+                    this.bytesConsumedTotalMetric,
+                    this.sourceReaderMetricGroup.getIOMetricGroup().getNumBytesInCounter());
         }
     }
 
@@ -289,8 +272,6 @@ public class KafkaSourceReaderMetrics {
     private @Nullable Metric getRecordsLagMetric(
             Map<MetricName, ? extends Metric> metrics, TopicPartition tp) {
         try {
-            final String resolvedTopic = tp.topic().replace('.', '_');
-            final String resolvedPartition = String.valueOf(tp.partition());
             Predicate<Map.Entry<MetricName, ? extends Metric>> filter =
                     entry -> {
                         final MetricName metricName = entry.getKey();
@@ -299,9 +280,9 @@ public class KafkaSourceReaderMetrics {
                         return metricName.group().equals(CONSUMER_FETCH_MANAGER_GROUP)
                                 && metricName.name().equals(RECORDS_LAG)
                                 && tags.containsKey("topic")
-                                && tags.get("topic").equals(resolvedTopic)
+                                && tags.get("topic").equals(tp.topic())
                                 && tags.containsKey("partition")
-                                && tags.get("partition").equals(resolvedPartition);
+                                && tags.get("partition").equals(String.valueOf(tp.partition()));
                     };
             return MetricUtil.getKafkaMetric(metrics, filter);
         } catch (IllegalStateException e) {
@@ -310,7 +291,7 @@ public class KafkaSourceReaderMetrics {
                             "Error when getting Kafka consumer metric \"%s\" "
                                     + "for partition \"%s\". "
                                     + "Metric \"%s\" may not be reported correctly. ",
-                            RECORDS_LAG, tp, MetricNames.PENDING_RECORDS),
+                            RECORDS_LAG, tp, MetricNames.PENDING_BYTES),
                     e);
             return null;
         }

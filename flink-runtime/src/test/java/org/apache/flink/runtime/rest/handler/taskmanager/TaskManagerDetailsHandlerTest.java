@@ -36,9 +36,10 @@ import org.apache.flink.runtime.rest.messages.taskmanager.TaskManagerDetailsInfo
 import org.apache.flink.runtime.rest.messages.taskmanager.TaskManagerFileMessageParameters;
 import org.apache.flink.runtime.rest.messages.taskmanager.TaskManagerIdPathParameter;
 import org.apache.flink.runtime.rest.messages.taskmanager.TaskManagerInfo;
+import org.apache.flink.runtime.rest.messages.taskmanager.TaskManagerMessageParameters;
 import org.apache.flink.runtime.rest.messages.taskmanager.TaskManagerMetricsInfo;
 import org.apache.flink.runtime.taskexecutor.TaskExecutorMemoryConfiguration;
-import org.apache.flink.testutils.TestingUtils;
+import org.apache.flink.runtime.testutils.TestingUtils;
 import org.apache.flink.util.TestLogger;
 
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.core.JsonProcessingException;
@@ -93,7 +94,7 @@ public class TaskManagerDetailsHandlerTest extends TestLogger {
                                 new TaskManagerInfoWithSlots(
                                         createEmptyTaskManagerInfo(), Collections.emptyList())));
 
-        HandlerRequest<EmptyRequestBody> request = createRequest();
+        HandlerRequest<EmptyRequestBody, TaskManagerMessageParameters> request = createRequest();
         TaskManagerDetailsInfo taskManagerDetailsInfo =
                 testInstance.handleRequest(request, resourceManagerGateway).get();
 
@@ -177,16 +178,16 @@ public class TaskManagerDetailsHandlerTest extends TestLogger {
                 new TaskExecutorMemoryConfiguration(0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L));
     }
 
-    private static HandlerRequest<EmptyRequestBody> createRequest() throws HandlerRequestException {
+    private static HandlerRequest<EmptyRequestBody, TaskManagerMessageParameters> createRequest()
+            throws HandlerRequestException {
         Map<String, String> pathParameters = new HashMap<>();
         pathParameters.put(TaskManagerIdPathParameter.KEY, TASK_MANAGER_ID.toString());
 
-        return HandlerRequest.resolveParametersAndCreate(
+        return new HandlerRequest<>(
                 EmptyRequestBody.getInstance(),
                 new TaskManagerFileMessageParameters(),
                 pathParameters,
-                Collections.emptyMap(),
-                Collections.emptyList());
+                Collections.emptyMap());
     }
 
     private static class TestingMetricFetcher implements MetricFetcher {

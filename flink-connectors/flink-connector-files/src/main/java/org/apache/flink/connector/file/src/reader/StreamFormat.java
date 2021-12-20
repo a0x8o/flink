@@ -188,7 +188,6 @@ public interface StreamFormat<T> extends Serializable, ResultTypeQueryable<T> {
     // ------------------------------------------------------------------------
 
     /** The actual reader that reads the records. */
-    @PublicEvolving
     interface Reader<T> extends Closeable {
 
         /** Reads the next record. Returns {@code null} when the input has reached its end. */

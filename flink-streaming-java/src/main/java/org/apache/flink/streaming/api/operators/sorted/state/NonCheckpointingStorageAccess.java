@@ -45,7 +45,7 @@ class NonCheckpointingStorageAccess implements CheckpointStorageAccess {
     }
 
     @Override
-    public void initializeBaseLocationsForCheckpoint() {}
+    public void initializeBaseLocations() {}
 
     @Override
     public CheckpointStorageLocation initializeLocationForCheckpoint(long checkpointId) {

@@ -33,8 +33,9 @@ import javax.annotation.Nullable;
 import java.math.BigDecimal;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.Assert.assertEquals;
 
 /** Tests for {@link ClassDataTypeConverter}. */
 @RunWith(Parameterized.class)
@@ -113,10 +114,6 @@ public class ClassDataTypeConverterTest {
 
     @Test
     public void testClassToDataTypeConversion() {
-        if (dataType == null) {
-            assertThat(ClassDataTypeConverter.extractDataType(clazz)).isEmpty();
-        } else {
-            assertThat(ClassDataTypeConverter.extractDataType(clazz)).contains(dataType);
-        }
+        assertEquals(Optional.ofNullable(dataType), ClassDataTypeConverter.extractDataType(clazz));
     }
 }

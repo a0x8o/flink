@@ -18,7 +18,6 @@
 
 package org.apache.flink.table.runtime.utils;
 
-import org.apache.flink.api.common.JobID;
 import org.apache.flink.python.env.PythonDependencyInfo;
 import org.apache.flink.python.env.PythonEnvironmentManager;
 import org.apache.flink.python.env.beam.ProcessPythonEnvironmentManager;
@@ -92,7 +91,6 @@ public final class PythonTestUtils {
         return new ProcessPythonEnvironmentManager(
                 new PythonDependencyInfo(new HashMap<>(), null, null, new HashMap<>(), "python"),
                 new String[] {System.getProperty("java.io.tmpdir")},
-                env,
-                new JobID());
+                env);
     }
 }

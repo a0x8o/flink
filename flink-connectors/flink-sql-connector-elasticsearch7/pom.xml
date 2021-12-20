@@ -30,7 +30,7 @@ under the License.
 		<relativePath>..</relativePath>
 	</parent>
 
-	<artifactId>flink-sql-connector-elasticsearch7</artifactId>
+	<artifactId>flink-sql-connector-elasticsearch7_${scala.binary.version}</artifactId>
 	<name>Flink : Connectors : SQL : Elasticsearch 7</name>
 
 	<packaging>jar</packaging>
@@ -38,7 +38,7 @@ under the License.
 	<dependencies>
 		<dependency>
 			<groupId>org.apache.flink</groupId>
-			<artifactId>flink-connector-elasticsearch7</artifactId>
+			<artifactId>flink-connector-elasticsearch7_${scala.binary.version}</artifactId>
 			<version>${project.version}</version>
 		</dependency>
 	</dependencies>
@@ -56,6 +56,7 @@ under the License.
 							<goal>shade</goal>
 						</goals>
 						<configuration>
+							<shadeTestJar>false</shadeTestJar>
 							<artifactSet>
 								<includes>
 									<include>*:*</include>
@@ -80,8 +81,6 @@ under the License.
 										<exclude>modules.txt</exclude>
 										<exclude>plugins.txt</exclude>
 										<exclude>org/joda/**</exclude>
-										<!-- Exclude bootstrap due to license issues -->
-										<exclude>org/elasticsearch/bootstrap/**</exclude>
 									</excludes>
 								</filter>
 								<filter>
@@ -143,10 +142,6 @@ under the License.
 								<relocation>
 									<pattern>com.github.mustachejava</pattern>
 									<shadedPattern>org.apache.flink.elasticsearch7.shaded.com.github.mustachejava</shadedPattern>
-								</relocation>
-								<relocation>
-									<pattern>net.jpountz</pattern>
-									<shadedPattern>org.apache.flink.elasticsearch7.shaded.net.jpountz</shadedPattern>
 								</relocation>
 							</relocations>
 						</configuration>

@@ -25,10 +25,11 @@ import org.apache.flink.runtime.blob.VoidBlobStore;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.highavailability.RunningJobsRegistry;
 import org.apache.flink.runtime.highavailability.RunningJobsRegistry.JobSchedulingStatus;
-import org.apache.flink.runtime.rest.util.NoOpFatalErrorHandler;
 import org.apache.flink.runtime.util.ZooKeeperUtils;
 import org.apache.flink.util.TestLogger;
 import org.apache.flink.util.concurrent.Executors;
+
+import org.apache.flink.shaded.curator4.org.apache.curator.framework.CuratorFramework;
 
 import org.apache.curator.test.TestingServer;
 import org.junit.After;
@@ -63,13 +64,11 @@ public class ZooKeeperRegistryTest extends TestLogger {
                 HighAvailabilityOptions.HA_ZOOKEEPER_QUORUM, testingServer.getConnectString());
         configuration.setString(HighAvailabilityOptions.HA_MODE, "zookeeper");
 
+        final CuratorFramework zkClient = ZooKeeperUtils.startCuratorFramework(configuration);
+
         final HighAvailabilityServices zkHaService =
                 new ZooKeeperHaServices(
-                        ZooKeeperUtils.startCuratorFramework(
-                                configuration, NoOpFatalErrorHandler.INSTANCE),
-                        Executors.directExecutor(),
-                        configuration,
-                        new VoidBlobStore());
+                        zkClient, Executors.directExecutor(), configuration, new VoidBlobStore());
 
         final RunningJobsRegistry zkRegistry = zkHaService.getRunningJobsRegistry();
 

@@ -73,7 +73,6 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
 import java.nio.channels.ClosedChannelException;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -267,10 +266,15 @@ public class ClientTest extends TestLogger {
                     new KvStateInternalRequest(new KvStateID(), new byte[0]);
             CompletableFuture<KvStateResponse> future = client.sendRequest(serverAddress, request);
 
-            assertThat(
-                    future,
-                    FlinkMatchers.futureWillCompleteExceptionally(
-                            ConnectException.class, Duration.ofHours(1)));
+            try {
+                future.get();
+                fail("Did not throw expected ConnectException");
+            } catch (ExecutionException e) {
+                if (!(e.getCause() instanceof ConnectException)) {
+                    fail("Did not throw expected ConnectException");
+                }
+                // else expected
+            }
         } finally {
             if (client != null) {
                 try {

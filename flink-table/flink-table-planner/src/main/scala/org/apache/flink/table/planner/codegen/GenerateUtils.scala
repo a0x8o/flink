@@ -34,7 +34,7 @@ import org.apache.flink.table.runtime.typeutils.TypeCheckUtils.{isCharacterStrin
 import org.apache.flink.table.types.logical.LogicalTypeRoot._
 import org.apache.flink.table.types.logical._
 import org.apache.flink.table.types.logical.utils.LogicalTypeChecks.{getFieldCount, getFieldTypes}
-import org.apache.flink.table.planner.utils.TimestampStringUtils.toLocalDateTime
+import org.apache.flink.table.util.TimestampStringUtils.toLocalDateTime
 
 import org.apache.calcite.avatica.util.ByteString
 import org.apache.calcite.util.TimestampString
@@ -140,6 +140,22 @@ object GenerateUtils {
     }
   }
 
+
+  /**
+    * Generates a string result call with auxiliary statements and result expression.
+    * This will convert the String result to BinaryStringData.
+    */
+  def generateStringResultCallWithStmtIfArgsNotNull(
+      ctx: CodeGeneratorContext,
+      operands: Seq[GeneratedExpression],
+      returnType: LogicalType)
+      (call: Seq[String] => (String, String)): GeneratedExpression = {
+    generateCallWithStmtIfArgsNotNull(ctx, returnType, operands) {
+      args =>
+        val (stmt, result) = call(args)
+        (stmt, s"$BINARY_STRING.fromString($result)")
+    }
+  }
 
   /**
     * Generates a call with the nullable args.
@@ -698,7 +714,7 @@ object GenerateUtils {
         val fieldType = getFieldTypes(inputType).get(index)
         val resultTypeTerm = primitiveTypeTermForType(fieldType)
         val defaultValue = primitiveDefaultValue(fieldType)
-        val readCode = rowFieldReadAccess(index.toString, inputTerm, fieldType)
+        val readCode = rowFieldReadAccess(ctx, index.toString, inputTerm, fieldType)
         val Seq(fieldTerm, nullTerm) = ctx.addReusableLocalVariables(
           (resultTypeTerm, "field"),
           ("boolean", "isNull"))
@@ -860,8 +876,8 @@ object GenerateUtils {
           } else if ($isNullB) {
             return ${-nullIsLastRet};
           } else {
-            $typeTerm $fieldA = ${rowFieldReadAccess(i, leftTerm, elementType)};
-            $typeTerm $fieldB = ${rowFieldReadAccess(i, rightTerm, elementType)};
+            $typeTerm $fieldA = ${rowFieldReadAccess(ctx, i, leftTerm, elementType)};
+            $typeTerm $fieldB = ${rowFieldReadAccess(ctx, i, rightTerm, elementType)};
             int $comp = ${generateCompare(ctx, elementType, nullsIsLast, fieldA, fieldB)};
             if ($comp != 0) {
               return $comp;
@@ -913,8 +929,8 @@ object GenerateUtils {
            |} else if ($isNullB) {
            |  return ${-nullIsLastRet};
            |} else {
-           |  $typeTerm $fieldA = ${rowFieldReadAccess(index, leftTerm, t)};
-           |  $typeTerm $fieldB = ${rowFieldReadAccess(index, rightTerm, t)};
+           |  $typeTerm $fieldA = ${rowFieldReadAccess(ctx, index, leftTerm, t)};
+           |  $typeTerm $fieldB = ${rowFieldReadAccess(ctx, index, rightTerm, t)};
            |  int $comp = ${generateCompare(ctx, t, fieldSpec.getNullIsLast, fieldA, fieldB)};
            |  if ($comp != 0) {
            |    return $symbol$comp;

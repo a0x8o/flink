@@ -38,4 +38,4 @@ cdef class FlinkFieldCoderBeamWrapper(StreamCoderImpl):
 
 cdef class FlinkLengthPrefixCoderBeamWrapper(StreamCoderImpl):
     cdef readonly LengthPrefixBaseCoderImpl _value_coder
-    cdef readonly BeamTimeBasedOutputStream _output_stream
+    cdef BeamTimeBasedOutputStream _output_stream

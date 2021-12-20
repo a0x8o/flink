@@ -19,7 +19,6 @@
 package org.apache.flink.connectors.hive;
 
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.connector.file.table.FileSystemConnectorOptions.PartitionOrder;
 import org.apache.flink.table.api.EnvironmentSettings;
 import org.apache.flink.table.api.SqlDialect;
 import org.apache.flink.table.api.TableEnvironment;
@@ -30,9 +29,9 @@ import org.apache.flink.table.catalog.hive.HiveCatalog;
 import org.apache.flink.table.catalog.hive.HiveTestUtils;
 import org.apache.flink.table.connector.sink.DynamicTableSink;
 import org.apache.flink.table.connector.source.DynamicTableSource;
-import org.apache.flink.table.factories.DynamicTableSinkFactory;
-import org.apache.flink.table.factories.DynamicTableSourceFactory;
 import org.apache.flink.table.factories.FactoryUtil;
+import org.apache.flink.table.filesystem.FileSystemConnectorOptions.PartitionOrder;
+import org.apache.flink.table.filesystem.FileSystemLookupFunction;
 import org.apache.flink.util.ExceptionUtils;
 
 import org.apache.hadoop.io.Text;
@@ -44,14 +43,14 @@ import org.junit.Test;
 
 import java.time.Duration;
 
-import static org.apache.flink.connector.file.table.FileSystemConnectorOptions.LOOKUP_JOIN_CACHE_TTL;
-import static org.apache.flink.connector.file.table.FileSystemConnectorOptions.PARTITION_TIME_EXTRACTOR_CLASS;
-import static org.apache.flink.connector.file.table.FileSystemConnectorOptions.PARTITION_TIME_EXTRACTOR_KIND;
-import static org.apache.flink.connector.file.table.FileSystemConnectorOptions.STREAMING_SOURCE_CONSUME_START_OFFSET;
-import static org.apache.flink.connector.file.table.FileSystemConnectorOptions.STREAMING_SOURCE_ENABLE;
-import static org.apache.flink.connector.file.table.FileSystemConnectorOptions.STREAMING_SOURCE_MONITOR_INTERVAL;
-import static org.apache.flink.connector.file.table.FileSystemConnectorOptions.STREAMING_SOURCE_PARTITION_INCLUDE;
-import static org.apache.flink.connector.file.table.FileSystemConnectorOptions.STREAMING_SOURCE_PARTITION_ORDER;
+import static org.apache.flink.table.filesystem.FileSystemConnectorOptions.LOOKUP_JOIN_CACHE_TTL;
+import static org.apache.flink.table.filesystem.FileSystemConnectorOptions.PARTITION_TIME_EXTRACTOR_CLASS;
+import static org.apache.flink.table.filesystem.FileSystemConnectorOptions.PARTITION_TIME_EXTRACTOR_KIND;
+import static org.apache.flink.table.filesystem.FileSystemConnectorOptions.STREAMING_SOURCE_CONSUME_START_OFFSET;
+import static org.apache.flink.table.filesystem.FileSystemConnectorOptions.STREAMING_SOURCE_ENABLE;
+import static org.apache.flink.table.filesystem.FileSystemConnectorOptions.STREAMING_SOURCE_MONITOR_INTERVAL;
+import static org.apache.flink.table.filesystem.FileSystemConnectorOptions.STREAMING_SOURCE_PARTITION_INCLUDE;
+import static org.apache.flink.table.filesystem.FileSystemConnectorOptions.STREAMING_SOURCE_PARTITION_ORDER;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -283,9 +282,8 @@ public class HiveDynamicTableFactoryTest {
                 ObjectIdentifier.of(hiveCatalog.getName(), "default", tableName);
         CatalogTable catalogTable =
                 (CatalogTable) hiveCatalog.getTable(tableIdentifier.toObjectPath());
-        return FactoryUtil.createDynamicTableSource(
-                (DynamicTableSourceFactory)
-                        hiveCatalog.getFactory().orElseThrow(IllegalStateException::new),
+        return FactoryUtil.createTableSource(
+                hiveCatalog,
                 tableIdentifier,
                 tableEnvInternal.getCatalogManager().resolveCatalogTable(catalogTable),
                 tableEnv.getConfig().getConfiguration(),
@@ -299,9 +297,8 @@ public class HiveDynamicTableFactoryTest {
                 ObjectIdentifier.of(hiveCatalog.getName(), "default", tableName);
         CatalogTable catalogTable =
                 (CatalogTable) hiveCatalog.getTable(tableIdentifier.toObjectPath());
-        return FactoryUtil.createDynamicTableSink(
-                (DynamicTableSinkFactory)
-                        hiveCatalog.getFactory().orElseThrow(IllegalStateException::new),
+        return FactoryUtil.createTableSink(
+                hiveCatalog,
                 tableIdentifier,
                 tableEnvInternal.getCatalogManager().resolveCatalogTable(catalogTable),
                 tableEnv.getConfig().getConfiguration(),

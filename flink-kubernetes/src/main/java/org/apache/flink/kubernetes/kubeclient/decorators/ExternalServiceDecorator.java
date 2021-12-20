@@ -55,7 +55,7 @@ public class ExternalServiceDecorator extends AbstractKubernetesStepDecorator {
                         .endMetadata()
                         .withNewSpec()
                         .withType(kubernetesJobManagerParameters.getRestServiceExposedType().name())
-                        .withSelector(kubernetesJobManagerParameters.getSelectors())
+                        .withSelector(kubernetesJobManagerParameters.getLabels())
                         .addNewPort()
                         .withName(Constants.REST_PORT_NAME)
                         .withPort(kubernetesJobManagerParameters.getRestPort())

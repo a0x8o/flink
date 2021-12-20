@@ -24,11 +24,11 @@ import org.apache.flink.connector.jdbc.JdbcExecutionOptions;
 import org.apache.flink.connector.jdbc.internal.GenericJdbcSinkFunction;
 import org.apache.flink.connector.jdbc.internal.options.JdbcConnectorOptions;
 import org.apache.flink.connector.jdbc.internal.options.JdbcDmlOptions;
+import org.apache.flink.table.api.TableSchema;
 import org.apache.flink.table.connector.ChangelogMode;
 import org.apache.flink.table.connector.sink.DynamicTableSink;
 import org.apache.flink.table.connector.sink.SinkFunctionProvider;
 import org.apache.flink.table.data.RowData;
-import org.apache.flink.table.types.DataType;
 import org.apache.flink.types.RowKind;
 
 import java.util.Objects;
@@ -42,18 +42,18 @@ public class JdbcDynamicTableSink implements DynamicTableSink {
     private final JdbcConnectorOptions jdbcOptions;
     private final JdbcExecutionOptions executionOptions;
     private final JdbcDmlOptions dmlOptions;
-    private final DataType physicalRowDataType;
+    private final TableSchema tableSchema;
     private final String dialectName;
 
     public JdbcDynamicTableSink(
             JdbcConnectorOptions jdbcOptions,
             JdbcExecutionOptions executionOptions,
             JdbcDmlOptions dmlOptions,
-            DataType physicalRowDataType) {
+            TableSchema tableSchema) {
         this.jdbcOptions = jdbcOptions;
         this.executionOptions = executionOptions;
         this.dmlOptions = dmlOptions;
-        this.physicalRowDataType = physicalRowDataType;
+        this.tableSchema = tableSchema;
         this.dialectName = dmlOptions.getDialect().dialectName();
     }
 
@@ -77,23 +77,21 @@ public class JdbcDynamicTableSink implements DynamicTableSink {
     @Override
     public SinkRuntimeProvider getSinkRuntimeProvider(Context context) {
         final TypeInformation<RowData> rowDataTypeInformation =
-                context.createTypeInformation(physicalRowDataType);
+                context.createTypeInformation(tableSchema.toRowDataType());
         final JdbcOutputFormatBuilder builder = new JdbcOutputFormatBuilder();
 
         builder.setJdbcOptions(jdbcOptions);
         builder.setJdbcDmlOptions(dmlOptions);
         builder.setJdbcExecutionOptions(executionOptions);
         builder.setRowDataTypeInfo(rowDataTypeInformation);
-        builder.setFieldDataTypes(
-                DataType.getFieldDataTypes(physicalRowDataType).toArray(new DataType[0]));
+        builder.setFieldDataTypes(tableSchema.getFieldDataTypes());
         return SinkFunctionProvider.of(
                 new GenericJdbcSinkFunction<>(builder.build()), jdbcOptions.getParallelism());
     }
 
     @Override
     public DynamicTableSink copy() {
-        return new JdbcDynamicTableSink(
-                jdbcOptions, executionOptions, dmlOptions, physicalRowDataType);
+        return new JdbcDynamicTableSink(jdbcOptions, executionOptions, dmlOptions, tableSchema);
     }
 
     @Override
@@ -113,13 +111,12 @@ public class JdbcDynamicTableSink implements DynamicTableSink {
         return Objects.equals(jdbcOptions, that.jdbcOptions)
                 && Objects.equals(executionOptions, that.executionOptions)
                 && Objects.equals(dmlOptions, that.dmlOptions)
-                && Objects.equals(physicalRowDataType, that.physicalRowDataType)
+                && Objects.equals(tableSchema, that.tableSchema)
                 && Objects.equals(dialectName, that.dialectName);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(
-                jdbcOptions, executionOptions, dmlOptions, physicalRowDataType, dialectName);
+        return Objects.hash(jdbcOptions, executionOptions, dmlOptions, tableSchema, dialectName);
     }
 }

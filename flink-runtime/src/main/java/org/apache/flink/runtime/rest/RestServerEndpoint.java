@@ -207,12 +207,7 @@ public abstract class RestServerEndpoint implements AutoCloseableAsync {
                                                         sslHandlerFactory));
                             }
 
-                            ch.pipeline()
-                                    .addLast(new HttpServerCodec())
-                                    .addLast(new FileUploadHandler(uploadDir))
-                                    .addLast(
-                                            new FlinkHttpObjectAggregator(
-                                                    maxContentLength, responseHeaders));
+                            ch.pipeline().addLast(new HttpServerCodec());
 
                             for (InboundChannelHandlerFactory factory :
                                     inboundChannelHandlerFactories) {
@@ -224,6 +219,10 @@ public abstract class RestServerEndpoint implements AutoCloseableAsync {
                             }
 
                             ch.pipeline()
+                                    .addLast(new FileUploadHandler(uploadDir))
+                                    .addLast(
+                                            new FlinkHttpObjectAggregator(
+                                                    maxContentLength, responseHeaders))
                                     .addLast(new ChunkedWriteHandler())
                                     .addLast(handler.getName(), handler)
                                     .addLast(new PipelineErrorHandler(log, responseHeaders));
@@ -550,6 +549,7 @@ public abstract class RestServerEndpoint implements AutoCloseableAsync {
     }
 
     /** Creates the upload dir if needed. */
+    @VisibleForTesting
     static void createUploadDir(
             final Path uploadDir, final Logger log, final boolean initialCreation)
             throws IOException {

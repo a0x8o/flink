@@ -44,6 +44,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
 
+import static org.apache.flink.contrib.streaming.state.RocksDBResourceContainer.getFilterFromBlockBasedTableConfig;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.not;
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -317,7 +318,7 @@ public class RocksDBResourceContainerTest {
             assertThat(actual.indexType(), is(IndexType.kTwoLevelIndexSearch));
             assertThat(actual.partitionFilters(), is(true));
             assertThat(actual.pinTopLevelIndexAndFilter(), is(true));
-            assertThat(actual.filterPolicy(), not(blockBasedFilter));
+            assertThat(getFilterFromBlockBasedTableConfig(actual), not(blockBasedFilter));
         }
         assertFalse("Block based filter is left unclosed.", blockBasedFilter.isOwningHandle());
     }

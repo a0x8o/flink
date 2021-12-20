@@ -120,12 +120,7 @@ public class GlueSchemaRegistryOutputStreamSerializerTest extends TestLogger {
             extends GlueSchemaRegistrySerializationFacade {
 
         public MockGlueSchemaRegistrySerializationFacade() {
-            super(
-                    credentialsProvider,
-                    null,
-                    new GlueSchemaRegistryConfiguration(configs),
-                    configs,
-                    null);
+            super(credentialsProvider, null, new GlueSchemaRegistryConfiguration(configs));
         }
 
         @Override

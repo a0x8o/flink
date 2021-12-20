@@ -19,8 +19,8 @@
 import { Component } from '@angular/core';
 import { fromEvent, merge } from 'rxjs';
 import { map, startWith } from 'rxjs/operators';
-
 import { StatusService } from 'services';
+import { MonacoEditorService } from 'share/common/monaco-editor/monaco-editor.service';
 
 @Component({
   selector: 'flink-root',
@@ -37,20 +37,21 @@ export class AppComponent {
 
   webSubmitEnabled = this.statusService.configuration.features['web-submit'];
 
-  showMessage(): void {
+  showMessage() {
     if (this.statusService.listOfErrorMessage.length) {
       this.visible = true;
     }
   }
 
-  clearMessage(): void {
+  clearMessage() {
     this.statusService.listOfErrorMessage = [];
     this.visible = false;
   }
 
-  toggleCollapse(): void {
+  toggleCollapse() {
     this.collapsed = !this.collapsed;
+    this.monacoEditorService.layout();
   }
 
-  constructor(public statusService: StatusService) {}
+  constructor(public statusService: StatusService, private monacoEditorService: MonacoEditorService) {}
 }

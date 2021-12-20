@@ -41,7 +41,6 @@ import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.dispatcher.DispatcherGateway;
 import org.apache.flink.runtime.dispatcher.DispatcherId;
 import org.apache.flink.runtime.dispatcher.MemoryExecutionGraphInfoStore;
-import org.apache.flink.runtime.dispatcher.TriggerSavepointMode;
 import org.apache.flink.runtime.entrypoint.ClusterEntrypointUtils;
 import org.apache.flink.runtime.entrypoint.ClusterInformation;
 import org.apache.flink.runtime.entrypoint.component.DefaultDispatcherResourceManagerComponentFactory;
@@ -504,7 +503,7 @@ public class MiniCluster implements AutoCloseableAsync {
                 return new EmbeddedHaServicesWithLeadershipControl(executor);
             case CONFIGURED:
                 return HighAvailabilityServicesUtils.createAvailableOrEmbeddedServices(
-                        configuration, executor, new ShutDownFatalErrorHandler());
+                        configuration, executor);
             default:
                 throw new IllegalConfigurationException("Unknown HA Services " + haServices);
         }
@@ -616,7 +615,7 @@ public class MiniCluster implements AutoCloseableAsync {
     private void startTaskManagers() throws Exception {
         final int numTaskManagers = miniClusterConfiguration.getNumTaskManagers();
 
-        LOG.info("Starting {} TaskManager(s)", numTaskManagers);
+        LOG.info("Starting {} TaskManger(s)", numTaskManagers);
 
         for (int i = 0; i < numTaskManagers; i++) {
             startTaskManager();
@@ -741,31 +740,16 @@ public class MiniCluster implements AutoCloseableAsync {
             JobID jobId, String targetDirectory, boolean cancelJob) {
         return runDispatcherCommand(
                 dispatcherGateway ->
-                        dispatcherGateway.triggerSavepointAndGetLocation(
-                                jobId,
-                                targetDirectory,
-                                cancelJob
-                                        ? TriggerSavepointMode.CANCEL_WITH_SAVEPOINT
-                                        : TriggerSavepointMode.SAVEPOINT,
-                                rpcTimeout));
-    }
-
-    public CompletableFuture<String> triggerCheckpoint(JobID jobID) {
-        return runDispatcherCommand(
-                dispatcherGateway -> dispatcherGateway.triggerCheckpoint(jobID, rpcTimeout));
+                        dispatcherGateway.triggerSavepoint(
+                                jobId, targetDirectory, cancelJob, rpcTimeout));
     }
 
     public CompletableFuture<String> stopWithSavepoint(
             JobID jobId, String targetDirectory, boolean terminate) {
         return runDispatcherCommand(
                 dispatcherGateway ->
-                        dispatcherGateway.stopWithSavepointAndGetLocation(
-                                jobId,
-                                targetDirectory,
-                                terminate
-                                        ? TriggerSavepointMode.TERMINATE_WITH_SAVEPOINT
-                                        : TriggerSavepointMode.SUSPEND_WITH_SAVEPOINT,
-                                rpcTimeout));
+                        dispatcherGateway.stopWithSavepoint(
+                                jobId, targetDirectory, terminate, rpcTimeout));
     }
 
     public CompletableFuture<Acknowledge> disposeSavepoint(String savepointPath) {

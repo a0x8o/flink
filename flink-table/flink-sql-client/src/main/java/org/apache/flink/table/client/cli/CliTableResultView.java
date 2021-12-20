@@ -22,8 +22,8 @@ import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.table.client.gateway.ResultDescriptor;
 import org.apache.flink.table.client.gateway.SqlExecutionException;
 import org.apache.flink.table.client.gateway.TypedResult;
-import org.apache.flink.table.data.RowData;
-import org.apache.flink.table.utils.print.PrintStyle;
+import org.apache.flink.table.utils.PrintUtils;
+import org.apache.flink.types.Row;
 
 import org.jline.keymap.KeyMap;
 import org.jline.utils.AttributedString;
@@ -32,6 +32,7 @@ import org.jline.utils.AttributedStyle;
 import org.jline.utils.InfoCmp.Capability;
 
 import java.time.LocalTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -54,6 +55,7 @@ public class CliTableResultView extends CliResultView<CliTableResultView.ResultT
     private int page;
     private LocalTime lastRetrieval;
     private int previousResultsPage;
+    private final ZoneId sessionTimeZone;
 
     private static final int DEFAULT_REFRESH_INTERVAL = 3; // every 1s
     private static final int MIN_REFRESH_INTERVAL = 1; // every 100ms
@@ -63,12 +65,11 @@ public class CliTableResultView extends CliResultView<CliTableResultView.ResultT
         super(
                 client,
                 resultDescriptor,
-                PrintStyle.tableauWithTypeInferredColumnWidths(
-                        resultDescriptor.getResultSchema(),
-                        resultDescriptor.getRowDataStringConverter(),
+                PrintUtils.columnWidthsByType(
+                        resultDescriptor.getResultSchema().getColumns(),
                         resultDescriptor.maxColumnWidth(),
-                        false,
-                        false));
+                        PrintUtils.NULL_COLUMN,
+                        null));
 
         refreshInterval = DEFAULT_REFRESH_INTERVAL;
         pageCount = 1;
@@ -77,6 +78,9 @@ public class CliTableResultView extends CliResultView<CliTableResultView.ResultT
         previousResults = Collections.emptyList();
         previousResultsPage = 1;
         results = Collections.emptyList();
+        this.sessionTimeZone =
+                CliUtils.getSessionTimeZone(
+                        client.getExecutor().getSessionConfig(client.getSessionId()));
     }
 
     // --------------------------------------------------------------------------------------------
@@ -292,7 +296,7 @@ public class CliTableResultView extends CliResultView<CliTableResultView.ResultT
     private void updatePage() {
         // retrieve page
         final int retrievalPage = page == LAST_PAGE ? pageCount : page;
-        final List<RowData> rows;
+        final List<Row> rows;
         try {
             rows =
                     client.getExecutor()
@@ -305,7 +309,12 @@ public class CliTableResultView extends CliResultView<CliTableResultView.ResultT
         // convert page
         final List<String[]> stringRows =
                 rows.stream()
-                        .map(resultDescriptor.getRowDataStringConverter()::convert)
+                        .map(
+                                r ->
+                                        PrintUtils.rowToString(
+                                                r,
+                                                resultDescriptor.getResultSchema(),
+                                                sessionTimeZone))
                         .collect(Collectors.toList());
 
         // update results

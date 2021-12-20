@@ -18,7 +18,6 @@
 
 package org.apache.flink.connector.base.source.reader.fetcher;
 
-import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.connector.source.SourceSplit;
 import org.apache.flink.connector.base.source.reader.splitreader.SplitReader;
 import org.apache.flink.connector.base.source.reader.splitreader.SplitsAddition;
@@ -27,7 +26,6 @@ import java.util.List;
 import java.util.Map;
 
 /** The task to add splits. */
-@Internal
 class AddSplitsTask<SplitT extends SourceSplit> implements SplitFetcherTask {
 
     private final SplitReader<?, SplitT> splitReader;

@@ -17,8 +17,7 @@
  */
 
 import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
-
-import { COLOR_MAP, ColorKey } from 'config';
+import { COLOR_MAP } from 'config';
 
 @Component({
   selector: 'flink-checkpoint-badge',
@@ -27,9 +26,9 @@ import { COLOR_MAP, ColorKey } from 'config';
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class CheckpointBadgeComponent {
-  @Input() public state: string;
+  @Input() state: any;
 
-  public get backgroundColor(): string {
-    return COLOR_MAP[this.state as ColorKey];
+  get colorMap(): any {
+    return COLOR_MAP;
   }
 }

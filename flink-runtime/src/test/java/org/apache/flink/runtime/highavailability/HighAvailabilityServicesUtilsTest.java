@@ -22,7 +22,6 @@ import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.HighAvailabilityOptions;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.runtime.jobmanager.HighAvailabilityMode;
-import org.apache.flink.runtime.rest.util.NoOpFatalErrorHandler;
 import org.apache.flink.runtime.rpc.AddressResolution;
 import org.apache.flink.runtime.rpc.RpcSystem;
 import org.apache.flink.util.TestLogger;
@@ -58,8 +57,7 @@ public class HighAvailabilityServicesUtilsTest extends TestLogger {
 
         // when
         HighAvailabilityServices actualHaServices =
-                HighAvailabilityServicesUtils.createAvailableOrEmbeddedServices(
-                        config, executor, NoOpFatalErrorHandler.INSTANCE);
+                HighAvailabilityServicesUtils.createAvailableOrEmbeddedServices(config, executor);
 
         // then
         assertSame(haServices, actualHaServices);
@@ -70,8 +68,7 @@ public class HighAvailabilityServicesUtilsTest extends TestLogger {
                         config,
                         executor,
                         AddressResolution.NO_ADDRESS_RESOLUTION,
-                        RpcSystem.load(),
-                        NoOpFatalErrorHandler.INSTANCE);
+                        RpcSystem.load());
 
         // then
         assertSame(haServices, actualHaServices);
@@ -89,8 +86,7 @@ public class HighAvailabilityServicesUtilsTest extends TestLogger {
 
         // when
         ClientHighAvailabilityServices actualClientHAServices =
-                HighAvailabilityServicesUtils.createClientHAService(
-                        config, NoOpFatalErrorHandler.INSTANCE);
+                HighAvailabilityServicesUtils.createClientHAService(config);
 
         // then
         assertSame(clientHAServices, actualClientHAServices);
@@ -107,8 +103,7 @@ public class HighAvailabilityServicesUtilsTest extends TestLogger {
                 HighAvailabilityMode.FACTORY_CLASS.name().toLowerCase());
 
         // expect
-        HighAvailabilityServicesUtils.createAvailableOrEmbeddedServices(
-                config, executor, NoOpFatalErrorHandler.INSTANCE);
+        HighAvailabilityServicesUtils.createAvailableOrEmbeddedServices(config, executor);
     }
 
     @Test

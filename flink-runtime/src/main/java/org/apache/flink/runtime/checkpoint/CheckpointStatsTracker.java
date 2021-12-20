@@ -24,6 +24,7 @@ import org.apache.flink.metrics.Metric;
 import org.apache.flink.metrics.MetricGroup;
 import org.apache.flink.runtime.executiongraph.ExecutionVertex;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
+import org.apache.flink.runtime.jobgraph.tasks.CheckpointCoordinatorConfiguration;
 
 import javax.annotation.Nullable;
 
@@ -61,6 +62,9 @@ public class CheckpointStatsTracker {
      */
     private final ReentrantLock statsReadWriteLock = new ReentrantLock();
 
+    /** Snapshotting settings created from the CheckpointConfig. */
+    private final CheckpointCoordinatorConfiguration jobCheckpointingConfiguration;
+
     /** Checkpoint counts. */
     private final CheckpointStatsCounts counts = new CheckpointStatsCounts();
 
@@ -90,12 +94,17 @@ public class CheckpointStatsTracker {
      *
      * @param numRememberedCheckpoints Maximum number of checkpoints to remember, including in
      *     progress ones.
+     * @param jobCheckpointingConfiguration Checkpointing configuration.
      * @param metricGroup Metric group for exposed metrics
      */
-    public CheckpointStatsTracker(int numRememberedCheckpoints, MetricGroup metricGroup) {
+    public CheckpointStatsTracker(
+            int numRememberedCheckpoints,
+            CheckpointCoordinatorConfiguration jobCheckpointingConfiguration,
+            MetricGroup metricGroup) {
 
         checkArgument(numRememberedCheckpoints >= 0, "Negative number of remembered checkpoints");
         this.history = new CheckpointStatsHistory(numRememberedCheckpoints);
+        this.jobCheckpointingConfiguration = checkNotNull(jobCheckpointingConfiguration);
 
         // Latest snapshot is empty
         latestSnapshot =
@@ -107,6 +116,15 @@ public class CheckpointStatsTracker {
 
         // Register the metrics
         registerMetrics(metricGroup);
+    }
+
+    /**
+     * Returns the job's checkpointing configuration which is derived from the CheckpointConfig.
+     *
+     * @return The job's checkpointing configuration.
+     */
+    public CheckpointCoordinatorConfiguration getJobCheckpointingConfiguration() {
+        return jobCheckpointingConfiguration;
     }
 
     /**

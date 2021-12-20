@@ -20,7 +20,6 @@ package org.apache.flink.runtime.jobmaster;
 
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.CoreOptions;
-import org.apache.flink.configuration.JobManagerOptions;
 import org.apache.flink.runtime.blob.BlobServer;
 import org.apache.flink.runtime.blob.BlobWriter;
 import org.apache.flink.runtime.execution.librarycache.BlobLibraryCacheManager;
@@ -33,17 +32,12 @@ import org.apache.flink.runtime.shuffle.ShuffleMasterContextImpl;
 import org.apache.flink.runtime.shuffle.ShuffleServiceLoader;
 import org.apache.flink.runtime.util.Hardware;
 import org.apache.flink.util.ExceptionUtils;
-import org.apache.flink.util.ExecutorUtils;
 import org.apache.flink.util.concurrent.ExecutorThreadFactory;
 
 import javax.annotation.Nonnull;
 
-import java.time.Duration;
-import java.util.concurrent.Executor;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
@@ -53,11 +47,7 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  */
 public class JobManagerSharedServices {
 
-    private static final Duration SHUTDOWN_TIMEOUT = Duration.ofSeconds(10);
-
-    private final ScheduledExecutorService futureExecutor;
-
-    private final ExecutorService ioExecutor;
+    private final ScheduledExecutorService scheduledExecutorService;
 
     private final LibraryCacheManager libraryCacheManager;
 
@@ -66,25 +56,19 @@ public class JobManagerSharedServices {
     @Nonnull private final BlobWriter blobWriter;
 
     public JobManagerSharedServices(
-            ScheduledExecutorService futureExecutor,
-            ExecutorService ioExecutor,
+            ScheduledExecutorService scheduledExecutorService,
             LibraryCacheManager libraryCacheManager,
             ShuffleMaster<?> shuffleMaster,
             @Nonnull BlobWriter blobWriter) {
 
-        this.futureExecutor = checkNotNull(futureExecutor);
-        this.ioExecutor = checkNotNull(ioExecutor);
+        this.scheduledExecutorService = checkNotNull(scheduledExecutorService);
         this.libraryCacheManager = checkNotNull(libraryCacheManager);
         this.shuffleMaster = checkNotNull(shuffleMaster);
         this.blobWriter = blobWriter;
     }
 
-    public ScheduledExecutorService getFutureExecutor() {
-        return futureExecutor;
-    }
-
-    public Executor getIoExecutor() {
-        return ioExecutor;
+    public ScheduledExecutorService getScheduledExecutorService() {
+        return scheduledExecutorService;
     }
 
     public LibraryCacheManager getLibraryCacheManager() {
@@ -113,8 +97,7 @@ public class JobManagerSharedServices {
         Throwable exception = null;
 
         try {
-            ExecutorUtils.gracefulShutdown(
-                    SHUTDOWN_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS, futureExecutor, ioExecutor);
+            scheduledExecutorService.shutdownNow();
         } catch (Throwable t) {
             exception = t;
         }
@@ -164,18 +147,10 @@ public class JobManagerSharedServices {
                                 failOnJvmMetaspaceOomError ? fatalErrorHandler : null,
                                 checkClassLoaderLeak));
 
-        final int numberCPUCores = Hardware.getNumberCPUCores();
-        final int jobManagerFuturePoolSize =
-                config.getInteger(JobManagerOptions.JOB_MANAGER_FUTURE_POOL_SIZE, numberCPUCores);
         final ScheduledExecutorService futureExecutor =
                 Executors.newScheduledThreadPool(
-                        jobManagerFuturePoolSize, new ExecutorThreadFactory("jobmanager-future"));
-
-        final int jobManagerIoPoolSize =
-                config.getInteger(JobManagerOptions.JOB_MANAGER_IO_POOL_SIZE, numberCPUCores);
-        final ExecutorService ioExecutor =
-                Executors.newFixedThreadPool(
-                        jobManagerIoPoolSize, new ExecutorThreadFactory("jobmanager-io"));
+                        Hardware.getNumberCPUCores(),
+                        new ExecutorThreadFactory("jobmanager-future"));
 
         final ShuffleMasterContext shuffleMasterContext =
                 new ShuffleMasterContextImpl(config, fatalErrorHandler);
@@ -185,6 +160,6 @@ public class JobManagerSharedServices {
         shuffleMaster.start();
 
         return new JobManagerSharedServices(
-                futureExecutor, ioExecutor, libraryCacheManager, shuffleMaster, blobServer);
+                futureExecutor, libraryCacheManager, shuffleMaster, blobServer);
     }
 }

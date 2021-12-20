@@ -60,13 +60,11 @@ public class ExpressionConverterTest {
 
     private final TableConfig tableConfig = new TableConfig();
     private final CatalogManager catalogManager = CatalogManagerMocks.createEmptyCatalogManager();
-    private final ModuleManager moduleManager = new ModuleManager();
     private final PlannerContext plannerContext =
             new PlannerContext(
                     false,
                     tableConfig,
-                    moduleManager,
-                    new FunctionCatalog(tableConfig, catalogManager, moduleManager),
+                    new FunctionCatalog(tableConfig, catalogManager, new ModuleManager()),
                     catalogManager,
                     CalciteSchema.from(MetadataTestUtil.initRootSchema()),
                     Arrays.asList(

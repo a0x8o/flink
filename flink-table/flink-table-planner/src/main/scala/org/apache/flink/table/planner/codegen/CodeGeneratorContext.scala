@@ -27,7 +27,7 @@ import org.apache.flink.table.functions.{FunctionContext, UserDefinedFunction}
 import org.apache.flink.table.planner.codegen.CodeGenUtils._
 import org.apache.flink.table.planner.codegen.GenerateUtils.generateRecordStatement
 import org.apache.flink.table.planner.utils.InternalConfigOptions
-import org.apache.flink.table.utils.DateTimeUtils
+import org.apache.flink.table.runtime.functions.SqlDateTimeUtils
 import org.apache.flink.table.runtime.operators.TableStreamOperator
 import org.apache.flink.table.runtime.typeutils.{ExternalSerializer, InternalSerializers}
 import org.apache.flink.table.runtime.util.collections._
@@ -50,10 +50,6 @@ class CodeGeneratorContext(val tableConfig: TableConfig) {
 
   // holding a list of objects that could be used passed into generated class
   val references: mutable.ArrayBuffer[AnyRef] = new mutable.ArrayBuffer[AnyRef]()
-
-  // set of strings (lines) that will be concatenated into a single class header comment
-  private val reusableHeaderComments: mutable.LinkedHashSet[String] =
-    mutable.LinkedHashSet[String]()
 
   // set of member statements that will be added only once
   // we use a LinkedHashSet to keep the insertion order
@@ -147,16 +143,6 @@ class CodeGeneratorContext(val tableConfig: TableConfig) {
 
   def nullCheck: Boolean = tableConfig.getNullCheck
 
-
-  /**
-    * Add a line comment to [[reusableHeaderComments]] list which will be concatenated
-    * into a single class header comment.
-    * @param comment The comment to add for class header
-    */
-  def addReusableHeaderComment(comment: String): Unit = {
-    reusableHeaderComments.add(comment)
-  }
-
   // ---------------------------------------------------------------------------------
   // Local Variables for Code Split
   // ---------------------------------------------------------------------------------
@@ -209,17 +195,6 @@ class CodeGeneratorContext(val tableConfig: TableConfig) {
   // ---------------------------------------------------------------------------------
   // generate reuse code methods
   // ---------------------------------------------------------------------------------
-
-  /**
-    * @return Comment to be added as a header comment on the generated class
-    */
-  def getClassHeaderComment(): String = {
-    s"""
-    |/*
-    | * ${reusableHeaderComments.mkString("\n * ")}
-    | */
-    """.stripMargin
-  }
 
   /**
     * @return code block of statements that need to be placed in the member area of the class
@@ -551,12 +526,12 @@ class CodeGeneratorContext(val tableConfig: TableConfig) {
 
     // declaration
     reusableMemberStatements.add(s"private int $fieldTerm;")
-    val utilsName = classOf[DateTimeUtils].getCanonicalName
+    val utilsName = classOf[SqlDateTimeUtils].getCanonicalName
 
     // assignment
     val field =
     s"""
-       |$fieldTerm = $utilsName.timestampMillisToTime($localtimestamp.getMillisecond());
+       |$fieldTerm = $utilsName.getTimeInMills($localtimestamp.getMillisecond());
        |""".stripMargin
     reusablePerRecordStatements.add(field)
     fieldTerm
@@ -570,12 +545,12 @@ class CodeGeneratorContext(val tableConfig: TableConfig) {
     val fieldTerm = s"queryStartLocaltime"
 
     val queryStartLocalTimestamp = addReusableQueryLevelLocalDateTime()
-    val utilsName = classOf[DateTimeUtils].getCanonicalName
+    val utilsName = classOf[SqlDateTimeUtils].getCanonicalName
     // declaration
     reusableMemberStatements.add(
       s"""
           |private static final int $fieldTerm =
-          | $utilsName.timestampMillisToTime($queryStartLocalTimestamp.getMillisecond());
+          | $utilsName.getTimeInMills($queryStartLocalTimestamp.getMillisecond());
           | """.stripMargin)
     fieldTerm
   }
@@ -587,13 +562,13 @@ class CodeGeneratorContext(val tableConfig: TableConfig) {
     val fieldTerm = s"date"
 
     val timestamp = addReusableRecordLevelLocalDateTime()
-    val utilsName = classOf[DateTimeUtils].getCanonicalName
+    val utilsName = classOf[SqlDateTimeUtils].getCanonicalName
 
     // declaration
     reusableMemberStatements.add(s"private int $fieldTerm;")
 
     // assignment
-    val field = s"$fieldTerm = $utilsName.timestampMillisToDate($timestamp.getMillisecond());"
+    val field = s"$fieldTerm = $utilsName.getDateInDays($timestamp.getMillisecond());"
 
     reusablePerRecordStatements.add(field)
     fieldTerm
@@ -604,13 +579,13 @@ class CodeGeneratorContext(val tableConfig: TableConfig) {
    */
   def addReusableQueryLevelCurrentDate(): String = {
     val fieldTerm = s"queryStartDate"
-    val utilsName = classOf[DateTimeUtils].getCanonicalName
+    val utilsName = classOf[SqlDateTimeUtils].getCanonicalName
 
     val timestamp = addReusableQueryLevelLocalDateTime()
     reusableMemberStatements.add(
     s"""
        |private static final int $fieldTerm =
-       | $fieldTerm = $utilsName.timestampMillisToDate($timestamp.getMillisecond());
+       | $fieldTerm = $utilsName.getDateInDays($timestamp.getMillisecond());
        |""".stripMargin)
 
     fieldTerm

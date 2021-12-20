@@ -29,14 +29,11 @@ public class JdbcLookupOptions implements Serializable {
     private final long cacheMaxSize;
     private final long cacheExpireMs;
     private final int maxRetryTimes;
-    private final boolean cacheMissingKey;
 
-    public JdbcLookupOptions(
-            long cacheMaxSize, long cacheExpireMs, int maxRetryTimes, boolean cacheMissingKey) {
+    public JdbcLookupOptions(long cacheMaxSize, long cacheExpireMs, int maxRetryTimes) {
         this.cacheMaxSize = cacheMaxSize;
         this.cacheExpireMs = cacheExpireMs;
         this.maxRetryTimes = maxRetryTimes;
-        this.cacheMissingKey = cacheMissingKey;
     }
 
     public long getCacheMaxSize() {
@@ -51,10 +48,6 @@ public class JdbcLookupOptions implements Serializable {
         return maxRetryTimes;
     }
 
-    public boolean getCacheMissingKey() {
-        return cacheMissingKey;
-    }
-
     public static Builder builder() {
         return new Builder();
     }
@@ -65,8 +58,7 @@ public class JdbcLookupOptions implements Serializable {
             JdbcLookupOptions options = (JdbcLookupOptions) o;
             return Objects.equals(cacheMaxSize, options.cacheMaxSize)
                     && Objects.equals(cacheExpireMs, options.cacheExpireMs)
-                    && Objects.equals(maxRetryTimes, options.maxRetryTimes)
-                    && Objects.equals(cacheMissingKey, options.cacheMissingKey);
+                    && Objects.equals(maxRetryTimes, options.maxRetryTimes);
         } else {
             return false;
         }
@@ -77,7 +69,6 @@ public class JdbcLookupOptions implements Serializable {
         private long cacheMaxSize = -1L;
         private long cacheExpireMs = -1L;
         private int maxRetryTimes = JdbcExecutionOptions.DEFAULT_MAX_RETRY_TIMES;
-        private boolean cacheMissingKey = true;
 
         /** optional, lookup cache max size, over this value, the old data will be eliminated. */
         public Builder setCacheMaxSize(long cacheMaxSize) {
@@ -97,15 +88,8 @@ public class JdbcLookupOptions implements Serializable {
             return this;
         }
 
-        /** optional, whether to exclude empty result. */
-        public Builder setCacheMissingKey(boolean cacheMissingKey) {
-            this.cacheMissingKey = cacheMissingKey;
-            return this;
-        }
-
         public JdbcLookupOptions build() {
-            return new JdbcLookupOptions(
-                    cacheMaxSize, cacheExpireMs, maxRetryTimes, cacheMissingKey);
+            return new JdbcLookupOptions(cacheMaxSize, cacheExpireMs, maxRetryTimes);
         }
     }
 }

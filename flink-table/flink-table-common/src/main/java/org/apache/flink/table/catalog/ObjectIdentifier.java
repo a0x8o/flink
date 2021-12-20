@@ -18,7 +18,6 @@
 
 package org.apache.flink.table.catalog;
 
-import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.util.Preconditions;
 
 import java.io.Serializable;
@@ -39,7 +38,6 @@ import static org.apache.flink.table.utils.EncodingUtils.escapeIdentifier;
  * <p>Two objects are considered equal if they share the same object identifier in a stable session
  * context.
  */
-@PublicEvolving
 public final class ObjectIdentifier implements Serializable {
 
     private final String catalogName;

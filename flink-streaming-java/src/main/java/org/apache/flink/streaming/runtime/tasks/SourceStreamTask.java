@@ -24,7 +24,6 @@ import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.checkpoint.CheckpointType;
 import org.apache.flink.runtime.execution.CancelTaskException;
 import org.apache.flink.runtime.execution.Environment;
-import org.apache.flink.runtime.io.network.api.StopMode;
 import org.apache.flink.runtime.metrics.MetricNames;
 import org.apache.flink.runtime.state.CheckpointStorageLocationReference;
 import org.apache.flink.streaming.api.checkpoint.ExternallyInducedSource;
@@ -36,8 +35,6 @@ import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.FatalExitExceptionHandler;
 import org.apache.flink.util.FlinkException;
 import org.apache.flink.util.Preconditions;
-
-import javax.annotation.Nullable;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -70,18 +67,18 @@ public class SourceStreamTask<
     private final AtomicBoolean stopped = new AtomicBoolean(false);
 
     private enum FinishingReason {
-        END_OF_DATA(StopMode.DRAIN),
-        STOP_WITH_SAVEPOINT_DRAIN(StopMode.DRAIN),
-        STOP_WITH_SAVEPOINT_NO_DRAIN(StopMode.NO_DRAIN);
+        END_OF_DATA(true),
+        STOP_WITH_SAVEPOINT_DRAIN(true),
+        STOP_WITH_SAVEPOINT_NO_DRAIN(false);
 
-        private final StopMode stopMode;
+        private final boolean shouldCallFinish;
 
-        FinishingReason(StopMode stopMode) {
-            this.stopMode = stopMode;
+        FinishingReason(boolean shouldCallFinish) {
+            this.shouldCallFinish = shouldCallFinish;
         }
 
-        StopMode toStopMode() {
-            return this.stopMode;
+        boolean shouldCallFinish() {
+            return this.shouldCallFinish;
         }
     }
 
@@ -202,41 +199,49 @@ public class SourceStreamTask<
     @Override
     protected void cancelTask() {
         if (stopped.compareAndSet(false, true)) {
-            cancelOperator();
+            if (isFailing()) {
+                interruptSourceThread(true);
+            }
+            cancelOperator(true);
         }
     }
 
-    private void cancelOperator() {
+    @Override
+    protected void finishTask() {
+        this.finishingReason = FinishingReason.STOP_WITH_SAVEPOINT_NO_DRAIN;
+        /**
+         * Currently stop with savepoint relies on the EndOfPartitionEvents propagation and performs
+         * clean shutdown after the stop with savepoint (which can produce some records to process
+         * after the savepoint while stopping). If we interrupt source thread, we might leave the
+         * network stack in an inconsistent state. So, if we want to relay on the clean shutdown, we
+         * can not interrupt the source thread.
+         */
+        cancelOperator(false);
+    }
+
+    private void cancelOperator(boolean interruptThread) {
         try {
             if (mainOperator != null) {
                 mainOperator.cancel();
             }
         } finally {
-            if (sourceThread.isAlive()) {
-                interruptSourceThread();
-            } else if (!sourceThread.getCompletionFuture().isDone()) {
-                // sourceThread not alive and completion future not done means source thread
-                // didn't start and we need to manually complete the future
-                sourceThread.getCompletionFuture().complete(null);
-            }
+            interruptSourceThread(interruptThread);
         }
     }
 
-    @Override
-    public void maybeInterruptOnCancel(
-            Thread toInterrupt, @Nullable String taskName, @Nullable Long timeout) {
-        super.maybeInterruptOnCancel(toInterrupt, taskName, timeout);
-        interruptSourceThread();
-    }
-
-    private void interruptSourceThread() {
+    private void interruptSourceThread(boolean interrupt) {
         // Nothing need to do if the source is finished on restore
-        if (operatorChain != null && operatorChain.isTaskDeployedAsFinished()) {
+        if (operatorChain != null && operatorChain.isFinishedOnRestore()) {
             return;
         }
 
         if (sourceThread.isAlive()) {
-            sourceThread.interrupt();
+            if (interrupt) {
+                sourceThread.interrupt();
+            }
+        } else if (!sourceThread.getCompletionFuture().isDone()) {
+            // source thread didn't start
+            sourceThread.getCompletionFuture().complete(null);
         }
     }
 
@@ -253,8 +258,9 @@ public class SourceStreamTask<
     public CompletableFuture<Boolean> triggerCheckpointAsync(
             CheckpointMetaData checkpointMetaData, CheckpointOptions checkpointOptions) {
         if (!externallyInducedCheckpoints) {
-            if (checkpointOptions.getCheckpointType().isSynchronous()) {
-                return triggerStopWithSavepointAsync(checkpointMetaData, checkpointOptions);
+            if (checkpointOptions.getCheckpointType().shouldDrain()) {
+                return triggerStopWithSavepointWithDrainAsync(
+                        checkpointMetaData, checkpointOptions);
             } else {
                 return super.triggerCheckpointAsync(checkpointMetaData, checkpointOptions);
             }
@@ -266,28 +272,26 @@ public class SourceStreamTask<
         }
     }
 
-    private CompletableFuture<Boolean> triggerStopWithSavepointAsync(
+    private CompletableFuture<Boolean> triggerStopWithSavepointWithDrainAsync(
             CheckpointMetaData checkpointMetaData, CheckpointOptions checkpointOptions) {
         mainMailboxExecutor.execute(
                 () ->
-                        stopOperatorForStopWithSavepoint(
-                                checkpointMetaData.getCheckpointId(),
-                                checkpointOptions.getCheckpointType().shouldDrain()),
+                        stopOperatorForStopWithSavepointWithDrain(
+                                checkpointMetaData.getCheckpointId()),
                 "stop legacy source for stop-with-savepoint --drain");
-        return sourceThread
-                .getCompletionFuture()
-                .thenCompose(
-                        ignore ->
-                                super.triggerCheckpointAsync(
-                                        checkpointMetaData, checkpointOptions));
+        return assertTriggeringCheckpointExceptions(
+                sourceThread
+                        .getCompletionFuture()
+                        .thenCompose(
+                                ignore ->
+                                        super.triggerCheckpointAsync(
+                                                checkpointMetaData, checkpointOptions)),
+                checkpointMetaData.getCheckpointId());
     }
 
-    private void stopOperatorForStopWithSavepoint(long checkpointId, boolean drain) {
-        setSynchronousSavepoint(checkpointId);
-        finishingReason =
-                drain
-                        ? FinishingReason.STOP_WITH_SAVEPOINT_DRAIN
-                        : FinishingReason.STOP_WITH_SAVEPOINT_NO_DRAIN;
+    private void stopOperatorForStopWithSavepointWithDrain(long checkpointId) {
+        setSynchronousSavepoint(checkpointId, true);
+        finishingReason = FinishingReason.STOP_WITH_SAVEPOINT_DRAIN;
         if (mainOperator != null) {
             mainOperator.stop();
         }
@@ -300,7 +304,7 @@ public class SourceStreamTask<
         }
     }
 
-    /** Runnable that executes the source function in the head operator. */
+    /** Runnable that executes the the source function in the head operator. */
     private class LegacySourceFunctionThread extends Thread {
 
         private final CompletableFuture<Void> completionFuture;
@@ -312,7 +316,7 @@ public class SourceStreamTask<
         @Override
         public void run() {
             try {
-                if (!operatorChain.isTaskDeployedAsFinished()) {
+                if (!operatorChain.isFinishedOnRestore()) {
                     LOG.debug(
                             "Legacy source {} skip execution since the task is finished on restore",
                             getTaskNameWithSubtaskAndId());
@@ -326,6 +330,9 @@ public class SourceStreamTask<
                         && ExceptionUtils.findThrowable(t, InterruptedException.class)
                                 .isPresent()) {
                     completionFuture.completeExceptionally(new CancelTaskException(t));
+                } else if (finishingReason == FinishingReason.STOP_WITH_SAVEPOINT_NO_DRAIN) {
+                    // swallow all exceptions if the source was stopped without drain
+                    completionFuture.complete(null);
                 } else {
                     completionFuture.completeExceptionally(t);
                 }
@@ -333,17 +340,15 @@ public class SourceStreamTask<
         }
 
         private void completeProcessing() throws InterruptedException, ExecutionException {
-            if (!isCanceled() && !isFailing()) {
+            if (finishingReason.shouldCallFinish() && !isCanceled() && !isFailing()) {
                 mainMailboxExecutor
                         .submit(
                                 () -> {
                                     // theoretically the StreamSource can implement BoundedOneInput,
-                                    // so we need to call it here
-                                    final StopMode stopMode = finishingReason.toStopMode();
-                                    if (stopMode == StopMode.DRAIN) {
-                                        operatorChain.endInput(1);
-                                    }
-                                    endData(stopMode);
+                                    // so we
+                                    // need to call it here
+                                    operatorChain.endInput(1);
+                                    endData();
                                 },
                                 "SourceStreamTask finished processing data.")
                         .get();

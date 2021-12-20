@@ -19,7 +19,6 @@
 
 package org.apache.flink.runtime.scheduler;
 
-import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.configuration.CheckpointingOptions;
 import org.apache.flink.configuration.ClusterOptions;
@@ -38,9 +37,6 @@ import org.apache.flink.runtime.scheduler.strategy.PipelinedRegionSchedulingStra
 import org.apache.flink.runtime.scheduler.strategy.SchedulingStrategyFactory;
 import org.apache.flink.util.clock.SystemClock;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.util.function.Consumer;
 
 import static org.apache.flink.util.Preconditions.checkArgument;
@@ -50,7 +46,6 @@ import static org.apache.flink.util.Preconditions.checkArgument;
  * PipelinedRegionSchedulingStrategy}.
  */
 public class DefaultSchedulerComponents {
-    private static final Logger LOG = LoggerFactory.getLogger(DefaultSchedulerComponents.class);
 
     private final SchedulingStrategyFactory schedulingStrategyFactory;
     private final Consumer<ComponentMainThreadExecutor> startUpAction;
@@ -99,7 +94,7 @@ public class DefaultSchedulerComponents {
             final Time slotRequestTimeout) {
 
         final SlotSelectionStrategy slotSelectionStrategy =
-                selectSlotSelectionStrategy(jobType, jobMasterConfiguration);
+                selectSlotSelectionStrategy(jobMasterConfiguration);
         final PhysicalSlotRequestBulkChecker bulkChecker =
                 PhysicalSlotRequestBulkCheckerImpl.createFromSlotPool(
                         slotPool, SystemClock.getInstance());
@@ -117,9 +112,8 @@ public class DefaultSchedulerComponents {
                 allocatorFactory);
     }
 
-    @VisibleForTesting
-    static SlotSelectionStrategy selectSlotSelectionStrategy(
-            final JobType jobType, final Configuration configuration) {
+    private static SlotSelectionStrategy selectSlotSelectionStrategy(
+            final Configuration configuration) {
         final boolean evenlySpreadOutSlots =
                 configuration.getBoolean(ClusterOptions.EVENLY_SPREAD_OUT_SLOTS_STRATEGY);
 
@@ -130,20 +124,9 @@ public class DefaultSchedulerComponents {
                         ? LocationPreferenceSlotSelectionStrategy.createEvenlySpreadOut()
                         : LocationPreferenceSlotSelectionStrategy.createDefault();
 
-        final boolean isLocalRecoveryEnabled =
-                configuration.getBoolean(CheckpointingOptions.LOCAL_RECOVERY);
-        if (isLocalRecoveryEnabled) {
-            if (jobType == JobType.STREAMING) {
-                return PreviousAllocationSlotSelectionStrategy.create(
-                        locationPreferenceSlotSelectionStrategy);
-            } else {
-                LOG.warn(
-                        "Batch job does not support local recovery. Falling back to use "
-                                + locationPreferenceSlotSelectionStrategy.getClass());
-                return locationPreferenceSlotSelectionStrategy;
-            }
-        } else {
-            return locationPreferenceSlotSelectionStrategy;
-        }
+        return configuration.getBoolean(CheckpointingOptions.LOCAL_RECOVERY)
+                ? PreviousAllocationSlotSelectionStrategy.create(
+                        locationPreferenceSlotSelectionStrategy)
+                : locationPreferenceSlotSelectionStrategy;
     }
 }

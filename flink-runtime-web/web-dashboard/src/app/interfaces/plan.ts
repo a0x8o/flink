@@ -16,12 +16,12 @@
  * limitations under the License.
  */
 
-import { NodesItem } from './job-detail';
+import { NodesItemInterface } from './job-detail';
 
-export interface Plan {
+export interface PlanInterface {
   plan: {
     jid: string;
     name: string;
-    nodes: NodesItem[];
+    nodes: NodesItemInterface[];
   };
 }

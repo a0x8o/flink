@@ -26,8 +26,6 @@ import org.apache.flink.runtime.checkpoint.CheckpointMetricsBuilder;
 import org.apache.flink.runtime.checkpoint.TaskStateSnapshot;
 import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.jobgraph.OperatorID;
-import org.apache.flink.runtime.taskmanager.AsyncExceptionHandler;
-import org.apache.flink.runtime.taskmanager.AsynchronousException;
 import org.apache.flink.streaming.api.operators.OperatorSnapshotFinalizer;
 import org.apache.flink.streaming.api.operators.OperatorSnapshotFutures;
 import org.apache.flink.util.ExceptionUtils;
@@ -54,8 +52,8 @@ final class AsyncCheckpointRunnable implements Runnable, Closeable {
     public static final Logger LOG = LoggerFactory.getLogger(AsyncCheckpointRunnable.class);
     private final String taskName;
     private final Consumer<AsyncCheckpointRunnable> unregisterConsumer;
-    private final boolean isTaskDeployedAsFinished;
-    private final boolean isTaskFinished;
+    private final boolean isFinishedOnRestore;
+    private final boolean isOperatorsFinished;
     private final Supplier<Boolean> isTaskRunning;
     private final Environment taskEnvironment;
     private final CompletableFuture<Void> finishedFuture = new CompletableFuture<>();
@@ -87,8 +85,8 @@ final class AsyncCheckpointRunnable implements Runnable, Closeable {
             Consumer<AsyncCheckpointRunnable> unregister,
             Environment taskEnvironment,
             AsyncExceptionHandler asyncExceptionHandler,
-            boolean isTaskDeployedAsFinished,
-            boolean isTaskFinished,
+            boolean isFinishedOnRestore,
+            boolean isOperatorsFinished,
             Supplier<Boolean> isTaskRunning) {
 
         this.operatorSnapshotsInProgress = checkNotNull(operatorSnapshotsInProgress);
@@ -99,8 +97,8 @@ final class AsyncCheckpointRunnable implements Runnable, Closeable {
         this.unregisterConsumer = unregister;
         this.taskEnvironment = checkNotNull(taskEnvironment);
         this.asyncExceptionHandler = checkNotNull(asyncExceptionHandler);
-        this.isTaskDeployedAsFinished = isTaskDeployedAsFinished;
-        this.isTaskFinished = isTaskFinished;
+        this.isFinishedOnRestore = isFinishedOnRestore;
+        this.isOperatorsFinished = isOperatorsFinished;
         this.isTaskRunning = isTaskRunning;
     }
 
@@ -118,7 +116,7 @@ final class AsyncCheckpointRunnable implements Runnable, Closeable {
         try {
 
             SnapshotsFinalizeResult snapshotsFinalizeResult =
-                    isTaskDeployedAsFinished
+                    isFinishedOnRestore
                             ? new SnapshotsFinalizeResult(
                                     TaskStateSnapshot.FINISHED_ON_RESTORE,
                                     TaskStateSnapshot.FINISHED_ON_RESTORE,
@@ -164,9 +162,9 @@ final class AsyncCheckpointRunnable implements Runnable, Closeable {
 
     private SnapshotsFinalizeResult finalizeNonFinishedSnapshots() throws Exception {
         TaskStateSnapshot jobManagerTaskOperatorSubtaskStates =
-                new TaskStateSnapshot(operatorSnapshotsInProgress.size(), isTaskFinished);
+                new TaskStateSnapshot(operatorSnapshotsInProgress.size(), isOperatorsFinished);
         TaskStateSnapshot localTaskOperatorSubtaskStates =
-                new TaskStateSnapshot(operatorSnapshotsInProgress.size(), isTaskFinished);
+                new TaskStateSnapshot(operatorSnapshotsInProgress.size(), isOperatorsFinished);
 
         long bytesPersistedDuringAlignment = 0;
         for (Map.Entry<OperatorID, OperatorSnapshotFutures> entry :

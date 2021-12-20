@@ -18,6 +18,7 @@
 
 package org.apache.flink.connector.pulsar.source.enumerator;
 
+import org.apache.flink.connector.pulsar.source.enumerator.cursor.StartCursor;
 import org.apache.flink.connector.pulsar.source.enumerator.cursor.StopCursor;
 import org.apache.flink.connector.pulsar.source.enumerator.topic.TopicPartition;
 import org.apache.flink.connector.pulsar.source.enumerator.topic.TopicRange;
@@ -51,6 +52,7 @@ class PulsarSourceEnumStateSerializerTest {
                 Collections.singleton(
                         new PulsarPartitionSplit(
                                 new TopicPartition(randomAlphabetic(10), 10, createFullRange()),
+                                StartCursor.defaultStartCursor(),
                                 StopCursor.defaultStopCursor()));
         Map<Integer, Set<PulsarPartitionSplit>> shared = Collections.singletonMap(5, splits);
         Map<Integer, Set<String>> mapping =

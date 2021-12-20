@@ -50,6 +50,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.RabbitMQContainer;
 import org.testcontainers.containers.output.Slf4jLogConsumer;
+import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.utility.DockerImageName;
 
 import java.io.IOException;
@@ -89,7 +90,8 @@ public class RMQSourceITCase {
     public static final RabbitMQContainer RMQ_CONTAINER =
             new RabbitMQContainer(DockerImageName.parse(DockerImageVersions.RABBITMQ))
                     .withExposedPorts(RABBITMQ_PORT)
-                    .withLogConsumer(LOG_CONSUMER);
+                    .withLogConsumer(LOG_CONSUMER)
+                    .waitingFor(Wait.forListeningPort());
 
     @Before
     public void setUp() throws Exception {

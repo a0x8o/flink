@@ -20,6 +20,8 @@ package org.apache.flink.table.runtime.util;
 
 import org.apache.flink.api.common.state.StateTtlConfig;
 import org.apache.flink.api.common.time.Time;
+import org.apache.flink.runtime.checkpoint.CheckpointType;
+import org.apache.flink.runtime.state.KeyedStateBackend;
 
 /** Utility to create a {@link StateTtlConfig} object. */
 public class StateConfigUtil {
@@ -37,5 +39,10 @@ public class StateConfigUtil {
         } else {
             return StateTtlConfig.DISABLED;
         }
+    }
+
+    public static boolean isStateImmutableInStateBackend(KeyedStateBackend<?> keyedStateBackend) {
+        // TODO: remove the hard code check once FLINK-21027 is supported
+        return keyedStateBackend.isStateImmutableInStateBackend(CheckpointType.CHECKPOINT);
     }
 }

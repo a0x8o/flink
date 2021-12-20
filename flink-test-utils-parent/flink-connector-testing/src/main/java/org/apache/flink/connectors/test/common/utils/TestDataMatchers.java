@@ -24,8 +24,10 @@ import org.hamcrest.Description;
 import org.hamcrest.TypeSafeDiagnosingMatcher;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
+import java.util.NoSuchElementException;
 
 /** Matchers for validating test data. */
 @Internal
@@ -33,16 +35,16 @@ public class TestDataMatchers {
 
     // ----------------------------  Matcher Builders ----------------------------------
     public static <T> MultipleSplitDataMatcher<T> matchesMultipleSplitTestData(
-            List<List<T>> testRecordsLists) {
-        return new MultipleSplitDataMatcher<>(testRecordsLists);
+            Collection<Collection<T>> testDataCollections) {
+        return new MultipleSplitDataMatcher<>(testDataCollections);
     }
 
-    public static <T> SingleSplitDataMatcher<T> matchesSplitTestData(List<T> testData) {
-        return new SingleSplitDataMatcher<>(testData);
+    public static <T> SplitDataMatcher<T> matchesSplitTestData(Collection<T> testData) {
+        return new SplitDataMatcher<>(testData);
     }
 
-    public static <T> SingleSplitDataMatcher<T> matchesSplitTestData(List<T> testData, int limit) {
-        return new SingleSplitDataMatcher<>(testData, limit);
+    public static <T> SplitDataMatcher<T> matchesSplitTestData(Collection<T> testData, int limit) {
+        return new SplitDataMatcher<>(testData, limit);
     }
 
     // ---------------------------- Matcher Definitions --------------------------------
@@ -52,20 +54,20 @@ public class TestDataMatchers {
      *
      * @param <T> Type of validating record
      */
-    public static class SingleSplitDataMatcher<T> extends TypeSafeDiagnosingMatcher<Iterator<T>> {
+    public static class SplitDataMatcher<T> extends TypeSafeDiagnosingMatcher<Iterator<T>> {
         private static final int UNSET = -1;
 
-        private final List<T> testData;
+        private final Collection<T> testData;
         private final int limit;
 
         private String mismatchDescription = null;
 
-        public SingleSplitDataMatcher(List<T> testData) {
+        public SplitDataMatcher(Collection<T> testData) {
             this.testData = testData;
             this.limit = UNSET;
         }
 
-        public SingleSplitDataMatcher(List<T> testData, int limit) {
+        public SplitDataMatcher(Collection<T> testData, int limit) {
             if (limit > testData.size()) {
                 throw new IllegalArgumentException(
                         "Limit validation size should be less than number of test records");
@@ -84,10 +86,7 @@ public class TestDataMatchers {
             int recordCounter = 0;
             for (T testRecord : testData) {
                 if (!resultIterator.hasNext()) {
-                    mismatchDescription =
-                            String.format(
-                                    "Expected to have %d records in result, but only received %d records",
-                                    limit == UNSET ? testData.size() : limit, recordCounter);
+                    mismatchDescription = "Result data is less than test data";
                     return false;
                 }
                 T resultRecord = resultIterator.next();
@@ -104,11 +103,7 @@ public class TestDataMatchers {
                 }
             }
             if (limit == UNSET && resultIterator.hasNext()) {
-                mismatchDescription =
-                        String.format(
-                                "Expected to have exactly %d records in result, "
-                                        + "but result iterator hasn't reached the end",
-                                testData.size());
+                mismatchDescription = "Result data is more than test data";
                 return false;
             } else {
                 return true;
@@ -126,24 +121,24 @@ public class TestDataMatchers {
     /**
      * Matcher for validating test data from multiple splits.
      *
-     * <p>Each list has a pointer (iterator) pointing to current checking record. When a record is
-     * received in the stream, it will be compared to all current pointing records in lists, and the
-     * pointer to the identical record will move forward.
+     * <p>Each collection has a pointer (iterator) pointing to current checking record. When a
+     * record is received in the stream, it will be compared to all current pointing records in
+     * collections, and the pointer to the identical record will move forward.
      *
      * <p>If the stream preserves the correctness and order of records in all splits, all pointers
-     * should reach the end of the list finally.
+     * should reach the end of the collection finally.
      *
      * @param <T> Type of validating record
      */
     public static class MultipleSplitDataMatcher<T> extends TypeSafeDiagnosingMatcher<Iterator<T>> {
 
-        List<TestRecords<T>> testRecordsLists = new ArrayList<>();
+        private final List<IteratorWithCurrent<T>> testDataIterators = new ArrayList<>();
 
         private String mismatchDescription = null;
 
-        public MultipleSplitDataMatcher(List<List<T>> testData) {
-            for (List<T> testRecordsList : testData) {
-                this.testRecordsLists.add(new TestRecords<>(testRecordsList));
+        public MultipleSplitDataMatcher(Collection<Collection<T>> testDataCollections) {
+            for (Collection<T> testDataCollection : testDataCollections) {
+                testDataIterators.add(new IteratorWithCurrent<>(testDataCollection.iterator()));
             }
         }
 
@@ -153,32 +148,15 @@ public class TestDataMatchers {
                 description.appendText(mismatchDescription);
                 return false;
             }
-
-            int recordCounter = 0;
             while (resultIterator.hasNext()) {
                 final T record = resultIterator.next();
                 if (!matchThenNext(record)) {
-                    this.mismatchDescription =
-                            generateMismatchDescription(
-                                    String.format(
-                                            "Unexpected record '%s' at position %d",
-                                            record, recordCounter),
-                                    resultIterator);
+                    mismatchDescription = String.format("Unexpected record '%s'", record);
                     return false;
                 }
-                recordCounter++;
             }
-
             if (!hasReachedEnd()) {
-                this.mismatchDescription =
-                        generateMismatchDescription(
-                                String.format(
-                                        "Expected to have exactly %d records in result, but only received %d records",
-                                        testRecordsLists.stream()
-                                                .mapToInt(list -> list.records.size())
-                                                .sum(),
-                                        recordCounter),
-                                resultIterator);
+                mismatchDescription = "Result data is less than test data";
                 return false;
             } else {
                 return true;
@@ -199,12 +177,9 @@ public class TestDataMatchers {
          * @param record Record from stream
          */
         private boolean matchThenNext(T record) {
-            for (TestRecords<T> testRecordsList : testRecordsLists) {
-                if (!testRecordsList.hasNext()) {
-                    continue;
-                }
-                if (record.equals(testRecordsList.current())) {
-                    testRecordsList.forward();
+            for (IteratorWithCurrent<T> testDataIterator : testDataIterators) {
+                if (record.equals(testDataIterator.current())) {
+                    testDataIterator.next();
                     return true;
                 }
             }
@@ -212,72 +187,60 @@ public class TestDataMatchers {
         }
 
         /**
-         * Whether all pointers have reached the end of lists.
+         * Whether all pointers have reached the end of collections.
          *
          * @return True if all pointers have reached the end.
          */
         private boolean hasReachedEnd() {
-            for (TestRecords<T> testRecordsList : testRecordsLists) {
-                if (testRecordsList.hasNext()) {
+            for (IteratorWithCurrent<T> testDataIterator : testDataIterators) {
+                if (testDataIterator.hasNext()) {
                     return false;
                 }
             }
             return true;
         }
+    }
 
-        String generateMismatchDescription(String reason, Iterator<T> resultIterator) {
-            final StringBuilder sb = new StringBuilder();
-            sb.append(reason).append("\n");
-            sb.append("Current progress of multiple split test data validation:\n");
-            int splitCounter = 0;
-            for (TestRecords<T> testRecordsList : testRecordsLists) {
-                sb.append(
-                        String.format(
-                                "Split %d (%d/%d): \n",
-                                splitCounter++,
-                                testRecordsList.offset,
-                                testRecordsList.records.size()));
-                for (int recordIndex = 0;
-                        recordIndex < testRecordsList.records.size();
-                        recordIndex++) {
-                    sb.append(testRecordsList.records.get(recordIndex));
-                    if (recordIndex == testRecordsList.offset) {
-                        sb.append("\t<----");
-                    }
-                    sb.append("\n");
-                }
+    /**
+     * An iterator wrapper which can access the element that the iterator is currently pointing to.
+     *
+     * @param <E> The type of elements returned by this iterator.
+     */
+    static class IteratorWithCurrent<E> implements Iterator<E> {
+
+        private final Iterator<E> originalIterator;
+        private E current;
+
+        public IteratorWithCurrent(Iterator<E> originalIterator) {
+            this.originalIterator = originalIterator;
+            try {
+                current = originalIterator.next();
+            } catch (NoSuchElementException e) {
+                current = null;
             }
-            if (resultIterator.hasNext()) {
-                sb.append("Remaining received elements after the unexpected one: \n");
-                while (resultIterator.hasNext()) {
-                    sb.append(resultIterator.next()).append("\n");
-                }
-            }
-            return sb.toString();
         }
 
-        private static class TestRecords<T> {
-            private int offset = 0;
-            private final List<T> records;
+        @Override
+        public boolean hasNext() {
+            return current != null;
+        }
 
-            public TestRecords(List<T> records) {
-                this.records = records;
+        @Override
+        public E next() {
+            if (current == null) {
+                throw new NoSuchElementException();
             }
+            E previous = current;
+            if (originalIterator.hasNext()) {
+                current = originalIterator.next();
+            } else {
+                current = null;
+            }
+            return previous;
+        }
 
-            public T current() {
-                if (!hasNext()) {
-                    return null;
-                }
-                return records.get(offset);
-            }
-
-            public void forward() {
-                ++offset;
-            }
-
-            public boolean hasNext() {
-                return offset < records.size();
-            }
+        public E current() {
+            return current;
         }
     }
 }

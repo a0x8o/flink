@@ -162,6 +162,7 @@ public class DefaultExecutionTopology implements SchedulingTopology {
         ExecutionGraphIndex executionGraphIndex =
                 computeExecutionGraphIndex(
                         executionGraph.getAllExecutionVertices(),
+                        executionGraph.getTotalNumberOfVertices(),
                         logicalPipelinedRegions,
                         edgeManager);
 
@@ -186,10 +187,11 @@ public class DefaultExecutionTopology implements SchedulingTopology {
 
     private static ExecutionGraphIndex computeExecutionGraphIndex(
             Iterable<ExecutionVertex> executionVertices,
+            int vertexNumber,
             Iterable<DefaultLogicalPipelinedRegion> logicalPipelinedRegions,
             EdgeManager edgeManager) {
         Map<ExecutionVertexID, DefaultExecutionVertex> executionVerticesById = new HashMap<>();
-        List<DefaultExecutionVertex> executionVerticesList = new ArrayList<>();
+        List<DefaultExecutionVertex> executionVerticesList = new ArrayList<>(vertexNumber);
         Map<IntermediateResultPartitionID, DefaultResultPartition> resultPartitionsById =
                 new HashMap<>();
         Map<DefaultLogicalPipelinedRegion, List<DefaultExecutionVertex>>

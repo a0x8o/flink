@@ -18,7 +18,6 @@
 
 package org.apache.flink.api.connector.source.lib;
 
-import org.apache.flink.annotation.Public;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.api.connector.source.Boundedness;
@@ -58,7 +57,6 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * long integer values), user may want to consider executing the application in a streaming manner,
  * because, despite the fact that the produced stream is bounded, the end bound is pretty far away.
  */
-@Public
 public class NumberSequenceSource
         implements Source<
                         Long,

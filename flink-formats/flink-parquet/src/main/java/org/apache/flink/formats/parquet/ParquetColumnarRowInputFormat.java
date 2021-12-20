@@ -21,16 +21,17 @@ package org.apache.flink.formats.parquet;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.connector.file.src.FileSourceSplit;
 import org.apache.flink.connector.file.src.util.Pool;
-import org.apache.flink.connector.file.table.ColumnarRowIterator;
-import org.apache.flink.connector.file.table.PartitionFieldExtractor;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.formats.parquet.utils.SerializableConfiguration;
 import org.apache.flink.formats.parquet.vector.ColumnBatchFactory;
+import org.apache.flink.table.data.ColumnarRowData;
 import org.apache.flink.table.data.RowData;
-import org.apache.flink.table.data.columnar.ColumnarRowData;
-import org.apache.flink.table.data.columnar.vector.ColumnVector;
-import org.apache.flink.table.data.columnar.vector.VectorizedColumnBatch;
-import org.apache.flink.table.data.columnar.vector.writable.WritableColumnVector;
+import org.apache.flink.table.data.vector.ColumnVector;
+import org.apache.flink.table.data.vector.VectorizedColumnBatch;
+import org.apache.flink.table.data.vector.writable.WritableColumnVector;
+import org.apache.flink.table.filesystem.ColumnarRowIterator;
+import org.apache.flink.table.filesystem.PartitionFieldExtractor;
+import org.apache.flink.table.runtime.typeutils.InternalTypeInfo;
 import org.apache.flink.table.types.logical.RowType;
 
 import org.apache.hadoop.conf.Configuration;
@@ -49,20 +50,19 @@ public class ParquetColumnarRowInputFormat<SplitT extends FileSourceSplit>
 
     private static final long serialVersionUID = 1L;
 
-    private final TypeInformation<RowData> producedTypeInfo;
+    private final RowType producedType;
 
     /** Constructor to create parquet format without extra fields. */
-    ParquetColumnarRowInputFormat(
+    public ParquetColumnarRowInputFormat(
             Configuration hadoopConfig,
             RowType projectedType,
-            TypeInformation<RowData> producedTypeInfo,
             int batchSize,
             boolean isUtcTimestamp,
             boolean isCaseSensitive) {
         this(
                 hadoopConfig,
                 projectedType,
-                producedTypeInfo,
+                projectedType,
                 ColumnBatchFactory.withoutExtraFields(),
                 batchSize,
                 isUtcTimestamp,
@@ -73,14 +73,13 @@ public class ParquetColumnarRowInputFormat<SplitT extends FileSourceSplit>
      * Constructor to create parquet format with extra fields created by {@link ColumnBatchFactory}.
      *
      * @param projectedType the projected row type for parquet format, excludes extra fields.
-     * @param producedTypeInfo the produced row type info for this input format, includes extra
-     *     fields.
+     * @param producedType the produced row type for this input format, includes extra fields.
      * @param batchFactory factory for creating column batch, can cram in extra fields.
      */
-    ParquetColumnarRowInputFormat(
+    public ParquetColumnarRowInputFormat(
             Configuration hadoopConfig,
             RowType projectedType,
-            TypeInformation<RowData> producedTypeInfo,
+            RowType producedType,
             ColumnBatchFactory<SplitT> batchFactory,
             int batchSize,
             boolean isUtcTimestamp,
@@ -92,7 +91,7 @@ public class ParquetColumnarRowInputFormat<SplitT extends FileSourceSplit>
                 batchSize,
                 isUtcTimestamp,
                 isCaseSensitive);
-        this.producedTypeInfo = producedTypeInfo;
+        this.producedType = producedType;
     }
 
     @Override
@@ -114,7 +113,7 @@ public class ParquetColumnarRowInputFormat<SplitT extends FileSourceSplit>
 
     @Override
     public TypeInformation<RowData> getProducedType() {
-        return producedTypeInfo;
+        return InternalTypeInfo.of(producedType);
     }
 
     private static class ColumnarRowReaderBatch extends ParquetReaderBatch<RowData> {
@@ -145,16 +144,11 @@ public class ParquetColumnarRowInputFormat<SplitT extends FileSourceSplit>
             ParquetColumnarRowInputFormat<SplitT> createPartitionedFormat(
                     Configuration hadoopConfig,
                     RowType producedRowType,
-                    TypeInformation<RowData> producedTypeInfo,
                     List<String> partitionKeys,
                     PartitionFieldExtractor<SplitT> extractor,
                     int batchSize,
                     boolean isUtcTimestamp,
                     boolean isCaseSensitive) {
-        // TODO FLINK-25113 all this partition keys code should be pruned from the parquet format,
-        //  because now FileSystemTableSource uses FileInfoExtractorBulkFormat for reading partition
-        //  keys.
-
         RowType projectedRowType =
                 new RowType(
                         producedRowType.getFields().stream()
@@ -184,7 +178,7 @@ public class ParquetColumnarRowInputFormat<SplitT extends FileSourceSplit>
         return new ParquetColumnarRowInputFormat<>(
                 hadoopConfig,
                 projectedRowType,
-                producedTypeInfo,
+                producedRowType,
                 factory,
                 batchSize,
                 isUtcTimestamp,

@@ -18,7 +18,6 @@
 
 package org.apache.flink.connector.base.source.reader;
 
-import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.api.connector.source.ReaderOutput;
 import org.apache.flink.api.connector.source.SourceEvent;
 import org.apache.flink.api.connector.source.SourceOutput;
@@ -64,7 +63,6 @@ import static org.apache.flink.util.Preconditions.checkState;
  * @param <SplitT> the immutable split type.
  * @param <SplitStateT> the mutable type of split state.
  */
-@PublicEvolving
 public abstract class SourceReaderBase<E, T, SplitT extends SourceSplit, SplitStateT>
         implements SourceReader<T, SplitT> {
     private static final Logger LOG = LoggerFactory.getLogger(SourceReaderBase.class);

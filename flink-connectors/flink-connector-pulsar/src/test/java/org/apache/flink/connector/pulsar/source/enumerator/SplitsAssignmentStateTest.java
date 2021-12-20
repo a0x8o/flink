@@ -21,6 +21,7 @@ package org.apache.flink.connector.pulsar.source.enumerator;
 import org.apache.flink.api.connector.source.SplitsAssignment;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.connector.pulsar.source.config.SourceConfiguration;
+import org.apache.flink.connector.pulsar.source.enumerator.cursor.StartCursor;
 import org.apache.flink.connector.pulsar.source.enumerator.cursor.StopCursor;
 import org.apache.flink.connector.pulsar.source.enumerator.topic.TopicPartition;
 import org.apache.flink.connector.pulsar.source.enumerator.topic.TopicRange;
@@ -58,7 +59,9 @@ class SplitsAssignmentStateTest {
     void assignSplitsForSharedSubscription() {
         SplitsAssignmentState state1 =
                 new SplitsAssignmentState(
-                        StopCursor.defaultStopCursor(), createConfig(SubscriptionType.Shared));
+                        StartCursor.defaultStartCursor(),
+                        StopCursor.defaultStopCursor(),
+                        createConfig(SubscriptionType.Shared));
         state1.appendTopicPartitions(partitions);
         Optional<SplitsAssignment<PulsarPartitionSplit>> assignment1 =
                 state1.assignSplits(Lists.newArrayList(0, 1, 2, 3, 4));
@@ -95,7 +98,9 @@ class SplitsAssignmentStateTest {
     void assignSplitsForExclusiveSubscription() {
         SplitsAssignmentState state1 =
                 new SplitsAssignmentState(
-                        StopCursor.defaultStopCursor(), createConfig(SubscriptionType.Exclusive));
+                        StartCursor.defaultStartCursor(),
+                        StopCursor.defaultStopCursor(),
+                        createConfig(SubscriptionType.Exclusive));
         state1.appendTopicPartitions(partitions);
         Optional<SplitsAssignment<PulsarPartitionSplit>> assignment1 =
                 state1.assignSplits(Lists.newArrayList(0, 1, 2, 3, 4));

@@ -31,11 +31,6 @@ import static org.apache.flink.configuration.description.TextElement.text;
 /** {@link ConfigOption}s specific for a single execution of a user program. */
 @PublicEvolving
 public class ExecutionOptions {
-    /** A special marker value for disabling buffer timeout. */
-    public static final long DISABLED_NETWORK_BUFFER_TIMEOUT = -1L;
-
-    /** A special marker value for flushing network buffers after each record. */
-    public static final long FLUSH_AFTER_EVERY_RECORD = 0L;
 
     public static final ConfigOption<RuntimeExecutionMode> RUNTIME_MODE =
             ConfigOptions.key("execution.runtime-mode")
@@ -97,11 +92,9 @@ public class ExecutionOptions {
                                             text(
                                                     "A positive value triggers flushing periodically by that interval"),
                                             text(
-                                                    FLUSH_AFTER_EVERY_RECORD
-                                                            + " triggers flushing after every record thus minimizing latency"),
+                                                    "0 triggers flushing after every record thus minimizing latency"),
                                             text(
-                                                    DISABLED_NETWORK_BUFFER_TIMEOUT
-                                                            + " ms triggers flushing only when the output buffer is full thus maximizing "
+                                                    "-1 ms triggers flushing only when the output buffer is full thus maximizing "
                                                             + "throughput"))
                                     .build());
 

@@ -18,6 +18,7 @@
 package org.apache.flink.table.data.writer;
 
 import org.apache.flink.annotation.Internal;
+import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.core.memory.DataOutputViewStreamWrapper;
 import org.apache.flink.core.memory.MemorySegment;
@@ -332,7 +333,7 @@ abstract class AbstractBinaryWriter implements BinaryWriter {
         segment.putLong(fieldOffset, offsetAndSize);
     }
 
-    @Internal
+    @VisibleForTesting
     public MemorySegment getSegments() {
         return segment;
     }

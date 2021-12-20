@@ -16,15 +16,15 @@
  * limitations under the License.
  */
 
-export interface JobException {
+export interface JobExceptionInterface {
   'root-exception': string;
   timestamp: number;
   truncated: boolean;
-  'all-exceptions': JobExceptionItem[];
-  exceptionHistory: JobExceptionHistory;
+  'all-exceptions': JobExceptionItemInterface[];
+  'exceptionHistory': JobExceptionHistoryInterface;
 }
 
-export interface JobExceptionItem {
+export interface JobExceptionItemInterface {
   'attempt-num': number;
   exception: string;
   location: string;
@@ -34,12 +34,12 @@ export interface JobExceptionItem {
   'vertex-id': string;
 }
 
-export interface JobExceptionHistory {
-  entries: RootExceptionInfo[];
+export interface JobExceptionHistoryInterface {
+  entries: RootExceptionInfoInterface[];
   truncated: boolean;
 }
 
-export interface ExceptionInfo {
+export interface ExceptionInfoInterface {
   exceptionName: string;
   stacktrace: string;
   timestamp: number;
@@ -47,6 +47,6 @@ export interface ExceptionInfo {
   location: string;
 }
 
-export interface RootExceptionInfo extends ExceptionInfo {
-  concurrentExceptions: ExceptionInfo[];
+export interface RootExceptionInfoInterface extends ExceptionInfoInterface {
+  concurrentExceptions: ExceptionInfoInterface[];
 }

@@ -18,7 +18,7 @@
 package org.apache.flink.streaming.runtime.operators.sink;
 
 import org.apache.flink.runtime.state.StateInitializationContext;
-import org.apache.flink.util.function.FunctionWithException;
+import org.apache.flink.util.function.SupplierWithException;
 
 import java.util.Collections;
 import java.util.List;
@@ -38,7 +38,6 @@ enum StatelessSinkWriterStateHandler implements SinkWriterStateHandler<Object> {
     }
 
     @Override
-    public void snapshotState(
-            FunctionWithException<Long, List<Object>, Exception> stateExtractor, long checkpointId)
+    public void snapshotState(SupplierWithException<List<Object>, Exception> stateSupplier)
             throws Exception {}
 }

@@ -36,9 +36,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.util.Collection;
 import java.util.Map;
-import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
@@ -58,13 +56,11 @@ public class KafkaSourceFetcherManager<T>
      *     the same queue instance that is also passed to the {@link SourceReaderBase}.
      * @param splitReaderSupplier The factory for the split reader that connects to the source
      *     system.
-     * @param splitFinishedHook Hook for handling finished splits in split fetchers.
      */
     public KafkaSourceFetcherManager(
             FutureCompletingBlockingQueue<RecordsWithSplitIds<Tuple3<T, Long, Long>>> elementsQueue,
-            Supplier<SplitReader<Tuple3<T, Long, Long>, KafkaPartitionSplit>> splitReaderSupplier,
-            Consumer<Collection<String>> splitFinishedHook) {
-        super(elementsQueue, splitReaderSupplier, splitFinishedHook);
+            Supplier<SplitReader<Tuple3<T, Long, Long>, KafkaPartitionSplit>> splitReaderSupplier) {
+        super(elementsQueue, splitReaderSupplier);
     }
 
     public void commitOffsets(

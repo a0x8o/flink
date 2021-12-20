@@ -22,7 +22,6 @@ import org.apache.flink.configuration.ConfigurationUtils;
 import org.apache.flink.core.classloading.SubmoduleClassLoader;
 import org.apache.flink.runtime.rpc.RpcSystem;
 import org.apache.flink.runtime.rpc.RpcSystemLoader;
-import org.apache.flink.runtime.rpc.exceptions.RpcLoaderException;
 import org.apache.flink.util.IOUtils;
 
 import java.io.IOException;
@@ -43,12 +42,6 @@ import java.util.UUID;
  */
 public class AkkaRpcSystemLoader implements RpcSystemLoader {
 
-    /** The name of the akka dependency jar, bundled with flink-rpc-akka-loader module artifact. */
-    private static final String FLINK_RPC_AKKA_FAT_JAR = "flink-rpc-akka.jar";
-
-    static final String HINT_USAGE =
-            "mvn clean package -pl flink-rpc/flink-rpc-akka,flink-rpc/flink-rpc-akka-loader -DskipTests";
-
     @Override
     public RpcSystem loadRpcSystem(Configuration config) {
         try {
@@ -61,14 +54,11 @@ public class AkkaRpcSystemLoader implements RpcSystemLoader {
                             tmpDirectory.resolve("flink-rpc-akka_" + UUID.randomUUID() + ".jar"));
 
             final InputStream resourceStream =
-                    flinkClassLoader.getResourceAsStream(FLINK_RPC_AKKA_FAT_JAR);
+                    flinkClassLoader.getResourceAsStream("flink-rpc-akka.jar");
             if (resourceStream == null) {
-                throw new RpcLoaderException(
-                        String.format(
-                                "Akka RPC system could not be found. If this happened while running a test in the IDE, "
-                                        + "run '%s' on the command-line, "
-                                        + "or add a test dependency on the flink-rpc-akka-loader test-jar.",
-                                HINT_USAGE));
+                throw new RuntimeException(
+                        "Akka RPC system could not be found. If this happened while running a test in the IDE,"
+                                + "run the process-resources phase on flink-rpc/flink-rpc-akka-loader via maven.");
             }
 
             IOUtils.copyBytes(resourceStream, Files.newOutputStream(tempFile));

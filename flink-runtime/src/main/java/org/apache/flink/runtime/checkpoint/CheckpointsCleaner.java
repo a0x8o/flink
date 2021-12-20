@@ -18,40 +18,34 @@
 
 package org.apache.flink.runtime.checkpoint;
 
-import org.apache.flink.util.AutoCloseableAsync;
 import org.apache.flink.util.function.RunnableWithException;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.annotation.Nullable;
-import javax.annotation.concurrent.GuardedBy;
 import javax.annotation.concurrent.ThreadSafe;
 
 import java.io.Serializable;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
-
-import static org.apache.flink.util.Preconditions.checkState;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Delegate class responsible for checkpoints cleaning and counting the number of checkpoints yet to
  * clean.
  */
 @ThreadSafe
-public class CheckpointsCleaner implements Serializable, AutoCloseableAsync {
+public class CheckpointsCleaner implements Serializable {
     private static final Logger LOG = LoggerFactory.getLogger(CheckpointsCleaner.class);
     private static final long serialVersionUID = 2545865801947537790L;
 
-    @GuardedBy("this")
-    private int numberOfCheckpointsToClean;
+    private final AtomicInteger numberOfCheckpointsToClean;
 
-    @GuardedBy("this")
-    @Nullable
-    private CompletableFuture<Void> cleanUpFuture;
+    public CheckpointsCleaner() {
+        this.numberOfCheckpointsToClean = new AtomicInteger(0);
+    }
 
-    synchronized int getNumberOfCheckpointsToClean() {
-        return numberOfCheckpointsToClean;
+    int getNumberOfCheckpointsToClean() {
+        return numberOfCheckpointsToClean.get();
     }
 
     public void cleanCheckpoint(
@@ -84,7 +78,7 @@ public class CheckpointsCleaner implements Serializable, AutoCloseableAsync {
             RunnableWithException cleanupAction,
             Runnable postCleanupAction,
             Executor executor) {
-        incrementNumberOfCheckpointsToClean();
+        numberOfCheckpointsToClean.incrementAndGet();
         executor.execute(
                 () -> {
                     try {
@@ -95,34 +89,9 @@ public class CheckpointsCleaner implements Serializable, AutoCloseableAsync {
                                 checkpoint.getCheckpointID(),
                                 e);
                     } finally {
-                        decrementNumberOfCheckpointsToClean();
+                        numberOfCheckpointsToClean.decrementAndGet();
                         postCleanupAction.run();
                     }
                 });
-    }
-
-    private synchronized void incrementNumberOfCheckpointsToClean() {
-        checkState(cleanUpFuture == null, "CheckpointsCleaner has already been closed");
-        numberOfCheckpointsToClean++;
-    }
-
-    private synchronized void decrementNumberOfCheckpointsToClean() {
-        numberOfCheckpointsToClean--;
-        maybeCompleteCloseUnsafe();
-    }
-
-    private void maybeCompleteCloseUnsafe() {
-        if (numberOfCheckpointsToClean == 0 && cleanUpFuture != null) {
-            cleanUpFuture.complete(null);
-        }
-    }
-
-    @Override
-    public synchronized CompletableFuture<Void> closeAsync() {
-        if (cleanUpFuture == null) {
-            cleanUpFuture = new CompletableFuture<>();
-        }
-        maybeCompleteCloseUnsafe();
-        return cleanUpFuture;
     }
 }

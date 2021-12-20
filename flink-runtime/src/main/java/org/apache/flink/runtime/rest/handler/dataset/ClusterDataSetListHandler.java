@@ -56,7 +56,7 @@ public class ClusterDataSetListHandler
 
     @Override
     protected CompletableFuture<ClusterDataSetListResponseBody> handleRequest(
-            @Nonnull HandlerRequest<EmptyRequestBody> request,
+            @Nonnull HandlerRequest<EmptyRequestBody, EmptyMessageParameters> request,
             @Nonnull ResourceManagerGateway gateway)
             throws RestHandlerException {
         return gateway.listDataSets().thenApply(ClusterDataSetListResponseBody::from);

@@ -1051,6 +1051,10 @@ Metrics related to data exchange between task executors using netty network comm
 
 ### Availability
 
+{{< hint warning >}}
+If [Reactive Mode]({{< ref "docs/deployment/elastic_scaling" >}}#reactive-mode) is enabled then these metrics, except `numRestarts`, do not work correctly.
+{{< /hint >}}
+
 <table class="table table-bordered">
   <thead>
     <tr>
@@ -1098,6 +1102,10 @@ Metrics related to data exchange between task executors using netty network comm
 
 {
 ### Checkpointing
+
+{{< hint warning >}}
+If [Reactive Mode]({{< ref "docs/deployment/elastic_scaling" >}}#reactive-mode) is enabled then the checkpointing metrics with the `Job` scope do not work correctly.
+{{< /hint >}}
 
 Note that for failed checkpoints, metrics are updated on a best efforts basis and may be not accurate.
 <table class="table table-bordered">
@@ -1268,7 +1276,7 @@ Certain RocksDB native metrics are available but disabled by default, you can fi
     </tr>
     <tr>
       <td rowspan="2"><strong>Task (only if buffer debloating is enabled and in non-source tasks)</strong></td>
-      <td>estimatedTimeToConsumeBuffersMs</td>
+      <td>estimatedTimeToConsumerBuffersMs</td>
       <td>The estimated time (in milliseconds) by the buffer debloater to consume all of the buffered data in the network exchange preceding this task. This value is calculated by approximated amount of the in-flight data and calculated throughput.</td>
       <td>Gauge</td>
     </tr>

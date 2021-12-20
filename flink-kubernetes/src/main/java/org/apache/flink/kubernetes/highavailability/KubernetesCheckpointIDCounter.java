@@ -163,7 +163,8 @@ public class KubernetesCheckpointIDCounter implements CheckpointIDCounter {
         if (configMap.getData().containsKey(CHECKPOINT_COUNTER_KEY)) {
             return Long.valueOf(configMap.getData().get(CHECKPOINT_COUNTER_KEY));
         } else {
-            return INITIAL_CHECKPOINT_ID;
+            // Initial checkpoint id
+            return 1;
         }
     }
 }

@@ -32,7 +32,6 @@ import org.apache.flink.runtime.checkpoint.TaskStateSnapshot;
 import org.apache.flink.runtime.io.network.api.CheckpointBarrier;
 import org.apache.flink.runtime.io.network.api.EndOfData;
 import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
-import org.apache.flink.runtime.io.network.api.StopMode;
 import org.apache.flink.runtime.io.network.api.writer.RecordOrEventCollectingResultPartitionWriter;
 import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
 import org.apache.flink.runtime.io.network.partition.PartitionTestUtils;
@@ -282,10 +281,10 @@ public class MultipleInputStreamTaskChainedSourcesCheckpointingTest {
             CheckpointBarrier barrier = createStopWithSavepointDrainBarrier();
 
             testHarness.processElement(new StreamRecord<>("44", TimestampAssigner.NO_TIMESTAMP), 0);
-            testHarness.processEvent(new EndOfData(StopMode.DRAIN), 0);
+            testHarness.processEvent(EndOfData.INSTANCE, 0);
             testHarness.processEvent(barrier, 0);
             testHarness.processElement(new StreamRecord<>(47d, TimestampAssigner.NO_TIMESTAMP), 1);
-            testHarness.processEvent(new EndOfData(StopMode.DRAIN), 1);
+            testHarness.processEvent(EndOfData.INSTANCE, 1);
             testHarness.processEvent(barrier, 1);
 
             addSourceRecords(testHarness, 1, Boundedness.CONTINUOUS_UNBOUNDED, 1, 2);
@@ -312,7 +311,7 @@ public class MultipleInputStreamTaskChainedSourcesCheckpointingTest {
                     containsInAnyOrder(expectedOutput.toArray()));
             assertThat(
                     actualOutput.subList(actualOutput.size() - 3, actualOutput.size()),
-                    contains(new StreamRecord<>("FINISH"), new EndOfData(StopMode.DRAIN), barrier));
+                    contains(new StreamRecord<>("FINISH"), EndOfData.INSTANCE, barrier));
         }
     }
 
@@ -436,8 +435,8 @@ public class MultipleInputStreamTaskChainedSourcesCheckpointingTest {
                 testHarness.processAll();
 
                 // The checkpoint 2 would be aligned after received all the EndOfPartitionEvent.
-                testHarness.processEvent(new EndOfData(StopMode.DRAIN), 0, 0);
-                testHarness.processEvent(new EndOfData(StopMode.DRAIN), 1, 0);
+                testHarness.processEvent(EndOfData.INSTANCE, 0, 0);
+                testHarness.processEvent(EndOfData.INSTANCE, 1, 0);
                 testHarness.processEvent(EndOfPartitionEvent.INSTANCE, 0, 0);
                 testHarness.processEvent(EndOfPartitionEvent.INSTANCE, 1, 0);
                 testHarness.getTaskStateManager().getWaitForReportLatch().await();
@@ -494,8 +493,8 @@ public class MultipleInputStreamTaskChainedSourcesCheckpointingTest {
                                         output,
                                         new StreamElementSerializer<>(IntSerializer.INSTANCE)) {
                                     @Override
-                                    public void notifyEndOfData(StopMode mode) throws IOException {
-                                        broadcastEvent(new EndOfData(mode), false);
+                                    public void notifyEndOfData() throws IOException {
+                                        broadcastEvent(EndOfData.INSTANCE, false);
                                     }
                                 })
                         .addSourceInput(
@@ -523,7 +522,7 @@ public class MultipleInputStreamTaskChainedSourcesCheckpointingTest {
             testHarness.processElement(Watermark.MAX_WATERMARK);
             assertThat(output, is(empty()));
             testHarness.waitForTaskCompletion();
-            assertThat(output, contains(Watermark.MAX_WATERMARK, new EndOfData(StopMode.DRAIN)));
+            assertThat(output, contains(Watermark.MAX_WATERMARK, EndOfData.INSTANCE));
 
             for (StreamOperatorWrapper<?, ?> wrapper :
                     testHarness.getStreamTask().operatorChain.getAllOperators()) {

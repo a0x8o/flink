@@ -19,7 +19,6 @@
 package org.apache.flink.runtime.blob;
 
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.util.NetUtils;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -54,8 +53,7 @@ public class TestingFailingBlobServer extends BlobServer {
         // we do properly the first operation (PUT)
         try {
             for (int num = 0; num < numAccept && !isShutdown(); num++) {
-                new BlobServerConnection(NetUtils.acceptWithoutTimeout(getServerSocket()), this)
-                        .start();
+                new BlobServerConnection(getServerSocket().accept(), this).start();
             }
         } catch (Throwable t) {
             t.printStackTrace();
@@ -65,7 +63,7 @@ public class TestingFailingBlobServer extends BlobServer {
         for (int num = 0; num < numFailures && !isShutdown(); num++) {
             Socket socket = null;
             try {
-                socket = NetUtils.acceptWithoutTimeout(getServerSocket());
+                socket = getServerSocket().accept();
                 InputStream is = socket.getInputStream();
                 OutputStream os = socket.getOutputStream();
 

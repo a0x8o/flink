@@ -16,22 +16,22 @@
  * limitations under the License.
  */
 
-import { HttpClient, HttpEvent, HttpParams, HttpRequest } from '@angular/common/http';
+import { HttpClient, HttpRequest, HttpParams } from '@angular/common/http';
 import { Injectable } from '@angular/core';
-import { Observable, of } from 'rxjs';
-import { catchError, map } from 'rxjs/operators';
-
 import { BASE_URL } from 'config';
-import { JarList, NodesItemCorrect, Plan, VerticesLink } from 'interfaces';
+import { JarListInterface, NodesItemCorrectInterface, PlanInterface, VerticesLinkInterface } from 'interfaces';
+import { of } from 'rxjs';
+import { catchError, map } from 'rxjs/operators';
 
 @Injectable({
   providedIn: 'root'
 })
 export class JarService {
-  constructor(private readonly httpClient: HttpClient) {}
-
-  public loadJarList(): Observable<JarList> {
-    return this.httpClient.get<JarList>(`${BASE_URL}/jars`).pipe(
+  /**
+   * Get uploaded jar list
+   */
+  loadJarList() {
+    return this.httpClient.get<JarListInterface>(`${BASE_URL}/jars`).pipe(
       catchError(() => {
         return of({
           address: '',
@@ -42,7 +42,11 @@ export class JarService {
     );
   }
 
-  public uploadJar(fd: File): Observable<HttpEvent<unknown>> {
+  /**
+   * Upload jar
+   * @param fd
+   */
+  uploadJar(fd: File) {
     const formData = new FormData();
     formData.append('jarfile', fd, fd.name);
     const req = new HttpRequest('POST', `${BASE_URL}/jars/upload`, formData, {
@@ -51,18 +55,31 @@ export class JarService {
     return this.httpClient.request(req);
   }
 
-  public deleteJar(jarId: string): Observable<void> {
-    return this.httpClient.delete<void>(`${BASE_URL}/jars/${jarId}`);
+  /**
+   * Delete jar
+   * @param jarId
+   */
+  deleteJar(jarId: string) {
+    return this.httpClient.delete(`${BASE_URL}/jars/${jarId}`);
   }
 
-  public runJob(
+  /**
+   * Run job
+   * @param jarId
+   * @param entryClass
+   * @param parallelism
+   * @param programArgs
+   * @param savepointPath
+   * @param allowNonRestoredState
+   */
+  runJob(
     jarId: string,
     entryClass: string,
     parallelism: string,
     programArgs: string,
     savepointPath: string,
     allowNonRestoredState: string
-  ): Observable<{ jobid: string }> {
+  ) {
     const requestParam = { entryClass, parallelism, programArgs, savepointPath, allowNonRestoredState };
     let params = new HttpParams();
     if (entryClass) {
@@ -83,12 +100,14 @@ export class JarService {
     return this.httpClient.post<{ jobid: string }>(`${BASE_URL}/jars/${jarId}/run`, requestParam, { params });
   }
 
-  public getPlan(
-    jarId: string,
-    entryClass: string,
-    parallelism: string,
-    programArgs: string
-  ): Observable<{ nodes: NodesItemCorrect[]; links: VerticesLink[] }> {
+  /**
+   * Get plan json from jar
+   * @param jarId
+   * @param entryClass
+   * @param parallelism
+   * @param programArgs
+   */
+  getPlan(jarId: string, entryClass: string, parallelism: string, programArgs: string) {
     let params = new HttpParams();
     if (entryClass) {
       params = params.append('entry-class', entryClass);
@@ -99,29 +118,29 @@ export class JarService {
     if (programArgs) {
       params = params.append('program-args', programArgs);
     }
-    return this.httpClient
-      .get<Plan>(`${BASE_URL}/jars/${jarId}/plan`, { params })
-      .pipe(
-        map(data => {
-          const links: VerticesLink[] = [];
-          let nodes: NodesItemCorrect[] = [];
-          if (data.plan.nodes.length) {
-            nodes = data.plan.nodes.map(node => {
-              return {
-                ...node,
-                detail: undefined
-              };
-            });
-            nodes.forEach(node => {
-              if (node.inputs && node.inputs.length) {
-                node.inputs.forEach(input => {
-                  links.push({ ...input, source: input.id, target: node.id, id: `${input.id}-${node.id}` });
-                });
-              }
-            });
-          }
-          return { nodes, links };
-        })
-      );
+    return this.httpClient.get<PlanInterface>(`${BASE_URL}/jars/${jarId}/plan`, { params }).pipe(
+      map(data => {
+        const links: VerticesLinkInterface[] = [];
+        let nodes: NodesItemCorrectInterface[] = [];
+        if (data.plan.nodes.length) {
+          nodes = data.plan.nodes.map(node => {
+            return {
+              ...node,
+              detail: undefined
+            };
+          });
+          nodes.forEach(node => {
+            if (node.inputs && node.inputs.length) {
+              node.inputs.forEach(input => {
+                links.push({ ...input, source: input.id, target: node.id, id: `${input.id}-${node.id}` });
+              });
+            }
+          });
+        }
+        return { nodes, links };
+      })
+    );
   }
+
+  constructor(private httpClient: HttpClient) {}
 }

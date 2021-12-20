@@ -48,6 +48,7 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 import static org.apache.flink.table.types.logical.utils.LogicalTypeCasts.supportsAvoidingCast;
+import static org.apache.flink.table.types.logical.utils.LogicalTypeChecks.hasFamily;
 
 /**
  * Utility methods for dealing with field types in {@link
@@ -199,7 +200,7 @@ public final class TypeMappingUtils {
 
     private static void verifyTimeAttributeType(
             TableColumn logicalColumn, String rowtimeOrProctime) {
-        if (!logicalColumn.getType().getLogicalType().is(LogicalTypeFamily.TIMESTAMP)) {
+        if (!hasFamily(logicalColumn.getType().getLogicalType(), LogicalTypeFamily.TIMESTAMP)) {
             throw new ValidationException(
                     String.format(
                             "%s field '%s' has invalid type %s. %s attributes must be of a Timestamp family.",

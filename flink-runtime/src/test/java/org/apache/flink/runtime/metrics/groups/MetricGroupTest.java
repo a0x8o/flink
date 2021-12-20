@@ -341,8 +341,7 @@ public class MetricGroupTest extends TestLogger {
         TaskManagerMetricGroup tm =
                 TaskManagerMetricGroup.createTaskManagerMetricGroup(
                         registry, "host", new ResourceID("id"));
-
-        TaskMetricGroup task = tm.addJob(jid, "jobname").addTask(vid, eid, "taskName", 4, 5);
+        TaskMetricGroup task = tm.addTaskForJob(jid, "jobname", vid, eid, "taskName", 4, 5);
         GenericMetricGroup userGroup1 = new GenericMetricGroup(registry, task, "hello");
         GenericMetricGroup userGroup2 = new GenericMetricGroup(registry, userGroup1, "world");
 

@@ -44,6 +44,7 @@ import org.apache.flink.table.data.binary.BinaryArrayData;
 import org.apache.flink.table.data.binary.BinaryMapData;
 import org.apache.flink.table.data.writer.BinaryArrayWriter;
 import org.apache.flink.table.data.writer.BinaryWriter;
+import org.apache.flink.table.runtime.functions.SqlDateTimeUtils;
 import org.apache.flink.table.runtime.types.LogicalTypeDataTypeConverter;
 import org.apache.flink.table.runtime.typeutils.BigDecimalTypeInfo;
 import org.apache.flink.table.runtime.typeutils.DecimalDataTypeInfo;
@@ -65,17 +66,12 @@ import org.apache.flink.table.types.logical.RawType;
 import org.apache.flink.table.types.logical.TimestampType;
 import org.apache.flink.table.types.logical.TypeInformationRawType;
 import org.apache.flink.table.types.utils.TypeConversions;
-import org.apache.flink.table.utils.DateTimeUtils;
 import org.apache.flink.types.Row;
 
 import org.apache.commons.lang3.ArrayUtils;
 
-import javax.annotation.Nullable;
-
 import java.io.Serializable;
 import java.lang.reflect.Array;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.sql.Date;
 import java.sql.Time;
@@ -89,6 +85,8 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Stream;
+
+import scala.Product;
 
 import static org.apache.flink.table.runtime.types.TypeInfoDataTypeConverter.fromDataTypeToTypeInfo;
 import static org.apache.flink.table.types.logical.utils.LogicalTypeChecks.getFieldCount;
@@ -293,16 +291,10 @@ public class DataFormatConverters {
                     return new RowConverter(fieldTypes);
                 } else if (Tuple.class.isAssignableFrom(clazz)) {
                     return new TupleConverter((Class<Tuple>) clazz, fieldTypes);
-                } else if (CaseClassConverter.PRODUCT_CLASS != null
-                        && CaseClassConverter.PRODUCT_CLASS.isAssignableFrom(clazz)) {
+                } else if (Product.class.isAssignableFrom(clazz)) {
                     return new CaseClassConverter((TupleTypeInfoBase) compositeType, fieldTypes);
-                } else if (compositeType instanceof PojoTypeInfo) {
-                    return new PojoConverter((PojoTypeInfo) compositeType, fieldTypes);
                 } else {
-                    throw new IllegalStateException(
-                            "Cannot find a converter for type "
-                                    + compositeType
-                                    + ". If the target should be a converter to scala.Product, then you might have a scala classpath issue.");
+                    return new PojoConverter((PojoTypeInfo) compositeType, fieldTypes);
                 }
             case RAW:
                 if (logicalType instanceof RawType) {
@@ -738,12 +730,12 @@ public class DataFormatConverters {
 
         @Override
         Integer toInternalImpl(LocalDate value) {
-            return DateTimeUtils.toInternal(value);
+            return SqlDateTimeUtils.localDateToUnixDate(value);
         }
 
         @Override
         LocalDate toExternalImpl(Integer value) {
-            return DateTimeUtils.toLocalDate(value);
+            return SqlDateTimeUtils.unixDateToLocalDate(value);
         }
 
         @Override
@@ -763,12 +755,12 @@ public class DataFormatConverters {
 
         @Override
         Integer toInternalImpl(LocalTime value) {
-            return DateTimeUtils.toInternal(value);
+            return SqlDateTimeUtils.localTimeToUnixDate(value);
         }
 
         @Override
         LocalTime toExternalImpl(Integer value) {
-            return DateTimeUtils.toLocalTime(value);
+            return SqlDateTimeUtils.unixTimeToLocalTime(value);
         }
 
         @Override
@@ -843,12 +835,12 @@ public class DataFormatConverters {
 
         @Override
         Integer toInternalImpl(Date value) {
-            return DateTimeUtils.toInternal(value);
+            return SqlDateTimeUtils.dateToInternal(value);
         }
 
         @Override
         Date toExternalImpl(Integer value) {
-            return DateTimeUtils.toSQLDate(value);
+            return SqlDateTimeUtils.internalToDate(value);
         }
 
         @Override
@@ -868,12 +860,12 @@ public class DataFormatConverters {
 
         @Override
         Integer toInternalImpl(Time value) {
-            return DateTimeUtils.toInternal(value);
+            return SqlDateTimeUtils.timeToInternal(value);
         }
 
         @Override
         Time toExternalImpl(Integer value) {
-            return DateTimeUtils.toSQLTime(value);
+            return SqlDateTimeUtils.internalToTime(value);
         }
 
         @Override
@@ -1509,12 +1501,9 @@ public class DataFormatConverters {
     }
 
     /** Converter for case class. */
-    public static final class CaseClassConverter extends AbstractRowDataConverter<Object> {
+    public static final class CaseClassConverter extends AbstractRowDataConverter<Product> {
 
         private static final long serialVersionUID = -966598627968372952L;
-
-        @Nullable private static final Class<?> PRODUCT_CLASS = getProductClass();
-        @Nullable private static final Method PRODUCT_ELEMENT_METHOD = getProductElementMethod();
 
         private final TupleTypeInfoBase t;
         private final TupleSerializerBase serializer;
@@ -1526,58 +1515,21 @@ public class DataFormatConverters {
         }
 
         @Override
-        RowData toInternalImpl(Object value) {
+        RowData toInternalImpl(Product value) {
             GenericRowData genericRow = new GenericRowData(t.getArity());
             for (int i = 0; i < t.getArity(); i++) {
-                genericRow.setField(i, converters[i].toInternal(invokeProductElement(value, i)));
+                genericRow.setField(i, converters[i].toInternal(value.productElement(i)));
             }
             return genericRow;
         }
 
         @Override
-        Object toExternalImpl(RowData value) {
+        Product toExternalImpl(RowData value) {
             Object[] fields = new Object[t.getArity()];
             for (int i = 0; i < t.getArity(); i++) {
                 fields[i] = converters[i].toExternal(value, i);
             }
-            return serializer.createInstance(fields);
-        }
-
-        private static Class<?> getProductClass() {
-            try {
-                return Class.forName(
-                        "scala.Product", false, Thread.currentThread().getContextClassLoader());
-            } catch (ClassNotFoundException e) {
-                // Ignore, no scala available in the classpath
-                return null;
-            }
-        }
-
-        private static Method getProductElementMethod() {
-            try {
-                if (PRODUCT_CLASS == null) {
-                    return null;
-                }
-                return PRODUCT_CLASS.getMethod("productElement", int.class);
-            } catch (NoSuchMethodException e) {
-                throw new IllegalStateException(
-                        "Cannot find scala.Product#productElement, has Scala changed its public API?",
-                        e);
-            }
-        }
-
-        private static Object invokeProductElement(Object value, int i) {
-            try {
-                if (PRODUCT_ELEMENT_METHOD == null) {
-                    throw new IllegalStateException(
-                            "PRODUCT_ELEMENT_METHOD is null, but it cannot be as this method should never be invoked if Scala is not in the classpath. Something is wrong with the classpath?");
-                }
-                return PRODUCT_ELEMENT_METHOD.invoke(value, i);
-            } catch (IllegalAccessException | InvocationTargetException e) {
-                throw new IllegalStateException(
-                        "Cannot execute scala.Product#productElement, has Scala changed its public API?",
-                        e);
-            }
+            return (Product) serializer.createInstance(fields);
         }
     }
 

@@ -60,9 +60,4 @@ public class SourceWatermarkSpec extends SourceAbilitySpecBase {
                             tableSource.getClass().getName()));
         }
     }
-
-    @Override
-    public String getDigests(SourceAbilityContext context) {
-        return "watermark=[SOURCE_WATERMARK()]";
-    }
 }

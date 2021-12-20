@@ -37,7 +37,7 @@ import java.util.function.Function;
 
 /** An extractor for a Elasticsearch key from a {@link RowData}. */
 @Internal
-class KeyExtractor implements SerializableFunction<RowData, String> {
+class KeyExtractor implements Function<RowData, String>, Serializable {
     private final FieldFormatter[] fieldFormatters;
     private final String keyDelimiter;
 
@@ -81,7 +81,6 @@ class KeyExtractor implements SerializableFunction<RowData, String> {
         }
     }
 
-    @Deprecated
     public static Function<RowData, String> createKeyExtractor(
             TableSchema schema, String keyDelimiter) {
         return schema.getPrimaryKey()
@@ -108,23 +107,6 @@ class KeyExtractor implements SerializableFunction<RowData, String> {
                                     new KeyExtractor(fieldFormatters, keyDelimiter);
                         })
                 .orElseGet(() -> (Function<RowData, String> & Serializable) (row) -> null);
-    }
-
-    public static SerializableFunction<RowData, String> createKeyExtractor(
-            List<LogicalTypeWithIndex> primaryKeyTypesWithIndex, String keyDelimiter) {
-        if (!primaryKeyTypesWithIndex.isEmpty()) {
-            FieldFormatter[] formatters =
-                    primaryKeyTypesWithIndex.stream()
-                            .map(
-                                    logicalTypeWithIndex ->
-                                            toFormatter(
-                                                    logicalTypeWithIndex.index,
-                                                    logicalTypeWithIndex.logicalType))
-                            .toArray(FieldFormatter[]::new);
-            return new KeyExtractor(formatters, keyDelimiter);
-        } else {
-            return (row) -> null;
-        }
     }
 
     private static FieldFormatter toFormatter(int index, LogicalType type) {

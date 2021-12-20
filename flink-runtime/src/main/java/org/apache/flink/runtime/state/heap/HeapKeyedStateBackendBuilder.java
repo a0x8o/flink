@@ -101,7 +101,12 @@ public class HeapKeyedStateBackendBuilder<K> extends AbstractKeyedStateBackendBu
         InternalKeyContext<K> keyContext =
                 new InternalKeyContextImpl<>(keyGroupRange, numberOfKeyGroups);
 
-        final StateTableFactory<K> stateTableFactory = CopyOnWriteStateTable::new;
+        final StateTableFactory<K> stateTableFactory;
+        if (asynchronousSnapshots) {
+            stateTableFactory = CopyOnWriteStateTable::new;
+        } else {
+            stateTableFactory = NestedMapsStateTable::new;
+        }
 
         restoreState(registeredKVStates, registeredPQStates, keyContext, stateTableFactory);
         return new HeapKeyedStateBackend<>(

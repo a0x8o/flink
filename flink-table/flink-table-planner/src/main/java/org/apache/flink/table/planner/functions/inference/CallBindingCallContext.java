@@ -32,7 +32,6 @@ import org.apache.calcite.sql.SqlCallBinding;
 import org.apache.calcite.sql.SqlLiteral;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlUtil;
-import org.apache.calcite.sql.type.SqlTypeName;
 
 import javax.annotation.Nullable;
 
@@ -121,9 +120,7 @@ public final class CallBindingCallContext extends AbstractSqlCallContext {
 
     private static @Nullable DataType convertOutputType(
             SqlCallBinding binding, @Nullable RelDataType returnType) {
-        if (returnType == null
-                || returnType.equals(binding.getValidator().getUnknownType())
-                || returnType.getSqlTypeName() == SqlTypeName.ANY) {
+        if (returnType == null || returnType.equals(binding.getValidator().getUnknownType())) {
             return null;
         } else {
             final LogicalType logicalType = FlinkTypeFactory.toLogicalType(returnType);

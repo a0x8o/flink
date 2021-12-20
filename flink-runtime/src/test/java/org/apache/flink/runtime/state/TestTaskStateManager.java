@@ -41,7 +41,6 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
@@ -147,24 +146,13 @@ public class TestTaskStateManager implements TaskStateManager {
     }
 
     @Override
-    public boolean isTaskDeployedAsFinished() {
+    public boolean isFinishedOnRestore() {
         TaskStateSnapshot jmTaskStateSnapshot = getLastJobManagerTaskStateSnapshot();
         if (jmTaskStateSnapshot != null) {
-            return jmTaskStateSnapshot.isTaskDeployedAsFinished();
+            return jmTaskStateSnapshot.isFinishedOnRestore();
         }
 
         return false;
-    }
-
-    @Override
-    public Optional<Long> getRestoreCheckpointId() {
-        TaskStateSnapshot jmTaskStateSnapshot = getLastJobManagerTaskStateSnapshot();
-
-        if (jmTaskStateSnapshot == null) {
-            return Optional.empty();
-        }
-
-        return Optional.of(reportedCheckpointId);
     }
 
     @Nonnull
@@ -196,8 +184,7 @@ public class TestTaskStateManager implements TaskStateManager {
                     }
                 }
                 PrioritizedOperatorSubtaskState.Builder builder =
-                        new PrioritizedOperatorSubtaskState.Builder(
-                                jmOpState, tmStateCollection, reportedCheckpointId);
+                        new PrioritizedOperatorSubtaskState.Builder(jmOpState, tmStateCollection);
                 return builder.build();
             }
         }

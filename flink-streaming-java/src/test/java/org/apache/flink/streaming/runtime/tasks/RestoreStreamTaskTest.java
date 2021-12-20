@@ -45,13 +45,11 @@ import org.junit.Test;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
-import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
-import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.contains;
 import static org.junit.Assert.assertEquals;
 
 /**
@@ -60,7 +58,7 @@ import static org.junit.Assert.assertEquals;
  */
 public class RestoreStreamTaskTest extends TestLogger {
 
-    private static final Map<OperatorID, Long> RESTORED_OPERATORS = new ConcurrentHashMap();
+    private static final Set<OperatorID> RESTORED_OPERATORS = ConcurrentHashMap.newKeySet();
 
     @Before
     public void setup() {
@@ -93,11 +91,7 @@ public class RestoreStreamTaskTest extends TestLogger {
                 Optional.of(restore));
 
         assertEquals(
-                new HashSet<>(Arrays.asList(headOperatorID, tailOperatorID)),
-                RESTORED_OPERATORS.keySet());
-        assertThat(
-                new HashSet<>(RESTORED_OPERATORS.values()),
-                contains(restore.getRestoreCheckpointId()));
+                new HashSet<>(Arrays.asList(headOperatorID, tailOperatorID)), RESTORED_OPERATORS);
     }
 
     @Test
@@ -124,10 +118,7 @@ public class RestoreStreamTaskTest extends TestLogger {
                 new CounterOperator(),
                 Optional.of(restore));
 
-        assertEquals(Collections.singleton(tailOperatorID), RESTORED_OPERATORS.keySet());
-        assertThat(
-                new HashSet<>(RESTORED_OPERATORS.values()),
-                contains(restore.getRestoreCheckpointId()));
+        assertEquals(Collections.singleton(tailOperatorID), RESTORED_OPERATORS);
     }
 
     @Test
@@ -152,10 +143,7 @@ public class RestoreStreamTaskTest extends TestLogger {
                 new CounterOperator(),
                 Optional.of(restore));
 
-        assertEquals(Collections.singleton(headOperatorID), RESTORED_OPERATORS.keySet());
-        assertThat(
-                new HashSet<>(RESTORED_OPERATORS.values()),
-                contains(restore.getRestoreCheckpointId()));
+        assertEquals(Collections.singleton(headOperatorID), RESTORED_OPERATORS);
     }
 
     @Test
@@ -189,11 +177,7 @@ public class RestoreStreamTaskTest extends TestLogger {
                 Optional.of(restore));
 
         assertEquals(
-                new HashSet<>(Arrays.asList(headOperatorID, tailOperatorID)),
-                RESTORED_OPERATORS.keySet());
-        assertThat(
-                new HashSet<>(RESTORED_OPERATORS.values()),
-                contains(restore.getRestoreCheckpointId()));
+                new HashSet<>(Arrays.asList(headOperatorID, tailOperatorID)), RESTORED_OPERATORS);
     }
 
     @Test
@@ -220,11 +204,7 @@ public class RestoreStreamTaskTest extends TestLogger {
                 Optional.of(restore));
 
         assertEquals(
-                new HashSet<>(Arrays.asList(headOperatorID, tailOperatorID)),
-                RESTORED_OPERATORS.keySet());
-        assertThat(
-                new HashSet<>(RESTORED_OPERATORS.values()),
-                contains(restore.getRestoreCheckpointId()));
+                new HashSet<>(Arrays.asList(headOperatorID, tailOperatorID)), RESTORED_OPERATORS);
     }
 
     private JobManagerTaskRestore createRunAndCheckpointOperatorChain(
@@ -323,13 +303,8 @@ public class RestoreStreamTaskTest extends TestLogger {
 
         @Override
         public void initializeState(StateInitializationContext context) throws Exception {
-            assertEquals(
-                    "Restored context id should be set iff is restored",
-                    context.isRestored(),
-                    context.getRestoredCheckpointId().isPresent());
             if (context.isRestored()) {
-                RESTORED_OPERATORS.put(
-                        getOperatorID(), context.getRestoredCheckpointId().getAsLong());
+                RESTORED_OPERATORS.add(getOperatorID());
             }
         }
     }

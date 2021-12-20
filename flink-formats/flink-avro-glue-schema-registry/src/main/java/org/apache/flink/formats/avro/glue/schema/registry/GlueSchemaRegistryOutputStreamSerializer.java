@@ -18,14 +18,11 @@
 
 package org.apache.flink.formats.avro.glue.schema.registry;
 
-import org.apache.flink.annotation.PublicEvolving;
-
 import com.amazonaws.services.schemaregistry.common.configs.GlueSchemaRegistryConfiguration;
 import com.amazonaws.services.schemaregistry.serializers.GlueSchemaRegistrySerializationFacade;
-import com.amazonaws.services.schemaregistry.utils.GlueSchemaRegistryUtils;
+import com.amazonaws.services.schemaregistry.utils.AWSSchemaRegistryUtils;
 import org.apache.avro.Schema;
 import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
-import software.amazon.awssdk.services.glue.model.DataFormat;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -35,7 +32,6 @@ import java.util.Map;
  * AWS Glue Schema Registry output stream serializer to accept schema and output stream to register
  * schema and write serialized object with schema registry bytes to output stream.
  */
-@PublicEvolving
 public class GlueSchemaRegistryOutputStreamSerializer {
     private final String transportName;
     private final Map<String, Object> configs;
@@ -76,17 +72,17 @@ public class GlueSchemaRegistryOutputStreamSerializer {
                 glueSchemaRegistrySerializationFacade.encode(
                         transportName,
                         new com.amazonaws.services.schemaregistry.common.Schema(
-                                schema.toString(), DataFormat.AVRO.name(), getSchemaName()),
+                                schema.toString(), "Avro", getSchemaName()),
                         data);
         out.write(bytes);
     }
 
     private String getSchemaName() {
-        String schemaName = GlueSchemaRegistryUtils.getInstance().getSchemaName(configs);
+        String schemaName = AWSSchemaRegistryUtils.getInstance().getSchemaName(configs);
 
         return schemaName != null
                 ? schemaName
-                : GlueSchemaRegistryUtils.getInstance()
+                : AWSSchemaRegistryUtils.getInstance()
                         .configureSchemaNamingStrategy(configs)
                         .getSchemaName(transportName);
     }

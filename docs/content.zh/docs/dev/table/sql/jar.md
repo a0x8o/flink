@@ -24,27 +24,25 @@ specific language governing permissions and limitations
 under the License.
 -->
 
-<a name="jar-statements"></a>
+# JAR Statements
 
-# JAR 语句
+JAR statements are used to add user jars into the classpath or remove user jars from the classpath
+or show added jars in the classpath in the runtime.
 
-JAR 语句用于将用户 jar 添加到 classpath、或将用户 jar 从 classpath 中删除或展示运行时 classpath 中添加的 jar。
-
-目前 Flink SQL 支持以下 JAR 语句：
+Flink SQL supports the following JAR statements for now:
 - ADD JAR
 - REMOVE JAR
 - SHOW JARS
 
-<span class="label label-danger">注意</span> JAR 语句仅适用于 [SQL CLI]({{< ref "docs/dev/table/sqlClient" >}})。
+<span class="label label-danger">Attention</span> JAR statements only work in the [SQL CLI]({{< ref "docs/dev/table/sqlClient" >}}).
 
-<a name="run-a-jar-statement"></a>
 
-## 执行 JAR 语句
+## Run a JAR statement
 
 {{< tabs "add jar statement" >}}
 {{< tab "SQL CLI" >}}
 
-以下示例展示了如何在 [SQL CLI]({{< ref "docs/dev/table/sqlClient" >}}) 中运行 JAR 语句。
+The following examples show how to run `JAR` statements in [SQL CLI]({{< ref "docs/dev/table/sqlClient" >}}).
 
 {{< /tab >}}
 {{< /tabs >}}
@@ -64,17 +62,13 @@ Flink SQL> REMOVE JAR '/path/hello.jar';
 {{< /tab >}}
 {{< /tabs >}}
 
-<a name="add-jar"></a>
-
 ## ADD JAR
 
 ```sql
 ADD JAR '<path_to_filename>.jar'
 ```
 
-目前只支持将本地 jar 添加到会话类类加载器（session classloader）中。
-
-<a name="remove-jar"></a>
+Currently it only supports to add the local jar into the session classloader.
 
 ## REMOVE JAR
 
@@ -82,9 +76,7 @@ ADD JAR '<path_to_filename>.jar'
 REMOVE JAR '<path_to_filename>.jar'
 ```
 
-目前只支持删除 [`ADD JAR`](#add-jar) 语句添加的 jar。
-
-<a name="show-jars"></a>
+Currently it only supports to remove the jar that is added by the [`ADD JAR`](#add-jar) statements.
 
 ## SHOW JARS
 
@@ -92,6 +84,6 @@ REMOVE JAR '<path_to_filename>.jar'
 SHOW JARS
 ```
 
-展示会话类类加载器（session classloader）中所有基于 [`ADD JAR`](#add-jar) 语句添加的 jar。
+Show all added jars in the session classloader which are added by [`ADD JAR`](#add-jar) statements.
 
 {{< top >}}

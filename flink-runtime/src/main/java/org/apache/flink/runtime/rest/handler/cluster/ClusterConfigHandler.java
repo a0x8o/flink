@@ -61,7 +61,8 @@ public class ClusterConfigHandler
 
     @Override
     protected CompletableFuture<ClusterConfigurationInfo> handleRequest(
-            @Nonnull HandlerRequest<EmptyRequestBody> request, @Nonnull RestfulGateway gateway)
+            @Nonnull HandlerRequest<EmptyRequestBody, EmptyMessageParameters> request,
+            @Nonnull RestfulGateway gateway)
             throws RestHandlerException {
         return CompletableFuture.completedFuture(clusterConfig);
     }

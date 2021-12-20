@@ -34,8 +34,6 @@ public class LogInfo implements Serializable {
 
     public static final String SIZE = "size";
 
-    public static final String MTIME = "mtime";
-
     private static final long serialVersionUID = -7371944349031708629L;
 
     @JsonProperty(NAME)
@@ -44,17 +42,10 @@ public class LogInfo implements Serializable {
     @JsonProperty(SIZE)
     private final long size;
 
-    @JsonProperty(MTIME)
-    private final long mtime;
-
     @JsonCreator
-    public LogInfo(
-            @JsonProperty(NAME) String name,
-            @JsonProperty(SIZE) long size,
-            @JsonProperty(MTIME) long mtime) {
+    public LogInfo(@JsonProperty(NAME) String name, @JsonProperty(SIZE) long size) {
         this.name = Preconditions.checkNotNull(name);
         this.size = size;
-        this.mtime = mtime;
     }
 
     @JsonIgnore
@@ -67,11 +58,6 @@ public class LogInfo implements Serializable {
         return size;
     }
 
-    @JsonIgnore
-    public long getMtime() {
-        return mtime;
-    }
-
     @Override
     public boolean equals(Object o) {
         if (this == o) {
@@ -81,11 +67,11 @@ public class LogInfo implements Serializable {
             return false;
         }
         LogInfo that = (LogInfo) o;
-        return Objects.equals(name, that.name) && size == that.size && mtime == that.mtime;
+        return Objects.equals(name, that.name) && size == that.size;
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(name, size, mtime);
+        return Objects.hash(name, size);
     }
 }

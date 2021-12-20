@@ -24,8 +24,6 @@ import org.apache.flink.runtime.state.OperatorStateBackend;
 import org.apache.flink.runtime.state.StatePartitionStreamProvider;
 import org.apache.flink.util.CloseableIterable;
 
-import java.util.OptionalLong;
-
 /**
  * This interface represents a context from which a stream operator can initialize everything
  * connected to state such as e.g. backends, raw state, and timer service manager.
@@ -33,17 +31,9 @@ import java.util.OptionalLong;
 public interface StreamOperatorStateContext {
 
     /**
-     * Returns true if the states provided by this context are restored from a checkpoint/savepoint.
+     * Returns true, the states provided by this context are restored from a checkpoint/savepoint.
      */
-    default boolean isRestored() {
-        return getRestoredCheckpointId().isPresent();
-    }
-
-    /**
-     * Returns non-empty if the states provided by this context are restored from a
-     * checkpoint/savepoint.
-     */
-    OptionalLong getRestoredCheckpointId();
+    boolean isRestored();
 
     /** Returns the operator state backend for the stream operator. */
     OperatorStateBackend operatorStateBackend();

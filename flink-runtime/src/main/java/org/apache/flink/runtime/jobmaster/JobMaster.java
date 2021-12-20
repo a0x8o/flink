@@ -36,9 +36,8 @@ import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.JobStatusListener;
 import org.apache.flink.runtime.heartbeat.HeartbeatListener;
 import org.apache.flink.runtime.heartbeat.HeartbeatManager;
-import org.apache.flink.runtime.heartbeat.HeartbeatReceiver;
-import org.apache.flink.runtime.heartbeat.HeartbeatSender;
 import org.apache.flink.runtime.heartbeat.HeartbeatServices;
+import org.apache.flink.runtime.heartbeat.HeartbeatTarget;
 import org.apache.flink.runtime.heartbeat.NoOpHeartbeatManager;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.io.network.partition.JobMasterPartitionTracker;
@@ -149,9 +148,7 @@ public class JobMaster extends PermanentlyFencedRpcEndpoint<JobMasterId>
 
     private final HeartbeatServices heartbeatServices;
 
-    private final ScheduledExecutorService futureExecutor;
-
-    private final Executor ioExecutor;
+    private final ScheduledExecutorService scheduledExecutorService;
 
     private final OnCompletionActions jobCompletionActions;
 
@@ -279,8 +276,7 @@ public class JobMaster extends PermanentlyFencedRpcEndpoint<JobMasterId>
         this.rpcTimeout = jobMasterConfiguration.getRpcTimeout();
         this.highAvailabilityServices = checkNotNull(highAvailabilityService);
         this.blobWriter = jobManagerSharedServices.getBlobWriter();
-        this.futureExecutor = jobManagerSharedServices.getFutureExecutor();
-        this.ioExecutor = jobManagerSharedServices.getIoExecutor();
+        this.scheduledExecutorService = jobManagerSharedServices.getScheduledExecutorService();
         this.jobCompletionActions = checkNotNull(jobCompletionActions);
         this.fatalErrorHandler = checkNotNull(fatalErrorHandler);
         this.userCodeLoader = checkNotNull(userCodeLoader);
@@ -347,10 +343,10 @@ public class JobMaster extends PermanentlyFencedRpcEndpoint<JobMasterId>
                 slotPoolServiceSchedulerFactory.createScheduler(
                         log,
                         jobGraph,
-                        ioExecutor,
+                        scheduledExecutorService,
                         jobMasterConfiguration.getConfiguration(),
                         slotPoolService,
-                        futureExecutor,
+                        scheduledExecutorService,
                         userCodeLoader,
                         highAvailabilityServices.getCheckpointRecoveryFactory(),
                         rpcTimeout,
@@ -737,7 +733,7 @@ public class JobMaster extends PermanentlyFencedRpcEndpoint<JobMasterId>
                                 // monitor the task manager as heartbeat target
                                 taskManagerHeartbeatManager.monitorTarget(
                                         taskManagerId,
-                                        new TaskExecutorHeartbeatSender(taskExecutorGateway));
+                                        new TaskExecutorHeartbeatTarget(taskExecutorGateway));
 
                                 return new JMTMRegistrationSuccess(resourceId);
                             },
@@ -790,11 +786,6 @@ public class JobMaster extends PermanentlyFencedRpcEndpoint<JobMasterId>
             @Nullable final String targetDirectory, final boolean cancelJob, final Time timeout) {
 
         return schedulerNG.triggerSavepoint(targetDirectory, cancelJob);
-    }
-
-    @Override
-    public CompletableFuture<String> triggerCheckpoint(Time timeout) {
-        return schedulerNG.triggerCheckpoint();
     }
 
     @Override
@@ -1008,7 +999,7 @@ public class JobMaster extends PermanentlyFencedRpcEndpoint<JobMasterId>
                     });
 
             final ExecutionGraphInfo executionGraphInfo = schedulerNG.requestJob();
-            futureExecutor.execute(
+            scheduledExecutorService.execute(
                     () -> jobCompletionActions.jobReachedGloballyTerminalState(executionGraphInfo));
         }
     }
@@ -1065,7 +1056,7 @@ public class JobMaster extends PermanentlyFencedRpcEndpoint<JobMasterId>
                         getFencingToken(),
                         resourceManagerAddress.getAddress(),
                         resourceManagerAddress.getResourceManagerId(),
-                        futureExecutor);
+                        scheduledExecutorService);
 
         resourceManagerConnection.start();
     }
@@ -1095,7 +1086,7 @@ public class JobMaster extends PermanentlyFencedRpcEndpoint<JobMasterId>
 
             resourceManagerHeartbeatManager.monitorTarget(
                     resourceManagerResourceId,
-                    new ResourceManagerHeartbeatReceiver(resourceManagerGateway));
+                    new ResourceManagerHeartbeatTarget(resourceManagerGateway));
         } else {
             log.debug(
                     "Ignoring resource manager connection to {} because it's duplicated or outdated.",
@@ -1156,12 +1147,20 @@ public class JobMaster extends PermanentlyFencedRpcEndpoint<JobMasterId>
     // Utility classes
     // ----------------------------------------------------------------------------------------------
 
-    private static final class TaskExecutorHeartbeatSender
-            extends HeartbeatSender<AllocatedSlotReport> {
+    private static final class TaskExecutorHeartbeatTarget
+            implements HeartbeatTarget<AllocatedSlotReport> {
         private final TaskExecutorGateway taskExecutorGateway;
 
-        private TaskExecutorHeartbeatSender(TaskExecutorGateway taskExecutorGateway) {
+        private TaskExecutorHeartbeatTarget(TaskExecutorGateway taskExecutorGateway) {
             this.taskExecutorGateway = taskExecutorGateway;
+        }
+
+        @Override
+        public CompletableFuture<Void> receiveHeartbeat(
+                ResourceID resourceID, AllocatedSlotReport payload) {
+            // the task manager will not request heartbeat, so
+            // this method will never be called currently
+            return FutureUtils.unsupportedOperationFuture();
         }
 
         @Override
@@ -1171,16 +1170,22 @@ public class JobMaster extends PermanentlyFencedRpcEndpoint<JobMasterId>
         }
     }
 
-    private static final class ResourceManagerHeartbeatReceiver extends HeartbeatReceiver<Void> {
+    private static final class ResourceManagerHeartbeatTarget implements HeartbeatTarget<Void> {
         private final ResourceManagerGateway resourceManagerGateway;
 
-        private ResourceManagerHeartbeatReceiver(ResourceManagerGateway resourceManagerGateway) {
+        private ResourceManagerHeartbeatTarget(ResourceManagerGateway resourceManagerGateway) {
             this.resourceManagerGateway = resourceManagerGateway;
         }
 
         @Override
         public CompletableFuture<Void> receiveHeartbeat(ResourceID resourceID, Void payload) {
             return resourceManagerGateway.heartbeatFromJobManager(resourceID);
+        }
+
+        @Override
+        public CompletableFuture<Void> requestHeartbeat(ResourceID resourceID, Void payload) {
+            // request heartbeat will never be called on the job manager side
+            return FutureUtils.unsupportedOperationFuture();
         }
     }
 
@@ -1261,7 +1266,7 @@ public class JobMaster extends PermanentlyFencedRpcEndpoint<JobMasterId>
                         long timeoutMillis) {
                     Time timeout = Time.milliseconds(timeoutMillis);
 
-                    return gateway.registerJobMaster(
+                    return gateway.registerJobManager(
                             jobMasterId,
                             jobManagerResourceID,
                             jobManagerRpcAddress,
@@ -1304,7 +1309,10 @@ public class JobMaster extends PermanentlyFencedRpcEndpoint<JobMasterId>
 
         @Override
         public void jobStatusChanges(
-                final JobID jobId, final JobStatus newJobStatus, final long timestamp) {
+                final JobID jobId,
+                final JobStatus newJobStatus,
+                final long timestamp,
+                final Throwable error) {
 
             if (running) {
                 // run in rpc thread to avoid concurrency

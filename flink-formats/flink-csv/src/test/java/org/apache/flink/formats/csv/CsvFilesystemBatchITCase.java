@@ -40,11 +40,6 @@ public class CsvFilesystemBatchITCase {
     public static class GeneralCsvFilesystemBatchITCase extends BatchFileSystemITCaseBase {
 
         @Override
-        public boolean supportsReadingMetadata() {
-            return false;
-        }
-
-        @Override
         public String[] formatProperties() {
             List<String> ret = new ArrayList<>();
             ret.add("'format'='csv'");
@@ -59,11 +54,6 @@ public class CsvFilesystemBatchITCase {
      * in batch mode.
      */
     public static class EnrichedCsvFilesystemBatchITCase extends BatchFileSystemITCaseBase {
-
-        @Override
-        public boolean supportsReadingMetadata() {
-            return false;
-        }
 
         @Override
         public String[] formatProperties() {

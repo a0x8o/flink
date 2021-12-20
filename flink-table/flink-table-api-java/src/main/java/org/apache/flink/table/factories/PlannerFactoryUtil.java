@@ -27,7 +27,6 @@ import org.apache.flink.table.delegation.Planner;
 import org.apache.flink.table.delegation.PlannerFactory;
 import org.apache.flink.table.delegation.PlannerFactory.Context;
 import org.apache.flink.table.delegation.PlannerFactory.DefaultPlannerContext;
-import org.apache.flink.table.module.ModuleManager;
 
 /** Utility for discovering and instantiating {@link PlannerFactory}. */
 @Internal
@@ -38,7 +37,6 @@ public class PlannerFactoryUtil {
             String plannerIdentifier,
             Executor executor,
             TableConfig tableConfig,
-            ModuleManager moduleManager,
             CatalogManager catalogManager,
             FunctionCatalog functionCatalog) {
         final PlannerFactory plannerFactory =
@@ -48,8 +46,7 @@ public class PlannerFactoryUtil {
                         plannerIdentifier);
 
         final Context context =
-                new DefaultPlannerContext(
-                        executor, tableConfig, moduleManager, catalogManager, functionCatalog);
+                new DefaultPlannerContext(executor, tableConfig, catalogManager, functionCatalog);
         return plannerFactory.create(context);
     }
 

@@ -145,10 +145,9 @@ public final class PulsarSource<OUT>
     public SplitEnumerator<PulsarPartitionSplit, PulsarSourceEnumState> createEnumerator(
             SplitEnumeratorContext<PulsarPartitionSplit> enumContext) {
         SplitsAssignmentState assignmentState =
-                new SplitsAssignmentState(stopCursor, sourceConfiguration);
+                new SplitsAssignmentState(startCursor, stopCursor, sourceConfiguration);
         return new PulsarSourceEnumerator(
                 subscriber,
-                startCursor,
                 rangeGenerator,
                 configuration,
                 sourceConfiguration,
@@ -161,10 +160,9 @@ public final class PulsarSource<OUT>
             SplitEnumeratorContext<PulsarPartitionSplit> enumContext,
             PulsarSourceEnumState checkpoint) {
         SplitsAssignmentState assignmentState =
-                new SplitsAssignmentState(stopCursor, sourceConfiguration, checkpoint);
+                new SplitsAssignmentState(startCursor, stopCursor, sourceConfiguration, checkpoint);
         return new PulsarSourceEnumerator(
                 subscriber,
-                startCursor,
                 rangeGenerator,
                 configuration,
                 sourceConfiguration,

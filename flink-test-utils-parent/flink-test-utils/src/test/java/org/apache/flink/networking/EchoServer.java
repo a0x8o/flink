@@ -51,8 +51,6 @@ public class EchoServer extends Thread implements AutoCloseable {
     public void run() {
         while (!close) {
             try {
-                // We are NOT using NetUtils.acceptWithoutTimeout here as this ServerSocket sets
-                // a timeout.
                 EchoWorkerThread thread =
                         new EchoWorkerThread(serverSocket.accept(), socketTimeout);
                 thread.start();

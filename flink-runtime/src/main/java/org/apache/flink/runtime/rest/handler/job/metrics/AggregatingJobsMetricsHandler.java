@@ -66,7 +66,8 @@ public class AggregatingJobsMetricsHandler
     @Nonnull
     @Override
     Collection<? extends MetricStore.ComponentMetricStore> getStores(
-            MetricStore store, HandlerRequest<EmptyRequestBody> request) {
+            MetricStore store,
+            HandlerRequest<EmptyRequestBody, AggregatedJobMetricsParameters> request) {
         List<JobID> jobs = request.getQueryParameter(JobsFilterQueryParameter.class);
         if (jobs.isEmpty()) {
             return store.getJobs().values();

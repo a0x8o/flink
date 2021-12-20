@@ -121,6 +121,8 @@ public interface ExecutionGraph extends AccessExecutionGraph {
      */
     long getNumberOfRestarts();
 
+    int getTotalNumberOfVertices();
+
     Map<IntermediateDataSetID, IntermediateResult> getAllIntermediateResults();
 
     /**

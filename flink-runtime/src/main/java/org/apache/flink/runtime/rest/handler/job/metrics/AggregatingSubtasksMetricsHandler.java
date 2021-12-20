@@ -72,7 +72,8 @@ public class AggregatingSubtasksMetricsHandler
     @Nonnull
     @Override
     Collection<? extends MetricStore.ComponentMetricStore> getStores(
-            MetricStore store, HandlerRequest<EmptyRequestBody> request) {
+            MetricStore store,
+            HandlerRequest<EmptyRequestBody, AggregatedSubtaskMetricsParameters> request) {
         JobID jobID = request.getPathParameter(JobIDPathParameter.class);
         JobVertexID taskID = request.getPathParameter(JobVertexIdPathParameter.class);
 

@@ -30,6 +30,7 @@ import org.apache.flink.table.types.logical.LogicalTypeRoot;
 import java.util.Optional;
 
 import static org.apache.flink.table.types.logical.utils.LogicalTypeChecks.getPrecision;
+import static org.apache.flink.table.types.logical.utils.LogicalTypeChecks.hasRoot;
 import static org.apache.flink.table.types.logical.utils.LogicalTypeChecks.hasScale;
 import static org.apache.flink.table.types.utils.TypeConversions.fromLogicalToDataType;
 
@@ -47,7 +48,7 @@ class DecimalScale0TypeStrategy implements TypeStrategy {
             return Optional.of(argumentDataType);
         }
 
-        if (argumentType.is(LogicalTypeRoot.DECIMAL)) {
+        if (hasRoot(argumentType, LogicalTypeRoot.DECIMAL)) {
             if (hasScale(argumentType, 0)) {
                 return Optional.of(argumentDataType);
             }

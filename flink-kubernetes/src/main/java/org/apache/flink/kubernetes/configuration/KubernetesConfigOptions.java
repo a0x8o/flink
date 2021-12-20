@@ -55,7 +55,7 @@ public class KubernetesConfigOptions {
     public static final ConfigOption<ServiceExposedType> REST_SERVICE_EXPOSED_TYPE =
             key("kubernetes.rest-service.exposed.type")
                     .enumType(ServiceExposedType.class)
-                    .defaultValue(ServiceExposedType.ClusterIP)
+                    .defaultValue(ServiceExposedType.LoadBalancer)
                     .withDescription(
                             "The exposed type of the rest service. "
                                     + "The exposed rest service could be used to access the Flink’s Web UI and REST endpoint.");
@@ -132,7 +132,7 @@ public class KubernetesConfigOptions {
                                                     + "apiVersion:v1,blockOwnerDeletion:true,controller:true,kind:FlinkApplication,name:flink-app-name,uid:flink-app-uid;"
                                                     + "apiVersion:v1,kind:Deployment,name:deploy-name,uid:deploy-uid",
                                             link(
-                                                    "https://nightlies.apache.org/flink/flink-docs-master/deployment/resource-providers/native_kubernetes.html#manual-resource-cleanup",
+                                                    "https://ci.apache.org/projects/flink/flink-docs-master/deployment/resource-providers/native_kubernetes.html#manual-resource-cleanup",
                                                     "Owner References"))
                                     .build());
     public static final ConfigOption<Double> JOB_MANAGER_CPU =

@@ -22,7 +22,6 @@ import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.api.common.typeutils.base.VoidSerializer;
 import org.apache.flink.table.api.TableConfig;
 import org.apache.flink.table.catalog.ObjectIdentifier;
-import org.apache.flink.table.module.ModuleManager;
 import org.apache.flink.table.planner.calcite.FlinkContextImpl;
 import org.apache.flink.table.planner.calcite.FlinkTypeFactory;
 import org.apache.flink.table.planner.functions.sql.FlinkSqlOperatorTable;
@@ -260,13 +259,7 @@ public class RelDataTypeSerdeTest {
     public void testTypeSerde() throws Exception {
         SerdeContext serdeCtx =
                 new SerdeContext(
-                        new FlinkContextImpl(
-                                false,
-                                TableConfig.getDefault(),
-                                new ModuleManager(),
-                                null,
-                                null,
-                                null),
+                        new FlinkContextImpl(false, TableConfig.getDefault(), null, null, null),
                         Thread.currentThread().getContextClassLoader(),
                         FlinkTypeFactory.INSTANCE(),
                         FlinkSqlOperatorTable.instance());

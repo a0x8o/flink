@@ -20,7 +20,6 @@ package org.apache.flink.streaming.experimental;
 import org.apache.flink.annotation.Experimental;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.core.memory.DataInputViewStreamWrapper;
-import org.apache.flink.util.NetUtils;
 
 import java.io.EOFException;
 import java.io.IOException;
@@ -172,7 +171,7 @@ public class SocketStreamIterator<T> implements Iterator<T> {
     private T readNextFromStream() throws Exception {
         try {
             if (inStream == null) {
-                connectedSocket = NetUtils.acceptWithoutTimeout(socket);
+                connectedSocket = socket.accept();
                 inStream = new DataInputViewStreamWrapper(connectedSocket.getInputStream());
             }
 

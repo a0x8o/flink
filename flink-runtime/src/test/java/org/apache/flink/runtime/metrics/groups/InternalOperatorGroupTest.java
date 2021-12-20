@@ -66,10 +66,15 @@ public class InternalOperatorGroupTest extends TestLogger {
         TaskManagerMetricGroup tmGroup =
                 TaskManagerMetricGroup.createTaskManagerMetricGroup(
                         registry, "theHostName", new ResourceID("test-tm-id"));
-
         TaskMetricGroup taskGroup =
-                tmGroup.addJob(new JobID(), "myJobName")
-                        .addTask(new JobVertexID(), new ExecutionAttemptID(), "aTaskName", 11, 0);
+                tmGroup.addTaskForJob(
+                        new JobID(),
+                        "myJobName",
+                        new JobVertexID(),
+                        new ExecutionAttemptID(),
+                        "aTaskName",
+                        11,
+                        0);
         InternalOperatorMetricGroup opGroup =
                 taskGroup.getOrAddOperator(new OperatorID(), "myOpName");
 
@@ -102,8 +107,14 @@ public class InternalOperatorGroupTest extends TestLogger {
             InternalOperatorMetricGroup operatorGroup =
                     TaskManagerMetricGroup.createTaskManagerMetricGroup(
                                     registry, "theHostName", new ResourceID(tmID))
-                            .addJob(jid, "myJobName")
-                            .addTask(vertexId, new ExecutionAttemptID(), "aTaskname", 13, 2)
+                            .addTaskForJob(
+                                    jid,
+                                    "myJobName",
+                                    vertexId,
+                                    new ExecutionAttemptID(),
+                                    "aTaskname",
+                                    13,
+                                    2)
                             .getOrAddOperator(operatorID, operatorName);
 
             assertArrayEquals(
@@ -130,10 +141,15 @@ public class InternalOperatorGroupTest extends TestLogger {
         TaskManagerMetricGroup tmGroup =
                 TaskManagerMetricGroup.createTaskManagerMetricGroup(
                         registry, "theHostName", new ResourceID("test-tm-id"));
-
         TaskMetricGroup taskGroup =
-                tmGroup.addJob(new JobID(), "myJobName")
-                        .addTask(new JobVertexID(), new ExecutionAttemptID(), "aTaskName", 11, 0);
+                tmGroup.addTaskForJob(
+                        new JobID(),
+                        "myJobName",
+                        new JobVertexID(),
+                        new ExecutionAttemptID(),
+                        "aTaskName",
+                        11,
+                        0);
         InternalOperatorMetricGroup opGroup =
                 taskGroup.getOrAddOperator(new OperatorID(), "myOpName");
 
@@ -152,9 +168,8 @@ public class InternalOperatorGroupTest extends TestLogger {
         TaskManagerMetricGroup tmGroup =
                 TaskManagerMetricGroup.createTaskManagerMetricGroup(
                         registry, "theHostName", new ResourceID("test-tm-id"));
-
         TaskMetricGroup taskGroup =
-                tmGroup.addJob(jid, "myJobName").addTask(tid, eid, "aTaskName", 11, 0);
+                tmGroup.addTaskForJob(jid, "myJobName", tid, eid, "aTaskName", 11, 0);
         InternalOperatorMetricGroup opGroup = taskGroup.getOrAddOperator(oid, "myOpName");
 
         Map<String, String> variables = opGroup.getAllVariables();
@@ -188,8 +203,7 @@ public class InternalOperatorGroupTest extends TestLogger {
         TaskManagerMetricGroup tm =
                 TaskManagerMetricGroup.createTaskManagerMetricGroup(
                         registry, "host", new ResourceID("id"));
-
-        TaskMetricGroup task = tm.addJob(jid, "jobname").addTask(vid, eid, "taskName", 4, 5);
+        TaskMetricGroup task = tm.addTaskForJob(jid, "jobname", vid, eid, "taskName", 4, 5);
         InternalOperatorMetricGroup operator = task.getOrAddOperator(oid, "operator");
 
         QueryScopeInfo.OperatorQueryScopeInfo info =

@@ -18,7 +18,6 @@
 
 package org.apache.flink.table.planner.expressions.converter.converters;
 
-import org.apache.flink.annotation.Internal;
 import org.apache.flink.table.api.JsonValueOnEmptyOrError;
 import org.apache.flink.table.api.TableException;
 import org.apache.flink.table.expressions.CallExpression;
@@ -41,7 +40,6 @@ import java.util.List;
 import static org.apache.flink.table.planner.utils.ShortcutUtils.unwrapTypeFactory;
 
 /** Conversion for {@link BuiltInFunctionDefinitions#JSON_VALUE}. */
-@Internal
 class JsonValueConverter extends CustomizedConverter {
 
     @Override

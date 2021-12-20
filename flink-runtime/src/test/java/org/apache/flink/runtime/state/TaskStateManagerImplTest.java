@@ -158,8 +158,9 @@ public class TaskStateManagerImplTest extends TestLogger {
 
         Assert.assertTrue(prioritized_1.isRestored());
         Assert.assertTrue(prioritized_2.isRestored());
-        Assert.assertTrue(prioritized_3.isRestored());
-        Assert.assertTrue(taskStateManager.prioritizedOperatorState(new OperatorID()).isRestored());
+        Assert.assertFalse(prioritized_3.isRestored());
+        Assert.assertFalse(
+                taskStateManager.prioritizedOperatorState(new OperatorID()).isRestored());
 
         // checks for operator 1.
         Iterator<StateObjectCollection<KeyedStateHandle>> prioritizedManagedKeyedState_1 =
@@ -191,8 +192,8 @@ public class TaskStateManagerImplTest extends TestLogger {
     }
 
     /**
-     * This tests if the {@link TaskStateManager} properly returns the subtask local state dir from
-     * the corresponding {@link TaskLocalStateStoreImpl}.
+     * This tests if the {@link TaskStateManager} properly returns the the subtask local state dir
+     * from the corresponding {@link TaskLocalStateStoreImpl}.
      */
     @Test
     public void testForwardingSubtaskLocalStateBaseDirFromLocalStateStore() throws IOException {
@@ -281,29 +282,7 @@ public class TaskStateManagerImplTest extends TestLogger {
                         null,
                         jobManagerTaskRestore,
                         new TestCheckpointResponder());
-        Assert.assertTrue(stateManager.isTaskDeployedAsFinished());
-    }
-
-    public void testAcquringRestoreCheckpointId() {
-        TaskStateManagerImpl emptyStateManager =
-                new TaskStateManagerImpl(
-                        new JobID(),
-                        new ExecutionAttemptID(),
-                        new TestTaskLocalStateStore(),
-                        null,
-                        null,
-                        new TestCheckpointResponder());
-        Assert.assertFalse(emptyStateManager.getRestoreCheckpointId().isPresent());
-
-        TaskStateManagerImpl nonEmptyStateManager =
-                new TaskStateManagerImpl(
-                        new JobID(),
-                        new ExecutionAttemptID(),
-                        new TestTaskLocalStateStore(),
-                        null,
-                        new JobManagerTaskRestore(2, new TaskStateSnapshot()),
-                        new TestCheckpointResponder());
-        Assert.assertEquals(2L, (long) nonEmptyStateManager.getRestoreCheckpointId().get());
+        Assert.assertTrue(stateManager.isFinishedOnRestore());
     }
 
     public static TaskStateManager taskStateManager(

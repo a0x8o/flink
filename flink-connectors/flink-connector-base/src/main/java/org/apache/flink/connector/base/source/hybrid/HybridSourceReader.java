@@ -34,6 +34,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -54,15 +55,17 @@ import java.util.concurrent.CompletableFuture;
 public class HybridSourceReader<T> implements SourceReader<T, HybridSourceSplit> {
     private static final Logger LOG = LoggerFactory.getLogger(HybridSourceReader.class);
     private final SourceReaderContext readerContext;
-    private final SwitchedSources switchedSources = new SwitchedSources();
+    private final Map<Integer, Source> switchedSources;
     private int currentSourceIndex = -1;
     private boolean isFinalSource;
     private SourceReader<T, ? extends SourceSplit> currentReader;
     private CompletableFuture<Void> availabilityFuture = new CompletableFuture<>();
     private List<HybridSourceSplit> restoredSplits = new ArrayList<>();
 
-    public HybridSourceReader(SourceReaderContext readerContext) {
+    public HybridSourceReader(
+            SourceReaderContext readerContext, Map<Integer, Source> switchedSources) {
         this.readerContext = readerContext;
+        this.switchedSources = switchedSources;
     }
 
     @Override
@@ -114,7 +117,7 @@ public class HybridSourceReader<T> implements SourceReader<T, HybridSourceSplit>
                 currentReader != null
                         ? currentReader.snapshotState(checkpointId)
                         : Collections.emptyList();
-        return HybridSourceSplit.wrapSplits(state, currentSourceIndex, switchedSources);
+        return HybridSourceSplit.wrapSplits(currentSourceIndex, state);
     }
 
     @Override
@@ -155,7 +158,7 @@ public class HybridSourceReader<T> implements SourceReader<T, HybridSourceSplit>
                         "Split %s while current source is %s",
                         split,
                         currentSourceIndex);
-                realSplits.add(HybridSourceSplit.unwrapSplit(split, switchedSources));
+                realSplits.add(split.getWrappedSplit());
             }
             currentReader.addSplits((List) realSplits);
         }
@@ -221,7 +224,9 @@ public class HybridSourceReader<T> implements SourceReader<T, HybridSourceSplit>
                     currentReader);
         }
         // TODO: track previous readers splits till checkpoint
-        Source source = switchedSources.sourceOf(index);
+        Source source =
+                Preconditions.checkNotNull(
+                        switchedSources.get(index), "Source for index=%s not available", index);
         SourceReader<T, ?> reader;
         try {
             reader = source.createReader(readerContext);

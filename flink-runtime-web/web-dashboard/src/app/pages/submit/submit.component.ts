@@ -20,13 +20,11 @@ import { HttpEventType } from '@angular/common/http';
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, OnDestroy, OnInit, ViewChild } from '@angular/core';
 import { FormBuilder, FormGroup } from '@angular/forms';
 import { Router } from '@angular/router';
+import { JarFilesItemInterface } from 'interfaces';
 import { Subject } from 'rxjs';
-import { mergeMap, takeUntil } from 'rxjs/operators';
-
-import { DagreComponent } from 'share/common/dagre/dagre.component';
-
-import { JarFilesItem } from 'interfaces';
+import { flatMap, takeUntil } from 'rxjs/operators';
 import { JarService, StatusService } from 'services';
+import { DagreComponent } from 'share/common/dagre/dagre.component';
 
 @Component({
   selector: 'flink-submit',
@@ -35,67 +33,24 @@ import { JarService, StatusService } from 'services';
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class SubmitComponent implements OnInit, OnDestroy {
-  public readonly trackById = (_: number, node: JarFilesItem): string => node.id;
+  @ViewChild(DagreComponent, { static: true }) dagreComponent: DagreComponent;
+  expandedMap = new Map();
+  isLoading = true;
+  destroy$ = new Subject();
+  listOfJar: JarFilesItemInterface[] = [];
+  address: string;
+  isYarn = false;
+  noAccess = false;
+  isUploading = false;
+  progress = 0;
+  validateForm: FormGroup;
+  planVisible = false;
 
-  public expandedMap = new Map<string, boolean>();
-  public isLoading = true;
-  public listOfJar: JarFilesItem[] = [];
-  public address: string;
-  public isYarn = false;
-  public noAccess = false;
-  public isUploading = false;
-  public progress = 0;
-  public validateForm: FormGroup;
-  public planVisible = false;
-
-  @ViewChild(DagreComponent, { static: true }) private readonly dagreComponent: DagreComponent;
-
-  private readonly destroy$ = new Subject<void>();
-
-  constructor(
-    private readonly jarService: JarService,
-    private readonly statusService: StatusService,
-    private readonly fb: FormBuilder,
-    private readonly router: Router,
-    private readonly cdr: ChangeDetectorRef
-  ) {}
-
-  public ngOnInit(): void {
-    this.isYarn = window.location.href.indexOf('/proxy/application_') !== -1;
-    this.validateForm = this.fb.group({
-      entryClass: [null],
-      parallelism: [null],
-      programArgs: [null],
-      savepointPath: [null],
-      allowNonRestoredState: [null]
-    });
-    this.statusService.refresh$
-      .pipe(
-        takeUntil(this.destroy$),
-        mergeMap(() => this.jarService.loadJarList())
-      )
-      .subscribe(
-        data => {
-          this.isLoading = false;
-          this.listOfJar = data.files;
-          this.address = data.address;
-          this.cdr.markForCheck();
-          this.noAccess = Boolean(data.error);
-        },
-        () => {
-          this.isLoading = false;
-          this.noAccess = true;
-          this.cdr.markForCheck();
-        }
-      );
-  }
-
-  public ngOnDestroy(): void {
-    this.destroy$.next();
-    this.destroy$.complete();
-  }
-
-  public uploadJar(file: File): void {
+  /**
+   * Upload jar
+   * @param file
+   */
+  uploadJar(file: File) {
     this.jarService.uploadJar(file).subscribe(
       event => {
         if (event.type === HttpEventType.UploadProgress && event.total) {
@@ -113,14 +68,22 @@ export class SubmitComponent implements OnInit, OnDestroy {
     );
   }
 
-  public deleteJar(jar: JarFilesItem): void {
+  /**
+   * Delete jar
+   * @param jar
+   */
+  deleteJar(jar: JarFilesItemInterface) {
     this.jarService.deleteJar(jar.id).subscribe(() => {
       this.statusService.forceRefresh();
       this.expandedMap.set(jar.id, false);
     });
   }
 
-  public expandJar(jar: JarFilesItem): void {
+  /**
+   * Click to expand jar details
+   * @param jar
+   */
+  expandJar(jar: JarFilesItemInterface) {
     if (this.expandedMap.get(jar.id)) {
       this.expandedMap.set(jar.id, false);
     } else {
@@ -137,7 +100,11 @@ export class SubmitComponent implements OnInit, OnDestroy {
     }
   }
 
-  public showPlan(jar: JarFilesItem): void {
+  /**
+   * Show Plan Visualization
+   * @param jar
+   */
+  showPlan(jar: JarFilesItemInterface) {
     this.jarService
       .getPlan(
         jar.id,
@@ -151,11 +118,18 @@ export class SubmitComponent implements OnInit, OnDestroy {
       });
   }
 
-  public hidePlan(): void {
+  /**
+   * Close Plan Visualization
+   */
+  hidePlan() {
     this.planVisible = false;
   }
 
-  public submitJob(jar: JarFilesItem): void {
+  /**
+   * Submit job
+   * @param jar
+   */
+  submitJob(jar: JarFilesItemInterface) {
     this.jarService
       .runJob(
         jar.id,
@@ -168,5 +142,57 @@ export class SubmitComponent implements OnInit, OnDestroy {
       .subscribe(data => {
         this.router.navigate(['job', data.jobid]).then();
       });
+  }
+
+  /**
+   * trackBy Func
+   * @param _
+   * @param node
+   */
+  trackJarBy(_: number, node: JarFilesItemInterface) {
+    return node.id;
+  }
+
+  constructor(
+    private jarService: JarService,
+    private statusService: StatusService,
+    private fb: FormBuilder,
+    private router: Router,
+    private cdr: ChangeDetectorRef
+  ) {}
+
+  ngOnInit() {
+    this.isYarn = window.location.href.indexOf('/proxy/application_') !== -1;
+    this.validateForm = this.fb.group({
+      entryClass: [null],
+      parallelism: [null],
+      programArgs: [null],
+      savepointPath: [null],
+      allowNonRestoredState: [null]
+    });
+    this.statusService.refresh$
+      .pipe(
+        takeUntil(this.destroy$),
+        flatMap(() => this.jarService.loadJarList())
+      )
+      .subscribe(
+        data => {
+          this.isLoading = false;
+          this.listOfJar = data.files;
+          this.address = data.address;
+          this.cdr.markForCheck();
+          this.noAccess = Boolean(data.error);
+        },
+        () => {
+          this.isLoading = false;
+          this.noAccess = true;
+          this.cdr.markForCheck();
+        }
+      );
+  }
+
+  ngOnDestroy() {
+    this.destroy$.next();
+    this.destroy$.complete();
   }
 }

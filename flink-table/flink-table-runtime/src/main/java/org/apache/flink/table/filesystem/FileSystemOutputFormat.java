@@ -43,6 +43,8 @@ public class FileSystemOutputFormat<T> implements OutputFormat<T>, FinalizeOnMas
 
     private static final long serialVersionUID = 1L;
 
+    private static final long CHECKPOINT_ID = 0;
+
     private final FileSystemFactory fsFactory;
     private final TableMetaStoreFactory msFactory;
     private final boolean overwrite;
@@ -86,7 +88,7 @@ public class FileSystemOutputFormat<T> implements OutputFormat<T>, FinalizeOnMas
             FileSystemCommitter committer =
                     new FileSystemCommitter(
                             fsFactory, msFactory, overwrite, tmpPath, partitionColumns.length);
-            committer.commitPartitions();
+            committer.commitUpToCheckpoint(CHECKPOINT_ID);
         } catch (Exception e) {
             throw new TableException("Exception in finalizeGlobal", e);
         } finally {
@@ -106,7 +108,8 @@ public class FileSystemOutputFormat<T> implements OutputFormat<T>, FinalizeOnMas
     public void open(int taskNumber, int numTasks) throws IOException {
         try {
             PartitionTempFileManager fileManager =
-                    new PartitionTempFileManager(fsFactory, tmpPath, taskNumber, outputFileConfig);
+                    new PartitionTempFileManager(
+                            fsFactory, tmpPath, taskNumber, CHECKPOINT_ID, outputFileConfig);
             PartitionWriter.Context<T> context =
                     new PartitionWriter.Context<>(parameters, formatFactory);
             writer =

@@ -21,6 +21,9 @@ package org.apache.flink.runtime.testutils;
 import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
 
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Future;
+
 /**
  * An {@link AbstractInvokable} that blocks at some point until cancelled.
  *
@@ -31,6 +34,8 @@ public abstract class CancelableInvokable extends AbstractInvokable {
 
     private volatile boolean canceled;
 
+    private final CompletableFuture<Void> terminationFuture = new CompletableFuture<>();
+
     protected CancelableInvokable(Environment environment) {
         super(environment);
     }
@@ -39,7 +44,9 @@ public abstract class CancelableInvokable extends AbstractInvokable {
     public void invoke() throws Exception {
         try {
             doInvoke();
+            terminationFuture.complete(null);
         } catch (Exception e) {
+            terminationFuture.completeExceptionally(e);
             throw e;
         }
     }
@@ -47,8 +54,9 @@ public abstract class CancelableInvokable extends AbstractInvokable {
     protected abstract void doInvoke() throws Exception;
 
     @Override
-    public void cancel() {
+    public Future<Void> cancel() {
         canceled = true;
+        return terminationFuture;
     }
 
     protected void waitUntilCancelled() throws InterruptedException {

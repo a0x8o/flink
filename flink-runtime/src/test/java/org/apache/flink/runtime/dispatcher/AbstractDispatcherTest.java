@@ -198,7 +198,6 @@ public class AbstractDispatcherTest extends TestLogger {
                             fatalErrorHandler,
                             VoidHistoryServerArchivist.INSTANCE,
                             null,
-                            new DispatcherOperationCaches(),
                             UnregisteredMetricGroups.createUnregisteredJobManagerMetricGroup(),
                             jobGraphWriter,
                             jobManagerRunnerFactory,

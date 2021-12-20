@@ -60,7 +60,8 @@ public class JobVertexMetricsHandler
 
     @Override
     protected MetricStore.ComponentMetricStore getComponentMetricStore(
-            HandlerRequest<EmptyRequestBody> request, MetricStore metricStore) {
+            HandlerRequest<EmptyRequestBody, JobVertexMetricsMessageParameters> request,
+            MetricStore metricStore) {
 
         final JobID jobId = request.getPathParameter(JobIDPathParameter.class);
         final JobVertexID vertexId = request.getPathParameter(JobVertexIdPathParameter.class);

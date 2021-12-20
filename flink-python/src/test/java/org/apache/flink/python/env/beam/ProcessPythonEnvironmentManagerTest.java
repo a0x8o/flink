@@ -18,7 +18,6 @@
 
 package org.apache.flink.python.env.beam;
 
-import org.apache.flink.api.common.JobID;
 import org.apache.flink.python.env.PythonDependencyInfo;
 import org.apache.flink.util.FileUtils;
 import org.apache.flink.util.OperatingSystem;
@@ -42,7 +41,6 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 
 import static org.apache.flink.python.env.beam.ProcessPythonEnvironmentManager.PYFLINK_GATEWAY_DISABLED;
 import static org.apache.flink.python.env.beam.ProcessPythonEnvironmentManager.PYTHON_ARCHIVES_DIR;
@@ -174,9 +172,10 @@ public class ProcessPythonEnvironmentManagerTest {
         try (ProcessPythonEnvironmentManager environmentManager =
                 createBasicPythonEnvironmentManager(dependencyInfo)) {
             environmentManager.open();
-            String baseDir = environmentManager.getBaseDirectory();
-            Map<String, String> environmentVariable = environmentManager.getPythonEnv();
+            Map<String, String> environmentVariable =
+                    environmentManager.constructEnvironmentVariables();
 
+            String baseDir = environmentManager.getBaseDirectory();
             String[] expectedUserPythonPaths =
                     new String[] {
                         String.join(File.separator, baseDir, PYTHON_FILES_DIR, "zip0", "test_zip"),
@@ -243,21 +242,12 @@ public class ProcessPythonEnvironmentManagerTest {
 
         try (ProcessPythonEnvironmentManager environmentManager =
                 createBasicPythonEnvironmentManager(dependencyInfo)) {
-            File baseDirectory = new File(tmpDir, "python-dist-" + UUID.randomUUID().toString());
-            if (!baseDirectory.mkdirs()) {
-                throw new IOException(
-                        "Could not find a unique directory name in '"
-                                + tmpDir
-                                + "' for storing the generated files of python dependency.");
-            }
-            String tmpBase = baseDirectory.getAbsolutePath();
+            environmentManager.open();
             Map<String, String> environmentVariable =
-                    environmentManager.constructEnvironmentVariables(tmpBase);
+                    environmentManager.constructEnvironmentVariables();
 
-            Map<String, String> expected = new HashMap<>();
-            expected.put("python", "python");
-            expected.put("BOOT_LOG_DIR", tmpBase);
-            expected.put(PYFLINK_GATEWAY_DISABLED, "true");
+            String tmpBase = environmentManager.getBaseDirectory();
+            Map<String, String> expected = getBasicExpectedEnv(environmentManager);
             expected.put(PYTHON_REQUIREMENTS_FILE, String.join(File.separator, tmpDir, "file0"));
             expected.put(PYTHON_REQUIREMENTS_CACHE, String.join(File.separator, tmpDir, "dir0"));
             expected.put(
@@ -279,9 +269,10 @@ public class ProcessPythonEnvironmentManagerTest {
         try (ProcessPythonEnvironmentManager environmentManager =
                 createBasicPythonEnvironmentManager(dependencyInfo)) {
             environmentManager.open();
-            String tmpBase = environmentManager.getBaseDirectory();
-            Map<String, String> environmentVariable = environmentManager.getPythonEnv();
+            Map<String, String> environmentVariable =
+                    environmentManager.constructEnvironmentVariables();
 
+            String tmpBase = environmentManager.getBaseDirectory();
             Map<String, String> expected = getBasicExpectedEnv(environmentManager);
             expected.put(
                     PYTHON_WORKING_DIR, String.join(File.separator, tmpBase, PYTHON_ARCHIVES_DIR));
@@ -306,7 +297,8 @@ public class ProcessPythonEnvironmentManagerTest {
         try (ProcessPythonEnvironmentManager environmentManager =
                 createBasicPythonEnvironmentManager(dependencyInfo)) {
             environmentManager.open();
-            Map<String, String> environmentVariable = environmentManager.getPythonEnv();
+            Map<String, String> environmentVariable =
+                    environmentManager.constructEnvironmentVariables();
 
             Map<String, String> expected = getBasicExpectedEnv(environmentManager);
             expected.put("python", "/usr/local/bin/python");
@@ -323,7 +315,7 @@ public class ProcessPythonEnvironmentManagerTest {
 
         try (ProcessPythonEnvironmentManager environmentManager =
                 new ProcessPythonEnvironmentManager(
-                        dependencyInfo, new String[] {tmpDir}, sysEnv, new JobID())) {
+                        dependencyInfo, new String[] {tmpDir}, sysEnv)) {
             environmentManager.open();
             String retrievalToken = environmentManager.createRetrievalToken();
 
@@ -343,11 +335,9 @@ public class ProcessPythonEnvironmentManagerTest {
 
         try (ProcessPythonEnvironmentManager environmentManager =
                 new ProcessPythonEnvironmentManager(
-                        dependencyInfo, new String[] {tmpDir}, new HashMap<>(), new JobID())) {
+                        dependencyInfo, new String[] {tmpDir}, new HashMap<>())) {
             environmentManager.open();
-            Map<String, String> env =
-                    environmentManager.constructEnvironmentVariables(
-                            environmentManager.getBaseDirectory());
+            Map<String, String> env = environmentManager.constructEnvironmentVariables();
             Map<String, String> expected = getBasicExpectedEnv(environmentManager);
             expected.put("BOOT_LOG_DIR", environmentManager.getBaseDirectory());
             assertEquals(expected, env);
@@ -424,6 +414,6 @@ public class ProcessPythonEnvironmentManagerTest {
     private static ProcessPythonEnvironmentManager createBasicPythonEnvironmentManager(
             PythonDependencyInfo dependencyInfo) {
         return new ProcessPythonEnvironmentManager(
-                dependencyInfo, new String[] {tmpDir}, new HashMap<>(), new JobID());
+                dependencyInfo, new String[] {tmpDir}, new HashMap<>());
     }
 }

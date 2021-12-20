@@ -122,10 +122,7 @@ public class PushFilterInCalcIntoTableSourceScanRule extends PushFilterIntoSourc
                     createRemainingCondition(
                             relBuilder, result.getRemainingFilters(), unconvertedPredicates);
             RexNode simplifiedRemainingCondition =
-                    FlinkRexUtil.simplify(
-                            relBuilder.getRexBuilder(),
-                            remainingCondition,
-                            calc.getCluster().getPlanner().getExecutor());
+                    FlinkRexUtil.simplify(relBuilder.getRexBuilder(), remainingCondition);
             programBuilder.addCondition(simplifiedRemainingCondition);
         }
 

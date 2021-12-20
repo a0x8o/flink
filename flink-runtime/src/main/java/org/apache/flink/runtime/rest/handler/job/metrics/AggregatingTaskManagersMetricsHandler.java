@@ -66,7 +66,8 @@ public class AggregatingTaskManagersMetricsHandler
     @Nonnull
     @Override
     Collection<? extends MetricStore.ComponentMetricStore> getStores(
-            MetricStore store, HandlerRequest<EmptyRequestBody> request) {
+            MetricStore store,
+            HandlerRequest<EmptyRequestBody, AggregateTaskManagerMetricsParameters> request) {
         List<ResourceID> taskmanagers =
                 request.getQueryParameter(TaskManagersFilterQueryParameter.class);
         if (taskmanagers.isEmpty()) {

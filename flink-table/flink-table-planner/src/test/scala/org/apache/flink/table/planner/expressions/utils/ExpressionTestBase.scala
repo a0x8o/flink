@@ -33,19 +33,16 @@ import org.apache.flink.configuration.Configuration
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment
 import org.apache.flink.table.api
 import org.apache.flink.table.api.bridge.java.internal.StreamTableEnvironmentImpl
-import org.apache.flink.table.api.config.ExecutionConfigOptions
-import org.apache.flink.table.api.{EnvironmentSettings, TableConfig, TableException, ValidationException}
+import org.apache.flink.table.api.{EnvironmentSettings, TableConfig, ValidationException}
 import org.apache.flink.table.data.RowData
 import org.apache.flink.table.data.binary.BinaryRowData
 import org.apache.flink.table.data.conversion.{DataStructureConverter, DataStructureConverters}
 import org.apache.flink.table.data.util.DataFormatConverters
 import org.apache.flink.table.data.util.DataFormatConverters.DataFormatConverter
-import org.apache.flink.table.delegation.ExpressionParser
-import org.apache.flink.table.expressions.Expression
+import org.apache.flink.table.expressions.{Expression, ExpressionParser}
 import org.apache.flink.table.functions.ScalarFunction
 import org.apache.flink.table.planner.codegen.{CodeGeneratorContext, ExprCodeGenerator, FunctionCodeGenerator}
 import org.apache.flink.table.planner.delegation.PlannerBase
-import org.apache.flink.table.runtime.generated.GeneratedFunction
 import org.apache.flink.table.runtime.types.TypeInfoLogicalTypeConverter.fromTypeInfoToLogicalType
 import org.apache.flink.table.types.AbstractDataType
 import org.apache.flink.table.types.logical.{RowType, VarCharType}
@@ -58,6 +55,7 @@ import org.junit.{After, Before, Rule}
 
 import scala.collection.JavaConverters._
 import scala.collection.mutable
+import scala.collection.mutable.ListBuffer
 
 abstract class ExpressionTestBase {
 
@@ -100,10 +98,6 @@ abstract class ExpressionTestBase {
 
   @Before
   def prepare(): Unit = {
-    config.getConfiguration.set(
-      ExecutionConfigOptions.TABLE_EXEC_LEGACY_CAST_BEHAVIOUR,
-      ExecutionConfigOptions.LegacyCastBehaviour.DISABLED
-    )
     if (containsLegacyTypes) {
       val ds = env.fromCollection(Collections.emptyList[Row](), typeInfo)
       tEnv.createTemporaryView(tableName, ds, typeInfo.getFieldNames.map(api.$): _*)
@@ -217,17 +211,15 @@ abstract class ExpressionTestBase {
   }
 
   // return the codegen function instances
-  def getCodeGenFunctions(
-        sqlExprs: List[String]): GeneratedFunction[MapFunction[RowData, BinaryRowData]] = {
+  def getCodeGenFunctions(sqlExprs: List[String]) : MapFunction[RowData, BinaryRowData] = {
     val testSqlExprs = mutable.ArrayBuffer[(String, RexNode, String)]()
     sqlExprs.foreach(exp => addSqlTestExpr(exp, null, testSqlExprs, null))
     getCodeGenFunction(testSqlExprs.map(r => r._2).toList)
   }
 
   // return the codegen function instances
-  def evaluateFunctionResult(
-        generatedFunction: GeneratedFunction[MapFunction[RowData, BinaryRowData]]): List[String] = {
-    val mapper = generatedFunction.newInstance(getClass.getClassLoader)
+  def evaluateFunctionResult(mapper: MapFunction[RowData, BinaryRowData])
+  : List[String] = {
     val isRichFunction = mapper.isInstanceOf[RichFunction]
 
     // call setRuntimeContext method and open method for RichFunction
@@ -255,35 +247,28 @@ abstract class ExpressionTestBase {
         .asInstanceOf[DataStructureConverter[RowData, Row]]
       converter.toInternalOrNull(testData)
     }
-    try {
-      val result = mapper.map(testRow)
+    val result = mapper.map(testRow)
 
-      // call close method for RichFunction
-      if (isRichFunction) {
-        mapper.asInstanceOf[RichMapFunction[_, _]].close()
-      }
-
-      Seq.range(0, result.getArity).map(index =>
-        if (!result.isNullAt(index)) {
-          result.getString(index).toString
-        } else {
-          null
-        }
-      ).toList
-    } catch {
-      case te: TableException =>
-        // TableException are exception that might be expected,
-        // so we don't wrap them with more details
-        throw te
-      case e: Throwable =>
-        throw new AssertionError(
-          "Error when executing the expression. Expression code:\n" + generatedFunction.getCode, e)
+    // call close method for RichFunction
+    if (isRichFunction) {
+      mapper.asInstanceOf[RichMapFunction[_, _]].close()
     }
+
+    val resultList = new ListBuffer[String]()
+    for (index <- 0 until result.getArity) {
+      // adapt string result
+      val item = if (!result.asInstanceOf[BinaryRowData].isNullAt(index)) {
+        result.asInstanceOf[BinaryRowData].getString(index).toString
+      } else {
+        null
+      }
+      resultList += item
+    }
+    resultList.toList
   }
 
   private def testTableApiTestExpr(tableApiString: String, expected: String): Unit = {
-    addTableApiTestExpr(
-      ExpressionParser.INSTANCE.parseExpression(tableApiString), expected, validExprs)
+    addTableApiTestExpr(ExpressionParser.parseExpression(tableApiString), expected, validExprs)
   }
 
   private def addSqlTestExpr(
@@ -318,7 +303,6 @@ abstract class ExpressionTestBase {
       exceptionClass: Class[_ <: Throwable],
       exprs: mutable.ArrayBuffer[_]): Unit = {
     val builder = new HepProgramBuilder()
-    builder.addRuleInstance(CoreRules.PROJECT_REDUCE_EXPRESSIONS)
     builder.addRuleInstance(CoreRules.PROJECT_TO_CALC)
     val hep = new HepPlanner(builder.build())
     hep.setRoot(relNode)
@@ -359,8 +343,7 @@ abstract class ExpressionTestBase {
       }
   }
 
-  private def getCodeGenFunction(rexNodes: List[RexNode]):
-    GeneratedFunction[MapFunction[RowData, BinaryRowData]] = {
+  private def getCodeGenFunction(rexNodes: List[RexNode]): MapFunction[RowData, BinaryRowData] = {
     val ctx = CodeGeneratorContext(config)
     val inputType = if (containsLegacyTypes) {
       fromTypeInfoToLogicalType(typeInfo)
@@ -385,13 +368,14 @@ abstract class ExpressionTestBase {
          |return ${genExpr.resultTerm};
         """.stripMargin
 
-    FunctionCodeGenerator.generateFunction[MapFunction[RowData, BinaryRowData]](
+    val genFunc = FunctionCodeGenerator.generateFunction[MapFunction[RowData, BinaryRowData]](
       ctx,
       "TestFunction",
       classOf[MapFunction[RowData, BinaryRowData]],
       bodyCode,
       resultType,
       inputType)
+    genFunc.newInstance(getClass.getClassLoader)
   }
 
   def testData: Row

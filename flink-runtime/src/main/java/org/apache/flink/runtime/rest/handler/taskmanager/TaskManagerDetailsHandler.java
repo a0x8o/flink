@@ -81,7 +81,7 @@ public class TaskManagerDetailsHandler
 
     @Override
     protected CompletableFuture<TaskManagerDetailsInfo> handleRequest(
-            @Nonnull HandlerRequest<EmptyRequestBody> request,
+            @Nonnull HandlerRequest<EmptyRequestBody, TaskManagerMessageParameters> request,
             @Nonnull ResourceManagerGateway gateway)
             throws RestHandlerException {
         final ResourceID taskManagerResourceId =

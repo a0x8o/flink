@@ -1,6 +1,6 @@
 ---
 title: Cassandra
-weight: 4
+weight: 3
 type: docs
 aliases:
   - /zh/dev/connectors/cassandra.html

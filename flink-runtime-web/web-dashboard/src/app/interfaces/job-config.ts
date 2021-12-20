@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-export interface JobConfig {
+export interface JobConfigInterface {
   jid: string;
   name: string;
   'execution-config': {

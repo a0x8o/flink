@@ -35,6 +35,7 @@ import org.apache.flink.table.types.logical.VarCharType;
 import org.apache.flink.table.utils.HandwrittenSelectorUtil;
 import org.apache.flink.types.RowKind;
 
+import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.ArrayList;
@@ -43,8 +44,7 @@ import java.util.List;
 
 import static org.apache.flink.table.runtime.util.StreamRecordUtils.deleteRecord;
 import static org.apache.flink.table.runtime.util.StreamRecordUtils.insertRecord;
-import static org.apache.flink.table.runtime.util.StreamRecordUtils.rowOfKind;
-import static org.junit.Assert.assertEquals;
+import static org.apache.flink.table.runtime.util.StreamRecordUtils.row;
 
 /** Test for {@link SinkUpsertMaterializer}. */
 public class SinkUpsertMaterializerTest {
@@ -76,62 +76,52 @@ public class SinkUpsertMaterializerTest {
         testHarness.setStateTtlProcessingTime(1);
 
         testHarness.processElement(insertRecord(1, "a1"));
-        shouldEmit(testHarness, rowOfKind(RowKind.INSERT, 1, "a1"));
+        Assert.assertEquals(Collections.singletonList(row(1, "a1")), toRows(testHarness));
 
         testHarness.processElement(insertRecord(1, "a2"));
-        shouldEmit(testHarness, rowOfKind(RowKind.UPDATE_AFTER, 1, "a2"));
+        Assert.assertEquals(Collections.singletonList(row(1, "a2")), toRows(testHarness));
 
         testHarness.processElement(insertRecord(1, "a3"));
-        shouldEmit(testHarness, rowOfKind(RowKind.UPDATE_AFTER, 1, "a3"));
+        Assert.assertEquals(Collections.singletonList(row(1, "a3")), toRows(testHarness));
 
         testHarness.processElement(deleteRecord(1, "a2"));
-        shouldEmitNothing(testHarness);
+        Assert.assertEquals(Collections.emptyList(), toRows(testHarness));
 
         testHarness.processElement(deleteRecord(1, "a3"));
-        shouldEmit(testHarness, rowOfKind(RowKind.UPDATE_AFTER, 1, "a1"));
+        Assert.assertEquals(Collections.singletonList(row(1, "a1")), toRows(testHarness));
 
         testHarness.processElement(deleteRecord(1, "a1"));
-        shouldEmit(testHarness, rowOfKind(RowKind.DELETE, 1, "a1"));
+        RowData deleteRow = row(1, "a1");
+        deleteRow.setRowKind(RowKind.DELETE);
+        Assert.assertEquals(Collections.singletonList(deleteRow), toRows(testHarness));
 
         testHarness.processElement(insertRecord(1, "a4"));
-        shouldEmit(testHarness, rowOfKind(RowKind.INSERT, 1, "a4"));
+        Assert.assertEquals(Collections.singletonList(row(1, "a4")), toRows(testHarness));
 
         testHarness.setStateTtlProcessingTime(1002);
 
         testHarness.processElement(deleteRecord(1, "a4"));
-        shouldEmitNothing(testHarness);
+        Assert.assertEquals(Collections.emptyList(), toRows(testHarness));
 
         testHarness.close();
     }
 
-    private void shouldEmitNothing(OneInputStreamOperatorTestHarness<RowData, RowData> harness) {
-        assertEquals(Collections.emptyList(), getEmittedRows(harness));
-    }
-
-    private void shouldEmit(
-            OneInputStreamOperatorTestHarness<RowData, RowData> harness, RowData expected) {
-        assertEquals(Collections.singletonList(expected), getEmittedRows(harness));
-    }
-
-    private static List<RowData> getEmittedRows(
-            OneInputStreamOperatorTestHarness<RowData, RowData> harness) {
-        final List<RowData> rows = new ArrayList<>();
+    private List<RowData> toRows(OneInputStreamOperatorTestHarness<RowData, RowData> harness) {
         Object o;
+        List<RowData> ret = new ArrayList<>();
         while ((o = harness.getOutput().poll()) != null) {
-            RowData value = (RowData) ((StreamRecord<?>) o).getValue();
+            RowData value = (RowData) ((StreamRecord) o).getValue();
             GenericRowData newRow = GenericRowData.of(value.getInt(0), value.getString(1));
             newRow.setRowKind(value.getRowKind());
-            rows.add(newRow);
+            ret.add(newRow);
         }
-        return rows;
+        return ret;
     }
 
     private static class TestRecordEqualiser implements RecordEqualiser {
         @Override
         public boolean equals(RowData row1, RowData row2) {
-            return row1.getRowKind() == row2.getRowKind()
-                    && row1.getInt(0) == row2.getInt(0)
-                    && row1.getString(1).equals(row2.getString(1));
+            return row1.getInt(0) == row2.getInt(0) && row1.getString(1).equals(row2.getString(1));
         }
     }
 }

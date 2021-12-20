@@ -132,13 +132,6 @@ public abstract class AbstractWindowAggProcessor implements SlicingWindowProcess
     }
 
     @Override
-    public void initializeWatermark(long watermark) {
-        if (isEventTime) {
-            currentProgress = watermark;
-        }
-    }
-
-    @Override
     public boolean processElement(RowData key, RowData element) throws Exception {
         long sliceEnd = sliceAssigner.assignSliceEnd(element, clockService);
         if (!isEventTime) {

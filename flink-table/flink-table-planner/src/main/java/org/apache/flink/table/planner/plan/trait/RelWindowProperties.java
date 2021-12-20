@@ -28,7 +28,6 @@ import javax.annotation.Nullable;
 
 import java.util.Objects;
 
-import static org.apache.flink.table.types.logical.utils.LogicalTypeChecks.canBeTimeAttributeType;
 import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
@@ -71,7 +70,7 @@ public class RelWindowProperties {
             WindowSpec windowSpec,
             LogicalType timeAttributeType) {
         checkArgument(
-                canBeTimeAttributeType(timeAttributeType),
+                LogicalTypeChecks.isTimeAttribute(timeAttributeType),
                 "Time attribute shouldn't be a '%s' type.",
                 timeAttributeType);
         this.windowStartColumns = checkNotNull(windowStartColumns);

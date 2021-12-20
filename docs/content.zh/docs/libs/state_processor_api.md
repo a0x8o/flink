@@ -27,7 +27,7 @@ under the License.
 # State Processor API
 
 Apache Flink's State Processor API provides powerful functionality to reading, writing, and modifying savepoints and checkpoints using Flink’s batch DataSet API.
-Due to the [interoperability of DataSet and Table API](https://nightlies.apache.org/flink/flink-docs-master/dev/table/common.html#integration-with-datastream-and-dataset-api), you can even use relational Table API or SQL queries to analyze and process state data.
+Due to the [interoperability of DataSet and Table API](https://ci.apache.org/projects/flink/flink-docs-master/dev/table/common.html#integration-with-datastream-and-dataset-api), you can even use relational Table API or SQL queries to analyze and process state data.
 
 For example, you can take a savepoint of a running stream processing application and analyze it with a DataSet batch program to verify that the application behaves correctly.
 Or you can read a batch of data from any store, preprocess it, and write the result to a savepoint that you use to bootstrap the state of a streaming application.
@@ -37,7 +37,7 @@ For example, you can now arbitrarily modify the data types of states, adjust the
 
 To get started with the state processor api, include the following library in your application.
 
-{{< artifact flink-state-processor-api >}}
+{{< artifact flink-state-processor-api withScalaVersion >}}
 
 ## Mapping Application State to DataSets 
 

@@ -35,11 +35,11 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import static org.apache.flink.table.api.DataTypes.FIELD;
+import static org.apache.flink.table.api.DataTypes.ROW;
 import static org.apache.flink.table.types.utils.DataTypeUtils.removeTimeAttribute;
 
 /**
@@ -163,15 +163,6 @@ public final class ResolvedSchema {
         return Optional.ofNullable(primaryKey);
     }
 
-    /** Returns the primary key indexes, if any, otherwise returns an empty array. */
-    public int[] getPrimaryKeyIndexes() {
-        final List<String> columns = getColumnNames();
-        return getPrimaryKey()
-                .map(UniqueConstraint::getColumns)
-                .map(pkColumns -> pkColumns.stream().mapToInt(columns::indexOf).toArray())
-                .orElseGet(() -> new int[] {});
-    }
-
     /**
      * Converts all columns of this schema into a (possibly nested) row data type.
      *
@@ -186,7 +177,10 @@ public final class ResolvedSchema {
      * @see #toSinkRowDataType()
      */
     public DataType toSourceRowDataType() {
-        return toRowDataType(c -> true);
+        final DataTypes.Field[] fields =
+                columns.stream().map(ResolvedSchema::columnToField).toArray(DataTypes.Field[]::new);
+        // the row should never be null
+        return ROW(fields).notNull();
     }
 
     /**
@@ -200,7 +194,13 @@ public final class ResolvedSchema {
      * @see #toSinkRowDataType()
      */
     public DataType toPhysicalRowDataType() {
-        return toRowDataType(Column::isPhysical);
+        final DataTypes.Field[] fields =
+                columns.stream()
+                        .filter(Column::isPhysical)
+                        .map(ResolvedSchema::columnToField)
+                        .toArray(DataTypes.Field[]::new);
+        // the row should never be null
+        return ROW(fields).notNull();
     }
 
     /**
@@ -217,7 +217,13 @@ public final class ResolvedSchema {
      * @see #toPhysicalRowDataType()
      */
     public DataType toSinkRowDataType() {
-        return toRowDataType(Column::isPersisted);
+        final DataTypes.Field[] fields =
+                columns.stream()
+                        .filter(Column::isPersisted)
+                        .map(ResolvedSchema::columnToField)
+                        .toArray(DataTypes.Field[]::new);
+        // the row should never be null
+        return ROW(fields).notNull();
     }
 
     @Override
@@ -254,15 +260,6 @@ public final class ResolvedSchema {
     }
 
     // --------------------------------------------------------------------------------------------
-
-    private DataType toRowDataType(Predicate<Column> columnPredicate) {
-        return columns.stream()
-                .filter(columnPredicate)
-                .map(ResolvedSchema::columnToField)
-                .collect(Collectors.collectingAndThen(Collectors.toList(), DataTypes::ROW))
-                // the row should never be null
-                .notNull();
-    }
 
     private static DataTypes.Field columnToField(Column column) {
         return FIELD(

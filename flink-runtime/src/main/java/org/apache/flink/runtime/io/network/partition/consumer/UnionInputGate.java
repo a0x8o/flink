@@ -76,7 +76,6 @@ public class UnionInputGate extends InputGate {
 
     private final Set<IndexedInputGate> inputGatesWithRemainingUserData;
 
-    private boolean shouldDrainOnEndOfData = true;
     /**
      * Gates, which notified this input gate about available data. We are using it as a FIFO queue
      * of {@link InputGate}s to avoid starvation and provide some basic fairness.
@@ -181,14 +180,8 @@ public class UnionInputGate extends InputGate {
     }
 
     @Override
-    public EndOfDataStatus hasReceivedEndOfData() {
-        if (!inputGatesWithRemainingUserData.isEmpty()) {
-            return EndOfDataStatus.NOT_END_OF_DATA;
-        } else if (shouldDrainOnEndOfData) {
-            return EndOfDataStatus.DRAINED;
-        } else {
-            return EndOfDataStatus.STOPPED;
-        }
+    public boolean hasReceivedEndOfData() {
+        return inputGatesWithRemainingUserData.isEmpty();
     }
 
     @Override
@@ -294,9 +287,8 @@ public class UnionInputGate extends InputGate {
     private void handleEndOfUserDataEvent(BufferOrEvent bufferOrEvent, InputGate inputGate) {
         if (bufferOrEvent.isEvent()
                 && bufferOrEvent.getEvent().getClass() == EndOfData.class
-                && inputGate.hasReceivedEndOfData() != EndOfDataStatus.NOT_END_OF_DATA) {
+                && inputGate.hasReceivedEndOfData()) {
 
-            shouldDrainOnEndOfData &= inputGate.hasReceivedEndOfData() == EndOfDataStatus.DRAINED;
             if (!inputGatesWithRemainingUserData.remove(inputGate)) {
                 throw new IllegalStateException(
                         "Couldn't find input gate in set of remaining input gates.");

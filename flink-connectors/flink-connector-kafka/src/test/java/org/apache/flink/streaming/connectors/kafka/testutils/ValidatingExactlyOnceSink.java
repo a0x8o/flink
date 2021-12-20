@@ -18,7 +18,6 @@
 
 package org.apache.flink.streaming.connectors.kafka.testutils;
 
-import org.apache.flink.api.common.state.CheckpointListener;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.streaming.api.checkpoint.ListCheckpointed;
@@ -34,14 +33,13 @@ import java.util.List;
 
 /** A {@link RichSinkFunction} that verifies that no duplicate records are generated. */
 public class ValidatingExactlyOnceSink extends RichSinkFunction<Integer>
-        implements ListCheckpointed<Tuple2<Integer, BitSet>>, Runnable, CheckpointListener {
+        implements ListCheckpointed<Tuple2<Integer, BitSet>>, Runnable {
 
     private static final Logger LOG = LoggerFactory.getLogger(ValidatingExactlyOnceSink.class);
 
     private static final long serialVersionUID = 1748426382527469932L;
 
     private final int numElementsTotal;
-    private final boolean waitForFinalCheckpoint;
 
     private BitSet duplicateChecker = new BitSet(); // this is checkpointed
 
@@ -51,12 +49,7 @@ public class ValidatingExactlyOnceSink extends RichSinkFunction<Integer>
     private volatile boolean printerRunning = true;
 
     public ValidatingExactlyOnceSink(int numElementsTotal) {
-        this(numElementsTotal, false);
-    }
-
-    public ValidatingExactlyOnceSink(int numElementsTotal, boolean waitForFinalCheckpoint) {
         this.numElementsTotal = numElementsTotal;
-        this.waitForFinalCheckpoint = waitForFinalCheckpoint;
     }
 
     @Override
@@ -74,8 +67,15 @@ public class ValidatingExactlyOnceSink extends RichSinkFunction<Integer>
             throw new Exception("Received a duplicate: " + value);
         }
         duplicateChecker.set(value);
-        if (!waitForFinalCheckpoint) {
-            checkFinish();
+        if (numElements == numElementsTotal) {
+            // validate
+            if (duplicateChecker.cardinality() != numElementsTotal) {
+                throw new Exception("Duplicate checker has wrong cardinality");
+            } else if (duplicateChecker.nextClearBit(0) != numElementsTotal) {
+                throw new Exception("Received sparse sequence");
+            } else {
+                throw new SuccessException();
+            }
         }
     }
 
@@ -123,24 +123,6 @@ public class ValidatingExactlyOnceSink extends RichSinkFunction<Integer>
                     getRuntimeContext().getIndexOfThisSubtask(),
                     numElements,
                     numElementsTotal);
-        }
-    }
-
-    @Override
-    public void notifyCheckpointComplete(long checkpointId) throws Exception {
-        checkFinish();
-    }
-
-    private void checkFinish() throws Exception {
-        if (numElements == numElementsTotal) {
-            // validate
-            if (duplicateChecker.cardinality() != numElementsTotal) {
-                throw new Exception("Duplicate checker has wrong cardinality");
-            } else if (duplicateChecker.nextClearBit(0) != numElementsTotal) {
-                throw new Exception("Received sparse sequence");
-            } else {
-                throw new SuccessException();
-            }
         }
     }
 }

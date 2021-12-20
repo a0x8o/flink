@@ -114,8 +114,7 @@ class JoinDependentConditionDerivationRule
     if (additionalConditions.nonEmpty) {
       val newCondExp = FlinkRexUtil.simplify(
         builder.getRexBuilder,
-        builder.and(conjunctions ++ additionalConditions),
-        join.getCluster.getPlanner.getExecutor)
+        builder.and(conjunctions ++ additionalConditions))
 
       if (!newCondExp.equals(join.getCondition)) {
         val newJoin = join.copy(

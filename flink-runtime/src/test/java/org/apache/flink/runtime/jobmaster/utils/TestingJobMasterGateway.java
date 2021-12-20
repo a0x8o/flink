@@ -133,8 +133,6 @@ public class TestingJobMasterGateway implements JobMasterGateway {
     @Nonnull
     private final BiFunction<String, Boolean, CompletableFuture<String>> triggerSavepointFunction;
 
-    @Nonnull private final Supplier<CompletableFuture<String>> triggerCheckpointFunction;
-
     @Nonnull
     private final BiFunction<String, Boolean, CompletableFuture<String>> stopWithSavepointFunction;
 
@@ -235,7 +233,6 @@ public class TestingJobMasterGateway implements JobMasterGateway {
             @Nonnull Supplier<CompletableFuture<ExecutionGraphInfo>> requestJobSupplier,
             @Nonnull
                     BiFunction<String, Boolean, CompletableFuture<String>> triggerSavepointFunction,
-            @Nonnull Supplier<CompletableFuture<String>> triggerCheckpointFunction,
             @Nonnull
                     BiFunction<String, Boolean, CompletableFuture<String>>
                             stopWithSavepointFunction,
@@ -304,7 +301,6 @@ public class TestingJobMasterGateway implements JobMasterGateway {
         this.requestJobDetailsSupplier = requestJobDetailsSupplier;
         this.requestJobSupplier = requestJobSupplier;
         this.triggerSavepointFunction = triggerSavepointFunction;
-        this.triggerCheckpointFunction = triggerCheckpointFunction;
         this.stopWithSavepointFunction = stopWithSavepointFunction;
         this.notifyAllocationFailureConsumer = notifyAllocationFailureConsumer;
         this.acknowledgeCheckpointConsumer = acknowledgeCheckpointConsumer;
@@ -410,11 +406,6 @@ public class TestingJobMasterGateway implements JobMasterGateway {
     public CompletableFuture<String> triggerSavepoint(
             @Nullable final String targetDirectory, final boolean cancelJob, final Time timeout) {
         return triggerSavepointFunction.apply(targetDirectory, cancelJob);
-    }
-
-    @Override
-    public CompletableFuture<String> triggerCheckpoint(Time timeout) {
-        return triggerCheckpointFunction.get();
     }
 
     @Override

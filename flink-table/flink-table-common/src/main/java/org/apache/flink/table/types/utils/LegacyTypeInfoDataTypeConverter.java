@@ -62,18 +62,7 @@ import java.util.Map;
 import java.util.stream.IntStream;
 
 import static org.apache.flink.table.types.extraction.ExtractionUtils.primitiveToWrapper;
-import static org.apache.flink.table.types.logical.LogicalTypeRoot.ARRAY;
-import static org.apache.flink.table.types.logical.LogicalTypeRoot.CHAR;
-import static org.apache.flink.table.types.logical.LogicalTypeRoot.DECIMAL;
-import static org.apache.flink.table.types.logical.LogicalTypeRoot.MAP;
-import static org.apache.flink.table.types.logical.LogicalTypeRoot.MULTISET;
-import static org.apache.flink.table.types.logical.LogicalTypeRoot.RAW;
-import static org.apache.flink.table.types.logical.LogicalTypeRoot.ROW;
-import static org.apache.flink.table.types.logical.LogicalTypeRoot.STRUCTURED_TYPE;
-import static org.apache.flink.table.types.logical.LogicalTypeRoot.TIMESTAMP_WITHOUT_TIME_ZONE;
-import static org.apache.flink.table.types.logical.LogicalTypeRoot.TIMESTAMP_WITH_LOCAL_TIME_ZONE;
-import static org.apache.flink.table.types.logical.LogicalTypeRoot.TIME_WITHOUT_TIME_ZONE;
-import static org.apache.flink.table.types.logical.LogicalTypeRoot.VARCHAR;
+import static org.apache.flink.table.types.logical.utils.LogicalTypeChecks.hasRoot;
 import static org.apache.flink.table.types.logical.utils.LogicalTypeChecks.isRowtimeAttribute;
 
 /**
@@ -119,7 +108,7 @@ public final class LegacyTypeInfoDataTypeConverter {
         addMapping(Types.LONG, DataTypes.BIGINT().bridgedTo(Long.class));
         addMapping(Types.FLOAT, DataTypes.FLOAT().bridgedTo(Float.class));
         addMapping(Types.DOUBLE, DataTypes.DOUBLE().bridgedTo(Double.class));
-        addMapping(Types.BIG_DEC, createLegacyType(DECIMAL, Types.BIG_DEC));
+        addMapping(Types.BIG_DEC, createLegacyType(LogicalTypeRoot.DECIMAL, Types.BIG_DEC));
         addMapping(Types.LOCAL_DATE, DataTypes.DATE().bridgedTo(LocalDate.class));
         addMapping(Types.LOCAL_TIME, DataTypes.TIME(0).bridgedTo(LocalTime.class));
         addMapping(Types.LOCAL_DATE_TIME, DataTypes.TIMESTAMP(3).bridgedTo(LocalDateTime.class));
@@ -188,16 +177,16 @@ public final class LegacyTypeInfoDataTypeConverter {
                     typeInfo.getTypeClass(),
                     ((ObjectArrayTypeInfo<?, ?>) typeInfo).getComponentInfo());
         } else if (typeInfo instanceof BasicArrayTypeInfo) {
-            return createLegacyType(ARRAY, typeInfo);
+            return createLegacyType(LogicalTypeRoot.ARRAY, typeInfo);
         } else if (typeInfo instanceof MultisetTypeInfo) {
             return convertToMultisetType(((MultisetTypeInfo<?>) typeInfo).getElementTypeInfo());
         } else if (typeInfo instanceof MapTypeInfo) {
             return convertToMapType((MapTypeInfo<?, ?>) typeInfo);
         } else if (typeInfo instanceof CompositeType || isRowData(typeInfo)) {
-            return createLegacyType(STRUCTURED_TYPE, typeInfo);
+            return createLegacyType(LogicalTypeRoot.STRUCTURED_TYPE, typeInfo);
         }
 
-        return createLegacyType(RAW, typeInfo);
+        return createLegacyType(LogicalTypeRoot.RAW, typeInfo);
     }
 
     public static TypeInformation<?> toLegacyTypeInfo(DataType dataType) {
@@ -219,34 +208,34 @@ public final class LegacyTypeInfoDataTypeConverter {
         // we are relaxing the constraint for DECIMAL, CHAR, VARCHAR, TIMESTAMP_WITHOUT_TIME_ZONE to
         // support value literals in legacy planner
         LogicalType logicalType = dataType.getLogicalType();
-        if (logicalType.is(DECIMAL)) {
+        if (hasRoot(logicalType, LogicalTypeRoot.DECIMAL)) {
             return Types.BIG_DEC;
-        } else if (logicalType.is(CHAR)) {
+        } else if (hasRoot(logicalType, LogicalTypeRoot.CHAR)) {
             return Types.STRING;
-        } else if (logicalType.is(VARCHAR)) {
+        } else if (hasRoot(logicalType, LogicalTypeRoot.VARCHAR)) {
             return Types.STRING;
         }
 
         // relax the precision constraint as Timestamp can store the highest precision
-        else if (logicalType.is(TIMESTAMP_WITHOUT_TIME_ZONE)
+        else if (hasRoot(logicalType, LogicalTypeRoot.TIMESTAMP_WITHOUT_TIME_ZONE)
                 && dataType.getConversionClass() == Timestamp.class) {
             return Types.SQL_TIMESTAMP;
         }
 
         // relax the precision constraint as LocalDateTime can store the highest precision
-        else if (logicalType.is(TIMESTAMP_WITHOUT_TIME_ZONE)
+        else if (hasRoot(logicalType, LogicalTypeRoot.TIMESTAMP_WITHOUT_TIME_ZONE)
                 && dataType.getConversionClass() == LocalDateTime.class) {
             return Types.LOCAL_DATE_TIME;
         }
 
         // convert proctime back
-        else if (logicalType.is(TIMESTAMP_WITH_LOCAL_TIME_ZONE)
+        else if (hasRoot(logicalType, LogicalTypeRoot.TIMESTAMP_WITH_LOCAL_TIME_ZONE)
                 && dataType.getConversionClass() == Timestamp.class) {
             return Types.SQL_TIMESTAMP;
         }
 
         // relax the precision constraint as LocalTime can store the highest precision
-        else if (logicalType.is(TIME_WITHOUT_TIME_ZONE)
+        else if (hasRoot(logicalType, LogicalTypeRoot.TIME_WITHOUT_TIME_ZONE)
                 && dataType.getConversionClass() == LocalTime.class) {
             return Types.LOCAL_TIME;
         } else if (canConvertToLegacyTypeInfo(dataType)) {
@@ -294,9 +283,10 @@ public final class LegacyTypeInfoDataTypeConverter {
     }
 
     private static boolean canConvertToTimeAttributeTypeInfo(DataType dataType) {
-        if (dataType.getLogicalType().is(TIMESTAMP_WITHOUT_TIME_ZONE)) {
+        if (hasRoot(dataType.getLogicalType(), LogicalTypeRoot.TIMESTAMP_WITHOUT_TIME_ZONE)) {
             return ((TimestampType) dataType.getLogicalType()).getKind() != TimestampKind.REGULAR;
-        } else if (dataType.getLogicalType().is(TIMESTAMP_WITH_LOCAL_TIME_ZONE)) {
+        } else if (hasRoot(
+                dataType.getLogicalType(), LogicalTypeRoot.TIMESTAMP_WITH_LOCAL_TIME_ZONE)) {
             return ((LocalZonedTimestampType) dataType.getLogicalType()).getKind()
                     != TimestampKind.REGULAR;
         } else {
@@ -328,7 +318,7 @@ public final class LegacyTypeInfoDataTypeConverter {
     }
 
     private static boolean canConvertToRowTypeInfo(DataType dataType) {
-        return dataType.getLogicalType().is(ROW)
+        return hasRoot(dataType.getLogicalType(), LogicalTypeRoot.ROW)
                 && dataType.getConversionClass().equals(Row.class)
                 && ((RowType) dataType.getLogicalType())
                         .getFields().stream().noneMatch(f -> f.getDescription().isPresent());
@@ -354,7 +344,8 @@ public final class LegacyTypeInfoDataTypeConverter {
     }
 
     private static boolean canConvertToObjectArrayTypeInfo(DataType dataType) {
-        return dataType.getLogicalType().is(ARRAY) && dataType.getConversionClass().isArray();
+        return hasRoot(dataType.getLogicalType(), LogicalTypeRoot.ARRAY)
+                && dataType.getConversionClass().isArray();
     }
 
     private static TypeInformation<?> convertToObjectArrayTypeInfo(
@@ -369,7 +360,8 @@ public final class LegacyTypeInfoDataTypeConverter {
     }
 
     private static boolean canConvertToMultisetTypeInfo(DataType dataType) {
-        return dataType.getLogicalType().is(MULTISET) && dataType.getConversionClass() == Map.class;
+        return hasRoot(dataType.getLogicalType(), LogicalTypeRoot.MULTISET)
+                && dataType.getConversionClass() == Map.class;
     }
 
     private static TypeInformation<?> convertToMultisetTypeInfo(
@@ -385,7 +377,8 @@ public final class LegacyTypeInfoDataTypeConverter {
     }
 
     private static boolean canConvertToMapTypeInfo(DataType dataType) {
-        return dataType.getLogicalType().is(MAP) && dataType.getConversionClass() == Map.class;
+        return hasRoot(dataType.getLogicalType(), LogicalTypeRoot.MAP)
+                && dataType.getConversionClass() == Map.class;
     }
 
     private static TypeInformation<?> convertToMapTypeInfo(KeyValueDataType dataType) {
@@ -404,7 +397,8 @@ public final class LegacyTypeInfoDataTypeConverter {
 
     private static boolean canConvertToRawTypeInfo(DataType dataType) {
         final LogicalType type = dataType.getLogicalType();
-        return type.is(RAW) && dataType.getConversionClass() == type.getDefaultConversion();
+        return hasRoot(type, LogicalTypeRoot.RAW)
+                && dataType.getConversionClass() == type.getDefaultConversion();
     }
 
     private static TypeInformation<?> convertToRawTypeInfo(DataType dataType) {

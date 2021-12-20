@@ -18,7 +18,6 @@
 
 package org.apache.flink.runtime.webmonitor.handlers;
 
-import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.runtime.rest.handler.AbstractRestHandler;
 import org.apache.flink.runtime.rest.handler.HandlerRequest;
@@ -69,9 +68,8 @@ public class JarUploadHandler
     }
 
     @Override
-    @VisibleForTesting
-    public CompletableFuture<JarUploadResponseBody> handleRequest(
-            @Nonnull final HandlerRequest<EmptyRequestBody> request,
+    protected CompletableFuture<JarUploadResponseBody> handleRequest(
+            @Nonnull final HandlerRequest<EmptyRequestBody, EmptyMessageParameters> request,
             @Nonnull final RestfulGateway gateway)
             throws RestHandlerException {
         Collection<File> uploadedFiles = request.getUploadedFiles();

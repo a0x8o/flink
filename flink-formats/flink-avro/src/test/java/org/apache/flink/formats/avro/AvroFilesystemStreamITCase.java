@@ -30,6 +30,7 @@ public class AvroFilesystemStreamITCase extends FsStreamingSinkITCaseBase {
     public String[] additionalProperties() {
         List<String> ret = new ArrayList<>();
         ret.add("'format'='avro'");
+        ret.add("'avro.codec'='snappy'");
         return ret.toArray(new String[0]);
     }
 }

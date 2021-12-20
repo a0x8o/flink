@@ -18,7 +18,6 @@
 
 package org.apache.flink.connector.base.source.reader;
 
-import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.api.connector.source.SourceSplit;
 
 import javax.annotation.Nullable;
@@ -35,7 +34,6 @@ import java.util.Set;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /** An implementation of RecordsWithSplitIds to host all the records by splits. */
-@PublicEvolving
 public class RecordsBySplits<E> implements RecordsWithSplitIds<E> {
 
     private final Set<String> finishedSplits;

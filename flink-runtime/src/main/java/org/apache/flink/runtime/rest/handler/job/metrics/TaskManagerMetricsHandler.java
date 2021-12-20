@@ -58,7 +58,8 @@ public class TaskManagerMetricsHandler
     @Nullable
     @Override
     protected MetricStore.ComponentMetricStore getComponentMetricStore(
-            final HandlerRequest<EmptyRequestBody> request, final MetricStore metricStore) {
+            final HandlerRequest<EmptyRequestBody, TaskManagerMetricsMessageParameters> request,
+            final MetricStore metricStore) {
         final ResourceID taskManagerId = request.getPathParameter(TaskManagerIdPathParameter.class);
         return metricStore.getTaskManagerMetricStore(taskManagerId.toString());
     }

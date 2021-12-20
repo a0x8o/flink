@@ -45,6 +45,7 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 
 import static org.apache.flink.types.RowKind.DELETE;
 import static org.apache.flink.types.RowKind.INSERT;
@@ -320,7 +321,7 @@ public class ReducingUpsertWriterTest {
                 },
                 enableObjectReuse
                         ? typeInformation.createSerializer(new ExecutionConfig())::copy
-                        : r -> r);
+                        : Function.identity());
     }
 
     private static class MockedSinkWriter implements SinkWriter<RowData, Void, Void> {

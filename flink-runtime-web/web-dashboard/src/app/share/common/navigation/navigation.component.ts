@@ -33,13 +33,13 @@ export class NavigationComponent implements OnInit, OnDestroy {
   navIndex = 0;
   destroy$ = new Subject();
 
-  navigateTo(path: string): void {
+  navigateTo(path: string) {
     this.router.navigate([path], { relativeTo: this.activatedRoute }).then();
   }
 
   constructor(private activatedRoute: ActivatedRoute, private router: Router, private cdr: ChangeDetectorRef) {}
 
-  ngOnInit(): void {
+  ngOnInit() {
     this.router.events
       .pipe(
         filter(e => e instanceof NavigationEnd),
@@ -55,7 +55,7 @@ export class NavigationComponent implements OnInit, OnDestroy {
       });
   }
 
-  ngOnDestroy(): void {
+  ngOnDestroy() {
     this.destroy$.next();
     this.destroy$.complete();
   }

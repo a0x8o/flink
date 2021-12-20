@@ -26,9 +26,9 @@ import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.ReadableConfig;
 import org.apache.flink.connector.base.DeliveryGuarantee;
 import org.apache.flink.streaming.connectors.kafka.config.StartupMode;
+import org.apache.flink.table.api.TableSchema;
 import org.apache.flink.table.api.ValidationException;
-import org.apache.flink.table.catalog.ResolvedCatalogTable;
-import org.apache.flink.table.catalog.ResolvedSchema;
+import org.apache.flink.table.catalog.CatalogTable;
 import org.apache.flink.table.connector.ChangelogMode;
 import org.apache.flink.table.connector.format.DecodingFormat;
 import org.apache.flink.table.connector.format.EncodingFormat;
@@ -115,11 +115,8 @@ public class UpsertKafkaDynamicTableFactory
 
         // Validate the option data type.
         helper.validateExcept(PROPERTIES_PREFIX);
-        validateSource(
-                tableOptions,
-                keyDecodingFormat,
-                valueDecodingFormat,
-                context.getPrimaryKeyIndexes());
+        TableSchema schema = context.getCatalogTable().getSchema();
+        validateSource(tableOptions, keyDecodingFormat, valueDecodingFormat, schema);
 
         Tuple2<int[], int[]> keyValueProjections =
                 createKeyValueProjections(context.getCatalogTable());
@@ -129,7 +126,7 @@ public class UpsertKafkaDynamicTableFactory
         StartupMode earliest = StartupMode.EARLIEST;
 
         return new KafkaDynamicSource(
-                context.getPhysicalRowDataType(),
+                schema.toPhysicalRowDataType(),
                 keyDecodingFormat,
                 new DecodingFormatWrapper(valueDecodingFormat),
                 keyValueProjections.f0,
@@ -160,11 +157,8 @@ public class UpsertKafkaDynamicTableFactory
 
         // Validate the option data type.
         helper.validateExcept(PROPERTIES_PREFIX);
-        validateSink(
-                tableOptions,
-                keyEncodingFormat,
-                valueEncodingFormat,
-                context.getPrimaryKeyIndexes());
+        TableSchema schema = context.getCatalogTable().getSchema();
+        validateSink(tableOptions, keyEncodingFormat, valueEncodingFormat, schema);
 
         Tuple2<int[], int[]> keyValueProjections =
                 createKeyValueProjections(context.getCatalogTable());
@@ -181,8 +175,8 @@ public class UpsertKafkaDynamicTableFactory
         // use {@link org.apache.kafka.clients.producer.internals.DefaultPartitioner}.
         // it will use hash partition if key is set else in round-robin behaviour.
         return new KafkaDynamicSink(
-                context.getPhysicalRowDataType(),
-                context.getPhysicalRowDataType(),
+                schema.toPhysicalRowDataType(),
+                schema.toPhysicalRowDataType(),
                 keyEncodingFormat,
                 new EncodingFormatWrapper(valueEncodingFormat),
                 keyValueProjections.f0,
@@ -198,8 +192,8 @@ public class UpsertKafkaDynamicTableFactory
                 tableOptions.get(TRANSACTIONAL_ID_PREFIX));
     }
 
-    private Tuple2<int[], int[]> createKeyValueProjections(ResolvedCatalogTable catalogTable) {
-        ResolvedSchema schema = catalogTable.getResolvedSchema();
+    private Tuple2<int[], int[]> createKeyValueProjections(CatalogTable catalogTable) {
+        TableSchema schema = catalogTable.getSchema();
         // primary key should validated earlier
         List<String> keyFields = schema.getPrimaryKey().get().getColumns();
         DataType physicalDataType = schema.toPhysicalRowDataType();
@@ -219,23 +213,17 @@ public class UpsertKafkaDynamicTableFactory
     // --------------------------------------------------------------------------------------------
 
     private static void validateSource(
-            ReadableConfig tableOptions,
-            Format keyFormat,
-            Format valueFormat,
-            int[] primaryKeyIndexes) {
+            ReadableConfig tableOptions, Format keyFormat, Format valueFormat, TableSchema schema) {
         validateTopic(tableOptions);
         validateFormat(keyFormat, valueFormat, tableOptions);
-        validatePKConstraints(primaryKeyIndexes);
+        validatePKConstraints(schema);
     }
 
     private static void validateSink(
-            ReadableConfig tableOptions,
-            Format keyFormat,
-            Format valueFormat,
-            int[] primaryKeyIndexes) {
+            ReadableConfig tableOptions, Format keyFormat, Format valueFormat, TableSchema schema) {
         validateTopic(tableOptions);
         validateFormat(keyFormat, valueFormat, tableOptions);
-        validatePKConstraints(primaryKeyIndexes);
+        validatePKConstraints(schema);
         validateSinkBufferFlush(tableOptions);
     }
 
@@ -268,8 +256,8 @@ public class UpsertKafkaDynamicTableFactory
         }
     }
 
-    private static void validatePKConstraints(int[] schema) {
-        if (schema.length == 0) {
+    private static void validatePKConstraints(TableSchema schema) {
+        if (!schema.getPrimaryKey().isPresent()) {
             throw new ValidationException(
                     "'upsert-kafka' tables require to define a PRIMARY KEY constraint. "
                             + "The PRIMARY KEY specifies which columns should be read from or write to the Kafka message key. "

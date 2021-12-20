@@ -17,61 +17,24 @@
 
 package org.apache.flink.streaming.runtime.operators.sink;
 
-import java.io.IOException;
+import org.apache.flink.util.function.SupplierWithException;
+
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Deque;
 import java.util.List;
 
-import static org.apache.flink.util.Preconditions.checkNotNull;
-
-abstract class AbstractCommitterHandler<InputT, OutputT, RecoverT>
+abstract class AbstractCommitterHandler<InputT, OutputT>
         implements CommitterHandler<InputT, OutputT> {
 
     /** Record all the committables until commit. */
     private final Deque<InputT> committables = new ArrayDeque<>();
 
-    /** The committables that need to be committed again after recovering from a failover. */
-    private final List<RecoverT> recoveredCommittables = new ArrayList<>();
-
-    /**
-     * Notifies a list of committables that might need to be committed again after recovering from a
-     * failover.
-     *
-     * @param recovered A list of committables
-     */
-    protected void recoveredCommittables(List<RecoverT> recovered) throws IOException {
-        recoveredCommittables.addAll(checkNotNull(recovered));
-    }
-
-    protected List<RecoverT> prependRecoveredCommittables(List<RecoverT> committables) {
-        if (recoveredCommittables.isEmpty()) {
-            return committables;
-        }
-        List<RecoverT> all = new ArrayList<>(recoveredCommittables.size() + committables.size());
-        all.addAll(recoveredCommittables);
-        all.addAll(committables);
-        recoveredCommittables.clear();
-        return all;
-    }
-
     @Override
-    public boolean needsRetry() {
-        return !recoveredCommittables.isEmpty();
-    }
-
-    @Override
-    public void retry() throws IOException, InterruptedException {
-        retry(prependRecoveredCommittables(Collections.emptyList()));
-    }
-
-    protected abstract void retry(List<RecoverT> recoveredCommittables)
-            throws IOException, InterruptedException;
-
-    @Override
-    public List<OutputT> processCommittables(List<InputT> committables) {
-        this.committables.addAll(committables);
+    public List<OutputT> processCommittables(
+            SupplierWithException<List<InputT>, Exception> committableSupplier) throws Exception {
+        this.committables.addAll(committableSupplier.get());
         return Collections.emptyList();
     }
 

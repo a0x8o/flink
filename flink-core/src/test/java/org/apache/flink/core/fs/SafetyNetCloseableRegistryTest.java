@@ -19,7 +19,7 @@
 package org.apache.flink.core.fs;
 
 import org.apache.flink.core.testutils.CheckedThread;
-import org.apache.flink.util.AbstractAutoCloseableRegistry;
+import org.apache.flink.util.AbstractCloseableRegistry;
 import org.apache.flink.util.ExceptionUtils;
 
 import org.junit.After;
@@ -34,8 +34,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /** Tests for the {@link SafetyNetCloseableRegistry}. */
 public class SafetyNetCloseableRegistryTest
-        extends AbstractAutoCloseableRegistryTest<
-                Closeable,
+        extends AbstractCloseableRegistryTest<
                 WrappingProxyCloseable<? extends Closeable>,
                 SafetyNetCloseableRegistry.PhantomDelegatingCloseableRef> {
 
@@ -60,11 +59,9 @@ public class SafetyNetCloseableRegistryTest
     }
 
     @Override
-    protected AbstractAutoCloseableRegistry<
-                    Closeable,
+    protected AbstractCloseableRegistry<
                     WrappingProxyCloseable<? extends Closeable>,
-                    SafetyNetCloseableRegistry.PhantomDelegatingCloseableRef,
-                    IOException>
+                    SafetyNetCloseableRegistry.PhantomDelegatingCloseableRef>
             createRegistry() {
         // SafetyNetCloseableRegistry has a global reaper thread to reclaim leaking resources,
         // in normal cases, that thread will be interrupted in closing of last active registry
@@ -75,22 +72,18 @@ public class SafetyNetCloseableRegistryTest
     }
 
     @Override
-    protected AbstractAutoCloseableRegistryTest.ProducerThread<
-                    Closeable,
+    protected AbstractCloseableRegistryTest.ProducerThread<
                     WrappingProxyCloseable<? extends Closeable>,
                     SafetyNetCloseableRegistry.PhantomDelegatingCloseableRef>
             createProducerThread(
-                    AbstractAutoCloseableRegistry<
-                                    Closeable,
+                    AbstractCloseableRegistry<
                                     WrappingProxyCloseable<? extends Closeable>,
-                                    SafetyNetCloseableRegistry.PhantomDelegatingCloseableRef,
-                                    IOException>
+                                    SafetyNetCloseableRegistry.PhantomDelegatingCloseableRef>
                             registry,
                     AtomicInteger unclosedCounter,
                     int maxStreams) {
 
-        return new AbstractAutoCloseableRegistryTest.ProducerThread<
-                Closeable,
+        return new AbstractCloseableRegistryTest.ProducerThread<
                 WrappingProxyCloseable<? extends Closeable>,
                 SafetyNetCloseableRegistry.PhantomDelegatingCloseableRef>(
                 registry, unclosedCounter, maxStreams) {

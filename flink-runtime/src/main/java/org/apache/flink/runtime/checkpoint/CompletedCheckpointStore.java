@@ -18,12 +18,14 @@
 
 package org.apache.flink.runtime.checkpoint;
 
+import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.JobStatus;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
+import java.util.ListIterator;
 
 /** A bounded LIFO-queue of {@link CompletedCheckpoint} instances. */
 public interface CompletedCheckpointStore {
@@ -46,28 +48,33 @@ public interface CompletedCheckpointStore {
      * Returns the latest {@link CompletedCheckpoint} instance or <code>null</code> if none was
      * added.
      */
-    default CompletedCheckpoint getLatestCheckpoint() throws Exception {
+    default CompletedCheckpoint getLatestCheckpoint(boolean isPreferCheckpointForRecovery)
+            throws Exception {
         List<CompletedCheckpoint> allCheckpoints = getAllCheckpoints();
         if (allCheckpoints.isEmpty()) {
             return null;
         }
 
-        return allCheckpoints.get(allCheckpoints.size() - 1);
-    }
+        CompletedCheckpoint lastCompleted = allCheckpoints.get(allCheckpoints.size() - 1);
 
-    /** Returns the id of the latest completed checkpoints. */
-    default long getLatestCheckpointId() {
-        try {
-            List<CompletedCheckpoint> allCheckpoints = getAllCheckpoints();
-            if (allCheckpoints.isEmpty()) {
-                return 0;
+        if (isPreferCheckpointForRecovery
+                && allCheckpoints.size() > 1
+                && lastCompleted.getProperties().isSavepoint()) {
+            ListIterator<CompletedCheckpoint> listIterator =
+                    allCheckpoints.listIterator(allCheckpoints.size() - 1);
+            while (listIterator.hasPrevious()) {
+                CompletedCheckpoint prev = listIterator.previous();
+                if (!prev.getProperties().isSavepoint()) {
+                    LOG.info(
+                            "Found a completed checkpoint ({}) before the latest savepoint, will use it to recover!",
+                            prev);
+                    return prev;
+                }
             }
-
-            return allCheckpoints.get(allCheckpoints.size() - 1).getCheckpointID();
-        } catch (Throwable throwable) {
-            LOG.warn("Get the latest completed checkpoints failed", throwable);
-            return 0;
+            LOG.info("Did not find earlier checkpoint, using latest savepoint to recover.");
         }
+
+        return lastCompleted;
     }
 
     /**
@@ -103,4 +110,16 @@ public interface CompletedCheckpointStore {
      *     false if the store stores the metadata itself.
      */
     boolean requiresExternalizedCheckpoints();
+
+    @VisibleForTesting
+    static CompletedCheckpointStore storeFor(
+            Runnable postCleanupAction, CompletedCheckpoint... checkpoints) throws Exception {
+        StandaloneCompletedCheckpointStore store =
+                new StandaloneCompletedCheckpointStore(checkpoints.length);
+        CheckpointsCleaner checkpointsCleaner = new CheckpointsCleaner();
+        for (final CompletedCheckpoint checkpoint : checkpoints) {
+            store.addCheckpoint(checkpoint, checkpointsCleaner, postCleanupAction);
+        }
+        return store;
+    }
 }

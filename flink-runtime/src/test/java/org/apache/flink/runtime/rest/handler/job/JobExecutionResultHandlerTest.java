@@ -59,7 +59,7 @@ public class JobExecutionResultHandlerTest extends TestLogger {
 
     private JobExecutionResultHandler jobExecutionResultHandler;
 
-    private HandlerRequest<EmptyRequestBody> testRequest;
+    private HandlerRequest<EmptyRequestBody, JobMessageParameters> testRequest;
 
     @Before
     public void setUp() throws Exception {
@@ -73,12 +73,11 @@ public class JobExecutionResultHandlerTest extends TestLogger {
                         Collections.emptyMap());
 
         testRequest =
-                HandlerRequest.resolveParametersAndCreate(
+                new HandlerRequest<>(
                         EmptyRequestBody.getInstance(),
                         new JobMessageParameters(),
                         Collections.singletonMap("jobid", TEST_JOB_ID.toString()),
-                        Collections.emptyMap(),
-                        Collections.emptyList());
+                        Collections.emptyMap());
     }
 
     @Test

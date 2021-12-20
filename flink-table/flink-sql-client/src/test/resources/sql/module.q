@@ -38,7 +38,7 @@ SHOW FULL MODULES;
 +-------------+------+
 | module name | used |
 +-------------+------+
-|        core | TRUE |
+|        core | true |
 +-------------+------+
 1 row in set
 !ok
@@ -106,8 +106,8 @@ SHOW FULL MODULES;
 +-------------+------+
 | module name | used |
 +-------------+------+
-|        core | TRUE |
-|        hive | TRUE |
+|        core | true |
+|        hive | true |
 +-------------+------+
 2 rows in set
 !ok
@@ -151,8 +151,8 @@ SHOW FULL MODULES;
 +-------------+------+
 | module name | used |
 +-------------+------+
-|        hive | TRUE |
-|        core | TRUE |
+|        hive | true |
+|        core | true |
 +-------------+------+
 2 rows in set
 !ok
@@ -175,8 +175,8 @@ SHOW FULL MODULES;
 +-------------+-------+
 | module name |  used |
 +-------------+-------+
-|        core |  TRUE |
-|        hive | FALSE |
+|        core |  true |
+|        hive | false |
 +-------------+-------+
 2 rows in set
 !ok
@@ -203,7 +203,7 @@ SHOW FULL MODULES;
 +-------------+-------+
 | module name |  used |
 +-------------+-------+
-|        hive | FALSE |
+|        hive | false |
 +-------------+-------+
 1 row in set
 !ok

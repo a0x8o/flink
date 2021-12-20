@@ -18,10 +18,9 @@
 
 package org.apache.flink.formats.avro.glue.schema.registry;
 
-import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.formats.avro.utils.MutableByteArrayInputStream;
 
-import com.amazonaws.services.schemaregistry.deserializers.GlueSchemaRegistryDeserializationFacade;
+import com.amazonaws.services.schemaregistry.deserializers.AWSDeserializer;
 import com.amazonaws.services.schemaregistry.exception.AWSSchemaRegistryException;
 import org.apache.avro.Schema;
 import org.apache.avro.Schema.Parser;
@@ -36,9 +35,8 @@ import java.util.Map;
  * AWS Glue Schema Registry input stream de-serializer to accept input stream and extract schema
  * from it and remove schema registry information in the input stream.
  */
-@PublicEvolving
 public class GlueSchemaRegistryInputStreamDeserializer {
-    private final GlueSchemaRegistryDeserializationFacade glueSchemaRegistryDeserializationFacade;
+    private final AWSDeserializer awsDeserializer;
 
     /**
      * Constructor accepts configuration map for AWS Deserializer.
@@ -46,16 +44,15 @@ public class GlueSchemaRegistryInputStreamDeserializer {
      * @param configs configuration map
      */
     public GlueSchemaRegistryInputStreamDeserializer(Map<String, Object> configs) {
-        this.glueSchemaRegistryDeserializationFacade =
-                GlueSchemaRegistryDeserializationFacade.builder()
+        awsDeserializer =
+                AWSDeserializer.builder()
                         .credentialProvider(DefaultCredentialsProvider.builder().build())
                         .configs(configs)
                         .build();
     }
 
-    public GlueSchemaRegistryInputStreamDeserializer(
-            GlueSchemaRegistryDeserializationFacade glueSchemaRegistryDeserializationFacade) {
-        this.glueSchemaRegistryDeserializationFacade = glueSchemaRegistryDeserializationFacade;
+    public GlueSchemaRegistryInputStreamDeserializer(AWSDeserializer awsDeserializer) {
+        this.awsDeserializer = awsDeserializer;
     }
 
     /**
@@ -71,10 +68,8 @@ public class GlueSchemaRegistryInputStreamDeserializer {
         in.reset();
 
         MutableByteArrayInputStream mutableByteArrayInputStream = (MutableByteArrayInputStream) in;
-        String schemaDefinition =
-                glueSchemaRegistryDeserializationFacade.getSchemaDefinition(inputBytes);
-        byte[] deserializedBytes =
-                glueSchemaRegistryDeserializationFacade.getActualData(inputBytes);
+        String schemaDefinition = awsDeserializer.getSchema(inputBytes).getSchemaDefinition();
+        byte[] deserializedBytes = awsDeserializer.getActualData(inputBytes);
         mutableByteArrayInputStream.setBuffer(deserializedBytes);
 
         Schema schema;

@@ -302,7 +302,6 @@ public interface RowData {
      *
      * @see #createFieldGetter(LogicalType, int)
      */
-    @PublicEvolving
     interface FieldGetter extends Serializable {
         @Nullable
         Object getFieldOrNull(RowData row);

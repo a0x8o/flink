@@ -18,12 +18,12 @@
 
 package org.apache.flink.table.planner.plan.utils
 
-import org.apache.flink.table.planner.plan.`trait`.RelWindowProperties
 import org.apache.flink.table.planner.plan.metadata.FlinkRelMetadataQuery
+import org.apache.flink.table.planner.plan.nodes.ExpressionFormat
 import org.apache.flink.table.planner.plan.nodes.logical.FlinkLogicalJoin
+import org.apache.flink.table.planner.plan.`trait`.RelWindowProperties
 import org.apache.flink.table.planner.utils.Logging
 
-import org.apache.calcite.rel.RelNode
 import org.apache.calcite.rex.{RexInputRef, RexNode, RexUtil}
 import org.apache.calcite.sql.fun.SqlStdOperatorTable
 
@@ -61,11 +61,7 @@ object WindowJoinUtil extends Logging {
    *         ends equality of input tables, else false.
    */
   def satisfyWindowJoin(join: FlinkLogicalJoin): Boolean = {
-    satisfyWindowJoin(join, join.getLeft, join.getRight)
-  }
-
-  def satisfyWindowJoin(join: FlinkLogicalJoin, newLeft: RelNode, newRight: RelNode): Boolean = {
-    excludeWindowStartEqualityAndEndEqualityFromJoinInfoPairs(join, newLeft, newRight) match {
+    excludeWindowStartEqualityAndEndEqualityFromJoinInfoPairs(join) match {
       case Some((windowStartEqualityLeftKeys, windowEndEqualityLeftKeys, _, _)) =>
         windowStartEqualityLeftKeys.nonEmpty && windowEndEqualityLeftKeys.nonEmpty
       case _ => false
@@ -171,13 +167,6 @@ object WindowJoinUtil extends Logging {
    */
   private def excludeWindowStartEqualityAndEndEqualityFromJoinInfoPairs(
       join: FlinkLogicalJoin): Option[(Array[Int], Array[Int], Array[Int], Array[Int])] = {
-    excludeWindowStartEqualityAndEndEqualityFromJoinInfoPairs(join, join.getLeft, join.getRight)
-  }
-
-  private def excludeWindowStartEqualityAndEndEqualityFromJoinInfoPairs(
-      join: FlinkLogicalJoin,
-      newLeft: RelNode,
-      newRight: RelNode): Option[(Array[Int], Array[Int], Array[Int], Array[Int])] = {
     val joinInfo = join.analyzeCondition()
     val (leftWindowProperties, rightWindowProperties) = getChildWindowProperties(join)
 
@@ -234,8 +223,8 @@ object WindowJoinUtil extends Logging {
         )
       }
     } else if (windowStartEqualityLeftKeys.nonEmpty || windowEndEqualityLeftKeys.nonEmpty) {
-      val leftFieldNames = newLeft.getRowType.getFieldNames.toList
-      val rightFieldNames = newRight.getRowType.getFieldNames.toList
+      val leftFieldNames = join.getLeft.getRowType.getFieldNames.toList
+      val rightFieldNames = join.getRight.getRowType.getFieldNames.toList
       val inputFieldNames = leftFieldNames ++ rightFieldNames
       val condition = join.getExpressionString(
         join.getCondition,

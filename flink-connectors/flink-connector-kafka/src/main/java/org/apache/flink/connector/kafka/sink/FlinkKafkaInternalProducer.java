@@ -17,11 +17,12 @@
 
 package org.apache.flink.connector.kafka.sink;
 
+import org.apache.flink.util.Preconditions;
+
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.internals.TransactionManager;
 import org.apache.kafka.clients.producer.internals.TransactionalRequestResult;
-import org.apache.kafka.common.errors.ProducerFencedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -31,10 +32,7 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.time.Duration;
 import java.util.Properties;
-
-import static org.apache.flink.util.Preconditions.checkState;
 
 /**
  * A {@link KafkaProducer} that exposes private fields to allow resume producing from a given state.
@@ -47,88 +45,25 @@ class FlinkKafkaInternalProducer<K, V> extends KafkaProducer<K, V> {
             "org.apache.kafka.clients.producer.internals.TransactionManager$State";
     private static final String PRODUCER_ID_AND_EPOCH_FIELD_NAME = "producerIdAndEpoch";
 
-    @Nullable private String transactionalId;
-    private volatile boolean inTransaction;
-    private volatile boolean closed;
+    private final Properties kafkaProducerConfig;
+    @Nullable private final String transactionalId;
 
-    public FlinkKafkaInternalProducer(Properties properties, @Nullable String transactionalId) {
-        super(withTransactionalId(properties, transactionalId));
-        this.transactionalId = transactionalId;
-    }
-
-    private static Properties withTransactionalId(
-            Properties properties, @Nullable String transactionalId) {
-        if (transactionalId == null) {
-            return properties;
-        }
-        Properties props = new Properties();
-        props.putAll(properties);
-        props.setProperty(ProducerConfig.TRANSACTIONAL_ID_CONFIG, transactionalId);
-        return props;
+    public FlinkKafkaInternalProducer(Properties properties) {
+        super(properties);
+        this.kafkaProducerConfig = properties;
+        this.transactionalId = properties.getProperty(ProducerConfig.TRANSACTIONAL_ID_CONFIG);
     }
 
     @Override
     public void flush() {
         super.flush();
-        if (inTransaction) {
+        if (transactionalId != null) {
             flushNewPartitions();
         }
     }
 
-    @Override
-    public void beginTransaction() throws ProducerFencedException {
-        super.beginTransaction();
-        inTransaction = true;
-    }
-
-    @Override
-    public void abortTransaction() throws ProducerFencedException {
-        LOG.debug("abortTransaction {}", transactionalId);
-        checkState(inTransaction, "Transaction was not started");
-        super.abortTransaction();
-        inTransaction = false;
-    }
-
-    @Override
-    public void commitTransaction() throws ProducerFencedException {
-        LOG.debug("commitTransaction {}", transactionalId);
-        checkState(inTransaction, "Transaction was not started");
-        super.commitTransaction();
-        inTransaction = false;
-    }
-
-    public boolean isInTransaction() {
-        return inTransaction;
-    }
-
-    @Override
-    public void close() {
-        closed = true;
-        if (inTransaction) {
-            // This is state is most likely reached in case of a failure.
-            // If this producer is still in transaction, it should be committing.
-            // However, at this point, we cannot decide that and we shouldn't prolong cancellation.
-            // So hard kill this producer with all resources.
-            super.close(Duration.ZERO);
-        } else {
-            // If this is outside of a transaction, we should be able to cleanly shutdown.
-            super.close(Duration.ofHours(1));
-        }
-    }
-
-    @Override
-    public void close(Duration timeout) {
-        closed = true;
-        super.close(timeout);
-    }
-
-    public boolean isClosed() {
-        return closed;
-    }
-
-    @Nullable
-    public String getTransactionalId() {
-        return transactionalId;
+    public Properties getKafkaProducerConfig() {
+        return kafkaProducerConfig;
     }
 
     public short getEpoch() {
@@ -141,29 +76,6 @@ class FlinkKafkaInternalProducer<K, V> extends KafkaProducer<K, V> {
         Object transactionManager = getTransactionManager();
         Object producerIdAndEpoch = getField(transactionManager, PRODUCER_ID_AND_EPOCH_FIELD_NAME);
         return (long) getField(producerIdAndEpoch, "producerId");
-    }
-
-    public void initTransactionId(String transactionalId) {
-        if (!transactionalId.equals(this.transactionalId)) {
-            setTransactionId(transactionalId);
-            initTransactions();
-        }
-    }
-
-    public void setTransactionId(String transactionalId) {
-        if (!transactionalId.equals(this.transactionalId)) {
-            checkState(!inTransaction);
-            LOG.debug("Change transaction id from {} to {}", this.transactionalId, transactionalId);
-            Object transactionManager = getTransactionManager();
-            synchronized (transactionManager) {
-                setField(transactionManager, "transactionalId", transactionalId);
-                setField(
-                        transactionManager,
-                        "currentState",
-                        getTransactionManagerState("UNINITIALIZED"));
-                this.transactionalId = transactionalId;
-            }
-        }
     }
 
     /**
@@ -272,8 +184,7 @@ class FlinkKafkaInternalProducer<K, V> extends KafkaProducer<K, V> {
      * https://github.com/apache/kafka/commit/5d2422258cb975a137a42a4e08f03573c49a387e#diff-f4ef1afd8792cd2a2e9069cd7ddea630
      */
     public void resumeTransaction(long producerId, short epoch) {
-        checkState(!inTransaction, "Already in transaction %s", transactionalId);
-        checkState(
+        Preconditions.checkState(
                 producerId >= 0 && epoch >= 0,
                 "Incorrect values for producerId %s and epoch %s",
                 producerId,
@@ -301,7 +212,6 @@ class FlinkKafkaInternalProducer<K, V> extends KafkaProducer<K, V> {
 
             transitionTransactionManagerStateTo(transactionManager, "IN_TRANSACTION");
             setField(transactionManager, "transactionStarted", true);
-            this.inTransaction = true;
         }
     }
 
@@ -327,12 +237,8 @@ class FlinkKafkaInternalProducer<K, V> extends KafkaProducer<K, V> {
      * reflection.
      */
     private static void setField(Object object, String fieldName, Object value) {
-        setField(object, object.getClass(), fieldName, value);
-    }
-
-    private static void setField(Object object, Class<?> clazz, String fieldName, Object value) {
         try {
-            Field field = clazz.getDeclaredField(fieldName);
+            Field field = object.getClass().getDeclaredField(fieldName);
             field.setAccessible(true);
             field.set(object, value);
         } catch (NoSuchFieldException | IllegalAccessException e) {
@@ -357,17 +263,5 @@ class FlinkKafkaInternalProducer<K, V> extends KafkaProducer<K, V> {
     private static void transitionTransactionManagerStateTo(
             Object transactionManager, String state) {
         invoke(transactionManager, "transitionTo", getTransactionManagerState(state));
-    }
-
-    @Override
-    public String toString() {
-        return "FlinkKafkaInternalProducer{"
-                + "transactionalId='"
-                + transactionalId
-                + "', inTransaction="
-                + inTransaction
-                + ", closed="
-                + closed
-                + '}';
     }
 }

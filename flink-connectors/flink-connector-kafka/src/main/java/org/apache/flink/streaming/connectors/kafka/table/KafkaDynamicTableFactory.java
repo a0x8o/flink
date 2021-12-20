@@ -31,6 +31,7 @@ import org.apache.flink.streaming.connectors.kafka.config.StartupMode;
 import org.apache.flink.streaming.connectors.kafka.internals.KafkaTopicPartition;
 import org.apache.flink.streaming.connectors.kafka.partitioner.FlinkKafkaPartitioner;
 import org.apache.flink.table.api.ValidationException;
+import org.apache.flink.table.catalog.CatalogTable;
 import org.apache.flink.table.catalog.ObjectIdentifier;
 import org.apache.flink.table.connector.format.DecodingFormat;
 import org.apache.flink.table.connector.format.EncodingFormat;
@@ -161,10 +162,7 @@ public class KafkaDynamicTableFactory
         validateTableSourceOptions(tableOptions);
 
         validatePKConstraints(
-                context.getObjectIdentifier(),
-                context.getPrimaryKeyIndexes(),
-                context.getCatalogTable().getOptions(),
-                valueDecodingFormat);
+                context.getObjectIdentifier(), context.getCatalogTable(), valueDecodingFormat);
 
         final StartupOptions startupOptions = getStartupOptions(tableOptions);
 
@@ -177,7 +175,8 @@ public class KafkaDynamicTableFactory
                 KafkaSourceOptions.PARTITION_DISCOVERY_INTERVAL_MS.key(),
                 partitionDiscoveryInterval.orElse(-1L).toString());
 
-        final DataType physicalDataType = context.getPhysicalRowDataType();
+        final DataType physicalDataType =
+                context.getCatalogTable().getSchema().toPhysicalRowDataType();
 
         final int[] keyProjection = createKeyFormatProjection(tableOptions, physicalDataType);
 
@@ -223,12 +222,10 @@ public class KafkaDynamicTableFactory
         KafkaConnectorOptionsUtil.validateDeliveryGuarantee(tableOptions);
 
         validatePKConstraints(
-                context.getObjectIdentifier(),
-                context.getPrimaryKeyIndexes(),
-                context.getCatalogTable().getOptions(),
-                valueEncodingFormat);
+                context.getObjectIdentifier(), context.getCatalogTable(), valueEncodingFormat);
 
-        final DataType physicalDataType = context.getPhysicalRowDataType();
+        final DataType physicalDataType =
+                context.getCatalogTable().getSchema().toPhysicalRowDataType();
 
         final int[] keyProjection = createKeyFormatProjection(tableOptions, physicalDataType);
 
@@ -313,17 +310,12 @@ public class KafkaDynamicTableFactory
     }
 
     private static void validatePKConstraints(
-            ObjectIdentifier tableName,
-            int[] primaryKeyIndexes,
-            Map<String, String> options,
-            Format format) {
-        if (primaryKeyIndexes.length > 0
+            ObjectIdentifier tableName, CatalogTable catalogTable, Format format) {
+        if (catalogTable.getSchema().getPrimaryKey().isPresent()
                 && format.getChangelogMode().containsOnly(RowKind.INSERT)) {
-            Configuration configuration = Configuration.fromMap(options);
+            Configuration options = Configuration.fromMap(catalogTable.getOptions());
             String formatName =
-                    configuration
-                            .getOptional(FactoryUtil.FORMAT)
-                            .orElse(configuration.get(VALUE_FORMAT));
+                    options.getOptional(FactoryUtil.FORMAT).orElse(options.get(VALUE_FORMAT));
             throw new ValidationException(
                     String.format(
                             "The Kafka table '%s' with '%s' format doesn't support defining PRIMARY KEY constraint"

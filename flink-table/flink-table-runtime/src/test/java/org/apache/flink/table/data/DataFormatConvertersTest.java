@@ -35,6 +35,7 @@ import org.apache.flink.api.java.typeutils.TypeExtractor;
 import org.apache.flink.table.api.DataTypes;
 import org.apache.flink.table.data.util.DataFormatConverters;
 import org.apache.flink.table.data.util.DataFormatConverters.DataFormatConverter;
+import org.apache.flink.table.runtime.functions.SqlDateTimeUtils;
 import org.apache.flink.table.runtime.typeutils.DecimalDataTypeInfo;
 import org.apache.flink.table.runtime.typeutils.InternalTypeInfo;
 import org.apache.flink.table.runtime.typeutils.LegacyTimestampTypeInfo;
@@ -46,7 +47,6 @@ import org.apache.flink.table.types.logical.LegacyTypeInformationType;
 import org.apache.flink.table.types.logical.LogicalTypeRoot;
 import org.apache.flink.table.types.logical.VarCharType;
 import org.apache.flink.table.types.utils.TypeConversions;
-import org.apache.flink.table.utils.DateTimeUtils;
 import org.apache.flink.types.Row;
 import org.apache.flink.types.RowKind;
 
@@ -107,9 +107,9 @@ public class DataFormatConvertersTest {
                 new short[] {5, 1},
                 new byte[] {5, 1},
                 new char[] {5, 1},
-                DateTimeUtils.toLocalDate(5),
-                DateTimeUtils.toLocalTime(11),
-                DateTimeUtils.toLocalDateTime(11),
+                SqlDateTimeUtils.unixDateToLocalDate(5),
+                SqlDateTimeUtils.unixTimeToLocalTime(11),
+                SqlDateTimeUtils.unixTimestampToLocalDateTime(11),
                 StringData.fromString("hahah")
             };
 

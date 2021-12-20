@@ -18,14 +18,12 @@
 
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, Input, OnDestroy, OnInit } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
+import { JobsItemInterface } from 'interfaces';
 import { Observable, Subject } from 'rxjs';
 import { flatMap, takeUntil } from 'rxjs/operators';
-
-import { NzMessageService } from 'ng-zorro-antd/message';
-
-import { JobsItem } from 'interfaces';
 import { JobService, StatusService } from 'services';
 import { isNil } from 'utils';
+import { NzMessageService } from 'ng-zorro-antd/message';
 
 @Component({
   selector: 'flink-job-list',
@@ -34,25 +32,25 @@ import { isNil } from 'utils';
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class JobListComponent implements OnInit, OnDestroy {
-  listOfJob: JobsItem[] = [];
+  listOfJob: JobsItemInterface[] = [];
   isLoading = true;
   destroy$ = new Subject();
   sortName = 'start-time';
   sortValue = 'descend';
   @Input() completed = false;
   @Input() title: string;
-  @Input() jobData$: Observable<JobsItem[]>;
+  @Input() jobData$: Observable<JobsItemInterface[]>;
 
-  sortStartTimeFn = (pre: JobsItem, next: JobsItem): number => pre['start-time'] - next['start-time'];
-  sortDurationFn = (pre: JobsItem, next: JobsItem): number => pre.duration - next.duration;
-  sortEndTimeFn = (pre: JobsItem, next: JobsItem): number => pre['end-time'] - next['end-time'];
-  sortStateFn = (pre: JobsItem, next: JobsItem): number => pre.state.localeCompare(next.state);
+  sortStartTimeFn = (pre: JobsItemInterface, next: JobsItemInterface) => pre['start-time'] - next['start-time'];
+  sortDurationFn = (pre: JobsItemInterface, next: JobsItemInterface) => pre.duration - next.duration;
+  sortEndTimeFn = (pre: JobsItemInterface, next: JobsItemInterface) => pre['end-time'] - next['end-time'];
+  sortStateFn = (pre: JobsItemInterface, next: JobsItemInterface) => pre.state.localeCompare(next.state);
 
-  trackJobBy(_: number, node: JobsItem): string {
+  trackJobBy(_: number, node: JobsItemInterface) {
     return node.jid;
   }
 
-  navigateToJob(job: JobsItem): void {
+  navigateToJob(job: JobsItemInterface) {
     if (job.state === 'INITIALIZING') {
       this.nzMessageService.info('Job detail page is not available while it is in state INITIALIZING.');
     } else {
@@ -69,7 +67,7 @@ export class JobListComponent implements OnInit, OnDestroy {
     private router: Router
   ) {}
 
-  ngOnInit(): void {
+  ngOnInit() {
     if (this.activatedRoute.snapshot.data) {
       this.completed = isNil(this.activatedRoute.snapshot.data.completed)
         ? this.completed
@@ -91,7 +89,7 @@ export class JobListComponent implements OnInit, OnDestroy {
     });
   }
 
-  ngOnDestroy(): void {
+  ngOnDestroy() {
     this.destroy$.next();
     this.destroy$.complete();
   }

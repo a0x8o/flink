@@ -19,24 +19,23 @@
 package org.apache.flink.table.client.gateway.local.result;
 
 import org.apache.flink.table.api.TableResult;
-import org.apache.flink.table.api.internal.TableResultInternal;
 import org.apache.flink.table.client.gateway.SqlExecutionException;
 import org.apache.flink.table.client.gateway.TypedResult;
-import org.apache.flink.table.data.RowData;
+import org.apache.flink.types.Row;
 import org.apache.flink.util.CloseableIterator;
 
 import java.util.concurrent.atomic.AtomicReference;
 
 /** A result that works through {@link TableResult#collect()}. */
 public abstract class CollectResultBase implements DynamicResult {
-    private final CloseableIterator<RowData> result;
+    private final CloseableIterator<Row> result;
 
     protected final Object resultLock;
     protected AtomicReference<SqlExecutionException> executionException = new AtomicReference<>();
     protected final ResultRetrievalThread retrievalThread;
 
-    public CollectResultBase(TableResultInternal tableResult) {
-        result = tableResult.collectInternal();
+    public CollectResultBase(TableResult tableResult) {
+        result = tableResult.collect();
         resultLock = new Object();
         retrievalThread = new ResultRetrievalThread();
     }
@@ -57,7 +56,7 @@ public abstract class CollectResultBase implements DynamicResult {
         return TypedResult.endOfStream();
     }
 
-    protected abstract void processRecord(RowData row);
+    protected abstract void processRecord(Row row);
 
     protected boolean isRetrieving() {
         return retrievalThread.isRunning;

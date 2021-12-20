@@ -34,8 +34,8 @@ import org.apache.flink.streaming.connectors.kafka.internals.KafkaShuffleFetcher
 import org.apache.flink.streaming.connectors.kafka.internals.KafkaShuffleFetcher.KafkaShuffleWatermark;
 import org.apache.flink.util.PropertiesUtil;
 
+import org.apache.flink.shaded.guava30.com.google.common.collect.ImmutableMap;
 import org.apache.flink.shaded.guava30.com.google.common.collect.Iterables;
-import org.apache.flink.shaded.guava30.com.google.common.collect.Lists;
 
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.junit.Rule;
@@ -507,23 +507,16 @@ public class KafkaShuffleITCase extends KafkaShuffleTestBase {
         FlinkKafkaShuffle.writeKeyBy(input, topic, kafkaProperties, 0);
 
         env.execute("Write to " + topic);
+        ImmutableMap.Builder<Integer, Collection<ConsumerRecord<byte[], byte[]>>> results =
+                ImmutableMap.builder();
 
-        Map<Integer, Collection<ConsumerRecord<byte[], byte[]>>> results = new HashMap<>();
-
-        kafkaServer
-                .<byte[], byte[]>getAllRecordsFromTopic(kafkaProperties, topic)
-                .forEach(
-                        r -> {
-                            final int partition = r.partition();
-                            if (!results.containsKey(partition)) {
-                                results.put(partition, Lists.newArrayList());
-                            }
-                            results.get(partition).add(r);
-                        });
+        for (int p = 0; p < numberOfPartitions; p++) {
+            results.put(p, kafkaServer.getAllRecordsFromTopic(kafkaProperties, topic, p, 5000));
+        }
 
         deleteTestTopic(topic);
 
-        return results;
+        return results.build();
     }
 
     private StreamExecutionEnvironment createEnvironment(

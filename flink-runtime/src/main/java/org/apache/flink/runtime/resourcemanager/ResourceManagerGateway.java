@@ -67,7 +67,7 @@ public interface ResourceManagerGateway
      * @param timeout Timeout for the future to complete
      * @return Future registration response
      */
-    CompletableFuture<RegistrationResponse> registerJobMaster(
+    CompletableFuture<RegistrationResponse> registerJobManager(
             JobMasterId jobMasterId,
             ResourceID jobMasterResourceId,
             String jobMasterAddress,

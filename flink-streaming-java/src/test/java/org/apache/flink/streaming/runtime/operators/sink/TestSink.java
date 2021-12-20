@@ -35,11 +35,9 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Queue;
-import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -256,7 +254,7 @@ public class TestSink<T> implements Sink<T, String, String, String> {
         }
 
         @Override
-        public List<String> snapshotState(long checkpointId) throws IOException {
+        public List<String> snapshotState() {
             return Collections.emptyList();
         }
 
@@ -277,7 +275,7 @@ public class TestSink<T> implements Sink<T, String, String, String> {
     /** Base class for testing {@link Committer} and {@link GlobalCommitter}. */
     static class DefaultCommitter implements Committer<String>, Serializable {
 
-        @Nullable protected Queue<String> committedData;
+        @Nullable private Queue<String> committedData;
 
         private boolean isClosed;
 
@@ -323,22 +321,11 @@ public class TestSink<T> implements Sink<T, String, String, String> {
     }
 
     /** A {@link Committer} that always re-commits the committables data it received. */
-    static class RetryOnceCommitter extends DefaultCommitter implements Committer<String> {
-
-        private final Set<String> seen = new LinkedHashSet<>();
+    static class AlwaysRetryCommitter extends DefaultCommitter implements Committer<String> {
 
         @Override
         public List<String> commit(List<String> committables) {
-            committables.forEach(
-                    c -> {
-                        if (seen.remove(c)) {
-                            checkNotNull(committedData);
-                            committedData.add(c);
-                        } else {
-                            seen.add(c);
-                        }
-                    });
-            return new ArrayList<>(seen);
+            return committables;
         }
     }
 
@@ -393,13 +380,11 @@ public class TestSink<T> implements Sink<T, String, String, String> {
     }
 
     /** A {@link GlobalCommitter} that always re-commits global committables it received. */
-    static class RetryOnceGlobalCommitter extends DefaultGlobalCommitter {
-
-        private final Set<String> seen = new LinkedHashSet<>();
+    static class AlwaysRetryGlobalCommitter extends DefaultGlobalCommitter {
 
         @Override
         public List<String> filterRecoveredCommittables(List<String> globalCommittables) {
-            return globalCommittables;
+            return Collections.emptyList();
         }
 
         @Override
@@ -412,16 +397,7 @@ public class TestSink<T> implements Sink<T, String, String, String> {
 
         @Override
         public List<String> commit(List<String> committables) {
-            committables.forEach(
-                    c -> {
-                        if (seen.remove(c)) {
-                            checkNotNull(committedData);
-                            committedData.add(c);
-                        } else {
-                            seen.add(c);
-                        }
-                    });
-            return new ArrayList<>(seen);
+            return committables;
         }
     }
 

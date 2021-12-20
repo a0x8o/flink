@@ -35,8 +35,11 @@ import org.apache.flink.table.runtime.keyselector.EmptyRowDataKeySelector;
 import org.apache.flink.table.runtime.operators.sort.ProcTimeSortOperator;
 import org.apache.flink.table.runtime.operators.sort.RowTimeSortOperator;
 import org.apache.flink.table.runtime.typeutils.InternalTypeInfo;
+import org.apache.flink.table.types.logical.LocalZonedTimestampType;
 import org.apache.flink.table.types.logical.LogicalType;
 import org.apache.flink.table.types.logical.RowType;
+import org.apache.flink.table.types.logical.TimestampKind;
+import org.apache.flink.table.types.logical.TimestampType;
 
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.annotation.JsonCreator;
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.annotation.JsonProperty;
@@ -44,8 +47,6 @@ import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.annotation.JsonPro
 import java.util.Collections;
 import java.util.List;
 
-import static org.apache.flink.table.types.logical.utils.LogicalTypeChecks.isProctimeAttribute;
-import static org.apache.flink.table.types.logical.utils.LogicalTypeChecks.isRowtimeAttribute;
 import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
@@ -100,17 +101,24 @@ public class StreamExecTemporalSort extends ExecNodeBase<RowData>
         RowType inputType = (RowType) inputEdge.getOutputType();
         LogicalType timeType = inputType.getTypeAt(sortSpec.getFieldSpec(0).getFieldIndex());
         TableConfig config = planner.getTableConfig();
-        if (isRowtimeAttribute(timeType)) {
-            return createSortRowTime(inputType, inputTransform, config);
-        } else if (isProctimeAttribute(timeType)) {
-            return createSortProcTime(inputType, inputTransform, config);
-        } else {
-            throw new TableException(
-                    String.format(
-                            "Sort: Internal Error\n"
-                                    + "First field in temporal sort is not a time attribute, %s is given.",
-                            timeType));
+        if (timeType instanceof TimestampType) {
+            TimestampType keyType = (TimestampType) timeType;
+            if (keyType.getKind() == TimestampKind.ROWTIME) {
+                return createSortRowTime(inputType, inputTransform, config);
+            }
         }
+        if (timeType instanceof LocalZonedTimestampType) {
+            LocalZonedTimestampType keyType = (LocalZonedTimestampType) timeType;
+            if (keyType.getKind() == TimestampKind.PROCTIME) {
+                return createSortProcTime(inputType, inputTransform, config);
+            }
+        }
+
+        throw new TableException(
+                String.format(
+                        "Sort: Internal Error\n"
+                                + "First field in temporal sort is not a time attribute, %s is given.",
+                        timeType));
     }
 
     /** Create Sort logic based on processing time. */

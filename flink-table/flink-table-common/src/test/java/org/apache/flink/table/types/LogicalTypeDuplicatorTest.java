@@ -44,7 +44,8 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.CoreMatchers.equalTo;
+import static org.junit.Assert.assertThat;
 
 /** Tests for {@link LogicalTypeDuplicator}. */
 @RunWith(Parameterized.class)
@@ -76,12 +77,12 @@ public class LogicalTypeDuplicatorTest {
 
     @Test
     public void testDuplication() {
-        assertThat(logicalType.accept(DUPLICATOR)).isEqualTo(logicalType);
+        assertThat(logicalType.accept(DUPLICATOR), equalTo(logicalType));
     }
 
     @Test
     public void testReplacement() {
-        assertThat(logicalType.accept(INT_REPLACER)).isEqualTo(replacedLogicalType);
+        assertThat(logicalType.accept(INT_REPLACER), equalTo(replacedLogicalType));
     }
 
     // --------------------------------------------------------------------------------------------

@@ -197,7 +197,7 @@ function wait_for_single_yarn_application {
 
     echo "Application ID: $application_id"
 
-    # wait for the application to finish successfully
+    # wait for the application to finish succesfully
     start_time=$(date +%s)
     application_state="UNDEFINED"
     while [[ $application_state != "FINISHED" ]]; do

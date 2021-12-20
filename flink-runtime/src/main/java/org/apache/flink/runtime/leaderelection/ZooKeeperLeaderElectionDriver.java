@@ -24,6 +24,7 @@ import org.apache.flink.runtime.util.ZooKeeperUtils;
 import org.apache.flink.util.ExceptionUtils;
 
 import org.apache.flink.shaded.curator4.org.apache.curator.framework.CuratorFramework;
+import org.apache.flink.shaded.curator4.org.apache.curator.framework.api.UnhandledErrorListener;
 import org.apache.flink.shaded.curator4.org.apache.curator.framework.recipes.cache.ChildData;
 import org.apache.flink.shaded.curator4.org.apache.curator.framework.recipes.cache.TreeCache;
 import org.apache.flink.shaded.curator4.org.apache.curator.framework.recipes.leader.LeaderLatch;
@@ -50,7 +51,8 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * using ZooKeeper. The current leader's address as well as its leader session ID is published via
  * ZooKeeper.
  */
-public class ZooKeeperLeaderElectionDriver implements LeaderElectionDriver, LeaderLatchListener {
+public class ZooKeeperLeaderElectionDriver
+        implements LeaderElectionDriver, LeaderLatchListener, UnhandledErrorListener {
 
     private static final Logger LOG = LoggerFactory.getLogger(ZooKeeperLeaderElectionDriver.class);
 
@@ -110,6 +112,8 @@ public class ZooKeeperLeaderElectionDriver implements LeaderElectionDriver, Lead
                         connectionInformationPath,
                         this::retrieveLeaderInformationFromZooKeeper);
 
+        client.getUnhandledErrorListenable().addListener(this);
+
         running = true;
 
         leaderLatch.addListener(this);
@@ -128,6 +132,8 @@ public class ZooKeeperLeaderElectionDriver implements LeaderElectionDriver, Lead
         running = false;
 
         LOG.info("Closing {}", this);
+
+        client.getUnhandledErrorListenable().removeListener(this);
 
         client.getConnectionStateListenable().removeListener(listener);
 
@@ -282,6 +288,13 @@ public class ZooKeeperLeaderElectionDriver implements LeaderElectionDriver, Lead
                                 + " no longer participates in the leader election.");
                 break;
         }
+    }
+
+    @Override
+    public void unhandledError(String message, Throwable e) {
+        fatalErrorHandler.onFatalError(
+                new LeaderElectionException(
+                        "Unhandled error in ZooKeeperLeaderElectionDriver: " + message, e));
     }
 
     @Override

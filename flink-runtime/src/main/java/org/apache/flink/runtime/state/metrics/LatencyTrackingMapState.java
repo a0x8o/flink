@@ -51,8 +51,7 @@ class LatencyTrackingMapState<K, N, UK, UV>
                         stateName,
                         latencyTrackingStateConfig.getMetricGroup(),
                         latencyTrackingStateConfig.getSampleInterval(),
-                        latencyTrackingStateConfig.getHistorySize(),
-                        latencyTrackingStateConfig.isStateNameAsVariable()));
+                        latencyTrackingStateConfig.getHistorySize()));
     }
 
     @Override
@@ -217,7 +216,7 @@ class LatencyTrackingMapState<K, N, UK, UV>
         private static final String MAP_STATE_PUT_LATENCY = "mapStatePutLatency";
         private static final String MAP_STATE_PUT_ALL_LATENCY = "mapStatePutAllLatency";
         private static final String MAP_STATE_REMOVE_LATENCY = "mapStateRemoveLatency";
-        private static final String MAP_STATE_CONTAINS_LATENCY = "mapStateContainsLatency";
+        private static final String MAP_STATE_CONTAINS_LATENCY = "mapStateContainsAllLatency";
         private static final String MAP_STATE_ENTRIES_INIT_LATENCY = "mapStateEntriesInitLatency";
         private static final String MAP_STATE_KEYS_INIT_LATENCY = "mapStateKeysInitLatency";
         private static final String MAP_STATE_VALUES_INIT_LATENCY = "mapStateValuesInitLatency";
@@ -244,12 +243,8 @@ class LatencyTrackingMapState<K, N, UK, UV>
         private int iteratorNextCount = 0;
 
         private MapStateLatencyMetrics(
-                String stateName,
-                MetricGroup metricGroup,
-                int sampleInterval,
-                int historySize,
-                boolean stateNameAsVariable) {
-            super(stateName, metricGroup, sampleInterval, historySize, stateNameAsVariable);
+                String stateName, MetricGroup metricGroup, int sampleInterval, int historySize) {
+            super(stateName, metricGroup, sampleInterval, historySize);
         }
 
         int getGetCount() {

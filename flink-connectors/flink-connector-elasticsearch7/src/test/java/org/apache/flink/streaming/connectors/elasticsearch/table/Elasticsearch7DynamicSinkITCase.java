@@ -20,8 +20,8 @@ package org.apache.flink.streaming.connectors.elasticsearch.table;
 
 import org.apache.flink.api.common.time.Deadline;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
-import org.apache.flink.api.connector.sink.Sink;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.api.functions.sink.SinkFunction;
 import org.apache.flink.table.api.DataTypes;
 import org.apache.flink.table.api.EnvironmentSettings;
 import org.apache.flink.table.api.TableEnvironment;
@@ -29,13 +29,12 @@ import org.apache.flink.table.catalog.Column;
 import org.apache.flink.table.catalog.ResolvedSchema;
 import org.apache.flink.table.catalog.UniqueConstraint;
 import org.apache.flink.table.connector.sink.DynamicTableSink;
-import org.apache.flink.table.connector.sink.SinkProvider;
+import org.apache.flink.table.connector.sink.SinkFunctionProvider;
 import org.apache.flink.table.data.GenericRowData;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.data.StringData;
 import org.apache.flink.table.data.TimestampData;
 import org.apache.flink.table.types.DataType;
-import org.apache.flink.table.types.logical.LogicalType;
 import org.apache.flink.types.RowKind;
 import org.apache.flink.util.DockerImageVersions;
 import org.apache.flink.util.TestLogger;
@@ -111,28 +110,35 @@ public class Elasticsearch7DynamicSinkITCase extends TestLogger {
         String index = "writing-documents";
         Elasticsearch7DynamicSinkFactory sinkFactory = new Elasticsearch7DynamicSinkFactory();
 
-        DynamicTableSink.SinkRuntimeProvider runtimeProvider =
-                sinkFactory
-                        .createDynamicTableSink(
-                                context()
-                                        .withSchema(schema)
-                                        .withOption(
-                                                Elasticsearch7ConnectorOptions.INDEX_OPTION.key(),
-                                                index)
-                                        .withOption(
-                                                Elasticsearch7ConnectorOptions.HOSTS_OPTION.key(),
-                                                elasticsearchContainer.getHttpHostAddress())
-                                        .build())
-                        .getSinkRuntimeProvider(new MockContext());
+        SinkFunctionProvider sinkRuntimeProvider =
+                (SinkFunctionProvider)
+                        sinkFactory
+                                .createDynamicTableSink(
+                                        context()
+                                                .withSchema(schema)
+                                                .withOption(
+                                                        ElasticsearchConnectorOptions.INDEX_OPTION
+                                                                .key(),
+                                                        index)
+                                                .withOption(
+                                                        ElasticsearchConnectorOptions.HOSTS_OPTION
+                                                                .key(),
+                                                        elasticsearchContainer.getHttpHostAddress())
+                                                .withOption(
+                                                        ElasticsearchConnectorOptions
+                                                                .FLUSH_ON_CHECKPOINT_OPTION
+                                                                .key(),
+                                                        "false")
+                                                .build())
+                                .getSinkRuntimeProvider(new MockContext());
 
-        final SinkProvider sinkProvider = (SinkProvider) runtimeProvider;
-        final Sink<RowData, ?, ?, ?> sink = sinkProvider.createSink();
+        SinkFunction<RowData> sinkFunction = sinkRuntimeProvider.createSinkFunction();
         StreamExecutionEnvironment environment =
                 StreamExecutionEnvironment.getExecutionEnvironment();
         environment.setParallelism(4);
 
         rowData.setRowKind(RowKind.UPDATE_AFTER);
-        environment.<RowData>fromElements(rowData).sinkTo(sink);
+        environment.<RowData>fromElements(rowData).addSink(sinkFunction);
         environment.execute();
 
         Client client = getClient();
@@ -171,11 +177,15 @@ public class Elasticsearch7DynamicSinkITCase extends TestLogger {
                         + String.format("'%s'='%s',\n", "connector", "elasticsearch-7")
                         + String.format(
                                 "'%s'='%s',\n",
-                                Elasticsearch7ConnectorOptions.INDEX_OPTION.key(), index)
+                                ElasticsearchConnectorOptions.INDEX_OPTION.key(), index)
+                        + String.format(
+                                "'%s'='%s',\n",
+                                ElasticsearchConnectorOptions.HOSTS_OPTION.key(),
+                                elasticsearchContainer.getHttpHostAddress())
                         + String.format(
                                 "'%s'='%s'\n",
-                                Elasticsearch7ConnectorOptions.HOSTS_OPTION.key(),
-                                elasticsearchContainer.getHttpHostAddress())
+                                ElasticsearchConnectorOptions.FLUSH_ON_CHECKPOINT_OPTION.key(),
+                                "false")
                         + ")");
 
         tableEnvironment
@@ -225,11 +235,15 @@ public class Elasticsearch7DynamicSinkITCase extends TestLogger {
                         + String.format("'%s'='%s',\n", "connector", "elasticsearch-7")
                         + String.format(
                                 "'%s'='%s',\n",
-                                Elasticsearch7ConnectorOptions.INDEX_OPTION.key(), index)
+                                ElasticsearchConnectorOptions.INDEX_OPTION.key(), index)
+                        + String.format(
+                                "'%s'='%s',\n",
+                                ElasticsearchConnectorOptions.HOSTS_OPTION.key(),
+                                elasticsearchContainer.getHttpHostAddress())
                         + String.format(
                                 "'%s'='%s'\n",
-                                Elasticsearch7ConnectorOptions.HOSTS_OPTION.key(),
-                                elasticsearchContainer.getHttpHostAddress())
+                                ElasticsearchConnectorOptions.FLUSH_ON_CHECKPOINT_OPTION.key(),
+                                "false")
                         + ")");
 
         tableEnvironment
@@ -311,11 +325,15 @@ public class Elasticsearch7DynamicSinkITCase extends TestLogger {
                         + String.format("'%s'='%s',\n", "connector", "elasticsearch-7")
                         + String.format(
                                 "'%s'='%s',\n",
-                                Elasticsearch7ConnectorOptions.INDEX_OPTION.key(), index)
+                                ElasticsearchConnectorOptions.INDEX_OPTION.key(), index)
+                        + String.format(
+                                "'%s'='%s',\n",
+                                ElasticsearchConnectorOptions.HOSTS_OPTION.key(),
+                                elasticsearchContainer.getHttpHostAddress())
                         + String.format(
                                 "'%s'='%s'\n",
-                                Elasticsearch7ConnectorOptions.HOSTS_OPTION.key(),
-                                elasticsearchContainer.getHttpHostAddress())
+                                ElasticsearchConnectorOptions.FLUSH_ON_CHECKPOINT_OPTION.key(),
+                                "false")
                         + ")");
 
         tableEnvironment
@@ -340,11 +358,6 @@ public class Elasticsearch7DynamicSinkITCase extends TestLogger {
 
         @Override
         public TypeInformation<?> createTypeInformation(DataType consumedDataType) {
-            return null;
-        }
-
-        @Override
-        public TypeInformation<?> createTypeInformation(LogicalType consumedLogicalType) {
             return null;
         }
 

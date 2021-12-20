@@ -492,7 +492,7 @@ object StreamTableEnvironmentImpl {
     val executor = lookupExecutor(classLoader, settings.getExecutor, executionEnvironment)
 
     val planner = PlannerFactoryUtil.createPlanner(settings.getPlanner, executor, tableConfig,
-      moduleManager, catalogManager, functionCatalog)
+      catalogManager, functionCatalog)
 
     new StreamTableEnvironmentImpl(
       catalogManager,

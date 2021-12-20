@@ -615,7 +615,6 @@ public class TableSchema {
     // --------------------------------------------------------------------------------------------
 
     /** Builder for creating a {@link TableSchema}. */
-    @PublicEvolving
     public static class Builder {
 
         private List<TableColumn> columns;

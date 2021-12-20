@@ -18,21 +18,15 @@
 
 package org.apache.flink.streaming.scala.examples.windowing
 
-import org.apache.flink.api.common.serialization.SimpleStringEncoder
 import org.apache.flink.api.java.utils.ParameterTool
 import org.apache.flink.api.scala._
-import org.apache.flink.configuration.MemorySize
-import org.apache.flink.connector.file.sink.FileSink
-import org.apache.flink.core.fs.Path
-import org.apache.flink.streaming.api.functions.sink.filesystem.rollingpolicies.DefaultRollingPolicy
+import org.apache.flink.streaming.api.TimeCharacteristic
 import org.apache.flink.streaming.api.functions.source.SourceFunction
 import org.apache.flink.streaming.api.functions.source.SourceFunction.SourceContext
 import org.apache.flink.streaming.api.scala.{DataStream, StreamExecutionEnvironment}
 import org.apache.flink.streaming.api.watermark.Watermark
 import org.apache.flink.streaming.api.windowing.assigners.EventTimeSessionWindows
 import org.apache.flink.streaming.api.windowing.time.Time
-
-import java.time.Duration
 
 /**
  * An example of grouped stream windowing in session windows with session timeout of 3 msec.
@@ -46,6 +40,8 @@ object SessionWindowing {
     val env = StreamExecutionEnvironment.getExecutionEnvironment
 
     env.getConfig.setGlobalJobParameters(params)
+    env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime)
+    env.setParallelism(1)
 
     val fileOutput = params.has("output")
 
@@ -84,15 +80,7 @@ object SessionWindowing {
       .sum(2)
 
     if (fileOutput) {
-      aggregated.sinkTo(FileSink.forRowFormat[(String, Long, Int)](
-          new Path(params.get("output")),
-          new SimpleStringEncoder())
-        .withRollingPolicy(DefaultRollingPolicy.builder()
-          .withMaxPartSize(MemorySize.ofMebiBytes(1))
-          .withRolloverInterval(Duration.ofSeconds(10))
-          .build())
-        .build())
-        .name("file-sink")
+      aggregated.writeAsText(params.get("output"))
     } else {
       print("Printing result to stdout. Use --output to specify output path.")
       aggregated.print()

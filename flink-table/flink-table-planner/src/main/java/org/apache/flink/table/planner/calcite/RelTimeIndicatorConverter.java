@@ -21,7 +21,15 @@ package org.apache.flink.table.planner.calcite;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.table.api.TableException;
 import org.apache.flink.table.api.ValidationException;
+import org.apache.flink.table.expressions.FieldReferenceExpression;
+import org.apache.flink.table.planner.expressions.PlannerNamedWindowProperty;
+import org.apache.flink.table.planner.expressions.PlannerRowtimeAttribute;
+import org.apache.flink.table.planner.expressions.PlannerWindowReference;
 import org.apache.flink.table.planner.functions.sql.FlinkSqlOperatorTable;
+import org.apache.flink.table.planner.plan.logical.LogicalWindow;
+import org.apache.flink.table.planner.plan.logical.SessionGroupWindow;
+import org.apache.flink.table.planner.plan.logical.SlidingGroupWindow;
+import org.apache.flink.table.planner.plan.logical.TumblingGroupWindow;
 import org.apache.flink.table.planner.plan.metadata.FlinkRelMetadataQuery;
 import org.apache.flink.table.planner.plan.nodes.logical.FlinkLogicalAggregate;
 import org.apache.flink.table.planner.plan.nodes.logical.FlinkLogicalCalc;
@@ -51,7 +59,9 @@ import org.apache.flink.table.planner.plan.utils.JoinUtil;
 import org.apache.flink.table.planner.plan.utils.TemporalJoinUtil;
 import org.apache.flink.table.types.logical.LocalZonedTimestampType;
 import org.apache.flink.table.types.logical.LogicalType;
+import org.apache.flink.table.types.logical.TimestampKind;
 import org.apache.flink.table.types.logical.TimestampType;
+import org.apache.flink.table.types.logical.utils.LogicalTypeChecks;
 import org.apache.flink.util.Preconditions;
 
 import org.apache.calcite.plan.RelOptUtil;
@@ -93,11 +103,16 @@ import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+import scala.collection.JavaConverters;
+import scala.collection.Seq;
+
 import static org.apache.flink.table.planner.calcite.FlinkTypeFactory.isProctimeIndicatorType;
 import static org.apache.flink.table.planner.calcite.FlinkTypeFactory.isRowtimeIndicatorType;
 import static org.apache.flink.table.planner.calcite.FlinkTypeFactory.isTimeIndicatorType;
-import static org.apache.flink.table.planner.plan.utils.MatchUtil.isFinalOnMatchTimeIndicator;
+import static org.apache.flink.table.planner.plan.utils.MatchUtil.isFinalOnRowTimeIndicator;
+import static org.apache.flink.table.planner.plan.utils.MatchUtil.isMatchRowTimeIndicator;
 import static org.apache.flink.table.planner.plan.utils.WindowUtil.groupingContainsWindowStartEnd;
+import static org.apache.flink.table.runtime.types.LogicalTypeDataTypeConverter.fromLogicalTypeToDataType;
 
 /**
  * Traverses a {@link RelNode} tree and converts fields with {@link TimeIndicatorRelDataType} type.
@@ -210,9 +225,15 @@ public final class RelTimeIndicatorConverter extends RelHomogeneousShuttle {
                     }
                 };
 
+        // decide the MATCH_ROWTIME() return type is TIMESTAMP or TIMESTAMP_LTZ, if it is
+        // TIMESTAMP_LTZ, we need to materialize the output type of LogicalMatch node to
+        // TIMESTAMP_LTZ too.
+        boolean isTimestampLtz =
+                newMeasures.values().stream().anyMatch(node -> isTimestampLtzType(node.getType()));
         // materialize all output types
         RelDataType newOutputType =
-                getRowTypeWithoutTimeIndicator(match.getRowType(), isNoLongerTimeIndicator);
+                getRowTypeWithoutTimeIndicator(
+                        match.getRowType(), isTimestampLtz, isNoLongerTimeIndicator);
         return new FlinkLogicalMatch(
                 match.getCluster(),
                 match.getTraitSet(),
@@ -265,7 +286,7 @@ public final class RelTimeIndicatorConverter extends RelHomogeneousShuttle {
         int leftFieldCount = newLeft.getRowType().getFieldCount();
 
         // temporal table join
-        if (TemporalJoinUtil.satisfyTemporalJoin(join, newLeft, newRight)) {
+        if (TemporalJoinUtil.satisfyTemporalJoin(join)) {
             RelNode rewrittenTemporalJoin =
                     join.copy(
                             join.getTraitSet(),
@@ -282,7 +303,7 @@ public final class RelTimeIndicatorConverter extends RelHomogeneousShuttle {
                             .collect(Collectors.toSet());
             return createCalcToMaterializeTimeIndicators(rewrittenTemporalJoin, rightIndices);
         } else {
-            if (JoinUtil.satisfyRegularJoin(join, newLeft, newRight)) {
+            if (JoinUtil.satisfyRegularJoin(join, join.getRight())) {
                 // materialize time attribute fields of regular join's inputs
                 newLeft = materializeTimeIndicators(newLeft);
                 newRight = materializeTimeIndicators(newRight);
@@ -460,7 +481,8 @@ public final class RelTimeIndicatorConverter extends RelHomogeneousShuttle {
                 .collect(Collectors.toList());
     }
 
-    private RelNode visitTableAggregate(FlinkLogicalTableAggregate tableAgg) {
+    private RelNode visitTableAggregate(FlinkLogicalTableAggregate node) {
+        FlinkLogicalTableAggregate tableAgg = node;
         FlinkLogicalAggregate correspondingAgg =
                 FlinkLogicalAggregate.create(
                         tableAgg.getInput(),
@@ -480,17 +502,92 @@ public final class RelTimeIndicatorConverter extends RelHomogeneousShuttle {
     private FlinkLogicalWindowAggregate visitWindowAggregate(FlinkLogicalWindowAggregate agg) {
         RelNode newInput = convertAggInput(agg);
         List<AggregateCall> updatedAggCalls = convertAggregateCalls(agg);
+        LogicalWindow oldWindow = agg.getWindow();
+        Seq<PlannerNamedWindowProperty> oldNamedProperties = agg.getNamedProperties();
+        FieldReferenceExpression oldTimeAttribute = agg.getWindow().timeAttribute();
+        LogicalType oldTimeAttributeType = oldTimeAttribute.getOutputDataType().getLogicalType();
+        boolean isRowtimeIndicator = LogicalTypeChecks.isRowtimeAttribute(oldTimeAttributeType);
+        boolean convertedToRowtimeTimestampLtz;
+        if (!isRowtimeIndicator) {
+            convertedToRowtimeTimestampLtz = false;
+        } else {
+            int timeIndicatorIdx = oldTimeAttribute.getFieldIndex();
+            RelDataType oldType =
+                    agg.getInput().getRowType().getFieldList().get(timeIndicatorIdx).getType();
+            RelDataType newType =
+                    newInput.getRowType().getFieldList().get(timeIndicatorIdx).getType();
+            convertedToRowtimeTimestampLtz =
+                    isTimestampLtzType(newType) && !isTimestampLtzType(oldType);
+        }
+        LogicalWindow newWindow;
+        Seq<PlannerNamedWindowProperty> newNamedProperties;
+        if (convertedToRowtimeTimestampLtz) {
+            // MATCH_ROWTIME may be converted from rowtime attribute to timestamp_ltz rowtime
+            // attribute, if time indicator of current window aggregate depends on input
+            // MATCH_ROWTIME, we should rewrite logicalWindow and namedProperties.
+            LogicalType newTimestampLtzType =
+                    new LocalZonedTimestampType(
+                            oldTimeAttributeType.isNullable(), TimestampKind.ROWTIME, 3);
+            FieldReferenceExpression newFieldRef =
+                    new FieldReferenceExpression(
+                            oldTimeAttribute.getName(),
+                            fromLogicalTypeToDataType(newTimestampLtzType),
+                            oldTimeAttribute.getInputIndex(),
+                            oldTimeAttribute.getFieldIndex());
+            PlannerWindowReference newAlias =
+                    new PlannerWindowReference(
+                            oldWindow.aliasAttribute().getName(), newTimestampLtzType);
+            if (oldWindow instanceof TumblingGroupWindow) {
+                TumblingGroupWindow window = (TumblingGroupWindow) oldWindow;
+                newWindow = new TumblingGroupWindow(newAlias, newFieldRef, window.size());
+            } else if (oldWindow instanceof SlidingGroupWindow) {
+                SlidingGroupWindow window = (SlidingGroupWindow) oldWindow;
+                newWindow =
+                        new SlidingGroupWindow(
+                                newAlias, newFieldRef, window.size(), window.slide());
+            } else if (oldWindow instanceof SessionGroupWindow) {
+                SessionGroupWindow window = (SessionGroupWindow) oldWindow;
+                newWindow = new SessionGroupWindow(newAlias, newFieldRef, window.gap());
+            } else {
+                throw new TableException(
+                        String.format(
+                                "This is a bug and should not happen. Please file an issue. Invalid window %s.",
+                                oldWindow.getClass().getSimpleName()));
+            }
+            List<PlannerNamedWindowProperty> newNamedPropertiesList =
+                    JavaConverters.seqAsJavaListConverter(oldNamedProperties).asJava().stream()
+                            .map(
+                                    namedProperty -> {
+                                        if (namedProperty.getProperty()
+                                                instanceof PlannerRowtimeAttribute) {
+                                            return new PlannerNamedWindowProperty(
+                                                    namedProperty.getName(),
+                                                    new PlannerRowtimeAttribute(newAlias));
+                                        } else {
+                                            return namedProperty;
+                                        }
+                                    })
+                            .collect(Collectors.toList());
+            newNamedProperties =
+                    JavaConverters.iterableAsScalaIterableConverter(newNamedPropertiesList)
+                            .asScala()
+                            .toSeq();
+        } else {
+            newWindow = oldWindow;
+            newNamedProperties = oldNamedProperties;
+        }
         return new FlinkLogicalWindowAggregate(
                 agg.getCluster(),
                 agg.getTraitSet(),
                 newInput,
                 agg.getGroupSet(),
                 updatedAggCalls,
-                agg.getWindow(),
-                agg.getNamedProperties());
+                newWindow,
+                newNamedProperties);
     }
 
-    private RelNode visitWindowTableAggregate(FlinkLogicalWindowTableAggregate tableAgg) {
+    private RelNode visitWindowTableAggregate(FlinkLogicalWindowTableAggregate node) {
+        FlinkLogicalWindowTableAggregate tableAgg = node;
         FlinkLogicalWindowAggregate correspondingAgg =
                 new FlinkLogicalWindowAggregate(
                         tableAgg.getCluster(),
@@ -619,7 +716,11 @@ public final class RelTimeIndicatorConverter extends RelHomogeneousShuttle {
         if (isTimeIndicatorType(l) && isTimeIndicatorType(r)) {
             boolean leftIsEventTime = ((TimeIndicatorRelDataType) l).isEventTime();
             boolean rightIsEventTime = ((TimeIndicatorRelDataType) r).isEventTime();
-            isValid = leftIsEventTime == rightIsEventTime;
+            if (leftIsEventTime && rightIsEventTime) {
+                isValid = isTimestampLtzType(l) == isTimestampLtzType(r);
+            } else {
+                isValid = leftIsEventTime == rightIsEventTime;
+            }
         } else {
             isValid = !isTimeIndicatorType(l) && !isTimeIndicatorType(r);
         }
@@ -632,18 +733,28 @@ public final class RelTimeIndicatorConverter extends RelHomogeneousShuttle {
     }
 
     private RelDataType getRowTypeWithoutTimeIndicator(
-            RelDataType relType, Predicate<String> shouldMaterialize) {
+            RelDataType relType, boolean isTimestampLtzType, Predicate<String> shouldMaterialize) {
         Map<String, RelDataType> convertedFields =
                 relType.getFieldList().stream()
                         .map(
                                 field -> {
                                     RelDataType fieldType = field.getType();
-                                    if (isTimeIndicatorType(fieldType)
-                                            && shouldMaterialize.test(field.getName())) {
-                                        fieldType =
-                                                timestamp(
-                                                        fieldType.isNullable(),
-                                                        isTimestampLtzType(fieldType));
+                                    if (isTimeIndicatorType(fieldType)) {
+                                        if (isTimestampLtzType) {
+                                            fieldType =
+                                                    ((FlinkTypeFactory) rexBuilder.getTypeFactory())
+                                                            .createFieldTypeFromLogicalType(
+                                                                    new LocalZonedTimestampType(
+                                                                            fieldType.isNullable(),
+                                                                            TimestampKind.ROWTIME,
+                                                                            3));
+                                        }
+                                        if (shouldMaterialize.test(field.getName())) {
+                                            fieldType =
+                                                    timestamp(
+                                                            fieldType.isNullable(),
+                                                            isTimestampLtzType(fieldType));
+                                        }
                                     }
                                     return Tuple2.of(field.getName(), fieldType);
                                 })
@@ -719,11 +830,30 @@ public final class RelTimeIndicatorConverter extends RelHomogeneousShuttle {
                                 .collect(Collectors.toList());
             }
 
-            // All calls in MEASURES and DEFINE are wrapped with FINAL/RUNNING, therefore
-            // we should treat FINAL(MATCH_ROWTIME) and FINAL(MATCH_PROCTIME) as a time attribute
-            // extraction
-            if (isFinalOnMatchTimeIndicator(call)) {
-                return updatedCall;
+            if (isFinalOnRowTimeIndicator(call)) {
+                // All calls in MEASURES and DEFINE are wrapped with FINAL/RUNNING, therefore
+                // we should treat FINAL(MATCH_ROWTIME) and FINAL(MATCH_PROCTIME) as a time
+                // attribute extraction.
+                // The type of FINAL(MATCH_ROWTIME) is inferred by first operand's type,
+                // the initial type of MATCH_ROWTIME is TIMESTAMP(3) *ROWTIME*, it may be rewrote.
+                RelDataType rowTimeType = updatedCall.getOperands().get(0).getType();
+                return rexBuilder.makeCall(
+                        rowTimeType, updatedCall.getOperator(), updatedCall.getOperands());
+            } else if (isMatchRowTimeIndicator(updatedCall)) {
+                // MATCH_ROWTIME() is a no-args function, it can own two kind of return types based
+                // on the rowTime attribute type of its input, we rewrite the return type here
+                RelDataType firstRowTypeType =
+                        inputFieldTypes.stream()
+                                .filter(FlinkTypeFactory::isTimeIndicatorType)
+                                .findFirst()
+                                .get();
+                return rexBuilder.makeCall(
+                        ((FlinkTypeFactory) rexBuilder.getTypeFactory())
+                                .createRowtimeIndicatorType(
+                                        updatedCall.getType().isNullable(),
+                                        isTimestampLtzType(firstRowTypeType)),
+                        updatedCall.getOperator(),
+                        materializedOperands);
             } else if (isTimeIndicatorType(updatedCall.getType())) {
                 // do not modify window time attributes and some special operators
                 if (updatedCallOp == FlinkSqlOperatorTable.TUMBLE_ROWTIME
@@ -732,7 +862,6 @@ public final class RelTimeIndicatorConverter extends RelHomogeneousShuttle {
                         || updatedCallOp == FlinkSqlOperatorTable.HOP_PROCTIME
                         || updatedCallOp == FlinkSqlOperatorTable.SESSION_ROWTIME
                         || updatedCallOp == FlinkSqlOperatorTable.SESSION_PROCTIME
-                        || updatedCallOp == FlinkSqlOperatorTable.MATCH_ROWTIME
                         || updatedCallOp == FlinkSqlOperatorTable.MATCH_PROCTIME
                         || updatedCallOp == FlinkSqlOperatorTable.PROCTIME
                         || updatedCallOp == SqlStdOperatorTable.AS
@@ -758,7 +887,10 @@ public final class RelTimeIndicatorConverter extends RelHomogeneousShuttle {
             RelDataType oldType = inputRef.getType();
             if (isTimeIndicatorType(oldType)) {
                 RelDataType resolvedRefType = inputFieldTypes.get(inputRef.getIndex());
-                if (!isTimeIndicatorType(resolvedRefType)) {
+                if (isTimestampLtzType(resolvedRefType) && !isTimestampLtzType(oldType)) {
+                    // input has been converted from TIMESTAMP to TIMESTAMP_LTZ type
+                    return rexBuilder.makeInputRef(resolvedRefType, inputRef.getIndex());
+                } else if (!isTimeIndicatorType(resolvedRefType)) {
                     // input has been materialized
                     return new RexInputRef(inputRef.getIndex(), resolvedRefType);
                 }
@@ -771,7 +903,11 @@ public final class RelTimeIndicatorConverter extends RelHomogeneousShuttle {
             RelDataType oldType = fieldRef.getType();
             if (isTimeIndicatorType(oldType)) {
                 RelDataType resolvedRefType = inputFieldTypes.get(fieldRef.getIndex());
-                if (!isTimeIndicatorType(resolvedRefType)) {
+                if (isTimestampLtzType(resolvedRefType) && !isTimestampLtzType(oldType)) {
+                    // input has been converted from TIMESTAMP to TIMESTAMP_LTZ type
+                    return rexBuilder.makePatternFieldRef(
+                            fieldRef.getAlpha(), resolvedRefType, fieldRef.getIndex());
+                } else if (!isTimeIndicatorType(resolvedRefType)) {
                     // input has been materialized
                     return new RexPatternFieldRef(
                             fieldRef.getAlpha(), fieldRef.getIndex(), resolvedRefType);

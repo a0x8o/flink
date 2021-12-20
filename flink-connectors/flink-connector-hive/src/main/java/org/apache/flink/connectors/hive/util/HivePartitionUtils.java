@@ -31,6 +31,7 @@ import org.apache.flink.table.types.DataType;
 import org.apache.flink.table.types.logical.LogicalType;
 import org.apache.flink.table.types.logical.LogicalTypeFamily;
 import org.apache.flink.table.types.logical.LogicalTypeRoot;
+import org.apache.flink.table.types.logical.utils.LogicalTypeChecks;
 
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
@@ -90,7 +91,7 @@ public class HivePartitionUtils {
     public static Object restorePartitionValueFromType(
             HiveShim shim, String valStr, LogicalType partitionType, String defaultPartitionName) {
         if (defaultPartitionName.equals(valStr)) {
-            if (partitionType.is(LogicalTypeFamily.CHARACTER_STRING)) {
+            if (LogicalTypeChecks.hasFamily(partitionType, LogicalTypeFamily.CHARACTER_STRING)) {
                 // this keeps align with Hive,
                 // maybe it should be null for string columns as well
                 return defaultPartitionName;

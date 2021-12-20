@@ -44,7 +44,7 @@ public abstract class ExampleOutputTestBase {
     private ByteArrayOutputStream testOutputStream;
 
     @Before
-    public void before() {
+    public void init() {
         originalPrintStream = System.out;
         testOutputStream = new ByteArrayOutputStream();
         System.setOut(new PrintStream(testOutputStream));
@@ -55,7 +55,7 @@ public abstract class ExampleOutputTestBase {
     }
 
     @After
-    public void after() {
+    public void finalize() {
         System.setOut(originalPrintStream);
     }
 }

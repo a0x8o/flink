@@ -37,6 +37,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import static org.apache.flink.table.types.logical.utils.LogicalTypeCasts.supportsImplicitCast;
+import static org.apache.flink.table.types.logical.utils.LogicalTypeChecks.hasRoot;
 
 /**
  * Utility for performing type inference.
@@ -474,7 +475,7 @@ public final class TypeInferenceUtil {
     }
 
     private static boolean isUnknown(DataType dataType) {
-        return dataType.getLogicalType().is(LogicalTypeRoot.NULL);
+        return hasRoot(dataType.getLogicalType(), LogicalTypeRoot.NULL);
     }
 
     private TypeInferenceUtil() {

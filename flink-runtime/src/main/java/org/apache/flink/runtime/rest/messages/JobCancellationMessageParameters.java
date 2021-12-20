@@ -18,8 +18,6 @@
 
 package org.apache.flink.runtime.rest.messages;
 
-import org.apache.flink.api.common.JobID;
-
 import java.util.Collection;
 import java.util.Collections;
 
@@ -30,8 +28,8 @@ import java.util.Collections;
  */
 public class JobCancellationMessageParameters extends MessageParameters {
 
-    private final JobIDPathParameter jobPathParameter = new JobIDPathParameter();
-    private final TerminationModeQueryParameter terminationModeQueryParameter =
+    public final JobIDPathParameter jobPathParameter = new JobIDPathParameter();
+    public final TerminationModeQueryParameter terminationModeQueryParameter =
             new TerminationModeQueryParameter();
 
     @Override
@@ -42,16 +40,5 @@ public class JobCancellationMessageParameters extends MessageParameters {
     @Override
     public Collection<MessageQueryParameter<?>> getQueryParameters() {
         return Collections.singleton(terminationModeQueryParameter);
-    }
-
-    public JobCancellationMessageParameters resolveJobId(JobID jobId) {
-        jobPathParameter.resolve(jobId);
-        return this;
-    }
-
-    public JobCancellationMessageParameters resolveTerminationMode(
-            TerminationModeQueryParameter.TerminationMode terminationMode) {
-        terminationModeQueryParameter.resolve(Collections.singletonList(terminationMode));
-        return this;
     }
 }

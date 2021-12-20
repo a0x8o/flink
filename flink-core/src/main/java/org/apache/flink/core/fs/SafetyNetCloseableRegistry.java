@@ -20,8 +20,7 @@ package org.apache.flink.core.fs;
 
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.annotation.VisibleForTesting;
-import org.apache.flink.util.AbstractAutoCloseableRegistry;
-import org.apache.flink.util.IOUtils;
+import org.apache.flink.util.AbstractCloseableRegistry;
 import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.WrappingProxyUtil;
 
@@ -35,12 +34,11 @@ import java.io.IOException;
 import java.lang.ref.PhantomReference;
 import java.lang.ref.ReferenceQueue;
 import java.util.IdentityHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
 
 /**
- * This implementation of an {@link AbstractAutoCloseableRegistry} registers {@link
+ * This implementation of an {@link AbstractCloseableRegistry} registers {@link
  * WrappingProxyCloseable}. When the proxy becomes subject to GC, this registry takes care of
  * closing unclosed {@link Closeable}s.
  *
@@ -54,11 +52,9 @@ import java.util.function.Supplier;
  */
 @Internal
 public class SafetyNetCloseableRegistry
-        extends AbstractAutoCloseableRegistry<
-                Closeable,
+        extends AbstractCloseableRegistry<
                 WrappingProxyCloseable<? extends Closeable>,
-                SafetyNetCloseableRegistry.PhantomDelegatingCloseableRef,
-                IOException> {
+                SafetyNetCloseableRegistry.PhantomDelegatingCloseableRef> {
 
     private static final Logger LOG = LoggerFactory.getLogger(SafetyNetCloseableRegistry.class);
 
@@ -130,13 +126,10 @@ public class SafetyNetCloseableRegistry
         return null != innerCloseable && closeableMap.remove(innerCloseable) != null;
     }
 
-    /**
-     * This implementation doesn't imply any exception during closing due to backward compatibility.
-     */
     @Override
-    protected void doClose(List<Closeable> toClose) throws IOException {
+    public void close() throws IOException {
         try {
-            IOUtils.closeAllQuietly(toClose);
+            super.close();
         } finally {
             synchronized (REAPER_THREAD_LOCK) {
                 --GLOBAL_SAFETY_NET_REGISTRY_COUNT;

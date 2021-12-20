@@ -24,22 +24,18 @@ specific language governing permissions and limitations
 under the License.
 -->
 
-<a name="set-statements"></a>
+# SET Statements
 
-# SET 语句
+`SET` statements are used to modify the configuration or list the configuration.
 
-`SET` 语句用于修改配置或展示配置。
-
-<a name="run-a-set-statement"></a>
-
-## 执行 SET 语句
+## Run a SET statement
 
 {{< tabs "set statement" >}}
 {{< tab "SQL CLI" >}}
 
-`SET` 语句可以在 [SQL CLI]({{< ref "docs/dev/table/sqlClient" >}}) 中执行。
+`SET` statements can be executed in [SQL CLI]({{< ref "docs/dev/table/sqlClient" >}}).
 
-以下示例展示了如何在 SQL CLI 中执行一条 `SET` 语句。
+The following examples show how to run a `SET` statement in SQL CLI.
 
 {{< /tab >}}
 {{< /tabs >}}
@@ -56,14 +52,12 @@ Flink SQL> SET;
 {{< /tab >}}
 {{< /tabs >}}
 
-<a name="syntax"></a>
-
 ## Syntax
 
 ```sql
 SET ('key' = 'value')?
 ```
 
-如果没有指定 key 和 value，它仅仅打印所有属性。否则，它会为 key 设置指定的 value 值。
+If no key and value are specified, it just prints all the properties. Otherwise, set the key with specified value.
 
 {{< top >}}

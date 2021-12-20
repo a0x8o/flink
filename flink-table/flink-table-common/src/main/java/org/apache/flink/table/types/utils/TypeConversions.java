@@ -38,9 +38,7 @@ public final class TypeConversions {
 
     /**
      * @deprecated Please don't use this method anymore. It will be removed soon and we should not
-     *     make the removal more painful. Sources and sinks should use the method available in
-     *     context to convert, within the planner you should use either {@code InternalTypeInfo} or
-     *     {@code ExternalTypeInfo} depending on the use case.
+     *     make the removal more painful.
      */
     @Deprecated
     public static DataType fromLegacyInfoToDataType(TypeInformation<?> typeInfo) {
@@ -49,9 +47,7 @@ public final class TypeConversions {
 
     /**
      * @deprecated Please don't use this method anymore. It will be removed soon and we should not
-     *     make the removal more painful. Sources and sinks should use the method available in
-     *     context to convert, within the planner you should use either {@code InternalTypeInfo} or
-     *     {@code ExternalTypeInfo} depending on the use case.
+     *     make the removal more painful.
      */
     @Deprecated
     public static DataType[] fromLegacyInfoToDataType(TypeInformation<?>[] typeInfo) {
@@ -62,9 +58,7 @@ public final class TypeConversions {
 
     /**
      * @deprecated Please don't use this method anymore. It will be removed soon and we should not
-     *     make the removal more painful. Sources and sinks should use the method available in
-     *     context to convert, within the planner you should use either {@code InternalTypeInfo} or
-     *     {@code ExternalTypeInfo} depending on the use case.
+     *     make the removal more painful.
      */
     @Deprecated
     public static TypeInformation<?> fromDataTypeToLegacyInfo(DataType dataType) {
@@ -73,9 +67,7 @@ public final class TypeConversions {
 
     /**
      * @deprecated Please don't use this method anymore. It will be removed soon and we should not
-     *     make the removal more painful. Sources and sinks should use the method available in
-     *     context to convert, within the planner you should use either {@code InternalTypeInfo} or
-     *     {@code ExternalTypeInfo} depending on the use case.
+     *     make the removal more painful.
      */
     @Deprecated
     public static TypeInformation<?>[] fromDataTypeToLegacyInfo(DataType[] dataType) {

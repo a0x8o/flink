@@ -21,15 +21,11 @@ package org.apache.flink.runtime.state;
 import org.apache.flink.api.common.state.KeyedStateStore;
 import org.apache.flink.api.common.state.OperatorStateStore;
 
-import javax.annotation.Nullable;
-
-import java.util.OptionalLong;
-
 /** Default implementation of {@link StateInitializationContext}. */
 public class StateInitializationContextImpl implements StateInitializationContext {
 
     /** Signal whether any state to restore was found */
-    private final @Nullable Long restoredCheckpointId;
+    private final boolean restored;
 
     private final OperatorStateStore operatorStateStore;
 
@@ -39,13 +35,13 @@ public class StateInitializationContextImpl implements StateInitializationContex
     private final Iterable<StatePartitionStreamProvider> rawOperatorStateInputs;
 
     public StateInitializationContextImpl(
-            @Nullable Long restoredCheckpointId,
+            boolean restored,
             OperatorStateStore operatorStateStore,
             KeyedStateStore keyedStateStore,
             Iterable<KeyGroupStatePartitionStreamProvider> rawKeyedStateInputs,
             Iterable<StatePartitionStreamProvider> rawOperatorStateInputs) {
 
-        this.restoredCheckpointId = restoredCheckpointId;
+        this.restored = restored;
         this.operatorStateStore = operatorStateStore;
         this.keyedStateStore = keyedStateStore;
         this.rawOperatorStateInputs = rawOperatorStateInputs;
@@ -54,14 +50,7 @@ public class StateInitializationContextImpl implements StateInitializationContex
 
     @Override
     public boolean isRestored() {
-        return restoredCheckpointId != null;
-    }
-
-    @Override
-    public OptionalLong getRestoredCheckpointId() {
-        return restoredCheckpointId == null
-                ? OptionalLong.empty()
-                : OptionalLong.of(restoredCheckpointId);
+        return restored;
     }
 
     @Override

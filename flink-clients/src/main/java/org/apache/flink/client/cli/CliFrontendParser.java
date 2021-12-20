@@ -19,9 +19,6 @@
 package org.apache.flink.client.cli;
 
 import org.apache.flink.configuration.CheckpointingOptions;
-import org.apache.flink.configuration.ConfigurationUtils;
-import org.apache.flink.runtime.jobgraph.RestoreMode;
-import org.apache.flink.runtime.jobgraph.SavepointConfigOptions;
 import org.apache.flink.runtime.jobgraph.SavepointRestoreSettings;
 
 import org.apache.commons.cli.CommandLine;
@@ -131,15 +128,6 @@ public class CliFrontendParser {
                     "Allow to skip savepoint state that cannot be restored. "
                             + "You need to allow this if you removed an operator from your "
                             + "program that was part of the program when the savepoint was triggered.");
-
-    public static final Option SAVEPOINT_RESTORE_MODE =
-            new Option(
-                    "restoreMode",
-                    true,
-                    "Defines how should we restore from the given savepoint. Supported options: "
-                            + "[claim - claim ownership of the savepoint and delete once it is"
-                            + " subsumed, legacy (default) - do not assume ownership of the"
-                            + " savepoint files.");
 
     static final Option SAVEPOINT_DISPOSE_OPTION =
             new Option("d", "dispose", true, "Path of savepoint to dispose.");
@@ -298,7 +286,6 @@ public class CliFrontendParser {
         SAVEPOINT_PATH_OPTION.setArgName("savepointPath");
 
         SAVEPOINT_ALLOW_NON_RESTORED_OPTION.setRequired(false);
-        SAVEPOINT_RESTORE_MODE.setRequired(false);
 
         ZOOKEEPER_NAMESPACE_OPTION.setRequired(false);
         ZOOKEEPER_NAMESPACE_OPTION.setArgName("zookeeperNamespace");
@@ -376,10 +363,10 @@ public class CliFrontendParser {
     }
 
     public static Options getRunCommandOptions() {
-        return getProgramSpecificOptions(buildGeneralOptions(new Options()))
-                .addOption(SAVEPOINT_PATH_OPTION)
-                .addOption(SAVEPOINT_ALLOW_NON_RESTORED_OPTION)
-                .addOption(SAVEPOINT_RESTORE_MODE);
+        Options options = buildGeneralOptions(new Options());
+        options = getProgramSpecificOptions(options);
+        options.addOption(SAVEPOINT_PATH_OPTION);
+        return options.addOption(SAVEPOINT_ALLOW_NON_RESTORED_OPTION);
     }
 
     static Options getInfoCommandOptions() {
@@ -416,10 +403,9 @@ public class CliFrontendParser {
     // --------------------------------------------------------------------------------------------
 
     private static Options getRunOptionsWithoutDeprecatedOptions(Options options) {
-        return getProgramSpecificOptionsWithoutDeprecatedOptions(options)
-                .addOption(SAVEPOINT_PATH_OPTION)
-                .addOption(SAVEPOINT_ALLOW_NON_RESTORED_OPTION)
-                .addOption(SAVEPOINT_RESTORE_MODE);
+        Options o = getProgramSpecificOptionsWithoutDeprecatedOptions(options);
+        o.addOption(SAVEPOINT_PATH_OPTION);
+        return o.addOption(SAVEPOINT_ALLOW_NON_RESTORED_OPTION);
     }
 
     private static Options getInfoOptionsWithoutDeprecatedOptions(Options options) {
@@ -607,17 +593,7 @@ public class CliFrontendParser {
             String savepointPath = commandLine.getOptionValue(SAVEPOINT_PATH_OPTION.getOpt());
             boolean allowNonRestoredState =
                     commandLine.hasOption(SAVEPOINT_ALLOW_NON_RESTORED_OPTION.getOpt());
-            final RestoreMode restoreMode;
-            if (commandLine.hasOption(SAVEPOINT_RESTORE_MODE)) {
-                restoreMode =
-                        ConfigurationUtils.convertValue(
-                                commandLine.getOptionValue(SAVEPOINT_RESTORE_MODE),
-                                RestoreMode.class);
-            } else {
-                restoreMode = SavepointConfigOptions.RESTORE_MODE.defaultValue();
-            }
-            return SavepointRestoreSettings.forPath(
-                    savepointPath, allowNonRestoredState, restoreMode);
+            return SavepointRestoreSettings.forPath(savepointPath, allowNonRestoredState);
         } else {
             return SavepointRestoreSettings.none();
         }

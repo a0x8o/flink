@@ -22,7 +22,6 @@ import org.apache.flink.util.Preconditions;
 
 import javax.annotation.Nullable;
 
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -33,15 +32,11 @@ public class FlinkResourceSetup {
 
     @Nullable private final Configuration config;
     private final Collection<JarOperation> jarOperations;
-    private final Collection<JarAddition> jarAdditions;
 
     private FlinkResourceSetup(
-            @Nullable Configuration config,
-            Collection<JarOperation> jarOperations,
-            Collection<JarAddition> jarAdditions) {
+            @Nullable Configuration config, Collection<JarOperation> jarOperations) {
         this.config = config;
         this.jarOperations = Preconditions.checkNotNull(jarOperations);
-        this.jarAdditions = Preconditions.checkNotNull(jarAdditions);
     }
 
     public Optional<Configuration> getConfig() {
@@ -50,10 +45,6 @@ public class FlinkResourceSetup {
 
     public Collection<JarOperation> getJarOperations() {
         return jarOperations;
-    }
-
-    public Collection<JarAddition> getJarAdditions() {
-        return jarAdditions;
     }
 
     public static FlinkResourceSetupBuilder builder() {
@@ -65,17 +56,11 @@ public class FlinkResourceSetup {
 
         private Configuration config;
         private final Collection<JarOperation> jarOperations = new ArrayList<>();
-        private final Collection<JarAddition> jarAdditions = new ArrayList<>();
 
         private FlinkResourceSetupBuilder() {}
 
         public FlinkResourceSetupBuilder addConfiguration(Configuration config) {
             this.config = config;
-            return this;
-        }
-
-        public FlinkResourceSetupBuilder addJar(Path jar, JarLocation target) {
-            this.jarAdditions.add(new JarAddition(jar, target));
             return this;
         }
 
@@ -97,9 +82,7 @@ public class FlinkResourceSetup {
 
         public FlinkResourceSetup build() {
             return new FlinkResourceSetup(
-                    config,
-                    Collections.unmodifiableCollection(jarOperations),
-                    Collections.unmodifiableCollection(jarAdditions));
+                    config, Collections.unmodifiableCollection(jarOperations));
         }
     }
 }

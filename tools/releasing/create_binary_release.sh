@@ -66,6 +66,8 @@ make_binary_release() {
 
   if [ $SCALA_VERSION = "2.12" ]; then
       FLAGS="-Dscala-2.12"
+  elif [ $SCALA_VERSION = "2.11" ]; then
+      FLAGS="-Dscala-2.11"
   else
       echo "Invalid Scala version ${SCALA_VERSION}"
   fi
@@ -167,6 +169,7 @@ make_python_release() {
 
 if [ "$SCALA_VERSION" == "none" ]; then
   make_binary_release "2.12"
+  make_binary_release "2.11"
   make_python_release
 else
   make_binary_release "$SCALA_VERSION"

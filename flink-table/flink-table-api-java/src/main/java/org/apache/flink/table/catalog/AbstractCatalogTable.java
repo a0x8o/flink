@@ -83,6 +83,6 @@ public abstract class AbstractCatalogTable implements CatalogTable {
 
     @Override
     public String getComment() {
-        return comment != null ? comment : "";
+        return comment;
     }
 }

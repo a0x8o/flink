@@ -24,12 +24,7 @@ import org.apache.flink.streaming.runtime.streamrecord.LatencyMarker;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.runtime.watermarkstatus.WatermarkStatus;
 
-/**
- * {@link Input} interface used in {@link MultipleInputStreamOperator}. Most likely you don't want
- * to implement this interface on your own. Instead you can use {@link AbstractInput} and {@link
- * AbstractStreamOperatorV2} to implement {@link MultipleInputStreamOperator}, or just {@link
- * AbstractStreamOperatorV2} to implement {@link OneInputStreamOperator}.
- */
+/** {@link Input} interface used in {@link MultipleInputStreamOperator}. */
 @PublicEvolving
 public interface Input<IN> {
     /**
@@ -63,10 +58,5 @@ public interface Input<IN> {
      */
     void processLatencyMarker(LatencyMarker latencyMarker) throws Exception;
 
-    /**
-     * Set the correct key context before processing the {@code record}. Used for example to extract
-     * key from the {@code record} and pass that key to the state backends. This method is
-     * guaranteed to not be called concurrently with other methods of the operator.
-     */
     void setKeyContextElement(StreamRecord<IN> record) throws Exception;
 }

@@ -230,7 +230,6 @@ public interface ArrayData {
      *
      * @see #createElementGetter(LogicalType)
      */
-    @PublicEvolving
     interface ElementGetter extends Serializable {
         @Nullable
         Object getElementOrNull(ArrayData array, int pos);

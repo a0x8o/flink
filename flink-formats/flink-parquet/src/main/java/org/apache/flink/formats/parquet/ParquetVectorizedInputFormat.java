@@ -25,15 +25,14 @@ import org.apache.flink.connector.file.src.reader.BulkFormat;
 import org.apache.flink.connector.file.src.util.CheckpointedPosition;
 import org.apache.flink.connector.file.src.util.Pool;
 import org.apache.flink.core.fs.Path;
-import org.apache.flink.formats.parquet.utils.ParquetSchemaConverter;
 import org.apache.flink.formats.parquet.utils.SerializableConfiguration;
 import org.apache.flink.formats.parquet.vector.ColumnBatchFactory;
 import org.apache.flink.formats.parquet.vector.ParquetDecimalVector;
 import org.apache.flink.formats.parquet.vector.reader.AbstractColumnReader;
 import org.apache.flink.formats.parquet.vector.reader.ColumnReader;
-import org.apache.flink.table.data.columnar.vector.ColumnVector;
-import org.apache.flink.table.data.columnar.vector.VectorizedColumnBatch;
-import org.apache.flink.table.data.columnar.vector.writable.WritableColumnVector;
+import org.apache.flink.table.data.vector.ColumnVector;
+import org.apache.flink.table.data.vector.VectorizedColumnBatch;
+import org.apache.flink.table.data.vector.writable.WritableColumnVector;
 import org.apache.flink.table.types.logical.LogicalType;
 import org.apache.flink.table.types.logical.LogicalTypeRoot;
 import org.apache.flink.table.types.logical.RowType;
@@ -50,19 +49,15 @@ import org.apache.parquet.schema.GroupType;
 import org.apache.parquet.schema.MessageType;
 import org.apache.parquet.schema.Type;
 import org.apache.parquet.schema.Types;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
 
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 
 import static org.apache.flink.formats.parquet.vector.ParquetSplitReaderUtil.createColumnReader;
 import static org.apache.flink.formats.parquet.vector.ParquetSplitReaderUtil.createWritableColumnVector;
@@ -78,7 +73,6 @@ import static org.apache.parquet.hadoop.ParquetInputFormat.getFilter;
 public abstract class ParquetVectorizedInputFormat<T, SplitT extends FileSourceSplit>
         implements BulkFormat<T, SplitT> {
 
-    private static final Logger LOG = LoggerFactory.getLogger(ParquetVectorizedInputFormat.class);
     private static final long serialVersionUID = 1L;
 
     private final SerializableConfiguration hadoopConfig;
@@ -88,7 +82,6 @@ public abstract class ParquetVectorizedInputFormat<T, SplitT extends FileSourceS
     private final int batchSize;
     private final boolean isUtcTimestamp;
     private final boolean isCaseSensitive;
-    private final Set<Integer> unknownFieldsIndices = new HashSet<>();
 
     public ParquetVectorizedInputFormat(
             SerializableConfiguration hadoopConfig,
@@ -176,18 +169,10 @@ public abstract class ParquetVectorizedInputFormat<T, SplitT extends FileSourceS
         if (isCaseSensitive) {
             for (int i = 0; i < projectedFields.length; ++i) {
                 String fieldName = projectedFields[i];
-                if (!parquetSchema.containsField(fieldName)) {
-                    LOG.warn(
-                            "{} does not exist in {}, will fill the field with null.",
-                            fieldName,
-                            parquetSchema);
-                    types[i] =
-                            ParquetSchemaConverter.convertToParquetType(
-                                    fieldName, projectedTypes[i]);
-                    unknownFieldsIndices.add(i);
-                } else {
-                    types[i] = parquetSchema.getType(fieldName);
+                if (parquetSchema.getFieldIndex(fieldName) < 0) {
+                    throw new IllegalArgumentException(fieldName + " does not exist");
                 }
+                types[i] = parquetSchema.getType(fieldName);
             }
         } else {
             Map<String, Type> caseInsensitiveFieldMap = new HashMap<>();
@@ -207,14 +192,7 @@ public abstract class ParquetVectorizedInputFormat<T, SplitT extends FileSourceS
                 Type type =
                         caseInsensitiveFieldMap.get(projectedFields[i].toLowerCase(Locale.ROOT));
                 if (type == null) {
-                    LOG.warn(
-                            "{} does not exist in {}, will fill the field with null.",
-                            projectedFields[i],
-                            parquetSchema);
-                    type =
-                            ParquetSchemaConverter.convertToParquetType(
-                                    projectedFields[i].toLowerCase(Locale.ROOT), projectedTypes[i]);
-                    unknownFieldsIndices.add(i);
+                    throw new IllegalArgumentException(projectedFields[i] + " does not exist");
                 }
                 // TODO clip for array,map,row types.
                 types[i] = type;
@@ -383,12 +361,8 @@ public abstract class ParquetVectorizedInputFormat<T, SplitT extends FileSourceS
 
             int num = (int) Math.min(batchSize, totalCountLoadedSoFar - rowsReturned);
             for (int i = 0; i < columnReaders.length; ++i) {
-                if (columnReaders[i] == null) {
-                    batch.writableVectors[i].fillWithNulls();
-                } else {
-                    //noinspection unchecked
-                    columnReaders[i].readToVector(num, batch.writableVectors[i]);
-                }
+                //noinspection unchecked
+                columnReaders[i].readToVector(num, batch.writableVectors[i]);
             }
             rowsReturned += num;
             batch.columnarBatch.setNumRows(num);
@@ -407,14 +381,12 @@ public abstract class ParquetVectorizedInputFormat<T, SplitT extends FileSourceS
             List<ColumnDescriptor> columns = requestedSchema.getColumns();
             columnReaders = new AbstractColumnReader[columns.size()];
             for (int i = 0; i < columns.size(); ++i) {
-                if (!unknownFieldsIndices.contains(i)) {
-                    columnReaders[i] =
-                            createColumnReader(
-                                    isUtcTimestamp,
-                                    projectedTypes[i],
-                                    columns.get(i),
-                                    pages.getPageReader(columns.get(i)));
-                }
+                columnReaders[i] =
+                        createColumnReader(
+                                isUtcTimestamp,
+                                projectedTypes[i],
+                                columns.get(i),
+                                pages.getPageReader(columns.get(i)));
             }
             totalCountLoadedSoFar += pages.getRowCount();
         }

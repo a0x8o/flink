@@ -873,8 +873,8 @@ public class RocksDBKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
     }
 
     @Override
-    public boolean isSafeToReuseKVState() {
-        return true;
+    public boolean isStateImmutableInStateBackend(CheckpointType checkpointType) {
+        return !requiresLegacySynchronousTimerSnapshots(checkpointType);
     }
 
     /** Rocks DB specific information about the k/v states. */

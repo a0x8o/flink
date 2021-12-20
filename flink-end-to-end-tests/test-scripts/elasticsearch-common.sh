@@ -22,8 +22,6 @@ if [[ -z $TEST_DATA_DIR ]]; then
   exit 1
 fi
 
-source "$(dirname "$0")"/common_artifact_download_cacher.sh
-
 function setup_elasticsearch {
     mkdir -p $TEST_DATA_DIR
 
@@ -39,11 +37,20 @@ function setup_elasticsearch {
     local elasticsearchDir=$TEST_DATA_DIR/elasticsearch
     mkdir -p $elasticsearchDir
     echo "Downloading Elasticsearch from $downloadUrl ..."
-    cache_path=$(get_artifact $downloadUrl)
-    ln "$cache_path" "${TEST_DATA_DIR}/elasticsearch.tar.gz"
-    echo "Download successful."
-    echo "Extracting..."
-    tar xzf $TEST_DATA_DIR/elasticsearch.tar.gz -C $elasticsearchDir --strip-components=1
+    for i in {1..10};
+    do
+        wget "$downloadUrl" -O $TEST_DATA_DIR/elasticsearch.tar.gz
+        if [ $? -eq 0 ]; then
+            echo "Download successful."
+            echo "Extracting..."
+            tar xzf $TEST_DATA_DIR/elasticsearch.tar.gz -C $elasticsearchDir --strip-components=1
+            if [ $? -eq 0 ]; then
+                break
+            fi
+        fi
+        echo "Attempt $i failed."
+        sleep 5
+    done
     echo "Extraction successful."
 
     if [ `uname -i` == 'aarch64' ] && [ $elasticsearch_version -ge 6 ]; then
@@ -81,7 +88,6 @@ function verify_result_line_number {
         rm $TEST_DATA_DIR/output
     fi
 
-    local secondsPassed=0
     while : ; do
       curl "localhost:9200/${index}/_search?q=*&pretty&size=21" > $TEST_DATA_DIR/output || true
 
@@ -90,11 +96,6 @@ function verify_result_line_number {
           break
       else
           echo "Waiting for Elasticsearch records ..."
-          (( secondsPassed++ )) || true
-          if (( secondsPassed > 900 )); then
-              echo "Exceeded test timeout of 900 seconds."
-              exit 1
-          fi
           sleep 1
       fi
     done

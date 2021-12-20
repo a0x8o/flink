@@ -72,7 +72,7 @@ public abstract class AbstractCheckpointHandler<
 
     @Override
     protected R handleRequest(
-            HandlerRequest<EmptyRequestBody> request, AccessExecutionGraph executionGraph)
+            HandlerRequest<EmptyRequestBody, M> request, AccessExecutionGraph executionGraph)
             throws RestHandlerException {
         final long checkpointId = request.getPathParameter(CheckpointIdPathParameter.class);
 
@@ -114,6 +114,6 @@ public abstract class AbstractCheckpointHandler<
      * @throws RestHandlerException if the handler could not handle the request
      */
     protected abstract R handleCheckpointRequest(
-            HandlerRequest<EmptyRequestBody> request, AbstractCheckpointStats checkpointStats)
+            HandlerRequest<EmptyRequestBody, M> request, AbstractCheckpointStats checkpointStats)
             throws RestHandlerException;
 }

@@ -27,12 +27,9 @@ import org.apache.flink.runtime.state.metainfo.StateMetaInfoSnapshot;
 import org.apache.flink.runtime.state.metainfo.StateMetaInfoSnapshotReadersWriters;
 import org.apache.flink.util.function.ThrowingConsumer;
 
-import org.apache.flink.shaded.guava30.com.google.common.io.Closer;
-
 import javax.annotation.Nullable;
 
 import java.io.ByteArrayOutputStream;
-import java.io.Closeable;
 import java.io.IOException;
 
 import static org.apache.flink.runtime.state.metainfo.StateMetaInfoSnapshot.BackendStateType.KEY_VALUE;
@@ -48,23 +45,18 @@ import static org.apache.flink.state.changelog.StateChangeOperation.SET;
 import static org.apache.flink.state.changelog.StateChangeOperation.SET_INTERNAL;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
-abstract class AbstractStateChangeLogger<Key, Value, Ns>
-        implements StateChangeLogger<Value, Ns>, Closeable {
+abstract class AbstractStateChangeLogger<Key, Value, Ns> implements StateChangeLogger<Value, Ns> {
     static final int COMMON_KEY_GROUP = -1;
     protected final StateChangelogWriter<?> stateChangelogWriter;
     protected final InternalKeyContext<Key> keyContext;
     protected final RegisteredStateMetaInfoBase metaInfo;
     private final StateMetaInfoSnapshot.BackendStateType stateType;
-    private final ByteArrayOutputStream out = new ByteArrayOutputStream();
-    private final DataOutputViewStreamWrapper wrapper = new DataOutputViewStreamWrapper(out);
     private boolean metaDataWritten = false;
-    private final short stateShortId;
 
     public AbstractStateChangeLogger(
             StateChangelogWriter<?> stateChangelogWriter,
             InternalKeyContext<Key> keyContext,
-            RegisteredStateMetaInfoBase metaInfo,
-            short stateId) {
+            RegisteredStateMetaInfoBase metaInfo) {
         this.stateChangelogWriter = checkNotNull(stateChangelogWriter);
         this.keyContext = checkNotNull(keyContext);
         this.metaInfo = checkNotNull(metaInfo);
@@ -75,7 +67,6 @@ abstract class AbstractStateChangeLogger<Key, Value, Ns>
         } else {
             throw new IllegalArgumentException("Unsupported state type: " + metaInfo);
         }
-        this.stateShortId = stateId;
     }
 
     @Override
@@ -130,11 +121,6 @@ abstract class AbstractStateChangeLogger<Key, Value, Ns>
         log(REMOVE_ELEMENT, dataSerializer, ns);
     }
 
-    @Override
-    public void resetWritingMetaFlag() {
-        metaDataWritten = false;
-    }
-
     protected void log(StateChangeOperation op, Ns ns) throws IOException {
         logMetaIfNeeded();
         stateChangelogWriter.append(keyContext.getCurrentKeyGroupIndex(), serialize(op, ns, null));
@@ -163,8 +149,6 @@ abstract class AbstractStateChangeLogger<Key, Value, Ns>
                                 StateMetaInfoSnapshotReadersWriters.getWriter()
                                         .writeStateMetaInfoSnapshot(metaInfo.snapshot(), out);
                                 writeDefaultValueAndTtl(out);
-                                out.writeShort(stateShortId);
-                                out.writeByte(stateType.getCode());
                             }));
             metaDataWritten = true;
         }
@@ -180,7 +164,10 @@ abstract class AbstractStateChangeLogger<Key, Value, Ns>
         return serializeRaw(
                 wrapper -> {
                     wrapper.writeByte(op.getCode());
-                    wrapper.writeShort(stateShortId);
+                    // todo: optimize in FLINK-22944 by either writing short code or grouping and
+                    // writing once (same for key, ns)
+                    wrapper.writeUTF(metaInfo.getName());
+                    wrapper.writeByte(stateType.getCode());
                     serializeScope(ns, wrapper);
                     if (dataWriter != null) {
                         dataWriter.accept(wrapper);
@@ -194,18 +181,11 @@ abstract class AbstractStateChangeLogger<Key, Value, Ns>
     private byte[] serializeRaw(
             ThrowingConsumer<DataOutputViewStreamWrapper, IOException> dataWriter)
             throws IOException {
-        dataWriter.accept(wrapper);
-        wrapper.flush();
-        byte[] bytes = out.toByteArray();
-        out.reset();
-        return bytes;
-    }
-
-    @Override
-    public void close() throws IOException {
-        try (Closer closer = Closer.create()) {
-            closer.register(wrapper);
-            closer.register(out);
+        // todo: optimize performance
+        try (ByteArrayOutputStream out = new ByteArrayOutputStream();
+                DataOutputViewStreamWrapper wrapper = new DataOutputViewStreamWrapper(out)) {
+            dataWriter.accept(wrapper);
+            return out.toByteArray();
         }
     }
 }

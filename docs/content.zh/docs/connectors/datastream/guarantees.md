@@ -1,6 +1,6 @@
 ---
 title: 容错保证
-weight: 2
+weight: 1
 type: docs
 aliases:
   - /zh/dev/connectors/guarantees.html

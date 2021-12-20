@@ -103,6 +103,7 @@ public class TestUtils {
                                 CheckpointRetentionPolicy.NEVER_RETAIN_AFTER_TERMINATION)
                         .setExactlyOnce(true)
                         .setUnalignedCheckpointsEnabled(false)
+                        .setPreferCheckpointForRecovery(false)
                         .setTolerableCheckpointFailureNumber(0)
                         .build();
         final JobCheckpointingSettings checkpointingSettings =

@@ -19,41 +19,51 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { NavigationEnd, Router } from '@angular/router';
-import { EMPTY, fromEvent, interval, merge, Observable, Subject } from 'rxjs';
+import { EMPTY, fromEvent, interval, merge, Subject } from 'rxjs';
 import { debounceTime, filter, map, mapTo, share, startWith, switchMap, tap } from 'rxjs/operators';
-
-import { BASE_URL } from 'config';
-import { Configuration } from 'interfaces';
+import { BASE_URL } from '../app.config';
+import { ConfigurationInterface } from 'interfaces';
 
 @Injectable({
   providedIn: 'root'
 })
 export class StatusService {
-  constructor(private readonly httpClient: HttpClient) {}
+  /**
+   * Error server response message cache list
+   */
+  listOfErrorMessage: string[] = [];
+  /**
+   * Flink configuration from backend
+   */
+  configuration: ConfigurationInterface;
+  /**
+   * Refresh stream generated from the configuration
+   */
+  refresh$ = new Subject<boolean>().asObservable();
+  /**
+   * Force refresh stream trigger manually
+   */
+  private forceRefresh$ = new Subject<boolean>();
+  /**
+   * Document visibility stream
+   */
+  private visibility$ = fromEvent(window, 'visibilitychange').pipe(map(e => !(e.target as Document).hidden));
 
-  /** Error server response message cache list. */
-  public listOfErrorMessage: string[] = [];
-
-  /** Flink configuration from backend. */
-  public configuration: Configuration;
-
-  public refresh$: Observable<boolean>;
-  private readonly forceRefresh$ = new Subject<boolean>();
-  private readonly visibility$ = fromEvent(window, 'visibilitychange').pipe(map(e => !(e.target as Document).hidden));
-
-  public forceRefresh(): void {
+  /**
+   * Trigger force refresh
+   */
+  forceRefresh() {
     this.forceRefresh$.next(true);
   }
 
   /**
    * Create refresh stream when APP_INITIALIZER
    * refresh interval stream will be regenerated when NavigationEnd || forceRefresh || visibility change
-   *
    * @param router
    */
-  public boot(router: Router): Promise<Configuration> {
+  boot(router: Router): Promise<ConfigurationInterface> {
     return this.httpClient
-      .get<Configuration>(`${BASE_URL}/config`)
+      .get<ConfigurationInterface>(`${BASE_URL}/config`)
       .pipe(
         tap(data => {
           this.configuration = data;
@@ -61,7 +71,10 @@ export class StatusService {
             filter(item => item instanceof NavigationEnd),
             mapTo(true)
           );
-          const interval$ = interval(this.configuration['refresh-interval']).pipe(mapTo(true), startWith(true));
+          const interval$ = interval(this.configuration['refresh-interval']).pipe(
+            mapTo(true),
+            startWith(true)
+          );
           this.refresh$ = merge(this.visibility$, this.forceRefresh$, navigationEnd$).pipe(
             startWith(true),
             debounceTime(300),
@@ -72,4 +85,6 @@ export class StatusService {
       )
       .toPromise();
   }
+
+  constructor(private httpClient: HttpClient) {}
 }

@@ -28,14 +28,13 @@ import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.DeploymentOptions;
 import org.apache.flink.runtime.dispatcher.DispatcherGateway;
 import org.apache.flink.runtime.jobgraph.JobGraph;
-import org.apache.flink.runtime.jobgraph.RestoreMode;
 import org.apache.flink.runtime.jobgraph.SavepointRestoreSettings;
 import org.apache.flink.runtime.rest.handler.HandlerRequest;
 import org.apache.flink.runtime.rest.handler.RestHandlerException;
+import org.apache.flink.runtime.testutils.TestingUtils;
 import org.apache.flink.runtime.webmonitor.TestingDispatcherGateway;
 import org.apache.flink.runtime.webmonitor.retriever.GatewayRetriever;
 import org.apache.flink.runtime.webmonitor.testutils.ParameterProgram;
-import org.apache.flink.testutils.TestingUtils;
 import org.apache.flink.util.ExceptionUtils;
 
 import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpResponseStatus;
@@ -183,18 +182,17 @@ public class JarRunHandlerParameterTest
                 PARALLELISM,
                 null,
                 ALLOW_NON_RESTORED_STATE_QUERY,
-                RESTORE_PATH,
-                RestoreMode.CLAIM);
+                RESTORE_PATH);
     }
 
     @Override
     JarRunRequestBody getJarRequestBodyWithJobId(JobID jobId) {
-        return new JarRunRequestBody(null, null, null, null, jobId, null, null, null);
+        return new JarRunRequestBody(null, null, null, null, jobId, null, null);
     }
 
     @Test
     public void testRestHandlerExceptionThrownWithEagerSinks() throws Exception {
-        final HandlerRequest<JarRunRequestBody> request =
+        final HandlerRequest<JarRunRequestBody, JarRunMessageParameters> request =
                 createRequest(
                         getDefaultJarRequestBody(),
                         getUnresolvedJarMessageParameters(),
@@ -228,7 +226,8 @@ public class JarRunHandlerParameterTest
     }
 
     @Override
-    void handleRequest(HandlerRequest<JarRunRequestBody> request) throws Exception {
+    void handleRequest(HandlerRequest<JarRunRequestBody, JarRunMessageParameters> request)
+            throws Exception {
         handler.handleRequest(request, restfulGateway).get();
     }
 

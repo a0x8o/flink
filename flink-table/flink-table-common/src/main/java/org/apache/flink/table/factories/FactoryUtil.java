@@ -25,8 +25,8 @@ import org.apache.flink.configuration.ConfigOptions;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.DelegatingConfiguration;
 import org.apache.flink.configuration.FallbackKey;
-import org.apache.flink.configuration.GlobalConfiguration;
 import org.apache.flink.configuration.ReadableConfig;
+import org.apache.flink.table.api.NoMatchingTableFactoryException;
 import org.apache.flink.table.api.TableException;
 import org.apache.flink.table.api.ValidationException;
 import org.apache.flink.table.catalog.Catalog;
@@ -56,6 +56,8 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.ServiceConfigurationError;
+import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -63,7 +65,6 @@ import java.util.stream.StreamSupport;
 
 import static org.apache.flink.configuration.ConfigurationUtils.canBePrefixMap;
 import static org.apache.flink.configuration.ConfigurationUtils.filterPrefixMapKey;
-import static org.apache.flink.configuration.GlobalConfiguration.HIDDEN_CONTENT;
 import static org.apache.flink.table.module.CommonModuleOptions.MODULE_TYPE;
 
 /** Utility for working with {@link Factory}s. */
@@ -126,12 +127,10 @@ public final class FactoryUtil {
     /**
      * Creates a {@link DynamicTableSource} from a {@link CatalogTable}.
      *
-     * <p>If {@param preferredFactory} is passed, the table source is created from that factory.
-     * Otherwise, an attempt is made to discover a matching factory using Java SPI (see {@link
-     * Factory} for details).
+     * <p>It considers {@link Catalog#getFactory()} if provided.
      */
-    public static DynamicTableSource createDynamicTableSource(
-            @Nullable DynamicTableSourceFactory preferredFactory,
+    public static DynamicTableSource createTableSource(
+            @Nullable Catalog catalog,
             ObjectIdentifier objectIdentifier,
             ResolvedCatalogTable catalogTable,
             ReadableConfig configuration,
@@ -142,9 +141,7 @@ public final class FactoryUtil {
                         objectIdentifier, catalogTable, configuration, classLoader, isTemporary);
         try {
             final DynamicTableSourceFactory factory =
-                    preferredFactory != null
-                            ? preferredFactory
-                            : discoverTableFactory(DynamicTableSourceFactory.class, context);
+                    getDynamicTableFactory(DynamicTableSourceFactory.class, catalog, context);
             return factory.createDynamicTableSource(context);
         } catch (Throwable t) {
             throw new ValidationException(
@@ -162,15 +159,11 @@ public final class FactoryUtil {
     }
 
     /**
-     * Creates a {@link DynamicTableSource} from a {@link CatalogTable}.
+     * Creates a {@link DynamicTableSink} from a {@link CatalogTable}.
      *
      * <p>It considers {@link Catalog#getFactory()} if provided.
-     *
-     * @deprecated Use {@link #createDynamicTableSource(DynamicTableSourceFactory, ObjectIdentifier,
-     *     ResolvedCatalogTable, ReadableConfig, ClassLoader, boolean)} instead.
      */
-    @Deprecated
-    public static DynamicTableSource createTableSource(
+    public static DynamicTableSink createTableSink(
             @Nullable Catalog catalog,
             ObjectIdentifier objectIdentifier,
             ResolvedCatalogTable catalogTable,
@@ -180,40 +173,9 @@ public final class FactoryUtil {
         final DefaultDynamicTableContext context =
                 new DefaultDynamicTableContext(
                         objectIdentifier, catalogTable, configuration, classLoader, isTemporary);
-
-        return createDynamicTableSource(
-                getDynamicTableFactory(DynamicTableSourceFactory.class, catalog, context),
-                objectIdentifier,
-                catalogTable,
-                configuration,
-                classLoader,
-                isTemporary);
-    }
-
-    /**
-     * Creates a {@link DynamicTableSink} from a {@link CatalogTable}.
-     *
-     * <p>If {@param preferredFactory} is passed, the table sink is created from that factory.
-     * Otherwise, an attempt is made to discover a matching factory using Java SPI (see {@link
-     * Factory} for details).
-     */
-    public static DynamicTableSink createDynamicTableSink(
-            @Nullable DynamicTableSinkFactory preferredFactory,
-            ObjectIdentifier objectIdentifier,
-            ResolvedCatalogTable catalogTable,
-            ReadableConfig configuration,
-            ClassLoader classLoader,
-            boolean isTemporary) {
-        final DefaultDynamicTableContext context =
-                new DefaultDynamicTableContext(
-                        objectIdentifier, catalogTable, configuration, classLoader, isTemporary);
-
         try {
             final DynamicTableSinkFactory factory =
-                    preferredFactory != null
-                            ? preferredFactory
-                            : discoverTableFactory(DynamicTableSinkFactory.class, context);
-
+                    getDynamicTableFactory(DynamicTableSinkFactory.class, catalog, context);
             return factory.createDynamicTableSink(context);
         } catch (Throwable t) {
             throw new ValidationException(
@@ -228,35 +190,6 @@ public final class FactoryUtil {
                                     .collect(Collectors.joining("\n"))),
                     t);
         }
-    }
-
-    /**
-     * Creates a {@link DynamicTableSink} from a {@link CatalogTable}.
-     *
-     * <p>It considers {@link Catalog#getFactory()} if provided.
-     *
-     * @deprecated Use {@link #createDynamicTableSink(DynamicTableSinkFactory, ObjectIdentifier,
-     *     ResolvedCatalogTable, ReadableConfig, ClassLoader, boolean)} instead.
-     */
-    @Deprecated
-    public static DynamicTableSink createTableSink(
-            @Nullable Catalog catalog,
-            ObjectIdentifier objectIdentifier,
-            ResolvedCatalogTable catalogTable,
-            ReadableConfig configuration,
-            ClassLoader classLoader,
-            boolean isTemporary) {
-        final DefaultDynamicTableContext context =
-                new DefaultDynamicTableContext(
-                        objectIdentifier, catalogTable, configuration, classLoader, isTemporary);
-
-        return createDynamicTableSink(
-                getDynamicTableFactory(DynamicTableSinkFactory.class, catalog, context),
-                objectIdentifier,
-                catalogTable,
-                configuration,
-                classLoader,
-                isTemporary);
     }
 
     /**
@@ -600,24 +533,19 @@ public final class FactoryUtil {
 
     @SuppressWarnings("unchecked")
     private static <T extends DynamicTableFactory> T getDynamicTableFactory(
-            Class<T> factoryClass, @Nullable Catalog catalog, DynamicTableFactory.Context context) {
-        return getDynamicTableFactory(factoryClass, catalog)
-                .orElseGet(() -> discoverTableFactory(factoryClass, context));
-    }
-
-    @SuppressWarnings("unchecked")
-    private static <T extends DynamicTableFactory> Optional<T> getDynamicTableFactory(
-            Class<T> factoryClass, @Nullable Catalog catalog) {
-        if (catalog == null) {
-            return Optional.empty();
+            Class<T> factoryClass, @Nullable Catalog catalog, DefaultDynamicTableContext context) {
+        // catalog factory has highest precedence
+        if (catalog != null) {
+            final Factory factory =
+                    catalog.getFactory()
+                            .filter(f -> factoryClass.isAssignableFrom(f.getClass()))
+                            .orElse(null);
+            if (factory != null) {
+                return (T) factory;
+            }
         }
 
-        return catalog.getFactory()
-                .map(f -> factoryClass.isAssignableFrom(f.getClass()) ? (T) f : null);
-    }
-
-    private static <T extends DynamicTableFactory> T discoverTableFactory(
-            Class<T> factoryClass, DynamicTableFactory.Context context) {
+        // fallback to factory discovery
         final String connectorOption = context.getCatalogTable().getOptions().get(CONNECTOR.key());
         if (connectorOption == null) {
             throw new ValidationException(
@@ -646,7 +574,7 @@ public final class FactoryUtil {
     }
 
     private static ValidationException enrichNoMatchingConnectorError(
-            Class<?> factoryClass, DynamicTableFactory.Context context, String connectorOption) {
+            Class<?> factoryClass, DefaultDynamicTableContext context, String connectorOption) {
         final DynamicTableFactory factory;
         try {
             factory =
@@ -687,34 +615,18 @@ public final class FactoryUtil {
         }
     }
 
-    static List<Factory> discoverFactories(ClassLoader classLoader) {
-        final List<Factory> result = new LinkedList<>();
-        ServiceLoaderUtil.load(Factory.class, classLoader)
-                .forEach(
-                        loadResult -> {
-                            if (loadResult.hasFailed()) {
-                                if (loadResult.getError() instanceof NoClassDefFoundError) {
-                                    LOG.debug(
-                                            "NoClassDefFoundError when loading a "
-                                                    + Factory.class
-                                                    + ". This is expected when trying to load a format dependency but no flink-connector-files is loaded.",
-                                            loadResult.getError());
-                                    // After logging, we just ignore this failure
-                                    return;
-                                }
-                                throw new TableException(
-                                        "Unexpected error when trying to load service provider for factories.",
-                                        loadResult.getError());
-                            }
-                            result.add(loadResult.getService());
-                        });
-        return result;
+    private static List<Factory> discoverFactories(ClassLoader classLoader) {
+        try {
+            final List<Factory> result = new LinkedList<>();
+            ServiceLoader.load(Factory.class, classLoader).iterator().forEachRemaining(result::add);
+            return result;
+        } catch (ServiceConfigurationError e) {
+            LOG.error("Could not load service provider for factories.", e);
+            throw new TableException("Could not load service provider for factories.", e);
+        }
     }
 
     private static String stringifyOption(String key, String value) {
-        if (GlobalConfiguration.isSensitive(key)) {
-            value = HIDDEN_CONTENT;
-        }
         return String.format(
                 "'%s'='%s'",
                 EncodingUtils.escapeSingleQuotes(key), EncodingUtils.escapeSingleQuotes(value));
@@ -843,7 +755,6 @@ public final class FactoryUtil {
      *
      * @see #createCatalogFactoryHelper(CatalogFactory, CatalogFactory.Context)
      */
-    @PublicEvolving
     public static class CatalogFactoryHelper extends FactoryHelper<CatalogFactory> {
 
         public CatalogFactoryHelper(CatalogFactory catalogFactory, CatalogFactory.Context context) {
@@ -856,7 +767,6 @@ public final class FactoryUtil {
      *
      * @see #createModuleFactoryHelper(ModuleFactory, ModuleFactory.Context)
      */
-    @PublicEvolving
     public static class ModuleFactoryHelper extends FactoryHelper<ModuleFactory> {
         public ModuleFactoryHelper(ModuleFactory moduleFactory, ModuleFactory.Context context) {
             super(moduleFactory, context.getOptions(), PROPERTY_VERSION);
@@ -869,7 +779,6 @@ public final class FactoryUtil {
      *
      * @see #createTableFactoryHelper(DynamicTableFactory, DynamicTableFactory.Context)
      */
-    @PublicEvolving
     public static class TableFactoryHelper extends FactoryHelper<DynamicTableFactory> {
 
         private final DynamicTableFactory.Context context;

@@ -435,10 +435,6 @@
         },
         "savepointPath" : {
           "type" : "string"
-        },
-        "restoreMode" : {
-          "type" : "string",
-          "enum" : [ "CLAIM", "LEGACY" ]
         }
       }
     },
@@ -508,9 +504,6 @@
                 "type" : "string"
               },
               "size" : {
-                "type" : "integer"
-              },
-              "mtime" : {
                 "type" : "integer"
               }
             }
@@ -1282,9 +1275,6 @@
         },
         "aligned_checkpoint_timeout" : {
           "type" : "integer"
-        },
-        "checkpoints_after_tasks_finish" : {
-          "type" : "boolean"
         }
       }
     }
@@ -1881,9 +1871,6 @@
         },
         "cancel-job" : {
           "type" : "boolean"
-        },
-        "triggerId" : {
-          "type" : "any"
         }
       }
     },
@@ -1956,9 +1943,6 @@
         },
         "drain" : {
           "type" : "boolean"
-        },
-        "triggerId" : {
-          "type" : "any"
         }
       }
     },
@@ -3308,9 +3292,6 @@
                 "type" : "string"
               },
               "size" : {
-                "type" : "integer"
-              },
-              "mtime" : {
                 "type" : "integer"
               }
             }

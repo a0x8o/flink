@@ -20,7 +20,7 @@ package org.apache.flink.runtime.memory;
 
 import org.junit.Test;
 
-import java.util.function.LongConsumer;
+import java.util.function.Consumer;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -144,7 +144,7 @@ public class SharedResourcesTest {
 
     // ------------------------------------------------------------------------
 
-    private static final class TestReleaseHook implements LongConsumer {
+    private static final class TestReleaseHook implements Consumer<Long> {
 
         private final long expectedValue;
 
@@ -155,9 +155,9 @@ public class SharedResourcesTest {
         }
 
         @Override
-        public void accept(long value) {
+        public void accept(Long value) {
             wasCalled = true;
-            assertEquals(expectedValue, value);
+            assertEquals(expectedValue, value.longValue());
         }
     }
 }

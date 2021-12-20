@@ -25,7 +25,6 @@ import org.apache.flink.table.api.TableConfig;
 import org.apache.flink.table.api.TableException;
 import org.apache.flink.table.catalog.CatalogManager;
 import org.apache.flink.table.catalog.FunctionCatalog;
-import org.apache.flink.table.module.ModuleManager;
 import org.apache.flink.table.planner.calcite.CalciteConfig;
 import org.apache.flink.table.planner.calcite.CalciteConfig$;
 import org.apache.flink.table.planner.calcite.FlinkContext;
@@ -105,7 +104,6 @@ public class PlannerContext {
     public PlannerContext(
             boolean isBatchMode,
             TableConfig tableConfig,
-            ModuleManager moduleManager,
             FunctionCatalog functionCatalog,
             CatalogManager catalogManager,
             CalciteSchema rootSchema,
@@ -116,7 +114,6 @@ public class PlannerContext {
                 new FlinkContextImpl(
                         isBatchMode,
                         tableConfig,
-                        moduleManager,
                         functionCatalog,
                         catalogManager,
                         rexConverterFactory);

@@ -20,7 +20,6 @@ package org.apache.flink.table.planner.calcite
 
 import org.apache.flink.table.api.TableConfig
 import org.apache.flink.table.catalog.{CatalogManager, FunctionCatalog}
-import org.apache.flink.table.module.ModuleManager
 
 import org.apache.calcite.plan.Context
 
@@ -29,22 +28,29 @@ import org.apache.calcite.plan.Context
   */
 trait FlinkContext extends Context {
 
-  /** Returns whether the planner is in batch mode. */
+  /**
+   * Returns whether the planner runs in batch mode.
+   */
   def isBatchMode: Boolean
 
-  /** Returns the [[TableConfig]] defined in [[org.apache.flink.table.api.TableEnvironment]]. */
+  /**
+    * Gets [[TableConfig]] instance defined in [[org.apache.flink.table.api.TableEnvironment]].
+    */
   def getTableConfig: TableConfig
 
-  /** Returns the [[FunctionCatalog]] defined in [[org.apache.flink.table.api.TableEnvironment]]. */
+  /**
+    * Gets [[FunctionCatalog]] instance defined in [[org.apache.flink.table.api.TableEnvironment]].
+    */
   def getFunctionCatalog: FunctionCatalog
 
-  /** Returns the [[CatalogManager]] defined in [[org.apache.flink.table.api.TableEnvironment]]. */
+  /**
+    * Gets [[CatalogManager]] instance defined in [[org.apache.flink.table.api.TableEnvironment]].
+    */
   def getCatalogManager: CatalogManager
 
-  /** Returns the [[ModuleManager]] defined in [[org.apache.flink.table.api.TableEnvironment]]. */
-  def getModuleManager: ModuleManager
-
-  /** Returns the [[SqlExprToRexConverterFactory]] to convert SQL expressions to rex nodes. */
+  /**
+    * Gets [[SqlExprToRexConverterFactory]] instance to convert sql expression to rex node.
+    */
   def getSqlExprToRexConverterFactory: SqlExprToRexConverterFactory
 
   override def unwrap[C](clazz: Class[C]): C = {

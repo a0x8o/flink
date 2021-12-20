@@ -67,8 +67,9 @@ import java.util.Optional;
 import java.util.function.Function;
 
 import static org.apache.flink.core.testutils.FlinkMatchers.containsCause;
-import static org.apache.flink.table.test.TableAssertions.assertThat;
 import static org.apache.flink.table.types.utils.DataTypeFactoryMock.dummyRaw;
+import static org.hamcrest.CoreMatchers.equalTo;
+import static org.junit.Assert.assertThat;
 
 /** Tests for {@link DataTypeExtractor}. */
 @RunWith(Parameterized.class)
@@ -603,7 +604,7 @@ public class DataTypeExtractorTest {
     static void runExtraction(TestSpec testSpec) {
         final DataType dataType = testSpec.extractor.apply(testSpec.typeFactory);
         if (testSpec.expectedDataType != null) {
-            assertThat(dataType).isEqualTo(testSpec.expectedDataType);
+            assertThat(dataType, equalTo(testSpec.expectedDataType));
         }
     }
 

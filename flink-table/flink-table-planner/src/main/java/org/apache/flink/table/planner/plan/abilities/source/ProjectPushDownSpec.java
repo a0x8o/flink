@@ -18,7 +18,6 @@
 
 package org.apache.flink.table.planner.plan.abilities.source;
 
-import org.apache.flink.table.api.DataTypes;
 import org.apache.flink.table.api.TableException;
 import org.apache.flink.table.connector.source.DynamicTableSource;
 import org.apache.flink.table.connector.source.abilities.SupportsProjectionPushDown;
@@ -27,8 +26,6 @@ import org.apache.flink.table.types.logical.RowType;
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.annotation.JsonCreator;
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.annotation.JsonProperty;
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.annotation.JsonTypeName;
-
-import java.util.List;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
@@ -54,23 +51,12 @@ public class ProjectPushDownSpec extends SourceAbilitySpecBase {
     @Override
     public void apply(DynamicTableSource tableSource, SourceAbilityContext context) {
         if (tableSource instanceof SupportsProjectionPushDown) {
-            ((SupportsProjectionPushDown) tableSource)
-                    .applyProjection(projectedFields, DataTypes.of(getProducedType().get()));
+            ((SupportsProjectionPushDown) tableSource).applyProjection(projectedFields);
         } else {
             throw new TableException(
                     String.format(
                             "%s does not support SupportsProjectionPushDown.",
                             tableSource.getClass().getName()));
         }
-    }
-
-    @Override
-    public String getDigests(SourceAbilityContext context) {
-        final List<String> fieldNames =
-                this.getProducedType()
-                        .orElseThrow(() -> new TableException("Produced data type is not present."))
-                        .getFieldNames();
-
-        return String.format("project=[%s]", String.join(", ", fieldNames));
     }
 }

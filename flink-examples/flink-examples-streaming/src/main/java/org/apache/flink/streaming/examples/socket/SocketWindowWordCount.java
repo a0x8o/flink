@@ -19,12 +19,13 @@
 package org.apache.flink.streaming.examples.socket;
 
 import org.apache.flink.api.common.functions.FlatMapFunction;
-import org.apache.flink.api.common.typeinfo.Types;
+import org.apache.flink.api.common.functions.ReduceFunction;
 import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.windowing.assigners.TumblingProcessingTimeWindows;
 import org.apache.flink.streaming.api.windowing.time.Time;
+import org.apache.flink.util.Collector;
 
 /**
  * Implements a streaming windowed version of the "WordCount" program.
@@ -38,6 +39,7 @@ import org.apache.flink.streaming.api.windowing.time.Time;
  *
  * <p>and run this example with the hostname and the port as arguments.
  */
+@SuppressWarnings("serial")
 public class SocketWindowWordCount {
 
     public static void main(String[] args) throws Exception {
@@ -69,17 +71,24 @@ public class SocketWindowWordCount {
         // parse the data, group it, window it, and aggregate the counts
         DataStream<WordWithCount> windowCounts =
                 text.flatMap(
-                                (FlatMapFunction<String, WordWithCount>)
-                                        (value, out) -> {
-                                            for (String word : value.split("\\s")) {
-                                                out.collect(new WordWithCount(word, 1L));
-                                            }
-                                        },
-                                Types.POJO(WordWithCount.class))
+                                new FlatMapFunction<String, WordWithCount>() {
+                                    @Override
+                                    public void flatMap(
+                                            String value, Collector<WordWithCount> out) {
+                                        for (String word : value.split("\\s")) {
+                                            out.collect(new WordWithCount(word, 1L));
+                                        }
+                                    }
+                                })
                         .keyBy(value -> value.word)
                         .window(TumblingProcessingTimeWindows.of(Time.seconds(5)))
-                        .reduce((a, b) -> new WordWithCount(a.word, a.count + b.count))
-                        .returns(WordWithCount.class);
+                        .reduce(
+                                new ReduceFunction<WordWithCount>() {
+                                    @Override
+                                    public WordWithCount reduce(WordWithCount a, WordWithCount b) {
+                                        return new WordWithCount(a.word, a.count + b.count);
+                                    }
+                                });
 
         // print the results with a single thread, rather than in parallel
         windowCounts.print().setParallelism(1);
@@ -95,7 +104,6 @@ public class SocketWindowWordCount {
         public String word;
         public long count;
 
-        @SuppressWarnings("unused")
         public WordWithCount() {}
 
         public WordWithCount(String word, long count) {

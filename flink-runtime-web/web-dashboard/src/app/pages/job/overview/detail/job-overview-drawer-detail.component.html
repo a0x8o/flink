@@ -40,17 +40,13 @@
         <nz-form-item>
           <nz-form-label [nzSpan]="9">Start Time</nz-form-label>
           <nz-form-control [nzSpan]="15">
-            <nz-form-text>
-              {{ node.detail['start-time'] | humanizeDate: 'yyyy-MM-dd HH:mm:ss' }}
-            </nz-form-text>
+            <nz-form-text>{{ node.detail['start-time'] | humanizeDate: 'yyyy-MM-dd HH:mm:ss' }}</nz-form-text>
           </nz-form-control>
         </nz-form-item>
         <nz-form-item>
           <nz-form-label [nzSpan]="9">End Time</nz-form-label>
           <nz-form-control [nzSpan]="15">
-            <nz-form-text>
-              {{ node.detail['end-time'] | humanizeDate: 'yyyy-MM-dd HH:mm:ss' }}
-            </nz-form-text>
+            <nz-form-text>{{ node.detail['end-time'] | humanizeDate: 'yyyy-MM-dd HH:mm:ss' }}</nz-form-text>
           </nz-form-control>
         </nz-form-item>
         <nz-form-item>
@@ -75,9 +71,9 @@
           <nz-form-label [nzSpan]="9">Records Sent</nz-form-label>
           <nz-form-control [nzSpan]="15">
             <nz-form-text>
-              <span *ngIf="node.detail.metrics['write-records-complete']; else loadingTemplate">
-                {{ node.detail.metrics['write-records'] | number: '1.0-0' }}
-              </span>
+            <span *ngIf="node.detail.metrics['write-records-complete'];else loadingTemplate">
+              {{ node.detail.metrics['write-records'] | number:'1.0-0' }}
+            </span>
             </nz-form-text>
           </nz-form-control>
         </nz-form-item>
@@ -85,9 +81,9 @@
           <nz-form-label [nzSpan]="9">Bytes Received</nz-form-label>
           <nz-form-control [nzSpan]="15">
             <nz-form-text>
-              <span *ngIf="node.detail.metrics['read-bytes-complete']; else loadingTemplate">
-                {{ node.detail.metrics['read-bytes'] | humanizeBytes }}
-              </span>
+            <span *ngIf="node.detail.metrics['read-bytes-complete'];else loadingTemplate">
+              {{ node.detail.metrics['read-bytes'] | humanizeBytes }}
+            </span>
             </nz-form-text>
           </nz-form-control>
         </nz-form-item>
@@ -95,9 +91,9 @@
           <nz-form-label [nzSpan]="9">Records Received</nz-form-label>
           <nz-form-control [nzSpan]="15">
             <nz-form-text>
-              <span *ngIf="node.detail.metrics['read-records-complete']; else loadingTemplate">
-                {{ node.detail.metrics['read-records'] | number: '1.0-0' }}
-              </span>
+            <span *ngIf="node.detail.metrics['read-records-complete'];else loadingTemplate">
+              {{ node.detail.metrics['read-records'] | number:'1.0-0' }}
+            </span>
             </nz-form-text>
           </nz-form-control>
         </nz-form-item>
@@ -105,9 +101,9 @@
           <nz-form-label [nzSpan]="9">Bytes Sent</nz-form-label>
           <nz-form-control [nzSpan]="15">
             <nz-form-text>
-              <span *ngIf="node.detail.metrics['write-bytes-complete']; else loadingTemplate">
-                {{ node.detail.metrics['write-bytes'] | humanizeBytes }}
-              </span>
+            <span *ngIf="node.detail.metrics['write-bytes-complete'];else loadingTemplate">
+              {{ node.detail.metrics['write-bytes'] | humanizeBytes }}
+            </span>
             </nz-form-text>
           </nz-form-control>
         </nz-form-item>

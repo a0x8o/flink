@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-export interface JobSubTaskTime {
+export interface JobSubTaskTimeInterface {
   id: string;
   name: string;
   now: number;

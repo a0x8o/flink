@@ -22,9 +22,7 @@ import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.client.deployment.application.EntryClassInformationProvider;
 import org.apache.flink.client.deployment.application.FromClasspathEntryClassInformationProvider;
 import org.apache.flink.client.deployment.application.FromJarEntryClassInformationProvider;
-import org.apache.flink.configuration.ConfigUtils;
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.configuration.PipelineOptions;
 import org.apache.flink.util.FileUtils;
 import org.apache.flink.util.FlinkException;
 import org.apache.flink.util.Preconditions;
@@ -34,10 +32,8 @@ import javax.annotation.Nullable;
 
 import java.io.File;
 import java.io.IOException;
-import java.net.MalformedURLException;
 import java.net.URL;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.NoSuchElementException;
@@ -99,29 +95,21 @@ public class DefaultPackagedProgramRetriever implements PackagedProgramRetriever
             String[] programArgs,
             Configuration configuration)
             throws FlinkException {
-        List<URL> userClasspaths;
+        List<URL> userClasspath;
         try {
-            final List<URL> classpathsFromUserLibDir = getClasspathsFromUserLibDir(userLibDir);
-            final List<URL> classpathsFromConfiguration =
-                    getClasspathsFromConfiguration(configuration);
-
-            final List<URL> classpaths = new ArrayList<>();
-            classpaths.addAll(classpathsFromUserLibDir);
-            classpaths.addAll(classpathsFromConfiguration);
-
-            userClasspaths = Collections.unmodifiableList(classpaths);
+            userClasspath = extractUserClasspath(userLibDir);
         } catch (IOException e) {
             throw new FlinkException("An error occurred while extracting the user classpath.", e);
         }
 
         final EntryClassInformationProvider entryClassInformationProvider =
                 createEntryClassInformationProvider(
-                        userLibDir == null ? null : userClasspaths,
+                        userLibDir == null ? null : userClasspath,
                         jarFile,
                         jobClassName,
                         programArgs);
         return new DefaultPackagedProgramRetriever(
-                entryClassInformationProvider, programArgs, userClasspaths, configuration);
+                entryClassInformationProvider, programArgs, userClasspath, configuration);
     }
 
     @VisibleForTesting
@@ -216,8 +204,7 @@ public class DefaultPackagedProgramRetriever implements PackagedProgramRetriever
         }
     }
 
-    private static List<URL> getClasspathsFromUserLibDir(@Nullable File userLibDir)
-            throws IOException {
+    private static List<URL> extractUserClasspath(@Nullable File userLibDir) throws IOException {
         if (userLibDir == null) {
             return Collections.emptyList();
         }
@@ -229,14 +216,5 @@ public class DefaultPackagedProgramRetriever implements PackagedProgramRetriever
                         .map(FunctionUtils.uncheckedFunction(FileUtils::toURL))
                         .collect(Collectors.toList());
         return Collections.unmodifiableList(relativeJarURLs);
-    }
-
-    private static List<URL> getClasspathsFromConfiguration(Configuration configuration)
-            throws MalformedURLException {
-        if (configuration == null) {
-            return Collections.emptyList();
-        }
-        return ConfigUtils.decodeListFromConfig(
-                configuration, PipelineOptions.CLASSPATHS, URL::new);
     }
 }

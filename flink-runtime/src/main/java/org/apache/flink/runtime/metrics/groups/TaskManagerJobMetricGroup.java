@@ -29,9 +29,7 @@ import javax.annotation.Nullable;
 import java.util.HashMap;
 import java.util.Map;
 
-import static java.lang.Thread.holdsLock;
 import static org.apache.flink.util.Preconditions.checkNotNull;
-import static org.apache.flink.util.Preconditions.checkState;
 
 /**
  * Special {@link org.apache.flink.metrics.MetricGroup} representing everything belonging to a
@@ -47,7 +45,7 @@ public class TaskManagerJobMetricGroup extends JobMetricGroup<TaskManagerMetricG
 
     // ------------------------------------------------------------------------
 
-    public TaskManagerJobMetricGroup(
+    TaskManagerJobMetricGroup(
             MetricRegistry registry,
             TaskManagerMetricGroup parent,
             JobID jobId,
@@ -107,14 +105,19 @@ public class TaskManagerJobMetricGroup extends JobMetricGroup<TaskManagerMetricG
     public void removeTaskMetricGroup(ExecutionAttemptID executionId) {
         checkNotNull(executionId);
 
-        // this can be a call from this.close which iterates over tasks
-        // changing tasks here would break iteration
+        boolean removeFromParent = false;
         synchronized (this) {
-            if (!isClosed()) {
-                tasks.remove(executionId);
-                // keep this group open even if tasks is empty - to re-use on new task submission
-                // the group will be closed by TM with the release of the last job slot on this TM
+            if (!isClosed() && tasks.remove(executionId) != null && tasks.isEmpty()) {
+                // this call removed the last task. close this group.
+                removeFromParent = true;
+                close();
             }
+        }
+
+        // IMPORTANT: removing from the parent must not happen while holding the this group's lock,
+        //      because it would violate the "first parent then subgroup" lock acquisition order
+        if (removeFromParent) {
+            parent.removeJobMetricsGroup(jobId, this);
         }
     }
 
@@ -124,7 +127,6 @@ public class TaskManagerJobMetricGroup extends JobMetricGroup<TaskManagerMetricG
 
     @Override
     protected Iterable<? extends ComponentMetricGroup> subComponents() {
-        checkState(holdsLock(this));
         return tasks.values();
     }
 }

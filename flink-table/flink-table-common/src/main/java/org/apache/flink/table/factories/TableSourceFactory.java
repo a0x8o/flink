@@ -75,7 +75,6 @@ public interface TableSourceFactory<T> extends TableFactory {
     }
 
     /** Context of table source creation. Contains table information and environment information. */
-    @PublicEvolving
     interface Context {
 
         /** @return full identifier of the given {@link CatalogTable}. */

@@ -82,6 +82,8 @@ public abstract class PushWatermarkIntoTableSourceScanRuleBase extends RelOptRul
             FlinkLogicalTableSourceScan scan,
             TableConfig tableConfig,
             boolean useWatermarkAssignerRowType) {
+        String digest = String.format("watermark=[%s]", watermarkExpr);
+
         final TableSourceTable tableSourceTable = scan.getTable().unwrap(TableSourceTable.class);
         final DynamicTableSource newDynamicTableSource = tableSourceTable.tableSource().copy();
 
@@ -115,6 +117,7 @@ public abstract class PushWatermarkIntoTableSourceScanRuleBase extends RelOptRul
             final long idleTimeoutMillis;
             if (!idleTimeout.isZero() && !idleTimeout.isNegative()) {
                 idleTimeoutMillis = idleTimeout.toMillis();
+                digest = String.format("%s, idletimeout=[%s]", digest, idleTimeoutMillis);
             } else {
                 idleTimeoutMillis = -1L;
             }
@@ -127,7 +130,10 @@ public abstract class PushWatermarkIntoTableSourceScanRuleBase extends RelOptRul
 
         TableSourceTable newTableSourceTable =
                 tableSourceTable.copy(
-                        newDynamicTableSource, newType, new SourceAbilitySpec[] {abilitySpec});
+                        newDynamicTableSource,
+                        newType,
+                        new String[] {digest},
+                        new SourceAbilitySpec[] {abilitySpec});
         return FlinkLogicalTableSourceScan.create(
                 scan.getCluster(), scan.getHints(), newTableSourceTable);
     }

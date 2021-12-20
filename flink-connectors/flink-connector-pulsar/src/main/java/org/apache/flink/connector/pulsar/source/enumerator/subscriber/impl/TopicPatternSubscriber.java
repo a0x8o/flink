@@ -19,7 +19,6 @@
 package org.apache.flink.connector.pulsar.source.enumerator.subscriber.impl;
 
 import org.apache.flink.connector.pulsar.source.enumerator.topic.TopicPartition;
-import org.apache.flink.connector.pulsar.source.enumerator.topic.TopicRange;
 import org.apache.flink.connector.pulsar.source.enumerator.topic.range.RangeGenerator;
 
 import org.apache.pulsar.client.admin.PulsarAdmin;
@@ -29,7 +28,6 @@ import org.apache.pulsar.common.naming.NamespaceName;
 import org.apache.pulsar.common.naming.TopicName;
 
 import java.util.Collections;
-import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -68,11 +66,9 @@ public class TopicPatternSubscriber extends BasePulsarSubscriber {
                     .map(topic -> queryTopicMetadata(pulsarAdmin, topic))
                     .filter(Objects::nonNull)
                     .flatMap(
-                            metadata -> {
-                                List<TopicRange> ranges =
-                                        rangeGenerator.range(metadata, parallelism);
-                                return toTopicPartitions(metadata, ranges).stream();
-                            })
+                            metadata ->
+                                    toTopicPartitions(metadata, parallelism, rangeGenerator)
+                                            .stream())
                     .collect(toSet());
         } catch (PulsarAdminException e) {
             if (e.getStatusCode() == 404) {

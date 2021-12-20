@@ -20,15 +20,16 @@ package org.apache.flink.table.planner.plan.nodes.physical.stream
 
 import org.apache.flink.table.planner.calcite.FlinkTypeFactory
 import org.apache.flink.table.planner.plan.logical.TimeAttributeWindowingStrategy
-import org.apache.flink.table.planner.plan.nodes.common.CommonPhysicalWindowTableFunction
 import org.apache.flink.table.planner.plan.nodes.exec.{ExecNode, InputProperty}
 import org.apache.flink.table.planner.plan.nodes.exec.stream.StreamExecWindowTableFunction
 
 import org.apache.calcite.plan.{RelOptCluster, RelTraitSet}
 import org.apache.calcite.rel.`type`.RelDataType
-import org.apache.calcite.rel.{RelNode, RelWriter}
+import org.apache.calcite.rel.{RelNode, RelWriter, SingleRel}
 
 import java.util
+
+import scala.collection.JavaConverters._
 
 /**
  * Stream physical RelNode for window table-valued function.
@@ -38,17 +39,13 @@ class StreamPhysicalWindowTableFunction(
     traitSet: RelTraitSet,
     inputRel: RelNode,
     outputRowType: RelDataType,
-    windowing: TimeAttributeWindowingStrategy,
+    val windowing: TimeAttributeWindowingStrategy,
     val emitPerRecord: Boolean)
-  extends CommonPhysicalWindowTableFunction(
-    cluster,
-    traitSet,
-    inputRel,
-    outputRowType,
-    windowing)
+  extends SingleRel(cluster, traitSet, inputRel)
   with StreamPhysicalRel {
-
   override def requireWatermark: Boolean = true
+
+  override def deriveRowType(): RelDataType = outputRowType
 
   override def copy(traitSet: RelTraitSet, inputs: util.List[RelNode]): RelNode = {
     new StreamPhysicalWindowTableFunction(
@@ -71,7 +68,9 @@ class StreamPhysicalWindowTableFunction(
   }
 
   override def explainTerms(pw: RelWriter): RelWriter = {
+    val inputFieldNames = getInput.getRowType.getFieldNames.asScala.toArray
     super.explainTerms(pw)
+      .item("window", windowing.toSummaryString(inputFieldNames))
       .itemIf("emitPerRecord", "true", emitPerRecord)
   }
 

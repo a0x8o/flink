@@ -59,7 +59,8 @@ public class JobVertexAccumulatorsHandler
 
     @Override
     protected JobVertexAccumulatorsInfo handleRequest(
-            HandlerRequest<EmptyRequestBody> request, AccessExecutionJobVertex jobVertex)
+            HandlerRequest<EmptyRequestBody, JobVertexMessageParameters> request,
+            AccessExecutionJobVertex jobVertex)
             throws RestHandlerException {
 
         StringifiedAccumulatorResult[] accs = jobVertex.getAggregatedUserAccumulatorsStringified();

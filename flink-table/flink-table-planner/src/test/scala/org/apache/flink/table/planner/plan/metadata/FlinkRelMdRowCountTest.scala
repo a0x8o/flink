@@ -248,17 +248,4 @@ class FlinkRelMdRowCountTest extends FlinkRelMdHandlerTestBase {
     assertEquals(50.0, mq.getRowCount(testRel))
   }
 
-  @Test
-  def testGetRowCountOnWindowTableFunction(): Unit = {
-    Array(batchTumbleWindowTVFRel, streamTumbleWindowTVFRel).foreach { agg =>
-      assertEquals(50D, mq.getRowCount(agg))
-    }
-    Array(
-      batchHopWindowTVFRel,
-      batchCumulateWindowTVFRel,
-      streamHopWindowTVFRel,
-      streamCumulateWindowTVFRel).foreach { agg =>
-      assertEquals(300D, mq.getRowCount(agg))
-    }
-  }
 }

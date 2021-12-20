@@ -16,11 +16,10 @@
  * limitations under the License.
  */
 
-import { ChangeDetectionStrategy, ChangeDetectorRef, Component, OnDestroy, OnInit } from '@angular/core';
+import { Component, OnInit, ChangeDetectionStrategy, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { Subject } from 'rxjs';
-import { mergeMap, takeUntil, tap } from 'rxjs/operators';
-
-import { JobFlameGraph, NodesItemCorrect } from 'interfaces';
+import { flatMap, takeUntil, tap } from 'rxjs/operators';
+import { JobFlameGraphInterface, NodesItemCorrectInterface } from 'interfaces';
 import { JobService } from 'services';
 
 @Component({
@@ -30,32 +29,26 @@ import { JobService } from 'services';
   styleUrls: ['./job-overview-drawer-flamegraph.component.less']
 })
 export class JobOverviewDrawerFlameGraphComponent implements OnInit, OnDestroy {
-  public isLoading = true;
-  public now = Date.now();
-  public selectedVertex: NodesItemCorrect | null;
-  public flameGraph = {} as JobFlameGraph;
+  destroy$ = new Subject();
+  isLoading = true;
+  now = Date.now();
+  selectedVertex: NodesItemCorrectInterface | null;
+  flameGraph = {} as JobFlameGraphInterface;
 
-  public graphType = 'on_cpu';
+  graphType = 'on_cpu';
 
-  private readonly destroy$ = new Subject<void>();
+  constructor(private jobService: JobService, private cdr: ChangeDetectorRef) {}
 
-  constructor(private readonly jobService: JobService, private readonly cdr: ChangeDetectorRef) {}
-
-  public ngOnInit(): void {
+  ngOnInit() {
     this.requestFlameGraph();
   }
 
-  public ngOnDestroy(): void {
-    this.destroy$.next();
-    this.destroy$.complete();
-  }
-
-  private requestFlameGraph(): void {
+  private requestFlameGraph() {
     this.jobService.jobWithVertex$
       .pipe(
         takeUntil(this.destroy$),
         tap(data => (this.selectedVertex = data.vertex)),
-        mergeMap(data => this.jobService.loadOperatorFlameGraph(data.job.jid, data.vertex!.id, this.graphType))
+        flatMap(data => this.jobService.loadOperatorFlameGraph(data.job.jid, data.vertex!.id, this.graphType))
       )
       .subscribe(
         data => {
@@ -74,9 +67,16 @@ export class JobOverviewDrawerFlameGraphComponent implements OnInit, OnDestroy {
       );
   }
 
-  public selectFrameGraphType(): void {
+  selectFrameGraphType() {
     this.destroy$.next();
-    this.flameGraph = {} as JobFlameGraph;
+    this.destroy$.complete();
+    this.destroy$ = new Subject();
+    this.flameGraph = {} as JobFlameGraphInterface;
     this.requestFlameGraph();
+  }
+
+  ngOnDestroy() {
+    this.destroy$.next();
+    this.destroy$.complete();
   }
 }

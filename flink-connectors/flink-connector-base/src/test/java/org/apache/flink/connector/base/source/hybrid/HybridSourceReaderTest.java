@@ -36,7 +36,9 @@ import org.junit.Test;
 import org.mockito.Mockito;
 
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /** Tests for {@link HybridSourceReader}. */
 public class HybridSourceReaderTest {
@@ -53,7 +55,10 @@ public class HybridSourceReaderTest {
         SourceReader<Integer, MockSourceSplit> mockSplitReader2 =
                 source.createReader(readerContext);
 
-        HybridSourceReader<Integer> reader = new HybridSourceReader<>(readerContext);
+        Map<Integer, Source> switchedSources = new HashMap<>();
+
+        HybridSourceReader<Integer> reader =
+                new HybridSourceReader<>(readerContext, switchedSources);
 
         Assert.assertThat(readerContext.getSentEvents(), Matchers.emptyIterable());
         reader.start();
@@ -70,13 +75,10 @@ public class HybridSourceReaderTest {
                     }
                 };
         reader.handleSourceEvents(new SwitchSourceEvent(0, source1, false));
-
+        Assert.assertEquals(source1, switchedSources.get(0));
         MockSourceSplit mockSplit = new MockSourceSplit(0, 0, 1);
         mockSplit.addRecord(0);
-
-        SwitchedSources switchedSources = new SwitchedSources();
-        switchedSources.put(0, source);
-        HybridSourceSplit hybridSplit = HybridSourceSplit.wrapSplit(mockSplit, 0, switchedSources);
+        HybridSourceSplit hybridSplit = new HybridSourceSplit(0, mockSplit);
         reader.addSplits(Collections.singletonList(hybridSplit));
 
         // drain splits
@@ -126,17 +128,19 @@ public class HybridSourceReaderTest {
         TestingReaderOutput<Integer> readerOutput = new TestingReaderOutput<>();
         MockBaseSource source = new MockBaseSource(1, 1, Boundedness.BOUNDED);
 
-        HybridSourceReader<Integer> reader = new HybridSourceReader<>(readerContext);
+        Map<Integer, Source> switchedSources = new HashMap<>();
+
+        HybridSourceReader<Integer> reader =
+                new HybridSourceReader<>(readerContext, switchedSources);
 
         reader.start();
         assertAndClearSourceReaderFinishedEvent(readerContext, -1);
         reader.handleSourceEvents(new SwitchSourceEvent(0, source, false));
+        Assert.assertEquals(source, switchedSources.get(0));
 
         MockSourceSplit mockSplit = new MockSourceSplit(0, 0, 2147483647);
-
-        SwitchedSources switchedSources = new SwitchedSources();
-        switchedSources.put(0, source);
-        HybridSourceSplit hybridSplit = HybridSourceSplit.wrapSplit(mockSplit, 0, switchedSources);
+        // mockSplit.addRecord(0);
+        HybridSourceSplit hybridSplit = new HybridSourceSplit(0, mockSplit);
         reader.addSplits(Collections.singletonList(hybridSplit));
 
         List<HybridSourceSplit> snapshot = reader.snapshotState(0);
@@ -144,7 +148,8 @@ public class HybridSourceReaderTest {
 
         // reader recovery
         readerContext.clearSentEvents();
-        reader = new HybridSourceReader<>(readerContext);
+        switchedSources = new HashMap<>();
+        reader = new HybridSourceReader<>(readerContext, switchedSources);
 
         reader.addSplits(snapshot);
         Assert.assertNull(currentReader(reader));
@@ -155,6 +160,7 @@ public class HybridSourceReaderTest {
         assertAndClearSourceReaderFinishedEvent(readerContext, -1);
         reader.handleSourceEvents(new SwitchSourceEvent(0, source, false));
         Assert.assertNotNull(currentReader(reader));
+        Assert.assertEquals(source, switchedSources.get(0));
         Assert.assertThat(reader.snapshotState(1), Matchers.contains(hybridSplit));
 
         reader.close();
@@ -173,11 +179,15 @@ public class HybridSourceReaderTest {
                     }
                 };
 
-        HybridSourceReader<Integer> reader = new HybridSourceReader<>(readerContext);
+        Map<Integer, Source> switchedSources = new HashMap<>();
+
+        HybridSourceReader<Integer> reader =
+                new HybridSourceReader<>(readerContext, switchedSources);
 
         reader.start();
         assertAndClearSourceReaderFinishedEvent(readerContext, -1);
         reader.handleSourceEvents(new SwitchSourceEvent(0, source, false));
+        Assert.assertEquals(source, switchedSources.get(0));
         SourceReader<Integer, MockSourceSplit> underlyingReader = currentReader(reader);
 
         reader.notifyCheckpointComplete(1);

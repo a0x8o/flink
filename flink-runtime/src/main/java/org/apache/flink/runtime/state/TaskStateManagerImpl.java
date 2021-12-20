@@ -41,7 +41,6 @@ import javax.annotation.Nullable;
 
 import java.util.Collections;
 import java.util.List;
-import java.util.Optional;
 
 /**
  * This class is the default implementation of {@link TaskStateManager} and collaborates with the
@@ -156,22 +155,12 @@ public class TaskStateManagerImpl implements TaskStateManager {
         return jobManagerTaskRestore.getTaskStateSnapshot().getOutputRescalingDescriptor();
     }
 
-    public boolean isTaskDeployedAsFinished() {
+    public boolean isFinishedOnRestore() {
         if (jobManagerTaskRestore == null) {
             return false;
         }
 
-        return jobManagerTaskRestore.getTaskStateSnapshot().isTaskDeployedAsFinished();
-    }
-
-    @Override
-    public Optional<Long> getRestoreCheckpointId() {
-        if (jobManagerTaskRestore == null) {
-            // This happens only if no checkpoint to restore.
-            return Optional.empty();
-        }
-
-        return Optional.of(jobManagerTaskRestore.getRestoreCheckpointId());
+        return jobManagerTaskRestore.getTaskStateSnapshot().isFinishedOnRestore();
     }
 
     @Override
@@ -187,8 +176,7 @@ public class TaskStateManagerImpl implements TaskStateManager {
                 jobManagerStateSnapshot.getSubtaskStateByOperatorID(operatorID);
 
         if (jobManagerSubtaskState == null) {
-            return PrioritizedOperatorSubtaskState.empty(
-                    jobManagerTaskRestore.getRestoreCheckpointId());
+            return PrioritizedOperatorSubtaskState.emptyNotRestored();
         }
 
         long restoreCheckpointId = jobManagerTaskRestore.getRestoreCheckpointId();
@@ -220,9 +208,7 @@ public class TaskStateManagerImpl implements TaskStateManager {
 
         PrioritizedOperatorSubtaskState.Builder builder =
                 new PrioritizedOperatorSubtaskState.Builder(
-                        jobManagerSubtaskState,
-                        alternativesByPriority,
-                        jobManagerTaskRestore.getRestoreCheckpointId());
+                        jobManagerSubtaskState, alternativesByPriority, true);
 
         return builder.build();
     }

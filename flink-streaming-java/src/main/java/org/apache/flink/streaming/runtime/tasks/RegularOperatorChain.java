@@ -23,7 +23,6 @@ import org.apache.flink.runtime.checkpoint.CheckpointMetaData;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.checkpoint.StateObjectCollection;
 import org.apache.flink.runtime.checkpoint.channel.ChannelStateWriter;
-import org.apache.flink.runtime.io.network.api.StopMode;
 import org.apache.flink.runtime.io.network.api.writer.RecordWriterDelegate;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.operators.coordination.OperatorEvent;
@@ -74,7 +73,7 @@ public class RegularOperatorChain<OUT, OP extends StreamOperator<OUT>>
     }
 
     @Override
-    public boolean isTaskDeployedAsFinished() {
+    public boolean isFinishedOnRestore() {
         return false;
     }
 
@@ -113,10 +112,9 @@ public class RegularOperatorChain<OUT, OP extends StreamOperator<OUT>>
     }
 
     @Override
-    public void finishOperators(StreamTaskActionExecutor actionExecutor, StopMode stopMode)
-            throws Exception {
+    public void finishOperators(StreamTaskActionExecutor actionExecutor) throws Exception {
         if (firstOperatorWrapper != null) {
-            firstOperatorWrapper.finish(actionExecutor, stopMode);
+            firstOperatorWrapper.finish(actionExecutor);
         }
     }
 

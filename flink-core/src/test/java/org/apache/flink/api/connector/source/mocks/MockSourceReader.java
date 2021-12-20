@@ -40,20 +40,7 @@ public class MockSourceReader implements SourceReader<Integer, MockSourceSplit> 
     private int currentSplitIndex = 0;
     private boolean started;
     private int timesClosed;
-    private final WaitingForSplits waitingForSplitsBehaviour;
-    private SplitsAssignmentState splitsAssignmentState = SplitsAssignmentState.NO_SPLITS_ASSIGNED;
-
-    enum WaitingForSplits {
-        WAIT_FOR_INITIAL,
-        WAIT_UNTIL_ALL_SPLITS_ASSIGNED,
-        DO_NOT_WAIT_FOR_SPLITS
-    }
-
-    private enum SplitsAssignmentState {
-        NO_SPLITS_ASSIGNED,
-        INITIAL_SPLITS_ASSIGNED,
-        NO_MORE_SPLITS
-    }
+    private boolean waitingForMoreSplits;
 
     @GuardedBy("this")
     private CompletableFuture<Void> availableFuture;
@@ -63,19 +50,10 @@ public class MockSourceReader implements SourceReader<Integer, MockSourceSplit> 
     }
 
     public MockSourceReader(boolean waitingForMoreSplits, boolean markIdleOnNoSplits) {
-        this(
-                waitingForMoreSplits
-                        ? WaitingForSplits.WAIT_UNTIL_ALL_SPLITS_ASSIGNED
-                        : WaitingForSplits.DO_NOT_WAIT_FOR_SPLITS,
-                markIdleOnNoSplits);
-    }
-
-    public MockSourceReader(
-            WaitingForSplits waitingForSplitsBehaviour, boolean markIdleOnNoSplits) {
         this.started = false;
         this.timesClosed = 0;
         this.availableFuture = CompletableFuture.completedFuture(null);
-        this.waitingForSplitsBehaviour = waitingForSplitsBehaviour;
+        this.waitingForMoreSplits = waitingForMoreSplits;
         this.markIdleOnNoSplits = markIdleOnNoSplits;
     }
 
@@ -86,16 +64,7 @@ public class MockSourceReader implements SourceReader<Integer, MockSourceSplit> 
 
     @Override
     public InputStatus pollNext(ReaderOutput<Integer> sourceOutput) throws Exception {
-
-        if (waitingForSplitsBehaviour == WaitingForSplits.WAIT_FOR_INITIAL
-                && splitsAssignmentState == SplitsAssignmentState.NO_SPLITS_ASSIGNED) {
-            markUnavailable();
-            return InputStatus.NOTHING_AVAILABLE;
-        }
-
-        boolean finished =
-                splitsAssignmentState == SplitsAssignmentState.NO_MORE_SPLITS
-                        || waitingForSplitsBehaviour == WaitingForSplits.DO_NOT_WAIT_FOR_SPLITS;
+        boolean finished = !waitingForMoreSplits;
         currentSplitIndex = 0;
         // Find first splits with available records.
         while (currentSplitIndex < assignedSplits.size()
@@ -132,16 +101,13 @@ public class MockSourceReader implements SourceReader<Integer, MockSourceSplit> 
 
     @Override
     public void addSplits(List<MockSourceSplit> splits) {
-        if (splitsAssignmentState == SplitsAssignmentState.NO_SPLITS_ASSIGNED) {
-            splitsAssignmentState = SplitsAssignmentState.INITIAL_SPLITS_ASSIGNED;
-        }
         assignedSplits.addAll(splits);
         markAvailable();
     }
 
     @Override
     public void notifyNoMoreSplits() {
-        splitsAssignmentState = SplitsAssignmentState.NO_MORE_SPLITS;
+        waitingForMoreSplits = false;
         markAvailable();
     }
 

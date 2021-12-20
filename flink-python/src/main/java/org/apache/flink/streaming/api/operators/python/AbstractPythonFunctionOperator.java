@@ -381,8 +381,7 @@ public abstract class AbstractPythonFunctionOperator<OUT> extends AbstractStream
             return new ProcessPythonEnvironmentManager(
                     dependencyInfo,
                     getContainingTask().getEnvironment().getTaskManagerInfo().getTmpDirectories(),
-                    new HashMap<>(System.getenv()),
-                    getRuntimeContext().getJobId());
+                    new HashMap<>(System.getenv()));
         } else {
             throw new UnsupportedOperationException(
                     String.format(

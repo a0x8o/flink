@@ -22,7 +22,6 @@ import org.apache.flink.annotation.Experimental;
 import org.apache.flink.annotation.Public;
 import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.api.common.JobStatus;
-import org.apache.flink.configuration.CheckpointingOptions;
 import org.apache.flink.configuration.ReadableConfig;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.runtime.state.CheckpointStorage;
@@ -119,6 +118,9 @@ public class CheckpointConfig implements java.io.Serializable {
      */
     @Deprecated private boolean failOnCheckpointingErrors = true;
 
+    /** Determines if a job will fallback to checkpoint when there is a more recent savepoint. * */
+    private boolean preferCheckpointForRecovery = false;
+
     /**
      * Determines the threshold that we tolerance declined checkpoint failure number. The default
      * value is -1 meaning undetermined and not set via {@link
@@ -145,6 +147,7 @@ public class CheckpointConfig implements java.io.Serializable {
         this.checkpointTimeout = checkpointConfig.checkpointTimeout;
         this.maxConcurrentCheckpoints = checkpointConfig.maxConcurrentCheckpoints;
         this.minPauseBetweenCheckpoints = checkpointConfig.minPauseBetweenCheckpoints;
+        this.preferCheckpointForRecovery = checkpointConfig.preferCheckpointForRecovery;
         this.tolerableCheckpointFailureNumber = checkpointConfig.tolerableCheckpointFailureNumber;
         this.unalignedCheckpointsEnabled = checkpointConfig.isUnalignedCheckpointsEnabled();
         this.alignedCheckpointTimeout = checkpointConfig.alignedCheckpointTimeout;
@@ -400,8 +403,8 @@ public class CheckpointConfig implements java.io.Serializable {
     }
 
     /**
-     * Get the defined number of consecutive checkpoint failures that will be tolerated, before the
-     * whole job is failed over.
+     * Get the tolerable checkpoint failure number which used by the checkpoint failure manager to
+     * determine when we need to fail the job.
      *
      * <p>If the {@link #tolerableCheckpointFailureNumber} has not been configured, this method
      * would return 0 which means the checkpoint failure manager would not tolerate any declined
@@ -415,9 +418,8 @@ public class CheckpointConfig implements java.io.Serializable {
     }
 
     /**
-     * This defines how many consecutive checkpoint failures will be tolerated, before the whole job
-     * is failed over. The default value is `0`, which means no checkpoint failures will be
-     * tolerated, and the job will fail on first reported checkpoint failure.
+     * Set the tolerable checkpoint failure number, the default value is 0 that means we do not
+     * tolerance any checkpoint failure.
      */
     public void setTolerableCheckpointFailureNumber(int tolerableCheckpointFailureNumber) {
         if (tolerableCheckpointFailureNumber < 0) {
@@ -459,6 +461,37 @@ public class CheckpointConfig implements java.io.Serializable {
     @PublicEvolving
     public boolean isExternalizedCheckpointsEnabled() {
         return externalizedCheckpointCleanup != null;
+    }
+
+    /**
+     * Returns whether a job recovery should fallback to checkpoint when there is a more recent
+     * savepoint.
+     *
+     * @return <code>true</code> if a job recovery should fallback to checkpoint.
+     * @deprecated Don't activate prefer checkpoints for recovery because it can lead to data loss
+     *     and duplicate output. This option will soon be removed. See <a
+     *     href="https://issues.apache.org/jira/browse/FLINK-20427">FLINK-20427</a> for more
+     *     information.
+     */
+    @PublicEvolving
+    @Deprecated
+    public boolean isPreferCheckpointForRecovery() {
+        return preferCheckpointForRecovery;
+    }
+
+    /**
+     * Sets whether a job recovery should fallback to checkpoint when there is a more recent
+     * savepoint.
+     *
+     * @deprecated Don't activate prefer checkpoints for recovery because it can lead to data loss
+     *     and duplicate output. This option will soon be removed. See <a
+     *     href="https://issues.apache.org/jira/browse/FLINK-20427">FLINK-20427</a> for more
+     *     information.
+     */
+    @PublicEvolving
+    @Deprecated
+    public void setPreferCheckpointForRecovery(boolean preferCheckpointForRecovery) {
+        this.preferCheckpointForRecovery = preferCheckpointForRecovery;
     }
 
     /**
@@ -768,6 +801,9 @@ public class CheckpointConfig implements java.io.Serializable {
                 .getOptional(ExecutionCheckpointingOptions.MIN_PAUSE_BETWEEN_CHECKPOINTS)
                 .ifPresent(m -> this.setMinPauseBetweenCheckpoints(m.toMillis()));
         configuration
+                .getOptional(ExecutionCheckpointingOptions.PREFER_CHECKPOINT_FOR_RECOVERY)
+                .ifPresent(this::setPreferCheckpointForRecovery);
+        configuration
                 .getOptional(ExecutionCheckpointingOptions.TOLERABLE_FAILURE_NUMBER)
                 .ifPresent(this::setTolerableCheckpointFailureNumber);
         configuration
@@ -785,8 +821,5 @@ public class CheckpointConfig implements java.io.Serializable {
         configuration
                 .getOptional(ExecutionCheckpointingOptions.FORCE_UNALIGNED)
                 .ifPresent(this::setForceUnalignedCheckpoints);
-        configuration
-                .getOptional(CheckpointingOptions.CHECKPOINTS_DIRECTORY)
-                .ifPresent(this::setCheckpointStorage);
     }
 }

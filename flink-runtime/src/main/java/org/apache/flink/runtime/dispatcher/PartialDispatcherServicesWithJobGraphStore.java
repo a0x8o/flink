@@ -37,7 +37,7 @@ public class PartialDispatcherServicesWithJobGraphStore extends PartialDispatche
 
     @Nonnull private final JobGraphWriter jobGraphWriter;
 
-    private PartialDispatcherServicesWithJobGraphStore(
+    public PartialDispatcherServicesWithJobGraphStore(
             @Nonnull Configuration configuration,
             @Nonnull HighAvailabilityServices highAvailabilityServices,
             @Nonnull GatewayRetriever<ResourceManagerGateway> resourceManagerGatewayRetriever,
@@ -49,7 +49,6 @@ public class PartialDispatcherServicesWithJobGraphStore extends PartialDispatche
             @Nonnull HistoryServerArchivist historyServerArchivist,
             @Nullable String metricQueryServiceAddress,
             @Nonnull Executor ioExecutor,
-            @Nonnull DispatcherOperationCaches operationCaches,
             @Nonnull JobGraphWriter jobGraphWriter) {
         super(
                 configuration,
@@ -62,8 +61,7 @@ public class PartialDispatcherServicesWithJobGraphStore extends PartialDispatche
                 fatalErrorHandler,
                 historyServerArchivist,
                 metricQueryServiceAddress,
-                ioExecutor,
-                operationCaches);
+                ioExecutor);
         this.jobGraphWriter = jobGraphWriter;
     }
 
@@ -86,7 +84,6 @@ public class PartialDispatcherServicesWithJobGraphStore extends PartialDispatche
                 partialDispatcherServices.getHistoryServerArchivist(),
                 partialDispatcherServices.getMetricQueryServiceAddress(),
                 partialDispatcherServices.getIoExecutor(),
-                partialDispatcherServices.getOperationCaches(),
                 jobGraphWriter);
     }
 }

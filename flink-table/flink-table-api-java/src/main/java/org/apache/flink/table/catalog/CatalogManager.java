@@ -19,6 +19,7 @@
 package org.apache.flink.table.catalog;
 
 import org.apache.flink.annotation.Internal;
+import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.configuration.ReadableConfig;
 import org.apache.flink.table.api.CatalogNotExistException;
@@ -45,7 +46,6 @@ import javax.annotation.Nullable;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -333,16 +333,17 @@ public final class CatalogManager {
      * {@link CatalogBaseTable} with additional information such as if the table is a temporary
      * table or comes from the catalog.
      */
-    @Internal
     public static class TableLookupResult {
 
         private final @Nullable Catalog catalog;
         private final ResolvedCatalogBaseTable<?> resolvedTable;
 
+        @VisibleForTesting
         public static TableLookupResult temporary(ResolvedCatalogBaseTable<?> resolvedTable) {
             return new TableLookupResult(null, resolvedTable);
         }
 
+        @VisibleForTesting
         public static TableLookupResult permanent(
                 Catalog catalog, ResolvedCatalogBaseTable<?> resolvedTable) {
             return new TableLookupResult(Preconditions.checkNotNull(catalog), resolvedTable);
@@ -873,27 +874,7 @@ public final class CatalogManager {
         if (table instanceof ResolvedCatalogTable) {
             return (ResolvedCatalogTable) table;
         }
-
         final ResolvedSchema resolvedSchema = table.getUnresolvedSchema().resolve(schemaResolver);
-
-        final List<String> physicalColumns =
-                resolvedSchema.getColumns().stream()
-                        .filter(Column::isPhysical)
-                        .map(Column::getName)
-                        .collect(Collectors.toList());
-        table.getPartitionKeys()
-                .forEach(
-                        partitionKey -> {
-                            if (!physicalColumns.contains(partitionKey)) {
-                                throw new ValidationException(
-                                        String.format(
-                                                "Invalid partition key '%s'. A partition key must "
-                                                        + "reference a physical column in the schema. "
-                                                        + "Available columns are: %s",
-                                                partitionKey, physicalColumns));
-                            }
-                        });
-
         return new ResolvedCatalogTable(table, resolvedSchema);
     }
 

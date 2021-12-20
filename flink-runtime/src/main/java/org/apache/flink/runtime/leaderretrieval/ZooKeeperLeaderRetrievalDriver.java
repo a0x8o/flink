@@ -26,6 +26,7 @@ import org.apache.flink.runtime.util.ZooKeeperUtils;
 import org.apache.flink.util.ExceptionUtils;
 
 import org.apache.flink.shaded.curator4.org.apache.curator.framework.CuratorFramework;
+import org.apache.flink.shaded.curator4.org.apache.curator.framework.api.UnhandledErrorListener;
 import org.apache.flink.shaded.curator4.org.apache.curator.framework.recipes.cache.ChildData;
 import org.apache.flink.shaded.curator4.org.apache.curator.framework.recipes.cache.TreeCache;
 import org.apache.flink.shaded.curator4.org.apache.curator.framework.state.ConnectionState;
@@ -46,7 +47,8 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * {@link ZooKeeperLeaderElectionDriver}. The leader address as well as the current leader session
  * ID is retrieved from ZooKeeper.
  */
-public class ZooKeeperLeaderRetrievalDriver implements LeaderRetrievalDriver {
+public class ZooKeeperLeaderRetrievalDriver
+        implements LeaderRetrievalDriver, UnhandledErrorListener {
     private static final Logger LOG = LoggerFactory.getLogger(ZooKeeperLeaderRetrievalDriver.class);
 
     /** Connection to the used ZooKeeper quorum. */
@@ -97,6 +99,7 @@ public class ZooKeeperLeaderRetrievalDriver implements LeaderRetrievalDriver {
         this.leaderInformationClearancePolicy = leaderInformationClearancePolicy;
         this.fatalErrorHandler = checkNotNull(fatalErrorHandler);
 
+        client.getUnhandledErrorListenable().addListener(this);
         cache.start();
 
         client.getConnectionStateListenable().addListener(connectionStateListener);
@@ -114,6 +117,7 @@ public class ZooKeeperLeaderRetrievalDriver implements LeaderRetrievalDriver {
 
         LOG.info("Closing {}.", this);
 
+        client.getUnhandledErrorListenable().removeListener(this);
         client.getConnectionStateListenable().removeListener(connectionStateListener);
 
         cache.close();
@@ -179,6 +183,13 @@ public class ZooKeeperLeaderRetrievalDriver implements LeaderRetrievalDriver {
     private void onReconnectedConnectionState() {
         // check whether we find some new leader information in ZooKeeper
         retrieveLeaderInformationFromZooKeeper();
+    }
+
+    @Override
+    public void unhandledError(String s, Throwable throwable) {
+        fatalErrorHandler.onFatalError(
+                new LeaderRetrievalException(
+                        "Unhandled error in ZooKeeperLeaderRetrievalDriver:" + s, throwable));
     }
 
     @Override

@@ -107,7 +107,7 @@ public class ParquetFileSystemITCase extends BatchFileSystemITCaseBase {
                         footer.getBlocks().get(0).getColumns().get(0).getCodec().toString());
             } else {
                 Assert.assertEquals(
-                        "SNAPPY",
+                        "UNCOMPRESSED",
                         footer.getBlocks().get(0).getColumns().get(0).getCodec().toString());
             }
         } catch (IOException e) {

@@ -65,5 +65,7 @@ public abstract class IndexedInputGate extends InputGate implements Checkpointab
         getChannel(channelIndex).convertToPriorityEvent(sequenceNumber);
     }
 
-    public abstract void triggerDebloating();
+    public abstract int getBuffersInUseCount();
+
+    public abstract void announceBufferSize(int bufferSize);
 }

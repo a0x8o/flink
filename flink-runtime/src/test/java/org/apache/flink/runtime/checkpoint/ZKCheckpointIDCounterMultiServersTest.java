@@ -21,8 +21,6 @@ package org.apache.flink.runtime.checkpoint;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.HighAvailabilityOptions;
 import org.apache.flink.core.testutils.OneShotLatch;
-import org.apache.flink.runtime.highavailability.zookeeper.CuratorFrameworkWithUnhandledErrorListener;
-import org.apache.flink.runtime.rest.util.NoOpFatalErrorHandler;
 import org.apache.flink.runtime.util.ZooKeeperUtils;
 import org.apache.flink.runtime.zookeeper.ZooKeeperResource;
 import org.apache.flink.util.TestLogger;
@@ -55,8 +53,7 @@ public final class ZKCheckpointIDCounterMultiServersTest extends TestLogger {
         final Configuration configuration = new Configuration();
         configuration.setString(
                 HighAvailabilityOptions.HA_ZOOKEEPER_QUORUM, zooKeeperResource.getConnectString());
-        final CuratorFrameworkWithUnhandledErrorListener curatorFrameworkWrapper =
-                ZooKeeperUtils.startCuratorFramework(configuration, NoOpFatalErrorHandler.INSTANCE);
+        final CuratorFramework client = ZooKeeperUtils.startCuratorFramework(configuration);
 
         try {
             OneShotLatch connectionLossLatch = new OneShotLatch();
@@ -67,8 +64,7 @@ public final class ZKCheckpointIDCounterMultiServersTest extends TestLogger {
                             connectionLossLatch, reconnectedLatch);
 
             ZooKeeperCheckpointIDCounter idCounter =
-                    new ZooKeeperCheckpointIDCounter(
-                            curatorFrameworkWrapper.asCuratorFramework(), listener);
+                    new ZooKeeperCheckpointIDCounter(client, listener);
             idCounter.start();
 
             AtomicLong localCounter = new AtomicLong(1L);
@@ -88,7 +84,7 @@ public final class ZKCheckpointIDCounterMultiServersTest extends TestLogger {
                     idCounter.getAndIncrement(),
                     is(localCounter.getAndIncrement()));
         } finally {
-            curatorFrameworkWrapper.close();
+            client.close();
         }
     }
 

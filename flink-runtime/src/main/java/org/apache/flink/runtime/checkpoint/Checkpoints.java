@@ -122,8 +122,7 @@ public class Checkpoints {
             Map<JobVertexID, ExecutionJobVertex> tasks,
             CompletedCheckpointStorageLocation location,
             ClassLoader classLoader,
-            boolean allowNonRestoredState,
-            CheckpointProperties checkpointProperties)
+            boolean allowNonRestoredState)
             throws IOException {
 
         checkNotNull(jobId, "jobId");
@@ -203,6 +202,9 @@ public class Checkpoints {
             }
         }
 
+        // (3) convert to checkpoint so the system can fall back to it
+        CheckpointProperties props = CheckpointProperties.forSavepoint(false);
+
         return new CompletedCheckpoint(
                 jobId,
                 checkpointMetadata.getCheckpointId(),
@@ -210,7 +212,7 @@ public class Checkpoints {
                 0L,
                 operatorStates,
                 checkpointMetadata.getMasterStates(),
-                checkpointProperties,
+                props,
                 location);
     }
 

@@ -166,7 +166,7 @@ public final class SubsequenceInputTypeStrategy implements InputTypeStrategy {
 
         @Override
         public boolean isArgumentNull(int pos) {
-            return originalCallContext.isArgumentNull(pos + split.startIndex);
+            return originalCallContext.isArgumentLiteral(pos + split.startIndex);
         }
 
         @Override
@@ -245,7 +245,9 @@ public final class SubsequenceInputTypeStrategy implements InputTypeStrategy {
          * arguments must not be defined.
          */
         public InputTypeStrategy finishWithVarying(InputTypeStrategy inputTypeStrategy) {
-            final ArgumentCount strategyArgumentCount = inputTypeStrategy.getArgumentCount();
+            Preconditions.checkArgument(
+                    inputTypeStrategy.getArgumentCount() instanceof ConstantArgumentCount);
+            ArgumentCount strategyArgumentCount = inputTypeStrategy.getArgumentCount();
             strategyArgumentCount
                     .getMaxCount()
                     .ifPresent(
@@ -254,7 +256,7 @@ public final class SubsequenceInputTypeStrategy implements InputTypeStrategy {
                                         "The maximum number of arguments must not be defined.");
                             });
             argumentsSplits.add(new ArgumentsSplit(currentPos, null, inputTypeStrategy));
-            final int minCount = currentPos + strategyArgumentCount.getMinCount().orElse(0);
+            int minCount = currentPos + strategyArgumentCount.getMinCount().orElse(0);
             return new SubsequenceInputTypeStrategy(
                     argumentsSplits, ConstantArgumentCount.from(minCount));
         }

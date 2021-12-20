@@ -25,7 +25,6 @@ import org.apache.flink.core.memory.DataOutputSerializer;
 import org.apache.flink.runtime.event.AbstractEvent;
 import org.apache.flink.runtime.io.network.api.EndOfData;
 import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
-import org.apache.flink.runtime.io.network.api.StopMode;
 import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
 import org.apache.flink.runtime.io.network.api.writer.RecordWriter;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
@@ -34,7 +33,6 @@ import org.apache.flink.runtime.io.network.buffer.BufferConsumer;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannel.BufferAndAvailability;
 import org.apache.flink.runtime.io.network.partition.consumer.TestInputChannel.BufferAndAvailabilityProvider;
 import org.apache.flink.runtime.plugable.SerializationDelegate;
-import org.apache.flink.streaming.runtime.streamrecord.StreamElement;
 import org.apache.flink.streaming.runtime.streamrecord.StreamElementSerializer;
 
 import java.nio.ByteBuffer;
@@ -49,11 +47,10 @@ import static org.apache.flink.runtime.io.network.buffer.BufferBuilderTestUtils.
  * offer an event on the specified channel. Use {@link #endInput()} to notify all channels of input
  * end.
  */
-public class StreamTestSingleInputGate<T> {
+public class StreamTestSingleInputGate<T> extends TestSingleInputGate {
 
     private final int numInputChannels;
 
-    private final SingleInputGate inputGate;
     private final TestInputChannel[] inputChannels;
 
     private final int bufferSize;
@@ -65,37 +62,30 @@ public class StreamTestSingleInputGate<T> {
     @SuppressWarnings("unchecked")
     public StreamTestSingleInputGate(
             int numInputChannels, int gateIndex, TypeSerializer<T> serializer, int bufferSize) {
-        this(numInputChannels, gateIndex, serializer, bufferSize, new SingleInputGateBuilder());
-    }
-
-    public StreamTestSingleInputGate(
-            int numInputChannels,
-            int gateIndex,
-            TypeSerializer<T> serializer,
-            int bufferSize,
-            SingleInputGateBuilder preconfiguredBuilder) {
+        super(numInputChannels, gateIndex, false);
 
         this.bufferSize = bufferSize;
         this.serializer = serializer;
 
         this.numInputChannels = numInputChannels;
-        this.inputQueues = new ConcurrentLinkedQueue[numInputChannels];
-        this.inputGate =
-                preconfiguredBuilder
-                        .setNumberOfChannels(numInputChannels)
-                        .setSingleInputGateIndex(gateIndex)
-                        .build();
-        this.inputChannels = setupInputChannels();
-        this.inputGate.setInputChannels(inputChannels);
+        inputChannels = new TestInputChannel[numInputChannels];
+
+        inputQueues = new ConcurrentLinkedQueue[numInputChannels];
+
+        setupInputChannels();
     }
 
-    private TestInputChannel[] setupInputChannels() {
-        TestInputChannel[] inputChannels = new TestInputChannel[numInputChannels];
+    @SuppressWarnings("unchecked")
+    private void setupInputChannels() {
+
         for (int i = 0; i < numInputChannels; i++) {
             final int channelIndex = i;
             final DataOutputSerializer dataOutputSerializer = new DataOutputSerializer(128);
-            final SerializationDelegate<StreamElement> delegate =
-                    new SerializationDelegate<>(new StreamElementSerializer<T>(serializer));
+            final SerializationDelegate<Object> delegate =
+                    (SerializationDelegate<Object>)
+                            (SerializationDelegate<?>)
+                                    new SerializationDelegate<>(
+                                            new StreamElementSerializer<T>(serializer));
 
             inputQueues[channelIndex] = new ConcurrentLinkedQueue<>();
             inputChannels[channelIndex] = new TestInputChannel(inputGate, i);
@@ -125,13 +115,12 @@ public class StreamTestSingleInputGate<T> {
                         } else if (input != null && input.isDataEnd()) {
                             return Optional.of(
                                     new BufferAndAvailability(
-                                            EventSerializer.toBuffer(
-                                                    new EndOfData(StopMode.DRAIN), false),
+                                            EventSerializer.toBuffer(EndOfData.INSTANCE, false),
                                             nextType,
                                             0,
                                             0));
                         } else if (input != null && input.isStreamRecord()) {
-                            StreamElement inputElement = input.getStreamRecord();
+                            Object inputElement = input.getStreamRecord();
 
                             delegate.setInstance(inputElement);
                             ByteBuffer serializedRecord =
@@ -165,11 +154,7 @@ public class StreamTestSingleInputGate<T> {
 
             inputChannels[channelIndex].addBufferAndAvailability(answer);
         }
-        return inputChannels;
-    }
-
-    public SingleInputGate getInputGate() {
-        return inputGate;
+        inputGate.setInputChannels(inputChannels);
     }
 
     public void sendElement(Object element, int channel) {
@@ -251,8 +236,8 @@ public class StreamTestSingleInputGate<T> {
             return new InputValue<X>(event, false, false, true, false);
         }
 
-        public StreamElement getStreamRecord() {
-            return (StreamElement) elementOrEvent;
+        public Object getStreamRecord() {
+            return elementOrEvent;
         }
 
         public AbstractEvent getEvent() {

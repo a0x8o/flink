@@ -18,18 +18,21 @@
 
 import { HttpClient } from '@angular/common/http';
 import { Injectable } from '@angular/core';
-import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
-
 import { BASE_URL, LONG_MIN_VALUE } from 'config';
 
 @Injectable({
   providedIn: 'root'
 })
 export class MetricsService {
-  constructor(private readonly httpClient: HttpClient) {}
+  constructor(private httpClient: HttpClient) {}
 
-  public getAllAvailableMetrics(jobId: string, vertexId: string): Observable<Array<{ id: string; value: string }>> {
+  /**
+   * Get available metric list
+   * @param jobId
+   * @param vertexId
+   */
+  getAllAvailableMetrics(jobId: string, vertexId: string) {
     return this.httpClient
       .get<Array<{ id: string; value: string }>>(`${BASE_URL}/jobs/${jobId}/vertices/${vertexId}/metrics`)
       .pipe(
@@ -49,11 +52,13 @@ export class MetricsService {
       );
   }
 
-  public getMetrics(
-    jobId: string,
-    vertexId: string,
-    listOfMetricName: string[]
-  ): Observable<{ timestamp: number; values: { [p: string]: number } }> {
+  /**
+   * Get metric data
+   * @param jobId
+   * @param vertexId
+   * @param listOfMetricName
+   */
+  getMetrics(jobId: string, vertexId: string, listOfMetricName: string[]) {
     const metricName = listOfMetricName.join(',');
     return this.httpClient
       .get<Array<{ id: string; value: string }>>(
@@ -73,13 +78,13 @@ export class MetricsService {
       );
   }
 
-  /** Get aggregated metric data from all subtasks of the given vertexId. */
-  public getAggregatedMetrics(
-    jobId: string,
-    vertexId: string,
-    listOfMetricName: string[],
-    aggregate: string = 'max'
-  ): Observable<{ [p: string]: number }> {
+  /**
+   * Get aggregated metric data from all subtasks of the given vertexId
+   * @param jobId
+   * @param vertexId
+   * @param listOfMetricName
+   */
+  getAggregatedMetrics(jobId: string, vertexId: string, listOfMetricName: string[], aggregate: string = "max") {
     const metricName = listOfMetricName.join(',');
     return this.httpClient
       .get<Array<{ id: string; min: number; max: number; avg: number; sum: number }>>(
@@ -90,20 +95,20 @@ export class MetricsService {
           const result: { [id: string]: number } = {};
           arr.forEach(item => {
             switch (aggregate) {
-              case 'min':
+              case "min":
                 result[item.id] = +item.min;
                 break;
-              case 'max':
+              case "max":
                 result[item.id] = +item.max;
                 break;
-              case 'avg':
+              case "avg":
                 result[item.id] = +item.avg;
                 break;
-              case 'sum':
+              case "sum":
                 result[item.id] = +item.sum;
                 break;
               default:
-                throw new Error(`Unsupported aggregate: ${aggregate}`);
+                throw new Error("Unsupported aggregate: " + aggregate);
             }
           });
           return result;
@@ -111,16 +116,20 @@ export class MetricsService {
       );
   }
 
-  public getWatermarks(
-    jobId: string,
-    vertexId: string
-  ): Observable<{ lowWatermark: number; watermarks: { [p: string]: number } }> {
+  /**
+   * Gets the watermarks for a given vertex id.
+   * @param jobId
+   * @param vertexId
+   */
+  getWatermarks(jobId: string, vertexId: string) {
     return this.httpClient
-      .get<Array<{ id: string; value: string }>>(`${BASE_URL}/jobs/${jobId}/vertices/${vertexId}/watermarks`)
+      .get<Array<{ id: string; value: string }>>(
+        `${BASE_URL}/jobs/${jobId}/vertices/${vertexId}/watermarks`
+      )
       .pipe(
         map(arr => {
           let minValue = NaN;
-          let lowWatermark: number;
+          let lowWatermark = NaN;
           const watermarks: { [id: string]: number } = {};
           arr.forEach(item => {
             const value = parseInt(item.value, 10);
@@ -139,7 +148,7 @@ export class MetricsService {
             lowWatermark,
             watermarks
           };
-        })
-      );
+      })
+    );
   }
 }
