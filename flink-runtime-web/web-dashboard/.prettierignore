@@ -1,6 +1,5 @@
-**/*.md
 **/*.svg
-**/*.html
 **/test.ts
-**/*.less
 package.json
+web/
+node_modules/

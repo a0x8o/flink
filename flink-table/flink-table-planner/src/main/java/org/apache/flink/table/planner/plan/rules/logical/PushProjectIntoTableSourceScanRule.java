@@ -24,6 +24,7 @@ import org.apache.flink.table.api.TableException;
 import org.apache.flink.table.catalog.Column;
 import org.apache.flink.table.catalog.ResolvedSchema;
 import org.apache.flink.table.catalog.UniqueConstraint;
+import org.apache.flink.table.connector.Projection;
 import org.apache.flink.table.connector.source.DynamicTableSource;
 import org.apache.flink.table.connector.source.abilities.SupportsProjectionPushDown;
 import org.apache.flink.table.connector.source.abilities.SupportsReadingMetadata;
@@ -39,8 +40,6 @@ import org.apache.flink.table.planner.plan.utils.NestedProjectionUtil;
 import org.apache.flink.table.planner.plan.utils.NestedSchema;
 import org.apache.flink.table.planner.plan.utils.RexNodeExtractor;
 import org.apache.flink.table.types.logical.RowType;
-import org.apache.flink.table.types.utils.DataTypeUtils;
-import org.apache.flink.table.types.utils.TypeConversions;
 
 import org.apache.calcite.plan.RelOptRule;
 import org.apache.calcite.plan.RelOptRuleCall;
@@ -159,10 +158,7 @@ public class PushProjectIntoTableSourceScanRule
         final RelDataType newRowType = typeFactory.buildRelNodeRowType(newProducedType);
         final TableSourceTable newSource =
                 sourceTable.copy(
-                        newTableSource,
-                        newRowType,
-                        getExtraDigests(abilitySpecs),
-                        abilitySpecs.toArray(new SourceAbilitySpec[0]));
+                        newTableSource, newRowType, abilitySpecs.toArray(new SourceAbilitySpec[0]));
         final LogicalTableScan newScan =
                 new LogicalTableScan(
                         scan.getCluster(), scan.getTraitSet(), scan.getHints(), newSource);
@@ -295,16 +291,14 @@ public class PushProjectIntoTableSourceScanRule
             metaColumn.setIndexOfLeafInNewSchema(newIndex++);
         }
 
-        final RowType newProducedType =
-                (RowType)
-                        DataTypeUtils.projectRow(
-                                        TypeConversions.fromLogicalToDataType(producedType),
-                                        projectedFields)
-                                .getLogicalType();
-
         if (supportsProjectionPushDown(source.tableSource())) {
-            abilitySpecs.add(new ProjectPushDownSpec(physicalProjections, newProducedType));
+            final RowType projectedPhysicalType =
+                    (RowType) Projection.of(physicalProjections).project(producedType);
+            abilitySpecs.add(new ProjectPushDownSpec(physicalProjections, projectedPhysicalType));
         }
+
+        final RowType newProducedType =
+                (RowType) Projection.of(projectedFields).project(producedType);
 
         if (supportsMetadata(source.tableSource())) {
             final List<String> projectedMetadataKeys =
@@ -327,33 +321,6 @@ public class PushProjectIntoTableSourceScanRule
         } else {
             return project.getProjects();
         }
-    }
-
-    private static String[] getExtraDigests(List<SourceAbilitySpec> abilitySpecs) {
-        final List<String> digests = new ArrayList<>();
-        for (SourceAbilitySpec abilitySpec : abilitySpecs) {
-            if (abilitySpec instanceof ProjectPushDownSpec) {
-                digests.add(formatPushDownDigest((ProjectPushDownSpec) abilitySpec));
-            } else if (abilitySpec instanceof ReadingMetadataSpec) {
-                digests.add(formatMetadataDigest((ReadingMetadataSpec) abilitySpec));
-            }
-        }
-
-        return digests.toArray(new String[0]);
-    }
-
-    private static String formatPushDownDigest(ProjectPushDownSpec pushDownSpec) {
-        final List<String> fieldNames =
-                pushDownSpec
-                        .getProducedType()
-                        .orElseThrow(() -> new TableException("Produced data type is not present."))
-                        .getFieldNames();
-
-        return String.format("project=[%s]", String.join(", ", fieldNames));
-    }
-
-    private static String formatMetadataDigest(ReadingMetadataSpec metadataSpec) {
-        return String.format("metadata=[%s]", String.join(", ", metadataSpec.getMetadataKeys()));
     }
 
     // ---------------------------------------------------------------------------------------------

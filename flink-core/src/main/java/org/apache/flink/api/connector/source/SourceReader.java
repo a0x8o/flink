@@ -18,7 +18,7 @@
 
 package org.apache.flink.api.connector.source;
 
-import org.apache.flink.annotation.PublicEvolving;
+import org.apache.flink.annotation.Public;
 import org.apache.flink.api.common.state.CheckpointListener;
 import org.apache.flink.core.io.InputStatus;
 import org.apache.flink.metrics.Gauge;
@@ -43,9 +43,9 @@ import java.util.concurrent.CompletableFuture;
  * </ul>
  *
  * @param <T> The type of the record emitted by this source reader.
- * @param <SplitT> The type of the the source splits.
+ * @param <SplitT> The type of the source splits.
  */
-@PublicEvolving
+@Public
 public interface SourceReader<T, SplitT extends SourceSplit>
         extends AutoCloseable, CheckpointListener {
 

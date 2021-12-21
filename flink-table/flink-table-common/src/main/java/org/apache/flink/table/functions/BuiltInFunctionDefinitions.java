@@ -18,9 +18,14 @@
 
 package org.apache.flink.table.functions;
 
+import org.apache.flink.annotation.Internal;
 import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.table.api.DataTypes;
 import org.apache.flink.table.api.JsonExistsOnError;
+import org.apache.flink.table.api.JsonOnNull;
+import org.apache.flink.table.api.JsonQueryOnEmptyOrError;
+import org.apache.flink.table.api.JsonQueryWrapper;
+import org.apache.flink.table.api.JsonType;
 import org.apache.flink.table.api.JsonValueOnEmptyOrError;
 import org.apache.flink.table.api.TableException;
 import org.apache.flink.table.types.inference.ArgumentTypeStrategy;
@@ -29,6 +34,7 @@ import org.apache.flink.table.types.inference.InputTypeStrategies;
 import org.apache.flink.table.types.inference.TypeStrategies;
 import org.apache.flink.table.types.inference.strategies.SpecificInputTypeStrategies;
 import org.apache.flink.table.types.inference.strategies.SpecificTypeStrategies;
+import org.apache.flink.table.types.logical.LogicalType;
 import org.apache.flink.table.types.logical.LogicalTypeFamily;
 import org.apache.flink.table.types.logical.LogicalTypeRoot;
 import org.apache.flink.table.types.logical.StructuredType.StructuredComparison;
@@ -67,8 +73,10 @@ import static org.apache.flink.table.types.inference.TypeStrategies.explicit;
 import static org.apache.flink.table.types.inference.TypeStrategies.first;
 import static org.apache.flink.table.types.inference.TypeStrategies.forceNullable;
 import static org.apache.flink.table.types.inference.TypeStrategies.matchFamily;
+import static org.apache.flink.table.types.inference.TypeStrategies.nullableIfAllArgs;
 import static org.apache.flink.table.types.inference.TypeStrategies.nullableIfArgs;
 import static org.apache.flink.table.types.inference.TypeStrategies.varyingString;
+import static org.apache.flink.table.types.inference.strategies.SpecificInputTypeStrategies.JSON_ARGUMENT;
 import static org.apache.flink.table.types.inference.strategies.SpecificInputTypeStrategies.TWO_EQUALS_COMPARABLE;
 import static org.apache.flink.table.types.inference.strategies.SpecificInputTypeStrategies.TWO_FULLY_COMPARABLE;
 
@@ -120,6 +128,16 @@ public final class BuiltInFunctionDefinitions {
                     .outputTypeStrategy(SpecificTypeStrategies.SOURCE_WATERMARK)
                     .runtimeClass(
                             "org.apache.flink.table.runtime.functions.scalar.SourceWatermarkFunction")
+                    .build();
+
+    public static final BuiltInFunctionDefinition COALESCE =
+            BuiltInFunctionDefinition.newBuilder()
+                    .name("COALESCE")
+                    .kind(SCALAR)
+                    .inputTypeStrategy(varyingSequence(COMMON_ARG_NULLABLE, COMMON_ARG_NULLABLE))
+                    .outputTypeStrategy(nullableIfAllArgs(COMMON))
+                    .runtimeClass(
+                            "org.apache.flink.table.runtime.functions.scalar.CoalesceFunction")
                     .build();
 
     // --------------------------------------------------------------------------------------------
@@ -626,7 +644,7 @@ public final class BuiltInFunctionDefinitions {
                                             logical(LogicalTypeFamily.CHARACTER_STRING),
                                             logical(LogicalTypeFamily.CHARACTER_STRING),
                                             logical(LogicalTypeRoot.INTEGER))))
-                    .outputTypeStrategy(nullableIfArgs(explicit(DataTypes.STRING())))
+                    .outputTypeStrategy(explicit(DataTypes.STRING().nullable()))
                     .build();
 
     public static final BuiltInFunctionDefinition FROM_BASE64 =
@@ -741,6 +759,24 @@ public final class BuiltInFunctionDefinitions {
                                             SpecificTypeStrategies.DECIMAL_PLUS,
                                             COMMON,
                                             explicit(DataTypes.STRING()))))
+                    .build();
+
+    /**
+     * Special "+" operator used internally by {@code SumAggFunction} to implement SUM aggregation
+     * on a Decimal type. Uses the {@link LogicalTypeMerging#findSumAggType(LogicalType)} to avoid
+     * the normal {@link #PLUS} override the special calculation for precision and scale needed by
+     * SUM.
+     */
+    public static final BuiltInFunctionDefinition AGG_DECIMAL_PLUS =
+            BuiltInFunctionDefinition.newBuilder()
+                    .name("AGG_DECIMAL_PLUS")
+                    .kind(SCALAR)
+                    .inputTypeStrategy(
+                            sequence(
+                                    logical(LogicalTypeRoot.DECIMAL),
+                                    logical(LogicalTypeRoot.DECIMAL)))
+                    .outputTypeStrategy(SpecificTypeStrategies.AGG_DECIMAL_PLUS)
+                    .runtimeProvided()
                     .build();
 
     /** Combines numeric subtraction and "datetime - interval" arithmetic. */
@@ -1136,7 +1172,7 @@ public final class BuiltInFunctionDefinitions {
                                     sequence(
                                             logical(LogicalTypeFamily.NUMERIC),
                                             logical(LogicalTypeRoot.INTEGER))))
-                    .outputTypeStrategy(nullableIfArgs(argument(0)))
+                    .outputTypeStrategy(nullableIfArgs(SpecificTypeStrategies.ROUND))
                     .build();
 
     // --------------------------------------------------------------------------------------------
@@ -1488,6 +1524,20 @@ public final class BuiltInFunctionDefinitions {
     // JSON functions
     // --------------------------------------------------------------------------------------------
 
+    public static final BuiltInFunctionDefinition IS_JSON =
+            BuiltInFunctionDefinition.newBuilder()
+                    .name("IS_JSON")
+                    .kind(SCALAR)
+                    .inputTypeStrategy(
+                            or(
+                                    sequence(logical(LogicalTypeFamily.CHARACTER_STRING)),
+                                    sequence(
+                                            logical(LogicalTypeFamily.CHARACTER_STRING),
+                                            symbol(JsonType.class))))
+                    .outputTypeStrategy(explicit(DataTypes.BOOLEAN().notNull()))
+                    .runtimeDeferred()
+                    .build();
+
     public static final BuiltInFunctionDefinition JSON_EXISTS =
             BuiltInFunctionDefinition.newBuilder()
                     .name("JSON_EXISTS")
@@ -1523,6 +1573,89 @@ public final class BuiltInFunctionDefinitions {
                                     symbol(JsonValueOnEmptyOrError.class),
                                     ANY))
                     .outputTypeStrategy(forceNullable(argument(2)))
+                    .runtimeDeferred()
+                    .build();
+
+    public static final BuiltInFunctionDefinition JSON_QUERY =
+            BuiltInFunctionDefinition.newBuilder()
+                    .name("JSON_QUERY")
+                    .kind(SCALAR)
+                    .inputTypeStrategy(
+                            sequence(
+                                    logical(LogicalTypeFamily.CHARACTER_STRING),
+                                    and(logical(LogicalTypeFamily.CHARACTER_STRING), LITERAL),
+                                    symbol(JsonQueryWrapper.class),
+                                    symbol(JsonQueryOnEmptyOrError.class),
+                                    symbol(JsonQueryOnEmptyOrError.class)))
+                    .outputTypeStrategy(explicit(DataTypes.STRING().nullable()))
+                    .runtimeDeferred()
+                    .build();
+
+    public static final BuiltInFunctionDefinition JSON_STRING =
+            BuiltInFunctionDefinition.newBuilder()
+                    .name("JSON_STRING")
+                    .kind(SCALAR)
+                    .inputTypeStrategy(sequence(JSON_ARGUMENT))
+                    .outputTypeStrategy(nullableIfArgs(explicit(DataTypes.STRING())))
+                    .runtimeProvided()
+                    .build();
+
+    public static final BuiltInFunctionDefinition JSON_OBJECT =
+            BuiltInFunctionDefinition.newBuilder()
+                    .name("JSON_OBJECT")
+                    .kind(SCALAR)
+                    .inputTypeStrategy(SpecificInputTypeStrategies.JSON_OBJECT)
+                    .outputTypeStrategy(explicit(DataTypes.STRING().notNull()))
+                    .runtimeDeferred()
+                    .build();
+
+    public static final BuiltInFunctionDefinition JSON_OBJECTAGG_NULL_ON_NULL =
+            BuiltInFunctionDefinition.newBuilder()
+                    .name("JSON_OBJECTAGG_NULL_ON_NULL")
+                    .kind(AGGREGATE)
+                    .inputTypeStrategy(
+                            sequence(logical(LogicalTypeFamily.CHARACTER_STRING), JSON_ARGUMENT))
+                    .outputTypeStrategy(explicit(DataTypes.STRING().notNull()))
+                    .runtimeDeferred()
+                    .build();
+
+    public static final BuiltInFunctionDefinition JSON_OBJECTAGG_ABSENT_ON_NULL =
+            BuiltInFunctionDefinition.newBuilder()
+                    .name("JSON_OBJECTAGG_ABSENT_ON_NULL")
+                    .kind(AGGREGATE)
+                    .inputTypeStrategy(
+                            sequence(logical(LogicalTypeFamily.CHARACTER_STRING), JSON_ARGUMENT))
+                    .outputTypeStrategy(explicit(DataTypes.STRING().notNull()))
+                    .runtimeDeferred()
+                    .build();
+
+    public static final BuiltInFunctionDefinition JSON_ARRAY =
+            BuiltInFunctionDefinition.newBuilder()
+                    .name("JSON_ARRAY")
+                    .kind(SCALAR)
+                    .inputTypeStrategy(
+                            InputTypeStrategies.varyingSequence(
+                                    symbol(JsonOnNull.class),
+                                    SpecificInputTypeStrategies.JSON_ARGUMENT))
+                    .outputTypeStrategy(explicit(DataTypes.STRING().notNull()))
+                    .runtimeDeferred()
+                    .build();
+
+    public static final BuiltInFunctionDefinition JSON_ARRAYAGG_NULL_ON_NULL =
+            BuiltInFunctionDefinition.newBuilder()
+                    .name("JSON_ARRAYAGG_NULL_ON_NULL")
+                    .kind(AGGREGATE)
+                    .inputTypeStrategy(sequence(JSON_ARGUMENT))
+                    .outputTypeStrategy(explicit(DataTypes.STRING().notNull()))
+                    .runtimeDeferred()
+                    .build();
+
+    public static final BuiltInFunctionDefinition JSON_ARRAYAGG_ABSENT_ON_NULL =
+            BuiltInFunctionDefinition.newBuilder()
+                    .name("JSON_ARRAYAGG_ABSENT_ON_NULL")
+                    .kind(AGGREGATE)
+                    .inputTypeStrategy(sequence(JSON_ARGUMENT))
+                    .outputTypeStrategy(explicit(DataTypes.STRING().notNull()))
                     .runtimeDeferred()
                     .build();
 
@@ -1591,6 +1724,7 @@ public final class BuiltInFunctionDefinitions {
 
     public static final List<FunctionDefinition> ORDERING = Arrays.asList(ORDER_ASC, ORDER_DESC);
 
+    @Internal
     public static List<BuiltInFunctionDefinition> getDefinitions() {
         final Field[] fields = BuiltInFunctionDefinitions.class.getFields();
         final List<BuiltInFunctionDefinition> list = new ArrayList<>(fields.length);

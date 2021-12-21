@@ -22,7 +22,6 @@ import org.apache.flink.table.data.DecimalData;
 import org.apache.flink.table.data.DecimalDataUtils;
 import org.apache.flink.table.data.binary.BinaryStringData;
 import org.apache.flink.table.data.binary.BinaryStringDataUtil;
-import org.apache.flink.table.runtime.util.JsonUtils;
 import org.apache.flink.table.utils.EncodingUtils;
 import org.apache.flink.table.utils.ThreadLocalCache;
 
@@ -48,6 +47,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static org.apache.flink.table.data.DecimalDataUtils.castFrom;
+import static org.apache.flink.table.data.DecimalDataUtils.castToIntegral;
 import static org.apache.flink.table.data.DecimalDataUtils.doubleValue;
 
 /**
@@ -141,6 +141,11 @@ public class SqlFunctionUtils {
         return Math.tanh(doubleValue(a));
     }
 
+    /** SQL <code>COT</code> operator applied to double values. */
+    public static double cot(double b0) {
+        return 1.0d / Math.tan(b0);
+    }
+
     public static double cot(DecimalData a) {
         return 1.0d / Math.tan(doubleValue(a));
     }
@@ -153,12 +158,90 @@ public class SqlFunctionUtils {
         return Math.toRadians(doubleValue(angdeg));
     }
 
+    /** SQL <code>ABS</code> operator applied to byte values. */
+    public static byte abs(byte b0) {
+        return (byte) Math.abs(b0);
+    }
+
+    /** SQL <code>ABS</code> operator applied to short values. */
+    public static short abs(short b0) {
+        return (short) Math.abs(b0);
+    }
+
+    /** SQL <code>ABS</code> operator applied to int values. */
+    public static int abs(int b0) {
+        return Math.abs(b0);
+    }
+
+    /** SQL <code>ABS</code> operator applied to long values. */
+    public static long abs(long b0) {
+        return Math.abs(b0);
+    }
+
+    /** SQL <code>ABS</code> operator applied to float values. */
+    public static float abs(float b0) {
+        return Math.abs(b0);
+    }
+
+    /** SQL <code>ABS</code> operator applied to double values. */
+    public static double abs(double b0) {
+        return Math.abs(b0);
+    }
+
     public static DecimalData abs(DecimalData a) {
         return DecimalDataUtils.abs(a);
     }
 
+    public static double floor(double b0) {
+        return Math.floor(b0);
+    }
+
+    public static float floor(float b0) {
+        return (float) Math.floor(b0);
+    }
+
+    /** SQL <code>FLOOR</code> operator applied to int values. */
+    public static int floor(int b0, int b1) {
+        int r = b0 % b1;
+        if (r < 0) {
+            r += b1;
+        }
+        return b0 - r;
+    }
+
+    /** SQL <code>FLOOR</code> operator applied to long values. */
+    public static long floor(long b0, long b1) {
+        long r = b0 % b1;
+        if (r < 0) {
+            r += b1;
+        }
+        return b0 - r;
+    }
+
     public static DecimalData floor(DecimalData a) {
         return DecimalDataUtils.floor(a);
+    }
+
+    public static double ceil(double b0) {
+        return Math.ceil(b0);
+    }
+
+    public static float ceil(float b0) {
+        return (float) Math.ceil(b0);
+    }
+
+    /** SQL <code>CEIL</code> operator applied to int values. */
+    public static int ceil(int b0, int b1) {
+        int r = b0 % b1;
+        if (r > 0) {
+            r -= b1;
+        }
+        return b0 - r;
+    }
+
+    /** SQL <code>CEIL</code> operator applied to long values. */
+    public static long ceil(long b0, long b1) {
+        return floor(b0 + b1 - 1, b1);
     }
 
     public static DecimalData ceil(DecimalData a) {
@@ -739,12 +822,27 @@ public class SqlFunctionUtils {
         return ret;
     }
 
-    public static String jsonValue(String jsonString, String pathString) {
-        // TODO: refactor this to use jackson ?
-        return JsonUtils.getInstance().getJsonObject(jsonString, pathString);
+    // SQL ROUND
+    /** SQL <code>ROUND</code> operator applied to byte values. */
+    public static byte sround(byte b0) {
+        return sround(b0, 0);
     }
 
-    // SQL ROUND
+    /** SQL <code>ROUND</code> operator applied to byte values. */
+    public static byte sround(byte b0, int b1) {
+        return sround(BigDecimal.valueOf(b0), b1).byteValue();
+    }
+
+    /** SQL <code>ROUND</code> operator applied to short values. */
+    public static short sround(short b0) {
+        return sround(b0, 0);
+    }
+
+    /** SQL <code>ROUND</code> operator applied to short values. */
+    public static short sround(short b0, int b1) {
+        return sround(BigDecimal.valueOf(b0), b1).shortValue();
+    }
+
     /** SQL <code>ROUND</code> operator applied to int values. */
     public static int sround(int b0) {
         return sround(b0, 0);
@@ -773,6 +871,16 @@ public class SqlFunctionUtils {
     /** SQL <code>ROUND</code> operator applied to BigDecimal values. */
     public static BigDecimal sround(BigDecimal b0, int b1) {
         return b0.movePointRight(b1).setScale(0, RoundingMode.HALF_UP).movePointLeft(b1);
+    }
+
+    /** SQL <code>ROUND</code> operator applied to float values. */
+    public static float sround(float b0) {
+        return sround(b0, 0);
+    }
+
+    /** SQL <code>ROUND</code> operator applied to float values. */
+    public static float sround(float b0, int b1) {
+        return sround(BigDecimal.valueOf(b0), b1).floatValue();
     }
 
     /** SQL <code>ROUND</code> operator applied to double values. */
@@ -1079,6 +1187,24 @@ public class SqlFunctionUtils {
         return UUID.nameUUIDFromBytes(b).toString();
     }
 
+    /** SQL <code>TRUNCATE</code> operator applied to int values. */
+    public static int struncate(int b0) {
+        return struncate(b0, 0);
+    }
+
+    public static int struncate(int b0, int b1) {
+        return (int) struncate((long) b0, b1);
+    }
+
+    /** SQL <code>TRUNCATE</code> operator applied to long values. */
+    public static long struncate(long b0) {
+        return struncate(b0, 0);
+    }
+
+    public static long struncate(long b0, int b1) {
+        return castToIntegral(struncate(castFrom(b0, 38, 18), b1));
+    }
+
     /** SQL <code>TRUNCATE</code> operator applied to BigDecimal values. */
     public static DecimalData struncate(DecimalData b0) {
         return struncate(b0, 0);
@@ -1113,6 +1239,15 @@ public class SqlFunctionUtils {
         return (float) doubleValue(struncate(castFrom((double) b0, 38, 18), b1));
     }
 
+    /** SQL <code>TRUNCATE</code> operator applied to double values. */
+    public static double struncate(double b0) {
+        return struncate(b0, 0);
+    }
+
+    public static double struncate(double b0, int b1) {
+        return doubleValue(struncate(castFrom(b0, 38, 18), b1));
+    }
+
     /**
      * Compares two byte arrays in lexicographical order.
      *
@@ -1135,5 +1270,42 @@ public class SqlFunctionUtils {
             }
         }
         return array1.length - array2.length;
+    }
+
+    /** SQL INITCAP(string) function. */
+    public static String initcap(String s) {
+        // Assumes Alpha as [A-Za-z0-9]
+        // white space is treated as everything else.
+        final int len = s.length();
+        boolean start = true;
+        final StringBuilder newS = new StringBuilder();
+
+        for (int i = 0; i < len; i++) {
+            char curCh = s.charAt(i);
+            final int c = (int) curCh;
+            if (start) { // curCh is whitespace or first character of word.
+                if (c > 47 && c < 58) { // 0-9
+                    start = false;
+                } else if (c > 64 && c < 91) { // A-Z
+                    start = false;
+                } else if (c > 96 && c < 123) { // a-z
+                    start = false;
+                    curCh = (char) (c - 32); // Uppercase this character
+                }
+                // else {} whitespace
+            } else { // Inside of a word or white space after end of word.
+                if (c > 47 && c < 58) { // 0-9
+                    // noop
+                } else if (c > 64 && c < 91) { // A-Z
+                    curCh = (char) (c + 32); // Lowercase this character
+                } else if (c > 96 && c < 123) { // a-z
+                    // noop
+                } else { // whitespace
+                    start = true;
+                }
+            }
+            newS.append(curCh);
+        } // for each character in s
+        return newS.toString();
     }
 }

@@ -21,13 +21,13 @@ import org.apache.flink.table.api.TableException
 import org.apache.flink.table.catalog.ObjectIdentifier
 import org.apache.flink.table.functions.{AsyncTableFunction, TableFunction, UserDefinedFunction}
 import org.apache.flink.table.planner.calcite.FlinkTypeFactory
-import org.apache.flink.table.planner.plan.nodes.ExpressionFormat.ExpressionFormat
-import org.apache.flink.table.planner.plan.nodes.{ExpressionFormat, FlinkRelNode}
+import org.apache.flink.table.planner.plan.nodes.FlinkRelNode
 import org.apache.flink.table.planner.plan.schema.{LegacyTableSourceTable, TableSourceTable}
+import org.apache.flink.table.planner.plan.utils.ExpressionFormat.ExpressionFormat
 import org.apache.flink.table.planner.plan.utils.LookupJoinUtil._
 import org.apache.flink.table.planner.plan.utils.PythonUtil.containsPythonCall
 import org.apache.flink.table.planner.plan.utils.RelExplainUtil.preferExpressionFormat
-import org.apache.flink.table.planner.plan.utils.{JoinTypeUtil, LookupJoinUtil, RelExplainUtil}
+import org.apache.flink.table.planner.plan.utils.{ExpressionFormat, JoinTypeUtil, LookupJoinUtil, RelExplainUtil}
 import org.apache.flink.table.runtime.types.PlannerTypeUtils
 
 import org.apache.calcite.plan.{RelOptCluster, RelOptTable, RelTraitSet}
@@ -35,9 +35,9 @@ import org.apache.calcite.rel.`type`.{RelDataType, RelDataTypeField}
 import org.apache.calcite.rel.core.{JoinInfo, JoinRelType}
 import org.apache.calcite.rel.{RelNode, RelWriter, SingleRel}
 import org.apache.calcite.rex._
-import org.apache.calcite.sql.SqlKind
 import org.apache.calcite.sql.fun.SqlStdOperatorTable
 import org.apache.calcite.sql.validate.SqlValidatorUtil
+import org.apache.calcite.sql.{SqlExplainLevel, SqlKind}
 import org.apache.calcite.util.mapping.IntPair
 
 import java.util.Collections
@@ -141,7 +141,11 @@ abstract class CommonPhysicalLookupJoin(
     val resultFieldNames = getRowType.getFieldNames.asScala.toArray
     val whereString = calcOnTemporalTable match {
       case Some(calc) =>
-        RelExplainUtil.conditionToString(calc, getExpressionString, preferExpressionFormat(pw))
+        RelExplainUtil.conditionToString(
+          calc,
+          getExpressionString,
+          preferExpressionFormat(pw),
+          convertToExpressionDetail(pw.getDetailLevel))
       case None => ""
     }
     val lookupKeys = allLookupKeys.map {
@@ -155,7 +159,8 @@ abstract class CommonPhysicalLookupJoin(
         val rightSelect = RelExplainUtil.selectionToString(
           calc,
           getExpressionString,
-          preferExpressionFormat(pw))
+          preferExpressionFormat(pw),
+          convertToExpressionDetail(pw.getDetailLevel))
         inputFieldNames.mkString(", ") + ", " + rightSelect
       case None =>
         resultFieldNames.mkString(", ")
@@ -174,15 +179,16 @@ abstract class CommonPhysicalLookupJoin(
 
 
     super.explainTerms(pw)
-      .item("table", tableIdentifier.asSummaryString())
-      .item("joinType", JoinTypeUtil.getFlinkJoinType(joinType))
-      .item("async", isAsyncEnabled)
-      .item("lookup", lookupKeys)
-      .itemIf("where", whereString, whereString.nonEmpty)
-      .itemIf("joinCondition",
-        joinConditionToString(resultFieldNames, remainingCondition, preferExpressionFormat(pw)),
-        remainingCondition.isDefined)
-      .item("select", selection)
+        .item("table", tableIdentifier.asSummaryString())
+        .item("joinType", JoinTypeUtil.getFlinkJoinType(joinType))
+        .item("async", isAsyncEnabled)
+        .item("lookup", lookupKeys)
+        .itemIf("where", whereString, whereString.nonEmpty)
+        .itemIf("joinCondition",
+          joinConditionToString(
+            resultFieldNames, remainingCondition, preferExpressionFormat(pw), pw.getDetailLevel),
+          remainingCondition.isDefined)
+        .item("select", selection)
   }
 
   /**
@@ -344,9 +350,11 @@ abstract class CommonPhysicalLookupJoin(
   private def joinConditionToString(
       resultFieldNames: Array[String],
       joinCondition: Option[RexNode],
-      expressionFormat: ExpressionFormat = ExpressionFormat.Prefix): String = joinCondition match {
+      expressionFormat: ExpressionFormat = ExpressionFormat.Prefix,
+      sqlExplainLevel: SqlExplainLevel): String = joinCondition match {
     case Some(condition) =>
-      getExpressionString(condition, resultFieldNames.toList, None, expressionFormat)
+      getExpressionString(
+        condition, resultFieldNames.toList, None, expressionFormat, sqlExplainLevel)
     case None => "N/A"
   }
 }

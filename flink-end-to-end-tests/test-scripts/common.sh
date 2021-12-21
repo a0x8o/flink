@@ -382,6 +382,7 @@ function check_logs_for_errors {
 function check_logs_for_exceptions {
   echo "Checking for exceptions..."
   exception_count=$(grep -rv "GroupCoordinatorNotAvailableException" $FLINK_LOG_DIR \
+   | grep -v "due to CancelTaskException" \
    | grep -v "RetriableCommitFailedException" \
    | grep -v "NoAvailableBrokersException" \
    | grep -v "Async Kafka commit failed" \
@@ -818,6 +819,27 @@ function retry_times_with_backoff_and_cleanup() {
     echo "Command: ${command} failed ${retriesNumber} times."
     ${cleanup_command}
     return 1
+}
+
+function retry_times_with_exponential_backoff {
+  local retries=$1
+  shift
+
+  local count=0
+  echo "Executing command:" "$@"
+  until "$@"; do
+    exit=$?
+    wait=$((2 ** $count))
+    count=$(($count + 1))
+    if [ $count -lt $retries ]; then
+      echo "Retry $count/$retries exited $exit, retrying in $wait seconds..."
+      sleep $wait
+    else
+      echo "Retry $count/$retries exited $exit, no more retries left."
+      return $exit
+    fi
+  done
+  return 0
 }
 
 JOB_ID_REGEX_EXTRACTOR=".*JobID ([0-9,a-f]*)"

@@ -62,11 +62,12 @@ class DataStreamTests(object):
         self.assertEqual(expected, actual)
 
     def test_basic_operations(self):
-        ds = self.env.from_collection([('ab', decimal.Decimal(1)),
-                                       ('bdc', decimal.Decimal(2)),
-                                       ('cfgs', decimal.Decimal(3)),
-                                       ('deeefg', decimal.Decimal(4))],
-                                      type_info=Types.ROW([Types.STRING(), Types.BIG_DEC()]))
+        ds = self.env.from_collection(
+            [('ab', Row('a', decimal.Decimal(1))),
+             ('bdc', Row('b', decimal.Decimal(2))),
+             ('cfgs', Row('c', decimal.Decimal(3))),
+             ('deeefg', Row('d', decimal.Decimal(4)))],
+            type_info=Types.TUPLE([Types.STRING(), Types.ROW([Types.STRING(), Types.BIG_DEC()])]))
 
         class MyMapFunction(MapFunction):
             def map(self, value):
@@ -81,7 +82,7 @@ class DataStreamTests(object):
             def filter(self, value):
                 return value[1] > 2
 
-        (ds.map(lambda i: (i[0], len(i[0]), i[1]),
+        (ds.map(lambda i: (i[0], len(i[0]), i[1][1]),
                 output_type=Types.TUPLE([Types.STRING(), Types.INT(), Types.BIG_DEC()]))
            .flat_map(MyFlatMapFunction(),
                      output_type=Types.TUPLE([Types.STRING(), Types.INT(), Types.BIG_DEC()]))
@@ -623,12 +624,16 @@ class DataStreamTests(object):
                 state_ttl_config = StateTtlConfig \
                     .new_builder(Time.seconds(1)) \
                     .set_update_type(StateTtlConfig.UpdateType.OnReadAndWrite) \
+                    .set_state_visibility(
+                        StateTtlConfig.StateVisibility.ReturnExpiredIfNotCleanedUp) \
                     .disable_cleanup_in_background() \
                     .build()
                 map_state_descriptor.enable_time_to_live(state_ttl_config)
                 self.map_state = runtime_context.get_map_state(map_state_descriptor)
 
             def process_element(self, value, ctx):
+                import time
+                time.sleep(1)
                 current_value = self.value_state.value()
                 self.value_state.update(value[0])
                 current_list = [_ for _ in self.list_state.get()]
@@ -736,7 +741,7 @@ class DataStreamTests(object):
                 descriptor = AggregatingStateDescriptor(
                     'aggregating_state', MyAggregateFunction(), Types.INT())
                 state_ttl_config = StateTtlConfig \
-                    .new_builder(Time.milliseconds(1)) \
+                    .new_builder(Time.seconds(1)) \
                     .set_update_type(StateTtlConfig.UpdateType.OnReadAndWrite) \
                     .disable_cleanup_in_background() \
                     .build()
@@ -755,10 +760,7 @@ class DataStreamTests(object):
             .add_sink(self.test_sink)
         self.env.execute('test_aggregating_state')
         results = self.test_sink.get_results()
-        if isinstance(self, PyFlinkBatchTestCase):
-            expected = ['(1,hi)', '(2,hello)', '(4,hi)', '(6,hello)', '(9,hi)', '(12,hello)']
-        else:
-            expected = ['(1,hi)', '(2,hello)', '(3,hi)', '(4,hello)', '(5,hi)', '(6,hello)']
+        expected = ['(1,hi)', '(2,hello)', '(4,hi)', '(6,hello)', '(9,hi)', '(12,hello)']
         self.assert_equals_sorted(expected, results)
 
     def test_count_window(self):

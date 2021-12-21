@@ -22,8 +22,6 @@ import org.apache.flink.streaming.connectors.kinesis.FlinkKinesisConsumer;
 import org.apache.flink.streaming.connectors.kinesis.internals.ShardConsumer;
 import org.apache.flink.streaming.connectors.kinesis.model.SentinelSequenceNumber;
 
-import com.amazonaws.services.kinesis.model.ShardIteratorType;
-
 import java.time.Duration;
 
 /**
@@ -34,7 +32,7 @@ import java.time.Duration;
 public class ConsumerConfigConstants extends AWSConfigConstants {
 
     /**
-     * The initial position to start reading shards from. This will affect the {@link
+     * The initial position to start reading shards from. This will affect the {@code
      * ShardIteratorType} used when the consumer tasks retrieve the first shard iterator for each
      * Kinesis shard.
      */
@@ -72,7 +70,7 @@ public class ConsumerConfigConstants extends AWSConfigConstants {
         POLLING
     }
 
-    /** The EFO registration type reprsents how we are going to de-/register efo consumer. */
+    /** The EFO registration type represents how we are going to de-/register efo consumer. */
     public enum EFORegistrationType {
 
         /**

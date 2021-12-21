@@ -82,7 +82,11 @@ class StreamPhysicalIntervalJoin(
       .item("joinType", joinSpec.getJoinType)
       .item("windowBounds", windowBoundsDesc)
       .item("where", getExpressionString(
-          originalCondition, getRowType.getFieldNames.toList, None, preferExpressionFormat(pw)))
+        originalCondition,
+        getRowType.getFieldNames.toList,
+        None,
+        preferExpressionFormat(pw),
+        pw.getDetailLevel))
       .item("select", getRowType.getFieldNames.mkString(", "))
   }
 

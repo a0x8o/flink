@@ -32,6 +32,7 @@ import org.apache.flink.runtime.checkpoint.DefaultLastStateConnectionStateListen
 import org.apache.flink.runtime.checkpoint.ZooKeeperCheckpointIDCounter;
 import org.apache.flink.runtime.checkpoint.ZooKeeperCheckpointStoreUtil;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServicesUtils;
+import org.apache.flink.runtime.highavailability.zookeeper.CuratorFrameworkWithUnhandledErrorListener;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.jobmanager.DefaultJobGraphStore;
 import org.apache.flink.runtime.jobmanager.HighAvailabilityMode;
@@ -48,6 +49,8 @@ import org.apache.flink.runtime.leaderretrieval.ZooKeeperLeaderRetrievalDriver;
 import org.apache.flink.runtime.leaderretrieval.ZooKeeperLeaderRetrievalDriverFactory;
 import org.apache.flink.runtime.persistence.RetrievableStateStorageHelper;
 import org.apache.flink.runtime.persistence.filesystem.FileSystemStateStorageHelper;
+import org.apache.flink.runtime.rpc.FatalErrorHandler;
+import org.apache.flink.runtime.state.SharedStateRegistryFactory;
 import org.apache.flink.runtime.zookeeper.ZooKeeperStateHandleStore;
 import org.apache.flink.util.concurrent.Executors;
 import org.apache.flink.util.function.RunnableWithException;
@@ -55,6 +58,7 @@ import org.apache.flink.util.function.RunnableWithException;
 import org.apache.flink.shaded.curator4.org.apache.curator.framework.CuratorFramework;
 import org.apache.flink.shaded.curator4.org.apache.curator.framework.CuratorFrameworkFactory;
 import org.apache.flink.shaded.curator4.org.apache.curator.framework.api.ACLProvider;
+import org.apache.flink.shaded.curator4.org.apache.curator.framework.api.UnhandledErrorListener;
 import org.apache.flink.shaded.curator4.org.apache.curator.framework.imps.DefaultACLProvider;
 import org.apache.flink.shaded.curator4.org.apache.curator.framework.recipes.cache.PathChildrenCache;
 import org.apache.flink.shaded.curator4.org.apache.curator.framework.recipes.cache.TreeCache;
@@ -73,6 +77,7 @@ import javax.annotation.Nonnull;
 
 import java.io.IOException;
 import java.io.Serializable;
+import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.Executor;
 import java.util.stream.Collectors;
@@ -149,9 +154,12 @@ public class ZooKeeperUtils {
      * Starts a {@link CuratorFramework} instance and connects it to the given ZooKeeper quorum.
      *
      * @param configuration {@link Configuration} object containing the configuration values
-     * @return {@link CuratorFramework} instance
+     * @param fatalErrorHandler {@link FatalErrorHandler} fatalErrorHandler to handle unexpected
+     *     errors of {@link CuratorFramework}
+     * @return {@link CuratorFrameworkWithUnhandledErrorListener} instance
      */
-    public static CuratorFramework startCuratorFramework(Configuration configuration) {
+    public static CuratorFrameworkWithUnhandledErrorListener startCuratorFramework(
+            Configuration configuration, FatalErrorHandler fatalErrorHandler) {
         checkNotNull(configuration, "configuration");
         String zkQuorum = configuration.getValue(HighAvailabilityOptions.HA_ZOOKEEPER_QUORUM);
 
@@ -224,12 +232,36 @@ public class ZooKeeperUtils {
             curatorFrameworkBuilder.connectionStateErrorPolicy(
                     new SessionConnectionStateErrorPolicy());
         }
+        return startCuratorFramework(curatorFrameworkBuilder, fatalErrorHandler);
+    }
 
-        CuratorFramework cf = curatorFrameworkBuilder.build();
-
+    /**
+     * Starts a {@link CuratorFramework} instance and connects it to the given ZooKeeper quorum from
+     * a builder.
+     *
+     * @param builder {@link CuratorFrameworkFactory.Builder} A builder for curatorFramework.
+     * @param fatalErrorHandler {@link FatalErrorHandler} fatalErrorHandler to handle unexpected
+     *     errors of {@link CuratorFramework}
+     * @return {@link CuratorFrameworkWithUnhandledErrorListener} instance
+     */
+    @VisibleForTesting
+    public static CuratorFrameworkWithUnhandledErrorListener startCuratorFramework(
+            CuratorFrameworkFactory.Builder builder, FatalErrorHandler fatalErrorHandler) {
+        CuratorFramework cf = builder.build();
+        UnhandledErrorListener unhandledErrorListener =
+                (message, throwable) -> {
+                    LOG.error(
+                            "Unhandled error in curator framework, error message: {}",
+                            message,
+                            throwable);
+                    // The exception thrown in UnhandledErrorListener will be caught by
+                    // CuratorFramework. So we mostly trigger exit process or interact with main
+                    // thread to inform the failure in FatalErrorHandler.
+                    fatalErrorHandler.onFatalError(throwable);
+                };
+        cf.getUnhandledErrorListenable().addListener(unhandledErrorListener);
         cf.start();
-
-        return cf;
+        return new CuratorFrameworkWithUnhandledErrorListener(cf, unhandledErrorListener);
     }
 
     /** Returns whether {@link HighAvailabilityMode#ZOOKEEPER} is configured. */
@@ -425,6 +457,8 @@ public class ZooKeeperUtils {
             CuratorFramework client,
             Configuration configuration,
             int maxNumberOfCheckpointsToRetain,
+            SharedStateRegistryFactory sharedStateRegistryFactory,
+            Executor ioExecutor,
             Executor executor)
             throws Exception {
 
@@ -435,16 +469,17 @@ public class ZooKeeperUtils {
 
         final ZooKeeperStateHandleStore<CompletedCheckpoint> completedCheckpointStateHandleStore =
                 createZooKeeperStateHandleStore(client, getCheckpointsPath(), stateStorage);
+        Collection<CompletedCheckpoint> completedCheckpoints =
+                DefaultCompletedCheckpointStoreUtils.retrieveCompletedCheckpoints(
+                        completedCheckpointStateHandleStore, ZooKeeperCheckpointStoreUtil.INSTANCE);
         final CompletedCheckpointStore zooKeeperCompletedCheckpointStore =
                 new DefaultCompletedCheckpointStore<>(
                         maxNumberOfCheckpointsToRetain,
                         completedCheckpointStateHandleStore,
                         ZooKeeperCheckpointStoreUtil.INSTANCE,
-                        DefaultCompletedCheckpointStoreUtils.retrieveCompletedCheckpoints(
-                                completedCheckpointStateHandleStore,
-                                ZooKeeperCheckpointStoreUtil.INSTANCE),
+                        completedCheckpoints,
+                        sharedStateRegistryFactory.create(ioExecutor, completedCheckpoints),
                         executor);
-
         LOG.info(
                 "Initialized {} in '{}' with {}.",
                 DefaultCompletedCheckpointStore.class.getSimpleName(),

@@ -66,7 +66,6 @@ import static org.apache.flink.streaming.connectors.kafka.table.KafkaConnectorOp
 import static org.apache.flink.streaming.connectors.kafka.table.KafkaConnectorOptions.VALUE_FIELDS_INCLUDE;
 import static org.apache.flink.streaming.connectors.kafka.table.KafkaConnectorOptions.VALUE_FORMAT;
 import static org.apache.flink.table.factories.FactoryUtil.FORMAT;
-import static org.apache.flink.table.types.logical.utils.LogicalTypeChecks.hasRoot;
 
 /** Utilities for {@link KafkaConnectorOptions}. */
 @Internal
@@ -224,7 +223,7 @@ class KafkaConnectorOptionsUtil {
         final StartupMode startupMode =
                 tableOptions
                         .getOptional(SCAN_STARTUP_MODE)
-                        .map(StartupMode::fromOption)
+                        .map(KafkaConnectorOptionsUtil::fromOption)
                         .orElse(StartupMode.GROUP_OFFSETS);
         if (startupMode == StartupMode.SPECIFIC_OFFSETS) {
             // It will be refactored after support specific offset for multiple topics in
@@ -255,6 +254,29 @@ class KafkaConnectorOptionsUtil {
                             new KafkaTopicPartition(topic, partition);
                     specificOffsets.put(topicPartition, offset);
                 });
+    }
+
+    /**
+     * Returns the {@link StartupMode} of Kafka Consumer by passed-in table-specific {@link
+     * ScanStartupMode}.
+     */
+    private static StartupMode fromOption(ScanStartupMode scanStartupMode) {
+        switch (scanStartupMode) {
+            case EARLIEST_OFFSET:
+                return StartupMode.EARLIEST;
+            case LATEST_OFFSET:
+                return StartupMode.LATEST;
+            case GROUP_OFFSETS:
+                return StartupMode.GROUP_OFFSETS;
+            case SPECIFIC_OFFSETS:
+                return StartupMode.SPECIFIC_OFFSETS;
+            case TIMESTAMP:
+                return StartupMode.TIMESTAMP;
+
+            default:
+                throw new TableException(
+                        "Unsupported startup mode. Validator should have checked that.");
+        }
     }
 
     public static Properties getKafkaProperties(Map<String, String> tableOptions) {
@@ -389,7 +411,7 @@ class KafkaConnectorOptionsUtil {
             ReadableConfig options, DataType physicalDataType) {
         final LogicalType physicalType = physicalDataType.getLogicalType();
         Preconditions.checkArgument(
-                hasRoot(physicalType, LogicalTypeRoot.ROW), "Row data type expected.");
+                physicalType.is(LogicalTypeRoot.ROW), "Row data type expected.");
         final Optional<String> optionalKeyFormat = options.getOptional(KEY_FORMAT);
         final Optional<List<String>> optionalKeyFields = options.getOptional(KEY_FIELDS);
 
@@ -456,7 +478,7 @@ class KafkaConnectorOptionsUtil {
             ReadableConfig options, DataType physicalDataType) {
         final LogicalType physicalType = physicalDataType.getLogicalType();
         Preconditions.checkArgument(
-                hasRoot(physicalType, LogicalTypeRoot.ROW), "Row data type expected.");
+                physicalType.is(LogicalTypeRoot.ROW), "Row data type expected.");
         final int physicalFieldCount = LogicalTypeChecks.getFieldCount(physicalType);
         final IntStream physicalFields = IntStream.range(0, physicalFieldCount);
 

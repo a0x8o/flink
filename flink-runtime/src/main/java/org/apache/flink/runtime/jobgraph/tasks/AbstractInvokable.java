@@ -27,6 +27,7 @@ import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.operators.coordination.OperatorEvent;
+import org.apache.flink.runtime.taskmanager.Task;
 import org.apache.flink.util.FlinkException;
 import org.apache.flink.util.SerializedValue;
 
@@ -73,17 +74,21 @@ public abstract class AbstractInvokable
     public abstract void invoke() throws Exception;
 
     @Override
-    public Future<Void> cancel() throws Exception {
+    public void cancel() throws Exception {
         // The default implementation does nothing.
-        return CompletableFuture.completedFuture(null);
     }
 
     @Override
     public void cleanUp(@Nullable Throwable throwable) throws Exception {}
 
     @Override
-    public boolean shouldInterruptOnCancel() {
-        return true;
+    public void maybeInterruptOnCancel(
+            Thread toInterrupt, @Nullable String taskName, @Nullable Long timeout) {
+        if (taskName != null && timeout != null) {
+            Task.logTaskThreadStackTrace(toInterrupt, taskName, timeout, "interrupting");
+        }
+
+        toInterrupt.interrupt();
     }
 
     // ------------------------------------------------------------------------
@@ -203,6 +208,13 @@ public abstract class AbstractInvokable
     }
 
     @Override
+    public Future<Void> notifyCheckpointSubsumedAsync(long checkpointId) {
+        throw new UnsupportedOperationException(
+                String.format(
+                        "notifyCheckpointSubsumeAsync not supported by %s",
+                        this.getClass().getName()));
+    }
+
     public void dispatchOperatorEvent(OperatorID operator, SerializedValue<OperatorEvent> event)
             throws FlinkException {
         throw new UnsupportedOperationException(

@@ -19,7 +19,7 @@ import unittest
 
 from pyflink.table import DataTypes
 from pyflink.table.expression import TimeIntervalUnit, TimePointUnit, JsonExistsOnError, \
-    JsonValueOnEmptyOrError
+    JsonValueOnEmptyOrError, JsonType, JsonQueryWrapper, JsonQueryOnEmptyOrError
 from pyflink.table.expressions import (col, lit, range_, and_, or_, current_date,
                                        current_time, current_timestamp, local_time,
                                        local_timestamp, temporal_overlaps, date_format,
@@ -193,6 +193,9 @@ class PyFlinkBatchExpressionTests(PyFlinkTestCase):
         self.assertEqual('sha2(a, 224)', str(expr1.sha2(224)))
 
         # json functions
+        self.assertEqual("IS_JSON('42')", str(lit('42').is_json()))
+        self.assertEqual("IS_JSON('42', SCALAR)", str(lit('42').is_json(JsonType.SCALAR)))
+
         self.assertEqual("JSON_EXISTS('{}', '$.x')", str(lit('{}').json_exists('$.x')))
         self.assertEqual("JSON_EXISTS('{}', '$.x', FALSE)",
                          str(lit('{}').json_exists('$.x', JsonExistsOnError.FALSE)))
@@ -203,6 +206,11 @@ class PyFlinkBatchExpressionTests(PyFlinkTestCase):
                          str(lit('{}').json_value('$.x', DataTypes.INT(),
                                                   JsonValueOnEmptyOrError.DEFAULT, 42,
                                                   JsonValueOnEmptyOrError.ERROR, None)))
+
+        self.assertEqual("JSON_QUERY('{}', '$.x', WITHOUT_ARRAY, NULL, EMPTY_ARRAY)",
+                         str(lit('{}').json_query('$.x', JsonQueryWrapper.WITHOUT_ARRAY,
+                                                  JsonQueryOnEmptyOrError.NULL,
+                                                  JsonQueryOnEmptyOrError.EMPTY_ARRAY)))
 
     def test_expressions(self):
         expr1 = col('a')
@@ -226,7 +234,7 @@ class PyFlinkBatchExpressionTests(PyFlinkTestCase):
         self.assertEqual('currentTimestamp()', str(current_timestamp()))
         self.assertEqual('localTime()', str(local_time()))
         self.assertEqual('localTimestamp()', str(local_timestamp()))
-        self.assertEquals('toTimestampLtz(123, 0)', str(to_timestamp_ltz(123, 0)))
+        self.assertEqual('toTimestampLtz(123, 0)', str(to_timestamp_ltz(123, 0)))
         self.assertEqual("temporalOverlaps(cast('2:55:00', TIME(0)), 3600000, "
                          "cast('3:30:00', TIME(0)), 7200000)",
                          str(temporal_overlaps(

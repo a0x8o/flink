@@ -20,8 +20,8 @@ package org.apache.flink.table.planner.plan.nodes.physical.stream
 import org.apache.flink.table.api.TableException
 import org.apache.flink.table.planner.calcite.FlinkTypeFactory
 import org.apache.flink.table.planner.plan.logical.WindowingStrategy
-import org.apache.flink.table.planner.plan.nodes.exec.{ExecNode, InputProperty}
 import org.apache.flink.table.planner.plan.nodes.exec.stream.StreamExecWindowJoin
+import org.apache.flink.table.planner.plan.nodes.exec.{ExecNode, InputProperty}
 import org.apache.flink.table.planner.plan.nodes.physical.common.CommonPhysicalJoin
 import org.apache.flink.table.planner.plan.utils.PythonUtil.containsPythonCall
 import org.apache.flink.table.planner.plan.utils.RelExplainUtil.preferExpressionFormat
@@ -100,7 +100,11 @@ class StreamPhysicalWindowJoin(
       .item("joinType", joinSpec.getJoinType)
       .item("where",
         getExpressionString(
-          remainingCondition, inputRowType.getFieldNames.toList, None, preferExpressionFormat(pw)))
+          remainingCondition,
+          inputRowType.getFieldNames.toList,
+          None,
+          preferExpressionFormat(pw),
+          convertToExpressionDetail(pw.getDetailLevel)))
       .item("select", getRowType.getFieldNames.mkString(", "))
   }
 

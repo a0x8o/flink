@@ -30,6 +30,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 import static org.apache.flink.configuration.ConfigOptions.key;
+import static org.apache.flink.configuration.description.TextElement.code;
 import static org.apache.flink.configuration.description.TextElement.text;
 
 /** The set of configuration options relating to TaskManager and Task settings. */
@@ -239,12 +240,18 @@ public class TaskManagerOptions {
     /** Timeout for identifying inactive slots. */
     @Documentation.Section(Documentation.Sections.ALL_TASK_MANAGER)
     public static final ConfigOption<Duration> SLOT_TIMEOUT =
-            ConfigOptions.key("taskmanager.slot.timeout")
+            key("taskmanager.slot.timeout")
                     .durationType()
-                    .defaultValue(TimeUtils.parseDuration("10 s"))
+                    .defaultValue(AkkaOptions.ASK_TIMEOUT_DURATION.defaultValue())
+                    .withFallbackKeys(AkkaOptions.ASK_TIMEOUT_DURATION.key())
                     .withDescription(
-                            "Timeout used for identifying inactive slots. The TaskManager will free the slot if it does not become active "
-                                    + "within the given amount of time. Inactive slots can be caused by an out-dated slot request.");
+                            Description.builder()
+                                    .text(
+                                            "Timeout used for identifying inactive slots. The TaskManager will free the slot if it does not become active "
+                                                    + "within the given amount of time. Inactive slots can be caused by an out-dated slot request. If no "
+                                                    + "value is configured, then it will fall back to %s.",
+                                            code(AkkaOptions.ASK_TIMEOUT_DURATION.key()))
+                                    .build());
 
     @Documentation.Section(Documentation.Sections.ALL_TASK_MANAGER)
     public static final ConfigOption<Boolean> DEBUG_MEMORY_LOG =
@@ -282,7 +289,7 @@ public class TaskManagerOptions {
     public static final ConfigOption<MemorySize> MIN_MEMORY_SEGMENT_SIZE =
             key("taskmanager.memory.min-segment-size")
                     .memoryType()
-                    .defaultValue(MemorySize.parse("1kb"))
+                    .defaultValue(MemorySize.parse("256"))
                     .withDescription(
                             "Minimum possible size of memory buffers used by the network stack and the memory manager. "
                                     + "ex. can be used for automatic buffer size adjustment.");
@@ -527,7 +534,7 @@ public class TaskManagerOptions {
     public static final ConfigOption<Duration> BUFFER_DEBLOAT_PERIOD =
             ConfigOptions.key("taskmanager.network.memory.buffer-debloat.period")
                     .durationType()
-                    .defaultValue(Duration.ofMillis(500))
+                    .defaultValue(Duration.ofMillis(200))
                     .withDescription(
                             "The minimum period of time after which the buffer size will be debloated if required. "
                                     + "The low value provides a fast reaction to the load fluctuation but can influence the performance.");
@@ -567,7 +574,7 @@ public class TaskManagerOptions {
     public static final ConfigOption<Integer> BUFFER_DEBLOAT_THRESHOLD_PERCENTAGES =
             ConfigOptions.key("taskmanager.network.memory.buffer-debloat.threshold-percentages")
                     .intType()
-                    .defaultValue(50)
+                    .defaultValue(25)
                     .withDescription(
                             "The minimum difference in percentage between the newly calculated buffer size and the old one to announce the new value. "
                                     + "Can be used to avoid constant back and forth small adjustments.");

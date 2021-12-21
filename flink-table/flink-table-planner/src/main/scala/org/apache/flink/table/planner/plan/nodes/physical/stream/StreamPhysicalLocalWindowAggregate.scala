@@ -19,13 +19,13 @@
 package org.apache.flink.table.planner.plan.nodes.physical.stream
 
 import org.apache.flink.table.planner.calcite.FlinkTypeFactory
-import org.apache.flink.table.planner.expressions.{PlannerNamedWindowProperty, PlannerSliceEnd, PlannerWindowReference}
-import org.apache.flink.table.planner.plan.logical.{SessionWindowSpec, TimeAttributeWindowingStrategy, WindowAttachedWindowingStrategy, WindowingStrategy}
+import org.apache.flink.table.planner.plan.logical.{TimeAttributeWindowingStrategy, WindowAttachedWindowingStrategy, WindowingStrategy}
 import org.apache.flink.table.planner.plan.nodes.exec.stream.StreamExecLocalWindowAggregate
 import org.apache.flink.table.planner.plan.nodes.exec.{ExecNode, InputProperty}
 import org.apache.flink.table.planner.plan.rules.physical.stream.TwoStageOptimizedWindowAggregateRule
 import org.apache.flink.table.planner.plan.utils.WindowUtil.checkEmitConfiguration
 import org.apache.flink.table.planner.plan.utils.{AggregateUtil, FlinkRelOptUtil, RelExplainUtil, WindowUtil}
+import org.apache.flink.table.runtime.groupwindow.{NamedWindowProperty, SliceEnd, WindowReference}
 
 import org.apache.calcite.plan.{RelOptCluster, RelTraitSet}
 import org.apache.calcite.rel.`type`.RelDataType
@@ -69,17 +69,8 @@ class StreamPhysicalLocalWindowAggregate(
 
   override def isValid(litmus: Litmus, context: RelNode.Context): Boolean = {
     windowing match {
-      case _: WindowAttachedWindowingStrategy =>
+      case _: WindowAttachedWindowingStrategy | _: TimeAttributeWindowingStrategy =>
         // pass
-      case tws: TimeAttributeWindowingStrategy =>
-        tws.getWindow match {
-          case _: SessionWindowSpec =>
-            return litmus.fail("StreamPhysicalLocalWindowAggregate should not accept " +
-              "TimeAttributeWindowingStrategy with Session window. " +
-              "This should never happen, please open an issue.")
-          case _ =>
-            // pass
-        }
       case _ =>
         return litmus.fail("StreamPhysicalLocalWindowAggregate should only accepts " +
           "WindowAttachedWindowingStrategy and TimeAttributeWindowingStrategy, " +
@@ -103,9 +94,9 @@ class StreamPhysicalLocalWindowAggregate(
   override def explainTerms(pw: RelWriter): RelWriter = {
     val inputRowType = getInput.getRowType
     val inputFieldNames = inputRowType.getFieldNames.asScala.toArray
-    val windowRef = new PlannerWindowReference("w$", windowing.getTimeAttributeType)
+    val windowRef = new WindowReference("w$", windowing.getTimeAttributeType)
     val namedProperties = Seq(
-      new PlannerNamedWindowProperty(endPropertyName, new PlannerSliceEnd(windowRef)))
+      new NamedWindowProperty(endPropertyName, new SliceEnd(windowRef)))
     super.explainTerms(pw)
       .itemIf("groupBy", RelExplainUtil.fieldToString(grouping, inputRowType), grouping.nonEmpty)
       .item("window", windowing.toSummaryString(inputFieldNames))

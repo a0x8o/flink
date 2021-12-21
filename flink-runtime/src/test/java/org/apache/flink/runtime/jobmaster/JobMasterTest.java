@@ -830,7 +830,7 @@ public class JobMasterTest extends TestLogger {
             // been created
             taskSubmitLatch.await();
             final CompletedCheckpoint savepointCheckpoint =
-                    completedCheckpointStore.getLatestCheckpoint(false);
+                    completedCheckpointStore.getLatestCheckpoint();
 
             assertThat(savepointCheckpoint, Matchers.notNullValue());
 
@@ -869,7 +869,7 @@ public class JobMasterTest extends TestLogger {
 
         final StandaloneCompletedCheckpointStore completedCheckpointStore =
                 new StandaloneCompletedCheckpointStore(1);
-        completedCheckpointStore.addCheckpoint(
+        completedCheckpointStore.addCheckpointAndSubsumeOldestOne(
                 completedCheckpoint, new CheckpointsCleaner(), () -> {});
         final CheckpointRecoveryFactory testingCheckpointRecoveryFactory =
                 PerJobCheckpointRecoveryFactory.withoutCheckpointStoreRecovery(
@@ -881,7 +881,7 @@ public class JobMasterTest extends TestLogger {
         try {
             // starting the JobMaster should have read the savepoint
             final CompletedCheckpoint savepointCheckpoint =
-                    completedCheckpointStore.getLatestCheckpoint(false);
+                    completedCheckpointStore.getLatestCheckpoint();
 
             assertThat(savepointCheckpoint, Matchers.notNullValue());
 

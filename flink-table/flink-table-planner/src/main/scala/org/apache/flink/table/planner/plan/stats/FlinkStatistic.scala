@@ -18,14 +18,19 @@
 
 package org.apache.flink.table.planner.plan.stats
 
+import org.apache.flink.table.catalog.{ResolvedSchema, UniqueConstraint}
 import org.apache.flink.table.plan.stats.{ColumnStats, TableStats}
 import org.apache.flink.table.planner.plan.`trait`.{RelModifiedMonotonicity, RelWindowProperties}
+
 import com.google.common.collect.ImmutableList
 import org.apache.calcite.rel.{RelCollation, RelDistribution, RelReferentialConstraint}
 import org.apache.calcite.schema.Statistic
 import org.apache.calcite.util.ImmutableBitSet
 
+import javax.annotation.Nullable
+
 import java.util
+import java.util.{HashSet, Optional, Set}
 
 import scala.collection.JavaConversions._
 
@@ -138,9 +143,9 @@ class FlinkStatistic(
       builder.append(relWindowProperties.toString).append(", ")
     }
 
-    if (builder.nonEmpty && builder.length() > 2) {
+    if (builder.nonEmpty && builder.length > 2) {
       // delete `, ` if build is not empty
-      builder.delete(builder.length() - 2, builder.length())
+      builder.delete(builder.length - 2, builder.length)
     }
     builder.toString()
   }
@@ -172,9 +177,21 @@ object FlinkStatistic {
       this
     }
 
-    def uniqueKeys(uniqueKeys: util.Set[_ <: util.Set[String]]): Builder = {
+    def uniqueKeys(@Nullable uniqueKeys: util.Set[_ <: util.Set[String]]): Builder = {
       this.uniqueKeys = uniqueKeys
       this
+    }
+
+    def uniqueKeys(@Nullable uniqueConstraint: UniqueConstraint): Builder = {
+      val uniqueKeySet = if (uniqueConstraint == null) {
+        null
+      } else {
+        val uniqueKey = new util.HashSet[String](uniqueConstraint.getColumns)
+        val uniqueKeySet = new util.HashSet[util.Set[String]]
+        uniqueKeySet.add(uniqueKey)
+        uniqueKeySet
+      }
+      uniqueKeys(uniqueKeySet)
     }
 
     def relModifiedMonotonicity(monotonicity: RelModifiedMonotonicity): Builder = {

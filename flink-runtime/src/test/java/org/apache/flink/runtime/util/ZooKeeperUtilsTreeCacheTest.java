@@ -21,6 +21,8 @@ package org.apache.flink.runtime.util;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.HighAvailabilityOptions;
 import org.apache.flink.core.testutils.FlinkMatchers;
+import org.apache.flink.runtime.highavailability.zookeeper.CuratorFrameworkWithUnhandledErrorListener;
+import org.apache.flink.runtime.rest.util.NoOpFatalErrorHandler;
 import org.apache.flink.util.TestLogger;
 
 import org.apache.flink.shaded.curator4.org.apache.curator.framework.CuratorFramework;
@@ -51,6 +53,7 @@ public class ZooKeeperUtilsTreeCacheTest extends TestLogger {
 
     private Closer closer;
     private CuratorFramework client;
+    private CuratorFrameworkWithUnhandledErrorListener curatorFrameworkWrapper;
 
     private final AtomicReference<CompletableFuture<Void>> callbackFutureReference =
             new AtomicReference<>();
@@ -64,8 +67,13 @@ public class ZooKeeperUtilsTreeCacheTest extends TestLogger {
         configuration.set(
                 HighAvailabilityOptions.HA_ZOOKEEPER_QUORUM, testingServer.getConnectString());
 
-        client = closer.register(ZooKeeperUtils.startCuratorFramework(configuration));
-        client = closer.register(ZooKeeperUtils.startCuratorFramework(configuration));
+        curatorFrameworkWrapper =
+                closer.register(
+                        ZooKeeperUtils.startCuratorFramework(
+                                configuration, NoOpFatalErrorHandler.INSTANCE));
+
+        client = curatorFrameworkWrapper.asCuratorFramework();
+
         final TreeCache cache =
                 closer.register(
                         ZooKeeperUtils.createTreeCache(

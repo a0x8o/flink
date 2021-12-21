@@ -26,6 +26,7 @@ import org.apache.flink.runtime.io.network.NettyShuffleEnvironment;
 import org.apache.flink.runtime.io.network.NettyShuffleEnvironmentBuilder;
 import org.apache.flink.runtime.io.network.api.EndOfData;
 import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
+import org.apache.flink.runtime.io.network.api.StopMode;
 import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
 import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
@@ -625,7 +626,7 @@ public class ResultPartitionTest {
         BufferWritingResultPartition bufferWritingResultPartition =
                 createResultPartition(ResultPartitionType.PIPELINED_BOUNDED);
 
-        bufferWritingResultPartition.notifyEndOfData();
+        bufferWritingResultPartition.notifyEndOfData(StopMode.DRAIN);
         CompletableFuture<Void> allRecordsProcessedFuture =
                 bufferWritingResultPartition.getAllDataProcessedFuture();
         assertFalse(allRecordsProcessedFuture.isDone());
@@ -634,7 +635,7 @@ public class ResultPartitionTest {
             Buffer nextBuffer = ((PipelinedSubpartition) resultSubpartition).pollBuffer().buffer();
             assertFalse(nextBuffer.isBuffer());
             assertEquals(
-                    EndOfData.INSTANCE,
+                    new EndOfData(StopMode.DRAIN),
                     EventSerializer.fromBuffer(nextBuffer, getClass().getClassLoader()));
         }
 
@@ -668,10 +669,12 @@ public class ResultPartitionTest {
         subpartition1.bufferSize(6);
 
         // and: Add the buffer.
-        bufferWritingResultPartition.emitRecord(ByteBuffer.allocate(12), 0);
-        bufferWritingResultPartition.emitRecord(ByteBuffer.allocate(12), 1);
+        bufferWritingResultPartition.emitRecord(ByteBuffer.allocate(2), 0);
+        bufferWritingResultPartition.emitRecord(ByteBuffer.allocate(10), 0);
+        bufferWritingResultPartition.emitRecord(ByteBuffer.allocate(2), 1);
+        bufferWritingResultPartition.emitRecord(ByteBuffer.allocate(10), 1);
 
-        // then: The buffer less or equal to configured.
+        // then: The buffer is less or equal to configured.
         assertEquals(10, subpartition0.pollBuffer().buffer().getSize());
         assertEquals(2, subpartition0.pollBuffer().buffer().getSize());
         assertEquals(6, subpartition1.pollBuffer().buffer().getSize());
@@ -682,8 +685,10 @@ public class ResultPartitionTest {
         subpartition1.bufferSize(5);
 
         // and: Add the buffer.
-        bufferWritingResultPartition.emitRecord(ByteBuffer.allocate(20), 0);
-        bufferWritingResultPartition.emitRecord(ByteBuffer.allocate(9), 1);
+        bufferWritingResultPartition.emitRecord(ByteBuffer.allocate(12), 0);
+        bufferWritingResultPartition.emitRecord(ByteBuffer.allocate(8), 0);
+        bufferWritingResultPartition.emitRecord(ByteBuffer.allocate(2), 1);
+        bufferWritingResultPartition.emitRecord(ByteBuffer.allocate(7), 1);
 
         // then: The buffer less or equal to configured.
         // 8 bytes which fitted to the previous unfinished buffer(10 - 2).
@@ -692,6 +697,103 @@ public class ResultPartitionTest {
         assertEquals(12, subpartition0.pollBuffer().buffer().getSize());
         assertEquals(5, subpartition1.pollBuffer().buffer().getSize());
         assertEquals(4, subpartition1.pollBuffer().buffer().getSize());
+    }
+
+    @Test
+    public void testBufferSizeGreaterOrEqualToFirstRecord() throws IOException {
+        // given: Configured pipelined result with 2 subpartitions.
+        BufferWritingResultPartition bufferWritingResultPartition =
+                createResultPartition(ResultPartitionType.PIPELINED_BOUNDED);
+
+        ResultSubpartition[] subpartitions = bufferWritingResultPartition.subpartitions;
+        assertEquals(2, subpartitions.length);
+
+        PipelinedSubpartition subpartition0 = (PipelinedSubpartition) subpartitions[0];
+        PipelinedSubpartition subpartition1 = (PipelinedSubpartition) subpartitions[1];
+
+        // when: Set the different buffers size.
+        subpartition0.bufferSize(10);
+        subpartition1.bufferSize(7);
+
+        // and: Add the buffer.
+        bufferWritingResultPartition.emitRecord(ByteBuffer.allocate(12), 0);
+        bufferWritingResultPartition.emitRecord(ByteBuffer.allocate(111), 1);
+
+        // then: The buffer can not be less than first record.
+        assertEquals(12, subpartition0.pollBuffer().buffer().getSize());
+        assertEquals(111, subpartition1.pollBuffer().buffer().getSize());
+    }
+
+    @Test
+    public void testDynamicBufferSizeForBroadcast() throws IOException {
+        // given: Configured pipelined result with 2 subpartitions.
+        BufferWritingResultPartition bufferWritingResultPartition =
+                createResultPartition(ResultPartitionType.PIPELINED_BOUNDED);
+
+        ResultSubpartition[] subpartitions = bufferWritingResultPartition.subpartitions;
+        assertEquals(2, subpartitions.length);
+
+        PipelinedSubpartition subpartition0 = (PipelinedSubpartition) subpartitions[0];
+        PipelinedSubpartition subpartition1 = (PipelinedSubpartition) subpartitions[1];
+
+        // when: Set the different buffers size.
+        subpartition0.bufferSize(6);
+        subpartition1.bufferSize(10);
+
+        // and: Add the buffer.
+        bufferWritingResultPartition.broadcastRecord(ByteBuffer.allocate(6));
+
+        // then: The buffer less or equal to configured.
+        assertEquals(6, subpartition0.pollBuffer().buffer().getSize());
+        assertEquals(6, subpartition1.pollBuffer().buffer().getSize());
+
+        // when: Set the different buffers size.
+        subpartition0.bufferSize(4);
+        subpartition1.bufferSize(12);
+
+        // and: Add the buffer.
+        bufferWritingResultPartition.broadcastRecord(ByteBuffer.allocate(3));
+        bufferWritingResultPartition.broadcastRecord(ByteBuffer.allocate(7));
+
+        // then: The buffer less or equal to configured.
+        assertEquals(4, subpartition0.pollBuffer().buffer().getSize());
+        assertEquals(6, subpartition0.pollBuffer().buffer().getSize());
+        assertEquals(4, subpartition1.pollBuffer().buffer().getSize());
+        assertEquals(6, subpartition1.pollBuffer().buffer().getSize());
+
+        // when: Set the different buffers size.
+        subpartition0.bufferSize(8);
+        subpartition1.bufferSize(5);
+
+        // and: Add the buffer.
+        bufferWritingResultPartition.broadcastRecord(ByteBuffer.allocate(3));
+
+        // then: The buffer less or equal to configured.
+        assertEquals(3, subpartition0.pollBuffer().buffer().getSize());
+        assertEquals(3, subpartition1.pollBuffer().buffer().getSize());
+    }
+
+    @Test
+    public void testBufferSizeGreaterOrEqualToFirstBroadcastRecord() throws IOException {
+        // given: Configured pipelined result with 2 subpartitions.
+        BufferWritingResultPartition bufferWritingResultPartition =
+                createResultPartition(ResultPartitionType.PIPELINED_BOUNDED);
+
+        ResultSubpartition[] subpartitions = bufferWritingResultPartition.subpartitions;
+
+        PipelinedSubpartition subpartition0 = (PipelinedSubpartition) subpartitions[0];
+        PipelinedSubpartition subpartition1 = (PipelinedSubpartition) subpartitions[1];
+
+        // when: Set the different buffers size.
+        subpartition0.bufferSize(6);
+        subpartition1.bufferSize(10);
+
+        // and: Add the buffer.
+        bufferWritingResultPartition.broadcastRecord(ByteBuffer.allocate(31));
+
+        // then: The buffer can not be less than first record.
+        assertEquals(31, subpartition0.pollBuffer().buffer().getSize());
+        assertEquals(31, subpartition1.pollBuffer().buffer().getSize());
     }
 
     @Test
@@ -719,6 +821,44 @@ public class ResultPartitionTest {
 
         // and: The buffer has initial size because new buffer was less than 0.
         assertEquals(bufferSize, subpartition1.pollBuffer().buffer().getSize());
+    }
+
+    @Test
+    public void testNumBytesProducedCounterForUnicast() throws IOException {
+        testNumBytesProducedCounter(false);
+    }
+
+    @Test
+    public void testNumBytesProducedCounterForBroadcast() throws IOException {
+        testNumBytesProducedCounter(true);
+    }
+
+    private void testNumBytesProducedCounter(boolean isBroadcast) throws IOException {
+        TestResultPartitionConsumableNotifier notifier =
+                new TestResultPartitionConsumableNotifier();
+        JobID jobId = new JobID();
+        TaskActions taskActions = new NoOpTaskActions();
+        BufferWritingResultPartition bufferWritingResultPartition =
+                createResultPartition(ResultPartitionType.BLOCKING);
+        ResultPartitionWriter partitionWriter =
+                ConsumableNotifyingResultPartitionWriterDecorator.decorate(
+                        Collections.singleton(
+                                PartitionTestUtils.createPartitionDeploymentDescriptor(
+                                        ResultPartitionType.BLOCKING)),
+                        new ResultPartitionWriter[] {bufferWritingResultPartition},
+                        taskActions,
+                        jobId,
+                        notifier)[0];
+
+        if (isBroadcast) {
+            partitionWriter.broadcastRecord(ByteBuffer.allocate(bufferSize));
+            assertEquals(bufferSize, bufferWritingResultPartition.numBytesProduced.getCount());
+            assertEquals(2 * bufferSize, bufferWritingResultPartition.numBytesOut.getCount());
+        } else {
+            partitionWriter.emitRecord(ByteBuffer.allocate(bufferSize), 0);
+            assertEquals(bufferSize, bufferWritingResultPartition.numBytesProduced.getCount());
+            assertEquals(bufferSize, bufferWritingResultPartition.numBytesOut.getCount());
+        }
     }
 
     private static class TestResultPartitionConsumableNotifier

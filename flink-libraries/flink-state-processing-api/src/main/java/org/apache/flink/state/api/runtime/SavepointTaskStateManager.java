@@ -34,6 +34,8 @@ import org.apache.flink.util.Preconditions;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
+import java.util.Optional;
+
 /**
  * A minimally implemented {@link TaskStateManager} that provides the functionality required to run
  * the {@code state-processor-api}.
@@ -61,8 +63,13 @@ final class SavepointTaskStateManager implements TaskStateManager {
             CheckpointMetaData checkpointMetaData, CheckpointMetrics checkpointMetrics) {}
 
     @Override
-    public boolean isFinishedOnRestore() {
+    public boolean isTaskDeployedAsFinished() {
         return false;
+    }
+
+    @Override
+    public Optional<Long> getRestoreCheckpointId() {
+        return Optional.empty();
     }
 
     @Nonnull
@@ -96,7 +103,7 @@ final class SavepointTaskStateManager implements TaskStateManager {
     @Nullable
     @Override
     public StateChangelogStorage<?> getStateChangelogStorage() {
-        throw new UnsupportedOperationException(MSG);
+        return null;
     }
 
     @Override

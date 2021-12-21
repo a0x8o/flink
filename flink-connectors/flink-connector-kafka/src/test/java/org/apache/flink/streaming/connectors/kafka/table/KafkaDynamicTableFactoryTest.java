@@ -22,9 +22,13 @@ import org.apache.flink.api.common.serialization.DeserializationSchema;
 import org.apache.flink.api.common.serialization.SerializationSchema;
 import org.apache.flink.api.connector.sink.Sink;
 import org.apache.flink.api.dag.Transformation;
+import org.apache.flink.configuration.ConfigOptions;
+import org.apache.flink.configuration.Configuration;
 import org.apache.flink.connector.base.DeliveryGuarantee;
 import org.apache.flink.connector.kafka.sink.KafkaSink;
 import org.apache.flink.connector.kafka.source.KafkaSource;
+import org.apache.flink.connector.kafka.source.KafkaSourceOptions;
+import org.apache.flink.connector.kafka.source.KafkaSourceTestUtils;
 import org.apache.flink.connector.kafka.source.enumerator.KafkaSourceEnumState;
 import org.apache.flink.connector.kafka.source.split.KafkaPartitionSplit;
 import org.apache.flink.formats.avro.AvroRowDataSerializationSchema;
@@ -68,6 +72,7 @@ import org.apache.flink.util.TestLogger;
 
 import org.apache.flink.shaded.guava30.com.google.common.collect.ImmutableList;
 
+import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.ExpectedException;
@@ -90,11 +95,12 @@ import static org.apache.flink.streaming.connectors.kafka.table.KafkaConnectorOp
 import static org.apache.flink.streaming.connectors.kafka.table.KafkaConnectorOptionsUtil.DEBEZIUM_AVRO_CONFLUENT;
 import static org.apache.flink.table.factories.utils.FactoryMocks.createTableSink;
 import static org.apache.flink.table.factories.utils.FactoryMocks.createTableSource;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.hamcrest.CoreMatchers.instanceOf;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
 
 /** Abstract test base for {@link KafkaDynamicTableFactory}. */
 public class KafkaDynamicTableFactoryTest extends TestLogger {
@@ -347,6 +353,31 @@ public class KafkaDynamicTableFactoryTest extends TestLogger {
         expectedKafkaSource.metadataKeys = Collections.singletonList("timestamp");
 
         assertEquals(actualSource, expectedKafkaSource);
+    }
+
+    @Test
+    public void testTableSourceCommitOnCheckpointDisabled() {
+        final Map<String, String> modifiedOptions =
+                getModifiedOptions(
+                        getBasicSourceOptions(), options -> options.remove("properties.group.id"));
+        final DynamicTableSource tableSource = createTableSource(SCHEMA, modifiedOptions);
+
+        assertThat(tableSource, instanceOf(KafkaDynamicSource.class));
+        ScanTableSource.ScanRuntimeProvider providerWithoutGroupId =
+                ((KafkaDynamicSource) tableSource)
+                        .getScanRuntimeProvider(ScanRuntimeProviderContext.INSTANCE);
+        assertThat(providerWithoutGroupId, instanceOf(DataStreamScanProvider.class));
+        final KafkaSource<?> kafkaSource = assertKafkaSource(providerWithoutGroupId);
+        final Configuration configuration =
+                KafkaSourceTestUtils.getKafkaSourceConfiguration(kafkaSource);
+
+        // Test offset commit on checkpoint should be disabled when do not set consumer group.
+        assertFalse(configuration.get(KafkaSourceOptions.COMMIT_OFFSETS_ON_CHECKPOINT));
+        assertFalse(
+                configuration.get(
+                        ConfigOptions.key(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG)
+                                .booleanType()
+                                .noDefaultValue()));
     }
 
     @Test
@@ -809,16 +840,21 @@ public class KafkaDynamicTableFactoryTest extends TestLogger {
         // pk can be defined on cdc table, should pass
         createTableSink(pkSchema, sinkOptions);
 
-        try {
-            createTableSink(pkSchema, getBasicSinkOptions());
-            fail();
-        } catch (Throwable t) {
-            String error =
-                    "The Kafka table 'default.default.t1' with 'test-format' format"
-                            + " doesn't support defining PRIMARY KEY constraint on the table, because it can't"
-                            + " guarantee the semantic of primary key.";
-            assertEquals(error, t.getCause().getMessage());
-        }
+        assertThatExceptionOfType(ValidationException.class)
+                .isThrownBy(() -> createTableSink(pkSchema, getBasicSinkOptions()))
+                .havingRootCause()
+                .withMessage(
+                        "The Kafka table 'default.default.t1' with 'test-format' format"
+                                + " doesn't support defining PRIMARY KEY constraint on the table, because it can't"
+                                + " guarantee the semantic of primary key.");
+
+        assertThatExceptionOfType(ValidationException.class)
+                .isThrownBy(() -> createTableSink(pkSchema, getKeyValueOptions()))
+                .havingRootCause()
+                .withMessage(
+                        "The Kafka table 'default.default.t1' with 'test-format' format"
+                                + " doesn't support defining PRIMARY KEY constraint on the table, because it can't"
+                                + " guarantee the semantic of primary key.");
 
         Map<String, String> sourceOptions =
                 getModifiedOptions(
@@ -833,16 +869,13 @@ public class KafkaDynamicTableFactoryTest extends TestLogger {
         // pk can be defined on cdc table, should pass
         createTableSource(pkSchema, sourceOptions);
 
-        try {
-            createTableSource(pkSchema, getBasicSourceOptions());
-            fail();
-        } catch (Throwable t) {
-            String error =
-                    "The Kafka table 'default.default.t1' with 'test-format' format"
-                            + " doesn't support defining PRIMARY KEY constraint on the table, because it can't"
-                            + " guarantee the semantic of primary key.";
-            assertEquals(error, t.getCause().getMessage());
-        }
+        assertThatExceptionOfType(ValidationException.class)
+                .isThrownBy(() -> createTableSource(pkSchema, getBasicSourceOptions()))
+                .havingRootCause()
+                .withMessage(
+                        "The Kafka table 'default.default.t1' with 'test-format' format"
+                                + " doesn't support defining PRIMARY KEY constraint on the table, because it can't"
+                                + " guarantee the semantic of primary key.");
     }
 
     // --------------------------------------------------------------------------------------------
@@ -997,7 +1030,7 @@ public class KafkaDynamicTableFactoryTest extends TestLogger {
         return tableOptions;
     }
 
-    private void assertKafkaSource(ScanTableSource.ScanRuntimeProvider provider) {
+    private KafkaSource<?> assertKafkaSource(ScanTableSource.ScanRuntimeProvider provider) {
         assertThat(provider, instanceOf(DataStreamScanProvider.class));
         final DataStreamScanProvider dataStreamScanProvider = (DataStreamScanProvider) provider;
         final Transformation<RowData> transformation =
@@ -1010,5 +1043,6 @@ public class KafkaDynamicTableFactoryTest extends TestLogger {
                         (SourceTransformation<RowData, KafkaPartitionSplit, KafkaSourceEnumState>)
                                 transformation;
         assertThat(sourceTransformation.getSource(), instanceOf(KafkaSource.class));
+        return (KafkaSource<?>) sourceTransformation.getSource();
     }
 }

@@ -49,6 +49,7 @@ import java.net.MalformedURLException;
 import java.net.URL;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -419,6 +420,27 @@ public class DefaultPackagedProgramRetrieverTest extends TestLogger {
     }
 
     @Test
+    public void testRetrieveCorrectUserClasspathsWithPipelineClasspaths() throws Exception {
+        final Configuration configuration = new Configuration();
+        final List<String> pipelineJars = new ArrayList<>();
+        final Collection<URL> expectedMergedURLs = new ArrayList<>();
+        for (URL jarFile : singleEntryClassClasspathProvider.getURLUserClasspath()) {
+            pipelineJars.add(jarFile.toString());
+            expectedMergedURLs.add(jarFile);
+        }
+        configuration.set(PipelineOptions.CLASSPATHS, pipelineJars);
+
+        final PackagedProgramRetriever retrieverUnderTest =
+                DefaultPackagedProgramRetriever.create(
+                        null,
+                        singleEntryClassClasspathProvider.getJobClassName(),
+                        ClasspathProvider.parametersForTestJob("suffix"),
+                        configuration);
+        final JobGraph jobGraph = retrieveJobGraph(retrieverUnderTest, new Configuration());
+        assertThat(jobGraph.getClasspaths(), containsInAnyOrder(expectedMergedURLs.toArray()));
+    }
+
+    @Test
     public void testRetrieveFromJarFileWithoutUserLib()
             throws IOException, FlinkException, ProgramInvocationException {
         final PackagedProgramRetriever retrieverUnderTest =
@@ -542,7 +564,7 @@ public class DefaultPackagedProgramRetrieverTest extends TestLogger {
             throws MalformedURLException {
         Preconditions.checkArgument(
                 directory.listFiles() != null,
-                "The passed File does not seem to be a directory or is not acessible: "
+                "The passed File does not seem to be a directory or is not accessible: "
                         + directory.getAbsolutePath());
 
         final List<String> relativizedURLs = new ArrayList<>();

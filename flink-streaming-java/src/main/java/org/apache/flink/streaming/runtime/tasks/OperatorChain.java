@@ -27,6 +27,7 @@ import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.checkpoint.channel.ChannelStateWriter;
 import org.apache.flink.runtime.event.AbstractEvent;
 import org.apache.flink.runtime.execution.Environment;
+import org.apache.flink.runtime.io.network.api.StopMode;
 import org.apache.flink.runtime.io.network.api.writer.RecordWriter;
 import org.apache.flink.runtime.io.network.api.writer.RecordWriterDelegate;
 import org.apache.flink.runtime.io.network.partition.consumer.IndexedInputGate;
@@ -165,7 +166,7 @@ public abstract class OperatorChain<OUT, OP extends StreamOperator<OUT>>
                 new HashMap<>(outEdgesInOrder.size());
         this.streamOutputs = new RecordWriterOutput<?>[outEdgesInOrder.size()];
         this.finishedOnRestoreInput =
-                this.isFinishedOnRestore()
+                this.isTaskDeployedAsFinished()
                         ? new FinishedOnRestoreInput(
                                 streamOutputs, configuration.getInputs(userCodeClassloader).length)
                         : null;
@@ -273,7 +274,7 @@ public abstract class OperatorChain<OUT, OP extends StreamOperator<OUT>>
         firstOperatorWrapper = linkOperatorWrappers(allOperatorWrappers);
     }
 
-    public abstract boolean isFinishedOnRestore();
+    public abstract boolean isTaskDeployedAsFinished();
 
     public abstract void dispatchOperatorEvent(
             OperatorID operator, SerializedValue<OperatorEvent> event) throws FlinkException;
@@ -290,7 +291,7 @@ public abstract class OperatorChain<OUT, OP extends StreamOperator<OUT>>
     /**
      * Initialize state and open all operators in the chain from <b>tail to heads</b>, contrary to
      * {@link StreamOperator#close()} which happens <b>heads to tail</b> (see {@link
-     * #finishOperators(StreamTaskActionExecutor)}).
+     * #finishOperators(StreamTaskActionExecutor, StopMode)}).
      */
     public abstract void initializeStateAndOpenOperators(
             StreamTaskStateInitializer streamTaskStateInitializer) throws Exception;
@@ -300,11 +301,14 @@ public abstract class OperatorChain<OUT, OP extends StreamOperator<OUT>>
      * operator in the chain, contrary to {@link StreamOperator#open()} which happens <b>tail to
      * heads</b> (see {@link #initializeStateAndOpenOperators(StreamTaskStateInitializer)}).
      */
-    public abstract void finishOperators(StreamTaskActionExecutor actionExecutor) throws Exception;
+    public abstract void finishOperators(StreamTaskActionExecutor actionExecutor, StopMode stopMode)
+            throws Exception;
 
     public abstract void notifyCheckpointComplete(long checkpointId) throws Exception;
 
     public abstract void notifyCheckpointAborted(long checkpointId) throws Exception;
+
+    public abstract void notifyCheckpointSubsumed(long checkpointId) throws Exception;
 
     public abstract void snapshotState(
             Map<OperatorID, OperatorSnapshotFutures> operatorSnapshotsInProgress,
@@ -564,7 +568,7 @@ public abstract class OperatorChain<OUT, OP extends StreamOperator<OUT>>
                     sourceInput,
                     new ChainedSource(
                             chainedSourceOutput,
-                            this.isFinishedOnRestore()
+                            this.isTaskDeployedAsFinished()
                                     ? new StreamTaskFinishedOnRestoreSourceInput<>(
                                             sourceOperator, sourceInputGateIndex++, inputId)
                                     : new StreamTaskSourceInput<>(

@@ -51,14 +51,14 @@ import java.util.stream.Collectors;
  * TableEnvironment#createTemporaryTable(String, TableDescriptor)}.
  */
 @PublicEvolving
-public final class TableDescriptor {
+public class TableDescriptor {
 
     private final @Nullable Schema schema;
     private final Map<String, String> options;
     private final List<String> partitionKeys;
     private final @Nullable String comment;
 
-    private TableDescriptor(
+    protected TableDescriptor(
             @Nullable Schema schema,
             Map<String, String> options,
             List<String> partitionKeys,
@@ -81,6 +81,11 @@ public final class TableDescriptor {
         return descriptorBuilder;
     }
 
+    /** Creates a new {@link Builder} for a managed table. */
+    public static Builder forManaged() {
+        return new Builder();
+    }
+
     // ---------------------------------------------------------------------------------------------
 
     public Optional<Schema> getSchema() {
@@ -100,6 +105,21 @@ public final class TableDescriptor {
     }
 
     // ---------------------------------------------------------------------------------------------
+
+    /** Converts this descriptor into a {@link CatalogTable}. */
+    public CatalogTable toCatalogTable() {
+        final Schema schema =
+                getSchema()
+                        .orElseThrow(
+                                () ->
+                                        new ValidationException(
+                                                "Missing schema in TableDescriptor. "
+                                                        + "A schema is typically required. "
+                                                        + "It can only be omitted at certain "
+                                                        + "documented locations."));
+
+        return CatalogTable.of(schema, getComment().orElse(null), getPartitionKeys(), getOptions());
+    }
 
     /** Converts this immutable instance into a mutable {@link Builder}. */
     public Builder toBuilder() {
@@ -163,6 +183,7 @@ public final class TableDescriptor {
     // ---------------------------------------------------------------------------------------------
 
     /** Builder for {@link TableDescriptor}. */
+    @PublicEvolving
     public static class Builder {
 
         private @Nullable Schema schema;

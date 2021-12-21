@@ -19,6 +19,7 @@ package org.apache.flink.connector.elasticsearch.sink;
 
 import org.apache.flink.api.common.operators.MailboxExecutor;
 import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.connector.elasticsearch.ElasticsearchUtil;
 import org.apache.flink.connectors.test.common.junit.extensions.TestLoggerExtension;
 import org.apache.flink.metrics.Counter;
 import org.apache.flink.metrics.Gauge;
@@ -51,11 +52,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.testcontainers.containers.output.Slf4jLogConsumer;
 import org.testcontainers.elasticsearch.ElasticsearchContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 import java.io.IOException;
 import java.util.Collections;
@@ -76,8 +75,8 @@ class ElasticsearchWriterITCase {
 
     @Container
     private static final ElasticsearchContainer ES_CONTAINER =
-            new ElasticsearchContainer(DockerImageName.parse(DockerImageVersions.ELASTICSEARCH_7))
-                    .withLogConsumer(new Slf4jLogConsumer(LOG));
+            ElasticsearchUtil.createElasticsearchContainer(
+                    DockerImageVersions.ELASTICSEARCH_7, LOG);
 
     private RestHighLevelClient client;
     private TestClientBase context;
@@ -246,7 +245,7 @@ class ElasticsearchWriterITCase {
                 flushOnCheckpoint,
                 bulkProcessorConfig,
                 new TestBulkProcessorBuilderFactory(),
-                new NetworkClientConfig(null, null, null),
+                new NetworkClientConfig(null, null, null, null, null, null),
                 metricGroup,
                 new TestMailbox());
     }

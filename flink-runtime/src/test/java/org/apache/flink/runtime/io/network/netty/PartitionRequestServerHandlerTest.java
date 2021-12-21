@@ -20,6 +20,7 @@ package org.apache.flink.runtime.io.network.netty;
 
 import org.apache.flink.runtime.io.network.NetworkSequenceViewReader;
 import org.apache.flink.runtime.io.network.TaskEventDispatcher;
+import org.apache.flink.runtime.io.network.api.StopMode;
 import org.apache.flink.runtime.io.network.netty.NettyMessage.ErrorResponse;
 import org.apache.flink.runtime.io.network.netty.NettyMessage.PartitionRequest;
 import org.apache.flink.runtime.io.network.netty.NettyMessage.ResumeConsumption;
@@ -128,7 +129,7 @@ public class PartitionRequestServerHandlerTest extends TestLogger {
         partitionRequestQueue.notifyReaderCreated(viewReader);
 
         // Write the message to acknowledge all records are processed to server
-        resultPartition.notifyEndOfData();
+        resultPartition.notifyEndOfData(StopMode.DRAIN);
         CompletableFuture<Void> allRecordsProcessedFuture =
                 resultPartition.getAllDataProcessedFuture();
         assertFalse(allRecordsProcessedFuture.isDone());
@@ -160,9 +161,33 @@ public class PartitionRequestServerHandlerTest extends TestLogger {
         assertEquals(666, testViewReader.bufferSize);
     }
 
+    @Test
+    public void testReceivingNewBufferSizeBeforeReaderIsCreated() {
+        final InputChannelID inputChannelID = new InputChannelID();
+        final PartitionRequestQueue partitionRequestQueue = new PartitionRequestQueue();
+        final TestViewReader testViewReader =
+                new TestViewReader(inputChannelID, 2, partitionRequestQueue);
+        final PartitionRequestServerHandler serverHandler =
+                new PartitionRequestServerHandler(
+                        new ResultPartitionManager(),
+                        new TaskEventDispatcher(),
+                        partitionRequestQueue);
+        final EmbeddedChannel channel = new EmbeddedChannel(serverHandler);
+
+        // Write the message of new buffer size to server without prepared reader.
+        channel.writeInbound(new NettyMessage.NewBufferSize(666, inputChannelID));
+        channel.runPendingTasks();
+
+        // If error happens outbound messages would be not empty.
+        assertTrue(channel.outboundMessages().toString(), channel.outboundMessages().isEmpty());
+
+        // New buffer size should be silently ignored because it is possible situation.
+        assertEquals(-1, testViewReader.bufferSize);
+    }
+
     private static class TestViewReader extends CreditBasedSequenceNumberingViewReader {
         private boolean consumptionResumed = false;
-        private int bufferSize;
+        private int bufferSize = -1;
 
         TestViewReader(
                 InputChannelID receiverId, int initialCredit, PartitionRequestQueue requestQueue) {

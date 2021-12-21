@@ -31,6 +31,7 @@ import org.apache.flink.table.api.ValidationException;
 import org.apache.flink.table.data.GenericArrayData;
 import org.apache.flink.table.data.GenericMapData;
 import org.apache.flink.table.data.StringData;
+import org.apache.flink.table.data.TimestampData;
 import org.apache.flink.table.types.logical.ArrayType;
 import org.apache.flink.table.types.logical.BigIntType;
 import org.apache.flink.table.types.logical.BooleanType;
@@ -40,15 +41,19 @@ import org.apache.flink.table.types.logical.DecimalType;
 import org.apache.flink.table.types.logical.DoubleType;
 import org.apache.flink.table.types.logical.FloatType;
 import org.apache.flink.table.types.logical.IntType;
+import org.apache.flink.table.types.logical.LocalZonedTimestampType;
 import org.apache.flink.table.types.logical.LogicalType;
 import org.apache.flink.table.types.logical.MapType;
 import org.apache.flink.table.types.logical.MultisetType;
 import org.apache.flink.table.types.logical.RowType;
 import org.apache.flink.table.types.logical.SmallIntType;
+import org.apache.flink.table.types.logical.TimestampType;
 import org.apache.flink.table.types.logical.TinyIntType;
 import org.apache.flink.table.types.logical.VarCharType;
 import org.apache.flink.table.types.logical.YearMonthIntervalType;
+import org.apache.flink.table.types.logical.ZonedTimestampType;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -69,6 +74,8 @@ public class RandomGeneratorVisitor extends DataGenVisitorBase {
 
     private final ConfigOptions.OptionBuilder maxKey;
 
+    private final ConfigOptions.OptionBuilder maxPastKey;
+
     public RandomGeneratorVisitor(String name, ReadableConfig config) {
         super(name, config);
 
@@ -86,6 +93,13 @@ public class RandomGeneratorVisitor extends DataGenVisitorBase {
                                 + name
                                 + "."
                                 + DataGenConnectorOptionsUtil.MAX);
+        this.maxPastKey =
+                key(
+                        DataGenConnectorOptionsUtil.FIELDS
+                                + "."
+                                + name
+                                + "."
+                                + DataGenConnectorOptionsUtil.MAX_PAST);
     }
 
     @Override
@@ -204,6 +218,33 @@ public class RandomGeneratorVisitor extends DataGenVisitorBase {
     }
 
     @Override
+    public DataGeneratorContainer visit(TimestampType timestampType) {
+        ConfigOption<Duration> maxPastOption =
+                maxPastKey.durationType().defaultValue(Duration.ZERO);
+
+        return DataGeneratorContainer.of(
+                getRandomPastTimestampGenerator(config.get(maxPastOption)), maxPastOption);
+    }
+
+    @Override
+    public DataGeneratorContainer visit(ZonedTimestampType zonedTimestampType) {
+        ConfigOption<Duration> maxPastOption =
+                maxPastKey.durationType().defaultValue(Duration.ZERO);
+
+        return DataGeneratorContainer.of(
+                getRandomPastTimestampGenerator(config.get(maxPastOption)), maxPastOption);
+    }
+
+    @Override
+    public DataGeneratorContainer visit(LocalZonedTimestampType localZonedTimestampType) {
+        ConfigOption<Duration> maxPastOption =
+                maxPastKey.durationType().defaultValue(Duration.ZERO);
+
+        return DataGeneratorContainer.of(
+                getRandomPastTimestampGenerator(config.get(maxPastOption)), maxPastOption);
+    }
+
+    @Override
     public DataGeneratorContainer visit(ArrayType arrayType) {
         ConfigOption<Integer> lenOption =
                 key(DataGenConnectorOptionsUtil.FIELDS
@@ -307,9 +348,8 @@ public class RandomGeneratorVisitor extends DataGenVisitorBase {
                         .map(DataGeneratorContainer::getGenerator)
                         .toArray(DataGenerator[]::new);
 
-        String[] fieldNames = rowType.getFieldNames().toArray(new String[0]);
-
-        return DataGeneratorContainer.of(new RowDataGenerator(generators, fieldNames), options);
+        return DataGeneratorContainer.of(
+                new RowDataGenerator(generators, rowType.getFieldNames()), options);
     }
 
     @Override
@@ -322,6 +362,18 @@ public class RandomGeneratorVisitor extends DataGenVisitorBase {
             @Override
             public StringData next() {
                 return StringData.fromString(random.nextHexString(length));
+            }
+        };
+    }
+
+    private static RandomGenerator<TimestampData> getRandomPastTimestampGenerator(
+            Duration maxPast) {
+        return new RandomGenerator<TimestampData>() {
+            @Override
+            public TimestampData next() {
+                long maxPastMillis = maxPast.toMillis();
+                long past = maxPastMillis > 0 ? random.nextLong(0, maxPastMillis) : 0;
+                return TimestampData.fromEpochMillis(System.currentTimeMillis() - past);
             }
         };
     }

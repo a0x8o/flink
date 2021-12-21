@@ -17,6 +17,7 @@
 
 package org.apache.flink.connector.kafka.sink;
 
+import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.java.ClosureCleaner;
 import org.apache.flink.connector.base.DeliveryGuarantee;
@@ -44,7 +45,6 @@ import static org.apache.flink.util.Preconditions.checkState;
  *     .<String>builder
  *     .setBootstrapServers(MY_BOOTSTRAP_SERVERS)
  *     .setRecordSerializer(MY_RECORD_SERIALIZER)
- *     .setKafkaProducerConfig(MY_PRODUCER_CONFIG)
  *     .build();
  * }</pre>
  *
@@ -56,6 +56,7 @@ import static org.apache.flink.util.Preconditions.checkState;
  * @see KafkaSink for a more detailed explanation of the different guarantees.
  * @param <IN> type of the records written to Kafka
  */
+@PublicEvolving
 public class KafkaSinkBuilder<IN> {
 
     private static final Logger LOG = LoggerFactory.getLogger(KafkaSinkBuilder.class);
@@ -68,6 +69,8 @@ public class KafkaSinkBuilder<IN> {
     private Properties kafkaProducerConfig;
     private KafkaRecordSerializationSchema<IN> recordSerializer;
     private String bootstrapServers;
+
+    KafkaSinkBuilder() {}
 
     /**
      * Sets the wanted the {@link DeliveryGuarantee}. The default delivery guarantee is {@link
@@ -183,7 +186,9 @@ public class KafkaSinkBuilder<IN> {
      * @return {@link KafkaSink}
      */
     public KafkaSink<IN> build() {
-        checkNotNull(kafkaProducerConfig, "kafkaProducerConfig");
+        if (kafkaProducerConfig == null) {
+            setKafkaProducerConfig(new Properties());
+        }
         checkNotNull(bootstrapServers);
         if (deliveryGuarantee == DeliveryGuarantee.EXACTLY_ONCE) {
             checkState(

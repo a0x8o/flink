@@ -21,6 +21,7 @@ import org.apache.flink.api.common.serialization.SerializationSchema;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
 import org.apache.flink.metrics.MetricGroup;
 import org.apache.flink.streaming.connectors.kafka.partitioner.FlinkKafkaPartitioner;
+import org.apache.flink.util.TestLogger;
 import org.apache.flink.util.UserCodeClassLoader;
 
 import org.apache.flink.shaded.guava30.com.google.common.collect.ImmutableList;
@@ -48,7 +49,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** Tests for {@link KafkaRecordSerializationSchemaBuilder}. */
-public class KafkaRecordSerializationSchemaBuilderTest {
+public class KafkaRecordSerializationSchemaBuilderTest extends TestLogger {
 
     private static final String DEFAULT_TOPIC = "test";
 
@@ -103,7 +104,7 @@ public class KafkaRecordSerializationSchemaBuilderTest {
 
     @Test
     public void testSerializeRecordWithTopicSelector() {
-        final Function<String, String> topicSelector =
+        final TopicSelector<String> topicSelector =
                 (e) -> {
                     if (e.equals("a")) {
                         return "topic-a";
@@ -194,6 +195,32 @@ public class KafkaRecordSerializationSchemaBuilderTest {
         final Deserializer<String> deserializer = new StringDeserializer();
         final ProducerRecord<byte[], byte[]> record = schema.serialize("a", null, null);
         assertEquals("a", deserializer.deserialize(DEFAULT_TOPIC, record.value()));
+    }
+
+    @Test
+    public void testSerializeRecordWithTimestamp() {
+        final SerializationSchema<String> serializationSchema = new SimpleStringSchema();
+        final KafkaRecordSerializationSchema<String> schema =
+                KafkaRecordSerializationSchema.builder()
+                        .setTopic(DEFAULT_TOPIC)
+                        .setValueSerializationSchema(serializationSchema)
+                        .setKeySerializationSchema(serializationSchema)
+                        .build();
+        final ProducerRecord<byte[], byte[]> recordWithTimestamp =
+                schema.serialize("a", null, 100L);
+        assertEquals(100L, (long) recordWithTimestamp.timestamp());
+
+        final ProducerRecord<byte[], byte[]> recordWithTimestampZero =
+                schema.serialize("a", null, 0L);
+        assertEquals(0L, (long) recordWithTimestampZero.timestamp());
+
+        final ProducerRecord<byte[], byte[]> recordWithoutTimestamp =
+                schema.serialize("a", null, null);
+        assertNull(recordWithoutTimestamp.timestamp());
+
+        final ProducerRecord<byte[], byte[]> recordWithInvalidTimestamp =
+                schema.serialize("a", null, -100L);
+        assertNull(recordWithInvalidTimestamp.timestamp());
     }
 
     private static void assertOnlyOneSerializerAllowed(

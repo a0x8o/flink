@@ -23,7 +23,7 @@ import org.apache.flink.api.connector.source.Boundedness;
 import org.apache.flink.api.connector.source.Source;
 
 import java.io.Serializable;
-import java.util.Collection;
+import java.util.List;
 
 /**
  * Context of the test interacting with external system.
@@ -59,10 +59,14 @@ public interface ExternalContext<T> extends Serializable, AutoCloseable {
     /**
      * Generate test data.
      *
+     * <p>Make sure that the {@link T#equals(Object)} returns false when the records in different
+     * splits.
+     *
+     * @param splitIndex index of the split.
      * @param seed Seed for generating random test data set.
-     * @return Collection of generated test data.
+     * @return List of generated test data.
      */
-    Collection<T> generateTestData(long seed);
+    List<T> generateTestData(int splitIndex, long seed);
 
     /**
      * Factory for {@link ExternalContext}.

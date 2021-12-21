@@ -33,6 +33,21 @@ class JoinTest extends TableTestBase {
   util.addTableSource[(Long, String, Int)]("s", 'x, 'y, 'z)
 
   @Test
+  def testDependentConditionDerivationInnerJoin: Unit = {
+    util.verifyExecPlan("SELECT a1, b1 FROM A JOIN B ON (a1 = 1 AND b1 = 1) OR (a2 = 2 AND b2 = 2)")
+  }
+
+  @Test
+  def testDependentConditionDerivationInnerJoinWithTrue: Unit = {
+    util.verifyExecPlan("SELECT a1, b1 FROM A JOIN B ON (a1 = 1 AND b1 = 1) OR (a2 = 2 AND true)")
+  }
+
+  @Test
+  def testDependentConditionDerivationInnerJoinWithNull: Unit = {
+    util.verifyExecPlan("SELECT * FROM t JOIN s ON (a = 1 AND x = 1) OR (a = 2 AND y is null)")
+  }
+
+  @Test
   def testInnerJoin(): Unit = {
     util.verifyExecPlan("SELECT a1, b1 FROM A JOIN B ON a1 = b1")
   }
@@ -332,5 +347,165 @@ class JoinTest extends TableTestBase {
         |   WHERE T.sum_votes = award.votes) T1, people T2
         | WHERE T1.person = T2.person
         |""".stripMargin)
+  }
+
+  @Test
+  def testJoinOutputUpsertKeyNotMatchSinkPk(): Unit = {
+    // test for FLINK-20370
+    util.tableEnv.executeSql(
+      """
+        |create table source_city (
+        | id varchar,
+        | city_name varchar,
+        | primary key (id) not enforced
+        |) with (
+        | 'connector' = 'values',
+        | 'changelog-mode' = 'I,UA,D'
+        |)
+        |""".stripMargin)
+
+    util.tableEnv.executeSql(
+      """
+        |create table source_customer (
+        | customer_id varchar,
+        | city_id varchar,
+        | age int,
+        | gender varchar,
+        | update_time timestamp(3),
+        | primary key (customer_id) not enforced
+        |) with (
+        | 'connector' = 'values',
+        | 'changelog-mode' = 'I,UA,D'
+        |)
+        |""".stripMargin)
+
+    util.tableEnv.executeSql(
+      """
+        |create table sink (
+        | city_id varchar,
+        | city_name varchar,
+        | customer_cnt bigint,
+        | primary key (city_name) not enforced
+        |) with (
+        | 'connector' = 'values'
+        | ,'sink-insert-only' = 'false'
+        |)
+        |""".stripMargin)
+
+    // verify UB should reserve and add upsertMaterialize if join outputs' upsert keys differs from
+    // sink's pks
+    util.verifyExplainInsert(
+      """
+        |insert into sink
+        |select t1.city_id, t2.city_name, t1.customer_cnt
+        | from (select city_id, count(*) customer_cnt from source_customer group by city_id) t1
+        | join source_city t2 on t1.city_id = t2.id
+        |""".stripMargin, ExplainDetail.CHANGELOG_MODE)
+  }
+
+  @Test
+  def testJoinOutputUpsertKeyInSinkPk(): Unit = {
+    // test for FLINK-20370
+    util.tableEnv.executeSql(
+      """
+        |create table source_city (
+        | id varchar,
+        | city_name varchar,
+        | primary key (id) not enforced
+        |) with (
+        | 'connector' = 'values',
+        | 'changelog-mode' = 'I,UA,D'
+        |)
+        |""".stripMargin)
+
+    util.tableEnv.executeSql(
+      """
+        |create table source_customer (
+        | customer_id varchar,
+        | city_id varchar,
+        | age int,
+        | gender varchar,
+        | update_time timestamp(3),
+        | primary key (customer_id) not enforced
+        |) with (
+        | 'connector' = 'values',
+        | 'changelog-mode' = 'I,UA,D'
+        |)
+        |""".stripMargin)
+
+    util.tableEnv.executeSql(
+      """
+        |create table sink (
+        | city_id varchar,
+        | city_name varchar,
+        | customer_cnt bigint,
+        | primary key (city_id, city_name) not enforced
+        |) with (
+        | 'connector' = 'values'
+        | ,'sink-insert-only' = 'false'
+        |)
+        |""".stripMargin)
+
+    // verify UB should reserve and no upsertMaterialize if join outputs' upsert keys are subset of
+    // sink's pks
+    util.verifyExplainInsert(
+      """
+        |insert into sink
+        |select t1.city_id, t2.city_name, t1.customer_cnt
+        | from (select city_id, count(*) customer_cnt from source_customer group by city_id) t1
+        | join source_city t2 on t1.city_id = t2.id
+        |""".stripMargin, ExplainDetail.CHANGELOG_MODE)
+  }
+
+  @Test
+  def testJoinOutputLostUpsertKeyWithSinkPk(): Unit = {
+    // test for FLINK-20370
+    util.tableEnv.executeSql(
+      """
+        |create table source_city (
+        | id varchar,
+        | city_name varchar,
+        | primary key (id) not enforced
+        |) with (
+        | 'connector' = 'values',
+        | 'changelog-mode' = 'I,UA,D'
+        |)
+        |""".stripMargin)
+
+    util.tableEnv.executeSql(
+      """
+        |create table source_customer (
+        | customer_id varchar,
+        | city_id varchar,
+        | age int,
+        | gender varchar,
+        | update_time timestamp(3),
+        | primary key (customer_id) not enforced
+        |) with (
+        | 'connector' = 'values',
+        | 'changelog-mode' = 'I,UA,D'
+        |)
+        |""".stripMargin)
+
+    util.tableEnv.executeSql(
+      """
+        |create table sink (
+        | city_name varchar,
+        | customer_cnt bigint,
+        | primary key (city_name) not enforced
+        |) with (
+        | 'connector' = 'values'
+        | ,'sink-insert-only' = 'false'
+        |)
+        |""".stripMargin)
+
+    // verify UB should reserve and add upsertMaterialize if join outputs' lost upsert keys
+    util.verifyExplainInsert(
+      """
+        |insert into sink
+        |select t2.city_name, t1.customer_cnt
+        | from (select city_id, count(*) customer_cnt from source_customer group by city_id) t1
+        | join source_city t2 on t1.city_id = t2.id
+        |""".stripMargin, ExplainDetail.CHANGELOG_MODE)
   }
 }
