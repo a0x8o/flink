@@ -224,12 +224,6 @@ under the License.
 			<version>${project.version}</version>
 			<scope>test</scope>
 		</dependency>
-		<dependency>
-			<groupId>org.apache.flink</groupId>
-			<artifactId>flink-connector-testing</artifactId>
-			<version>${project.version}</version>
-			<scope>test</scope>
-		</dependency>
 	</dependencies>
 
 	<build>
@@ -283,7 +277,7 @@ under the License.
 				<configuration>
 					<!-- Enforce single fork execution due to heavy mini cluster use in the tests -->
 					<forkCount>1</forkCount>
-					<argLine>-Xms256m -Xmx2048m -Dmvn.forkNumber=${surefire.forkNumber} -XX:-UseGCOverheadLimit</argLine>
+					<argLine>-Xms256m -Xmx2048m -Dmvn.forkNumber=${surefire.forkNumber} -XX:-UseGCOverheadLimit -Duser.country=US -Duser.language=en</argLine>
 				</configuration>
 			</plugin>
 		</plugins>

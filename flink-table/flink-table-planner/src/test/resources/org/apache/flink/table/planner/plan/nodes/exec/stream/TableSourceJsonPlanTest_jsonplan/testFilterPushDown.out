@@ -3,11 +3,7 @@
   "nodes" : [ {
     "class" : "org.apache.flink.table.planner.plan.nodes.exec.stream.StreamExecTableSourceScan",
     "scanTableSource" : {
-      "identifier" : {
-        "catalogName" : "default_catalog",
-        "databaseName" : "default_database",
-        "tableName" : "src"
-      },
+      "identifier" : "`default_catalog`.`default_database`.`src`",
       "catalogTable" : {
         "schema.2.data-type" : "VARCHAR(2147483647)",
         "connector" : "values",
@@ -31,47 +27,24 @@
           "operands" : [ {
             "kind" : "INPUT_REF",
             "inputIndex" : 0,
-            "type" : {
-              "typeName" : "BIGINT",
-              "nullable" : true
-            }
+            "type" : "BIGINT"
           }, {
             "kind" : "LITERAL",
             "value" : "0",
-            "type" : {
-              "typeName" : "INTEGER",
-              "nullable" : false
-            }
+            "type" : "INT NOT NULL"
           } ],
-          "type" : {
-            "typeName" : "BOOLEAN",
-            "nullable" : true
-          }
+          "type" : "BOOLEAN"
         } ]
       } ]
     },
     "id" : 1,
-    "outputType" : {
-      "type" : "ROW",
-      "nullable" : true,
-      "fields" : [ {
-        "a" : "BIGINT"
-      }, {
-        "b" : "INT"
-      }, {
-        "c" : "VARCHAR(2147483647)"
-      } ]
-    },
+    "outputType" : "ROW<`a` BIGINT, `b` INT, `c` VARCHAR(2147483647)>",
     "description" : "TableSourceScan(table=[[default_catalog, default_database, src, filter=[>(a, 0)]]], fields=[a, b, c])",
     "inputProperties" : [ ]
   }, {
     "class" : "org.apache.flink.table.planner.plan.nodes.exec.stream.StreamExecSink",
     "dynamicTableSink" : {
-      "identifier" : {
-        "catalogName" : "default_catalog",
-        "databaseName" : "default_database",
-        "tableName" : "MySink"
-      },
+      "identifier" : "`default_catalog`.`default_database`.`MySink`",
       "catalogTable" : {
         "table-sink-class" : "DEFAULT",
         "schema.2.data-type" : "VARCHAR(2147483647)",
@@ -92,17 +65,7 @@
       "damBehavior" : "PIPELINED",
       "priority" : 0
     } ],
-    "outputType" : {
-      "type" : "ROW",
-      "nullable" : true,
-      "fields" : [ {
-        "a" : "BIGINT"
-      }, {
-        "b" : "INT"
-      }, {
-        "c" : "VARCHAR(2147483647)"
-      } ]
-    },
+    "outputType" : "ROW<`a` BIGINT, `b` INT, `c` VARCHAR(2147483647)>",
     "description" : "Sink(table=[default_catalog.default_database.MySink], fields=[a, b, c])"
   } ],
   "edges" : [ {

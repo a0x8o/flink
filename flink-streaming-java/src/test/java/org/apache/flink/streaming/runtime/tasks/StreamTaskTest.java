@@ -21,6 +21,7 @@ package org.apache.flink.streaming.runtime.tasks;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.common.operators.MailboxExecutor;
+import org.apache.flink.api.common.operators.ProcessingTimeService.ProcessingTimeCallback;
 import org.apache.flink.api.common.state.CheckpointListener;
 import org.apache.flink.api.common.typeinfo.BasicTypeInfo;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
@@ -99,7 +100,6 @@ import org.apache.flink.runtime.util.NettyShuffleDescriptorBuilder;
 import org.apache.flink.runtime.util.TestingTaskManagerRuntimeInfo;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.checkpoint.CheckpointedFunction;
-import org.apache.flink.streaming.api.environment.ExecutionCheckpointingOptions;
 import org.apache.flink.streaming.api.functions.source.RichParallelSourceFunction;
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
 import org.apache.flink.streaming.api.graph.StreamConfig;
@@ -1374,7 +1374,7 @@ public class StreamTaskTest extends TestLogger {
                             completeFutureTask,
                             sleepTimeInsideMail,
                             sleepTimeOutsideMail,
-                            ioMetricGroup.getBackPressuredTimePerSecond());
+                            ioMetricGroup.getSoftBackPressuredTimePerSecond());
             // Make sure WaitingThread is started after Task starts processing.
             executor.submit(
                     waitingThread::start,
@@ -1385,10 +1385,10 @@ public class StreamTaskTest extends TestLogger {
             task.invoke();
             long totalDuration = System.currentTimeMillis() - startTs;
             assertThat(
-                    ioMetricGroup.getBackPressuredTimePerSecond().getCount(),
+                    ioMetricGroup.getSoftBackPressuredTimePerSecond().getCount(),
                     greaterThanOrEqualTo(sleepTimeOutsideMail));
             assertThat(
-                    ioMetricGroup.getBackPressuredTimePerSecond().getCount(),
+                    ioMetricGroup.getSoftBackPressuredTimePerSecond().getCount(),
                     Matchers.lessThanOrEqualTo(totalDuration - sleepTimeInsideMail));
             assertThat(ioMetricGroup.getIdleTimeMsPerSecond().getCount(), is(0L));
             assertEquals(numberOfProcessCalls, inputProcessor.currentNumProcessCalls);
@@ -1447,7 +1447,8 @@ public class StreamTaskTest extends TestLogger {
             assertThat(
                     ioMetricGroup.getIdleTimeMsPerSecond().getCount(),
                     Matchers.lessThanOrEqualTo(totalDuration - sleepTimeInsideMail));
-            assertThat(ioMetricGroup.getBackPressuredTimePerSecond().getCount(), is(0L));
+            assertThat(ioMetricGroup.getSoftBackPressuredTimePerSecond().getCount(), is(0L));
+            assertThat(ioMetricGroup.getHardBackPressuredTimePerSecond().getCount(), is(0L));
         } finally {
             if (waitingThread != null) {
                 waitingThread.join();
@@ -1598,15 +1599,7 @@ public class StreamTaskTest extends TestLogger {
                 new StreamTaskMailboxTestHarnessBuilder<>(
                                 OneInputStreamTask::new, BasicTypeInfo.STRING_TYPE_INFO)
                         .addInput(BasicTypeInfo.STRING_TYPE_INFO, 3)
-                        .modifyStreamConfig(
-                                config -> {
-                                    config.setCheckpointingEnabled(true);
-                                    config.getConfiguration()
-                                            .set(
-                                                    ExecutionCheckpointingOptions
-                                                            .ENABLE_CHECKPOINTS_AFTER_TASKS_FINISH,
-                                                    true);
-                                })
+                        .modifyStreamConfig(config -> config.setCheckpointingEnabled(true))
                         .setupOutputForSingletonOperatorChain(
                                 new CheckpointCompleteRecordOperator())
                         .build()) {
@@ -1632,15 +1625,7 @@ public class StreamTaskTest extends TestLogger {
                                 OneInputStreamTask::new, BasicTypeInfo.STRING_TYPE_INFO)
                         .addInput(BasicTypeInfo.STRING_TYPE_INFO, 3)
                         .setTaskStateSnapshot(3, new TaskStateSnapshot())
-                        .modifyStreamConfig(
-                                config -> {
-                                    config.setCheckpointingEnabled(true);
-                                    config.getConfiguration()
-                                            .set(
-                                                    ExecutionCheckpointingOptions
-                                                            .ENABLE_CHECKPOINTS_AFTER_TASKS_FINISH,
-                                                    true);
-                                })
+                        .modifyStreamConfig(config -> config.setCheckpointingEnabled(true))
                         .setupOutputForSingletonOperatorChain(
                                 new CheckpointCompleteRecordOperator())
                         .build()) {

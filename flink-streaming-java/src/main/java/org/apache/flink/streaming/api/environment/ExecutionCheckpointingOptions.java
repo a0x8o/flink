@@ -84,7 +84,7 @@ public class ExecutionCheckpointingOptions {
                     .intType()
                     .noDefaultValue()
                     .withDescription(
-                            "The tolerable checkpoint failure number. If set to 0, that means "
+                            "The tolerable checkpoint consecutive failure number. If set to 0, that means "
                                     + "we do not tolerance any checkpoint failure.");
 
     public static final ConfigOption<CheckpointConfig.ExternalizedCheckpointCleanup>
@@ -238,7 +238,7 @@ public class ExecutionCheckpointingOptions {
     public static final ConfigOption<Boolean> ENABLE_CHECKPOINTS_AFTER_TASKS_FINISH =
             ConfigOptions.key("execution.checkpointing.checkpoints-after-tasks-finish.enabled")
                     .booleanType()
-                    .defaultValue(false)
+                    .defaultValue(true)
                     .withDescription(
                             Description.builder()
                                     .text(

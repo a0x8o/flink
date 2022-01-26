@@ -26,6 +26,8 @@ import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.core.testutils.FlinkMatchers;
 import org.apache.flink.core.testutils.OneShotLatch;
+import org.apache.flink.runtime.blob.BlobServer;
+import org.apache.flink.runtime.blob.PermanentBlobKey;
 import org.apache.flink.runtime.checkpoint.Checkpoints;
 import org.apache.flink.runtime.checkpoint.metadata.CheckpointMetadata;
 import org.apache.flink.runtime.client.DuplicateJobSubmissionException;
@@ -81,10 +83,12 @@ import org.apache.flink.runtime.testutils.TestingJobGraphStore;
 import org.apache.flink.runtime.util.TestingFatalErrorHandler;
 import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.FlinkException;
+import org.apache.flink.util.InstantiationUtil;
 import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.TimeUtils;
 import org.apache.flink.util.function.ThrowingRunnable;
 
+import org.assertj.core.api.Assertions;
 import org.hamcrest.Matchers;
 import org.junit.After;
 import org.junit.Assert;
@@ -98,6 +102,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
@@ -995,6 +1000,25 @@ public class DispatcherTest extends AbstractDispatcherTest {
                 JobStatus.FINISHED, dispatcherGateway.requestMultipleJobDetails(TIMEOUT).get());
     }
 
+    @Test
+    public void testRequestMultipleJobDetails_isSerializable() throws Exception {
+        final JobManagerRunnerFactory blockingJobMaster =
+                new QueuedJobManagerRunnerFactory(
+                        completedJobManagerRunnerWithJobStatus(JobStatus.SUSPENDED));
+
+        dispatcher = createAndStartDispatcher(heartbeatServices, haServices, blockingJobMaster);
+        DispatcherGateway dispatcherGateway = dispatcher.getSelfGateway(DispatcherGateway.class);
+        jobMasterLeaderElectionService.isLeader(UUID.randomUUID());
+
+        dispatcherGateway.submitJob(jobGraph, TIMEOUT).get();
+        dispatcherGateway.requestJobResult(jobId, TIMEOUT).get();
+
+        final MultipleJobsDetails multipleJobsDetails =
+                dispatcherGateway.requestMultipleJobDetails(TIMEOUT).get();
+
+        InstantiationUtil.serializeObject(multipleJobsDetails);
+    }
+
     private JobManagerRunner runningJobManagerRunnerWithJobStatus(
             final JobStatus currentJobStatus) {
         Preconditions.checkArgument(!currentJobStatus.isTerminalState());
@@ -1043,6 +1067,57 @@ public class DispatcherTest extends AbstractDispatcherTest {
     @Test
     public void testJobDataAreCleanedUpInCorrectOrderOnFailedJob() throws Exception {
         testJobDataAreCleanedUpInCorrectOrder(JobStatus.FAILED);
+    }
+
+    @Test
+    public void testOnlyRecoveredJobsAreRetainedInTheBlobServer() throws Exception {
+        final JobID jobId1 = new JobID();
+        final JobID jobId2 = new JobID();
+        final byte[] fileContent = {1, 2, 3, 4};
+        final BlobServer blobServer = getBlobServer();
+        final PermanentBlobKey blobKey1 = blobServer.putPermanent(jobId1, fileContent);
+        final PermanentBlobKey blobKey2 = blobServer.putPermanent(jobId2, fileContent);
+
+        dispatcher =
+                new TestingDispatcherBuilder()
+                        .setInitialJobGraphs(Collections.singleton(new JobGraph(jobId1, "foobar")))
+                        .build();
+
+        Assertions.assertThat(blobServer.getFile(jobId1, blobKey1)).hasBinaryContent(fileContent);
+        Assertions.assertThatThrownBy(() -> blobServer.getFile(jobId2, blobKey2))
+                .isInstanceOf(NoSuchFileException.class);
+    }
+
+    @Test
+    public void testRetrieveJobResultAfterSubmissionOfFailedJob() throws Exception {
+        dispatcher =
+                createAndStartDispatcher(
+                        heartbeatServices,
+                        haServices,
+                        new ExpectedJobIdJobManagerRunnerFactory(
+                                jobId, createdJobManagerRunnerLatch));
+        final DispatcherGateway dispatcherGateway =
+                dispatcher.getSelfGateway(DispatcherGateway.class);
+        final JobID failedJobId = new JobID();
+        final String failedJobName = "test";
+        final CompletableFuture<Acknowledge> submitFuture =
+                dispatcherGateway.submitFailedJob(
+                        failedJobId, failedJobName, new RuntimeException("Test exception."));
+        submitFuture.get();
+        final ArchivedExecutionGraph archivedExecutionGraph =
+                dispatcherGateway.requestJob(failedJobId, TIMEOUT).get();
+        Assertions.assertThat(archivedExecutionGraph.getJobID()).isEqualTo(failedJobId);
+        Assertions.assertThat(archivedExecutionGraph.getJobName()).isEqualTo(failedJobName);
+        Assertions.assertThat(archivedExecutionGraph.getState()).isEqualTo(JobStatus.FAILED);
+        Assertions.assertThat(archivedExecutionGraph.getFailureInfo())
+                .isNotNull()
+                .extracting(ErrorInfo::getException)
+                .extracting(e -> e.deserializeError(Thread.currentThread().getContextClassLoader()))
+                .satisfies(
+                        exception ->
+                                Assertions.assertThat(exception)
+                                        .isInstanceOf(RuntimeException.class)
+                                        .hasMessage("Test exception."));
     }
 
     private void testJobDataAreCleanedUpInCorrectOrder(JobStatus jobStatus) throws Exception {

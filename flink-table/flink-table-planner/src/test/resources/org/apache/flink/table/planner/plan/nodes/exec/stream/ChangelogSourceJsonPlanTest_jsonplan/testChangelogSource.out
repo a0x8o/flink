@@ -3,11 +3,7 @@
   "nodes" : [ {
     "class" : "org.apache.flink.table.planner.plan.nodes.exec.stream.StreamExecTableSourceScan",
     "scanTableSource" : {
-      "identifier" : {
-        "catalogName" : "default_catalog",
-        "databaseName" : "default_database",
-        "tableName" : "MyTable"
-      },
+      "identifier" : "`default_catalog`.`default_database`.`MyTable`",
       "catalogTable" : {
         "schema.0.data-type" : "BIGINT NOT NULL",
         "schema.2.name" : "c",
@@ -26,39 +22,15 @@
       "sourceAbilitySpecs" : [ {
         "type" : "ProjectPushDown",
         "projectedFields" : [ [ 0 ], [ 1 ] ],
-        "producedType" : {
-          "type" : "ROW",
-          "nullable" : false,
-          "fields" : [ {
-            "a" : "BIGINT NOT NULL"
-          }, {
-            "b" : "INT NOT NULL"
-          } ]
-        }
+        "producedType" : "ROW<`a` BIGINT NOT NULL, `b` INT NOT NULL> NOT NULL"
       }, {
         "type" : "ReadingMetadata",
         "metadataKeys" : [ ],
-        "producedType" : {
-          "type" : "ROW",
-          "nullable" : false,
-          "fields" : [ {
-            "a" : "BIGINT NOT NULL"
-          }, {
-            "b" : "INT NOT NULL"
-          } ]
-        }
+        "producedType" : "ROW<`a` BIGINT NOT NULL, `b` INT NOT NULL> NOT NULL"
       } ]
     },
     "id" : 1,
-    "outputType" : {
-      "type" : "ROW",
-      "nullable" : true,
-      "fields" : [ {
-        "a" : "BIGINT NOT NULL"
-      }, {
-        "b" : "INT NOT NULL"
-      } ]
-    },
+    "outputType" : "ROW<`a` BIGINT NOT NULL, `b` INT NOT NULL>",
     "description" : "TableSourceScan(table=[[default_catalog, default_database, MyTable, project=[a, b], metadata=[]]], fields=[a, b])",
     "inputProperties" : [ ]
   }, {
@@ -71,15 +43,7 @@
       "damBehavior" : "PIPELINED",
       "priority" : 0
     } ],
-    "outputType" : {
-      "type" : "ROW",
-      "nullable" : true,
-      "fields" : [ {
-        "a" : "BIGINT NOT NULL"
-      }, {
-        "b" : "INT NOT NULL"
-      } ]
-    },
+    "outputType" : "ROW<`a` BIGINT NOT NULL, `b` INT NOT NULL>",
     "description" : "DropUpdateBefore"
   }, {
     "class" : "org.apache.flink.table.planner.plan.nodes.exec.stream.StreamExecExchange",
@@ -92,15 +56,7 @@
       "damBehavior" : "PIPELINED",
       "priority" : 0
     } ],
-    "outputType" : {
-      "type" : "ROW",
-      "nullable" : true,
-      "fields" : [ {
-        "a" : "BIGINT NOT NULL"
-      }, {
-        "b" : "INT NOT NULL"
-      } ]
-    },
+    "outputType" : "ROW<`a` BIGINT NOT NULL, `b` INT NOT NULL>",
     "description" : "Exchange(distribution=[hash[a, b]])"
   }, {
     "class" : "org.apache.flink.table.planner.plan.nodes.exec.stream.StreamExecChangelogNormalize",
@@ -114,24 +70,12 @@
       "damBehavior" : "PIPELINED",
       "priority" : 0
     } ],
-    "outputType" : {
-      "type" : "ROW",
-      "nullable" : true,
-      "fields" : [ {
-        "a" : "BIGINT NOT NULL"
-      }, {
-        "b" : "INT NOT NULL"
-      } ]
-    },
+    "outputType" : "ROW<`a` BIGINT NOT NULL, `b` INT NOT NULL>",
     "description" : "ChangelogNormalize(key=[a, b])"
   }, {
     "class" : "org.apache.flink.table.planner.plan.nodes.exec.stream.StreamExecSink",
     "dynamicTableSink" : {
-      "identifier" : {
-        "catalogName" : "default_catalog",
-        "databaseName" : "default_database",
-        "tableName" : "MySink"
-      },
+      "identifier" : "`default_catalog`.`default_database`.`MySink`",
       "catalogTable" : {
         "sink-insert-only" : "false",
         "table-sink-class" : "DEFAULT",
@@ -151,15 +95,7 @@
       "damBehavior" : "PIPELINED",
       "priority" : 0
     } ],
-    "outputType" : {
-      "type" : "ROW",
-      "nullable" : true,
-      "fields" : [ {
-        "a" : "BIGINT NOT NULL"
-      }, {
-        "b" : "INT NOT NULL"
-      } ]
-    },
+    "outputType" : "ROW<`a` BIGINT NOT NULL, `b` INT NOT NULL>",
     "description" : "Sink(table=[default_catalog.default_database.MySink], fields=[a, b])"
   } ],
   "edges" : [ {

@@ -19,8 +19,11 @@
 package org.apache.flink.table.catalog;
 
 import org.apache.flink.annotation.Internal;
+import org.apache.flink.api.common.RuntimeExecutionMode;
+import org.apache.flink.configuration.ExecutionOptions;
 import org.apache.flink.configuration.ReadableConfig;
 import org.apache.flink.table.api.TableException;
+import org.apache.flink.table.api.ValidationException;
 import org.apache.flink.table.descriptors.ConnectorDescriptorValidator;
 import org.apache.flink.table.factories.DynamicTableFactory;
 import org.apache.flink.table.factories.FactoryUtil;
@@ -28,6 +31,7 @@ import org.apache.flink.util.StringUtils;
 
 import javax.annotation.Nullable;
 
+import java.util.Collections;
 import java.util.Map;
 
 import static org.apache.flink.table.factories.ManagedTableFactory.discoverManagedTableFactory;
@@ -79,7 +83,29 @@ public class ManagedTableListener {
         }
     }
 
-    private boolean isManagedTable(@Nullable Catalog catalog, ResolvedCatalogBaseTable<?> table) {
+    /** Notify compaction for managed table. */
+    public Map<String, String> notifyTableCompaction(
+            @Nullable Catalog catalog,
+            ObjectIdentifier identifier,
+            ResolvedCatalogBaseTable<?> table,
+            CatalogPartitionSpec partitionSpec,
+            boolean isTemporary) {
+        if (isManagedTable(catalog, table)) {
+            if (RuntimeExecutionMode.STREAMING.equals(config.get(ExecutionOptions.RUNTIME_MODE))) {
+                throw new ValidationException("Compact managed table only works under batch mode.");
+            }
+            return discoverManagedTableFactory(classLoader)
+                    .onCompactTable(
+                            createTableFactoryContext(
+                                    identifier, (ResolvedCatalogTable) table, isTemporary),
+                            partitionSpec);
+        }
+        throw new ValidationException("Only managed table supports compaction");
+    }
+
+    /** Check a resolved catalog table is Flink's managed table or not. */
+    public static boolean isManagedTable(
+            @Nullable Catalog catalog, ResolvedCatalogBaseTable<?> table) {
         if (catalog == null || !catalog.supportsManagedTable()) {
             // catalog not support managed table
             return false;
@@ -132,6 +158,6 @@ public class ManagedTableListener {
     private DynamicTableFactory.Context createTableFactoryContext(
             ObjectIdentifier identifier, ResolvedCatalogTable table, boolean isTemporary) {
         return new FactoryUtil.DefaultDynamicTableContext(
-                identifier, table, config, classLoader, isTemporary);
+                identifier, table, Collections.emptyMap(), config, classLoader, isTemporary);
     }
 }

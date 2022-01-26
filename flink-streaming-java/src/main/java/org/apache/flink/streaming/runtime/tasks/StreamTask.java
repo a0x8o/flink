@@ -20,6 +20,7 @@ package org.apache.flink.streaming.runtime.tasks;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.operators.MailboxExecutor;
+import org.apache.flink.api.common.operators.ProcessingTimeService.ProcessingTimeCallback;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.TaskManagerOptions;
 import org.apache.flink.core.fs.AutoCloseableRegistry;
@@ -546,7 +547,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
         PeriodTimer timer;
         CompletableFuture<?> resumeFuture;
         if (!recordWriter.isAvailable()) {
-            timer = new GaugePeriodTimer(ioMetrics.getBackPressuredTimePerSecond());
+            timer = new GaugePeriodTimer(ioMetrics.getSoftBackPressuredTimePerSecond());
             resumeFuture = recordWriter.getAvailableFuture();
         } else if (!inputProcessor.isAvailable()) {
             timer = new GaugePeriodTimer(ioMetrics.getIdleTimeMsPerSecond());

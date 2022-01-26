@@ -47,6 +47,7 @@ import org.apache.flink.runtime.state.filesystem.AbstractFsCheckpointStorageAcce
 import org.apache.flink.runtime.state.filesystem.FileStateHandle;
 import org.apache.flink.runtime.state.filesystem.RelativeFileStateHandle;
 import org.apache.flink.runtime.state.memory.ByteStreamStateHandle;
+import org.apache.flink.util.IOUtils;
 import org.apache.flink.util.function.BiConsumerWithException;
 import org.apache.flink.util.function.BiFunctionWithException;
 
@@ -65,8 +66,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-
-import static org.apache.flink.util.Preconditions.checkState;
 
 /**
  * Base (De)serializer for checkpoint metadata format version 2 and 3.
@@ -337,6 +336,8 @@ public abstract class MetadataV2V3SerializerBase {
                 serializeKeyedStateHandle(k, dos);
             }
 
+            dos.writeLong(handle.getMaterializationID());
+
         } else if (stateHandle instanceof InMemoryChangelogStateHandle) {
             InMemoryChangelogStateHandle handle = (InMemoryChangelogStateHandle) stateHandle;
             dos.writeByte(CHANGELOG_BYTE_INCREMENT_HANDLE);
@@ -442,8 +443,11 @@ public abstract class MetadataV2V3SerializerBase {
             for (int i = 0; i < deltaSize; i++) {
                 delta.add((ChangelogStateHandle) deserializeKeyedStateHandle(dis, context));
             }
+
+            long materializationID = dis.readLong();
+
             return new ChangelogStateBackendHandle.ChangelogStateBackendHandleImpl(
-                    base, delta, keyGroupRange);
+                    base, delta, keyGroupRange, materializationID);
 
         } else if (CHANGELOG_BYTE_INCREMENT_HANDLE == type) {
             int start = dis.readInt();
@@ -457,7 +461,7 @@ public abstract class MetadataV2V3SerializerBase {
                 int keyGroup = dis.readInt();
                 int bytesSize = dis.readInt();
                 byte[] bytes = new byte[bytesSize];
-                checkState(bytesSize == dis.read(bytes));
+                IOUtils.readFully(dis, bytes, 0, bytesSize);
                 changes.add(new StateChange(keyGroup, bytes));
             }
             return new InMemoryChangelogStateHandle(changes, from, to, keyGroupRange);
