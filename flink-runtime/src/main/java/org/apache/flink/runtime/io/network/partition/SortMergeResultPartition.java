@@ -43,13 +43,11 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Queue;
+import java.util.Random;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 import static org.apache.flink.runtime.io.network.buffer.Buffer.DataType;
 import static org.apache.flink.util.Preconditions.checkElementIndex;
@@ -68,9 +66,9 @@ public class SortMergeResultPartition extends ResultPartition {
 
     /**
      * Number of expected buffer size to allocate for data writing. Currently, it is an empirical
-     * value (16M) which can not be configured.
+     * value (8M) which can not be configured.
      */
-    private static final int NUM_WRITE_BUFFER_BYTES = 16 * 1024 * 1024;
+    private static final int NUM_WRITE_BUFFER_BYTES = 8 * 1024 * 1024;
 
     private final Object lock = new Object();
 
@@ -141,7 +139,8 @@ public class SortMergeResultPartition extends ResultPartition {
         // input balance of the downstream tasks
         this.subpartitionOrder = getRandomSubpartitionOrder(numSubpartitions);
         this.readScheduler =
-                new SortMergeResultPartitionReadScheduler(readBufferPool, readIOExecutor, lock);
+                new SortMergeResultPartitionReadScheduler(
+                        numSubpartitions, readBufferPool, readIOExecutor, lock);
 
         PartitionedFileWriter fileWriter = null;
         try {
@@ -492,10 +491,13 @@ public class SortMergeResultPartition extends ResultPartition {
     }
 
     private int[] getRandomSubpartitionOrder(int numSubpartitions) {
-        List<Integer> list =
-                IntStream.range(0, numSubpartitions).boxed().collect(Collectors.toList());
-        Collections.shuffle(list);
-        return list.stream().mapToInt(Integer::intValue).toArray();
+        int[] order = new int[numSubpartitions];
+        Random random = new Random();
+        int shift = random.nextInt(numSubpartitions);
+        for (int channel = 0; channel < numSubpartitions; ++channel) {
+            order[(channel + shift) % numSubpartitions] = channel;
+        }
+        return order;
     }
 
     @VisibleForTesting

@@ -55,16 +55,20 @@ public interface ChangelogStateBackendHandle extends KeyedStateHandle {
         private final List<KeyedStateHandle> materialized;
         private final List<ChangelogStateHandle> nonMaterialized;
         private final KeyGroupRange keyGroupRange;
+
         private final long materializationID;
+        private final long persistedSizeOfThisCheckpoint;
 
         public ChangelogStateBackendHandleImpl(
                 List<KeyedStateHandle> materialized,
                 List<ChangelogStateHandle> nonMaterialized,
                 KeyGroupRange keyGroupRange,
-                long materializationID) {
+                long materializationID,
+                long persistedSizeOfThisCheckpoint) {
             this.materialized = unmodifiableList(materialized);
             this.nonMaterialized = unmodifiableList(nonMaterialized);
             this.keyGroupRange = keyGroupRange;
+            this.persistedSizeOfThisCheckpoint = persistedSizeOfThisCheckpoint;
             checkArgument(keyGroupRange.getNumberOfKeyGroups() > 0);
             this.materializationID = materializationID;
         }
@@ -110,13 +114,22 @@ public interface ChangelogStateBackendHandle extends KeyedStateHandle {
                             .filter(Objects::nonNull)
                             .collect(Collectors.toList());
             return new ChangelogStateBackendHandleImpl(
-                    basePart, deltaPart, intersection, materializationID);
+                    basePart,
+                    deltaPart,
+                    intersection,
+                    materializationID,
+                    persistedSizeOfThisCheckpoint);
         }
 
         @Override
         public long getStateSize() {
             return materialized.stream().mapToLong(StateObject::getStateSize).sum()
                     + nonMaterialized.stream().mapToLong(StateObject::getStateSize).sum();
+        }
+
+        @Override
+        public long getCheckpointedSize() {
+            return persistedSizeOfThisCheckpoint;
         }
 
         @Override

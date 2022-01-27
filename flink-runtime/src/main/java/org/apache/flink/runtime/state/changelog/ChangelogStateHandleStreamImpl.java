@@ -43,14 +43,24 @@ public final class ChangelogStateHandleStreamImpl implements ChangelogStateHandl
     private final List<Tuple2<StreamStateHandle, Long>> handlesAndOffsets;
 
     private final long size;
+    private final long incrementalSize;
 
     public ChangelogStateHandleStreamImpl(
             List<Tuple2<StreamStateHandle, Long>> handlesAndOffsets,
             KeyGroupRange keyGroupRange,
             long size) {
+        this(handlesAndOffsets, keyGroupRange, size, size);
+    }
+
+    public ChangelogStateHandleStreamImpl(
+            List<Tuple2<StreamStateHandle, Long>> handlesAndOffsets,
+            KeyGroupRange keyGroupRange,
+            long size,
+            long incrementalSize) {
         this.handlesAndOffsets = handlesAndOffsets;
         this.keyGroupRange = keyGroupRange;
         this.size = size;
+        this.incrementalSize = incrementalSize;
     }
 
     @Override
@@ -90,6 +100,11 @@ public final class ChangelogStateHandleStreamImpl implements ChangelogStateHandl
     @Override
     public long getStateSize() {
         return size;
+    }
+
+    @Override
+    public long getCheckpointedSize() {
+        return incrementalSize;
     }
 
     private static SharedStateRegistryKey getKey(StreamStateHandle stateHandle) {
