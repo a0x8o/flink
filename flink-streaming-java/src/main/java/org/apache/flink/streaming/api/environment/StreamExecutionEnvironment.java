@@ -168,10 +168,10 @@ public class StreamExecutionEnvironment {
     // ------------------------------------------------------------------------
 
     /** The execution configuration for this environment. */
-    private final ExecutionConfig config = new ExecutionConfig();
+    protected final ExecutionConfig config = new ExecutionConfig();
 
     /** Settings that control the checkpointing behavior. */
-    private final CheckpointConfig checkpointCfg = new CheckpointConfig();
+    protected final CheckpointConfig checkpointCfg = new CheckpointConfig();
 
     protected final List<Transformation<?>> transformations = new ArrayList<>();
 
@@ -2159,7 +2159,10 @@ public class StreamExecutionEnvironment {
                     "No operators defined in streaming topology. Cannot execute.");
         }
 
-        return new StreamGraphGenerator(transformations, config, checkpointCfg, configuration)
+        // We copy the transformation so that newly added transformations cannot intervene with the
+        // stream graph generation.
+        return new StreamGraphGenerator(
+                        new ArrayList<>(transformations), config, checkpointCfg, configuration)
                 .setStateBackend(defaultStateBackend)
                 .setChangelogStateBackendEnabled(changelogStateBackendEnabled)
                 .setSavepointDir(defaultSavepointDirectory)
@@ -2498,5 +2501,10 @@ public class StreamExecutionEnvironment {
             }
         }
         return (T) resolvedTypeInfo;
+    }
+
+    @Internal
+    public List<Transformation<?>> getTransformations() {
+        return transformations;
     }
 }

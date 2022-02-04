@@ -26,6 +26,7 @@ import org.apache.flink.api.common.JobStatus;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.MetricOptions;
 import org.apache.flink.configuration.WebOptions;
+import org.apache.flink.core.execution.SavepointFormatType;
 import org.apache.flink.metrics.Gauge;
 import org.apache.flink.metrics.MetricGroup;
 import org.apache.flink.queryablestate.KvStateID;
@@ -152,7 +153,7 @@ public abstract class SchedulerBase implements SchedulerNG, CheckpointScheduling
 
     private final ExecutionGraphHandler executionGraphHandler;
 
-    private final OperatorCoordinatorHandler operatorCoordinatorHandler;
+    protected final OperatorCoordinatorHandler operatorCoordinatorHandler;
 
     private final ComponentMainThreadExecutor mainThreadExecutor;
 
@@ -167,7 +168,6 @@ public abstract class SchedulerBase implements SchedulerNG, CheckpointScheduling
             final JobGraph jobGraph,
             final Executor ioExecutor,
             final Configuration jobMasterConfiguration,
-            final ClassLoader userCodeLoader,
             final CheckpointsCleaner checkpointsCleaner,
             final CheckpointRecoveryFactory checkpointRecoveryFactory,
             final JobManagerJobMetricGroup jobManagerJobMetricGroup,
@@ -192,7 +192,6 @@ public abstract class SchedulerBase implements SchedulerNG, CheckpointScheduling
                 SchedulerUtils.createCompletedCheckpointStoreIfCheckpointingIsEnabled(
                         jobGraph,
                         jobMasterConfiguration,
-                        userCodeLoader,
                         checkNotNull(checkpointRecoveryFactory),
                         ioExecutor,
                         log);
@@ -958,7 +957,9 @@ public abstract class SchedulerBase implements SchedulerNG, CheckpointScheduling
 
     @Override
     public CompletableFuture<String> triggerSavepoint(
-            final String targetDirectory, final boolean cancelJob) {
+            final String targetDirectory,
+            final boolean cancelJob,
+            final SavepointFormatType formatType) {
         mainThreadExecutor.assertRunningInMainThread();
 
         final CheckpointCoordinator checkpointCoordinator =
@@ -976,7 +977,7 @@ public abstract class SchedulerBase implements SchedulerNG, CheckpointScheduling
         }
 
         return checkpointCoordinator
-                .triggerSavepoint(targetDirectory)
+                .triggerSavepoint(targetDirectory, formatType)
                 .thenApply(CompletedCheckpoint::getExternalPointer)
                 .handleAsync(
                         (path, throwable) -> {
@@ -1076,7 +1077,9 @@ public abstract class SchedulerBase implements SchedulerNG, CheckpointScheduling
 
     @Override
     public CompletableFuture<String> stopWithSavepoint(
-            @Nullable final String targetDirectory, final boolean terminate) {
+            @Nullable final String targetDirectory,
+            final boolean terminate,
+            final SavepointFormatType formatType) {
         mainThreadExecutor.assertRunningInMainThread();
 
         final CheckpointCoordinator checkpointCoordinator =
@@ -1097,7 +1100,8 @@ public abstract class SchedulerBase implements SchedulerNG, CheckpointScheduling
                 getCombinedExecutionTerminationFuture();
 
         final CompletableFuture<CompletedCheckpoint> savepointFuture =
-                checkpointCoordinator.triggerSynchronousSavepoint(terminate, targetDirectory);
+                checkpointCoordinator.triggerSynchronousSavepoint(
+                        terminate, targetDirectory, formatType);
 
         final StopWithSavepointTerminationManager stopWithSavepointTerminationManager =
                 new StopWithSavepointTerminationManager(

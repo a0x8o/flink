@@ -24,6 +24,7 @@ import org.apache.flink.api.common.operators.ResourceSpec;
 import org.apache.flink.api.common.time.Deadline;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.core.execution.SavepointFormatType;
 import org.apache.flink.core.testutils.FlinkMatchers;
 import org.apache.flink.core.testutils.OneShotLatch;
 import org.apache.flink.runtime.blob.BlobServer;
@@ -87,11 +88,11 @@ import org.apache.flink.util.FlinkException;
 import org.apache.flink.util.InstantiationUtil;
 import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.TimeUtils;
+import org.apache.flink.util.concurrent.FutureUtils;
 import org.apache.flink.util.function.ThrowingRunnable;
 
 import org.assertj.core.api.Assertions;
 import org.hamcrest.Matchers;
-import org.hamcrest.collection.IsIterableContainingInAnyOrder;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
@@ -131,6 +132,7 @@ import static org.apache.flink.core.testutils.FlinkMatchers.containsMessage;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.greaterThan;
 import static org.hamcrest.Matchers.instanceOf;
+import static org.hamcrest.collection.IsIterableContainingInAnyOrder.containsInAnyOrder;
 import static org.hamcrest.core.Is.is;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -346,7 +348,11 @@ public class DispatcherTest extends AbstractDispatcherTest {
         try {
             dispatcherGateway
                     .triggerSavepointAndGetLocation(
-                            jobId, "file:///tmp/savepoint", TriggerSavepointMode.SAVEPOINT, TIMEOUT)
+                            jobId,
+                            "file:///tmp/savepoint",
+                            SavepointFormatType.CANONICAL,
+                            TriggerSavepointMode.SAVEPOINT,
+                            TIMEOUT)
                     .get();
             fail("Previous statement should have failed");
         } catch (ExecutionException t) {
@@ -740,16 +746,22 @@ public class DispatcherTest extends AbstractDispatcherTest {
 
         // Track cleanup - ha-services
         final CompletableFuture<JobID> cleanupJobData = new CompletableFuture<>();
-        haServices.setCleanupJobDataFuture(cleanupJobData);
+        haServices.setGlobalCleanupFuture(cleanupJobData);
         cleanupJobData.thenAccept(jobId -> cleanUpEvents.add(CLEANUP_HA_SERVICES));
 
         // Track cleanup - job-graph
         final TestingJobGraphStore jobGraphStore =
                 TestingJobGraphStore.newBuilder()
-                        .setReleaseJobGraphConsumer(
-                                jobId -> cleanUpEvents.add(CLEANUP_JOB_GRAPH_RELEASE))
-                        .setRemoveJobGraphConsumer(
-                                jobId -> cleanUpEvents.add(CLEANUP_JOB_GRAPH_REMOVE))
+                        .setLocalCleanupFunction(
+                                (jobId, executor) -> {
+                                    cleanUpEvents.add(CLEANUP_JOB_GRAPH_RELEASE);
+                                    return FutureUtils.completedVoidFuture();
+                                })
+                        .setGlobalCleanupFunction(
+                                (jobId, executor) -> {
+                                    cleanUpEvents.add(CLEANUP_JOB_GRAPH_REMOVE);
+                                    return FutureUtils.completedVoidFuture();
+                                })
                         .build();
         jobGraphStore.start(null);
         haServices.setJobGraphStore(jobGraphStore);
@@ -779,7 +791,7 @@ public class DispatcherTest extends AbstractDispatcherTest {
             // make sure we've cleaned up in correct order (including HA)
             assertThat(
                     new ArrayList<>(cleanUpEvents),
-                    equalTo(Arrays.asList(CLEANUP_JOB_GRAPH_REMOVE, CLEANUP_HA_SERVICES)));
+                    containsInAnyOrder(CLEANUP_JOB_GRAPH_REMOVE, CLEANUP_HA_SERVICES));
         }
 
         // don't fail this time
@@ -904,8 +916,16 @@ public class DispatcherTest extends AbstractDispatcherTest {
 
         final TestingJobGraphStore testingJobGraphStore =
                 TestingJobGraphStore.newBuilder()
-                        .setRemoveJobGraphConsumer(removeJobGraphFuture::complete)
-                        .setReleaseJobGraphConsumer(releaseJobGraphFuture::complete)
+                        .setGlobalCleanupFunction(
+                                (jobId, executor) -> {
+                                    removeJobGraphFuture.complete(jobId);
+                                    return FutureUtils.completedVoidFuture();
+                                })
+                        .setLocalCleanupFunction(
+                                (jobId, executor) -> {
+                                    releaseJobGraphFuture.complete(jobId);
+                                    return FutureUtils.completedVoidFuture();
+                                })
                         .build();
         testingJobGraphStore.start(null);
 
@@ -1136,16 +1156,22 @@ public class DispatcherTest extends AbstractDispatcherTest {
 
         // Track cleanup - ha-services
         final CompletableFuture<JobID> cleanupJobData = new CompletableFuture<>();
-        haServices.setCleanupJobDataFuture(cleanupJobData);
+        haServices.setGlobalCleanupFuture(cleanupJobData);
         cleanupJobData.thenAccept(jobId -> cleanUpEvents.add(CLEANUP_HA_SERVICES));
 
         // Track cleanup - job-graph
         final TestingJobGraphStore jobGraphStore =
                 TestingJobGraphStore.newBuilder()
-                        .setReleaseJobGraphConsumer(
-                                jobId -> cleanUpEvents.add(CLEANUP_JOB_GRAPH_RELEASE))
-                        .setRemoveJobGraphConsumer(
-                                jobId -> cleanUpEvents.add(CLEANUP_JOB_GRAPH_REMOVE))
+                        .setLocalCleanupFunction(
+                                (jobId, executor) -> {
+                                    cleanUpEvents.add(CLEANUP_JOB_GRAPH_RELEASE);
+                                    return FutureUtils.completedVoidFuture();
+                                })
+                        .setGlobalCleanupFunction(
+                                (jobId, executor) -> {
+                                    cleanUpEvents.add(CLEANUP_JOB_GRAPH_REMOVE);
+                                    return FutureUtils.completedVoidFuture();
+                                })
                         .build();
         jobGraphStore.start(null);
         haServices.setJobGraphStore(jobGraphStore);
@@ -1158,7 +1184,7 @@ public class DispatcherTest extends AbstractDispatcherTest {
                                         assertThat(
                                                 "All cleanup tasks should have been finished before marking the job as clean.",
                                                 cleanUpEvents,
-                                                IsIterableContainingInAnyOrder.containsInAnyOrder(
+                                                containsInAnyOrder(
                                                         CLEANUP_HA_SERVICES,
                                                         CLEANUP_JOB_GRAPH_REMOVE,
                                                         CLEANUP_JOB_MANAGER_RUNNER)))

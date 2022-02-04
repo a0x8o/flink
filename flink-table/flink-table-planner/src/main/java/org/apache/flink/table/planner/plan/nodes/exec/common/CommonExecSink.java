@@ -24,6 +24,7 @@ import org.apache.flink.api.java.typeutils.InputTypeConfigurable;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.state.KeyGroupRangeAssignment;
 import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.streaming.api.datastream.DataStreamSink;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.sink.OutputFormatSinkFunction;
 import org.apache.flink.streaming.api.functions.sink.SinkFunction;
@@ -31,7 +32,6 @@ import org.apache.flink.streaming.api.operators.SimpleOperatorFactory;
 import org.apache.flink.streaming.api.transformations.LegacySinkTransformation;
 import org.apache.flink.streaming.api.transformations.OneInputTransformation;
 import org.apache.flink.streaming.api.transformations.PartitionTransformation;
-import org.apache.flink.streaming.api.transformations.SinkTransformation;
 import org.apache.flink.streaming.runtime.partitioner.KeyGroupStreamPartitioner;
 import org.apache.flink.table.api.TableConfig;
 import org.apache.flink.table.api.TableException;
@@ -45,12 +45,14 @@ import org.apache.flink.table.connector.sink.DynamicTableSink.SinkRuntimeProvide
 import org.apache.flink.table.connector.sink.OutputFormatProvider;
 import org.apache.flink.table.connector.sink.SinkFunctionProvider;
 import org.apache.flink.table.connector.sink.SinkProvider;
+import org.apache.flink.table.connector.sink.SinkV2Provider;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.planner.codegen.EqualiserCodeGenerator;
 import org.apache.flink.table.planner.connectors.TransformationSinkProvider;
 import org.apache.flink.table.planner.delegation.PlannerBase;
 import org.apache.flink.table.planner.plan.nodes.exec.ExecNode;
 import org.apache.flink.table.planner.plan.nodes.exec.ExecNodeBase;
+import org.apache.flink.table.planner.plan.nodes.exec.ExecNodeContext;
 import org.apache.flink.table.planner.plan.nodes.exec.InputProperty;
 import org.apache.flink.table.planner.plan.nodes.exec.MultipleTransformationTranslator;
 import org.apache.flink.table.planner.plan.nodes.exec.spec.DynamicTableSinkSpec;
@@ -74,7 +76,6 @@ import org.apache.flink.table.types.logical.RowType;
 import org.apache.flink.table.types.logical.utils.LogicalTypeChecks;
 import org.apache.flink.types.RowKind;
 
-import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.annotation.JsonIgnore;
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.util.ArrayList;
@@ -94,18 +95,19 @@ public abstract class CommonExecSink extends ExecNodeBase<Object>
     @JsonProperty(FIELD_NAME_DYNAMIC_TABLE_SINK)
     protected final DynamicTableSinkSpec tableSinkSpec;
 
-    @JsonIgnore private final ChangelogMode inputChangelogMode;
-    @JsonIgnore private final boolean isBounded;
+    private final ChangelogMode inputChangelogMode;
+    private final boolean isBounded;
 
     protected CommonExecSink(
+            int id,
+            ExecNodeContext context,
             DynamicTableSinkSpec tableSinkSpec,
             ChangelogMode inputChangelogMode,
             boolean isBounded,
-            int id,
             List<InputProperty> inputProperties,
             LogicalType outputType,
             String description) {
-        super(id, inputProperties, outputType, description);
+        super(id, context, inputProperties, outputType, description);
         this.tableSinkSpec = tableSinkSpec;
         this.inputChangelogMode = inputChangelogMode;
         this.isBounded = isBounded;
@@ -470,13 +472,29 @@ public abstract class CommonExecSink extends ExecNodeBase<Object>
                     sinkDescription,
                     sinkParallelism);
         } else if (runtimeProvider instanceof SinkProvider) {
-            Transformation<?> transformation =
-                    new SinkTransformation<>(
-                            applyRowtimeTransformation(
-                                    inputTransform, rowtimeFieldIndex, sinkParallelism, config),
-                            ((SinkProvider) runtimeProvider).createSink(),
-                            sinkName,
-                            sinkParallelism);
+            Transformation<RowData> sinkTransformation =
+                    applyRowtimeTransformation(
+                            inputTransform, rowtimeFieldIndex, sinkParallelism, config);
+            final DataStream<RowData> dataStream = new DataStream<>(env, sinkTransformation);
+            final Transformation<?> transformation =
+                    DataStreamSink.forSinkV1(
+                                    dataStream, ((SinkProvider) runtimeProvider).createSink())
+                            .getTransformation();
+            transformation.setParallelism(sinkParallelism);
+            transformation.setName(sinkName);
+            transformation.setDescription(sinkDescription);
+            return transformation;
+        } else if (runtimeProvider instanceof SinkV2Provider) {
+            Transformation<RowData> sinkTransformation =
+                    applyRowtimeTransformation(
+                            inputTransform, rowtimeFieldIndex, sinkParallelism, config);
+            final DataStream<RowData> dataStream = new DataStream<>(env, sinkTransformation);
+            final Transformation<?> transformation =
+                    DataStreamSink.forSink(
+                                    dataStream, ((SinkV2Provider) runtimeProvider).createSink())
+                            .getTransformation();
+            transformation.setParallelism(sinkParallelism);
+            transformation.setName(sinkName);
             transformation.setDescription(sinkDescription);
             return transformation;
         } else {

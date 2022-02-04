@@ -26,8 +26,6 @@ import org.apache.flink.core.io.InputSplit;
 import org.apache.flink.runtime.JobException;
 import org.apache.flink.runtime.accumulators.StringifiedAccumulatorResult;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
-import org.apache.flink.runtime.checkpoint.CheckpointType;
-import org.apache.flink.runtime.checkpoint.CheckpointType.PostCheckpointAction;
 import org.apache.flink.runtime.checkpoint.JobManagerTaskRestore;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
@@ -704,8 +702,12 @@ public class Execution
     }
 
     private void updatePartitionConsumers(final IntermediateResultPartition partition) {
-        final ConsumerVertexGroup consumerVertexGroup = partition.getConsumerVertexGroup();
-        for (ExecutionVertexID consumerVertexId : consumerVertexGroup) {
+        final Optional<ConsumerVertexGroup> consumerVertexGroup =
+                partition.getConsumerVertexGroupOptional();
+        if (!consumerVertexGroup.isPresent()) {
+            return;
+        }
+        for (ExecutionVertexID consumerVertexId : consumerVertexGroup.get()) {
             final ExecutionVertex consumerVertex =
                     vertex.getExecutionGraphAccessor().getExecutionVertexOrThrow(consumerVertexId);
             final Execution consumer = consumerVertex.getCurrentExecutionAttempt();
@@ -838,13 +840,6 @@ public class Execution
 
     private CompletableFuture<Acknowledge> triggerCheckpointHelper(
             long checkpointId, long timestamp, CheckpointOptions checkpointOptions) {
-
-        final CheckpointType checkpointType = checkpointOptions.getCheckpointType();
-        if (checkpointType.getPostCheckpointAction() == PostCheckpointAction.TERMINATE
-                && !(checkpointType.isSynchronous() && checkpointType.isSavepoint())) {
-            throw new IllegalArgumentException(
-                    "Only synchronous savepoints are allowed to advance the watermark to MAX.");
-        }
 
         final LogicalSlot slot = assignedResource;
 

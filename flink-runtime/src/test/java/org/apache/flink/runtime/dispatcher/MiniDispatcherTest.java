@@ -44,6 +44,7 @@ import org.apache.flink.runtime.testutils.TestingJobResultStore;
 import org.apache.flink.runtime.util.TestingFatalErrorHandlerResource;
 import org.apache.flink.util.TestLogger;
 
+import org.assertj.core.api.Assertions;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
@@ -196,6 +197,35 @@ public class MiniDispatcherTest extends TestLogger {
 
             // wait until we terminate
             miniDispatcher.getShutDownFuture().get();
+        } finally {
+            RpcUtils.terminateRpcEndpoint(miniDispatcher, timeout);
+        }
+    }
+
+    /**
+     * Tests that in detached mode, the {@link MiniDispatcher} will not complete the future that
+     * signals job termination if the JobStatus is not globally terminal state.
+     */
+    @Test
+    public void testNotTerminationWithoutGloballyTerminalState() throws Exception {
+        final MiniDispatcher miniDispatcher =
+                createMiniDispatcher(ClusterEntrypoint.ExecutionMode.DETACHED);
+        miniDispatcher.start();
+
+        try {
+            // wait until we have submitted the job
+            final TestingJobManagerRunner testingJobManagerRunner =
+                    testingJobManagerRunnerFactory.takeCreatedJobManagerRunner();
+
+            testingJobManagerRunner.completeResultFuture(
+                    new ExecutionGraphInfo(
+                            new ArchivedExecutionGraphBuilder()
+                                    .setJobID(jobGraph.getJobID())
+                                    .setState(JobStatus.SUSPENDED)
+                                    .build()));
+
+            testingJobManagerRunner.getTerminationFuture().get();
+            Assertions.assertThat(miniDispatcher.getShutDownFuture()).isNotDone();
         } finally {
             RpcUtils.terminateRpcEndpoint(miniDispatcher, timeout);
         }
