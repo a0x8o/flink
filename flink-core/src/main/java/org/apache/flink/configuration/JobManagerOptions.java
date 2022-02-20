@@ -287,6 +287,22 @@ public class JobManagerOptions {
                                                             "here")))
                                     .build());
 
+    /** The minimum delay for the exponentially-increasing job cleanup retry interval. */
+    @Documentation.Section(Documentation.Sections.ALL_JOB_MANAGER)
+    public static final ConfigOption<Duration> JOB_CLEANUP_MINIMUM_DELAY =
+            key("jobmanager.cleanup.min-delay")
+                    .defaultValue(Duration.ofSeconds(1))
+                    .withDescription(
+                            "The cleanup of each job is retried up to the point where it succeeds. The minimum delay is used for the first retry of a cleanup task. The delay will increase exponentially.");
+
+    /** The minimum delay for the exponentially-increasing job cleanup retry interval. */
+    @Documentation.Section(Documentation.Sections.ALL_JOB_MANAGER)
+    public static final ConfigOption<Duration> JOB_CLEANUP_MAXIMUM_DELAY =
+            key("jobmanager.cleanup.max-delay")
+                    .defaultValue(Duration.ofHours(1))
+                    .withDescription(
+                            "The cleanup of each job is retried up to the point where it succeeds. The maximum delay marks the maximum amount of time used for a retry interval up to which the retry interval increases exponentially.");
+
     /** The location where the JobManager stores the archives of completed jobs. */
     @Documentation.Section(Documentation.Sections.ALL_JOB_MANAGER)
     public static final ConfigOption<String> ARCHIVE_DIR =
@@ -321,7 +337,33 @@ public class JobManagerOptions {
                     .intType()
                     .defaultValue(Integer.MAX_VALUE)
                     .withDescription(
-                            "The max number of completed jobs that can be kept in the job store.");
+                            "The max number of completed jobs that can be kept in the job store. "
+                                    + "NOTICE: if memory store keeps too many jobs in session cluster, it may cause FullGC or OOM in jm.");
+
+    /** Config parameter determining the job store implementation in session cluster. */
+    @Documentation.Section(Documentation.Sections.ALL_JOB_MANAGER)
+    public static final ConfigOption<JobStoreType> JOB_STORE_TYPE =
+            key("jobstore.type")
+                    .enumType(JobStoreType.class)
+                    .defaultValue(JobStoreType.File)
+                    .withDescription(
+                            Description.builder()
+                                    .text(
+                                            "Determines which job store implementation is used in session cluster. Accepted values are:")
+                                    .list(
+                                            text(
+                                                    "'File': the file job store keeps the archived execution graphs in files"),
+                                            text(
+                                                    "'Memory': the memory job store keeps the archived execution graphs in memory. You"
+                                                            + " may need to limit the %s to mitigate FullGC or OOM when there are too many graphs",
+                                                    code(JOB_STORE_MAX_CAPACITY.key())))
+                                    .build());
+
+    /** Type of job store implementation. */
+    public enum JobStoreType {
+        File,
+        Memory
+    }
 
     /**
      * Flag indicating whether JobManager would retrieve canonical host name of TaskManager during
@@ -499,7 +541,7 @@ public class JobManagerOptions {
         Documentation.Sections.ALL_JOB_MANAGER
     })
     public static final ConfigOption<Integer> ADAPTIVE_BATCH_SCHEDULER_MIN_PARALLELISM =
-            key("jobmanager.scheduler.adaptive-batch.min-parallelism")
+            key("jobmanager.adaptive-batch-scheduler.min-parallelism")
                     .intType()
                     .defaultValue(1)
                     .withDescription(
@@ -515,7 +557,7 @@ public class JobManagerOptions {
         Documentation.Sections.ALL_JOB_MANAGER
     })
     public static final ConfigOption<Integer> ADAPTIVE_BATCH_SCHEDULER_MAX_PARALLELISM =
-            key("jobmanager.scheduler.adaptive-batch.max-parallelism")
+            key("jobmanager.adaptive-batch-scheduler.max-parallelism")
                     .intType()
                     .defaultValue(128)
                     .withDescription(
@@ -531,7 +573,7 @@ public class JobManagerOptions {
         Documentation.Sections.ALL_JOB_MANAGER
     })
     public static final ConfigOption<MemorySize> ADAPTIVE_BATCH_SCHEDULER_DATA_VOLUME_PER_TASK =
-            key("jobmanager.scheduler.adaptive-batch.data-volume-per-task")
+            key("jobmanager.adaptive-batch-scheduler.data-volume-per-task")
                     .memoryType()
                     .defaultValue(MemorySize.ofMebiBytes(1024))
                     .withDescription(
@@ -547,7 +589,7 @@ public class JobManagerOptions {
         Documentation.Sections.ALL_JOB_MANAGER
     })
     public static final ConfigOption<Integer> ADAPTIVE_BATCH_SCHEDULER_DEFAULT_SOURCE_PARALLELISM =
-            key("jobmanager.scheduler.adaptive-batch.source-parallelism.default")
+            key("jobmanager.adaptive-batch-scheduler.default-source-parallelism")
                     .intType()
                     .defaultValue(1)
                     .withDescription(
