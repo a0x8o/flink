@@ -34,7 +34,6 @@ import org.apache.flink.table.catalog.ObjectIdentifier;
 import org.apache.flink.table.catalog.ResolvedCatalogTable;
 import org.apache.flink.table.catalog.ResolvedSchema;
 import org.apache.flink.table.utils.CatalogManagerMocks;
-import org.apache.flink.table.utils.ExpressionResolverMocks;
 
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.databind.JsonNode;
 
@@ -112,12 +111,9 @@ public class ContextResolvedTableSerdeTest {
 
     private static final Catalog CATALOG = new GenericInMemoryCatalog(DEFAULT_CATALOG, "db1");
     private static final CatalogManager CATALOG_MANAGER =
-            CatalogManagerMocks.preparedCatalogManager()
-                    .defaultCatalog(DEFAULT_CATALOG, CATALOG)
-                    .build();
+            CatalogManagerMocks.createCatalogManager(CATALOG);
 
     static {
-        CATALOG_MANAGER.initSchemaResolver(true, ExpressionResolverMocks.dummyResolver());
         CATALOG_MANAGER.createTable(RESOLVED_CATALOG_TABLE, PERMANENT_TABLE_IDENTIFIER, false);
         CATALOG_MANAGER.createTemporaryTable(
                 RESOLVED_CATALOG_TABLE, TEMPORARY_TABLE_IDENTIFIER, false);
@@ -154,7 +150,7 @@ public class ContextResolvedTableSerdeTest {
     private static final ContextResolvedTable PERMANENT_PLAN_CONTEXT_RESOLVED_TABLE =
             ContextResolvedTable.permanent(
                     PERMANENT_TABLE_IDENTIFIER,
-                    CATALOG,
+                    CATALOG_MANAGER.getCatalog(DEFAULT_CATALOG).get(),
                     new ResolvedCatalogTable(
                             CatalogTable.of(
                                     CATALOG_TABLE_SCHEMA,
@@ -815,13 +811,12 @@ public class ContextResolvedTableSerdeTest {
             TableConfigOptions.CatalogPlanCompilation planCompilationOption,
             TableConfigOptions.CatalogPlanRestore planRestoreOption) {
         // Create table options
-        TableConfig tableConfig = TableConfig.getDefault();
-        tableConfig
-                .getConfiguration()
-                .set(TableConfigOptions.PLAN_RESTORE_CATALOG_OBJECTS, planRestoreOption);
-        tableConfig
-                .getConfiguration()
-                .set(TableConfigOptions.PLAN_COMPILE_CATALOG_OBJECTS, planCompilationOption);
+        TableConfig tableConfig =
+                TableConfig.getDefault()
+                        .set(TableConfigOptions.PLAN_RESTORE_CATALOG_OBJECTS, planRestoreOption)
+                        .set(
+                                TableConfigOptions.PLAN_COMPILE_CATALOG_OBJECTS,
+                                planCompilationOption);
 
         return JsonSerdeTestUtil.configuredSerdeContext(CATALOG_MANAGER, tableConfig);
     }

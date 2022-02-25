@@ -18,6 +18,7 @@
 
 package org.apache.flink.table.planner.plan.nodes.exec.serde;
 
+import org.apache.flink.annotation.Internal;
 import org.apache.flink.table.api.ValidationException;
 import org.apache.flink.table.api.config.TableConfigOptions;
 import org.apache.flink.table.api.config.TableConfigOptions.CatalogPlanCompilation;
@@ -31,17 +32,23 @@ import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.databind.ser.std.S
 
 import java.io.IOException;
 
-class ResolvedCatalogTableJsonSerializer extends StdSerializer<ResolvedCatalogTable> {
+/**
+ * JSON serializer for {@link ResolvedCatalogTable}.
+ *
+ * @see ResolvedCatalogTableJsonDeserializer for the reverse operation
+ */
+@Internal
+final class ResolvedCatalogTableJsonSerializer extends StdSerializer<ResolvedCatalogTable> {
     private static final long serialVersionUID = 1L;
 
     static final String SERIALIZE_OPTIONS = "serialize_options";
 
-    public static final String RESOLVED_SCHEMA = "schema";
-    public static final String PARTITION_KEYS = "partitionKeys";
-    public static final String OPTIONS = "options";
-    public static final String COMMENT = "comment";
+    static final String RESOLVED_SCHEMA = "schema";
+    static final String PARTITION_KEYS = "partitionKeys";
+    static final String OPTIONS = "options";
+    static final String COMMENT = "comment";
 
-    public ResolvedCatalogTableJsonSerializer() {
+    ResolvedCatalogTableJsonSerializer() {
         super(ResolvedCatalogTable.class);
     }
 
@@ -74,7 +81,7 @@ class ResolvedCatalogTableJsonSerializer extends StdSerializer<ResolvedCatalogTa
                     "Cannot serialize the table as it's an external inline table. "
                             + "This might be caused by a usage of "
                             + "StreamTableEnvironment#fromDataStream or TableResult#collect, "
-                            + "which are not supported by the persisted plan.");
+                            + "which are not supported in compiled plans.");
         }
 
         serializerProvider.defaultSerializeField(
