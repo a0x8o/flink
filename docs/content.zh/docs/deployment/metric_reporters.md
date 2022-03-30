@@ -35,18 +35,12 @@ For more information about Flink's metric system go to the [metric system docume
 Metrics can be exposed to an external system by configuring one or several reporters in `conf/flink-conf.yaml`. These
 reporters will be instantiated on each job and task manager when they are started.
 
-- `metrics.reporter.<name>.<config>`: Generic setting `<config>` for the reporter named `<name>`.
-- `metrics.reporter.<name>.class`: The reporter class to use for the reporter named `<name>`.
-- `metrics.reporter.<name>.factory.class`: The reporter factory class to use for the reporter named `<name>`.
-- `metrics.reporter.<name>.interval`: The reporter interval to use for the reporter named `<name>`.
-- `metrics.reporter.<name>.scope.delimiter`: The delimiter to use for the identifier (default value use `metrics.scope.delimiter`) for the reporter named `<name>`.
-- `metrics.reporter.<name>.scope.variables.excludes`: (optional) A semi-colon (;) separate list of variables that should be ignored by tag-based reporters (e.g., Prometheus, InfluxDB). 
-- `metrics.reporters`: (optional) A comma-separated include list of reporter names. By default all configured reporters will be used.
-- `metrics.reporter.<name>.scope.variables.additional`: (optional) A comma separated map of variables and their values, which are separated by a colon (:). These mappings are added to the variable map by tag-based reporters (e.g. Prometheux, InfluxDB).
+Below is a list of parameters that are generally applicable to all reporters. All properties are configured by setting `metrics.reporter.<reporter_name>.<property>` in the configuration. Reporters may additionally offer implementation-specific parameters, which are documented in the respective reporter's section. 
+
+{{< include_reporter_config "layouts/shortcodes/generated/metric_reporters_section.html" >}}
 
 All reporters must at least have either the `class` or `factory.class` property. Which property may/should be used depends on the reporter implementation. See the individual reporter configuration sections for more information.
 Some reporters (referred to as `Scheduled`) allow specifying a reporting `interval`.
-Below more settings specific to each reporter will be listed.
 
 Example reporter configuration that specifies multiple reporters:
 
@@ -76,9 +70,6 @@ The following sections list the supported reporters.
 
 ### JMX 
 #### (org.apache.flink.metrics.jmx.JMXReporter)
-
-You don't have to include an additional dependency since the JMX reporter is available by default
-but not activated.
 
 Parameters:
 
@@ -129,12 +120,9 @@ metrics.reporter.grph.interval: 60 SECONDS
 ### InfluxDB
 #### (org.apache.flink.metrics.influxdb.InfluxdbReporter)
 
-In order to use this reporter you must copy `/opt/flink-metrics-influxdb-{{< version >}}.jar` into the `plugins/influxdb` folder
-of your Flink distribution.
-
 Parameters:
 
-{{< generated/influxdb_reporter_configuration >}}
+{{< include_reporter_config "layouts/shortcodes/generated/influxdb_reporter_configuration.html" >}}
 
 Example configuration:
 
@@ -186,7 +174,7 @@ All Flink metrics variables (see [List of all Variables]({{< ref "docs/ops/metri
 
 Parameters:
 
-{{< generated/prometheus_push_gateway_reporter_configuration >}}
+{{< include_reporter_config "layouts/shortcodes/generated/prometheus_push_gateway_reporter_configuration.html" >}}
 
 Example configuration:
 

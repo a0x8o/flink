@@ -24,10 +24,8 @@ import org.apache.flink.table.api.CompiledPlan;
 import org.apache.flink.table.api.EnvironmentSettings;
 import org.apache.flink.table.api.TableEnvironment;
 import org.apache.flink.table.api.TableResult;
-import org.apache.flink.table.api.internal.TableEnvironmentImpl;
-import org.apache.flink.table.planner.delegation.PlannerBase;
+import org.apache.flink.table.api.internal.CompiledPlanUtils;
 import org.apache.flink.table.planner.factories.TestValuesTableFactory;
-import org.apache.flink.table.planner.plan.ExecNodeGraphCompiledPlan;
 import org.apache.flink.test.util.AbstractTestBase;
 import org.apache.flink.types.Row;
 import org.apache.flink.util.StringUtils;
@@ -53,7 +51,6 @@ import java.util.stream.Collectors;
 import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.Assert.assertEquals;
 
 /** The base class for json plan testing. */
 public abstract class JsonPlanTestBase extends AbstractTestBase {
@@ -75,14 +72,12 @@ public abstract class JsonPlanTestBase extends AbstractTestBase {
     protected TableResult compileSqlAndExecutePlan(String sql) {
         CompiledPlan compiledPlan = tableEnv.compilePlanSql(sql);
         checkTransformationUids(compiledPlan);
-        return tableEnv.executePlan(compiledPlan);
+        return compiledPlan.execute();
     }
 
     protected void checkTransformationUids(CompiledPlan compiledPlan) {
         List<Transformation<?>> transformations =
-                ((PlannerBase) ((TableEnvironmentImpl) tableEnv).getPlanner())
-                        .translateToPlan(
-                                ((ExecNodeGraphCompiledPlan) compiledPlan).getExecNodeGraph());
+                CompiledPlanUtils.toTransformations(tableEnv, compiledPlan);
 
         transformations.stream()
                 .flatMap(t -> t.getTransitivePredecessors().stream())
@@ -268,7 +263,7 @@ public abstract class JsonPlanTestBase extends AbstractTestBase {
     protected void assertResult(List<String> expected, List<String> actual) {
         Collections.sort(expected);
         Collections.sort(actual);
-        assertEquals(expected, actual);
+        assertThat(actual).isEqualTo(expected);
     }
 
     protected List<String> readLines(File path) throws IOException {

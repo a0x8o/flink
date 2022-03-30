@@ -69,10 +69,10 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
     private final SinkWriterMetricGroup metrics;
 
     /* Counter for number of bytes this sink has attempted to send to the destination. */
-    private final Counter numBytesOutCounter;
+    private final Counter numBytesSendCounter;
 
     /* Counter for number of records this sink has attempted to send to the destination. */
-    private final Counter numRecordsOutCounter;
+    private final Counter numRecordsSendCounter;
 
     /**
      * Rate limiting strategy {@code inflightMessages} at any given time, {@code
@@ -295,8 +295,8 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
 
         this.metrics = context.metricGroup();
         this.metrics.setCurrentSendTimeGauge(() -> this.ackTime - this.lastSendTimestamp);
-        this.numBytesOutCounter = this.metrics.getIOMetricGroup().getNumBytesOutCounter();
-        this.numRecordsOutCounter = this.metrics.getIOMetricGroup().getNumRecordsOutCounter();
+        this.numBytesSendCounter = this.metrics.getNumBytesSendCounter();
+        this.numRecordsSendCounter = this.metrics.getNumRecordsSendCounter();
 
         this.fatalExceptionCons =
                 exception ->
@@ -324,19 +324,42 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
     @Override
     public void write(InputT element, Context context) throws IOException, InterruptedException {
         while (bufferedRequestEntries.size() >= maxBufferedRequests) {
-            mailboxExecutor.tryYield();
+            flush();
         }
 
         addEntryToBuffer(elementConverter.apply(element, context), false);
 
-        flushIfAble();
+        nonBlockingFlush();
     }
 
-    private void flushIfAble() {
-        while (bufferedRequestEntries.size() >= getNextBatchSizeLimit()
-                || bufferedRequestEntriesTotalSizeInBytes >= maxBatchSizeInBytes) {
+    /**
+     * Determines if a call to flush will be non-blocking (i.e. {@code inFlightRequestsCount} is
+     * strictly smaller than {@code maxInFlightRequests}). Also requires one of the following
+     * requirements to be met:
+     *
+     * <ul>
+     *   <li>The number of elements buffered is greater than or equal to the {@code maxBatchSize}
+     *   <li>The sum of the size in bytes of all records in the buffer is greater than or equal to
+     *       {@code maxBatchSizeInBytes}
+     * </ul>
+     */
+    private void nonBlockingFlush() throws InterruptedException {
+        while (!isInFlightRequestOrMessageLimitExceeded()
+                && (bufferedRequestEntries.size() >= getNextBatchSizeLimit()
+                        || bufferedRequestEntriesTotalSizeInBytes >= maxBatchSizeInBytes)) {
             flush();
         }
+    }
+
+    /**
+     * Determines if the sink should block and complete existing in flight requests before it may
+     * prudently create any new ones. This is exactly determined by if the number of requests
+     * currently in flight exceeds the maximum supported by the sink OR if the number of in flight
+     * messages exceeds the maximum determined to be appropriate by the rate limiting strategy.
+     */
+    private boolean isInFlightRequestOrMessageLimitExceeded() {
+        return inFlightRequestsCount >= maxInFlightRequests
+                || inFlightMessages >= rateLimitingStrategy.getRateLimit();
     }
 
     /**
@@ -345,10 +368,9 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
      *
      * <p>The method blocks if too many async requests are in flight.
      */
-    private void flush() {
-        while (inFlightRequestsCount >= maxInFlightRequests
-                || inFlightMessages >= rateLimitingStrategy.getRateLimit()) {
-            mailboxExecutor.tryYield();
+    private void flush() throws InterruptedException {
+        while (isInFlightRequestOrMessageLimitExceeded()) {
+            mailboxExecutor.yield();
         }
 
         List<RequestEntryT> batch = createNextAvailableBatch();
@@ -395,8 +417,8 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
             batchSizeBytes += requestEntrySize;
         }
 
-        numRecordsOutCounter.inc(batch.size());
-        numBytesOutCounter.inc(batchSizeBytes);
+        numRecordsSendCounter.inc(batch.size());
+        numBytesSendCounter.inc(batchSizeBytes);
 
         return batch;
     }
@@ -408,7 +430,8 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
      * @param failedRequestEntries requestEntries that need to be retried
      */
     private void completeRequest(
-            List<RequestEntryT> failedRequestEntries, int batchSize, long requestStartTime) {
+            List<RequestEntryT> failedRequestEntries, int batchSize, long requestStartTime)
+            throws InterruptedException {
         lastSendTimestamp = requestStartTime;
         ackTime = System.currentTimeMillis();
 
@@ -422,6 +445,7 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
         while (iterator.hasPrevious()) {
             addEntryToBuffer(iterator.previous(), true);
         }
+        nonBlockingFlush();
     }
 
     private void updateInFlightMessagesLimit(boolean isSuccessfulRequest) {
@@ -465,12 +489,18 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
      * <p>To this end, all in-flight requests need to completed before proceeding with the commit.
      */
     @Override
-    public void flush(boolean flush) {
+    public void flush(boolean flush) throws InterruptedException {
         while (inFlightRequestsCount > 0 || (bufferedRequestEntries.size() > 0 && flush)) {
-            mailboxExecutor.tryYield();
+            yieldIfThereExistsInFlightRequests();
             if (flush) {
                 flush();
             }
+        }
+    }
+
+    private void yieldIfThereExistsInFlightRequests() throws InterruptedException {
+        if (inFlightRequestsCount > 0) {
+            mailboxExecutor.yield();
         }
     }
 

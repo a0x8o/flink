@@ -31,7 +31,9 @@ import javax.annotation.Nonnull;
 
 import java.io.Serializable;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -64,10 +66,19 @@ final class IndexGeneratorFactory {
     private IndexGeneratorFactory() {}
 
     public static IndexGenerator createIndexGenerator(String index, TableSchema schema) {
+        return createIndexGenerator(index, schema, ZoneId.systemDefault());
+    }
+
+    public static IndexGenerator createIndexGenerator(
+            String index, TableSchema schema, ZoneId localTimeZoneId) {
         final IndexHelper indexHelper = new IndexHelper();
         if (indexHelper.checkIsDynamicIndex(index)) {
             return createRuntimeIndexGenerator(
-                    index, schema.getFieldNames(), schema.getFieldDataTypes(), indexHelper);
+                    index,
+                    schema.getFieldNames(),
+                    schema.getFieldDataTypes(),
+                    indexHelper,
+                    localTimeZoneId);
         } else {
             return new StaticIndexGenerator(index);
         }
@@ -78,11 +89,29 @@ final class IndexGeneratorFactory {
     }
 
     private static IndexGenerator createRuntimeIndexGenerator(
-            String index, String[] fieldNames, DataType[] fieldTypes, IndexHelper indexHelper) {
+            String index,
+            String[] fieldNames,
+            DataType[] fieldTypes,
+            IndexHelper indexHelper,
+            ZoneId localTimeZoneId) {
         final String dynamicIndexPatternStr = indexHelper.extractDynamicIndexPatternStr(index);
         final String indexPrefix = index.substring(0, index.indexOf(dynamicIndexPatternStr));
         final String indexSuffix =
                 index.substring(indexPrefix.length() + dynamicIndexPatternStr.length());
+
+        if (indexHelper.checkIsDynamicIndexWithSystemTimeFormat(index)) {
+            final String dateTimeFormat =
+                    indexHelper.extractDateFormat(
+                            index, LogicalTypeRoot.TIMESTAMP_WITH_LOCAL_TIME_ZONE);
+            return new AbstractTimeIndexGenerator(index, dateTimeFormat) {
+                @Override
+                public String generate(RowData row) {
+                    return indexPrefix
+                            .concat(LocalDateTime.now(localTimeZoneId).format(dateTimeFormatter))
+                            .concat(indexSuffix);
+                }
+            };
+        }
 
         final boolean isDynamicIndexWithFormat = indexHelper.checkIsDynamicIndexWithFormat(index);
         final int indexFieldPos =
@@ -169,10 +198,13 @@ final class IndexGeneratorFactory {
      * Helper class for {@link IndexGeneratorFactory}, this helper can use to validate index field
      * type ans parse index format from pattern.
      */
-    private static class IndexHelper {
+    static class IndexHelper {
         private static final Pattern dynamicIndexPattern = Pattern.compile("\\{[^\\{\\}]+\\}?");
         private static final Pattern dynamicIndexTimeExtractPattern =
                 Pattern.compile(".*\\{.+\\|.*\\}.*");
+        private static final Pattern dynamicIndexSystemTimeExtractPattern =
+                Pattern.compile(
+                        ".*\\{\\s*(now\\(\\s*\\)|NOW\\(\\s*\\)|current_timestamp|CURRENT_TIMESTAMP)\\s*\\|.*\\}.*");
         private static final List<LogicalTypeRoot> supportedTypes = new ArrayList<>();
         private static final Map<LogicalTypeRoot, String> defaultFormats = new HashMap<>();
 
@@ -235,6 +267,11 @@ final class IndexGeneratorFactory {
         /** Check time extract dynamic index is enabled or not by index pattern. */
         boolean checkIsDynamicIndexWithFormat(String index) {
             return dynamicIndexTimeExtractPattern.matcher(index).matches();
+        }
+
+        /** Check generate dynamic index is from system time or not. */
+        boolean checkIsDynamicIndexWithSystemTimeFormat(String index) {
+            return dynamicIndexSystemTimeExtractPattern.matcher(index).matches();
         }
 
         /** Extract dynamic index pattern string from index pattern string. */

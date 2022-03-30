@@ -195,14 +195,17 @@ public class SourceCoordinatorContext<SplitT extends SourceSplit>
         callInCoordinatorThread(
                 () -> {
                     // Ensure all the subtasks in the assignment have registered.
-                    for (Integer subtaskId : assignment.assignment().keySet()) {
-                        if (!registeredReaders.containsKey(subtaskId)) {
-                            throw new IllegalArgumentException(
-                                    String.format(
-                                            "Cannot assign splits %s to subtask %d because the subtask is not registered.",
-                                            registeredReaders.get(subtaskId), subtaskId));
-                        }
-                    }
+                    assignment
+                            .assignment()
+                            .forEach(
+                                    (id, splits) -> {
+                                        if (!registeredReaders.containsKey(id)) {
+                                            throw new IllegalArgumentException(
+                                                    String.format(
+                                                            "Cannot assign splits %s to subtask %d because the subtask is not registered.",
+                                                            splits, id));
+                                        }
+                                    });
 
                     assignmentTracker.recordSplitAssignment(assignment);
                     assignment
@@ -257,9 +260,18 @@ public class SourceCoordinatorContext<SplitT extends SourceSplit>
         notifier.notifyReadyAsync(callable, handler);
     }
 
+    /** {@inheritDoc} If the runnable throws an Exception, the corresponding job is failed. */
     @Override
     public void runInCoordinatorThread(Runnable runnable) {
-        coordinatorExecutor.execute(runnable);
+        // when using a ScheduledThreadPool, uncaught exception handler catches only
+        // exceptions thrown by the threadPool, so manually call it when the exception is
+        // thrown by the runnable
+        coordinatorExecutor.execute(
+                new ThrowableCatchingRunnable(
+                        throwable ->
+                                coordinatorThreadFactory.uncaughtException(
+                                        Thread.currentThread(), throwable),
+                        runnable));
     }
 
     @Override
