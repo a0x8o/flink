@@ -1719,24 +1719,29 @@ object ScalarOperatorGens {
       operandType: LogicalType,
       resultType: LogicalType): String => String = {
 
-    // All numeric rules are assumed to be instance of AbstractExpressionCodeGeneratorCastRule
-    val rule = CastRuleProvider.resolve(operandType, resultType)
-    rule match {
-      case codeGeneratorCastRule: ExpressionCodeGeneratorCastRule[_, _] =>
-        operandTerm =>
-          codeGeneratorCastRule.generateExpression(
-            toCodegenCastContext(ctx),
-            operandTerm,
-            operandType,
-            resultType
-          )
-      case _ =>
-        throw new CodeGenException(s"Unsupported casting from $operandType to $resultType.")
+    // no casting necessary
+    if (isInteroperable(operandType, resultType)) { operandTerm => s"$operandTerm" }
+    else {
+      // All numeric rules are assumed to be instance of AbstractExpressionCodeGeneratorCastRule
+      val rule = CastRuleProvider.resolve(operandType, resultType)
+      rule match {
+        case codeGeneratorCastRule: ExpressionCodeGeneratorCastRule[_, _] =>
+          operandTerm =>
+            codeGeneratorCastRule.generateExpression(
+              toCodegenCastContext(ctx),
+              operandTerm,
+              operandType,
+              resultType
+            )
+        case _ =>
+          throw new CodeGenException(s"Unsupported casting from $operandType to $resultType.")
+      }
     }
   }
 
   def toCodegenCastContext(ctx: CodeGeneratorContext): CodeGeneratorCastRule.Context = {
     new CodeGeneratorCastRule.Context {
+      override def isPrinting(): Boolean = false
       override def legacyBehaviour(): Boolean = isLegacyCastBehaviourEnabled(ctx)
       override def getSessionTimeZoneTerm: String = ctx.addReusableSessionTimeZone()
       override def declareVariable(ty: String, variablePrefix: String): String =
@@ -1752,6 +1757,8 @@ object ScalarOperatorGens {
 
   def toCastContext(ctx: CodeGeneratorContext): CastRule.Context = {
     new CastRule.Context {
+      override def isPrinting(): Boolean = false
+
       override def legacyBehaviour(): Boolean = isLegacyCastBehaviourEnabled(ctx)
 
       override def getSessionZoneId: ZoneId = TableConfigUtils.getLocalTimeZone(ctx.tableConfig)

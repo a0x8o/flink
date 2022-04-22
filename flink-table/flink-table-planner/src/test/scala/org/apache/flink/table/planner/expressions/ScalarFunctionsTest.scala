@@ -1515,6 +1515,19 @@ class ScalarFunctionsTest extends ScalarTypesTestBase {
       randInteger('f7, 'f4.cast(DataTypes.INT)),
       "RAND_INTEGER(f7, CAST(f4 AS INT))",
       random4.nextInt(44).toString)
+
+    val random5 = new java.util.Random(1)
+    testAllApis(rand(1).plus(1), "RAND(1) + 1", (random5.nextDouble() + 1).toString)
+
+    val random6 = new java.util.Random(1)
+    val random7 = new java.util.Random(2)
+    testAllApis(
+      rand(1).plus(rand(2)),
+      "RAND(1) + RAND(2)",
+      (random6.nextDouble() + random7.nextDouble()).toString)
+
+    // the f21 is null
+    testAllApis(rand('f21.cast(DataTypes.INT())).plus(1), "rand(cast(null as int)) + 1", "NULL")
   }
 
   @Test
@@ -2618,7 +2631,7 @@ class ScalarFunctionsTest extends ScalarTypesTestBase {
 
     // test BINARY, BINARY
     // the answer BINARY will cast to STRING in ExpressionTestBase.scala
-    testSqlApi("IF(f7 < 5, f53, f54)", "68656c6c6f20776f726c64") // hello world
+    testSqlApi("IF(f7 < 5, f53, f54)", "hello world")
 
     // test DATE, DATE
     testSqlApi("IF(f7 < 5, f16, f50)", "1996-11-10")
@@ -2770,6 +2783,6 @@ class ScalarFunctionsTest extends ScalarTypesTestBase {
       "2021-04-06 11:05:30")
     testSqlApi(s"IFNULL(CAST(INTERVAL '2' YEAR AS VARCHAR(20)), $str2)", "+2-00")
     testSqlApi(s"IFNULL(CAST(INTERVAL '2' DAY AS VARCHAR(20)), $str2)", "+2 00:00:00.000")
-    testSqlApi(s"IFNULL(CAST(f53 AS VARCHAR(100)), $str2)", "68656c6c6f20776f726c64")
+    testSqlApi(s"IFNULL(CAST(f53 AS VARCHAR(100)), $str2)", "hello world")
   }
 }
