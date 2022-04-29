@@ -131,6 +131,7 @@ import javax.annotation.Nonnull;
 import java.io.File;
 import java.io.IOException;
 import java.net.InetAddress;
+import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -249,7 +250,7 @@ public class TaskExecutorTest extends TestLogger {
     @After
     public void teardown() throws Exception {
         if (rpc != null) {
-            RpcUtils.terminateRpcService(rpc, timeout);
+            RpcUtils.terminateRpcService(rpc);
             rpc = null;
         }
 
@@ -299,7 +300,7 @@ public class TaskExecutorTest extends TestLogger {
         try {
             taskManager.start();
         } finally {
-            RpcUtils.terminateRpcEndpoint(taskManager, timeout);
+            RpcUtils.terminateRpcEndpoint(taskManager);
         }
 
         assertThat(taskSlotTable.isClosed(), is(true));
@@ -467,7 +468,7 @@ public class TaskExecutorTest extends TestLogger {
                     "The TaskExecutor should try to reconnect to the JM",
                     registrationAttempts.await(timeout.toMilliseconds(), TimeUnit.SECONDS));
         } finally {
-            RpcUtils.terminateRpcEndpoint(taskManager, timeout);
+            RpcUtils.terminateRpcEndpoint(taskManager);
         }
     }
 
@@ -582,7 +583,7 @@ public class TaskExecutorTest extends TestLogger {
                     "The TaskExecutor should try to reconnect to the RM",
                     registrationAttempts.await(timeout.toMilliseconds(), TimeUnit.SECONDS));
         } finally {
-            RpcUtils.terminateRpcEndpoint(taskManager, timeout);
+            RpcUtils.terminateRpcEndpoint(taskManager);
         }
     }
 
@@ -689,7 +690,7 @@ public class TaskExecutorTest extends TestLogger {
             assertEquals(
                     partitionTracker.createClusterPartitionReport(), actualClusterPartitionReport);
         } finally {
-            RpcUtils.terminateRpcEndpoint(taskManager, timeout);
+            RpcUtils.terminateRpcEndpoint(taskManager);
         }
     }
 
@@ -752,7 +753,7 @@ public class TaskExecutorTest extends TestLogger {
                     taskManagerRegisteredLatch.await(
                             timeout.toMilliseconds(), TimeUnit.MILLISECONDS));
         } finally {
-            RpcUtils.terminateRpcEndpoint(taskManager, timeout);
+            RpcUtils.terminateRpcEndpoint(taskManager);
         }
     }
 
@@ -832,7 +833,7 @@ public class TaskExecutorTest extends TestLogger {
                     is(unresolvedTaskManagerLocation.getResourceID()));
             assertNotNull(taskManager.getResourceManagerConnection());
         } finally {
-            RpcUtils.terminateRpcEndpoint(taskManager, timeout);
+            RpcUtils.terminateRpcEndpoint(taskManager);
         }
     }
 
@@ -971,7 +972,7 @@ public class TaskExecutorTest extends TestLogger {
                             .collect(Collectors.toList());
             assertThat(allocationIds, containsInAnyOrder(allocationId));
         } finally {
-            RpcUtils.terminateRpcEndpoint(taskManager, timeout);
+            RpcUtils.terminateRpcEndpoint(taskManager);
         }
     }
 
@@ -1071,7 +1072,7 @@ public class TaskExecutorTest extends TestLogger {
                     jobMasterGateway.getAddress(),
                     resourceManagerGateway.getFencingToken());
         } finally {
-            RpcUtils.terminateRpcEndpoint(taskManager, timeout);
+            RpcUtils.terminateRpcEndpoint(taskManager);
         }
     }
 
@@ -1208,7 +1209,7 @@ public class TaskExecutorTest extends TestLogger {
                     return;
             }
         } finally {
-            RpcUtils.terminateRpcEndpoint(taskExecutor, timeout);
+            RpcUtils.terminateRpcEndpoint(taskExecutor);
         }
     }
 
@@ -1317,7 +1318,7 @@ public class TaskExecutorTest extends TestLogger {
                     threadSafeTaskSlotTable.getActiveTaskSlotAllocationIdsPerJob(jobId2),
                     contains(slotOffer2.getAllocationId()));
         } finally {
-            RpcUtils.terminateRpcEndpoint(taskExecutor, timeout);
+            RpcUtils.terminateRpcEndpoint(taskExecutor);
         }
     }
 
@@ -1394,7 +1395,7 @@ public class TaskExecutorTest extends TestLogger {
             assertThat(availableSlotFuture.get().f2, is(allocationId));
             assertThat(threadSafeTaskSlotTable.getAllocationIdsPerJob(jobId), empty());
         } finally {
-            RpcUtils.terminateRpcEndpoint(taskExecutor, timeout);
+            RpcUtils.terminateRpcEndpoint(taskExecutor);
         }
     }
 
@@ -1474,7 +1475,7 @@ public class TaskExecutorTest extends TestLogger {
             // wait for the task completion
             taskInTerminalState.await();
         } finally {
-            RpcUtils.terminateRpcEndpoint(taskManager, timeout);
+            RpcUtils.terminateRpcEndpoint(taskManager);
         }
     }
 
@@ -1616,7 +1617,7 @@ public class TaskExecutorTest extends TestLogger {
                     unmonitoredTargets.poll(pollTimeout, TimeUnit.MILLISECONDS),
                     equalTo(rmResourceID));
         } finally {
-            RpcUtils.terminateRpcEndpoint(taskExecutor, timeout);
+            RpcUtils.terminateRpcEndpoint(taskExecutor);
         }
     }
 
@@ -1704,7 +1705,7 @@ public class TaskExecutorTest extends TestLogger {
             stopFuture.get();
             assertThat(jobLeaderService.containsJob(jobId), is(false));
         } finally {
-            RpcUtils.terminateRpcEndpoint(taskExecutor, timeout);
+            RpcUtils.terminateRpcEndpoint(taskExecutor);
         }
     }
 
@@ -1727,7 +1728,7 @@ public class TaskExecutorTest extends TestLogger {
 
             testingFatalErrorHandler.clearError();
         } finally {
-            RpcUtils.terminateRpcEndpoint(taskExecutor, timeout);
+            RpcUtils.terminateRpcEndpoint(taskExecutor);
         }
     }
 
@@ -1787,7 +1788,7 @@ public class TaskExecutorTest extends TestLogger {
 
             testingFatalErrorHandler.clearError();
         } finally {
-            RpcUtils.terminateRpcEndpoint(taskExecutor, timeout);
+            RpcUtils.terminateRpcEndpoint(taskExecutor);
         }
     }
 
@@ -1848,7 +1849,7 @@ public class TaskExecutorTest extends TestLogger {
                         instanceOf(TaskManagerException.class));
             }
         } finally {
-            RpcUtils.terminateRpcEndpoint(taskExecutor, timeout);
+            RpcUtils.terminateRpcEndpoint(taskExecutor);
         }
     }
 
@@ -1913,7 +1914,7 @@ public class TaskExecutorTest extends TestLogger {
                     equalTo(unresolvedTaskManagerLocation.getResourceID()));
 
         } finally {
-            RpcUtils.terminateRpcEndpoint(taskExecutor, timeout);
+            RpcUtils.terminateRpcEndpoint(taskExecutor);
         }
     }
 
@@ -1946,7 +1947,7 @@ public class TaskExecutorTest extends TestLogger {
 
             assertThat(initialSlotReportFuture.get(), equalTo(taskExecutor.getResourceID()));
         } finally {
-            RpcUtils.terminateRpcEndpoint(taskExecutor, timeout);
+            RpcUtils.terminateRpcEndpoint(taskExecutor);
         }
     }
 
@@ -1987,7 +1988,7 @@ public class TaskExecutorTest extends TestLogger {
                             TaskExecutorResourceUtils.generateDefaultSlotResourceProfile(
                                     TM_RESOURCE_SPEC, numberOfSlots)));
         } finally {
-            RpcUtils.terminateRpcEndpoint(taskExecutor, timeout);
+            RpcUtils.terminateRpcEndpoint(taskExecutor);
         }
     }
 
@@ -2050,7 +2051,7 @@ public class TaskExecutorTest extends TestLogger {
             // wait for the second registration attempt
             numberRegistrations.await();
         } finally {
-            RpcUtils.terminateRpcEndpoint(taskExecutor, timeout);
+            RpcUtils.terminateRpcEndpoint(taskExecutor);
         }
     }
 
@@ -2127,7 +2128,7 @@ public class TaskExecutorTest extends TestLogger {
             assertThat(offeredSlotFuture.get(), is(allocationId));
             assertTrue(taskSlotTable.isSlotFree(1));
         } finally {
-            RpcUtils.terminateRpcEndpoint(taskExecutor, timeout);
+            RpcUtils.terminateRpcEndpoint(taskExecutor);
         }
     }
 
@@ -2203,7 +2204,7 @@ public class TaskExecutorTest extends TestLogger {
 
             assertThat(disconnectFuture.get(), is(resourceID));
         } finally {
-            RpcUtils.terminateRpcEndpoint(taskExecutor, timeout);
+            RpcUtils.terminateRpcEndpoint(taskExecutor);
         }
     }
 
@@ -2356,7 +2357,7 @@ public class TaskExecutorTest extends TestLogger {
             assertThat(failedSlotFutures.poll(5L, TimeUnit.MILLISECONDS), nullValue());
             assertThat(allocationsNotifiedFree.poll(5L, TimeUnit.MILLISECONDS), nullValue());
         } finally {
-            RpcUtils.terminateRpcEndpoint(taskExecutor, timeout);
+            RpcUtils.terminateRpcEndpoint(taskExecutor);
         }
     }
 
@@ -2466,7 +2467,7 @@ public class TaskExecutorTest extends TestLogger {
         } finally {
             ExecutorUtils.gracefulShutdown(
                     timeout.toMilliseconds(), TimeUnit.MILLISECONDS, heartbeatExecutor);
-            RpcUtils.terminateRpcEndpoint(taskExecutor, timeout);
+            RpcUtils.terminateRpcEndpoint(taskExecutor);
         }
     }
 
@@ -2668,7 +2669,7 @@ public class TaskExecutorTest extends TestLogger {
             // all job partitions should be released
             assertThat(jobPartitionsReleaseFuture.get(), is(jobId));
         } finally {
-            RpcUtils.terminateRpcEndpoint(taskExecutor, timeout);
+            RpcUtils.terminateRpcEndpoint(taskExecutor);
         }
     }
 
@@ -2733,7 +2734,7 @@ public class TaskExecutorTest extends TestLogger {
             assertThat(availableSlotFuture.get().f1, is(slotId));
             assertThat(availableSlotFuture.get().f2, is(allocationId));
         } finally {
-            RpcUtils.terminateRpcEndpoint(taskExecutor, timeout);
+            RpcUtils.terminateRpcEndpoint(taskExecutor);
         }
     }
 
@@ -2914,7 +2915,7 @@ public class TaskExecutorTest extends TestLogger {
 
         @Override
         public void close() throws ExecutionException, InterruptedException, TimeoutException {
-            RpcUtils.terminateRpcEndpoint(taskExecutor, timeout);
+            RpcUtils.terminateRpcEndpoint(taskExecutor);
         }
     }
 
@@ -3005,7 +3006,7 @@ public class TaskExecutorTest extends TestLogger {
             throws InterruptedException, ExecutionException {
         return ctx.taskExecutor
                 .getMainThreadExecutableForTesting()
-                .callAsync(booleanCallable, Time.seconds(5))
+                .callAsync(booleanCallable, Duration.ofSeconds(5))
                 .get();
     }
 }
