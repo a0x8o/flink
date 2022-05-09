@@ -23,9 +23,8 @@ import org.apache.flink.table.functions.ScalarFunction
 import org.apache.flink.table.types.extraction.TypeInferenceExtractorTest.TestSpec
 import org.apache.flink.table.types.inference.{ArgumentTypeStrategy, InputTypeStrategies, TypeStrategies}
 
-import org.hamcrest.CoreMatchers.equalTo
+import org.assertj.core.api.AssertionsForClassTypes.assertThat
 import org.junit.{Rule, Test}
-import org.junit.Assert.assertThat
 import org.junit.rules.ExpectedException
 import org.junit.runner.RunWith
 import org.junit.runners.Parameterized
@@ -33,40 +32,33 @@ import org.junit.runners.Parameterized.Parameters
 
 import java.util.Optional
 
-import scala.annotation.meta.getter
 import scala.annotation.varargs
 
 /** Scala tests for [[TypeInferenceExtractor]]. */
 @RunWith(classOf[Parameterized])
 class TypeInferenceExtractorScalaTest(testSpec: TestSpec) {
 
-  @(Rule @getter)
-  var thrown: ExpectedException = ExpectedException.none
-
   @Test
   def testArgumentNames(): Unit = {
     if (testSpec.expectedArgumentNames != null) {
-      assertThat(
-        testSpec.typeInferenceExtraction.get.getNamedArguments,
-        equalTo(Optional.of(testSpec.expectedArgumentNames)))
+      assertThat(testSpec.typeInferenceExtraction.get.getNamedArguments)
+        .isEqualTo(Optional.of(testSpec.expectedArgumentNames))
     }
   }
 
   @Test
   def testArgumentTypes(): Unit = {
     if (testSpec.expectedArgumentTypes != null) {
-      assertThat(
-        testSpec.typeInferenceExtraction.get.getTypedArguments,
-        equalTo(Optional.of(testSpec.expectedArgumentTypes)))
+      assertThat(testSpec.typeInferenceExtraction.get.getTypedArguments)
+        .isEqualTo(Optional.of(testSpec.expectedArgumentTypes))
     }
   }
 
   @Test
   def testOutputTypeStrategy(): Unit = {
     if (!testSpec.expectedOutputStrategies.isEmpty) {
-      assertThat(
-        testSpec.typeInferenceExtraction.get.getOutputTypeStrategy,
-        equalTo(TypeStrategies.mapping(testSpec.expectedOutputStrategies)))
+      assertThat(testSpec.typeInferenceExtraction.get.getOutputTypeStrategy)
+        .isEqualTo(TypeStrategies.mapping(testSpec.expectedOutputStrategies))
     }
   }
 }

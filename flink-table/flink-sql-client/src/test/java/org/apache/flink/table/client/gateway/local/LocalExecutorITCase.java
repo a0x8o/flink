@@ -50,9 +50,7 @@ import org.apache.flink.util.TestLogger;
 
 import org.junit.BeforeClass;
 import org.junit.ClassRule;
-import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.ExpectedException;
 import org.junit.rules.TemporaryFolder;
 
 import java.io.File;
@@ -120,8 +118,6 @@ public class LocalExecutorITCase extends TestLogger {
         return config;
     }
 
-    @Rule public ExpectedException exception = ExpectedException.none();
-
     @Test
     public void testCompleteStatement() {
         final Executor executor = createLocalExecutor();
@@ -140,7 +136,7 @@ public class LocalExecutorITCase extends TestLogger {
         assertThat(executor.completeStatement(sessionId, "SELECT * FROM TableNumber1 WH", 29))
                 .isEqualTo(expectedClause);
 
-        final List<String> expectedField = Arrays.asList("IntegerField1");
+        final List<String> expectedField = Collections.singletonList("IntegerField1");
         assertThat(
                         executor.completeStatement(
                                 sessionId, "SELECT * FROM TableNumber1 WHERE Inte", 37))
