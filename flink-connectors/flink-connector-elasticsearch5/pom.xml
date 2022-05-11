@@ -93,7 +93,7 @@ under the License.
 			<!-- Bump elasticsearch netty dependency -->
 			<groupId>io.netty</groupId>
 			<artifactId>netty-codec-http</artifactId>
-			<version>4.1.46.Final</version>
+			<version>4.1.77.Final</version>
 		</dependency>
 
 		<dependency>
