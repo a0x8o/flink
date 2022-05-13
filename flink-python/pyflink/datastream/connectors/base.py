@@ -15,14 +15,36 @@
 #  See the License for the specific language governing permissions and
 # limitations under the License.
 ################################################################################
+from typing import Union
 
-# Set root logger level to OFF to not flood build logs
-# set manually to INFO for debugging purposes
-rootLogger.level = OFF
-rootLogger.appenderRef.test.ref = TestLogger
+from py4j.java_gateway import JavaObject
 
-appender.testlogger.name = TestLogger
-appender.testlogger.type = CONSOLE
-appender.testlogger.target = SYSTEM_ERR
-appender.testlogger.layout.type = PatternLayout
-appender.testlogger.layout.pattern = %-4r [%t] %-5p %c %x - %m%n
+from pyflink.datastream.functions import JavaFunctionWrapper
+
+
+class Source(JavaFunctionWrapper):
+    """
+    Base class for all unified data source in Flink.
+    """
+
+    def __init__(self, source: Union[str, JavaObject]):
+        """
+        Constructor of Source.
+
+        :param source: The java Source object.
+        """
+        super(Source, self).__init__(source)
+
+
+class Sink(JavaFunctionWrapper):
+    """
+    Base class for all unified data sink in Flink.
+    """
+
+    def __init__(self, sink: Union[str, JavaObject]):
+        """
+        Constructor of Sink.
+
+        :param sink: The java Sink object.
+        """
+        super(Sink, self).__init__(sink)
