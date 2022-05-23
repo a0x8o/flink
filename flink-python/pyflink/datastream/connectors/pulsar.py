@@ -52,16 +52,17 @@ class PulsarDeserializationSchema(object):
         return PulsarDeserializationSchema(_j_pulsar_deserialization_schema)
 
     @staticmethod
-    def flink_type_info(type_information: TypeInformation, execution_config: ExecutionConfig) \
-            -> 'PulsarDeserializationSchema':
+    def flink_type_info(type_information: TypeInformation,
+                        execution_config: ExecutionConfig = None) -> 'PulsarDeserializationSchema':
         """
         Create a PulsarDeserializationSchema by using the given TypeInformation. This method is
         only used for treating message that was written into pulsar by TypeInformation.
         """
         JPulsarDeserializationSchema = get_gateway().jvm.org.apache.flink \
             .connector.pulsar.source.reader.deserializer.PulsarDeserializationSchema
+        JExecutionConfig = get_gateway().jvm.org.apache.flink.api.common.ExecutionConfig
         _j_execution_config = execution_config._j_execution_config \
-            if execution_config is not None else None
+            if execution_config is not None else JExecutionConfig()
         _j_pulsar_deserialization_schema = JPulsarDeserializationSchema.flinkTypeInfo(
             type_information.get_java_type_info(), _j_execution_config)
         return PulsarDeserializationSchema(_j_pulsar_deserialization_schema)
@@ -171,9 +172,20 @@ class StopCursor(object):
 
     @staticmethod
     def at_event_time(timestamp: int) -> 'StopCursor':
+        warnings.warn(
+            "at_event_time is deprecated. Use at_publish_time instead.", DeprecationWarning)
         JStopCursor = get_gateway().jvm \
             .org.apache.flink.connector.pulsar.source.enumerator.cursor.StopCursor
         return StopCursor(JStopCursor.atEventTime(timestamp))
+
+    @staticmethod
+    def at_publish_time(timestamp: int) -> 'StopCursor':
+        """
+        Stop when message publishTime is greater than the specified timestamp.
+        """
+        JStopCursor = get_gateway().jvm \
+            .org.apache.flink.connector.pulsar.source.enumerator.cursor.StopCursor
+        return StopCursor(JStopCursor.atPublishTime(timestamp))
 
 
 class PulsarSource(Source):
@@ -187,7 +199,7 @@ class PulsarSource(Source):
 
         >>> source = PulsarSource() \\
         ...     .builder() \\
-        ...     .set_topics(TOPIC1, TOPIC2) \\
+        ...     .set_topics([TOPIC1, TOPIC2]) \\
         ...     .set_service_url(get_service_url()) \\
         ...     .set_admin_url(get_admin_url()) \\
         ...     .set_subscription_name("test") \\
@@ -254,7 +266,7 @@ class PulsarSourceBuilder(object):
         ...     .set_topics([TOPIC1, TOPIC2]) \\
         ...     .set_deserialization_schema(
         ...         PulsarDeserializationSchema.flink_schema(SimpleStringSchema())) \\
-        ...     .set_bounded_stop_cursor(StopCursor.at_event_time(int(time.time() * 1000)))
+        ...     .set_bounded_stop_cursor(StopCursor.at_publish_time(int(time.time() * 1000)))
         ...     .build()
     """
 
@@ -309,9 +321,19 @@ class PulsarSourceBuilder(object):
     def set_topics_pattern(self, topics_pattern: str) -> 'PulsarSourceBuilder':
         """
         Set a topic pattern to consume from the java regex str. You can set topics once either with
-        setTopics or setTopicPattern in this builder.
+        set_topics or set_topic_pattern in this builder.
         """
+        warnings.warn("set_topics_pattern is deprecated. Use set_topic_pattern instead.",
+                      DeprecationWarning, stacklevel=2)
         self._j_pulsar_source_builder.setTopicPattern(topics_pattern)
+        return self
+
+    def set_topic_pattern(self, topic_pattern: str) -> 'PulsarSourceBuilder':
+        """
+        Set a topic pattern to consume from the java regex str. You can set topics once either with
+        set_topics or set_topic_pattern in this builder.
+        """
+        self._j_pulsar_source_builder.setTopicPattern(topic_pattern)
         return self
 
     def set_start_cursor(self, start_cursor: StartCursor) -> 'PulsarSourceBuilder':

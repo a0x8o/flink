@@ -133,8 +133,6 @@ public class Execution
      */
     private final long[] stateTimestamps;
 
-    private final int attemptNumber;
-
     private final Time rpcTimeout;
 
     private final Collection<PartitionInfo> partitionInfos;
@@ -205,10 +203,12 @@ public class Execution
 
         this.executor = checkNotNull(executor);
         this.vertex = checkNotNull(vertex);
-        this.attemptId = new ExecutionAttemptID();
+        this.attemptId =
+                new ExecutionAttemptID(
+                        vertex.getExecutionGraphAccessor().getExecutionGraphID(),
+                        vertex.getID(),
+                        attemptNumber);
         this.rpcTimeout = checkNotNull(rpcTimeout);
-
-        this.attemptNumber = attemptNumber;
 
         this.stateTimestamps = new long[ExecutionState.values().length];
         markTimestamp(CREATED, startTimestamp);
@@ -238,7 +238,7 @@ public class Execution
 
     @Override
     public int getAttemptNumber() {
-        return attemptNumber;
+        return attemptId.getAttemptNumber();
     }
 
     @Override
@@ -546,14 +546,14 @@ public class Execution
             LOG.info(
                     "Deploying {} (attempt #{}) with attempt id {} and vertex id {} to {} with allocation id {}",
                     vertex.getTaskNameWithSubtaskIndex(),
-                    attemptNumber,
+                    getAttemptNumber(),
                     vertex.getCurrentExecutionAttempt().getAttemptId(),
                     vertex.getID(),
                     getAssignedResourceLocation(),
                     slot.getAllocationId());
 
             final TaskDeploymentDescriptor deployment =
-                    TaskDeploymentDescriptorFactory.fromExecutionVertex(vertex, attemptNumber)
+                    TaskDeploymentDescriptorFactory.fromExecutionVertex(vertex)
                             .createDeploymentDescriptor(
                                     slot.getAllocationId(),
                                     taskRestore,
@@ -1463,7 +1463,7 @@ public class Execution
     }
 
     public String getVertexWithAttempt() {
-        return vertex.getTaskNameWithSubtaskIndex() + " - execution #" + attemptNumber;
+        return vertex.getTaskNameWithSubtaskIndex() + " - execution #" + getAttemptNumber();
     }
 
     // ------------------------------------------------------------------------
@@ -1532,7 +1532,7 @@ public class Execution
 
         return String.format(
                 "Attempt #%d (%s) @ %s - [%s]",
-                attemptNumber,
+                getAttemptNumber(),
                 vertex.getTaskNameWithSubtaskIndex(),
                 (slot == null ? "(unassigned)" : slot),
                 state);
