@@ -87,6 +87,7 @@ import org.apache.flink.streaming.api.operators.StreamTaskStateInitializerImpl;
 import org.apache.flink.streaming.runtime.io.DataInputStatus;
 import org.apache.flink.streaming.runtime.io.RecordWriterOutput;
 import org.apache.flink.streaming.runtime.io.StreamInputProcessor;
+import org.apache.flink.streaming.runtime.io.checkpointing.BarrierAlignmentUtil;
 import org.apache.flink.streaming.runtime.io.checkpointing.CheckpointBarrierHandler;
 import org.apache.flink.streaming.runtime.partitioner.ConfigurableStreamPartitioner;
 import org.apache.flink.streaming.runtime.partitioner.StreamPartitioner;
@@ -440,12 +441,20 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
             environment.setCheckpointStorageAccess(checkpointStorageAccess);
 
+            // if the clock is not already set, then assign a default TimeServiceProvider
+            if (timerService == null) {
+                this.timerService = createTimerService("Time Trigger for " + getName());
+            } else {
+                this.timerService = timerService;
+            }
+
+            this.systemTimerService = createTimerService("System Time Trigger for " + getName());
+
             this.subtaskCheckpointCoordinator =
                     new SubtaskCheckpointCoordinatorImpl(
                             checkpointStorageAccess,
                             getName(),
                             actionExecutor,
-                            getCancelables(),
                             getAsyncOperationsThreadPool(),
                             environment,
                             this,
@@ -455,16 +464,11 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
                                     .get(
                                             ExecutionCheckpointingOptions
                                                     .ENABLE_CHECKPOINTS_AFTER_TASKS_FINISH),
-                            this::prepareInputSnapshot);
+                            this::prepareInputSnapshot,
+                            BarrierAlignmentUtil.createRegisterTimerCallback(
+                                    mainMailboxExecutor, systemTimerService));
+            resourceCloser.registerCloseable(subtaskCheckpointCoordinator::close);
 
-            // if the clock is not already set, then assign a default TimeServiceProvider
-            if (timerService == null) {
-                this.timerService = createTimerService("Time Trigger for " + getName());
-            } else {
-                this.timerService = timerService;
-            }
-
-            this.systemTimerService = createTimerService("System Time Trigger for " + getName());
             // Register to stop all timers and threads. Should be closed first.
             resourceCloser.registerCloseable(this::tryShutdownTimerService);
 
@@ -967,6 +971,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
                                 // can be invoked from a different thread
                                 mailboxProcessor.allActionsCompleted();
                                 try {
+                                    subtaskCheckpointCoordinator.cancel();
                                     cancelables.close();
                                 } catch (IOException e) {
                                     throw new CompletionException(e);
