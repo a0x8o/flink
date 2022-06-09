@@ -1359,13 +1359,27 @@ object ScalarOperatorGens {
     val baseMap = newName("map")
 
     // prepare map key array
-    val keyElements = elements.grouped(2).map { case Seq(key, _) => key }.toSeq
+    val keyElements = elements
+      .grouped(2)
+      .map { case Seq(key, value) => (key, value) }
+      .toSeq
+      .groupBy(_._1)
+      .map(_._2.last)
+      .keys
+      .toSeq
     val keyType = mapType.getKeyType
     val keyExpr = generateArray(ctx, new ArrayType(keyType), keyElements)
     val isKeyFixLength = isPrimitive(keyType)
 
     // prepare map value array
-    val valueElements = elements.grouped(2).map { case Seq(_, value) => value }.toSeq
+    val valueElements = elements
+      .grouped(2)
+      .map { case Seq(key, value) => (key, value) }
+      .toSeq
+      .groupBy(_._1)
+      .map(_._2.last)
+      .values
+      .toSeq
     val valueType = mapType.getValueType
     val valueExpr = generateArray(ctx, new ArrayType(valueType), valueElements)
     val isValueFixLength = isPrimitive(valueType)
@@ -1771,7 +1785,7 @@ object ScalarOperatorGens {
 
       override def getSessionZoneId: ZoneId = TableConfigUtils.getLocalTimeZone(ctx.tableConfig)
 
-      override def getClassLoader: ClassLoader = Thread.currentThread().getContextClassLoader
+      override def getClassLoader: ClassLoader = ctx.classLoader
     }
   }
 

@@ -58,7 +58,10 @@ public interface CatalogFunction {
      * Distinguish if the function is a generic function.
      *
      * @return whether the function is a generic function
+     * @deprecated There is no replacement for this function, as now functions have type inference
+     *     strategies
      */
+    @Deprecated
     boolean isGeneric();
 
     /**
