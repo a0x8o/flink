@@ -118,6 +118,23 @@ Flink 有多个本地缓冲区池 —— 每个输出和输入流对应一个。
 
 不同于输入缓冲区池，这里配置的独占缓冲区和流动缓冲区只被当作推荐值。如果没有足够的缓冲区，每个输出 subpartition 可以只使用一个独占缓冲区而没有流动缓冲区。
 
+#### Overdraft buffers
+
+For each output subtask can also request up to `taskmanager.network.memory.max-overdraft-buffers-per-gate`
+(by default 5) extra overdraft buffers. Those buffers are only used, if the subtask is backpressured
+by downstream subtasks and the subtask requires more than a single network buffer to finish what its
+currently doing. This can happen in situations like:
+- Serializing very large records, that do not fit into a single network buffer.
+- Flat Map like operator, that produces many output records per single input record.
+- Operators that output many records either periodically or on a reaction to some events (for
+example `WindowOperator`'s triggers).
+
+Without overdraft buffers in such situations Flink subtask thread would block on the backpressure,
+preventing for example unaligned checkpoints from completing. To mitigate this, the overdraft
+buffers concept has been added. Those overdraft buffers are strictly optional and Flink can
+gradually make progress using only regular buffers, which means `0` is an acceptable configuration
+for the `taskmanager.network.memory.max-overdraft-buffers-per-gate`.
+
 ## 缓冲区的数量
 
 独占缓冲区和流动缓冲区的默认配置应该足以应对最大吞吐。如果想要最小化缓冲数据量，那么可以将独占缓冲区设置为 `0`，同时减小内存段的大小。
