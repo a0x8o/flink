@@ -20,25 +20,31 @@ package org.apache.flink.runtime.scheduler;
 
 import org.apache.flink.runtime.executiongraph.Execution;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
+import org.apache.flink.runtime.jobmaster.LogicalSlot;
 
-import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
-/** Component responsible for assigning slots to a collection of {@link Execution}. */
-public interface ExecutionSlotAllocator {
+import static org.apache.flink.util.Preconditions.checkNotNull;
 
-    /**
-     * Allocate slots for the given executions.
-     *
-     * @param executionAttemptIds executions to allocate slots for
-     * @return List of slot assignments to the executions
-     */
-    List<ExecutionSlotAssignment> allocateSlotsFor(List<ExecutionAttemptID> executionAttemptIds);
+/** The slot assignment for an {@link Execution}. */
+class ExecutionSlotAssignment {
 
-    /**
-     * Cancel the ongoing slot request of the given {@link Execution}.
-     *
-     * @param executionAttemptId identifying the {@link Execution} of which the slot request should
-     *     be canceled.
-     */
-    void cancel(ExecutionAttemptID executionAttemptId);
+    private final ExecutionAttemptID executionAttemptId;
+
+    private final CompletableFuture<LogicalSlot> logicalSlotFuture;
+
+    ExecutionSlotAssignment(
+            ExecutionAttemptID executionAttemptId,
+            CompletableFuture<LogicalSlot> logicalSlotFuture) {
+        this.executionAttemptId = checkNotNull(executionAttemptId);
+        this.logicalSlotFuture = checkNotNull(logicalSlotFuture);
+    }
+
+    ExecutionAttemptID getExecutionAttemptId() {
+        return executionAttemptId;
+    }
+
+    CompletableFuture<LogicalSlot> getLogicalSlotFuture() {
+        return logicalSlotFuture;
+    }
 }
