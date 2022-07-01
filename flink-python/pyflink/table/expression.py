@@ -1187,6 +1187,32 @@ class Expression(Generic[T]):
         return _unary_op("toBase64")(self)
 
     @property
+    def ascii(self) -> 'Expression[int]':
+        """
+        Returns the numeric value of the first character of the input string.
+        """
+        return _unary_op("ascii")(self)
+
+    @property
+    def chr(self) -> 'Expression[str]':
+        """
+        Returns the ASCII character result of the input integer.
+        """
+        return _unary_op("chr")(self)
+
+    def decode(self, charset: Union[str, 'Expression[str]']) -> 'Expression[str]':
+        """
+        Decodes the first argument into a String using the provided character set.
+        """
+        return _binary_op("decode")(self, charset)
+
+    def encode(self, charset: Union[str, 'Expression[str]']) -> 'Expression[bytes]':
+        """
+        Encodes the string into a BINARY using the provided character set.
+        """
+        return _binary_op("encode")(self, charset)
+
+    @property
     def ltrim(self) -> 'Expression[str]':
         """
         Returns a string that removes the left whitespaces from the given string.

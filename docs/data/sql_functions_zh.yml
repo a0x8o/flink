@@ -411,19 +411,23 @@ string:
       返回字符串 string 的 base64 编码的结果；如果字符串为 `NULL`，则返回 `NULL`。
       例如 `TO_BASE64('hello world')` 返回 `"aGVsbG8gd29ybGQ="`。
   - sql: ASCII(string)
+    table: STRING.ascii()
     description: |
       返回字符串 string 第一个字符的数值。如果字符串为 `NULL` 则返回 `NULL`。
       例如 `ascii('abc')` 返回 `97`，`ascii(CAST(NULL AS VARCHAR))` 返回 `NULL`。
   - sql: CHR(integer)
+    table: INT.chr()
     description: |
       返回二进制等于 integer 的 ASCII 字符。如果整数 integer 大于 255，我们先将得到整数对 255 取模数，
       并返回模数的 CHR。如果整数为 `NULL`，则返回 `NULL`。例如 `chr(97)` 返回 `a`，`chr(353)` 返回 `a`，
       `ascii(CAST(NULL AS VARCHAR))` 返回 `NULL`。
   - sql: DECODE(binary, string)
+    table: BINARY.decode(STRING)
     description: |
       使用提供的字符集（'US-ASCII'，'ISO-8859-1'，'UTF-8'，'UTF-16BE'，'UTF-16LE'，'UTF-16'）解码。
       如果任一参数为空，则结果也将为空。
   - sql: ENCODE(string1, string2)
+    table: STRING1.encode(STRING2)
     description: |
       使用提供的字符集（'US-ASCII'，'ISO-8859-1'，'UTF-8'，'UTF-16BE'，'UTF-16LE'，'UTF-16'）编码。
       如果任一参数为空，则结果也将为空。
@@ -444,7 +448,7 @@ string:
     description: |
       从 URL 返回指定的部分。string2 的有效值包括“HOST”，“PATH”，“QUERY”，“REF”，“PROTOCOL”，“AUTHORITY”，“FILE”和“USERINFO”。
       如果有任一参数为 `NULL`，则返回 `NULL`。例如
-      `parse_url(' http://facebook.com/path1/p.php?k1=v1&k2=v2#Ref1', 'HOST')` 返回 `'facebook.com'`。
+      `parse_url('http://facebook.com/path1/p.php?k1=v1&k2=v2#Ref1', 'HOST')` 返回 `'facebook.com'`。
       还可以通过提供关键词 string3 作为第三个参数来提取 QUERY 中特定键的值。例如
       `parse_url('http://facebook.com/path1/p.php?k1=v1&k2=v2#Ref1', 'QUERY', 'k1')` 返回 `'v1'`。
   - sql: REGEXP(string1, string2)
@@ -1074,8 +1078,10 @@ aggregate:
   - sql: LAG(expression [, offset] [, default])
     description: 返回窗口中当前行之前第 offset 行处的表达式值。offset 的默认值为 1，default 的默认值为 `NULL`。
   - sql: FIRST_VALUE(expression)
+    table: FIELD.firstValue
     description: 返回一组有序值中的第一个值。
   - sql: LAST_VALUE(expression)
+    table: FIELD.lastValue
     description: 返回一组有序值中的最后一个值。
   - sql: LISTAGG(expression [, separator])
     description: 连接字符串表达式的值并在它们之间放置分隔符值。字符串末尾不添加分隔符时则分隔符的默认值为“,”。

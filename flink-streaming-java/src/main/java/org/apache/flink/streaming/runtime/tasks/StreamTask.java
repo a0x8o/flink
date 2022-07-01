@@ -272,7 +272,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
     /** Thread pool for async snapshot workers. */
     private final ExecutorService asyncOperationsThreadPool;
 
-    private final RecordWriterDelegate<SerializationDelegate<StreamRecord<OUT>>> recordWriter;
+    protected final RecordWriterDelegate<SerializationDelegate<StreamRecord<OUT>>> recordWriter;
 
     protected final MailboxProcessor mailboxProcessor;
 
@@ -772,6 +772,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
         scheduleBufferDebloater();
 
         // let the task do its work
+        getEnvironment().getMetricGroup().getIOMetricGroup().markTaskStart();
         runMailboxLoop();
 
         // if this left the run() method cleanly despite the fact that this was canceled,

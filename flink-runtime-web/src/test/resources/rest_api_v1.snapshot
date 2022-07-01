@@ -829,6 +829,15 @@
                   },
                   "write-records-complete" : {
                     "type" : "boolean"
+                  },
+                  "accumulated-backpressured-time" : {
+                    "type" : "integer"
+                  },
+                  "accumulated-idle-time" : {
+                    "type" : "integer"
+                  },
+                  "accumulated-busy-time" : {
+                    "type" : "number"
                   }
                 }
               }
@@ -2167,11 +2176,26 @@
                   },
                   "write-records-complete" : {
                     "type" : "boolean"
+                  },
+                  "accumulated-backpressured-time" : {
+                    "type" : "integer"
+                  },
+                  "accumulated-idle-time" : {
+                    "type" : "integer"
+                  },
+                  "accumulated-busy-time" : {
+                    "type" : "number"
                   }
                 }
               },
               "taskmanager-id" : {
                 "type" : "string"
+              },
+              "status-duration" : {
+                "type" : "object",
+                "additionalProperties" : {
+                  "type" : "integer"
+                }
               },
               "start_time" : {
                 "type" : "integer"
@@ -2528,11 +2552,26 @@
             },
             "write-records-complete" : {
               "type" : "boolean"
+            },
+            "accumulated-backpressured-time" : {
+              "type" : "integer"
+            },
+            "accumulated-idle-time" : {
+              "type" : "integer"
+            },
+            "accumulated-busy-time" : {
+              "type" : "number"
             }
           }
         },
         "taskmanager-id" : {
           "type" : "string"
+        },
+        "status-duration" : {
+          "type" : "object",
+          "additionalProperties" : {
+            "type" : "integer"
+          }
         },
         "start_time" : {
           "type" : "integer"
@@ -2614,11 +2653,26 @@
             },
             "write-records-complete" : {
               "type" : "boolean"
+            },
+            "accumulated-backpressured-time" : {
+              "type" : "integer"
+            },
+            "accumulated-idle-time" : {
+              "type" : "integer"
+            },
+            "accumulated-busy-time" : {
+              "type" : "number"
             }
           }
         },
         "taskmanager-id" : {
           "type" : "string"
+        },
+        "status-duration" : {
+          "type" : "object",
+          "additionalProperties" : {
+            "type" : "integer"
+          }
         },
         "start_time" : {
           "type" : "integer"
@@ -2843,6 +2897,15 @@
                   },
                   "write-records-complete" : {
                     "type" : "boolean"
+                  },
+                  "accumulated-backpressured-time" : {
+                    "type" : "integer"
+                  },
+                  "accumulated-idle-time" : {
+                    "type" : "integer"
+                  },
+                  "accumulated-busy-time" : {
+                    "type" : "number"
                   }
                 }
               },
