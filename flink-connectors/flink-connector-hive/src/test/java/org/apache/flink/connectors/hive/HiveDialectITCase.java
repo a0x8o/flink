@@ -59,6 +59,7 @@ import org.apache.hadoop.hive.ql.io.RCFileOutputFormat;
 import org.apache.hadoop.hive.ql.io.orc.OrcInputFormat;
 import org.apache.hadoop.hive.ql.io.orc.OrcOutputFormat;
 import org.apache.hadoop.hive.ql.io.orc.OrcSerde;
+import org.apache.hadoop.hive.ql.parse.SemanticException;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDAFCount;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDFAbs;
 import org.apache.hadoop.hive.serde.serdeConstants;
@@ -76,6 +77,7 @@ import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 
+import static org.apache.flink.core.testutils.FlinkAssertions.anyCauseMatches;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -558,6 +560,47 @@ public class HiveDialectITCase {
     }
 
     @Test
+    public void testTableWithSubDirsInPartitionDir() throws Exception {
+        tableEnv.executeSql("CREATE TABLE fact_tz(x int) PARTITIONED BY (ds STRING, hr STRING)");
+        tableEnv.executeSql("INSERT OVERWRITE TABLE fact_tz PARTITION (ds='1', hr='1') select 1")
+                .await();
+        tableEnv.executeSql("INSERT OVERWRITE TABLE fact_tz PARTITION (ds='1', hr='2') select 2")
+                .await();
+        String location = warehouse + "/fact_tz";
+        // create an external table
+        tableEnv.executeSql(
+                String.format(
+                        "create external table fact_daily(x int) PARTITIONED BY (ds STRING) location '%s'",
+                        location));
+        tableEnv.executeSql(
+                String.format(
+                        "ALTER TABLE fact_daily ADD PARTITION (ds='1') location '%s'",
+                        location + "/ds=1"));
+        List<Row> results =
+                CollectionUtil.iteratorToList(
+                        tableEnv.executeSql("select * from fact_daily WHERE ds='1' order by x")
+                                .collect());
+        // the data read from the external table fact_daily should contain the data in
+        // directory 'ds=1/hr=1', 'ds=1/hr=2'
+        assertThat(results.toString()).isEqualTo("[+I[1, 1], +I[2, 1]]");
+
+        tableEnv.getConfig()
+                .set(
+                        HiveOptions.TABLE_EXEC_HIVE_READ_PARTITION_WITH_SUBDIRECTORY_ENABLED.key(),
+                        "false");
+        // should throw exception when disable reading sub-dirs in partition directory
+        assertThatThrownBy(
+                        () ->
+                                CollectionUtil.iteratorToList(
+                                        tableEnv.executeSql("select * from fact_daily WHERE ds='1'")
+                                                .collect()))
+                .satisfies(
+                        anyCauseMatches(
+                                String.format(
+                                        "Not a file: file:%s", warehouse + "/fact_tz/ds=1/hr=2")));
+    }
+
+    @Test
     public void testView() throws Exception {
         tableEnv.executeSql("create table tbl (x int,y string)");
 
@@ -809,6 +852,52 @@ public class HiveDialectITCase {
                                 .collect());
         assertThat(partitions).hasSize(1);
         assertThat(partitions.toString()).contains("dt=2020-04-30 01:02:03/country=china");
+    }
+
+    @Test
+    public void testMacro() throws Exception {
+        tableEnv.executeSql("create temporary macro string_len (x string) length(x)");
+        tableEnv.executeSql("create temporary macro string_len_plus(x string) length(x) + 1");
+        tableEnv.executeSql("create table macro_test (x string)");
+        tableEnv.executeSql("insert into table macro_test values ('bb'), ('a'), ('cc')").await();
+        List<Row> result =
+                CollectionUtil.iteratorToList(
+                        tableEnv.executeSql(
+                                        "select string_len(x), string_len_plus(x) from macro_test")
+                                .collect());
+        assertThat(result.toString()).isEqualTo("[+I[2, 3], +I[1, 2], +I[2, 3]]");
+        // drop macro
+        tableEnv.executeSql("drop temporary macro string_len_plus");
+        // create macro
+        tableEnv.executeSql("create temporary macro string_len_plus(x string) length(x) + 2");
+        result =
+                CollectionUtil.iteratorToList(
+                        tableEnv.executeSql(
+                                        "select string_len(x), string_len_plus(x) from macro_test")
+                                .collect());
+        assertThat(result.toString()).isEqualTo("[+I[2, 4], +I[1, 3], +I[2, 4]]");
+        String badMacroName = "db.string_len";
+        // should fail when create macro whose name contains "."
+        assertThatThrownBy(
+                        () ->
+                                tableEnv.executeSql(
+                                        String.format(
+                                                "create temporary macro `%s` (x string) length(x)",
+                                                badMacroName)))
+                .hasRootCauseInstanceOf(SemanticException.class)
+                .hasRootCauseMessage(
+                        String.format(
+                                "CREATE TEMPORARY MACRO doesn't allow \".\" character in the macro name, but the name is \"%s\".",
+                                badMacroName));
+        // should fail when drop macro whose name contains "."
+        assertThatThrownBy(
+                        () ->
+                                tableEnv.executeSql(
+                                        String.format("drop temporary macro `%s`", badMacroName)))
+                .hasRootCauseInstanceOf(SemanticException.class)
+                .hasRootCauseMessage(
+                        "DROP TEMPORARY MACRO doesn't allow \".\" character in the macro name, but the name is \"%s\".",
+                        badMacroName);
     }
 
     @Test

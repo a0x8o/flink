@@ -26,7 +26,7 @@ from pyflink.table.expressions import (col, lit, range_, and_, or_, current_date
                                        timestamp_diff, array, row, map_, row_interval, pi, e,
                                        rand, rand_integer, atan2, negative, concat, concat_ws, uuid,
                                        null_of, log, if_then_else, with_columns, call,
-                                       to_timestamp_ltz)
+                                       to_timestamp_ltz, from_unixtime)
 from pyflink.testing.test_case_utils import PyFlinkTestCase
 
 
@@ -147,6 +147,13 @@ class PyFlinkBatchExpressionTests(PyFlinkTestCase):
         self.assertEqual('chr(a)', str(expr1.chr))
         self.assertEqual("decode(a, 'utf-8')", str(expr1.decode('utf-8')))
         self.assertEqual("encode(a, 'utf-8')", str(expr1.encode('utf-8')))
+        self.assertEqual('left(a, 2)', str(expr1.left(2)))
+        self.assertEqual('right(a, 2)', str(expr1.right(2)))
+        self.assertEqual('instr(a, b)', str(expr1.instr(expr2)))
+        self.assertEqual('locate(a, b)', str(expr1.locate(expr2)))
+        self.assertEqual('locate(a, b, 2)', str(expr1.locate(expr2, 2)))
+        self.assertEqual('parseUrl(a, b)', str(expr1.parse_url(expr2)))
+        self.assertEqual("parseUrl(a, b, 'query')", str(expr1.parse_url(expr2, 'query')))
         self.assertEqual('ltrim(a)', str(expr1.ltrim))
         self.assertEqual('rtrim(a)', str(expr1.rtrim))
         self.assertEqual('repeat(a, 3)', str(expr1.repeat(3)))
@@ -255,6 +262,9 @@ class PyFlinkBatchExpressionTests(PyFlinkTestCase):
                              TimePointUnit.DAY,
                              lit("2016-06-15").to_date,
                              lit("2016-06-18").to_date)))
+        self.assertEqual("fromUnixtime(1)", str(from_unixtime(1)))
+        self.assertEqual("fromUnixtime(1, 'yy-MM-dd HH-mm-ss')",
+                         str(from_unixtime(1, 'yy-MM-dd HH-mm-ss')))
         self.assertEqual('array(1, 2, 3)', str(array(1, 2, 3)))
         self.assertEqual("row('key1', 1)", str(row("key1", 1)))
         self.assertEqual("map('key1', 1, 'key2', 2, 'key3', 3)",
