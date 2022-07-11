@@ -18,10 +18,10 @@
 
 package org.apache.flink.runtime.blocklist;
 
-import org.apache.flink.api.common.time.Time;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.concurrent.ComponentMainThreadExecutor;
 import org.apache.flink.runtime.concurrent.ComponentMainThreadExecutorServiceAdapter;
+import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.testutils.TestingUtils;
 import org.apache.flink.testutils.executor.TestExecutorExtension;
 
@@ -30,6 +30,7 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -157,7 +158,7 @@ class DefaultBlocklistHandlerTest {
                 new DefaultBlocklistTracker(),
                 blocklistContext,
                 resourceID -> "node",
-                Time.milliseconds(100L),
+                Duration.ofMillis(100L),
                 ComponentMainThreadExecutorServiceAdapter.forMainThread(),
                 LOG);
     }
@@ -168,7 +169,7 @@ class DefaultBlocklistHandlerTest {
                 new DefaultBlocklistTracker(),
                 TestBlocklistContext.newBuilder().build(),
                 taskManagerToNode::get,
-                Time.milliseconds(100L),
+                Duration.ofMillis(100L),
                 ComponentMainThreadExecutorServiceAdapter.forMainThread(),
                 LOG);
     }
@@ -179,7 +180,7 @@ class DefaultBlocklistHandlerTest {
                 new DefaultBlocklistTracker(),
                 blocklistContext,
                 resourceID -> "node",
-                Time.milliseconds(100L),
+                Duration.ofMillis(100L),
                 mainThreadExecutor,
                 LOG);
     }
@@ -191,9 +192,11 @@ class DefaultBlocklistHandlerTest {
         private final List<BlockedNode> notifiedNodes = new ArrayList<>();
 
         @Override
-        public void notifyNewBlockedNodes(Collection<BlockedNode> newNodes) {
+        public CompletableFuture<Acknowledge> notifyNewBlockedNodes(
+                Collection<BlockedNode> newNodes) {
             notifiedTimes++;
             notifiedNodes.addAll(newNodes);
+            return CompletableFuture.completedFuture(Acknowledge.get());
         }
     }
 
