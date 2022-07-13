@@ -1599,7 +1599,7 @@ public class DefaultSchedulerTest extends TestLogger {
                         final JobGraph jobGraph = singleJobVertexJobGraph(1);
                         enableCheckpointing(jobGraph);
                         try {
-                            return new SchedulerTestingUtils.DefaultSchedulerBuilder(
+                            return new DefaultSchedulerBuilder(
                                             jobGraph,
                                             ComponentMainThreadExecutorServiceAdapter
                                                     .forSingleThreadExecutor(executorService),
@@ -1690,7 +1690,7 @@ public class DefaultSchedulerTest extends TestLogger {
         schedulerClosed.get();
     }
 
-    private static TaskExecutionState createFailedTaskExecutionState(
+    public static TaskExecutionState createFailedTaskExecutionState(
             ExecutionAttemptID executionAttemptID) {
         return new TaskExecutionState(
                 executionAttemptID, ExecutionState.FAILED, new Exception("Expected failure cause"));
@@ -1745,7 +1745,7 @@ public class DefaultSchedulerTest extends TestLogger {
         scheduler.getJobTerminationFuture().get(TIMEOUT_MS, TimeUnit.MILLISECONDS);
     }
 
-    private static JobGraph singleNonParallelJobVertexJobGraph() {
+    public static JobGraph singleNonParallelJobVertexJobGraph() {
         return singleJobVertexJobGraph(1);
     }
 
@@ -1844,10 +1844,9 @@ public class DefaultSchedulerTest extends TestLogger {
                 .build();
     }
 
-    private SchedulerTestingUtils.DefaultSchedulerBuilder createSchedulerBuilder(
-            final JobGraph jobGraph, final ComponentMainThreadExecutor mainThreadExecutor)
-            throws Exception {
-        return new SchedulerTestingUtils.DefaultSchedulerBuilder(
+    private DefaultSchedulerBuilder createSchedulerBuilder(
+            final JobGraph jobGraph, final ComponentMainThreadExecutor mainThreadExecutor) {
+        return new DefaultSchedulerBuilder(
                         jobGraph,
                         mainThreadExecutor,
                         executor,
