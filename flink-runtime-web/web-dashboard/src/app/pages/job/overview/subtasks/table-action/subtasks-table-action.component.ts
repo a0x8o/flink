@@ -18,10 +18,10 @@
 
 import { Component, ChangeDetectionStrategy, Input } from '@angular/core';
 
-import { JobSubTask } from '@flink-runtime-web/interfaces';
+import { JobVertexSubTask } from '@flink-runtime-web/interfaces';
 
 export interface JobOverviewSubtasksTableAction {
-  subtask?: JobSubTask;
+  subtask?: JobVertexSubTask;
 }
 
 @Component({
@@ -31,5 +31,5 @@ export interface JobOverviewSubtasksTableAction {
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class SubtasksTableActionComponent implements JobOverviewSubtasksTableAction {
-  @Input() subtask?: JobSubTask;
+  @Input() subtask?: JobVertexSubTask;
 }
