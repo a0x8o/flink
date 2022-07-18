@@ -17,6 +17,7 @@
 
 package org.apache.flink.streaming.runtime.translators.python;
 
+import org.apache.flink.annotation.Internal;
 import org.apache.flink.streaming.api.operators.SimpleOperatorFactory;
 import org.apache.flink.streaming.api.operators.python.PythonBatchCoBroadcastProcessOperator;
 import org.apache.flink.streaming.api.operators.python.PythonCoProcessOperator;
@@ -31,6 +32,7 @@ import java.util.Collection;
  * PythonBroadcastStateTransformation} into {@link PythonCoProcessOperator} or {@link
  * PythonBatchCoBroadcastProcessOperator}.
  */
+@Internal
 public class PythonBroadcastStateTransformationTranslator<IN1, IN2, OUT>
         extends AbstractTwoInputTransformationTranslator<
                 IN1, IN2, OUT, PythonBroadcastStateTransformation<IN1, IN2, OUT>> {
