@@ -20,6 +20,8 @@
 package org.apache.flink.runtime.scheduler.adaptivebatch;
 
 import org.apache.flink.api.common.JobStatus;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.SlowTaskDetectorOptions;
 import org.apache.flink.runtime.blocklist.BlockedNode;
 import org.apache.flink.runtime.blocklist.BlocklistOperations;
 import org.apache.flink.runtime.concurrent.ComponentMainThreadExecutor;
@@ -43,6 +45,8 @@ import org.apache.flink.runtime.jobgraph.JobVertex;
 import org.apache.flink.runtime.scheduler.DefaultExecutionOperations;
 import org.apache.flink.runtime.scheduler.DefaultSchedulerBuilder;
 import org.apache.flink.runtime.scheduler.TestExecutionOperationsDecorator;
+import org.apache.flink.runtime.scheduler.TestExecutionSlotAllocator;
+import org.apache.flink.runtime.scheduler.TestExecutionSlotAllocatorFactory;
 import org.apache.flink.runtime.scheduler.exceptionhistory.RootExceptionHistoryEntry;
 import org.apache.flink.runtime.taskmanager.TaskExecutionState;
 import org.apache.flink.runtime.testutils.DirectScheduledExecutorService;
@@ -59,6 +63,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -87,6 +92,8 @@ class SpeculativeSchedulerTest {
     private TestExecutionOperationsDecorator testExecutionOperations;
     private TestBlocklistOperations testBlocklistOperations;
     private TestRestartBackoffTimeStrategy restartStrategy;
+    private TestExecutionSlotAllocatorFactory testExecutionSlotAllocatorFactory;
+    private TestExecutionSlotAllocator testExecutionSlotAllocator;
 
     @BeforeEach
     void setUp() {
@@ -97,6 +104,9 @@ class SpeculativeSchedulerTest {
                 new TestExecutionOperationsDecorator(new DefaultExecutionOperations());
         testBlocklistOperations = new TestBlocklistOperations();
         restartStrategy = new TestRestartBackoffTimeStrategy(true, 0);
+        testExecutionSlotAllocatorFactory = new TestExecutionSlotAllocatorFactory();
+        testExecutionSlotAllocator =
+                testExecutionSlotAllocatorFactory.getTestExecutionSlotAllocator();
     }
 
     @AfterEach
@@ -210,7 +220,7 @@ class SpeculativeSchedulerTest {
     }
 
     @Test
-    void testCancelOtherCurrentExecutionsWhenAnyExecutionFinished() {
+    void testCancelOtherDeployedCurrentExecutionsWhenAnyExecutionFinished() {
         final SpeculativeScheduler scheduler = createSchedulerAndStartScheduling();
         final ExecutionVertex ev = getOnlyExecutionVertex(scheduler);
         final Execution attempt1 = ev.getCurrentExecutionAttempt();
@@ -221,6 +231,23 @@ class SpeculativeSchedulerTest {
                 new TaskExecutionState(attempt1.getAttemptId(), ExecutionState.FINISHED));
 
         assertThat(attempt2.getState()).isEqualTo(ExecutionState.CANCELING);
+    }
+
+    @Test
+    void testCancelOtherScheduledCurrentExecutionsWhenAnyExecutionFinished() {
+        testExecutionSlotAllocator.disableAutoCompletePendingRequests();
+
+        final SpeculativeScheduler scheduler = createSchedulerAndStartScheduling();
+        final ExecutionVertex ev = getOnlyExecutionVertex(scheduler);
+        final Execution attempt1 = ev.getCurrentExecutionAttempt();
+
+        testExecutionSlotAllocator.completePendingRequest(attempt1.getAttemptId());
+        notifySlowTask(scheduler, attempt1);
+        final Execution attempt2 = getExecution(ev, 1);
+        scheduler.updateTaskExecutionState(
+                new TaskExecutionState(attempt1.getAttemptId(), ExecutionState.FINISHED));
+
+        assertThat(attempt2.getState()).isEqualTo(ExecutionState.CANCELED);
     }
 
     @Test
@@ -394,13 +421,19 @@ class SpeculativeSchedulerTest {
 
     private DefaultSchedulerBuilder createSchedulerBuilder(
             final JobGraph jobGraph, final ComponentMainThreadExecutor mainThreadExecutor) {
+        // disable periodical slow task detection to avoid affecting the designed testing process
+        final Configuration configuration = new Configuration();
+        configuration.set(SlowTaskDetectorOptions.CHECK_INTERVAL, Duration.ofDays(1));
+
         return new DefaultSchedulerBuilder(
                         jobGraph, mainThreadExecutor, EXECUTOR_RESOURCE.getExecutor())
                 .setBlocklistOperations(testBlocklistOperations)
                 .setExecutionOperations(testExecutionOperations)
                 .setFutureExecutor(futureExecutor)
                 .setDelayExecutor(taskRestartExecutor)
-                .setRestartBackoffTimeStrategy(restartStrategy);
+                .setRestartBackoffTimeStrategy(restartStrategy)
+                .setExecutionSlotAllocatorFactory(testExecutionSlotAllocatorFactory)
+                .setJobMasterConfiguration(configuration);
     }
 
     private static void notifySlowTask(

@@ -178,15 +178,29 @@ public class SpeculativeScheduler extends AdaptiveBatchScheduler
 
     private CompletableFuture<?> cancelPendingExecutions(
             final ExecutionVertexID executionVertexId) {
-        // cancel all the related pending requests to avoid that slots returned by the canceled
-        // vertices are used to fulfill these pending requests
-        // do not cancel the FINISHED execution
-        cancelAllPendingSlotRequestsForVertex(executionVertexId);
-        return FutureUtils.combineAll(
+        final List<Execution> pendingExecutions =
                 getExecutionVertex(executionVertexId).getCurrentExecutions().stream()
-                        .filter(e -> e.getState() != ExecutionState.FINISHED)
-                        .map(this::cancelExecution)
-                        .collect(Collectors.toList()));
+                        .filter(
+                                e ->
+                                        !e.getState().isTerminal()
+                                                && e.getState() != ExecutionState.CANCELING)
+                        .collect(Collectors.toList());
+        if (pendingExecutions.isEmpty()) {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        log.info(
+                "Canceling {} un-finished executions of {} because one of its executions has finished.",
+                pendingExecutions.size(),
+                executionVertexId);
+
+        final CompletableFuture<?> future =
+                FutureUtils.combineAll(
+                        pendingExecutions.stream()
+                                .map(this::cancelExecution)
+                                .collect(Collectors.toList()));
+        cancelAllPendingSlotRequestsForVertex(executionVertexId);
+        return future;
     }
 
     @Override
@@ -307,7 +321,15 @@ public class SpeculativeScheduler extends AdaptiveBatchScheduler
 
         return slowExecutions.stream()
                 .map(id -> getExecutionGraph().getRegisteredExecutions().get(id))
-                .map(Execution::getAssignedResourceLocation)
+                .map(
+                        e -> {
+                            checkNotNull(
+                                    e.getAssignedResource(),
+                                    "The reported slow node have not been assigned a slot. "
+                                            + "This is unexpected and indicates that there is "
+                                            + "something wrong with the slow task detector.");
+                            return e.getAssignedResourceLocation();
+                        })
                 .map(TaskManagerLocation::getNodeId)
                 .collect(Collectors.toSet());
     }
