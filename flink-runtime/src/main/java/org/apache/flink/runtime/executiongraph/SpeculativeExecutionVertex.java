@@ -42,7 +42,9 @@ import static org.apache.flink.util.Preconditions.checkState;
 /** The ExecutionVertex which supports speculative execution. */
 public class SpeculativeExecutionVertex extends ExecutionVertex {
 
-    private final Map<ExecutionAttemptID, Execution> currentExecutions;
+    private final Map<Integer, Execution> currentExecutions;
+
+    private int originalAttemptNumber;
 
     public SpeculativeExecutionVertex(
             ExecutionJobVertex jobVertex,
@@ -62,7 +64,8 @@ public class SpeculativeExecutionVertex extends ExecutionVertex {
                 initialAttemptCount);
 
         this.currentExecutions = new LinkedHashMap<>();
-        this.currentExecutions.put(currentExecution.getAttemptId(), currentExecution);
+        this.currentExecutions.put(currentExecution.getAttemptNumber(), currentExecution);
+        this.originalAttemptNumber = currentExecution.getAttemptNumber();
     }
 
     public boolean containsSources() {
@@ -76,13 +79,26 @@ public class SpeculativeExecutionVertex extends ExecutionVertex {
     public Execution createNewSpeculativeExecution(final long timestamp) {
         final Execution newExecution = createNewExecution(timestamp);
         getExecutionGraphAccessor().registerExecution(newExecution);
-        currentExecutions.put(newExecution.getAttemptId(), newExecution);
+        currentExecutions.put(newExecution.getAttemptNumber(), newExecution);
         return newExecution;
+    }
+
+    /**
+     * Returns whether the given attempt is the original execution attempt of the execution vertex,
+     * i.e. it is created along with the creation of resetting of the execution vertex.
+     */
+    public boolean isOriginalAttempt(int attemptNumber) {
+        return attemptNumber == originalAttemptNumber;
     }
 
     @Override
     public Collection<Execution> getCurrentExecutions() {
         return Collections.unmodifiableCollection(currentExecutions.values());
+    }
+
+    @Override
+    public Execution getCurrentExecution(int attemptNumber) {
+        return checkNotNull(currentExecutions.get(attemptNumber));
     }
 
     @Override
@@ -137,7 +153,8 @@ public class SpeculativeExecutionVertex extends ExecutionVertex {
         super.resetForNewExecution();
 
         currentExecutions.clear();
-        currentExecutions.put(currentExecution.getAttemptId(), currentExecution);
+        currentExecutions.put(currentExecution.getAttemptNumber(), currentExecution);
+        originalAttemptNumber = currentExecution.getAttemptNumber();
     }
 
     @Override
@@ -161,7 +178,8 @@ public class SpeculativeExecutionVertex extends ExecutionVertex {
             return;
         }
 
-        final Execution removedExecution = this.currentExecutions.remove(executionAttemptId);
+        final Execution removedExecution =
+                this.currentExecutions.remove(executionAttemptId.getAttemptNumber());
         checkNotNull(
                 removedExecution,
                 "Cannot remove execution %s which does not exist.",
