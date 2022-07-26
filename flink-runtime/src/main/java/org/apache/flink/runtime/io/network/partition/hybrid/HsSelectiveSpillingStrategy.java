@@ -52,7 +52,7 @@ public class HsSelectiveSpillingStrategy implements HsSpillingStrategy {
     // For the case of buffer consumed, this buffer need release. The control of the buffer is taken
     // over by the downstream task.
     @Override
-    public Optional<Decision> onBufferConsumed(BufferWithIdentity consumedBuffer) {
+    public Optional<Decision> onBufferConsumed(BufferIndexAndChannel consumedBuffer) {
         return Optional.of(Decision.builder().addBufferToRelease(consumedBuffer).build());
     }
 
@@ -80,7 +80,7 @@ public class HsSelectiveSpillingStrategy implements HsSpillingStrategy {
 
         int spillNum = (int) (spillingInfoProvider.getPoolSize() * spillBufferRatio);
 
-        TreeMap<Integer, Deque<BufferWithIdentity>> subpartitionToBuffers = new TreeMap<>();
+        TreeMap<Integer, Deque<BufferIndexAndChannel>> subpartitionToBuffers = new TreeMap<>();
         for (int channel = 0; channel < spillingInfoProvider.getNumSubpartitions(); channel++) {
             subpartitionToBuffers.put(
                     channel,
@@ -88,20 +88,18 @@ public class HsSelectiveSpillingStrategy implements HsSpillingStrategy {
                             channel, SpillStatus.NOT_SPILL, ConsumeStatus.NOT_CONSUMED));
         }
 
-        TreeMap<Integer, List<BufferWithIdentity>> subpartitionToHighPriorityBuffers =
+        TreeMap<Integer, List<BufferIndexAndChannel>> subpartitionToHighPriorityBuffers =
                 getBuffersByConsumptionPriorityInOrder(
                         spillingInfoProvider.getNextBufferIndexToConsume(),
                         subpartitionToBuffers,
                         spillNum);
 
         Decision.Builder builder = Decision.builder();
-        subpartitionToHighPriorityBuffers
-                .values()
-                .forEach(
-                        buffers -> {
-                            builder.addBufferToSpill(buffers);
-                            builder.addBufferToRelease(buffers);
-                        });
+        subpartitionToHighPriorityBuffers.forEach(
+                (subpartitionId, buffers) -> {
+                    builder.addBufferToSpill(subpartitionId, buffers);
+                    builder.addBufferToRelease(subpartitionId, buffers);
+                });
         return builder.build();
     }
 }

@@ -20,7 +20,10 @@ package org.apache.flink.runtime.io.network.partition.hybrid;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Deque;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -57,7 +60,7 @@ public interface HsSpillingStrategy {
      * @return A {@link Decision} based on the provided information, or {@link Optional#empty()} if
      *     the decision cannot be made, which indicates global information is needed.
      */
-    Optional<Decision> onBufferConsumed(BufferWithIdentity consumedBuffer);
+    Optional<Decision> onBufferConsumed(BufferIndexAndChannel consumedBuffer);
 
     /**
      * Make a decision based on global information. Because this method will directly touch the
@@ -74,25 +77,26 @@ public interface HsSpillingStrategy {
      */
     class Decision {
         /** A collection of buffer that needs to be spilled to disk. */
-        private final List<BufferWithIdentity> bufferToSpill;
+        private final Map<Integer, List<BufferIndexAndChannel>> bufferToSpill;
 
         /** A collection of buffer that needs to be released. */
-        private final List<BufferWithIdentity> bufferToRelease;
+        private final Map<Integer, List<BufferIndexAndChannel>> bufferToRelease;
 
         public static final Decision NO_ACTION =
-                new Decision(Collections.emptyList(), Collections.emptyList());
+                new Decision(Collections.emptyMap(), Collections.emptyMap());
 
         private Decision(
-                List<BufferWithIdentity> bufferToSpill, List<BufferWithIdentity> bufferToRelease) {
+                Map<Integer, List<BufferIndexAndChannel>> bufferToSpill,
+                Map<Integer, List<BufferIndexAndChannel>> bufferToRelease) {
             this.bufferToSpill = bufferToSpill;
             this.bufferToRelease = bufferToRelease;
         }
 
-        public List<BufferWithIdentity> getBufferToSpill() {
+        public Map<Integer, List<BufferIndexAndChannel>> getBufferToSpill() {
             return bufferToSpill;
         }
 
-        public List<BufferWithIdentity> getBufferToRelease() {
+        public Map<Integer, List<BufferIndexAndChannel>> getBufferToRelease() {
             return bufferToRelease;
         }
 
@@ -103,30 +107,39 @@ public interface HsSpillingStrategy {
         /** Builder for {@link Decision}. */
         static class Builder {
             /** A collection of buffer that needs to be spilled to disk. */
-            private final List<BufferWithIdentity> bufferToSpill = new ArrayList<>();
+            private final Map<Integer, List<BufferIndexAndChannel>> bufferToSpill = new HashMap<>();
 
             /** A collection of buffer that needs to be released. */
-            private final List<BufferWithIdentity> bufferToRelease = new ArrayList<>();
+            private final Map<Integer, List<BufferIndexAndChannel>> bufferToRelease =
+                    new HashMap<>();
 
             private Builder() {}
 
-            public Builder addBufferToSpill(BufferWithIdentity buffer) {
-                bufferToSpill.add(buffer);
+            public Builder addBufferToSpill(BufferIndexAndChannel buffer) {
+                bufferToSpill.computeIfAbsent(buffer.getChannel(), ArrayList::new).add(buffer);
                 return this;
             }
 
-            public Builder addBufferToSpill(List<BufferWithIdentity> buffers) {
-                bufferToSpill.addAll(buffers);
+            public Builder addBufferToSpill(
+                    int subpartitionId, List<BufferIndexAndChannel> buffers) {
+                bufferToSpill.computeIfAbsent(subpartitionId, ArrayList::new).addAll(buffers);
                 return this;
             }
 
-            public Builder addBufferToRelease(BufferWithIdentity buffer) {
-                bufferToRelease.add(buffer);
+            public Builder addBufferToSpill(
+                    int subpartitionId, Deque<BufferIndexAndChannel> buffers) {
+                bufferToSpill.computeIfAbsent(subpartitionId, ArrayList::new).addAll(buffers);
                 return this;
             }
 
-            public Builder addBufferToRelease(List<BufferWithIdentity> buffers) {
-                bufferToRelease.addAll(buffers);
+            public Builder addBufferToRelease(BufferIndexAndChannel buffer) {
+                bufferToRelease.computeIfAbsent(buffer.getChannel(), ArrayList::new).add(buffer);
+                return this;
+            }
+
+            public Builder addBufferToRelease(
+                    int subpartitionId, List<BufferIndexAndChannel> buffers) {
+                bufferToRelease.computeIfAbsent(subpartitionId, ArrayList::new).addAll(buffers);
                 return this;
             }
 
