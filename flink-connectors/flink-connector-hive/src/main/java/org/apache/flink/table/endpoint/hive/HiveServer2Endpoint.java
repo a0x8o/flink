@@ -318,9 +318,9 @@ public class HiveServer2Endpoint implements TCLIService.Iface, SqlGatewayEndpoin
             resp.setServerProtocolVersion(sessionVersion.getVersion());
             resp.setSessionHandle(toTSessionHandle(sessionHandle));
             resp.setConfiguration(service.getSessionConfig(sessionHandle));
-        } catch (Exception e) {
-            LOG.error("Failed to OpenSession.", e);
-            resp.setStatus(toTStatus(e));
+        } catch (Throwable t) {
+            LOG.error("Failed to OpenSession.", t);
+            resp.setStatus(toTStatus(t));
         }
         return resp;
     }
@@ -458,13 +458,33 @@ public class HiveServer2Endpoint implements TCLIService.Iface, SqlGatewayEndpoin
     @Override
     public TCancelOperationResp CancelOperation(TCancelOperationReq tCancelOperationReq)
             throws TException {
-        throw new UnsupportedOperationException(ERROR_MESSAGE);
+        TCancelOperationResp resp = new TCancelOperationResp();
+        try {
+            TOperationHandle operationHandle = tCancelOperationReq.getOperationHandle();
+            service.cancelOperation(
+                    toSessionHandle(operationHandle), toOperationHandle(operationHandle));
+            resp.setStatus(OK_STATUS);
+        } catch (Throwable t) {
+            LOG.error("Failed to CancelOperation.", t);
+            resp.setStatus(toTStatus(t));
+        }
+        return resp;
     }
 
     @Override
     public TCloseOperationResp CloseOperation(TCloseOperationReq tCloseOperationReq)
             throws TException {
-        throw new UnsupportedOperationException(ERROR_MESSAGE);
+        TCloseOperationResp resp = new TCloseOperationResp();
+        try {
+            TOperationHandle operationHandle = tCloseOperationReq.getOperationHandle();
+            service.closeOperation(
+                    toSessionHandle(operationHandle), toOperationHandle(operationHandle));
+            resp.setStatus(OK_STATUS);
+        } catch (Throwable t) {
+            LOG.error("Failed to CloseOperation.", t);
+            resp.setStatus(toTStatus(t));
+        }
+        return resp;
     }
 
     @Override

@@ -39,7 +39,8 @@ import static org.apache.flink.python.PythonOptions.STATE_CACHE_SIZE;
 import static org.apache.flink.streaming.api.utils.PythonOperatorUtils.inBatchExecutionMode;
 
 /**
- * {@link EmbeddedPythonProcessOperator} is responsible for executing Python ProcessFunction in JVM.
+ * {@link EmbeddedPythonProcessOperator} is responsible for executing Python ProcessFunction in
+ * embedded Python environment.
  */
 @Internal
 public class EmbeddedPythonProcessOperator<IN, OUT>

@@ -200,7 +200,9 @@ Classes to define source & sink:
 Classes to define formats used together with source & sink:
 
     - :class:`formats.CsvReaderFormat`:
-      A :class:`connectors.StreamFormat` to read csv files into Row data.
+      A :class:`connectors.StreamFormat` to read CSV files into Row data.
+    - :class:`formats.CsvBulkWriter`:
+      Creates :class:`connectors.BulkWriterFactory` to write Row data into CSV files.
     - :class:`formats.GenericRecordAvroTypeInfo`:
       A :class:`TypeInformation` to indicate vanilla Python records will be translated to
       GenericRecordAvroTypeInfo on the Java side.
@@ -215,6 +217,9 @@ Classes to define formats used together with source & sink:
     - :class:`formats.AvroParquetReaders`:
       A convenience builder to create reader format that reads individual Avro records from a
       Parquet stream. Only GenericRecord is supported in PyFlink.
+    - :class:`formats.AvroParquetWriters`:
+      Convenience builder to create ParquetWriterFactory instances for Avro types. Only
+      GenericRecord is supported in PyFlink.
 
 Other important classes:
 
