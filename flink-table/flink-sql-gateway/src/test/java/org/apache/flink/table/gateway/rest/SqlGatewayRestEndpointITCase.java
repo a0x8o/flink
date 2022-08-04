@@ -32,14 +32,11 @@ import org.apache.flink.runtime.rest.messages.EmptyRequestBody;
 import org.apache.flink.runtime.rest.messages.RequestBody;
 import org.apache.flink.runtime.rest.messages.ResponseBody;
 import org.apache.flink.runtime.rest.util.RestClientException;
-import org.apache.flink.runtime.rpc.RpcUtils;
 import org.apache.flink.runtime.rpc.exceptions.EndpointNotStartedException;
 import org.apache.flink.table.gateway.api.SqlGatewayService;
-import org.apache.flink.table.gateway.api.endpoint.SqlGatewayEndpointFactoryUtils;
 import org.apache.flink.table.gateway.rest.handler.AbstractSqlGatewayRestHandler;
 import org.apache.flink.table.gateway.rest.header.SqlGatewayMessageHeaders;
 import org.apache.flink.table.gateway.rest.util.SqlGatewayRestAPIVersion;
-import org.apache.flink.table.gateway.rest.util.SqlGatewayRestOptions;
 import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.FlinkRuntimeException;
 import org.apache.flink.util.concurrent.ExecutorThreadFactory;
@@ -70,10 +67,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 
-import static org.apache.flink.table.gateway.api.endpoint.SqlGatewayEndpointFactoryUtils.getEndpointConfig;
-import static org.apache.flink.table.gateway.api.endpoint.SqlGatewayEndpointFactoryUtils.getSqlGatewayOptionPrefix;
-import static org.apache.flink.table.gateway.rest.util.SqlGatewayRestEndpointFactory.IDENTIFIER;
-import static org.apache.flink.table.gateway.rest.util.SqlGatewayRestEndpointFactory.rebuildRestEndpointOptions;
+import static org.apache.flink.table.gateway.rest.util.RestConfigUtils.getBaseConfig;
+import static org.apache.flink.table.gateway.rest.util.RestConfigUtils.getFlinkConfig;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -96,52 +91,17 @@ class SqlGatewayRestEndpointITCase {
     private static Configuration config;
     private static final Time timeout = Time.seconds(10L);
 
-    /**
-     * Create the config used by SqlGatewayRestEndpoint based on the config generated from
-     * flink-conf.yaml.
-     */
-    static Configuration getBaseConfig(Configuration flinkConf) {
-        SqlGatewayEndpointFactoryUtils.DefaultEndpointFactoryContext context =
-                new SqlGatewayEndpointFactoryUtils.DefaultEndpointFactoryContext(
-                        service, flinkConf, getEndpointConfig(flinkConf, IDENTIFIER));
-
-        return rebuildRestEndpointOptions(context.getEndpointOptions());
-    }
-
-    /** Create the config generated from flink-conf.yaml. */
-    static Configuration getFlinkConfig(String address, String bindAddress, String portRange) {
-        final Configuration config = new Configuration();
-        if (address != null) {
-            config.setString(
-                    getSqlGatewayRestOptionFullName(SqlGatewayRestOptions.ADDRESS.key()), address);
-        }
-        if (bindAddress != null) {
-            config.setString(
-                    getSqlGatewayRestOptionFullName(SqlGatewayRestOptions.BIND_ADDRESS.key()),
-                    bindAddress);
-        }
-        if (portRange != null) {
-            config.setString(
-                    getSqlGatewayRestOptionFullName(SqlGatewayRestOptions.PORT.key()), portRange);
-        }
-        return config;
-    }
-
-    static String getSqlGatewayRestOptionFullName(String key) {
-        return getSqlGatewayOptionPrefix(IDENTIFIER) + key;
-    }
-
     @BeforeEach
     void setup() throws Exception {
         // Test version cases
         header1 = new TestVersionSelectionHeaders1();
         header2 = new TestVersionSelectionHeaders2();
-        testVersionHandler1 = new TestVersionHandler(service, RpcUtils.INF_TIMEOUT, header1);
-        testVersionHandler2 = new TestVersionHandler(service, RpcUtils.INF_TIMEOUT, header2);
+        testVersionHandler1 = new TestVersionHandler(service, header1);
+        testVersionHandler2 = new TestVersionHandler(service, header2);
 
         // Test exception cases
         badCaseHeader = new TestBadCaseHeaders();
-        testHandler = new TestBadCaseHandler(service, RpcUtils.INF_TIMEOUT);
+        testHandler = new TestBadCaseHandler(service);
 
         // Init
         final String address = InetAddress.getLoopbackAddress().getHostAddress();
@@ -433,8 +393,8 @@ class SqlGatewayRestEndpointITCase {
 
         private Function<Integer, CompletableFuture<TestResponse>> handlerBody;
 
-        TestBadCaseHandler(SqlGatewayService sqlGatewayService, Time timeout) {
-            super(sqlGatewayService, timeout, Collections.emptyMap(), badCaseHeader);
+        TestBadCaseHandler(SqlGatewayService sqlGatewayService) {
+            super(sqlGatewayService, Collections.emptyMap(), badCaseHeader);
         }
 
         @Override
@@ -591,10 +551,8 @@ class SqlGatewayRestEndpointITCase {
                     EmptyRequestBody, TestResponse, EmptyMessageParameters> {
 
         TestVersionHandler(
-                final SqlGatewayService sqlGatewayService,
-                final Time timeout,
-                TestVersionSelectionHeadersBase header) {
-            super(sqlGatewayService, timeout, Collections.emptyMap(), header);
+                final SqlGatewayService sqlGatewayService, TestVersionSelectionHeadersBase header) {
+            super(sqlGatewayService, Collections.emptyMap(), header);
         }
 
         @Override

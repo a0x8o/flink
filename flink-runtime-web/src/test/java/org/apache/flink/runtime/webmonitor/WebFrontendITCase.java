@@ -61,6 +61,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Collection;
+import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -264,13 +266,33 @@ class WebFrontendITCase {
     void getConfiguration(@InjectClusterRESTAddress URI restAddress) throws Exception {
         String config =
                 getFromHTTP("http://localhost:" + restAddress.getPort() + "/jobmanager/config");
-        Map<String, String> conf = WebMonitorUtils.fromKeyValueJsonArray(config);
+        Map<String, String> conf = fromKeyValueJsonArray(config);
 
         MemorySize expected = CLUSTER_CONFIGURATION.get(TaskManagerOptions.MANAGED_MEMORY_SIZE);
         MemorySize actual =
                 MemorySize.parse(conf.get(TaskManagerOptions.MANAGED_MEMORY_SIZE.key()));
 
         assertThat(actual).isEqualTo(expected);
+    }
+
+    private static Map<String, String> fromKeyValueJsonArray(String jsonString) {
+        try {
+            Map<String, String> map = new HashMap<>();
+            ObjectMapper m = new ObjectMapper();
+            ArrayNode array = (ArrayNode) m.readTree(jsonString);
+
+            Iterator<JsonNode> elements = array.elements();
+            while (elements.hasNext()) {
+                JsonNode node = elements.next();
+                String key = node.get("key").asText();
+                String value = node.get("value").asText();
+                map.put(key, value);
+            }
+
+            return map;
+        } catch (Exception e) {
+            throw new RuntimeException(e.getMessage(), e);
+        }
     }
 
     @Test
