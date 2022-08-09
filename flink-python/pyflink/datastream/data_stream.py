@@ -2636,7 +2636,8 @@ class BroadcastConnectedStream(object):
             jvm.String, [i.get_name() for i in self.broadcast_state_descriptors]
         )
         j_state_descriptors = JPythonConfigUtil.convertStateNamesToStateDescriptors(j_state_names)
-        j_conf = jvm.org.apache.flink.configuration.Configuration()
+        j_conf = get_j_env_configuration(
+            self.broadcast_stream.input_stream._j_data_stream.getExecutionEnvironment())
         j_data_stream_python_function_info = _create_j_data_stream_python_function_info(
             func, func_type
         )
@@ -2738,7 +2739,12 @@ def _get_one_input_stream_operator(data_stream: DataStream,
         else:
             j_namespace_serializer = \
                 gateway.jvm.org.apache.flink.streaming.api.utils.ByteArrayWrapperSerializer()
-        j_python_function_operator = gateway.jvm.ExternalPythonKeyedProcessOperator(
+        if python_execution_mode == 'thread':
+            JDataStreamPythonWindowFunctionOperator = gateway.jvm.EmbeddedPythonWindowOperator
+        else:
+            JDataStreamPythonWindowFunctionOperator = gateway.jvm.ExternalPythonKeyedProcessOperator
+
+        j_python_function_operator = JDataStreamPythonWindowFunctionOperator(
             j_conf,
             j_data_stream_python_function_info,
             j_input_types,

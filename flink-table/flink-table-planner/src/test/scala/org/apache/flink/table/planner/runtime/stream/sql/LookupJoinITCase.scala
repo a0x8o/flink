@@ -20,11 +20,18 @@ package org.apache.flink.table.planner.runtime.stream.sql
 import org.apache.flink.api.scala._
 import org.apache.flink.table.api._
 import org.apache.flink.table.api.bridge.scala._
+import org.apache.flink.table.api.config.OptimizerConfigOptions
+import org.apache.flink.table.connector.source.lookup.LookupOptions
+import org.apache.flink.table.data.GenericRowData
+import org.apache.flink.table.data.binary.BinaryStringData
 import org.apache.flink.table.planner.factories.TestValuesTableFactory
-import org.apache.flink.table.planner.runtime.utils.{InMemoryLookupableTableSource, StreamingTestBase, TestingAppendSink}
+import org.apache.flink.table.planner.runtime.utils.{InMemoryLookupableTableSource, StreamingTestBase, TestingAppendSink, TestingRetractSink}
 import org.apache.flink.table.planner.runtime.utils.UserDefinedFunctionTestUtils.TestAddWithOpen
+import org.apache.flink.table.runtime.functions.table.lookup.LookupCacheManager
 import org.apache.flink.types.Row
 
+import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.IterableAssert.assertThatIterable
 import org.junit.{After, Before, Test}
 import org.junit.Assert.{assertEquals, assertTrue}
 import org.junit.runner.RunWith
@@ -37,7 +44,7 @@ import java.util.{Collection => JCollection}
 import scala.collection.JavaConversions._
 
 @RunWith(classOf[Parameterized])
-class LookupJoinITCase(legacyTableSource: Boolean) extends StreamingTestBase {
+class LookupJoinITCase(legacyTableSource: Boolean, enableCache: Boolean) extends StreamingTestBase {
 
   val data = List(
     rowOf(1L, 12, "Julian"),
@@ -100,12 +107,21 @@ class LookupJoinITCase(legacyTableSource: Boolean) extends StreamingTestBase {
         tableName)
     } else {
       val dataId = TestValuesTableFactory.registerData(data)
+      val cacheOptions =
+        if (enableCache)
+          s"""
+             |  '${LookupOptions.CACHE_TYPE.key()}' = '${LookupOptions.LookupCacheType.PARTIAL}',
+             |  '${LookupOptions.PARTIAL_CACHE_MAX_ROWS.key()}' = '${Long.MaxValue}',
+             |""".stripMargin
+        else ""
+
       tEnv.executeSql(s"""
                          |CREATE TABLE $tableName (
                          |  `age` INT,
                          |  `id` BIGINT,
                          |  `name` STRING
                          |) WITH (
+                         |  $cacheOptions
                          |  'connector' = 'values',
                          |  'data-id' = '$dataId'
                          |)
@@ -116,6 +132,13 @@ class LookupJoinITCase(legacyTableSource: Boolean) extends StreamingTestBase {
   private def createLookupTableWithComputedColumn(tableName: String, data: List[Row]): Unit = {
     if (!legacyTableSource) {
       val dataId = TestValuesTableFactory.registerData(data)
+      val cacheOptions =
+        if (enableCache)
+          s"""
+             |  '${LookupOptions.CACHE_TYPE.key()}' = '${LookupOptions.LookupCacheType.PARTIAL}',
+             |  '${LookupOptions.PARTIAL_CACHE_MAX_ROWS.key()}' = '${Long.MaxValue}',
+             |""".stripMargin
+        else ""
       tEnv.executeSql(s"""
                          |CREATE TABLE $tableName (
                          |  `age` INT,
@@ -123,6 +146,7 @@ class LookupJoinITCase(legacyTableSource: Boolean) extends StreamingTestBase {
                          |  `name` STRING,
                          |  `nominal_age` as age + 1
                          |) WITH (
+                         |  $cacheOptions
                          |  'connector' = 'values',
                          |  'data-id' = '$dataId'
                          |)
@@ -529,11 +553,160 @@ class LookupJoinITCase(legacyTableSource: Boolean) extends StreamingTestBase {
     env.execute()
     assertEquals(Seq(), sink.getAppendResults)
   }
+
+  @Test
+  def testLookupCacheSharingAcrossSubtasks(): Unit = {
+    if (!enableCache) {
+      return
+    }
+    // Keep the cache for later validation
+    LookupCacheManager.keepCacheOnRelease(true)
+    try {
+      // Use datagen source here to support parallel running
+      val sourceDdl =
+        s"""
+           |CREATE TABLE T (
+           |  id BIGINT,
+           |  proc AS PROCTIME()
+           |) WITH (
+           |  'connector' = 'datagen',
+           |  'fields.id.kind' = 'sequence',
+           |  'fields.id.start' = '1',
+           |  'fields.id.end' = '6'
+           |)
+           |""".stripMargin
+      tEnv.executeSql(sourceDdl)
+      val sql =
+        """
+          |SELECT T.id, D.name, D.age FROM T 
+          |LEFT JOIN user_table FOR SYSTEM_TIME AS OF T.proc AS D 
+          |ON T.id = D.id
+          |""".stripMargin
+      val sink = new TestingAppendSink
+      tEnv.sqlQuery(sql).toAppendStream[Row].addSink(sink)
+      env.execute()
+
+      // Validate that only one cache is registered
+      val managedCaches = LookupCacheManager.getInstance().getManagedCaches
+      assertThat(managedCaches.size()).isEqualTo(1)
+
+      // Validate 6 entries are cached
+      val cache = managedCaches.get(managedCaches.keySet().iterator().next()).getCache
+      assertThat(cache.size()).isEqualTo(6)
+
+      // Validate contents of cached entries
+      assertThatIterable(cache.getIfPresent(GenericRowData.of(jl(1L))))
+        .containsExactlyInAnyOrder(
+          GenericRowData.of(ji(11), jl(1L), BinaryStringData.fromString("Julian")))
+      assertThatIterable(cache.getIfPresent(GenericRowData.of(jl(2L))))
+        .containsExactlyInAnyOrder(
+          GenericRowData.of(ji(22), jl(2L), BinaryStringData.fromString("Jark")))
+      assertThatIterable(cache.getIfPresent(GenericRowData.of(jl(3L))))
+        .containsExactlyInAnyOrder(
+          GenericRowData.of(ji(33), jl(3L), BinaryStringData.fromString("Fabian")))
+      assertThatIterable(cache.getIfPresent(GenericRowData.of(jl(4L))))
+        .containsExactlyInAnyOrder(
+          GenericRowData.of(ji(11), jl(4L), BinaryStringData.fromString("Hello world")))
+      assertThatIterable(cache.getIfPresent(GenericRowData.of(jl(5L))))
+        .containsExactlyInAnyOrder(
+          GenericRowData.of(ji(11), jl(5L), BinaryStringData.fromString("Hello world")))
+      assertThatIterable(cache.getIfPresent(GenericRowData.of(jl(6L))))
+        .isEmpty()
+    } finally {
+      LookupCacheManager.getInstance().checkAllReleased()
+      LookupCacheManager.getInstance().clear()
+      LookupCacheManager.keepCacheOnRelease(false)
+    }
+  }
+
+  def ji(i: Int): java.lang.Integer = {
+    new java.lang.Integer(i)
+  }
+
+  def jl(l: Long): java.lang.Long = {
+    new java.lang.Long(l)
+  }
+
+  @Test
+  def testAggAndLeftJoinWithTryResolveMode(): Unit = {
+    tEnv.getConfig.set(
+      OptimizerConfigOptions.TABLE_OPTIMIZER_NONDETERMINISTIC_UPDATE_STRATEGY,
+      OptimizerConfigOptions.NonDeterministicUpdateStrategy.TRY_RESOLVE)
+
+    val sql1 = "SELECT max(id) as id, PROCTIME() as proctime FROM src AS T group by len"
+
+    val table1 = tEnv.sqlQuery(sql1)
+    tEnv.registerTable("t1", table1)
+
+    val sql2 = "SELECT t1.id, D.name, D.age FROM t1 LEFT JOIN user_table " +
+      "for system_time as of t1.proctime AS D ON t1.id = D.id"
+
+    val sink = new TestingRetractSink
+    tEnv.sqlQuery(sql2).toRetractStream[Row].addSink(sink).setParallelism(1)
+    env.execute()
+
+    val expected = Seq("3,Fabian,33", "8,null,null", "9,null,null")
+    assertEquals(expected.sorted, sink.getRetractResults.sorted)
+  }
+
+  @Test
+  def testAggAndLeftJoinAllConstantKeyWithTryResolveMode(): Unit = {
+    tEnv.getConfig.set(
+      OptimizerConfigOptions.TABLE_OPTIMIZER_NONDETERMINISTIC_UPDATE_STRATEGY,
+      OptimizerConfigOptions.NonDeterministicUpdateStrategy.TRY_RESOLVE)
+
+    val sql1 = "SELECT max(id) as id, PROCTIME() as proctime FROM src AS T group by len"
+
+    val table1 = tEnv.sqlQuery(sql1)
+    tEnv.registerTable("t1", table1)
+
+    val sql2 = "SELECT t1.id, D.name, D.age FROM t1 LEFT JOIN user_table " +
+      "for system_time as of t1.proctime AS D ON D.id = 3"
+
+    val sink = new TestingRetractSink
+    tEnv.sqlQuery(sql2).toRetractStream[Row].addSink(sink).setParallelism(1)
+    env.execute()
+
+    val expected = Seq("3,Fabian,33", "8,Fabian,33", "9,Fabian,33")
+    assertEquals(expected.sorted, sink.getRetractResults.sorted)
+  }
+
+  @Test
+  def testAggAndJoinAllConstantKeyWithTryResolveMode(): Unit = {
+    // in fact this case will omit materialization because not right column was required from sink
+    tEnv.getConfig.set(
+      OptimizerConfigOptions.TABLE_OPTIMIZER_NONDETERMINISTIC_UPDATE_STRATEGY,
+      OptimizerConfigOptions.NonDeterministicUpdateStrategy.TRY_RESOLVE)
+
+    val sql1 = "SELECT max(id) as id, PROCTIME() as proctime FROM src AS T group by len"
+
+    val table1 = tEnv.sqlQuery(sql1)
+    tEnv.registerTable("t1", table1)
+
+    val sql2 = "SELECT t1.id FROM t1 LEFT JOIN user_table " +
+      "for system_time as of t1.proctime AS D ON D.id = 3"
+
+    val sink = new TestingRetractSink
+    tEnv.sqlQuery(sql2).toRetractStream[Row].addSink(sink).setParallelism(1)
+    env.execute()
+
+    val expected = Seq("3", "8", "9")
+    assertEquals(expected.sorted, sink.getRetractResults.sorted)
+  }
 }
 
 object LookupJoinITCase {
-  @Parameterized.Parameters(name = "LegacyTableSource={0}")
+
+  val LEGACY_TABLE_SOURCE: JBoolean = JBoolean.TRUE;
+  val DYNAMIC_TABLE_SOURCE: JBoolean = JBoolean.FALSE;
+  val ENABLE_CACHE: JBoolean = JBoolean.TRUE;
+  val DISABLE_CACHE: JBoolean = JBoolean.FALSE;
+
+  @Parameterized.Parameters(name = "LegacyTableSource={0}, EnableCache={1}")
   def parameters(): JCollection[Array[Object]] = {
-    Seq[Array[AnyRef]](Array(JBoolean.TRUE), Array(JBoolean.FALSE))
+    Seq[Array[AnyRef]](
+      Array(LEGACY_TABLE_SOURCE, DISABLE_CACHE),
+      Array(DYNAMIC_TABLE_SOURCE, ENABLE_CACHE),
+      Array(DYNAMIC_TABLE_SOURCE, DISABLE_CACHE))
   }
 }

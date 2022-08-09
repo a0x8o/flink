@@ -21,19 +21,24 @@ package org.apache.flink.table.gateway.service;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.core.testutils.CommonTestUtils;
 import org.apache.flink.table.api.DataTypes;
+import org.apache.flink.table.api.TableEnvironment;
 import org.apache.flink.table.api.internal.TableEnvironmentInternal;
+import org.apache.flink.table.catalog.CatalogBaseTable.TableKind;
 import org.apache.flink.table.catalog.CatalogDatabaseImpl;
 import org.apache.flink.table.catalog.Column;
 import org.apache.flink.table.catalog.GenericInMemoryCatalog;
+import org.apache.flink.table.catalog.ObjectIdentifier;
 import org.apache.flink.table.catalog.ResolvedSchema;
 import org.apache.flink.table.data.GenericRowData;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.data.StringData;
+import org.apache.flink.table.functions.FunctionIdentifier;
 import org.apache.flink.table.gateway.api.operation.OperationHandle;
 import org.apache.flink.table.gateway.api.operation.OperationStatus;
-import org.apache.flink.table.gateway.api.operation.OperationType;
+import org.apache.flink.table.gateway.api.results.FunctionInfo;
 import org.apache.flink.table.gateway.api.results.OperationInfo;
 import org.apache.flink.table.gateway.api.results.ResultSet;
+import org.apache.flink.table.gateway.api.results.TableInfo;
 import org.apache.flink.table.gateway.api.session.SessionEnvironment;
 import org.apache.flink.table.gateway.api.session.SessionHandle;
 import org.apache.flink.table.gateway.api.utils.MockedEndpointVersion;
@@ -43,7 +48,10 @@ import org.apache.flink.table.gateway.service.session.SessionManager;
 import org.apache.flink.table.gateway.service.utils.IgnoreExceptionHandler;
 import org.apache.flink.table.gateway.service.utils.SqlExecutionException;
 import org.apache.flink.table.gateway.service.utils.SqlGatewayServiceExtension;
+import org.apache.flink.table.planner.plan.utils.JavaUserDefinedAggFunctions;
 import org.apache.flink.table.planner.runtime.batch.sql.TestModule;
+import org.apache.flink.table.planner.runtime.utils.JavaUserDefinedScalarFunctions;
+import org.apache.flink.table.planner.utils.TableFunc0;
 import org.apache.flink.test.util.AbstractTestBase;
 import org.apache.flink.util.concurrent.ExecutorThreadFactory;
 import org.apache.flink.util.function.RunnableWithException;
@@ -59,6 +67,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
@@ -70,6 +79,9 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.apache.flink.core.testutils.FlinkAssertions.anyCauseMatches;
 import static org.apache.flink.core.testutils.FlinkAssertions.assertThatChainOfCauses;
+import static org.apache.flink.table.functions.FunctionKind.AGGREGATE;
+import static org.apache.flink.table.functions.FunctionKind.OTHER;
+import static org.apache.flink.table.functions.FunctionKind.SCALAR;
 import static org.apache.flink.table.gateway.api.results.ResultSet.ResultType.PAYLOAD;
 import static org.apache.flink.types.RowKind.DELETE;
 import static org.apache.flink.types.RowKind.INSERT;
@@ -183,11 +195,10 @@ public class SqlGatewayServiceITCase extends AbstractTestBase {
 
         startRunningLatch.await();
         assertThat(service.getOperationInfo(sessionHandle, operationHandle))
-                .isEqualTo(new OperationInfo(OperationStatus.RUNNING, OperationType.UNKNOWN));
+                .isEqualTo(new OperationInfo(OperationStatus.RUNNING));
 
         endRunningLatch.countDown();
-        OperationInfo expectedInfo =
-                new OperationInfo(OperationStatus.FINISHED, OperationType.UNKNOWN);
+        OperationInfo expectedInfo = new OperationInfo(OperationStatus.FINISHED);
 
         CommonTestUtils.waitUtil(
                 () -> service.getOperationInfo(sessionHandle, operationHandle).equals(expectedInfo),
@@ -226,12 +237,12 @@ public class SqlGatewayServiceITCase extends AbstractTestBase {
 
         startRunningLatch.await();
         assertThat(service.getOperationInfo(sessionHandle, operationHandle))
-                .isEqualTo(new OperationInfo(OperationStatus.RUNNING, OperationType.UNKNOWN));
+                .isEqualTo(new OperationInfo(OperationStatus.RUNNING));
 
         service.cancelOperation(sessionHandle, operationHandle);
 
         assertThat(service.getOperationInfo(sessionHandle, operationHandle))
-                .isEqualTo(new OperationInfo(OperationStatus.CANCELED, OperationType.UNKNOWN));
+                .isEqualTo(new OperationInfo(OperationStatus.CANCELED));
         service.closeOperation(sessionHandle, operationHandle);
         assertThat(sessionManager.getOperationCount(sessionHandle)).isEqualTo(0);
     }
@@ -309,6 +320,19 @@ public class SqlGatewayServiceITCase extends AbstractTestBase {
     // --------------------------------------------------------------------------------------------
 
     @Test
+    public void testGetCurrentCatalog() {
+        SessionEnvironment environment =
+                SessionEnvironment.newBuilder()
+                        .setSessionEndpointVersion(MockedEndpointVersion.V1)
+                        .registerCatalog("cat1", new GenericInMemoryCatalog("cat1"))
+                        .registerCatalog("cat2", new GenericInMemoryCatalog("cat2"))
+                        .setDefaultCatalog("cat2")
+                        .build();
+        SessionHandle sessionHandle = service.openSession(environment);
+        assertThat(service.getCurrentCatalog(sessionHandle)).isEqualTo("cat2");
+    }
+
+    @Test
     public void testListCatalogs() {
         SessionEnvironment environment =
                 SessionEnvironment.newBuilder()
@@ -347,17 +371,101 @@ public class SqlGatewayServiceITCase extends AbstractTestBase {
     }
 
     @Test
-    public void testGetCurrentCatalog() {
+    public void testListTables() {
+        SessionHandle sessionHandle = createInitializedSession();
+        assertThat(
+                        service.listTables(
+                                sessionHandle,
+                                "cat1",
+                                "db1",
+                                new HashSet<>(Arrays.asList(TableKind.TABLE, TableKind.VIEW))))
+                .isEqualTo(
+                        new HashSet<>(
+                                Arrays.asList(
+                                        new TableInfo(
+                                                ObjectIdentifier.of("cat1", "db1", "tbl1"),
+                                                TableKind.TABLE),
+                                        new TableInfo(
+                                                ObjectIdentifier.of("cat1", "db1", "tbl2"),
+                                                TableKind.TABLE),
+                                        new TableInfo(
+                                                ObjectIdentifier.of("cat1", "db1", "tbl3"),
+                                                TableKind.VIEW),
+                                        new TableInfo(
+                                                ObjectIdentifier.of("cat1", "db1", "tbl4"),
+                                                TableKind.VIEW))));
+        assertThat(
+                        service.listTables(
+                                sessionHandle,
+                                "cat1",
+                                "db2",
+                                Collections.singleton(TableKind.TABLE)))
+                .isEqualTo(
+                        Collections.singleton(
+                                new TableInfo(
+                                        ObjectIdentifier.of("cat1", "db2", "tbl1"),
+                                        TableKind.TABLE)));
+        assertThat(
+                        service.listTables(
+                                sessionHandle,
+                                "cat2",
+                                "db0",
+                                Collections.singleton(TableKind.VIEW)))
+                .isEqualTo(Collections.emptySet());
+    }
+
+    @Test
+    public void testListSystemFunctions() {
         SessionEnvironment environment =
                 SessionEnvironment.newBuilder()
                         .setSessionEndpointVersion(MockedEndpointVersion.V1)
                         .registerCatalog("cat1", new GenericInMemoryCatalog("cat1"))
                         .registerCatalog("cat2", new GenericInMemoryCatalog("cat2"))
-                        .setDefaultCatalog("cat2")
                         .build();
         SessionHandle sessionHandle = service.openSession(environment);
 
-        assertThat(service.getCurrentCatalog(sessionHandle)).isEqualTo("cat2");
+        assertThat(service.listSystemFunctions(sessionHandle))
+                .contains(
+                        new FunctionInfo(FunctionIdentifier.of("sin"), SCALAR),
+                        new FunctionInfo(FunctionIdentifier.of("sum"), AGGREGATE),
+                        new FunctionInfo(FunctionIdentifier.of("as"), OTHER));
+    }
+
+    @Test
+    public void testListUserDefinedFunctions() {
+        SessionEnvironment environment =
+                SessionEnvironment.newBuilder()
+                        .setSessionEndpointVersion(MockedEndpointVersion.V1)
+                        .registerCatalog("cat1", new GenericInMemoryCatalog("cat1"))
+                        .registerCatalog("cat2", new GenericInMemoryCatalog("cat2"))
+                        .build();
+        SessionHandle sessionHandle = service.openSession(environment);
+        TableEnvironment tEnv =
+                service.getSession(sessionHandle).createExecutor().getTableEnvironment();
+        tEnv.createTemporarySystemFunction(
+                "count_distinct", JavaUserDefinedAggFunctions.CountDistinct.class);
+        tEnv.createFunction("java1", JavaUserDefinedScalarFunctions.JavaFunc1.class);
+        tEnv.createTemporaryFunction("table_func0", TableFunc0.class);
+
+        // register catalog function in another catalog
+        tEnv.createFunction(
+                "cat1.default.filter_out_function", JavaUserDefinedScalarFunctions.JavaFunc1.class);
+
+        assertThat(
+                        service.listUserDefinedFunctions(
+                                sessionHandle, "default_catalog", "default_database"))
+                .contains(
+                        new FunctionInfo(FunctionIdentifier.of("count_distinct")),
+                        new FunctionInfo(
+                                FunctionIdentifier.of(
+                                        ObjectIdentifier.of(
+                                                "default_catalog", "default_database", "java1"))),
+                        new FunctionInfo(
+                                FunctionIdentifier.of(
+                                        ObjectIdentifier.of(
+                                                "default_catalog",
+                                                "default_database",
+                                                "table_func0"))));
     }
 
     // --------------------------------------------------------------------------------------------
@@ -490,7 +598,6 @@ public class SqlGatewayServiceITCase extends AbstractTestBase {
                             () ->
                                     service.submitOperation(
                                             sessionHandle,
-                                            OperationType.UNKNOWN,
                                             () -> {
                                                 startRunning.countDown();
                                                 terminateRunning.await();
@@ -515,7 +622,6 @@ public class SqlGatewayServiceITCase extends AbstractTestBase {
             handles.add(
                     service.submitOperation(
                             sessionHandle,
-                            OperationType.UNKNOWN,
                             () -> {
                                 // If execute in parallel, the value of v may be overridden by
                                 // another thread
@@ -549,7 +655,6 @@ public class SqlGatewayServiceITCase extends AbstractTestBase {
             operations.add(
                     service.submitOperation(
                             sessionHandle,
-                            OperationType.UNKNOWN,
                             () -> {
                                 latch.await();
                                 return getDefaultResultSet();
@@ -561,7 +666,6 @@ public class SqlGatewayServiceITCase extends AbstractTestBase {
                         () ->
                                 service.submitOperation(
                                         sessionHandle,
-                                        OperationType.UNKNOWN,
                                         () -> {
                                             latch.await();
                                             return getDefaultResultSet();
@@ -580,7 +684,6 @@ public class SqlGatewayServiceITCase extends AbstractTestBase {
         CountDownLatch success = new CountDownLatch(1);
         service.submitOperation(
                 sessionHandle,
-                OperationType.UNKNOWN,
                 () -> {
                     success.countDown();
                     return getDefaultResultSet();
@@ -654,7 +757,6 @@ public class SqlGatewayServiceITCase extends AbstractTestBase {
             SessionHandle sessionHandle, RunnableWithException executor) {
         return service.submitOperation(
                 sessionHandle,
-                OperationType.UNKNOWN,
                 () -> {
                     executor.run();
                     return getDefaultResultSet();
@@ -688,7 +790,6 @@ public class SqlGatewayServiceITCase extends AbstractTestBase {
         OperationHandle operationHandle =
                 service.submitOperation(
                         sessionHandle,
-                        OperationType.UNKNOWN,
                         () -> {
                             operationIsRunning.await();
                             return executor.call();
@@ -749,5 +850,38 @@ public class SqlGatewayServiceITCase extends AbstractTestBase {
                                         .anySatisfy(t1 -> condition.matches(t1.getMessage())));
 
         assertThat(getDefaultResultSet().getData()).containsAll(actual);
+    }
+
+    private SessionHandle createInitializedSession() {
+        SessionEnvironment environment =
+                SessionEnvironment.newBuilder()
+                        .setSessionEndpointVersion(MockedEndpointVersion.V1)
+                        .registerCatalog("cat1", new GenericInMemoryCatalog("cat1"))
+                        .registerCatalog("cat2", new GenericInMemoryCatalog("cat2"))
+                        .build();
+        SessionHandle sessionHandle = service.openSession(environment);
+
+        // catalogs: cat1 | cat2
+        //     cat1: db1 | db2
+        //         db1: temporary table tbl1, table tbl2, temporary view tbl3, view tbl4
+        //         db2: table tbl1, view tbl2
+        //     cat2 db0
+        //         db0: table tbl0
+        TableEnvironmentInternal tableEnv =
+                service.getSession(sessionHandle).createExecutor().getTableEnvironment();
+        tableEnv.executeSql("CREATE DATABASE cat1.db1");
+        tableEnv.executeSql("CREATE TEMPORARY TABLE cat1.db1.tbl1 WITH ('connector' = 'values')");
+        tableEnv.executeSql("CREATE TABLE cat1.db1.tbl2 WITH('connector' = 'values')");
+        tableEnv.executeSql("CREATE TEMPORARY VIEW cat1.db1.tbl3 AS SELECT 1");
+        tableEnv.executeSql("CREATE VIEW cat1.db1.tbl4 AS SELECT 1");
+
+        tableEnv.executeSql("CREATE DATABASE cat1.db2");
+        tableEnv.executeSql("CREATE TABLE cat1.db2.tbl1 WITH ('connector' = 'values')");
+        tableEnv.executeSql("CREATE VIEW cat1.db2.tbl2 AS SELECT 1");
+
+        tableEnv.executeSql("CREATE DATABASE cat2.db0");
+        tableEnv.executeSql("CREATE TABLE cat2.db0.tbl0 WITH('connector' = 'values')");
+
+        return sessionHandle;
     }
 }

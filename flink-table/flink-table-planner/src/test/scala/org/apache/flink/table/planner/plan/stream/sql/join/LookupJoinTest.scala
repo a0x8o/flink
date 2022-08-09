@@ -17,12 +17,12 @@
  */
 package org.apache.flink.table.planner.plan.stream.sql.join
 
-import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.api.scala._
 import org.apache.flink.core.testutils.FlinkMatchers.containsMessage
 import org.apache.flink.streaming.api.datastream.DataStream
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment
 import org.apache.flink.table.api._
+import org.apache.flink.table.api.config.OptimizerConfigOptions
 import org.apache.flink.table.api.internal.TableEnvironmentInternal
 import org.apache.flink.table.data.RowData
 import org.apache.flink.table.descriptors.ConnectorDescriptorValidator.CONNECTOR_TYPE
@@ -31,6 +31,7 @@ import org.apache.flink.table.factories.TableSourceFactory
 import org.apache.flink.table.functions.{AsyncTableFunction, TableFunction, UserDefinedFunction}
 import org.apache.flink.table.planner.plan.utils._
 import org.apache.flink.table.planner.utils.TableTestBase
+import org.apache.flink.table.planner.utils.TableTestUtil.{readFromResource, replaceNodeIdInOperator, replaceStageId, replaceStreamNodeId}
 import org.apache.flink.table.sources._
 import org.apache.flink.table.types.DataType
 import org.apache.flink.table.utils.EncodingUtils
@@ -41,7 +42,7 @@ import _root_.java.util
 import _root_.java.util.{ArrayList => JArrayList, Collection => JCollection, HashMap => JHashMap, List => JList, Map => JMap}
 import _root_.scala.collection.JavaConversions._
 import org.junit.{Assume, Before, Test}
-import org.junit.Assert.{assertThat, assertTrue, fail}
+import org.junit.Assert.{assertEquals, assertThat, assertTrue, fail}
 import org.junit.runner.RunWith
 import org.junit.runners.Parameterized
 
@@ -544,6 +545,46 @@ class LookupJoinTest(legacyTableSource: Boolean) extends TableTestBase with Seri
     util.verifyExecPlan(sql)
   }
 
+  @Test
+  def testAggAndAllConstantLookupKeyWithTryResolveMode(): Unit = {
+    util.getStreamEnv.setParallelism(4)
+    // expect lookup join using single parallelism due to all constant lookup key
+    util.tableEnv.getConfig.set(
+      OptimizerConfigOptions.TABLE_OPTIMIZER_NONDETERMINISTIC_UPDATE_STRATEGY,
+      OptimizerConfigOptions.NonDeterministicUpdateStrategy.TRY_RESOLVE)
+
+    util.addTable("""
+                    |CREATE TABLE Sink1 (
+                    |  `id` INT,
+                    |  `name` STRING,
+                    |  `age` INT
+                    |) WITH (
+                    |  'connector' = 'values',
+                    |  'sink-insert-only' = 'false'
+                    |)
+                    |""".stripMargin)
+
+    val sql =
+      """
+        |INSERT INTO Sink1
+        |SELECT T.a, D.name, D.age
+        |FROM (SELECT max(a) a, count(c) c, PROCTIME() proctime FROM MyTable GROUP BY b) T
+        | LEFT JOIN LookupTable FOR SYSTEM_TIME AS OF T.proctime AS D
+        |  ON D.id = 100
+      """.stripMargin
+    val actual = util.tableEnv.explainSql(sql, ExplainDetail.JSON_EXECUTION_PLAN)
+    val expected = if (legacyTableSource) {
+      readFromResource(
+        "explain/stream/join/lookup/testAggAndAllConstantLookupKeyWithTryResolveMode.out")
+    } else {
+      readFromResource(
+        "explain/stream/join/lookup/testAggAndAllConstantLookupKeyWithTryResolveMode_newSource.out")
+    }
+    assertEquals(
+      replaceNodeIdInOperator(replaceStreamNodeId(replaceStageId(expected))),
+      replaceNodeIdInOperator(replaceStreamNodeId(replaceStageId(actual))))
+  }
+
   // ==========================================================================================
 
   private def createLookupTable(tableName: String, lookupFunction: UserDefinedFunction): Unit = {
@@ -595,12 +636,12 @@ object LookupJoinTest {
   }
 }
 
-class TestTemporalTable(bounded: Boolean = false)
+class TestTemporalTable(bounded: Boolean = false, val keys: Array[String] = Array())
   extends LookupableTableSource[RowData]
   with StreamTableSource[RowData] {
 
-  val fieldNames: Array[String] = Array("id", "name", "age")
-  val fieldTypes: Array[TypeInformation[_]] = Array(Types.INT, Types.STRING, Types.INT)
+  val fieldNames = Array("id", "name", "age")
+  val fieldTypes = Array(DataTypes.INT(), DataTypes.STRING(), DataTypes.INT())
 
   override def getLookupFunction(lookupKeys: Array[String]): TableFunction[RowData] = {
     new TableFunctionWithRowDataVarArg()
@@ -620,18 +661,31 @@ class TestTemporalTable(bounded: Boolean = false)
 
   override def isBounded: Boolean = this.bounded
 
-  override def getProducedDataType: DataType = TestTemporalTable.tableSchema.toRowDataType
+  override def getProducedDataType: DataType = buildTableSchema.toRowDataType
 
-  override def getTableSchema: TableSchema = TestTemporalTable.tableSchema
+  override def getTableSchema: TableSchema = buildTableSchema
+
+  private def buildTableSchema(): TableSchema = {
+    val pkSet = keys.toSet
+    val builder = TableSchema.builder
+    assert(fieldNames.length == fieldTypes.length)
+    fieldNames.zipWithIndex.foreach {
+      case (name, index) =>
+        if (pkSet.contains(name)) {
+          // pk field requires not null
+          builder.field(name, fieldTypes(index).notNull())
+        } else {
+          builder.field(name, fieldTypes(index))
+        }
+    }
+    if (keys.nonEmpty) {
+      builder.primaryKey(keys: _*)
+    }
+    builder.build()
+  }
 }
 
 object TestTemporalTable {
-  lazy val tableSchema = TableSchema
-    .builder()
-    .field("id", DataTypes.INT())
-    .field("name", DataTypes.STRING())
-    .field("age", DataTypes.INT())
-    .build()
 
   def createTemporaryTable(
       tEnv: TableEnvironment,

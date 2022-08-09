@@ -27,6 +27,8 @@ import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.java.io.CollectionInputFormat;
 import org.apache.flink.configuration.ConfigOption;
 import org.apache.flink.configuration.ConfigOptions;
+import org.apache.flink.connector.source.DynamicFilteringValuesSource;
+import org.apache.flink.connector.source.ValuesSource;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.DataStreamSink;
 import org.apache.flink.streaming.api.datastream.DataStreamSource;
@@ -55,6 +57,7 @@ import org.apache.flink.table.connector.source.InputFormatProvider;
 import org.apache.flink.table.connector.source.LookupTableSource;
 import org.apache.flink.table.connector.source.ScanTableSource;
 import org.apache.flink.table.connector.source.SourceFunctionProvider;
+import org.apache.flink.table.connector.source.SourceProvider;
 import org.apache.flink.table.connector.source.TableFunctionProvider;
 import org.apache.flink.table.connector.source.abilities.SupportsAggregatePushDown;
 import org.apache.flink.table.connector.source.abilities.SupportsDynamicFiltering;
@@ -65,6 +68,13 @@ import org.apache.flink.table.connector.source.abilities.SupportsProjectionPushD
 import org.apache.flink.table.connector.source.abilities.SupportsReadingMetadata;
 import org.apache.flink.table.connector.source.abilities.SupportsSourceWatermark;
 import org.apache.flink.table.connector.source.abilities.SupportsWatermarkPushDown;
+import org.apache.flink.table.connector.source.lookup.AsyncLookupFunctionProvider;
+import org.apache.flink.table.connector.source.lookup.LookupFunctionProvider;
+import org.apache.flink.table.connector.source.lookup.LookupOptions;
+import org.apache.flink.table.connector.source.lookup.PartialCachingAsyncLookupProvider;
+import org.apache.flink.table.connector.source.lookup.PartialCachingLookupProvider;
+import org.apache.flink.table.connector.source.lookup.cache.DefaultLookupCache;
+import org.apache.flink.table.connector.source.lookup.cache.LookupCache;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.expressions.AggregateExpression;
 import org.apache.flink.table.expressions.FieldReferenceExpression;
@@ -125,6 +135,11 @@ import java.util.stream.Collectors;
 
 import scala.collection.Seq;
 
+import static org.apache.flink.table.connector.source.lookup.LookupOptions.CACHE_TYPE;
+import static org.apache.flink.table.connector.source.lookup.LookupOptions.PARTIAL_CACHE_CACHE_MISSING_KEY;
+import static org.apache.flink.table.connector.source.lookup.LookupOptions.PARTIAL_CACHE_EXPIRE_AFTER_ACCESS;
+import static org.apache.flink.table.connector.source.lookup.LookupOptions.PARTIAL_CACHE_EXPIRE_AFTER_WRITE;
+import static org.apache.flink.table.connector.source.lookup.LookupOptions.PARTIAL_CACHE_MAX_ROWS;
 import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -267,7 +282,9 @@ public final class TestValuesTableFactory
     private static final ConfigOption<String> RUNTIME_SOURCE =
             ConfigOptions.key("runtime-source")
                     .stringType()
-                    .defaultValue("SourceFunction"); // another is "InputFormat"
+                    .defaultValue("SourceFunction")
+                    .withDescription(
+                            "Accepted values are: SourceFunction, InputFormat, DataStream, NewSource");
 
     private static final ConfigOption<Boolean> FAILING_SOURCE =
             ConfigOptions.key("failing-source").booleanType().defaultValue(false);
@@ -389,6 +406,10 @@ public final class TestValuesTableFactory
         boolean failingSource = helper.getOptions().get(FAILING_SOURCE);
         int numElementToSkip = helper.getOptions().get(SOURCE_NUM_ELEMENT_TO_SKIP);
         boolean internalData = helper.getOptions().get(INTERNAL_DATA);
+        DefaultLookupCache cache = null;
+        if (helper.getOptions().get(CACHE_TYPE).equals(LookupOptions.LookupCacheType.PARTIAL)) {
+            cache = DefaultLookupCache.fromConfig(helper.getOptions());
+        }
 
         Optional<List<String>> filterableFields =
                 helper.getOptions().getOptional(FILTERABLE_FIELDS);
@@ -503,7 +524,8 @@ public final class TestValuesTableFactory
                         Long.MAX_VALUE,
                         partitions,
                         readableMetadata,
-                        null);
+                        null,
+                        cache);
             }
         } else {
             try {
@@ -534,7 +556,7 @@ public final class TestValuesTableFactory
                         helper.getOptions().get(WRITABLE_METADATA), context.getClassLoader());
         final ChangelogMode changelogMode =
                 Optional.ofNullable(helper.getOptions().get(SINK_CHANGELOG_MODE_ENFORCED))
-                        .map(m -> parseChangelogMode(m))
+                        .map(this::parseChangelogMode)
                         .orElse(null);
 
         final DataType consumedType = context.getCatalogTable().getSchema().toPhysicalRowDataType();
@@ -604,7 +626,12 @@ public final class TestValuesTableFactory
                         ENABLE_WATERMARK_PUSH_DOWN,
                         SINK_DROP_LATE_EVENT,
                         SOURCE_NUM_ELEMENT_TO_SKIP,
-                        INTERNAL_DATA));
+                        INTERNAL_DATA,
+                        CACHE_TYPE,
+                        PARTIAL_CACHE_EXPIRE_AFTER_ACCESS,
+                        PARTIAL_CACHE_EXPIRE_AFTER_WRITE,
+                        PARTIAL_CACHE_CACHE_MISSING_KEY,
+                        PARTIAL_CACHE_MAX_ROWS));
     }
 
     private static int validateAndExtractRowtimeIndex(
@@ -739,7 +766,8 @@ public final class TestValuesTableFactory
                     SupportsLimitPushDown,
                     SupportsPartitionPushDown,
                     SupportsReadingMetadata,
-                    SupportsAggregatePushDown {
+                    SupportsAggregatePushDown,
+                    SupportsDynamicFiltering {
 
         protected DataType producedDataType;
         protected final ChangelogMode changelogMode;
@@ -761,6 +789,7 @@ public final class TestValuesTableFactory
 
         private @Nullable int[] groupingSet;
         private List<AggregateExpression> aggregateExpressions;
+        private List<String> acceptedPartitionFilterFields;
 
         private TestValuesScanTableSourceWithoutProjectionPushDown(
                 DataType producedDataType,
@@ -813,11 +842,11 @@ public final class TestValuesTableFactory
                     runtimeProviderContext.createDataStructureConverter(producedDataType);
             converter.open(
                     RuntimeConverter.Context.create(TestValuesTableFactory.class.getClassLoader()));
-            Collection<RowData> values = convertToRowData(converter);
 
             switch (runtimeSource) {
                 case "SourceFunction":
                     try {
+                        Collection<RowData> values = convertToRowData(converter);
                         final SourceFunction<RowData> sourceFunction;
                         if (failingSource) {
                             sourceFunction =
@@ -834,14 +863,16 @@ public final class TestValuesTableFactory
                     checkArgument(
                             !failingSource,
                             "Values InputFormat Source doesn't support as failing source.");
+                    Collection<RowData> values = convertToRowData(converter);
                     return InputFormatProvider.of(new CollectionInputFormat<>(values, serializer));
                 case "DataStream":
                     checkArgument(
                             !failingSource,
                             "Values DataStream Source doesn't support as failing source.");
                     try {
+                        Collection<RowData> values2 = convertToRowData(converter);
                         FromElementsFunction<RowData> function =
-                                new FromElementsFunction<>(serializer, values);
+                                new FromElementsFunction<>(serializer, values2);
                         return new DataStreamScanProvider() {
                             @Override
                             public DataStream<RowData> produceDataStream(
@@ -862,6 +893,21 @@ public final class TestValuesTableFactory
                         };
                     } catch (IOException e) {
                         throw new TableException("Fail to init data stream source", e);
+                    }
+                case "NewSource":
+                    checkArgument(
+                            !failingSource, "Values Source doesn't support as failing new source.");
+                    if (acceptedPartitionFilterFields == null
+                            || acceptedPartitionFilterFields.isEmpty()) {
+                        Collection<RowData> values2 = convertToRowData(converter);
+                        return SourceProvider.of(new ValuesSource(values2, serializer));
+                    } else {
+                        Map<Map<String, String>, Collection<RowData>> partitionValues =
+                                convertToPartitionedRowData(converter);
+                        DynamicFilteringValuesSource source =
+                                new DynamicFilteringValuesSource(
+                                        partitionValues, serializer, acceptedPartitionFilterFields);
+                        return SourceProvider.of(source);
                     }
                 default:
                     throw new IllegalArgumentException(
@@ -923,8 +969,21 @@ public final class TestValuesTableFactory
 
         protected Collection<RowData> convertToRowData(DataStructureConverter converter) {
             List<RowData> result = new ArrayList<>();
+            for (Collection<RowData> rowData : convertToPartitionedRowData(converter).values()) {
+                result.addAll(rowData);
+            }
+            return result;
+        }
+
+        protected Map<Map<String, String>, Collection<RowData>> convertToPartitionedRowData(
+                DataStructureConverter converter) {
+            Map<Map<String, String>, Collection<RowData>> result = new HashMap<>();
+            int size = 0;
             int numSkipped = 0;
             for (Map<String, String> partition : data.keySet()) {
+                List<RowData> partitionResult = new ArrayList<>();
+                result.put(partition, partitionResult);
+
                 Collection<Row> rowsInPartition = data.get(partition);
 
                 // handle element skipping
@@ -960,11 +1019,12 @@ public final class TestValuesTableFactory
                     final RowData rowData = (RowData) converter.toInternal(row);
                     if (rowData != null) {
                         rowData.setRowKind(row.getKind());
-                        result.add(rowData);
+                        partitionResult.add(rowData);
+                        size++;
                     }
 
                     // handle limit. No aggregates will be pushed down when there is a limit.
-                    if (result.size() >= limit) {
+                    if (size >= limit) {
                         return result;
                     }
                 }
@@ -1206,12 +1266,31 @@ public final class TestValuesTableFactory
             projectedMetadataFields =
                     remainingMetadataKeys.stream().mapToInt(allMetadataKeys::indexOf).toArray();
         }
+
+        @Override
+        public List<String> applyDynamicFiltering(List<String> candidateFilterFields) {
+            if (dynamicFilteringFields != null && dynamicFilteringFields.size() != 0) {
+                checkArgument(!candidateFilterFields.isEmpty());
+                acceptedPartitionFilterFields = new ArrayList<>();
+                for (String field : candidateFilterFields) {
+                    if (dynamicFilteringFields.contains(field)) {
+                        acceptedPartitionFilterFields.add(field);
+                    }
+                }
+
+                return new ArrayList<>(acceptedPartitionFilterFields);
+            } else {
+                throw new UnsupportedOperationException(
+                        "Should adding dynamic filtering fields by adding factor"
+                                + " in with like: 'dynamic-filtering-fields' = 'a;b'.");
+            }
+        }
     }
 
     /** Values {@link ScanTableSource} for testing that supports projection push down. */
     private static class TestValuesScanTableSource
             extends TestValuesScanTableSourceWithoutProjectionPushDown
-            implements SupportsProjectionPushDown, SupportsDynamicFiltering {
+            implements SupportsProjectionPushDown {
 
         private TestValuesScanTableSource(
                 DataType producedDataType,
@@ -1281,25 +1360,6 @@ public final class TestValuesTableFactory
             this.projectedPhysicalFields = projectedFields;
             // we can't immediately project the data here,
             // because ReadingMetadataSpec may bring new fields
-        }
-
-        @Override
-        public List<String> applyDynamicFiltering(List<String> candidateFilterFields) {
-            if (dynamicFilteringFields != null && dynamicFilteringFields.size() != 0) {
-                checkArgument(!candidateFilterFields.isEmpty());
-                List<String> acceptedPartitionFields = new ArrayList<>();
-                for (String field : candidateFilterFields) {
-                    if (dynamicFilteringFields.contains(field)) {
-                        acceptedPartitionFields.add(field);
-                    }
-                }
-
-                return acceptedPartitionFields;
-            } else {
-                throw new UnsupportedOperationException(
-                        "Should adding dynamic filtering fields by adding factor"
-                                + " in with like: 'dynamic-filtering-fields' = 'a;b'.");
-            }
         }
     }
 
@@ -1413,6 +1473,7 @@ public final class TestValuesTableFactory
             implements LookupTableSource, SupportsDynamicFiltering {
 
         private final @Nullable String lookupFunctionClass;
+        private final @Nullable LookupCache cache;
         private final boolean isAsync;
 
         private TestValuesScanLookupTableSource(
@@ -1433,7 +1494,8 @@ public final class TestValuesTableFactory
                 long limit,
                 List<Map<String, String>> allPartitions,
                 Map<String, DataType> readableMetadata,
-                @Nullable int[] projectedMetadataFields) {
+                @Nullable int[] projectedMetadataFields,
+                @Nullable LookupCache cache) {
             super(
                     producedDataType,
                     changelogMode,
@@ -1453,6 +1515,7 @@ public final class TestValuesTableFactory
                     projectedMetadataFields);
             this.lookupFunctionClass = lookupFunctionClass;
             this.isAsync = isAsync;
+            this.cache = cache;
         }
 
         @SuppressWarnings({"unchecked", "rawtypes"})
@@ -1475,7 +1538,6 @@ public final class TestValuesTableFactory
             }
 
             int[] lookupIndices = Arrays.stream(context.getKeys()).mapToInt(k -> k[0]).toArray();
-            Map<Row, List<Row>> mapping = new HashMap<>();
             Collection<Row> rows;
             if (allPartitions.equals(Collections.EMPTY_LIST)) {
                 rows = data.getOrDefault(Collections.EMPTY_MAP, Collections.EMPTY_LIST);
@@ -1493,27 +1555,25 @@ public final class TestValuesTableFactory
                     data = data.subList(numElementToSkip, data.size());
                 }
             }
-
-            data.forEach(
-                    record -> {
-                        Row key =
-                                Row.of(
-                                        Arrays.stream(lookupIndices)
-                                                .mapToObj(record::getField)
-                                                .toArray());
-                        List<Row> list = mapping.get(key);
-                        if (list != null) {
-                            list.add(record);
-                        } else {
-                            list = new ArrayList<>();
-                            list.add(record);
-                            mapping.put(key, list);
-                        }
-                    });
+            DataStructureConverter converter =
+                    context.createDataStructureConverter(producedDataType);
             if (isAsync) {
-                return AsyncTableFunctionProvider.of(new AsyncTestValueLookupFunction(mapping));
+                AsyncTestValueLookupFunction asyncLookupFunction =
+                        new AsyncTestValueLookupFunction(data, lookupIndices, converter);
+                if (cache == null) {
+                    return AsyncLookupFunctionProvider.of(asyncLookupFunction);
+                } else {
+
+                    return PartialCachingAsyncLookupProvider.of(asyncLookupFunction, cache);
+                }
             } else {
-                return TableFunctionProvider.of(new TestValuesLookupFunction(mapping));
+                TestValuesLookupFunction lookupFunction =
+                        new TestValuesLookupFunction(data, lookupIndices, converter);
+                if (cache == null) {
+                    return LookupFunctionProvider.of(lookupFunction);
+                } else {
+                    return PartialCachingLookupProvider.of(lookupFunction, cache);
+                }
             }
         }
 
@@ -1537,26 +1597,8 @@ public final class TestValuesTableFactory
                     limit,
                     allPartitions,
                     readableMetadata,
-                    projectedMetadataFields);
-        }
-
-        @Override
-        public List<String> applyDynamicFiltering(List<String> candidateFilterFields) {
-            if (dynamicFilteringFields != null && dynamicFilteringFields.size() != 0) {
-                checkArgument(!candidateFilterFields.isEmpty());
-                List<String> acceptedPartitionFields = new ArrayList<>();
-                for (String field : candidateFilterFields) {
-                    if (dynamicFilteringFields.contains(field)) {
-                        acceptedPartitionFields.add(field);
-                    }
-                }
-
-                return acceptedPartitionFields;
-            } else {
-                throw new UnsupportedOperationException(
-                        "Should adding dynamic filtering fields by adding factor"
-                                + " in with like: 'dynamic-filtering-fields' = 'a;b'.");
-            }
+                    projectedMetadataFields,
+                    cache);
         }
     }
 

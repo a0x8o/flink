@@ -18,12 +18,18 @@
 
 package org.apache.flink.table.planner.plan.rules.physical.batch;
 
+import org.apache.flink.api.dag.Transformation;
+import org.apache.flink.streaming.api.transformations.SourceTransformation;
 import org.apache.flink.table.api.TableException;
 import org.apache.flink.table.api.config.OptimizerConfigOptions;
 import org.apache.flink.table.catalog.CatalogTable;
+import org.apache.flink.table.connector.source.DataStreamScanProvider;
 import org.apache.flink.table.connector.source.DynamicTableSource;
+import org.apache.flink.table.connector.source.ScanTableSource;
+import org.apache.flink.table.connector.source.SourceProvider;
 import org.apache.flink.table.connector.source.abilities.SupportsDynamicFiltering;
 import org.apache.flink.table.planner.calcite.FlinkTypeFactory;
+import org.apache.flink.table.planner.connectors.TransformationScanProvider;
 import org.apache.flink.table.planner.plan.abilities.source.FilterPushDownSpec;
 import org.apache.flink.table.planner.plan.abilities.source.SourceAbilitySpec;
 import org.apache.flink.table.planner.plan.nodes.physical.batch.BatchPhysicalCalc;
@@ -35,6 +41,7 @@ import org.apache.flink.table.planner.plan.nodes.physical.batch.BatchPhysicalRel
 import org.apache.flink.table.planner.plan.nodes.physical.batch.BatchPhysicalTableSourceScan;
 import org.apache.flink.table.planner.plan.schema.TableSourceTable;
 import org.apache.flink.table.planner.utils.ShortcutUtils;
+import org.apache.flink.table.runtime.connector.source.ScanRuntimeProviderContext;
 
 import org.apache.calcite.plan.RelOptRuleCall;
 import org.apache.calcite.plan.RelOptUtil;
@@ -63,6 +70,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 import static org.apache.flink.table.api.config.OptimizerConfigOptions.TABLE_OPTIMIZER_DYNAMIC_FILTERING_ENABLED;
@@ -75,7 +83,7 @@ import static org.apache.flink.table.api.config.OptimizerConfigOptions.TABLE_OPT
  *
  * <p>Suppose we have the original physical plan:
  *
- * <pre>{@Code
+ * <pre>{@code
  * LogicalProject(...)
  * HashJoin(joinType=[InnerJoin], where=[=(fact_partition_key, dim_key)], select=[xxx])
  *  * :- TableSourceScan(table=[[fact]], fields=[xxx, fact_partition_key],) # Is a partition table.
@@ -86,7 +94,7 @@ import static org.apache.flink.table.api.config.OptimizerConfigOptions.TABLE_OPT
  *
  * <p>This physical plan will be rewritten to:
  *
- * <pre>{@Code
+ * <pre>{@code
  * HashJoin(joinType=[InnerJoin], where=[=(fact_partition_key, dim_key)], select=[xxx])
  * :- DynamicFilteringTableSourceScan(table=[[fact]], fields=[xxx, fact_partition_key]) # Is a partition table.
  * :  +- DynamicFilteringDataCollector(fields=[dim_key])
@@ -170,7 +178,12 @@ public abstract class DynamicPartitionPruningRule extends RelRule<RelRule.Config
             return false;
         }
         DynamicTableSource tableSource = tableSourceTable.tableSource();
-        if (!(tableSource instanceof SupportsDynamicFiltering)) {
+        if (!(tableSource instanceof SupportsDynamicFiltering)
+                || !(tableSource instanceof ScanTableSource)) {
+            return false;
+        }
+
+        if (!isNewSource((ScanTableSource) tableSource)) {
             return false;
         }
 
@@ -180,6 +193,31 @@ public abstract class DynamicPartitionPruningRule extends RelRule<RelRule.Config
                 getAcceptedFieldIndices(factJoinKeys, factCalc, factScan, tableSource);
 
         return !acceptedFieldIndices.isEmpty();
+    }
+
+    /** Returns true if the source is FLIP-27 source, else false. */
+    private static boolean isNewSource(ScanTableSource scanTableSource) {
+        ScanTableSource.ScanRuntimeProvider provider =
+                scanTableSource.getScanRuntimeProvider(ScanRuntimeProviderContext.INSTANCE);
+        if (provider instanceof SourceProvider) {
+            return true;
+        } else if (provider instanceof TransformationScanProvider) {
+            Transformation<?> transformation =
+                    ((TransformationScanProvider) provider)
+                            .createTransformation(name -> Optional.empty());
+            return transformation instanceof SourceTransformation;
+        } else if (provider instanceof DataStreamScanProvider) {
+            // Suppose DataStreamScanProvider of sources that support dynamic filtering will use new
+            // Source. It's not reliable and should be checked.
+            // TODO FLINK-28864 check if the source used by the DataStreamScanProvider is actually a
+            //  new source.
+            // This situation will not generate wrong result because it's handled when translating
+            // BatchTableSourceScan. The only effect is the physical plan and the exec node plan
+            // have DPP nodes, but they do not work in runtime.
+            return true;
+        }
+        // TODO supports more
+        return false;
     }
 
     private static List<Integer> getAcceptedFieldIndices(
@@ -196,17 +234,10 @@ public abstract class DynamicPartitionPruningRule extends RelRule<RelRule.Config
         } else {
             // Changing the fact key index in fact table calc output to fact key index in fact
             // table, and filtering these fields that computing in calc node.
-            RexProgram origProgram = factCalc.getProgram();
+            RexProgram program = factCalc.getProgram();
             List<Integer> joinKeysIndexInFactTable = new ArrayList<>();
-            List<RexNode> projectInJoinKeyList =
-                    factJoinKeys.stream()
-                            .map(
-                                    i ->
-                                            origProgram.expandLocalRef(
-                                                    origProgram.getProjectList().get(i)))
-                            .collect(Collectors.toList());
-
-            for (RexNode node : projectInJoinKeyList) {
+            for (int joinKeyIdx : factJoinKeys) {
+                RexNode node = program.expandLocalRef(program.getProjectList().get(joinKeyIdx));
                 if (node instanceof RexInputRef) {
                     joinKeysIndexInFactTable.add(((RexInputRef) node).getIndex());
                 }
@@ -229,8 +260,9 @@ public abstract class DynamicPartitionPruningRule extends RelRule<RelRule.Config
             if (!candidateFields.contains(field)) {
                 throw new TableException(
                         String.format(
-                                "Field %s not in join key, please verify the applyDynamicFiltering method In %s",
-                                field, tableSource.asSummaryString()));
+                                "Field: %s does not exist in the given fields: %s, "
+                                        + "please verify the applyDynamicFiltering method in connector: %s",
+                                field, candidateFields, tableSource.asSummaryString()));
             }
         }
 

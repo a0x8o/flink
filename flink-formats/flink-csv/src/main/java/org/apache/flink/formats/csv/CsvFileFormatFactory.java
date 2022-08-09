@@ -46,6 +46,7 @@ import org.apache.flink.table.factories.DynamicTableFactory;
 import org.apache.flink.table.plan.stats.TableStats;
 import org.apache.flink.table.types.DataType;
 import org.apache.flink.table.types.logical.RowType;
+import org.apache.flink.util.jackson.JacksonMapperFactory;
 
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.databind.JsonNode;
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.databind.node.ObjectNode;
@@ -132,7 +133,7 @@ public class CsvFileFormatFactory implements BulkReaderFormatFactory, BulkWriter
                                     .createRowConverter(projectedRowType, true);
             CsvReaderFormat<RowData> csvReaderFormat =
                     new CsvReaderFormat<>(
-                            () -> new CsvMapper(),
+                            () -> JacksonMapperFactory.createCsvMapper(),
                             ignored -> schema,
                             JsonNode.class,
                             converter,
@@ -163,24 +164,27 @@ public class CsvFileFormatFactory implements BulkReaderFormatFactory, BulkWriter
                 final RowType rowType = (RowType) physicalDataType.getLogicalType();
                 final CsvSchema schema = buildCsvSchema(rowType, formatOptions);
 
-                final RowDataToCsvConverter converter =
-                        RowDataToCsvConverters.createRowConverter(rowType);
-
-                final CsvMapper mapper = new CsvMapper();
-                final ObjectNode container = mapper.createObjectNode();
-
-                final RowDataToCsvConverter.RowDataToCsvFormatConverterContext converterContext =
-                        new RowDataToCsvConverter.RowDataToCsvFormatConverterContext(
-                                mapper, container);
-
-                return out ->
-                        CsvBulkWriter.forSchema(mapper, schema, converter, converterContext, out);
+                return createCsvBulkWriterFactory(schema, rowType);
             }
 
             @Override
             public ChangelogMode getChangelogMode() {
                 return ChangelogMode.insertOnly();
             }
+        };
+    }
+
+    static BulkWriter.Factory<RowData> createCsvBulkWriterFactory(
+            CsvSchema schema, RowType rowType) {
+        final RowDataToCsvConverter converter = RowDataToCsvConverters.createRowConverter(rowType);
+
+        return out -> {
+            final CsvMapper mapper = JacksonMapperFactory.createCsvMapper();
+            final ObjectNode container = mapper.createObjectNode();
+
+            final RowDataToCsvConverter.RowDataToCsvFormatConverterContext converterContext =
+                    new RowDataToCsvConverter.RowDataToCsvFormatConverterContext(mapper, container);
+            return CsvBulkWriter.forSchema(mapper, schema, converter, converterContext, out);
         };
     }
 
