@@ -34,21 +34,20 @@ class ResultTypeQueryable(object):
         pass
 
 
-class JavaObjectWrapper(object):
-
-    def __init__(self, j_object):
-        self._j_object = j_object
-
-    def get_java_object(self):
-        return self._j_object
-
-
 def create_hadoop_configuration(config: Configuration):
     jvm = get_gateway().jvm
     hadoop_config = jvm.org.apache.hadoop.conf.Configuration()
     for k, v in config.to_dict().items():
         hadoop_config.set(k, v)
     return hadoop_config
+
+
+def create_java_properties(config: Configuration):
+    jvm = get_gateway().jvm
+    properties = jvm.java.util.Properties()
+    for k, v in config.to_dict().items():
+        properties.put(k, v)
+    return properties
 
 
 def convert_to_python_obj(data, type_info):

@@ -20,6 +20,7 @@ package org.apache.flink.connectors.hive;
 
 import org.apache.flink.configuration.ConfigOption;
 import org.apache.flink.configuration.DescribedEnum;
+import org.apache.flink.configuration.MemorySize;
 import org.apache.flink.configuration.description.Description;
 import org.apache.flink.configuration.description.InlineElement;
 
@@ -76,6 +77,36 @@ public class HiveOptions {
                     .defaultValue(3)
                     .withDescription(
                             "The thread number to split hive's partitions to splits. It should be bigger than 0.");
+
+    public static final ConfigOption<MemorySize> TABLE_EXEC_HIVE_SPLIT_MAX_BYTES =
+            key("table.exec.hive.split-max-size")
+                    .memoryType()
+                    .defaultValue(MemorySize.parse("128mb"))
+                    .withDescription(
+                            "The maximum number of bytes (default is 128MB) to pack into a split while reading Hive table. A split will be assigned to a reader. "
+                                    + "It only works for the Hive table stored as ORC format.");
+
+    public static final ConfigOption<MemorySize> TABLE_EXEC_HIVE_FILE_OPEN_COST =
+            key("table.exec.hive.file-open-cost")
+                    .memoryType()
+                    .defaultValue(MemorySize.parse("4mb"))
+                    .withDescription(
+                            "The estimated cost (default is 4MB) to open a file. Used to split Hive's files to splits."
+                                    + " When the value is over estimated, Flink will tend to pack Hive's data into less splits, which will be helpful when Hive's table contains many small files."
+                                    + " And vice versa. It only works for the Hive table stored as ORC format.");
+
+    public static final ConfigOption<Boolean> TABLE_EXEC_HIVE_DYNAMIC_GROUPING_ENABLED =
+            key("table.exec.hive.sink.sort-by-dynamic-partition.enable")
+                    .booleanType()
+                    .defaultValue(true)
+                    .withDescription(
+                            "Whether to enable sorting data by dynamic partition column or not when it's for dynamic partition writing."
+                                    + " The default is to enable sorting."
+                                    + " If it's enabled, the date will be sorted additionally by the dynamic partition columns"
+                                    + " before writing into sink table."
+                                    + " If it's disabled, there won't be extra sorting,"
+                                    + " but it may throw OutOfMemory exception if there are too many dynamic partitions fall into same sink node."
+                                    + " Note: it only works in batch mode.");
 
     public static final ConfigOption<Boolean> STREAMING_SOURCE_ENABLE =
             key("streaming-source.enable")

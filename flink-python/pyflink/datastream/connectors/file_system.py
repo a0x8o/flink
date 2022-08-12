@@ -20,6 +20,8 @@ from abc import abstractmethod
 
 from typing import TYPE_CHECKING, Optional
 
+from pyflink.common.serialization import BulkWriterFactory, RowDataBulkWriterFactory
+
 if TYPE_CHECKING:
     from pyflink.table.types import RowType
 
@@ -27,9 +29,9 @@ from pyflink.common import Duration, Encoder
 from pyflink.datastream.connectors import Source, Sink
 from pyflink.datastream.connectors.base import SupportsPreprocessing, StreamTransformer
 from pyflink.datastream.functions import SinkFunction
-from pyflink.datastream.utils import JavaObjectWrapper
+from pyflink.common.utils import JavaObjectWrapper
 from pyflink.java_gateway import get_gateway
-from pyflink.util.java_utils import to_jarray
+from pyflink.util.java_utils import to_jarray, is_instance_of
 
 __all__ = [
     'FileCompactor',
@@ -39,10 +41,8 @@ __all__ = [
     'FileSourceBuilder',
     'FileSink',
     'StreamingFileSink',
-    'BulkFormat',
     'StreamFormat',
-    'InputFormat',
-    'BulkWriterFactory',
+    'BulkFormat',
     'FileEnumeratorProvider',
     'FileSplitAssignerProvider',
     'RollingPolicy',
@@ -163,40 +163,6 @@ class BulkFormat(object):
 
     def __init__(self, j_bulk_format):
         self._j_bulk_format = j_bulk_format
-
-
-class InputFormat(JavaObjectWrapper):
-    """
-    The Python wrapper of Java InputFormat interface, which is the base interface for data sources
-    that produce records.
-    """
-
-    def __init__(self, j_input_format):
-        super().__init__(j_input_format)
-
-
-class BulkWriterFactory(JavaObjectWrapper):
-    """
-    The Python wrapper of Java BulkWriter.Factory interface, which is the base interface for data
-    sinks that write records into files in a bulk manner.
-    """
-
-    def __init__(self, j_bulk_writer_factory):
-        super().__init__(j_bulk_writer_factory)
-
-
-class RowDataBulkWriterFactory(BulkWriterFactory):
-    """
-    A :class:`BulkWriterFactory` that receives records with RowData type. This is for indicating
-    that Row record from Python must be first converted to RowData.
-    """
-
-    def __init__(self, j_bulk_writer_factory, row_type: 'RowType'):
-        super().__init__(j_bulk_writer_factory)
-        self._row_type = row_type
-
-    def get_row_type(self) -> 'RowType':
-        return self._row_type
 
 
 class FileSourceBuilder(object):
@@ -603,14 +569,14 @@ class FileCompactor(JavaObjectWrapper):
             return FileCompactor(JConcatFileCompactor())
 
     @staticmethod
-    def identity_file_compactor():
+    def identical_file_compactor():
         """
         Returns a file compactor that directly copy the content of the only input file to the
         output.
         """
-        JIdentityFileCompactor = get_gateway().jvm.org.apache.flink.connector.file.sink.compactor.\
-            IdentityFileCompactor
-        return FileCompactor(JIdentityFileCompactor())
+        JIdenticalFileCompactor = get_gateway().jvm.org.apache.flink.connector.file.sink.compactor.\
+            IdenticalFileCompactor
+        return FileCompactor(JIdenticalFileCompactor())
 
 
 class FileSink(Sink, SupportsPreprocessing):
@@ -745,10 +711,26 @@ class FileSink(Sink, SupportsPreprocessing):
             from pyflink.datastream.data_stream import DataStream
             from pyflink.table.types import _to_java_data_type
 
+            def _check_if_row_data_type(ds) -> bool:
+                j_type_info = ds._j_data_stream.getType()
+                if not is_instance_of(
+                    j_type_info,
+                    'org.apache.flink.table.runtime.typeutils.InternalTypeInfo'
+                ):
+                    return False
+                return is_instance_of(
+                    j_type_info.toLogicalType(),
+                    'org.apache.flink.table.types.logical.RowType'
+                )
+
             class RowRowTransformer(StreamTransformer):
 
                 def apply(self, ds):
                     jvm = get_gateway().jvm
+
+                    if _check_if_row_data_type(ds):
+                        return ds
+
                     j_map_function = jvm.org.apache.flink.python.util.PythonConnectorUtils \
                         .RowRowMapper(_to_java_data_type(row_type))
                     return DataStream(ds._j_data_stream.process(j_map_function))

@@ -19,9 +19,9 @@ package org.apache.flink.table.planner.plan.nodes.physical.common
 
 import org.apache.flink.table.api.TableException
 import org.apache.flink.table.catalog.{ObjectIdentifier, UniqueConstraint}
-import org.apache.flink.table.functions.{AsyncTableFunction, TableFunction, UserDefinedFunction}
 import org.apache.flink.table.planner.calcite.FlinkTypeFactory
 import org.apache.flink.table.planner.plan.nodes.FlinkRelNode
+import org.apache.flink.table.planner.plan.nodes.exec.spec.LookupJoinHintSpec
 import org.apache.flink.table.planner.plan.schema.{IntermediateRelTable, LegacyTableSourceTable, TableSourceTable}
 import org.apache.flink.table.planner.plan.utils.{ExpressionFormat, JoinTypeUtil, LookupJoinUtil, RelExplainUtil}
 import org.apache.flink.table.planner.plan.utils.ExpressionFormat.ExpressionFormat
@@ -82,7 +82,8 @@ abstract class CommonPhysicalLookupJoin(
     val temporalTable: RelOptTable,
     val calcOnTemporalTable: Option[RexProgram],
     val joinInfo: JoinInfo,
-    val joinType: JoinRelType)
+    val joinType: JoinRelType,
+    val lookupHintSpec: Option[LookupJoinHintSpec] = Option.empty[LookupJoinHintSpec])
   extends SingleRel(cluster, traitSet, inputRel)
   with FlinkRelNode {
 
@@ -160,12 +161,13 @@ abstract class CommonPhysicalLookupJoin(
       case t: LegacyTableSourceTable[_] => t.tableIdentifier
     }
 
-    val lookupFunction: UserDefinedFunction =
-      LookupJoinUtil.getLookupFunction(temporalTable, allLookupKeys.keys.map(Int.box).toList.asJava)
-    val isAsyncEnabled: Boolean = lookupFunction match {
-      case _: TableFunction[_] => false
-      case _: AsyncTableFunction[_] => true
-    }
+    // The lookup function maybe not the final choice at runtime because lack of upsert materialize
+    // info here. This can be consistent after planner offers enough info here.
+    val isAsyncEnabled: Boolean =
+      LookupJoinUtil.isAsyncLookup(
+        temporalTable,
+        allLookupKeys.keys.map(Int.box).toList.asJava,
+        lookupHintSpec.orNull)
 
     super
       .explainTerms(pw)
