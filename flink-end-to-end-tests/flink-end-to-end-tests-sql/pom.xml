@@ -212,6 +212,22 @@
                     <scope>test</scope>
                 </dependency>
             </dependencies>
+            <dependencyManagement>
+                <dependencies>
+                    <dependency>
+                        <!-- dependency convergence -->
+                        <groupId>com.nimbusds</groupId>
+                        <artifactId>nimbus-jose-jwt</artifactId>
+                        <version>4.41.1</version>
+                    </dependency>
+                    <dependency>
+                        <!-- dependency convergence -->
+                        <groupId>com.squareup.okio</groupId>
+                        <artifactId>okio</artifactId>
+                        <version>1.17.2</version>
+                    </dependency>
+                </dependencies>
+            </dependencyManagement>
         </profile>
     </profiles>
 </project>
