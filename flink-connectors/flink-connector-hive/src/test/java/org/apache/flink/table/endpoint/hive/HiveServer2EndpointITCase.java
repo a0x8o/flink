@@ -19,7 +19,6 @@
 package org.apache.flink.table.endpoint.hive;
 
 import org.apache.flink.FlinkVersion;
-import org.apache.flink.core.testutils.FlinkAssertions;
 import org.apache.flink.table.api.DataTypes;
 import org.apache.flink.table.api.SqlDialect;
 import org.apache.flink.table.api.config.TableConfigOptions;
@@ -46,6 +45,8 @@ import org.apache.flink.util.function.ThrowingConsumer;
 
 import org.apache.hadoop.hive.common.auth.HiveAuthUtils;
 import org.apache.hadoop.hive.serde2.thrift.Type;
+import org.apache.hive.jdbc.HiveConnection;
+import org.apache.hive.jdbc.HiveStatement;
 import org.apache.hive.service.rpc.thrift.TCLIService;
 import org.apache.hive.service.rpc.thrift.TCancelOperationReq;
 import org.apache.hive.service.rpc.thrift.TCancelOperationResp;
@@ -83,6 +84,7 @@ import java.util.stream.Collectors;
 
 import static org.apache.flink.api.common.RuntimeExecutionMode.BATCH;
 import static org.apache.flink.configuration.ExecutionOptions.RUNTIME_MODE;
+import static org.apache.flink.core.testutils.FlinkAssertions.anyCauseMatches;
 import static org.apache.flink.table.api.config.TableConfigOptions.MAX_LENGTH_GENERATED_CODE;
 import static org.apache.flink.table.api.config.TableConfigOptions.TABLE_DML_SYNC;
 import static org.apache.flink.table.endpoint.hive.util.ThriftObjectConversions.toTOperationHandle;
@@ -125,7 +127,9 @@ public class HiveServer2EndpointITCase extends TestLogger {
         configs.put(MAX_LENGTH_GENERATED_CODE.key(), "-1");
         // simulate to set config using hive jdbc
         configs.put("set:hiveconf:key", "value");
-        // TODO: set hivevar when FLINK-28096 is fixed
+        configs.put("set:system:ks", "vs");
+        configs.put("set:key1", "value1");
+        configs.put("set:hivevar:key2", "${hiveconf:common-key}");
         openSessionReq.setConfiguration(configs);
         TOpenSessionResp openSessionResp = client.OpenSession(openSessionReq);
         SessionHandle sessionHandle =
@@ -140,7 +144,8 @@ public class HiveServer2EndpointITCase extends TestLogger {
                         new AbstractMap.SimpleEntry<>(TABLE_DML_SYNC.key(), "true"),
                         new AbstractMap.SimpleEntry<>(RUNTIME_MODE.key(), BATCH.name()),
                         new AbstractMap.SimpleEntry<>(MAX_LENGTH_GENERATED_CODE.key(), "-1"),
-                        new AbstractMap.SimpleEntry<>("key", "value"));
+                        new AbstractMap.SimpleEntry<>("key1", "value1"),
+                        new AbstractMap.SimpleEntry<>("key2", "common-val"));
     }
 
     @Test
@@ -157,6 +162,47 @@ public class HiveServer2EndpointITCase extends TestLogger {
                                 error.contains(
                                         String.format(
                                                 "Session '%s' does not exist", sessionHandle)));
+    }
+
+    @Test
+    public void testGetUnsupportedException() throws Exception {
+        try (HiveConnection connection = (HiveConnection) ENDPOINT_EXTENSION.getConnection();
+                HiveStatement statement = (HiveStatement) connection.createStatement()) {
+            assertThatThrownBy(() -> connection.renewDelegationToken("TokenMessage"))
+                    .satisfies(
+                            anyCauseMatches(
+                                    "The HiveServer2 Endpoint currently doesn't support to RenewDelegationToken."));
+            assertThatThrownBy(() -> connection.cancelDelegationToken("TokenMessage"))
+                    .satisfies(
+                            anyCauseMatches(
+                                    "The HiveServer2 Endpoint currently doesn't support to CancelDelegationToken."));
+            assertThatThrownBy(() -> connection.getDelegationToken("Flink", "TokenMessage"))
+                    .satisfies(
+                            anyCauseMatches(
+                                    "The HiveServer2 Endpoint currently doesn't support to GetDelegationToken."));
+            assertThatThrownBy(
+                            () ->
+                                    connection
+                                            .getMetaData()
+                                            .getCrossReference(
+                                                    "hive",
+                                                    "schema",
+                                                    "table",
+                                                    "default_catalog",
+                                                    "default_database",
+                                                    "table"))
+                    .satisfies(
+                            anyCauseMatches(
+                                    "The HiveServer2 Endpoint currently doesn't support to GetCrossReference."));
+            assertThatThrownBy(
+                            () -> {
+                                statement.execute("SHOW TABLES");
+                                statement.getQueryLog();
+                            })
+                    .satisfies(
+                            anyCauseMatches(
+                                    "The HiveServer2 endpoint currently doesn't support to fetch logs."));
+        }
     }
 
     @Test
@@ -198,7 +244,7 @@ public class HiveServer2EndpointITCase extends TestLogger {
                                                         .getOperationInfo(
                                                                 sessionHandle, operationHandle))
                                 .satisfies(
-                                        FlinkAssertions.anyCauseMatches(
+                                        anyCauseMatches(
                                                 SqlGatewayException.class,
                                                 String.format(
                                                         "Can not find the submitted operation in the OperationManager with the %s",
