@@ -182,7 +182,8 @@ public class HiveDialectQueryITCase {
                                 "select a, one from binary_t lateral view explode(ab) abs as one where a > 0",
                                 "select /*+ mapjoin(dest) */ foo.x from foo join dest on foo.x = dest.x union"
                                         + " all select /*+ mapjoin(dest) */ foo.x from foo join dest on foo.y = dest.y",
-                                "with cte as (select * from src) select * from cte"));
+                                "with cte as (select * from src) select * from cte",
+                                "select 1 / 0"));
         if (HiveVersionTestUtil.HIVE_230_OR_LATER) {
             toRun.add(
                     "select weekofyear(current_timestamp()), dayofweek(current_timestamp()) from src limit 1");
@@ -587,6 +588,15 @@ public class HiveDialectQueryITCase {
                                     defaultPartitionName,
                                     defaultPartitionName,
                                     defaultPartitionName));
+
+            // test use binary record reader
+            result =
+                    CollectionUtil.iteratorToList(
+                            tableEnv.executeSql(
+                                            "select transform(key) using 'cat' as (tkey)"
+                                                    + " RECORDREADER 'org.apache.hadoop.hive.ql.exec.BinaryRecordReader' from src")
+                                    .collect());
+            assertThat(result.toString()).isEqualTo("[+I[1\n2\n3\n]]");
         } finally {
             tableEnv.executeSql("drop table dest1");
             tableEnv.executeSql("drop table destp1");
@@ -803,6 +813,28 @@ public class HiveDialectQueryITCase {
         } finally {
             tableEnv.executeSql("drop table t1");
             tableEnv.executeSql("drop table t2");
+        }
+    }
+
+    @Test
+    public void testCount() throws Exception {
+        tableEnv.executeSql("create table abcd (a int, b int, c int, d int)");
+        tableEnv.executeSql(
+                        "insert into abcd values (null,35,23,6), (10, 100, 23, 5), (10, 35, 23, 5)")
+                .await();
+        try {
+            List<Row> results =
+                    CollectionUtil.iteratorToList(
+                            tableEnv.executeSql(
+                                            "select count(1), count(*), count(a),"
+                                                    + " count(distinct a,b), count(distinct b,d), count(distinct b, c) from abcd")
+                                    .collect());
+            assertThat(results.toString()).isEqualTo("[+I[3, 3, 2, 2, 3, 2]]");
+            assertThatThrownBy(() -> tableEnv.executeSql(" select count(a,b) from abcd"))
+                    .hasRootCauseInstanceOf(UDFArgumentException.class)
+                    .hasRootCauseMessage("DISTINCT keyword must be specified");
+        } finally {
+            tableEnv.executeSql("drop table abcd");
         }
     }
 
