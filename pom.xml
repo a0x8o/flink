@@ -972,7 +972,7 @@ under the License.
 							<version>3.2.4</version>
 						</plugin>
 						<plugin>
-							<groupId>com.github.siom79.japicmp</groupId>
+							<groupId>io.github.zentol.japicmp</groupId>
 							<artifactId>japicmp-maven-plugin</artifactId>
 							<dependencies>
 								<dependency>
@@ -1132,7 +1132,7 @@ under the License.
 							</configuration>
 						</plugin>
 						<plugin>
-							<groupId>com.github.siom79.japicmp</groupId>
+							<groupId>io.github.zentol.japicmp</groupId>
 							<artifactId>japicmp-maven-plugin</artifactId>
 							<configuration>
 								<skip>true</skip>
@@ -1401,6 +1401,12 @@ under the License.
 						</manifest>
 					</archive>
 				</configuration>
+			</plugin>
+
+			<plugin>
+				<!-- activate API compatibility checks -->
+				<groupId>io.github.zentol.japicmp</groupId>
+				<artifactId>japicmp-maven-plugin</artifactId>
 			</plugin>
 
 			<plugin>
@@ -2133,9 +2139,9 @@ under the License.
 
 				<!-- Configuration for the binary compatibility checker -->
 				<plugin>
-					<groupId>com.github.siom79.japicmp</groupId>
+					<groupId>io.github.zentol.japicmp</groupId>
 					<artifactId>japicmp-maven-plugin</artifactId>
-					<version>0.11.0</version>
+					<version>0.16.0_m325</version>
 					<configuration>
 						<oldVersion>
 							<dependency>
@@ -2193,6 +2199,9 @@ under the License.
 							<skipPomModules>true</skipPomModules>
 							<!-- Don't break build on newly added maven modules -->
 							<ignoreNonResolvableArtifacts>true</ignoreNonResolvableArtifacts>
+							<packagingSupporteds>
+								<packagingSupported>jar</packagingSupported>
+							</packagingSupporteds>
 						</parameter>
 						<projectBuildDir>${rootDir}/${japicmp.outputDir}/${project.artifactId}</projectBuildDir>
 						<dependencies>
