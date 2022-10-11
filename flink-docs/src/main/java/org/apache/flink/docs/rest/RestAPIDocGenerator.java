@@ -196,14 +196,6 @@ public class RestAPIDocGenerator {
             sb.append("      </td>\n");
             sb.append("    </tr>\n");
         }
-        int reqHash =
-                spec.getTargetRestEndpointURL().hashCode()
-                        + spec.getHttpMethod().name().hashCode()
-                        + spec.getRequestClass().getCanonicalName().hashCode();
-        int resHash =
-                spec.getTargetRestEndpointURL().hashCode()
-                        + spec.getHttpMethod().name().hashCode()
-                        + spec.getResponseClass().getCanonicalName().hashCode();
         {
             sb.append("    <tr>\n");
             sb.append("      <td colspan=\"2\">\n");
@@ -216,11 +208,7 @@ public class RestAPIDocGenerator {
             sb.append("          </div>\n");
             sb.append("          <input type=\"checkbox\" class=\"hidden\">\n");
             sb.append("          <div class=\"book-expand-content markdown-inner\">\n");
-            sb.append("          <pre>\n");
-            sb.append("            <code>\n");
-            sb.append(requestEntry);
-            sb.append("            </code>\n");
-            sb.append("          </pre>\n");
+            sb.append("          <pre><code>" + requestEntry + "</code></pre>\n");
             sb.append("          </div>\n");
             sb.append("        </label>\n");
             sb.append("      </div>\n");
@@ -237,11 +225,7 @@ public class RestAPIDocGenerator {
             sb.append("          </div>\n");
             sb.append("          <input type=\"checkbox\" class=\"hidden\">\n");
             sb.append("          <div class=\"book-expand-content markdown-inner\">\n");
-            sb.append("          <pre>\n");
-            sb.append("            <code>\n");
-            sb.append(responseEntry);
-            sb.append("            </code>\n");
-            sb.append("          </pre>\n");
+            sb.append("          <pre><code>" + responseEntry + "</code></pre>\n");
             sb.append("          </div>\n");
             sb.append("        </label>\n");
             sb.append("      </div>\n");
