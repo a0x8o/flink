@@ -28,10 +28,10 @@ import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.ExecutionOptions;
 import org.apache.flink.configuration.ReadableConfig;
+import org.apache.flink.core.fs.Path;
 import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
 import org.apache.flink.runtime.jobgraph.JobType;
 import org.apache.flink.runtime.jobgraph.SavepointRestoreSettings;
-import org.apache.flink.runtime.jobgraph.ScheduleMode;
 import org.apache.flink.runtime.state.CheckpointStorage;
 import org.apache.flink.runtime.state.KeyGroupRangeAssignment;
 import org.apache.flink.runtime.state.StateBackend;
@@ -142,13 +142,16 @@ public class StreamGraphGenerator {
     // Records the slot sharing groups and their corresponding ResourceProfile
     private final Map<String, ResourceProfile> slotSharingGroupResources = new HashMap<>();
 
+    private Path savepointDir;
+
     private StateBackend stateBackend;
 
     private CheckpointStorage checkpointStorage;
 
     private boolean chaining = true;
 
-    private Collection<Tuple2<String, DistributedCache.DistributedCacheEntry>> userArtifacts;
+    private Collection<Tuple2<String, DistributedCache.DistributedCacheEntry>> userArtifacts =
+            Collections.emptyList();
 
     private TimeCharacteristic timeCharacteristic = DEFAULT_TIME_CHARACTERISTIC;
 
@@ -224,11 +227,17 @@ public class StreamGraphGenerator {
         this.executionConfig = checkNotNull(executionConfig);
         this.checkpointConfig = new CheckpointConfig(checkpointConfig);
         this.configuration = checkNotNull(configuration);
+        this.checkpointStorage = this.checkpointConfig.getCheckpointStorage();
     }
 
     public StreamGraphGenerator setRuntimeExecutionMode(
             final RuntimeExecutionMode runtimeExecutionMode) {
         this.runtimeExecutionMode = checkNotNull(runtimeExecutionMode);
+        return this;
+    }
+
+    public StreamGraphGenerator setSavepointDir(Path savepointDir) {
+        this.savepointDir = savepointDir;
         return this;
     }
 
@@ -244,7 +253,7 @@ public class StreamGraphGenerator {
 
     public StreamGraphGenerator setUserArtifacts(
             Collection<Tuple2<String, DistributedCache.DistributedCacheEntry>> userArtifacts) {
-        this.userArtifacts = userArtifacts;
+        this.userArtifacts = checkNotNull(userArtifacts);
         return this;
     }
 
@@ -320,13 +329,12 @@ public class StreamGraphGenerator {
             }
 
             graph.setGlobalDataExchangeMode(GlobalDataExchangeMode.FORWARD_EDGES_PIPELINED);
-            graph.setScheduleMode(ScheduleMode.LAZY_FROM_SOURCES_WITH_BATCH_SLOT_REQUEST);
             setDefaultBufferTimeout(-1);
             setBatchStateBackendAndTimerService(graph);
         } else {
             graph.setStateBackend(stateBackend);
             graph.setCheckpointStorage(checkpointStorage);
-            graph.setScheduleMode(ScheduleMode.EAGER);
+            graph.setSavepointDirectory(savepointDir);
 
             if (checkpointConfig.isApproximateLocalRecoveryEnabled()) {
                 checkApproximateLocalRecoveryCompatibility();

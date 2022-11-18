@@ -50,7 +50,6 @@ import org.apache.flink.runtime.jobgraph.JobType;
 import org.apache.flink.runtime.jobgraph.JobVertex;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.jobgraph.SavepointRestoreSettings;
-import org.apache.flink.runtime.jobgraph.ScheduleMode;
 import org.apache.flink.runtime.jobgraph.tasks.JobCheckpointingSettings;
 import org.apache.flink.runtime.jobmanager.scheduler.CoLocationGroup;
 import org.apache.flink.runtime.jobmanager.scheduler.SlotSharingGroup;
@@ -853,18 +852,17 @@ public class StreamingJobGraphGeneratorTest extends TestLogger {
         assertEquals(iterationSourceCoLocationGroup, iterationSinkCoLocationGroup);
     }
 
-    /** Test default schedule mode. */
+    /** Test default job type. */
     @Test
-    public void testDefaultScheduleMode() {
+    public void testDefaultJobType() {
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 
-        // use eager schedule mode by default
         StreamGraph streamGraph =
                 new StreamGraphGenerator(
                                 Collections.emptyList(), env.getConfig(), env.getCheckpointConfig())
                         .generate();
         JobGraph jobGraph = StreamingJobGraphGenerator.createJobGraph(streamGraph);
-        assertEquals(ScheduleMode.EAGER, jobGraph.getScheduleMode());
+        assertEquals(JobType.STREAMING, jobGraph.getJobType());
     }
 
     @Test
@@ -952,6 +950,45 @@ public class StreamingJobGraphGeneratorTest extends TestLogger {
         final List<JobVertex> vertices = jobGraph.getVerticesSortedTopologicallyFromSources();
         Assert.assertEquals(1, vertices.size());
         assertEquals(4, vertices.get(0).getOperatorIDs().size());
+    }
+
+    @Test
+    public void testDeterministicUnionOrder() {
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment(1);
+
+        JobGraph jobGraph = getUnionJobGraph(env);
+        JobVertex jobSink = Iterables.getLast(jobGraph.getVerticesSortedTopologicallyFromSources());
+        List<String> expectedSourceOrder =
+                jobSink.getInputs().stream()
+                        .map(edge -> edge.getSource().getProducer().getName())
+                        .collect(Collectors.toList());
+
+        for (int i = 0; i < 100; i++) {
+            JobGraph jobGraph2 = getUnionJobGraph(env);
+            JobVertex jobSink2 =
+                    Iterables.getLast(jobGraph2.getVerticesSortedTopologicallyFromSources());
+            assertNotEquals("Different runs should yield different vertexes", jobSink, jobSink2);
+            List<String> actualSourceOrder =
+                    jobSink2.getInputs().stream()
+                            .map(edge -> edge.getSource().getProducer().getName())
+                            .collect(Collectors.toList());
+            assertEquals("Union inputs reordered", expectedSourceOrder, actualSourceOrder);
+        }
+    }
+
+    private JobGraph getUnionJobGraph(StreamExecutionEnvironment env) {
+
+        createSource(env, 1)
+                .union(createSource(env, 2))
+                .union(createSource(env, 3))
+                .union(createSource(env, 4))
+                .addSink(new DiscardingSink<>());
+
+        return StreamingJobGraphGenerator.createJobGraph(env.getStreamGraph());
+    }
+
+    private DataStream<Integer> createSource(StreamExecutionEnvironment env, int index) {
+        return env.fromElements(index).name("source" + index).map(i -> i).name("map" + index);
     }
 
     @Test(expected = UnsupportedOperationException.class)

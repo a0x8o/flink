@@ -32,7 +32,7 @@ under the License.
 向量化用户自定义函数的定义，与[非向量化用户自定义函数]({{< ref "docs/dev/python/table/udfs/python_udfs" >}})具有相似的方式，
 用户只需要在调用`udf`或者`udaf`装饰器时添加一个额外的参数`func_type="pandas"`，将其标记为一个向量化用户自定义函数即可。
 
-**注意：**要执行Python UDF，需要安装PyFlink的Python版本（3.5、3.6、3.7 或 3.8）。客户端和群集端都需要安装它。
+**注意：**要执行Python UDF，需要安装PyFlink的Python版本（3.6、3.7 或 3.8）。客户端和群集端都需要安装它。
 
 
 
@@ -53,7 +53,8 @@ under the License.
 def add(i, j):
   return i + j
 
-table_env = BatchTableEnvironment.create(env)
+settings = EnvironmentSettings.new_instance().in_batch_mode().use_blink_planner().build()
+table_env = TableEnvironment.create(settings)
 
 # use the vectorized Python scalar function in Python Table API
 my_table.select(add(my_table.bigint, my_table.bigint))
@@ -85,9 +86,8 @@ and `Over Window Aggregation` 使用它:
 def mean_udaf(v):
     return v.mean()
 
-table_env = BatchTableEnvironment.create(
-            environment_settings=EnvironmentSettings.new_instance()
-            .in_batch_mode().use_blink_planner().build())
+settings = EnvironmentSettings.new_instance().in_batch_mode().use_blink_planner().build()
+table_env = TableEnvironment.create(settings)
 
 my_table = ...  # type: Table, table schema: [a: String, b: BigInt, c: BigInt]
 

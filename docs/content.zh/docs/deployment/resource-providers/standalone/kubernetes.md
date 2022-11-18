@@ -74,8 +74,7 @@ Next, we set up a port forward to access the Flink UI and submit jobs:
 2. Navigate to [http://localhost:8081](http://localhost:8081) in your browser.
 3. Moreover, you could use the following command below to submit jobs to the cluster:
 ```bash
-$ ./bin/flink run -m localhost:8081 
-$ ./examples/streaming/TopSpeedWindowing.jar
+$ ./bin/flink run -m localhost:8081 ./examples/streaming/TopSpeedWindowing.jar
 ```
 
 
@@ -158,8 +157,7 @@ You can then access the Flink UI and submit jobs via different ways:
     2. Navigate to [http://localhost:8081](http://localhost:8081) in your browser.
     3. Moreover, you can use the following command below to submit jobs to the cluster:
     ```bash
-    $ ./bin/flink run -m localhost:8081 
-    $ ./examples/streaming/TopSpeedWindowing.jar
+    $ ./bin/flink run -m localhost:8081 ./examples/streaming/TopSpeedWindowing.jar
     ```
 
 *  Create a `NodePort` service on the rest service of jobmanager:
@@ -169,8 +167,7 @@ You can then access the Flink UI and submit jobs via different ways:
     4. Similarly to the `port-forward` solution, you can also use the following command below to submit jobs to the cluster:
 
     ```bash
-    $ ./bin/flink run -m <public-node-ip>:<node-port> 
-    $ ./examples/streaming/TopSpeedWindowing.jar
+    $ ./bin/flink run -m <public-node-ip>:<node-port> ./examples/streaming/TopSpeedWindowing.jar
     ```
 
 ### Debugging and Log Access
@@ -193,7 +190,10 @@ You can now access the logs by running `kubectl logs flink-jobmanager-589967dcfc
 
 For high availability on Kubernetes, you can use the [existing high availability services]({{< ref "docs/deployment/ha/overview" >}}).
 
-Session Mode and Application Mode clusters support using the Kubernetes high availability service. Users just need to add the following Flink config options to [flink-configuration-configmap.yaml](#common-cluster-resource-definitions). All other yamls do not need to be updated.
+#### Kubernetes High-Availability Services
+
+Session Mode and Application Mode clusters support using the [Kubernetes high availability service]({{< ref "docs/deployment/ha/kubernetes_ha" >}}).
+You need to add the following Flink config options to [flink-configuration-configmap.yaml](#common-cluster-resource-definitions).
 
 <span class="label label-info">Note</span> The filesystem which corresponds to the scheme of your configured HA storage directory must be available to the runtime. Refer to [custom Flink image]({{< ref "docs/deployment/resource-providers/standalone/docker" >}}#advanced-customization) and [enable plugins]({{< ref "docs/deployment/resource-providers/standalone/docker" >}}#using-filesystem-plugins) for more information.
 
@@ -214,6 +214,9 @@ data:
     restart-strategy.fixed-delay.attempts: 10
   ...
 ```
+
+Moreover, you have to start the JobManager and TaskManager pods with a service account which has the permissions to create, edit, delete ConfigMaps.
+See [how to configure service accounts for pods](https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/) for more information.
 
 ### Enabling Queryable State
 

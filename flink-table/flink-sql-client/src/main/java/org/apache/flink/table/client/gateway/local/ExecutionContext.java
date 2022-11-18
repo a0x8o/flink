@@ -183,9 +183,6 @@ public class ExecutionContext<ClusterID> {
                         this.getClass().getClassLoader(),
                         flinkConfig);
 
-        // Initialize the TableEnvironment.
-        initializeTableEnvironment(sessionState);
-
         LOG.debug("Deployment descriptor: {}", environment.getDeployment());
         final CommandLine commandLine =
                 createCommandLine(environment.getDeployment(), commandLineOptions);
@@ -200,6 +197,9 @@ public class ExecutionContext<ClusterID> {
 
         clusterId = clusterClientFactory.getClusterId(flinkConfig);
         clusterSpec = clusterClientFactory.getClusterSpecification(flinkConfig);
+
+        // Initialize the TableEnvironment.
+        initializeTableEnvironment(sessionState);
     }
 
     public Configuration getFlinkConfig() {
@@ -503,7 +503,7 @@ public class ExecutionContext<ClusterID> {
         final EnvironmentSettings settings = environment.getExecution().getEnvironmentSettings();
         final boolean noInheritedState = sessionState == null;
         // Step 0.0 Initialize the table configuration.
-        final TableConfig config = createTableConfig();
+        final TableConfig config = createTableConfig(settings);
 
         if (noInheritedState) {
             // --------------------------------------------------------------------------------------------------------------
@@ -575,9 +575,14 @@ public class ExecutionContext<ClusterID> {
         }
     }
 
-    private TableConfig createTableConfig() {
+    private TableConfig createTableConfig(EnvironmentSettings settings) {
         final TableConfig config = new TableConfig();
         config.addConfiguration(flinkConfig);
+        // Override the value in configuration.
+        // TODO: use `table.planner` and `execution.runtime-mode` to configure the TableEnvironment
+        // But we need to wait for the FLINK-21485
+        config.addConfiguration(settings.toConfiguration());
+
         Configuration conf = config.getConfiguration();
         environment.getConfiguration().asMap().forEach(conf::setString);
         ExecutionEntry execution = environment.getExecution();
@@ -661,7 +666,7 @@ public class ExecutionContext<ClusterID> {
                             classLoader);
         } else if (environment.getExecution().isBatchPlanner()) {
             streamExecEnv = null;
-            execEnv = ExecutionEnvironment.getExecutionEnvironment();
+            execEnv = createExecutionEnvironment();
             executor = null;
             tableEnv =
                     new BatchTableEnvironmentImpl(execEnv, config, catalogManager, moduleManager);
@@ -751,15 +756,26 @@ public class ExecutionContext<ClusterID> {
     }
 
     private StreamExecutionEnvironment createStreamExecutionEnvironment() {
-        final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        // We need not different StreamExecutionEnvironments to build and submit flink job,
+        // instead we just use StreamExecutionEnvironment#executeAsync(StreamGraph) method
+        // to execute existing StreamGraph.
+        // This requires StreamExecutionEnvironment to have a full flink configuration.
+        final StreamExecutionEnvironment env =
+                new StreamExecutionEnvironment(new Configuration(flinkConfig), classLoader);
         // for TimeCharacteristic validation in StreamTableEnvironmentImpl
         env.setStreamTimeCharacteristic(environment.getExecution().getTimeCharacteristic());
-        if (environment.getExecution().getTimeCharacteristic() == TimeCharacteristic.EventTime) {
+        if (env.getStreamTimeCharacteristic() == TimeCharacteristic.EventTime) {
             env.getConfig()
                     .setAutoWatermarkInterval(
                             environment.getExecution().getPeriodicWatermarksInterval());
         }
         return env;
+    }
+
+    private ExecutionEnvironment createExecutionEnvironment() {
+        ExecutionEnvironment execEnv = ExecutionEnvironment.getExecutionEnvironment();
+        execEnv.getConfiguration().addAll(flinkConfig);
+        return execEnv;
     }
 
     private void registerFunctions() {

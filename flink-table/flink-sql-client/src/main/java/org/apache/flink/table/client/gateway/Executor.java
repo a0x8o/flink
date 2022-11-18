@@ -18,7 +18,6 @@
 
 package org.apache.flink.table.client.gateway;
 
-import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.table.api.TableResult;
 import org.apache.flink.table.delegation.Parser;
 import org.apache.flink.types.Row;
@@ -73,9 +72,6 @@ public interface Executor {
     /** Executes a SQL statement, and return {@link TableResult} as execution result. */
     TableResult executeSql(String sessionId, String statement) throws SqlExecutionException;
 
-    /** Lists all modules known to the executor in their loaded order. */
-    List<String> listModules(String sessionId) throws SqlExecutionException;
-
     /** Returns a sql parser instance. */
     Parser getSqlParser(String sessionId);
 
@@ -86,7 +82,7 @@ public interface Executor {
     ResultDescriptor executeQuery(String sessionId, String query) throws SqlExecutionException;
 
     /** Asks for the next changelog results (non-blocking). */
-    TypedResult<List<Tuple2<Boolean, Row>>> retrieveResultChanges(String sessionId, String resultId)
+    TypedResult<List<Row>> retrieveResultChanges(String sessionId, String resultId)
             throws SqlExecutionException;
 
     /**
@@ -107,14 +103,4 @@ public interface Executor {
      * has been sent to cluster.
      */
     void cancelQuery(String sessionId, String resultId) throws SqlExecutionException;
-
-    /**
-     * Submits a Flink SQL update statement such as INSERT INTO.
-     *
-     * @param sessionId to identify the user session.
-     * @param statement SQL update statement (currently only INSERT INTO is supported)
-     * @return information about the target of the submitted Flink job
-     */
-    ProgramTargetDescriptor executeUpdate(String sessionId, String statement)
-            throws SqlExecutionException;
 }

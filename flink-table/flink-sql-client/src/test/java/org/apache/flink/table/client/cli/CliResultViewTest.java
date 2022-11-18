@@ -17,14 +17,12 @@
 
 package org.apache.flink.table.client.cli;
 
-import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.table.api.TableResult;
 import org.apache.flink.table.api.TableSchema;
 import org.apache.flink.table.api.Types;
 import org.apache.flink.table.client.cli.utils.TerminalUtils;
 import org.apache.flink.table.client.config.Environment;
 import org.apache.flink.table.client.gateway.Executor;
-import org.apache.flink.table.client.gateway.ProgramTargetDescriptor;
 import org.apache.flink.table.client.gateway.ResultDescriptor;
 import org.apache.flink.table.client.gateway.SessionContext;
 import org.apache.flink.table.client.gateway.SqlExecutionException;
@@ -91,7 +89,8 @@ public class CliResultViewTest {
                         "result-id",
                         TableSchema.builder().field("Null Field", Types.STRING()).build(),
                         false,
-                        false);
+                        false,
+                        true);
 
         Thread resultViewRunner = null;
         CliClient cli = null;
@@ -163,11 +162,6 @@ public class CliResultViewTest {
         }
 
         @Override
-        public List<String> listModules(String sessionId) throws SqlExecutionException {
-            return null;
-        }
-
-        @Override
         public Parser getSqlParser(String sessionId) {
             return null;
         }
@@ -185,9 +179,9 @@ public class CliResultViewTest {
 
         @Override
         @SuppressWarnings("unchecked")
-        public TypedResult<List<Tuple2<Boolean, Row>>> retrieveResultChanges(
-                String sessionId, String resultId) throws SqlExecutionException {
-            return (TypedResult<List<Tuple2<Boolean, Row>>>) typedResult;
+        public TypedResult<List<Row>> retrieveResultChanges(String sessionId, String resultId)
+                throws SqlExecutionException {
+            return (TypedResult<List<Row>>) typedResult;
         }
 
         @Override
@@ -206,12 +200,6 @@ public class CliResultViewTest {
         @Override
         public void cancelQuery(String sessionId, String resultId) throws SqlExecutionException {
             cancellationCounter.countDown();
-        }
-
-        @Override
-        public ProgramTargetDescriptor executeUpdate(String sessionId, String statement)
-                throws SqlExecutionException {
-            return null;
         }
     }
 

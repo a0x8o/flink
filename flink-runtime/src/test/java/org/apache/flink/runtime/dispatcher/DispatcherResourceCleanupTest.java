@@ -38,7 +38,7 @@ import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.highavailability.RunningJobsRegistry;
 import org.apache.flink.runtime.highavailability.TestingHighAvailabilityServices;
 import org.apache.flink.runtime.jobgraph.JobGraph;
-import org.apache.flink.runtime.jobgraph.JobVertex;
+import org.apache.flink.runtime.jobgraph.JobGraphTestUtils;
 import org.apache.flink.runtime.jobmanager.JobGraphWriter;
 import org.apache.flink.runtime.jobmaster.JobManagerRunner;
 import org.apache.flink.runtime.jobmaster.JobManagerSharedServices;
@@ -52,7 +52,7 @@ import org.apache.flink.runtime.rest.handler.legacy.utils.ArchivedExecutionGraph
 import org.apache.flink.runtime.rpc.FatalErrorHandler;
 import org.apache.flink.runtime.rpc.RpcService;
 import org.apache.flink.runtime.rpc.TestingRpcService;
-import org.apache.flink.runtime.testtasks.NoOpInvokable;
+import org.apache.flink.runtime.scheduler.ExecutionGraphInfo;
 import org.apache.flink.runtime.testutils.TestingJobGraphStore;
 import org.apache.flink.runtime.util.TestingFatalErrorHandlerResource;
 import org.apache.flink.util.ExceptionUtils;
@@ -140,10 +140,8 @@ public class DispatcherResourceCleanupTest extends TestLogger {
 
     @Before
     public void setup() throws Exception {
-        final JobVertex testVertex = new JobVertex("testVertex");
-        testVertex.setInvokableClass(NoOpInvokable.class);
-        jobId = new JobID();
-        jobGraph = new JobGraph(jobId, "testJob", testVertex);
+        jobGraph = JobGraphTestUtils.singleNoOpJobGraph();
+        jobId = jobGraph.getJobID();
 
         configuration = new Configuration();
         configuration.setString(
@@ -196,8 +194,8 @@ public class DispatcherResourceCleanupTest extends TestLogger {
     private void startDispatcher(JobManagerRunnerFactory jobManagerRunnerFactory) throws Exception {
         TestingResourceManagerGateway resourceManagerGateway = new TestingResourceManagerGateway();
         final HeartbeatServices heartbeatServices = new HeartbeatServices(1000L, 1000L);
-        final MemoryArchivedExecutionGraphStore archivedExecutionGraphStore =
-                new MemoryArchivedExecutionGraphStore();
+        final MemoryExecutionGraphInfoStore archivedExecutionGraphStore =
+                new MemoryExecutionGraphInfoStore();
         dispatcher =
                 new TestingDispatcher(
                         rpcService,
@@ -349,10 +347,11 @@ public class DispatcherResourceCleanupTest extends TestLogger {
 
         testingJobManagerRunner.getCloseAsyncCalledLatch().await();
         testingJobManagerRunner.completeResultFuture(
-                new ArchivedExecutionGraphBuilder()
-                        .setJobID(jobId)
-                        .setState(JobStatus.FINISHED)
-                        .build());
+                new ExecutionGraphInfo(
+                        new ArchivedExecutionGraphBuilder()
+                                .setJobID(jobId)
+                                .setState(JobStatus.FINISHED)
+                                .build()));
 
         testingJobManagerRunner.completeTerminationFuture();
 
@@ -378,10 +377,11 @@ public class DispatcherResourceCleanupTest extends TestLogger {
         final TestingJobManagerRunner testingJobManagerRunner =
                 jobManagerRunnerFactory.takeCreatedJobManagerRunner();
         testingJobManagerRunner.completeResultFuture(
-                new ArchivedExecutionGraphBuilder()
-                        .setState(JobStatus.FINISHED)
-                        .setJobID(jobId)
-                        .build());
+                new ExecutionGraphInfo(
+                        new ArchivedExecutionGraphBuilder()
+                                .setState(JobStatus.FINISHED)
+                                .setJobID(jobId)
+                                .build()));
 
         // wait for the clearing
         clearedJobLatch.await();
@@ -459,10 +459,11 @@ public class DispatcherResourceCleanupTest extends TestLogger {
 
     private void finishJob(TestingJobManagerRunner takeCreatedJobManagerRunner) {
         takeCreatedJobManagerRunner.completeResultFuture(
-                new ArchivedExecutionGraphBuilder()
-                        .setJobID(jobId)
-                        .setState(JobStatus.FINISHED)
-                        .build());
+                new ExecutionGraphInfo(
+                        new ArchivedExecutionGraphBuilder()
+                                .setJobID(jobId)
+                                .setState(JobStatus.FINISHED)
+                                .build()));
     }
 
     private void assertThatHABlobsHaveNotBeenRemoved() {
@@ -578,7 +579,7 @@ public class DispatcherResourceCleanupTest extends TestLogger {
 
         final TestingJobManagerRunner testingJobManagerRunner =
                 jobManagerRunnerFactory.takeCreatedJobManagerRunner();
-        testingJobManagerRunner.completeResultFuture(executionGraph);
+        testingJobManagerRunner.completeResultFuture(new ExecutionGraphInfo(executionGraph));
 
         assertThat(cleanupJobFuture.get(), equalTo(jobId));
         assertThat(deleteAllHABlobsFuture.isDone(), is(false));
@@ -597,7 +598,7 @@ public class DispatcherResourceCleanupTest extends TestLogger {
 
         final TestingJobManagerRunner testingJobManagerRunner =
                 jobManagerRunnerFactory.takeCreatedJobManagerRunner();
-        testingJobManagerRunner.completeResultFuture(executionGraph);
+        testingJobManagerRunner.completeResultFuture(new ExecutionGraphInfo(executionGraph));
 
         assertThat(cleanupJobFuture.get(), equalTo(jobId));
         assertThat(deleteAllHABlobsFuture.get(), equalTo(jobId));

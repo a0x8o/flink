@@ -30,8 +30,8 @@ import org.apache.flink.runtime.io.network.api.writer.RecordWriterBuilder;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionType;
 import org.apache.flink.runtime.jobgraph.DistributionPattern;
 import org.apache.flink.runtime.jobgraph.JobGraph;
+import org.apache.flink.runtime.jobgraph.JobGraphTestUtils;
 import org.apache.flink.runtime.jobgraph.JobVertex;
-import org.apache.flink.runtime.jobgraph.ScheduleMode;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
 import org.apache.flink.runtime.jobmanager.scheduler.NoResourceAvailableException;
 import org.apache.flink.runtime.jobmanager.scheduler.SlotSharingGroup;
@@ -136,11 +136,8 @@ public class PipelinedRegionSchedulingITCase extends TestLogger {
                 source1, DistributionPattern.POINTWISE, ResultPartitionType.PIPELINED);
         sink.connectNewDataSetAsInput(
                 source2, DistributionPattern.ALL_TO_ALL, ResultPartitionType.BLOCKING);
-        final JobGraph jobGraph = new JobGraph(source1, source2, sink);
 
-        jobGraph.setScheduleMode(ScheduleMode.LAZY_FROM_SOURCES_WITH_BATCH_SLOT_REQUEST);
-
-        return jobGraph;
+        return JobGraphTestUtils.batchJobGraph(source1, source2, sink);
     }
 
     /**

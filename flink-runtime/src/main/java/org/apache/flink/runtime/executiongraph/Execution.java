@@ -27,6 +27,7 @@ import org.apache.flink.runtime.JobException;
 import org.apache.flink.runtime.accumulators.StringifiedAccumulatorResult;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.checkpoint.CheckpointType;
+import org.apache.flink.runtime.checkpoint.CheckpointType.PostCheckpointAction;
 import org.apache.flink.runtime.checkpoint.InflightDataRescalingDescriptor;
 import org.apache.flink.runtime.checkpoint.JobManagerTaskRestore;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
@@ -42,12 +43,13 @@ import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
 import org.apache.flink.runtime.jobgraph.OperatorID;
-import org.apache.flink.runtime.jobmanager.scheduler.LocationPreferenceConstraint;
 import org.apache.flink.runtime.jobmanager.slots.TaskManagerGateway;
 import org.apache.flink.runtime.jobmaster.LogicalSlot;
 import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.operators.coordination.OperatorEvent;
 import org.apache.flink.runtime.operators.coordination.TaskNotRunningException;
+import org.apache.flink.runtime.scheduler.strategy.ConsumerVertexGroup;
+import org.apache.flink.runtime.scheduler.strategy.ExecutionVertexID;
 import org.apache.flink.runtime.shuffle.NettyShuffleMaster;
 import org.apache.flink.runtime.shuffle.PartitionDescriptor;
 import org.apache.flink.runtime.shuffle.ProducerDescriptor;
@@ -55,9 +57,7 @@ import org.apache.flink.runtime.shuffle.ShuffleDescriptor;
 import org.apache.flink.runtime.shuffle.ShuffleMaster;
 import org.apache.flink.runtime.taskexecutor.TaskExecutorOperatorEventGateway;
 import org.apache.flink.runtime.taskmanager.TaskManagerLocation;
-import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.FlinkException;
-import org.apache.flink.util.FlinkRuntimeException;
 import org.apache.flink.util.OptionalFailure;
 import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.SerializedValue;
@@ -116,7 +116,7 @@ import static org.apache.flink.util.Preconditions.checkState;
 public class Execution
         implements AccessExecution, Archiveable<ArchivedExecution>, LogicalSlot.Payload {
 
-    private static final Logger LOG = ExecutionGraph.LOG;
+    private static final Logger LOG = DefaultExecutionGraph.LOG;
 
     private static final int NUM_CANCEL_CALL_TRIES = 3;
 
@@ -153,7 +153,8 @@ public class Execution
 
     private LogicalSlot assignedResource;
 
-    private Throwable failureCause; // once assigned, never changes
+    private Optional<ErrorInfo> failureCause =
+            Optional.empty(); // once an ErrorInfo is set, never changes
 
     /**
      * Information to restore the task on recovery, such as checkpoint id and task state snapshot.
@@ -317,13 +318,9 @@ public class Execution
                 : null;
     }
 
-    public Throwable getFailureCause() {
-        return failureCause;
-    }
-
     @Override
-    public String getFailureCauseAsString() {
-        return ExceptionUtils.stringifyException(getFailureCause());
+    public Optional<ErrorInfo> getFailureInfo() {
+        return failureCause;
     }
 
     @Override
@@ -390,7 +387,7 @@ public class Execution
         return FutureUtils.thenApplyAsyncIfNotDone(
                 registerProducedPartitions(
                         vertex, location, attemptId, notifyPartitionDataAvailable),
-                vertex.getExecutionGraph().getJobMasterMainThreadExecutor(),
+                vertex.getExecutionGraphAccessor().getJobMasterMainThreadExecutor(),
                 producedPartitionsCache -> {
                     producedPartitions = producedPartitionsCache;
                     startTrackingPartitions(
@@ -439,9 +436,12 @@ public class Execution
 
         for (IntermediateResultPartition partition : partitions) {
             PartitionDescriptor partitionDescriptor = PartitionDescriptor.from(partition);
-            int maxParallelism = getPartitionMaxParallelism(partition);
+            int maxParallelism =
+                    getPartitionMaxParallelism(
+                            partition,
+                            vertex.getExecutionGraphAccessor()::getExecutionVertexOrThrow);
             CompletableFuture<? extends ShuffleDescriptor> shuffleDescriptorFuture =
-                    vertex.getExecutionGraph()
+                    vertex.getExecutionGraphAccessor()
                             .getShuffleMaster()
                             .registerPartitionWithProducer(partitionDescriptor, producerDescriptor);
 
@@ -471,15 +471,18 @@ public class Execution
                         });
     }
 
-    private static int getPartitionMaxParallelism(IntermediateResultPartition partition) {
-        final List<List<ExecutionEdge>> consumers = partition.getConsumers();
+    private static int getPartitionMaxParallelism(
+            IntermediateResultPartition partition,
+            Function<ExecutionVertexID, ExecutionVertex> getVertexById) {
+        final List<ConsumerVertexGroup> consumers = partition.getConsumers();
         Preconditions.checkArgument(
-                !consumers.isEmpty(),
+                consumers.size() == 1,
                 "Currently there has to be exactly one consumer in real jobs");
-        List<ExecutionEdge> consumer = consumers.get(0);
-        ExecutionJobVertex consumerVertex = consumer.get(0).getTarget().getJobVertex();
-        int maxParallelism = consumerVertex.getMaxParallelism();
-        return maxParallelism;
+        final ConsumerVertexGroup consumerVertexGroup = consumers.get(0);
+        return getVertexById
+                .apply(consumerVertexGroup.getFirst())
+                .getJobVertex()
+                .getMaxParallelism();
     }
 
     /**
@@ -579,7 +582,7 @@ public class Execution
             final TaskManagerGateway taskManagerGateway = slot.getTaskManagerGateway();
 
             final ComponentMainThreadExecutor jobMasterMainThreadExecutor =
-                    vertex.getExecutionGraph().getJobMasterMainThreadExecutor();
+                    vertex.getExecutionGraphAccessor().getJobMasterMainThreadExecutor();
 
             getVertex().notifyPendingDeployment(this);
             // We run the submission in the future executor so that the serialization of large TDDs
@@ -710,7 +713,10 @@ public class Execution
         return releaseFuture;
     }
 
-    private void updatePartitionConsumers(final List<List<ExecutionEdge>> allConsumers) {
+    private void updatePartitionConsumers(final IntermediateResultPartition partition) {
+
+        final List<ConsumerVertexGroup> allConsumers = partition.getConsumers();
+
         if (allConsumers.size() == 0) {
             return;
         }
@@ -721,8 +727,9 @@ public class Execution
             return;
         }
 
-        for (ExecutionEdge edge : allConsumers.get(0)) {
-            final ExecutionVertex consumerVertex = edge.getTarget();
+        for (ExecutionVertexID consumerVertexId : allConsumers.get(0)) {
+            final ExecutionVertex consumerVertex =
+                    vertex.getExecutionGraphAccessor().getExecutionVertexOrThrow(consumerVertexId);
             final Execution consumer = consumerVertex.getCurrentExecutionAttempt();
             final ExecutionState consumerState = consumer.getState();
 
@@ -732,7 +739,7 @@ public class Execution
             // sent after switching to running
             // ----------------------------------------------------------------
             if (consumerState == DEPLOYING || consumerState == RUNNING) {
-                final PartitionInfo partitionInfo = createPartitionInfo(edge);
+                final PartitionInfo partitionInfo = createPartitionInfo(partition);
 
                 if (consumerState == DEPLOYING) {
                     consumerVertex.cachePartitionInfo(partitionInfo);
@@ -743,11 +750,14 @@ public class Execution
         }
     }
 
-    private static PartitionInfo createPartitionInfo(ExecutionEdge executionEdge) {
+    private static PartitionInfo createPartitionInfo(
+            IntermediateResultPartition consumedPartition) {
         IntermediateDataSetID intermediateDataSetID =
-                executionEdge.getSource().getIntermediateResult().getId();
+                consumedPartition.getIntermediateResult().getId();
         ShuffleDescriptor shuffleDescriptor =
-                getConsumedPartitionShuffleDescriptor(executionEdge, false);
+                getConsumedPartitionShuffleDescriptor(
+                        consumedPartition,
+                        TaskDeploymentDescriptorFactory.PartitionLocationConstraint.MUST_BE_KNOWN);
         return new PartitionInfo(intermediateDataSetID, shuffleDescriptor);
     }
 
@@ -814,7 +824,7 @@ public class Execution
      */
     public void triggerCheckpoint(
             long checkpointId, long timestamp, CheckpointOptions checkpointOptions) {
-        triggerCheckpointHelper(checkpointId, timestamp, checkpointOptions, false);
+        triggerCheckpointHelper(checkpointId, timestamp, checkpointOptions);
     }
 
     /**
@@ -823,26 +833,17 @@ public class Execution
      * @param checkpointId of th checkpoint to trigger
      * @param timestamp of the checkpoint to trigger
      * @param checkpointOptions of the checkpoint to trigger
-     * @param advanceToEndOfEventTime Flag indicating if the source should inject a {@code
-     *     MAX_WATERMARK} in the pipeline to fire any registered event-time timers
      */
     public void triggerSynchronousSavepoint(
-            long checkpointId,
-            long timestamp,
-            CheckpointOptions checkpointOptions,
-            boolean advanceToEndOfEventTime) {
-        triggerCheckpointHelper(
-                checkpointId, timestamp, checkpointOptions, advanceToEndOfEventTime);
+            long checkpointId, long timestamp, CheckpointOptions checkpointOptions) {
+        triggerCheckpointHelper(checkpointId, timestamp, checkpointOptions);
     }
 
     private void triggerCheckpointHelper(
-            long checkpointId,
-            long timestamp,
-            CheckpointOptions checkpointOptions,
-            boolean advanceToEndOfEventTime) {
+            long checkpointId, long timestamp, CheckpointOptions checkpointOptions) {
 
         final CheckpointType checkpointType = checkpointOptions.getCheckpointType();
-        if (advanceToEndOfEventTime
+        if (checkpointType.getPostCheckpointAction() == PostCheckpointAction.TERMINATE
                 && !(checkpointType.isSynchronous() && checkpointType.isSavepoint())) {
             throw new IllegalArgumentException(
                     "Only synchronous savepoints are allowed to advance the watermark to MAX.");
@@ -854,12 +855,7 @@ public class Execution
             final TaskManagerGateway taskManagerGateway = slot.getTaskManagerGateway();
 
             taskManagerGateway.triggerCheckpoint(
-                    attemptId,
-                    getVertex().getJobId(),
-                    checkpointId,
-                    timestamp,
-                    checkpointOptions,
-                    advanceToEndOfEventTime);
+                    attemptId, getVertex().getJobId(), checkpointId, timestamp, checkpointOptions);
         } else {
             LOG.debug(
                     "The execution has no slot assigned. This indicates that the execution is no longer running.");
@@ -913,7 +909,7 @@ public class Execution
     }
 
     @VisibleForTesting
-    void markFinished() {
+    public void markFinished() {
         markFinished(null, null);
     }
 
@@ -933,7 +929,7 @@ public class Execution
                         finishPartitionsAndUpdateConsumers();
                         updateAccumulatorsAndMetrics(userAccumulators, metrics);
                         releaseAssignedResource(null);
-                        vertex.getExecutionGraph().deregisterExecution(this);
+                        vertex.getExecutionGraphAccessor().deregisterExecution(this);
                     } finally {
                         vertex.executionFinished(this);
                     }
@@ -971,7 +967,7 @@ public class Execution
                     finishedPartition.getIntermediateResult().getPartitions();
 
             for (IntermediateResultPartition partition : allPartitionsOfNewlyFinishedResults) {
-                updatePartitionConsumers(partition.getConsumers());
+                updatePartitionConsumers(partition);
             }
         }
     }
@@ -1035,7 +1031,7 @@ public class Execution
                                     "Asynchronous race: Found %s in state %s after successful cancel call.",
                                     vertex.getTaskNameWithSubtaskIndex(), state);
                     LOG.error(message);
-                    vertex.getExecutionGraph().failGlobal(new Exception(message));
+                    vertex.getExecutionGraphAccessor().failGlobal(new Exception(message));
                 }
                 return;
             }
@@ -1044,7 +1040,7 @@ public class Execution
 
     private void finishCancellation(boolean releasePartitions) {
         releaseAssignedResource(new FlinkException("Execution " + this + " was cancelled."));
-        vertex.getExecutionGraph().deregisterExecution(this);
+        vertex.getExecutionGraphAccessor().deregisterExecution(this);
         handlePartitionCleanup(releasePartitions, releasePartitions);
     }
 
@@ -1124,7 +1120,7 @@ public class Execution
         }
 
         if (!fromSchedulerNg) {
-            vertex.getExecutionGraph()
+            vertex.getExecutionGraphAccessor()
                     .notifySchedulerNgAboutInternalTaskFailure(
                             attemptId, t, cancelTask, releasePartitions);
             return;
@@ -1133,12 +1129,14 @@ public class Execution
         checkState(transitionState(current, FAILED, t));
 
         // success (in a manner of speaking)
-        this.failureCause = t;
+        this.failureCause =
+                Optional.of(
+                        ErrorInfo.createErrorInfoWithNullableCause(t, getStateTimestamp(FAILED)));
 
         updateAccumulatorsAndMetrics(userAccumulators, metrics);
 
         releaseAssignedResource(t);
-        vertex.getExecutionGraph().deregisterExecution(this);
+        vertex.getExecutionGraphAccessor().deregisterExecution(this);
 
         maybeReleasePartitionsAndSendCancelRpcCall(current, cancelTask, releasePartitions);
     }
@@ -1227,7 +1225,7 @@ public class Execution
         if (slot != null) {
             final TaskManagerGateway taskManagerGateway = slot.getTaskManagerGateway();
             final ComponentMainThreadExecutor jobMasterMainThreadExecutor =
-                    getVertex().getExecutionGraph().getJobMasterMainThreadExecutor();
+                    getVertex().getExecutionGraphAccessor().getJobMasterMainThreadExecutor();
 
             CompletableFuture<Acknowledge> cancelResultFuture =
                     FutureUtils.retry(
@@ -1248,7 +1246,7 @@ public class Execution
             final ResourceID taskExecutorId,
             final Collection<ResultPartitionDeploymentDescriptor> partitions) {
         JobMasterPartitionTracker partitionTracker =
-                vertex.getExecutionGraph().getPartitionTracker();
+                vertex.getExecutionGraphAccessor().getPartitionTracker();
         for (ResultPartitionDeploymentDescriptor partition : partitions) {
             partitionTracker.startTrackingPartition(taskExecutorId, partition);
         }
@@ -1262,7 +1260,7 @@ public class Execution
 
         final Collection<ResultPartitionID> partitionIds = getPartitionIds();
         final JobMasterPartitionTracker partitionTracker =
-                getVertex().getExecutionGraph().getPartitionTracker();
+                getVertex().getExecutionGraphAccessor().getPartitionTracker();
 
         if (!partitionIds.isEmpty()) {
             if (releaseBlockingPartitions) {
@@ -1289,7 +1287,7 @@ public class Execution
             final TaskManagerGateway taskManagerGateway = slot.getTaskManagerGateway();
 
             final ShuffleMaster<?> shuffleMaster =
-                    getVertex().getExecutionGraph().getShuffleMaster();
+                    getVertex().getExecutionGraphAccessor().getShuffleMaster();
 
             Set<ResultPartitionID> partitionIds =
                     producedPartitions.values().stream()
@@ -1341,7 +1339,7 @@ public class Execution
                                             failure));
                         }
                     },
-                    getVertex().getExecutionGraph().getJobMasterMainThreadExecutor());
+                    getVertex().getExecutionGraphAccessor().getJobMasterMainThreadExecutor());
         }
     }
 
@@ -1359,7 +1357,7 @@ public class Execution
 
         if (slot != null) {
             ComponentMainThreadExecutor jobMasterMainThreadExecutor =
-                    getVertex().getExecutionGraph().getJobMasterMainThreadExecutor();
+                    getVertex().getExecutionGraphAccessor().getJobMasterMainThreadExecutor();
 
             slot.releaseSlot(cause)
                     .whenComplete(
@@ -1380,57 +1378,6 @@ public class Execution
     // --------------------------------------------------------------------------------------------
     //  Miscellaneous
     // --------------------------------------------------------------------------------------------
-
-    /**
-     * Calculates the preferred locations based on the location preference constraint.
-     *
-     * @param locationPreferenceConstraint constraint for the location preference
-     * @return Future containing the collection of preferred locations. This might not be completed
-     *     if not all inputs have been a resource assigned.
-     */
-    @VisibleForTesting
-    public CompletableFuture<Collection<TaskManagerLocation>> calculatePreferredLocations(
-            LocationPreferenceConstraint locationPreferenceConstraint) {
-        final Collection<CompletableFuture<TaskManagerLocation>> preferredLocationFutures =
-                getVertex().getPreferredLocations();
-        final CompletableFuture<Collection<TaskManagerLocation>> preferredLocationsFuture;
-
-        switch (locationPreferenceConstraint) {
-            case ALL:
-                preferredLocationsFuture = FutureUtils.combineAll(preferredLocationFutures);
-                break;
-            case ANY:
-                final ArrayList<TaskManagerLocation> completedTaskManagerLocations =
-                        new ArrayList<>(preferredLocationFutures.size());
-
-                for (CompletableFuture<TaskManagerLocation> preferredLocationFuture :
-                        preferredLocationFutures) {
-                    if (preferredLocationFuture.isDone()
-                            && !preferredLocationFuture.isCompletedExceptionally()) {
-                        final TaskManagerLocation taskManagerLocation =
-                                preferredLocationFuture.getNow(null);
-
-                        if (taskManagerLocation == null) {
-                            throw new FlinkRuntimeException(
-                                    "TaskManagerLocationFuture was completed with null. This indicates a programming bug.");
-                        }
-
-                        completedTaskManagerLocations.add(taskManagerLocation);
-                    }
-                }
-
-                preferredLocationsFuture =
-                        CompletableFuture.completedFuture(completedTaskManagerLocations);
-                break;
-            default:
-                throw new RuntimeException(
-                        "Unknown LocationPreferenceConstraint "
-                                + locationPreferenceConstraint
-                                + '.');
-        }
-
-        return preferredLocationsFuture;
-    }
 
     public void transitionState(ExecutionState targetState) {
         transitionState(state, targetState);
@@ -1593,6 +1540,8 @@ public class Execution
     }
 
     private void assertRunningInJobMasterMainThread() {
-        vertex.getExecutionGraph().assertRunningInJobMasterMainThread();
+        vertex.getExecutionGraphAccessor()
+                .getJobMasterMainThreadExecutor()
+                .assertRunningInMainThread();
     }
 }

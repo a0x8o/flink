@@ -20,6 +20,7 @@ package org.apache.flink.streaming.api.graph;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.JobID;
+import org.apache.flink.api.common.cache.DistributedCache;
 import org.apache.flink.api.common.functions.Function;
 import org.apache.flink.api.common.operators.ResourceSpec;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
@@ -81,12 +82,12 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -161,8 +162,6 @@ public class StreamingJobGraphGenerator {
         preValidate();
         jobGraph.setJobType(streamGraph.getJobType());
 
-        // make sure that all vertices start immediately
-        jobGraph.setScheduleMode(streamGraph.getScheduleMode());
         jobGraph.enableApproximateLocalRecovery(
                 streamGraph.getCheckpointConfig().isApproximateLocalRecoveryEnabled());
 
@@ -194,7 +193,16 @@ public class StreamingJobGraphGenerator {
 
         jobGraph.setSavepointRestoreSettings(streamGraph.getSavepointRestoreSettings());
 
-        JobGraphUtils.addUserArtifactEntries(streamGraph.getUserArtifacts(), jobGraph);
+        final Map<String, DistributedCache.DistributedCacheEntry> distributedCacheEntries =
+                JobGraphUtils.prepareUserArtifactEntries(
+                        streamGraph.getUserArtifacts().stream()
+                                .collect(Collectors.toMap(e -> e.f0, e -> e.f1)),
+                        jobGraph.getJobID());
+
+        for (Map.Entry<String, DistributedCache.DistributedCacheEntry> entry :
+                distributedCacheEntries.entrySet()) {
+            jobGraph.addUserArtifact(entry.getKey(), entry.getValue());
+        }
 
         // set the ExecutionConfig last when it has been finalized
         try {
@@ -347,7 +355,10 @@ public class StreamingJobGraphGenerator {
         final Map<Integer, OperatorChainInfo> chainEntryPoints =
                 buildChainedInputsAndGetHeadInputs(hashes, legacyHashes);
         final Collection<OperatorChainInfo> initialEntryPoints =
-                new ArrayList<>(chainEntryPoints.values());
+                chainEntryPoints.entrySet().stream()
+                        .sorted(Comparator.comparing(Map.Entry::getKey))
+                        .map(Map.Entry::getValue)
+                        .collect(Collectors.toList());
 
         // iterate over a copy of the values, because this map gets concurrently modified
         for (OperatorChainInfo info : initialEntryPoints) {
@@ -697,6 +708,8 @@ public class StreamingJobGraphGenerator {
 
         config.setStateBackend(streamGraph.getStateBackend());
         config.setCheckpointStorage(streamGraph.getCheckpointStorage());
+        config.setSavepointDir(streamGraph.getSavepointDirectory());
+        config.setCheckpointStorage(streamGraph.getCheckpointStorage());
         config.setGraphContainingLoops(streamGraph.isIterative());
         config.setTimerServiceProvider(streamGraph.getTimerServiceProvider());
         config.setCheckpointingEnabled(checkpointCfg.isCheckpointingEnabled());
@@ -950,7 +963,7 @@ public class StreamingJobGraphGenerator {
         final Map<JobVertexID, SlotSharingGroup> vertexRegionSlotSharingGroups =
                 buildVertexRegionSlotSharingGroups();
 
-        for (Entry<Integer, JobVertex> entry : jobVertices.entrySet()) {
+        for (Map.Entry<Integer, JobVertex> entry : jobVertices.entrySet()) {
 
             final JobVertex vertex = entry.getValue();
             final String slotSharingGroupKey =
@@ -1021,7 +1034,7 @@ public class StreamingJobGraphGenerator {
         final Map<String, Tuple2<SlotSharingGroup, CoLocationGroupImpl>> coLocationGroups =
                 new HashMap<>();
 
-        for (Entry<Integer, JobVertex> entry : jobVertices.entrySet()) {
+        for (Map.Entry<Integer, JobVertex> entry : jobVertices.entrySet()) {
 
             final StreamNode node = streamGraph.getStreamNode(entry.getKey());
             final JobVertex vertex = entry.getValue();
@@ -1070,7 +1083,7 @@ public class StreamingJobGraphGenerator {
         // maps a job vertex ID to IDs of all operators in the vertex
         final Map<JobVertexID, Set<Integer>> vertexOperators = new HashMap<>();
 
-        for (Entry<Integer, JobVertex> entry : jobVertices.entrySet()) {
+        for (Map.Entry<Integer, JobVertex> entry : jobVertices.entrySet()) {
             final int headOperatorId = entry.getKey();
             final JobVertex jobVertex = entry.getValue();
 
