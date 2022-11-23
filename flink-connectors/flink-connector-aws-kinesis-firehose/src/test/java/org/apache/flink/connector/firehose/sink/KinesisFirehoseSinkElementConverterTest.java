@@ -17,6 +17,7 @@
 
 package org.apache.flink.connector.firehose.sink;
 
+import org.apache.flink.api.common.serialization.SerializationSchema;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
 import org.apache.flink.connector.base.sink.writer.ElementConverter;
 
@@ -25,6 +26,7 @@ import org.junit.jupiter.api.Test;
 import software.amazon.awssdk.core.SdkBytes;
 import software.amazon.awssdk.services.firehose.model.Record;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** Covers construction and sanity checking of {@link KinesisFirehoseSinkElementConverter}. */
@@ -50,5 +52,31 @@ class KinesisFirehoseSinkElementConverterTest {
         Record serializedRecord = elementConverter.apply(testString, null);
         byte[] serializedString = (new SimpleStringSchema()).serialize(testString);
         assertThat(serializedRecord.data()).isEqualTo(SdkBytes.fromByteArray(serializedString));
+    }
+
+    @Test
+    void elementConverterOpenInvokesSerializationSchemaOpen() {
+        OpenTestingSerializationSchema serializationSchema = new OpenTestingSerializationSchema();
+
+        KinesisFirehoseSinkElementConverter.<String>builder()
+                .setSerializationSchema(serializationSchema)
+                .build()
+                .open(null);
+
+        assertThat(serializationSchema.openCalled).isTrue();
+    }
+
+    private static class OpenTestingSerializationSchema implements SerializationSchema<String> {
+        private boolean openCalled;
+
+        @Override
+        public void open(SerializationSchema.InitializationContext context) throws Exception {
+            openCalled = true;
+        }
+
+        @Override
+        public byte[] serialize(String element) {
+            return element.getBytes(UTF_8);
+        }
     }
 }
