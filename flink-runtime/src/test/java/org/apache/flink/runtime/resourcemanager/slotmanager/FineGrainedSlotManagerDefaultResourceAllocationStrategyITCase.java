@@ -52,11 +52,8 @@ class FineGrainedSlotManagerDefaultResourceAllocationStrategyITCase
 
         new Context() {
             {
-                resourceActionsBuilder.setAllocateResourceFunction(
-                        ignored -> {
-                            resourceRequests.incrementAndGet();
-                            return true;
-                        });
+                resourceAllocatorBuilder.setAllocateResourceConsumer(
+                        ignored -> resourceRequests.incrementAndGet());
                 runTest(
                         () -> {
                             runInMainThread(

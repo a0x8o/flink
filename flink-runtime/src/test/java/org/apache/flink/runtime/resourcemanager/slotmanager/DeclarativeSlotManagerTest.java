@@ -194,13 +194,12 @@ class DeclarativeSlotManagerTest {
         final ResourceRequirements resourceRequirements = createResourceRequirementsForSingleSlot();
 
         CompletableFuture<WorkerResourceSpec> allocateResourceFuture = new CompletableFuture<>();
-        ResourceActions resourceManagerActions =
-                new TestingResourceActionsBuilder()
+        ResourceAllocator resourceAllocator =
+                new TestingResourceAllocatorBuilder()
                         .setAllocateResourceConsumer(allocateResourceFuture::complete)
                         .build();
 
-        try (SlotManager slotManager =
-                createSlotManager(resourceManagerId, resourceManagerActions)) {
+        try (SlotManager slotManager = createSlotManager(resourceManagerId, resourceAllocator)) {
 
             slotManager.processResourceRequirements(resourceRequirements);
 
@@ -218,8 +217,8 @@ class DeclarativeSlotManagerTest {
         final ResourceRequirements resourceRequirements = createResourceRequirementsForSingleSlot();
 
         CompletableFuture<WorkerResourceSpec> allocateResourceFuture = new CompletableFuture<>();
-        ResourceActions resourceManagerActions =
-                new TestingResourceActionsBuilder()
+        ResourceAllocator resourceAllocator =
+                new TestingResourceAllocatorBuilder()
                         .setAllocateResourceConsumer(allocateResourceFuture::complete)
                         .build();
 
@@ -230,7 +229,8 @@ class DeclarativeSlotManagerTest {
                         .buildAndStart(
                                 resourceManagerId,
                                 Executors.directExecutor(),
-                                resourceManagerActions,
+                                resourceAllocator,
+                                new TestingResourceEventListenerBuilder().build(),
                                 blockedTaskManager::equals)) {
 
             final TaskExecutorGateway taskExecutorGateway =
@@ -258,18 +258,14 @@ class DeclarativeSlotManagerTest {
     void testRequirementDeclarationWithResourceAllocationFailure() throws Exception {
         final ResourceRequirements resourceRequirements = createResourceRequirementsForSingleSlot();
 
-        ResourceActions resourceManagerActions =
-                new TestingResourceActionsBuilder()
-                        .setAllocateResourceFunction(value -> false)
-                        .build();
-
         final ResourceTracker resourceTracker = new DefaultResourceTracker();
+        final ResourceAllocator resourceAllocator = NonSupportedResourceAllocatorImpl.INSTANCE;
 
         try (DeclarativeSlotManager slotManager =
                 createDeclarativeSlotManagerBuilder()
                         .setResourceTracker(resourceTracker)
                         .buildAndStartWithDirectExec(
-                                ResourceManagerId.generate(), resourceManagerActions)) {
+                                ResourceManagerId.generate(), resourceAllocator)) {
 
             slotManager.processResourceRequirements(resourceRequirements);
 
@@ -347,7 +343,7 @@ class DeclarativeSlotManagerTest {
                 createDeclarativeSlotManagerBuilder()
                         .setSlotTracker(slotTracker)
                         .buildAndStartWithDirectExec(
-                                resourceManagerId, new TestingResourceActionsBuilder().build())) {
+                                resourceManagerId, new TestingResourceAllocatorBuilder().build())) {
 
             if (scenario
                     == RequirementDeclarationScenario
@@ -432,8 +428,8 @@ class DeclarativeSlotManagerTest {
     void testDuplicateResourceRequirementDeclarationAfterSuccessfulAllocation() throws Exception {
         final ResourceManagerId resourceManagerId = ResourceManagerId.generate();
         final AtomicInteger allocateResourceCalls = new AtomicInteger(0);
-        final ResourceActions resourceManagerActions =
-                new TestingResourceActionsBuilder()
+        final ResourceAllocator resourceAllocator =
+                new TestingResourceAllocatorBuilder()
                         .setAllocateResourceConsumer(
                                 ignored -> allocateResourceCalls.incrementAndGet())
                         .build();
@@ -454,7 +450,7 @@ class DeclarativeSlotManagerTest {
         try (DeclarativeSlotManager slotManager =
                 createDeclarativeSlotManagerBuilder()
                         .setSlotTracker(slotTracker)
-                        .buildAndStartWithDirectExec(resourceManagerId, resourceManagerActions)) {
+                        .buildAndStartWithDirectExec(resourceManagerId, resourceAllocator)) {
 
             slotManager.registerTaskManager(
                     taskManagerConnection, slotReport, ResourceProfile.ANY, ResourceProfile.ANY);
@@ -549,14 +545,13 @@ class DeclarativeSlotManagerTest {
     @Test
     void testReceivingUnknownSlotReport() throws Exception {
         final ResourceManagerId resourceManagerId = ResourceManagerId.generate();
-        final ResourceActions resourceManagerActions = new TestingResourceActionsBuilder().build();
+        final ResourceAllocator resourceAllocator = new TestingResourceAllocatorBuilder().build();
 
         final InstanceID unknownInstanceID = new InstanceID();
         final SlotID unknownSlotId = new SlotID(ResourceID.generate(), 0);
         final SlotReport unknownSlotReport = new SlotReport(createFreeSlotStatus(unknownSlotId));
 
-        try (SlotManager slotManager =
-                createSlotManager(resourceManagerId, resourceManagerActions)) {
+        try (SlotManager slotManager = createSlotManager(resourceManagerId, resourceAllocator)) {
             // check that we don't have any slots registered
             assertThat(slotManager.getNumberRegisteredSlots()).isEqualTo(0);
 
@@ -656,7 +651,8 @@ class DeclarativeSlotManagerTest {
                         .buildAndStart(
                                 ResourceManagerId.generate(),
                                 mainThreadExecutor,
-                                new TestingResourceActionsBuilder().build())) {
+                                new TestingResourceAllocatorBuilder().build(),
+                                new TestingResourceEventListenerBuilder().build())) {
 
             CompletableFuture.runAsync(
                             () ->
@@ -790,7 +786,8 @@ class DeclarativeSlotManagerTest {
                         .buildAndStart(
                                 ResourceManagerId.generate(),
                                 mainThreadExecutor,
-                                new TestingResourceActionsBuilder().build())) {
+                                new TestingResourceAllocatorBuilder().build(),
+                                new TestingResourceEventListenerBuilder().build())) {
 
             slotManager.registerTaskManager(
                     taskExecutorConnection, slotReport, ResourceProfile.ANY, ResourceProfile.ANY);
@@ -1073,18 +1070,14 @@ class DeclarativeSlotManagerTest {
     void testRequestNewResources() throws Exception {
         final int numberSlots = 2;
         final AtomicInteger resourceRequests = new AtomicInteger(0);
-        final TestingResourceActions testingResourceActions =
-                new TestingResourceActionsBuilder()
-                        .setAllocateResourceFunction(
-                                ignored -> {
-                                    resourceRequests.incrementAndGet();
-                                    return true;
-                                })
+        final TestingResourceAllocator testingResourceAllocator =
+                new TestingResourceAllocatorBuilder()
+                        .setAllocateResourceConsumer(ignored -> resourceRequests.incrementAndGet())
                         .build();
 
         try (final DeclarativeSlotManager slotManager =
                 createSlotManager(
-                        ResourceManagerId.generate(), testingResourceActions, numberSlots)) {
+                        ResourceManagerId.generate(), testingResourceAllocator, numberSlots)) {
 
             final JobID jobId = new JobID();
 
@@ -1190,21 +1183,24 @@ class DeclarativeSlotManagerTest {
 
         List<Tuple2<JobID, Collection<ResourceRequirement>>> notEnoughResourceNotifications =
                 new ArrayList<>();
-        ResourceActions resourceManagerActions =
-                new TestingResourceActionsBuilder()
-                        .setAllocateResourceFunction(ignored -> false)
-                        .setNotEnoughResourcesConsumer(
+
+        ResourceEventListener resourceEventListener =
+                new TestingResourceEventListenerBuilder()
+                        .setNotEnoughResourceAvailableConsumer(
                                 (jobId1, acquiredResources) ->
                                         notEnoughResourceNotifications.add(
                                                 Tuple2.of(jobId1, acquiredResources)))
                         .build();
+
+        ResourceAllocator resourceAllocator = NonSupportedResourceAllocatorImpl.INSTANCE;
 
         try (DeclarativeSlotManager slotManager =
                 createDeclarativeSlotManagerBuilder()
                         .buildAndStart(
                                 ResourceManagerId.generate(),
                                 new ManuallyTriggeredScheduledExecutor(),
-                                resourceManagerActions)) {
+                                resourceAllocator,
+                                resourceEventListener)) {
 
             if (withNotificationGracePeriod) {
                 // this should disable notifications
@@ -1271,7 +1267,8 @@ class DeclarativeSlotManagerTest {
                         .buildAndStart(
                                 ResourceManagerId.generate(),
                                 executor,
-                                new TestingResourceActionsBuilder().build())) {
+                                new TestingResourceAllocatorBuilder().build(),
+                                new TestingResourceEventListenerBuilder().build())) {
 
             JobID jobId = new JobID();
             slotManager.processResourceRequirements(createResourceRequirements(jobId, 1));
@@ -1318,7 +1315,8 @@ class DeclarativeSlotManagerTest {
                         .buildAndStart(
                                 ResourceManagerId.generate(),
                                 executor,
-                                new TestingResourceActionsBuilder().build())) {
+                                new TestingResourceAllocatorBuilder().build(),
+                                new TestingResourceEventListenerBuilder().build())) {
 
             JobID jobId = new JobID();
             slotManager.processResourceRequirements(createResourceRequirements(jobId, 1));
@@ -1372,7 +1370,8 @@ class DeclarativeSlotManagerTest {
                         .buildAndStart(
                                 ResourceManagerId.generate(),
                                 ComponentMainThreadExecutorServiceAdapter.forMainThread(),
-                                new TestingResourceActionsBuilder().build())) {
+                                new TestingResourceAllocatorBuilder().build(),
+                                new TestingResourceEventListenerBuilder().build())) {
 
             final TaskExecutorConnection taskExecutionConnection =
                     createTaskExecutorConnection(taskExecutorGateway);
@@ -1422,7 +1421,8 @@ class DeclarativeSlotManagerTest {
                         .buildAndStart(
                                 ResourceManagerId.generate(),
                                 ComponentMainThreadExecutorServiceAdapter.forMainThread(),
-                                new TestingResourceActionsBuilder().build())) {
+                                new TestingResourceAllocatorBuilder().build(),
+                                new TestingResourceEventListenerBuilder().build())) {
 
             final JobID jobId = new JobID();
 
@@ -1461,7 +1461,7 @@ class DeclarativeSlotManagerTest {
                         .setRequirementCheckDelay(delay)
                         .buildAndStartWithDirectExec(
                                 ResourceManagerId.generate(),
-                                new TestingResourceActionsBuilder()
+                                new TestingResourceAllocatorBuilder()
                                         .setAllocateResourceConsumer(
                                                 workerResourceSpec ->
                                                         allocatedResourceCounter.getAndIncrement())
@@ -1502,7 +1502,8 @@ class DeclarativeSlotManagerTest {
                         .buildAndStart(
                                 ResourceManagerId.generate(),
                                 ComponentMainThreadExecutorServiceAdapter.forMainThread(),
-                                new TestingResourceActionsBuilder().build())) {
+                                new TestingResourceAllocatorBuilder().build(),
+                                new TestingResourceEventListenerBuilder().build())) {
 
             final JobID jobId = new JobID();
 
@@ -1585,19 +1586,19 @@ class DeclarativeSlotManagerTest {
     }
 
     private DeclarativeSlotManager createSlotManager(
-            ResourceManagerId resourceManagerId, ResourceActions resourceManagerActions) {
-        return createSlotManager(resourceManagerId, resourceManagerActions, 1);
+            ResourceManagerId resourceManagerId, ResourceAllocator resourceAllocator) {
+        return createSlotManager(resourceManagerId, resourceAllocator, 1);
     }
 
     private DeclarativeSlotManager createSlotManager(
             ResourceManagerId resourceManagerId,
-            ResourceActions resourceManagerActions,
+            ResourceAllocator resourceAllocator,
             int numSlotsPerWorker) {
         return createDeclarativeSlotManagerBuilder(
                         new ScheduledExecutorServiceAdapter(EXECUTOR_RESOURCE.getExecutor()))
                 .setNumSlotsPerWorker(numSlotsPerWorker)
                 .setRedundantTaskManagerNum(0)
-                .buildAndStartWithDirectExec(resourceManagerId, resourceManagerActions);
+                .buildAndStartWithDirectExec(resourceManagerId, resourceAllocator);
     }
 
     private static DeclarativeSlotManagerBuilder createDeclarativeSlotManagerBuilder() {

@@ -90,7 +90,7 @@ class TaskExecutorManager implements AutoCloseable {
     private final Time taskManagerTimeout;
 
     /** Callbacks for resource (de-)allocations. */
-    private final ResourceActions resourceActions;
+    private final ResourceAllocator resourceAllocator;
 
     /** All currently registered task managers. */
     private final Map<InstanceID, TaskManagerRegistration> taskManagerRegistrations =
@@ -111,7 +111,7 @@ class TaskExecutorManager implements AutoCloseable {
             Time taskManagerTimeout,
             ScheduledExecutor scheduledExecutor,
             Executor mainThreadExecutor,
-            ResourceActions resourceActions) {
+            ResourceAllocator resourceAllocator) {
 
         this.defaultWorkerResourceSpec = defaultWorkerResourceSpec;
         this.numSlotsPerWorker = numSlotsPerWorker;
@@ -123,7 +123,7 @@ class TaskExecutorManager implements AutoCloseable {
                 SlotManagerUtils.generateDefaultSlotResourceProfile(
                         defaultWorkerResourceSpec, numSlotsPerWorker);
 
-        this.resourceActions = Preconditions.checkNotNull(resourceActions);
+        this.resourceAllocator = Preconditions.checkNotNull(resourceAllocator);
         this.mainThreadExecutor = mainThreadExecutor;
         taskManagerTimeoutsAndRedundancyCheck =
                 scheduledExecutor.scheduleWithFixedDelay(
@@ -153,11 +153,12 @@ class TaskExecutorManager implements AutoCloseable {
             SlotReport initialSlotReport,
             ResourceProfile totalResourceProfile,
             ResourceProfile defaultSlotResourceProfile) {
-        if (isMaxSlotNumExceededAfterRegistration(initialSlotReport)) {
+        if (resourceAllocator.isSupported()
+                && isMaxSlotNumExceededAfterRegistration(initialSlotReport)) {
             LOG.info(
                     "The total number of slots exceeds the max limitation {}, releasing the excess task executor.",
                     maxSlotNum);
-            resourceActions.releaseResource(
+            resourceAllocator.releaseResource(
                     taskExecutorConnection.getInstanceID(),
                     new FlinkExpectedException(
                             "The total number of slots exceeds the max limitation."));
@@ -254,6 +255,11 @@ class TaskExecutorManager implements AutoCloseable {
      */
     public Optional<ResourceRequirement> allocateWorker(
             ResourceProfile requestedSlotResourceProfile) {
+        if (!resourceAllocator.isSupported()) {
+            // resource cannot be allocated
+            return Optional.empty();
+        }
+
         final int numRegisteredSlots = getNumberRegisteredSlots();
         final int numPendingSlots = getNumberPendingTaskManagerSlots();
         if (isMaxSlotNumExceededAfterAdding(numSlotsPerWorker)) {
@@ -270,10 +276,7 @@ class TaskExecutorManager implements AutoCloseable {
             return Optional.empty();
         }
 
-        if (!resourceActions.allocateResource(defaultWorkerResourceSpec)) {
-            // resource cannot be allocated
-            return Optional.empty();
-        }
+        resourceAllocator.allocateResource(defaultWorkerResourceSpec);
 
         for (int i = 0; i < numSlotsPerWorker; ++i) {
             PendingTaskManagerSlot pendingTaskManagerSlot =
@@ -321,7 +324,7 @@ class TaskExecutorManager implements AutoCloseable {
                         >= taskManagerTimeout.toMilliseconds()) {
                     // we collect the instance ids first in order to avoid concurrent modifications
                     // by the
-                    // ResourceActions.releaseResource call
+                    // ResourceAllocator.releaseResource call
                     timedOutTaskManagers.add(taskManagerRegistration);
                 }
             }
@@ -401,12 +404,14 @@ class TaskExecutorManager implements AutoCloseable {
     }
 
     private void releaseIdleTaskExecutor(InstanceID timedOutTaskManagerId) {
-        final FlinkExpectedException cause =
-                new FlinkExpectedException("TaskExecutor exceeded the idle timeout.");
-        LOG.debug(
-                "Release TaskExecutor {} because it exceeded the idle timeout.",
-                timedOutTaskManagerId);
-        resourceActions.releaseResource(timedOutTaskManagerId, cause);
+        if (resourceAllocator.isSupported()) {
+            final FlinkExpectedException cause =
+                    new FlinkExpectedException("TaskExecutor exceeded the idle timeout.");
+            LOG.debug(
+                    "Release TaskExecutor {} because it exceeded the idle timeout.",
+                    timedOutTaskManagerId);
+            resourceAllocator.releaseResource(timedOutTaskManagerId, cause);
+        }
     }
 
     // ---------------------------------------------------------------------------------------------

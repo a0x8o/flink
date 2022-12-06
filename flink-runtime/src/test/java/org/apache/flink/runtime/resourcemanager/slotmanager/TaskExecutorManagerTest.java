@@ -133,7 +133,7 @@ public class TaskExecutorManagerTest extends TestLogger {
 
     /**
      * Tests that a task manager timeout does not remove the slots from the SlotManager. A timeout
-     * should only trigger the {@link ResourceActions#releaseResource(InstanceID, Exception)}
+     * should only trigger the {@link ResourceAllocator#releaseResource(InstanceID, Exception)}
      * callback. The receiver of the callback can then decide what to do with the TaskManager.
      *
      * <p>See FLINK-7793
@@ -143,8 +143,8 @@ public class TaskExecutorManagerTest extends TestLogger {
         final Time taskManagerTimeout = Time.milliseconds(10L);
 
         final CompletableFuture<InstanceID> releaseResourceFuture = new CompletableFuture<>();
-        final ResourceActions resourceActions =
-                createResourceActionsBuilder()
+        final ResourceAllocator resourceAllocator =
+                createResourceAllocatorBuilder()
                         .setReleaseResourceConsumer(
                                 (instanceId, ignored) -> releaseResourceFuture.complete(instanceId))
                         .build();
@@ -154,7 +154,7 @@ public class TaskExecutorManagerTest extends TestLogger {
         try (final TaskExecutorManager taskExecutorManager =
                 createTaskExecutorManagerBuilder()
                         .setTaskManagerTimeout(taskManagerTimeout)
-                        .setResourceActions(resourceActions)
+                        .setResourceAllocator(resourceAllocator)
                         .setMainThreadExecutor(mainThreadExecutor)
                         .createTaskExecutorManager()) {
 
@@ -195,8 +195,8 @@ public class TaskExecutorManagerTest extends TestLogger {
         final Time taskManagerTimeout = Time.milliseconds(50L);
 
         final CompletableFuture<InstanceID> releaseResourceFuture = new CompletableFuture<>();
-        final ResourceActions resourceManagerActions =
-                new TestingResourceActionsBuilder()
+        final ResourceAllocator resourceAllocator =
+                new TestingResourceAllocatorBuilder()
                         .setReleaseResourceConsumer(
                                 (instanceID, e) -> releaseResourceFuture.complete(instanceID))
                         .build();
@@ -207,7 +207,7 @@ public class TaskExecutorManagerTest extends TestLogger {
                 createTaskExecutorManagerBuilder()
                         .setTaskManagerTimeout(taskManagerTimeout)
                         .setDefaultWorkerResourceSpec(workerResourceSpec)
-                        .setResourceActions(resourceManagerActions)
+                        .setResourceAllocator(resourceAllocator)
                         .setMainThreadExecutor(mainThreadExecutor)
                         .createTaskExecutorManager()) {
 
@@ -248,13 +248,9 @@ public class TaskExecutorManagerTest extends TestLogger {
                 ResourceProfile.newBuilder().setCpuCores(numCoresPerWorker + 1).build();
 
         final AtomicInteger resourceRequests = new AtomicInteger(0);
-        ResourceActions resourceActions =
-                createResourceActionsBuilder()
-                        .setAllocateResourceFunction(
-                                ignored -> {
-                                    resourceRequests.incrementAndGet();
-                                    return true;
-                                })
+        ResourceAllocator resourceAllocator =
+                createResourceAllocatorBuilder()
+                        .setAllocateResourceConsumer(ignored -> resourceRequests.incrementAndGet())
                         .build();
 
         try (final TaskExecutorManager taskExecutorManager =
@@ -262,7 +258,7 @@ public class TaskExecutorManagerTest extends TestLogger {
                         .setDefaultWorkerResourceSpec(workerResourceSpec)
                         .setNumSlotsPerWorker(1)
                         .setMaxNumSlots(1)
-                        .setResourceActions(resourceActions)
+                        .setResourceAllocator(resourceAllocator)
                         .createTaskExecutorManager()) {
 
             assertThat(
@@ -281,20 +277,16 @@ public class TaskExecutorManagerTest extends TestLogger {
         final int maxSlotNum = 1;
 
         final AtomicInteger resourceRequests = new AtomicInteger(0);
-        ResourceActions resourceActions =
-                createResourceActionsBuilder()
-                        .setAllocateResourceFunction(
-                                ignored -> {
-                                    resourceRequests.incrementAndGet();
-                                    return true;
-                                })
+        ResourceAllocator resourceAllocator =
+                createResourceAllocatorBuilder()
+                        .setAllocateResourceConsumer(ignored -> resourceRequests.incrementAndGet())
                         .build();
 
         try (final TaskExecutorManager taskExecutorManager =
                 createTaskExecutorManagerBuilder()
                         .setNumSlotsPerWorker(numberSlots)
                         .setMaxNumSlots(maxSlotNum)
-                        .setResourceActions(resourceActions)
+                        .setResourceAllocator(resourceAllocator)
                         .createTaskExecutorManager()) {
 
             assertThat(resourceRequests.get(), is(0));
@@ -317,8 +309,8 @@ public class TaskExecutorManagerTest extends TestLogger {
         final int maxSlotNum = 1;
 
         final CompletableFuture<InstanceID> releasedResourceFuture = new CompletableFuture<>();
-        ResourceActions resourceActions =
-                createResourceActionsBuilder()
+        ResourceAllocator resourceAllocator =
+                createResourceAllocatorBuilder()
                         .setReleaseResourceConsumer(
                                 (instanceID, e) -> releasedResourceFuture.complete(instanceID))
                         .build();
@@ -327,7 +319,7 @@ public class TaskExecutorManagerTest extends TestLogger {
                 createTaskExecutorManagerBuilder()
                         .setNumSlotsPerWorker(numberSlots)
                         .setMaxNumSlots(maxSlotNum)
-                        .setResourceActions(resourceActions)
+                        .setResourceAllocator(resourceAllocator)
                         .createTaskExecutorManager()) {
 
             createAndRegisterTaskExecutor(taskExecutorManager, 1, ResourceProfile.ANY);
@@ -376,13 +368,13 @@ public class TaskExecutorManagerTest extends TestLogger {
     private static TaskExecutorManagerBuilder createTaskExecutorManagerBuilder() {
         return new TaskExecutorManagerBuilder(
                         new ScheduledExecutorServiceAdapter(EXECUTOR_RESOURCE.getExecutor()))
-                .setResourceActions(createResourceActionsBuilder().build());
+                .setResourceAllocator(createResourceAllocatorBuilder().build());
     }
 
-    private static TestingResourceActionsBuilder createResourceActionsBuilder() {
-        return new TestingResourceActionsBuilder()
+    private static TestingResourceAllocatorBuilder createResourceAllocatorBuilder() {
+        return new TestingResourceAllocatorBuilder()
                 // ensures we do something when excess resource are requested
-                .setAllocateResourceFunction(ignored -> true);
+                .setAllocateResourceConsumer(ignored -> {});
     }
 
     private static InstanceID createAndRegisterTaskExecutor(
