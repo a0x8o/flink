@@ -148,7 +148,7 @@ under the License.
 		<jaxb.api.version>2.3.1</jaxb.api.version>
 		<junit4.version>4.13.2</junit4.version>
 		<junit5.version>5.9.1</junit5.version>
-		<archunit.version>0.22.0</archunit.version>
+		<archunit.version>1.0.0</archunit.version>
 		<mockito.version>3.4.6</mockito.version>
 		<powermock.version>2.0.9</powermock.version>
 		<hamcrest.version>1.3</hamcrest.version>
@@ -884,7 +884,7 @@ under the License.
 				<!-- Bumped for security purposes and making it work with Jackson dependencies (2.10.1) -->
 				<groupId>org.yaml</groupId>
 				<artifactId>snakeyaml</artifactId>
-				<version>1.31</version>
+				<version>1.33</version>
 			</dependency>
 			<dependency>
 				<groupId>io.netty</groupId>
@@ -1712,12 +1712,12 @@ under the License.
 							<rules>
 								<bannedDependencies>
 									<excludes>
-										<exclude>org.yaml:snakeyaml:(,1.30]</exclude>
+										<exclude>org.yaml:snakeyaml:(,1.31]</exclude>
 									</excludes>
 									<includes>
 										<!-- Snakeyaml is pulled in by many modules without using it in production,
 											so there's no benefit in us investing time into bumping these. -->
-										<include>org.yaml:snakeyaml:(,1.30]:*:test</include>
+										<include>org.yaml:snakeyaml:(,1.31]:*:test</include>
 									</includes>
 									<message>Older snakeyaml versions are not allowed due to security vulnerabilities.</message>
 								</bannedDependencies>
