@@ -44,6 +44,8 @@ import org.apache.flink.runtime.metrics.groups.UnregisteredMetricGroups;
 import org.apache.flink.runtime.scheduler.adaptivebatch.AdaptiveBatchScheduler;
 import org.apache.flink.runtime.scheduler.adaptivebatch.SpeculativeScheduler;
 import org.apache.flink.runtime.scheduler.adaptivebatch.VertexParallelismDecider;
+import org.apache.flink.runtime.scheduler.strategy.AllFinishedInputConsumableDecider;
+import org.apache.flink.runtime.scheduler.strategy.DefaultInputConsumableDecider;
 import org.apache.flink.runtime.scheduler.strategy.PipelinedRegionSchedulingStrategy;
 import org.apache.flink.runtime.scheduler.strategy.SchedulingStrategyFactory;
 import org.apache.flink.runtime.scheduler.strategy.VertexwiseSchedulingStrategy;
@@ -294,7 +296,8 @@ public class DefaultSchedulerBuilder {
                 checkpointCleaner,
                 checkpointRecoveryFactory,
                 jobManagerJobMetricGroup,
-                new VertexwiseSchedulingStrategy.Factory(),
+                new VertexwiseSchedulingStrategy.Factory(
+                        DefaultInputConsumableDecider.Factory.INSTANCE),
                 failoverStrategyFactory,
                 restartBackoffTimeStrategy,
                 executionOperations,
@@ -307,7 +310,8 @@ public class DefaultSchedulerBuilder {
                 shuffleMaster,
                 rpcTimeout,
                 vertexParallelismDecider,
-                defaultMaxParallelism);
+                defaultMaxParallelism,
+                false);
     }
 
     public SpeculativeScheduler buildSpeculativeScheduler() throws Exception {
@@ -322,7 +326,8 @@ public class DefaultSchedulerBuilder {
                 checkpointCleaner,
                 checkpointRecoveryFactory,
                 jobManagerJobMetricGroup,
-                new VertexwiseSchedulingStrategy.Factory(),
+                new VertexwiseSchedulingStrategy.Factory(
+                        AllFinishedInputConsumableDecider.Factory.INSTANCE),
                 failoverStrategyFactory,
                 restartBackoffTimeStrategy,
                 executionOperations,
@@ -336,7 +341,8 @@ public class DefaultSchedulerBuilder {
                 rpcTimeout,
                 vertexParallelismDecider,
                 defaultMaxParallelism,
-                blocklistOperations);
+                blocklistOperations,
+                true);
     }
 
     private ExecutionGraphFactory createExecutionGraphFactory(boolean isDynamicGraph) {

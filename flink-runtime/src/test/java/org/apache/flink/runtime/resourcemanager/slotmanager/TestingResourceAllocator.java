@@ -19,26 +19,20 @@
 package org.apache.flink.runtime.resourcemanager.slotmanager;
 
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
-import org.apache.flink.runtime.instance.InstanceID;
-import org.apache.flink.runtime.resourcemanager.WorkerResourceSpec;
 
 import javax.annotation.Nonnull;
 
-import java.util.function.BiConsumer;
+import java.util.Collection;
 import java.util.function.Consumer;
 
 /** Testing implementation of the {@link ResourceAllocator}. */
 public class TestingResourceAllocator implements ResourceAllocator {
 
-    @Nonnull private final BiConsumer<InstanceID, Exception> releaseResourceConsumer;
-
-    @Nonnull private final Consumer<WorkerResourceSpec> allocateResourceConsumer;
+    @Nonnull private final Consumer<Collection<ResourceDeclaration>> declareResourceNeededConsumer;
 
     public TestingResourceAllocator(
-            @Nonnull BiConsumer<InstanceID, Exception> releaseResourceConsumer,
-            @Nonnull Consumer<WorkerResourceSpec> allocateResourceConsumer) {
-        this.releaseResourceConsumer = releaseResourceConsumer;
-        this.allocateResourceConsumer = allocateResourceConsumer;
+            @Nonnull Consumer<Collection<ResourceDeclaration>> declareResourceNeededConsumer) {
+        this.declareResourceNeededConsumer = declareResourceNeededConsumer;
     }
 
     @Override
@@ -47,17 +41,12 @@ public class TestingResourceAllocator implements ResourceAllocator {
     }
 
     @Override
-    public void releaseResource(InstanceID instanceId, Exception cause) {
-        releaseResourceConsumer.accept(instanceId, cause);
-    }
-
-    @Override
-    public void releaseResource(ResourceID resourceID) {
+    public void cleaningUpDisconnectedResource(ResourceID resourceID) {
         throw new UnsupportedOperationException();
     }
 
     @Override
-    public void allocateResource(WorkerResourceSpec workerResourceSpec) {
-        allocateResourceConsumer.accept(workerResourceSpec);
+    public void declareResourceNeeded(Collection<ResourceDeclaration> resourceDeclarations) {
+        declareResourceNeededConsumer.accept(resourceDeclarations);
     }
 }

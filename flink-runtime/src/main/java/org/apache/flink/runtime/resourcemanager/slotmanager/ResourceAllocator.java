@@ -19,8 +19,8 @@
 package org.apache.flink.runtime.resourcemanager.slotmanager;
 
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
-import org.apache.flink.runtime.instance.InstanceID;
-import org.apache.flink.runtime.resourcemanager.WorkerResourceSpec;
+
+import java.util.Collection;
 
 /** Resource related actions which the {@link SlotManager} can perform. */
 public interface ResourceAllocator {
@@ -29,24 +29,12 @@ public interface ResourceAllocator {
     boolean isSupported();
 
     /**
-     * Releases the resource with the given instance id.
+     * Clean up the disconnected resource with the given resource id.
      *
-     * @param instanceId identifying which resource to release
-     * @param cause why the resource is released
+     * @param resourceID identifying which resource to clean up
      */
-    void releaseResource(InstanceID instanceId, Exception cause);
+    void cleaningUpDisconnectedResource(ResourceID resourceID);
 
-    /**
-     * Releases the resource with the given resource id.
-     *
-     * @param resourceID identifying which resource to release
-     */
-    void releaseResource(ResourceID resourceID);
-
-    /**
-     * Requests to allocate a resource with the given {@link WorkerResourceSpec}.
-     *
-     * @param workerResourceSpec for the to be allocated worker
-     */
-    void allocateResource(WorkerResourceSpec workerResourceSpec);
+    /** declare resource need by slot manager. */
+    void declareResourceNeeded(Collection<ResourceDeclaration> resourceDeclarations);
 }

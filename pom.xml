@@ -52,7 +52,7 @@ under the License.
 	<repositories>
 		<repository>
 			<id>repository.jboss.org</id>
-			<url>http://repository.jboss.org/nexus/content/groups/public/</url>
+			<url>https://repository.jboss.org/nexus/content/groups/public/</url>
 			<snapshots>
 				<enabled>false</enabled>
 			</snapshots>
@@ -1503,7 +1503,6 @@ under the License.
 						<exclude>flink-connectors/flink-connector-kinesis/src/test/resources/profile</exclude>
 						<exclude>flink-connectors/flink-connector-aws-kinesis-streams/src/test/resources/profile</exclude>
 						<exclude>flink-table/flink-table-code-splitter/src/test/resources/**</exclude>
-						<exclude>flink-connectors/flink-connector-pulsar/src/test/resources/**</exclude>
 
 						<!-- ArchUnit violation stores  -->
 						<exclude>**/archunit-violations/**</exclude>
@@ -1531,6 +1530,7 @@ under the License.
 						<exclude>flink-formats/flink-parquet/src/test/java/org/apache/flink/formats/parquet/generated/*.java</exclude>
 						<exclude>flink-formats/flink-parquet/src/test/resources/avro/**</exclude>
 						<exclude>flink-formats/flink-parquet/src/test/resources/protobuf/**</exclude>
+						<exclude>flink-table/flink-sql-gateway/src/test/resources/*.txt</exclude>
 						<!-- netty test file, still Apache License 2.0 but with a different header -->
 						<exclude>flink-runtime/src/test/java/org/apache/flink/runtime/io/network/buffer/AbstractByteBufTest.java</exclude>
 						<!-- Configuration Files. -->

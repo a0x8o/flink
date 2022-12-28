@@ -55,6 +55,7 @@ import org.apache.flink.runtime.registration.RegistrationResponse;
 import org.apache.flink.runtime.resourcemanager.exceptions.ResourceManagerException;
 import org.apache.flink.runtime.resourcemanager.exceptions.UnknownTaskExecutorException;
 import org.apache.flink.runtime.resourcemanager.registration.JobManagerRegistration;
+import org.apache.flink.runtime.resourcemanager.registration.TaskExecutorConnection;
 import org.apache.flink.runtime.resourcemanager.registration.WorkerRegistration;
 import org.apache.flink.runtime.resourcemanager.slotmanager.ResourceAllocator;
 import org.apache.flink.runtime.resourcemanager.slotmanager.ResourceEventListener;
@@ -67,7 +68,6 @@ import org.apache.flink.runtime.rpc.FencedRpcEndpoint;
 import org.apache.flink.runtime.rpc.Local;
 import org.apache.flink.runtime.rpc.RpcService;
 import org.apache.flink.runtime.rpc.RpcServiceUtils;
-import org.apache.flink.runtime.security.token.DelegationTokenListener;
 import org.apache.flink.runtime.security.token.DelegationTokenManager;
 import org.apache.flink.runtime.shuffle.ShuffleDescriptor;
 import org.apache.flink.runtime.slots.ResourceRequirement;
@@ -82,6 +82,7 @@ import org.apache.flink.runtime.taskexecutor.TaskExecutorThreadInfoGateway;
 import org.apache.flink.runtime.taskexecutor.partition.ClusterPartitionReport;
 import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.FlinkException;
+import org.apache.flink.util.FlinkExpectedException;
 import org.apache.flink.util.concurrent.FutureUtils;
 
 import javax.annotation.Nullable;
@@ -117,7 +118,7 @@ import static org.apache.flink.util.Preconditions.checkState;
  */
 public abstract class ResourceManager<WorkerType extends ResourceIDRetrievable>
         extends FencedRpcEndpoint<ResourceManagerId>
-        implements DelegationTokenListener, ResourceManagerGateway {
+        implements DelegationTokenManager.Listener, ResourceManagerGateway {
 
     public static final String RESOURCE_MANAGER_NAME = "resourcemanager";
 
@@ -503,12 +504,26 @@ public abstract class ResourceManager<WorkerType extends ResourceIDRetrievable>
                 taskExecutors.get(taskManagerResourceId);
 
         if (workerTypeWorkerRegistration.getInstanceID().equals(taskManagerRegistrationId)) {
-            if (slotManager.registerTaskManager(
-                    workerTypeWorkerRegistration,
-                    slotReport,
-                    workerTypeWorkerRegistration.getTotalResourceProfile(),
-                    workerTypeWorkerRegistration.getDefaultSlotResourceProfile())) {
-                onWorkerRegistered(workerTypeWorkerRegistration.getWorker());
+            SlotManager.RegistrationResult registrationResult =
+                    slotManager.registerTaskManager(
+                            workerTypeWorkerRegistration,
+                            slotReport,
+                            workerTypeWorkerRegistration.getTotalResourceProfile(),
+                            workerTypeWorkerRegistration.getDefaultSlotResourceProfile());
+            if (registrationResult == SlotManager.RegistrationResult.SUCCESS) {
+                WorkerResourceSpec workerResourceSpec =
+                        WorkerResourceSpec.fromTotalResourceProfile(
+                                workerTypeWorkerRegistration.getTotalResourceProfile(),
+                                slotReport.getNumSlotStatus());
+                onWorkerRegistered(workerTypeWorkerRegistration.getWorker(), workerResourceSpec);
+            } else if (registrationResult == SlotManager.RegistrationResult.REJECTED) {
+                closeTaskManagerConnection(
+                                taskManagerResourceId,
+                                new FlinkExpectedException(
+                                        "Task manager could not be registered to SlotManager."))
+                        .ifPresent(ResourceManager.this::stopWorkerIfSupported);
+            } else {
+                log.debug("TaskManager {} is ignored by SlotManager.", taskManagerResourceId);
             }
             return CompletableFuture.completedFuture(Acknowledge.get());
         } else {
@@ -520,7 +535,7 @@ public abstract class ResourceManager<WorkerType extends ResourceIDRetrievable>
         }
     }
 
-    protected void onWorkerRegistered(WorkerType worker) {
+    protected void onWorkerRegistered(WorkerType worker, WorkerResourceSpec workerResourceSpec) {
         // noop
     }
 
@@ -1166,6 +1181,12 @@ public abstract class ResourceManager<WorkerType extends ResourceIDRetrievable>
         }
     }
 
+    @VisibleForTesting
+    public Optional<InstanceID> getInstanceIdByResourceId(ResourceID resourceID) {
+        return Optional.ofNullable(taskExecutors.get(resourceID))
+                .map(TaskExecutorConnection::getInstanceID);
+    }
+
     protected WorkerType getWorkerByInstanceId(InstanceID instanceId) {
         WorkerType worker = null;
         // TODO: Improve performance by having an index on the instanceId
@@ -1274,7 +1295,7 @@ public abstract class ResourceManager<WorkerType extends ResourceIDRetrievable>
      */
     public void stopWorkerIfSupported(WorkerType worker) {
         if (resourceAllocator.isSupported()) {
-            resourceAllocator.releaseResource(worker.getResourceID());
+            resourceAllocator.cleaningUpDisconnectedResource(worker.getResourceID());
         }
     }
 
@@ -1498,10 +1519,6 @@ public abstract class ResourceManager<WorkerType extends ResourceIDRetrievable>
     // ------------------------------------------------------------------------
     //  Resource Management
     // ------------------------------------------------------------------------
-
-    protected Map<WorkerResourceSpec, Integer> getRequiredResources() {
-        return slotManager.getRequiredResources();
-    }
 
     @Override
     public void onNewTokensObtained(byte[] tokens) throws Exception {

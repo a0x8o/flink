@@ -629,16 +629,7 @@ SqlAlterTable SqlAlterTable() :
     |
         <ADD>
         (
-            AlterTableAddOrModify(ctx) {
-                // TODO: remove it after supports convert SqlNode to Operation,
-                // the jira link https://issues.apache.org/jira/browse/FLINK-22315
-                if (ctx.constraints.size() > 0) {
-                    return new SqlAlterTableAddConstraint(
-                                tableIdentifier,
-                                ctx.constraints.get(0),
-                                startPos.plus(getPos()));
-                }
-            }
+            AlterTableAddOrModify(ctx)
         |
             <LPAREN>
             AlterTableAddOrModify(ctx)
@@ -771,7 +762,7 @@ SqlTableColumn TypedColumn(TableCreationContext context) :
     SqlDataTypeSpec type;
 }
 {
-    name = SimpleIdentifier() {pos = getPos();}
+    name = CompoundIdentifier() {pos = getPos();}
     type = ExtendedDataType()
     (
         tableColumn = MetadataColumn(context, name, type)
@@ -905,7 +896,7 @@ void AddOrModifyColumn(AlterTableContext context) :
     [
         (
             <AFTER>
-            referencedColumn = SimpleIdentifier()
+            referencedColumn = CompoundIdentifier()
             {
                 columnPos = new SqlTableColumnPosition(
                     getPos(),

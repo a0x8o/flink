@@ -18,30 +18,21 @@
 
 package org.apache.flink.runtime.resourcemanager.slotmanager;
 
-import org.apache.flink.runtime.instance.InstanceID;
-import org.apache.flink.runtime.resourcemanager.WorkerResourceSpec;
-
-import java.util.function.BiConsumer;
+import java.util.Collection;
 import java.util.function.Consumer;
 
 /** Builder for the {@link TestingResourceAllocator}. */
 public class TestingResourceAllocatorBuilder {
-    private BiConsumer<InstanceID, Exception> releaseResourceConsumer = (ignoredA, ignoredB) -> {};
-    private Consumer<WorkerResourceSpec> allocateResourceConsumer = (ignored) -> {};
+    private Consumer<Collection<ResourceDeclaration>> declareResourceNeededConsumer =
+            (ignored) -> {};
 
-    public TestingResourceAllocatorBuilder setReleaseResourceConsumer(
-            BiConsumer<InstanceID, Exception> releaseResourceConsumer) {
-        this.releaseResourceConsumer = releaseResourceConsumer;
-        return this;
-    }
-
-    public TestingResourceAllocatorBuilder setAllocateResourceConsumer(
-            Consumer<WorkerResourceSpec> allocateResourceConsumer) {
-        this.allocateResourceConsumer = allocateResourceConsumer;
+    public TestingResourceAllocatorBuilder setDeclareResourceNeededConsumer(
+            Consumer<Collection<ResourceDeclaration>> declareResourceNeededConsumer) {
+        this.declareResourceNeededConsumer = declareResourceNeededConsumer;
         return this;
     }
 
     public TestingResourceAllocator build() {
-        return new TestingResourceAllocator(releaseResourceConsumer, allocateResourceConsumer);
+        return new TestingResourceAllocator(declareResourceNeededConsumer);
     }
 }

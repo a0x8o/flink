@@ -36,6 +36,7 @@ import org.apache.flink.runtime.executiongraph.failover.flip1.FailoverStrategyFa
 import org.apache.flink.runtime.executiongraph.failover.flip1.RestartBackoffTimeStrategy;
 import org.apache.flink.runtime.executiongraph.failover.flip1.RestartBackoffTimeStrategyFactoryLoader;
 import org.apache.flink.runtime.io.network.partition.JobMasterPartitionTracker;
+import org.apache.flink.runtime.io.network.partition.ResultPartitionType;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSet;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.jobgraph.JobType;
@@ -56,9 +57,14 @@ import org.apache.flink.runtime.scheduler.ExecutionVertexVersioner;
 import org.apache.flink.runtime.scheduler.SchedulerNG;
 import org.apache.flink.runtime.scheduler.SchedulerNGFactory;
 import org.apache.flink.runtime.scheduler.SimpleExecutionSlotAllocator;
+import org.apache.flink.runtime.scheduler.strategy.AllFinishedInputConsumableDecider;
+import org.apache.flink.runtime.scheduler.strategy.DefaultInputConsumableDecider;
+import org.apache.flink.runtime.scheduler.strategy.InputConsumableDecider;
+import org.apache.flink.runtime.scheduler.strategy.SchedulingStrategyFactory;
 import org.apache.flink.runtime.scheduler.strategy.VertexwiseSchedulingStrategy;
 import org.apache.flink.runtime.shuffle.ShuffleMaster;
 import org.apache.flink.runtime.util.SlotSelectionStrategyUtils;
+import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.concurrent.ScheduledExecutorServiceAdapter;
 
 import org.slf4j.Logger;
@@ -101,8 +107,7 @@ public class AdaptiveBatchSchedulerFactory implements SchedulerNGFactory {
         checkState(
                 jobGraph.getJobType() == JobType.BATCH,
                 "Adaptive batch scheduler only supports batch jobs");
-        checkAllExchangesBlocking(jobGraph);
-
+        checkAllExchangesAreSupported(jobGraph);
         final SlotPool slotPool =
                 slotPoolService
                         .castInto(SlotPool.class)
@@ -113,6 +118,10 @@ public class AdaptiveBatchSchedulerFactory implements SchedulerNGFactory {
 
         final boolean enableSpeculativeExecution =
                 jobMasterConfiguration.getBoolean(JobManagerOptions.SPECULATIVE_ENABLED);
+
+        final boolean hybridOnlyConsumeFinishedPartition =
+                getHybridOnlyConsumeFinishedPartition(
+                        jobMasterConfiguration, enableSpeculativeExecution);
 
         final List<Consumer<ComponentMainThreadExecutor>> startUpActions = new ArrayList<>();
         final Consumer<ComponentMainThreadExecutor> combinedStartUpActions =
@@ -150,6 +159,10 @@ public class AdaptiveBatchSchedulerFactory implements SchedulerNGFactory {
                         true,
                         createExecutionJobVertexFactory(enableSpeculativeExecution));
 
+        final SchedulingStrategyFactory schedulingStrategyFactory =
+                new VertexwiseSchedulingStrategy.Factory(
+                        loadInputConsumableDeciderFactory(hybridOnlyConsumeFinishedPartition));
+
         if (enableSpeculativeExecution) {
             return new SpeculativeScheduler(
                     log,
@@ -162,7 +175,7 @@ public class AdaptiveBatchSchedulerFactory implements SchedulerNGFactory {
                     new CheckpointsCleaner(),
                     checkpointRecoveryFactory,
                     jobManagerJobMetricGroup,
-                    new VertexwiseSchedulingStrategy.Factory(),
+                    schedulingStrategyFactory,
                     FailoverStrategyFactoryLoader.loadFailoverStrategyFactory(
                             jobMasterConfiguration),
                     restartBackoffTimeStrategy,
@@ -178,7 +191,8 @@ public class AdaptiveBatchSchedulerFactory implements SchedulerNGFactory {
                     DefaultVertexParallelismDecider.from(jobMasterConfiguration),
                     DefaultVertexParallelismDecider.getNormalizedMaxParallelism(
                             jobMasterConfiguration),
-                    blocklistOperations);
+                    blocklistOperations,
+                    hybridOnlyConsumeFinishedPartition);
         } else {
             return new AdaptiveBatchScheduler(
                     log,
@@ -191,7 +205,7 @@ public class AdaptiveBatchSchedulerFactory implements SchedulerNGFactory {
                     new CheckpointsCleaner(),
                     checkpointRecoveryFactory,
                     jobManagerJobMetricGroup,
-                    new VertexwiseSchedulingStrategy.Factory(),
+                    schedulingStrategyFactory,
                     FailoverStrategyFactoryLoader.loadFailoverStrategyFactory(
                             jobMasterConfiguration),
                     restartBackoffTimeStrategy,
@@ -206,8 +220,35 @@ public class AdaptiveBatchSchedulerFactory implements SchedulerNGFactory {
                     rpcTimeout,
                     DefaultVertexParallelismDecider.from(jobMasterConfiguration),
                     DefaultVertexParallelismDecider.getNormalizedMaxParallelism(
-                            jobMasterConfiguration));
+                            jobMasterConfiguration),
+                    hybridOnlyConsumeFinishedPartition);
         }
+    }
+
+    public static InputConsumableDecider.Factory loadInputConsumableDeciderFactory(
+            boolean hybridOnlyConsumeFinishedPartition) {
+        // In the case of hybridOnlyConsumeFinishedPartition is true, the input can actually be
+        // considered as consumable after partial partitions are finished. The reason why the
+        // AllFinishedInputConsumableDecider is currently adopted here is that consume partial
+        // finished upstream task is not supported yet, which will be supported in the subsequent
+        // commits.
+        return hybridOnlyConsumeFinishedPartition
+                ? AllFinishedInputConsumableDecider.Factory.INSTANCE
+                : DefaultInputConsumableDecider.Factory.INSTANCE;
+    }
+
+    private boolean getHybridOnlyConsumeFinishedPartition(
+            Configuration configuration, boolean enableSpeculativeExecution) {
+        final boolean hybridOnlyConsumeFinishedPartition =
+                configuration
+                        .getOptional(JobManagerOptions.ONLY_CONSUME_FINISHED_PARTITION)
+                        .orElse(enableSpeculativeExecution);
+        if (enableSpeculativeExecution) {
+            Preconditions.checkState(
+                    hybridOnlyConsumeFinishedPartition,
+                    "For speculative execution, only supports consume finished partition now.");
+        }
+        return hybridOnlyConsumeFinishedPartition;
     }
 
     private static ExecutionSlotAllocatorFactory createExecutionSlotAllocatorFactory(
@@ -230,17 +271,21 @@ public class AdaptiveBatchSchedulerFactory implements SchedulerNGFactory {
         }
     }
 
-    private void checkAllExchangesBlocking(final JobGraph jobGraph) {
+    private void checkAllExchangesAreSupported(final JobGraph jobGraph) {
         for (JobVertex jobVertex : jobGraph.getVertices()) {
             for (IntermediateDataSet dataSet : jobVertex.getProducedDataSets()) {
                 checkState(
-                        dataSet.getResultType().isBlockingOrBlockingPersistentResultPartition(),
+                        dataSet.getResultType().isBlockingOrBlockingPersistentResultPartition()
+                                || dataSet.getResultType() == ResultPartitionType.HYBRID_FULL
+                                || dataSet.getResultType() == ResultPartitionType.HYBRID_SELECTIVE,
                         String.format(
                                 "At the moment, adaptive batch scheduler requires batch workloads "
-                                        + "to be executed with types of all edges being BLOCKING. "
-                                        + "To do that, you need to configure '%s' to '%s'.",
+                                        + "to be executed with types of all edges being BLOCKING or HYBRID_FULL/HYBRID_SELECTIVE. "
+                                        + "To do that, you need to configure '%s' to '%s' or '%s/%s'.",
                                 ExecutionOptions.BATCH_SHUFFLE_MODE.key(),
-                                BatchShuffleMode.ALL_EXCHANGES_BLOCKING));
+                                BatchShuffleMode.ALL_EXCHANGES_BLOCKING,
+                                BatchShuffleMode.ALL_EXCHANGES_HYBRID_FULL,
+                                BatchShuffleMode.ALL_EXCHANGES_HYBRID_SELECTIVE));
             }
         }
     }

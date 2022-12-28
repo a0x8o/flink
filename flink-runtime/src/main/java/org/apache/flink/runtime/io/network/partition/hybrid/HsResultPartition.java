@@ -152,7 +152,7 @@ public class HsResultPartition extends ResultPartition {
 
     @Override
     public void emitRecord(ByteBuffer record, int targetSubpartition) throws IOException {
-        numBytesProduced.inc(record.remaining());
+        resultPartitionBytes.inc(targetSubpartition, record.remaining());
         emit(record, targetSubpartition, Buffer.DataType.DATA_BUFFER);
     }
 
@@ -173,7 +173,7 @@ public class HsResultPartition extends ResultPartition {
     }
 
     private void broadcast(ByteBuffer record, Buffer.DataType dataType) throws IOException {
-        numBytesProduced.inc(record.remaining());
+        resultPartitionBytes.incAll(record.remaining());
         if (isBroadcastOnly) {
             emit(record, BROADCAST_CHANNEL, dataType);
         } else {
@@ -264,15 +264,12 @@ public class HsResultPartition extends ResultPartition {
 
     @Override
     protected void releaseInternal() {
-        // release is called when release by scheduler, later than close.
+        // release is called when release by scheduler or failed.
         // mainly work :
         // 1. release read scheduler.
         // 2. delete shuffle file.
-        // 3. release all data in memory.
 
         fileDataManager.release();
-
-        checkNotNull(memoryDataManager).release();
     }
 
     @Override
