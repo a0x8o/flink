@@ -594,12 +594,16 @@ SqlAlterTable SqlAlterTable() :
     SqlNodeList propertyKeyList = SqlNodeList.EMPTY;
     SqlNodeList partitionSpec = null;
     SqlIdentifier constraintName;
+    SqlTableConstraint constraint;
+    SqlIdentifier originColumnIdentifier;
+    SqlIdentifier newColumnIdentifier;
     AlterTableContext ctx = new AlterTableContext();
 }
 {
     <ALTER> <TABLE> { startPos = getPos(); }
         tableIdentifier = CompoundIdentifier()
     (
+        LOOKAHEAD(2)
         <RENAME> <TO>
         newTableIdentifier = CompoundIdentifier()
         {
@@ -607,6 +611,18 @@ SqlAlterTable SqlAlterTable() :
                         startPos.plus(getPos()),
                         tableIdentifier,
                         newTableIdentifier);
+        }
+    |
+        <RENAME>
+            originColumnIdentifier = CompoundIdentifier()
+        <TO>
+            newColumnIdentifier = CompoundIdentifier()
+        {
+            return new SqlAlterTableRenameColumn(
+                    startPos.plus(getPos()),
+                    tableIdentifier,
+                    originColumnIdentifier,
+                    newColumnIdentifier);
         }
     |
         <RESET>
@@ -2083,12 +2099,12 @@ void ParseExplainDetail(Set<String> explainDetails):
 }
 {
     (
-        <ESTIMATED_COST> 
-        | 
-        <CHANGELOG_MODE> 
-        | 
+        <ESTIMATED_COST>
+        |
+        <CHANGELOG_MODE>
+        |
         <JSON_EXECUTION_PLAN>
-    ) 
+    )
     {
         if (explainDetails.contains(token.image.toUpperCase())) {
             throw SqlUtil.newContextException(
