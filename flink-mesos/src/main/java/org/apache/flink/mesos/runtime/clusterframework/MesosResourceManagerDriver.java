@@ -42,12 +42,12 @@ import org.apache.flink.runtime.clusterframework.ApplicationStatus;
 import org.apache.flink.runtime.clusterframework.ContainerSpecification;
 import org.apache.flink.runtime.clusterframework.TaskExecutorProcessSpec;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
-import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.resourcemanager.active.AbstractResourceManagerDriver;
 import org.apache.flink.runtime.resourcemanager.active.ResourceManagerDriver;
 import org.apache.flink.runtime.resourcemanager.exceptions.ResourceManagerException;
 import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.Preconditions;
+import org.apache.flink.util.concurrent.FutureUtils;
 
 import akka.actor.ActorRef;
 import akka.actor.UntypedAbstractActor;
@@ -76,7 +76,13 @@ import java.util.stream.Collectors;
 import scala.Option;
 import scala.concurrent.duration.FiniteDuration;
 
-/** Implementation of {@link ResourceManagerDriver} for Mesos deployment. */
+/**
+ * Implementation of {@link ResourceManagerDriver} for Mesos deployment.
+ *
+ * @deprecated Apache Mesos support was deprecated in Flink 1.13 and is subject to removal in the
+ *     future (see FLINK-22352 for further details).
+ */
+@Deprecated
 public class MesosResourceManagerDriver
         extends AbstractResourceManagerDriver<RegisteredMesosWorkerNode> {
 
@@ -198,15 +204,16 @@ public class MesosResourceManagerDriver
             throw new ResourceManagerException(
                     "Unable to configure the artifact server with TaskManager artifacts.", e);
         }
+
+        onGrantLeadership();
     }
 
     @Override
-    public CompletableFuture<Void> terminate() {
-        return stopSupportingActorsAsync();
+    public void terminate() throws Exception {
+        onRevokeLeadership().get();
     }
 
-    @Override
-    public CompletableFuture<Void> onGrantLeadership() {
+    private void onGrantLeadership() throws Exception {
         Preconditions.checkState(initializedMesosConfig != null);
 
         schedulerDriver =
@@ -222,24 +229,19 @@ public class MesosResourceManagerDriver
                 actorFactory.createReconciliationCoordinator(flinkConfig, schedulerDriver);
         taskMonitor = actorFactory.createTaskMonitor(flinkConfig, selfActor, schedulerDriver);
 
-        return getWorkersAsync()
-                .thenApplyAsync(
-                        (tasksFromPreviousAttempts) -> {
-                            // recover state
-                            recoverWorkers(tasksFromPreviousAttempts);
+        List<MesosWorkerStore.Worker> tasksFromPreviousAttempts = getWorkersAsync().get();
 
-                            // begin scheduling
-                            connectionMonitor.tell(new ConnectionMonitor.Start(), selfActor);
-                            schedulerDriver.start();
+        // recover state
+        recoverWorkers(tasksFromPreviousAttempts);
 
-                            log.info("Mesos resource manager started.");
-                            return null;
-                        },
-                        getMainThreadExecutor());
+        // begin scheduling
+        connectionMonitor.tell(new ConnectionMonitor.Start(), selfActor);
+        schedulerDriver.start();
+
+        log.info("Mesos resource manager started.");
     }
 
-    @Override
-    public CompletableFuture<Void> onRevokeLeadership() {
+    private CompletableFuture<Void> onRevokeLeadership() {
         schedulerDriver.stop(true);
 
         workersInNew.clear();

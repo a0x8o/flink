@@ -52,11 +52,6 @@ class Failing extends StateWithExecutionGraph {
     }
 
     @Override
-    public JobStatus getJobStatus() {
-        return JobStatus.FAILING;
-    }
-
-    @Override
     public void cancel() {
         context.goToCanceling(
                 getExecutionGraph(), getExecutionGraphHandler(), getOperatorCoordinatorHandler());

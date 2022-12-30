@@ -448,6 +448,73 @@ class TableEnvironmentITCase(tableEnvName: String, isStreaming: Boolean) extends
   }
 
   @Test
+  def testTableDMLSync(): Unit = {
+    tEnv.getConfig.getConfiguration.set(TableConfigOptions.TABLE_DML_SYNC, Boolean.box(true));
+    val sink1Path = _tempFolder.newFolder().toString
+    tEnv.executeSql(
+      s"""
+         |create table MySink1 (
+         |  first string,
+         |  last string
+         |) with (
+         |  'connector' = 'filesystem',
+         |  'path' = '$sink1Path',
+         |  'format' = 'testcsv'
+         |)
+       """.stripMargin
+    )
+
+    val sink2Path = _tempFolder.newFolder().toString
+    tEnv.executeSql(
+      s"""
+         |create table MySink2 (
+         |  first string
+         |) with (
+         |  'connector' = 'filesystem',
+         |  'path' = '$sink2Path',
+         |  'format' = 'testcsv'
+         |)
+       """.stripMargin
+    )
+
+    val sink3Path = _tempFolder.newFolder().toString
+    tEnv.executeSql(
+      s"""
+         |create table MySink3 (
+         |  last string
+         |) with (
+         |  'connector' = 'filesystem',
+         |  'path' = '$sink3Path',
+         |  'format' = 'testcsv'
+         |)
+       """.stripMargin
+    )
+
+    val tableResult1 =
+      tEnv.sqlQuery("select first, last from MyTable").executeInsert("MySink1", false)
+
+    val stmtSet = tEnv.createStatementSet()
+    stmtSet.addInsertSql("INSERT INTO MySink2 select first from MySink1")
+    stmtSet.addInsertSql("INSERT INTO MySink3 select last from MySink1")
+    val tableResult2 = stmtSet.execute()
+
+    // checkInsertTableResult will wait the job finished,
+    // we should assert file values first to verify job has been finished
+    assertFirstValues(sink2Path)
+    assertLastValues(sink3Path)
+
+    // check TableResult after verifying file values
+    checkInsertTableResult(
+      tableResult2,
+      "default_catalog.default_database.MySink2",
+      "default_catalog.default_database.MySink3" )
+
+    // Verify it's no problem to invoke await twice
+    tableResult1.await()
+    tableResult2.await()
+  }
+
+  @Test
   def testStatementSet(): Unit = {
     val sink1Path = TestTableSourceSinks.createCsvTemporarySinkTable(
       tEnv, new TableSchema(Array("first"), Array(STRING)), "MySink1")
@@ -574,11 +641,10 @@ class TableEnvironmentITCase(tableEnvName: String, isStreaming: Boolean) extends
     assertTrue(tableResult.getJobClient.isPresent)
     assertEquals(ResultKind.SUCCESS_WITH_CONTENT, tableResult.getResultKind)
     assertEquals(
-      TableSchema.builder()
-        .field("id", DataTypes.INT())
-        .field("full name", DataTypes.STRING())
-        .build(),
-      tableResult.getTableSchema)
+      ResolvedSchema.of(
+        Column.physical("id", DataTypes.INT()),
+        Column.physical("full name", DataTypes.STRING())),
+      tableResult.getResolvedSchema)
     val expected = util.Arrays.asList(
       Row.of(Integer.valueOf(2), "Bob Taylor"),
       Row.of(Integer.valueOf(4), "Peter Smith"),
@@ -599,8 +665,8 @@ class TableEnvironmentITCase(tableEnvName: String, isStreaming: Boolean) extends
     assertTrue(tableResult.getJobClient.isPresent)
     assertEquals(ResultKind.SUCCESS_WITH_CONTENT, tableResult.getResultKind)
     assertEquals(
-      TableSchema.builder().field("c", DataTypes.BIGINT().notNull()).build(),
-      tableResult.getTableSchema)
+      ResolvedSchema.of(Column.physical("c", DataTypes.BIGINT().notNull())),
+      tableResult.getResolvedSchema)
     val expected = if (isStreaming) {
       util.Arrays.asList(
         Row.ofKind(RowKind.INSERT, JLong.valueOf(1)),
@@ -639,11 +705,10 @@ class TableEnvironmentITCase(tableEnvName: String, isStreaming: Boolean) extends
     assertTrue(tableResult.getJobClient.isPresent)
     assertEquals(ResultKind.SUCCESS_WITH_CONTENT, tableResult.getResultKind)
     assertEquals(
-      TableSchema.builder()
-        .field("name", DataTypes.STRING())
-        .field("pt", DataTypes.TIMESTAMP(3))
-        .build(),
-      tableResult.getTableSchema)
+      ResolvedSchema.of(
+        Column.physical("name", DataTypes.STRING()),
+        Column.physical("pt", DataTypes.TIMESTAMP_LTZ(3))),
+      tableResult.getResolvedSchema)
     val it = tableResult.collect()
     assertTrue(it.hasNext)
     val row = it.next()
@@ -789,7 +854,7 @@ class TableEnvironmentITCase(tableEnvName: String, isStreaming: Boolean) extends
     assertEquals(ResultKind.SUCCESS_WITH_CONTENT, tableResult.getResultKind)
     assertEquals(
       util.Arrays.asList(fieldNames: _*),
-      util.Arrays.asList(tableResult.getTableSchema.getFieldNames: _*))
+      tableResult.getResolvedSchema.getColumnNames)
     // return the result until the job is finished
     val it = tableResult.collect()
     assertTrue(it.hasNext)

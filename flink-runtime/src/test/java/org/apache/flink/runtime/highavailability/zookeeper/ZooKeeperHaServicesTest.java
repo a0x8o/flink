@@ -23,25 +23,26 @@ import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.HighAvailabilityOptions;
 import org.apache.flink.runtime.blob.BlobKey;
 import org.apache.flink.runtime.blob.BlobStoreService;
-import org.apache.flink.runtime.concurrent.Executors;
-import org.apache.flink.runtime.highavailability.RunningJobsRegistry;
 import org.apache.flink.runtime.leaderelection.LeaderElectionService;
 import org.apache.flink.runtime.leaderelection.TestingContender;
-import org.apache.flink.runtime.leaderelection.TestingListener;
 import org.apache.flink.runtime.leaderretrieval.LeaderRetrievalService;
+import org.apache.flink.runtime.util.LeaderRetrievalUtils;
+import org.apache.flink.runtime.util.TestingFatalErrorHandlerResource;
 import org.apache.flink.runtime.util.ZooKeeperUtils;
 import org.apache.flink.runtime.zookeeper.ZooKeeperResource;
 import org.apache.flink.util.TestLogger;
+import org.apache.flink.util.concurrent.Executors;
 import org.apache.flink.util.function.ThrowingConsumer;
 
-import org.apache.flink.shaded.curator4.org.apache.curator.framework.CuratorFramework;
-import org.apache.flink.shaded.curator4.org.apache.curator.framework.CuratorFrameworkFactory;
-import org.apache.flink.shaded.curator4.org.apache.curator.retry.RetryNTimes;
+import org.apache.flink.shaded.curator5.org.apache.curator.framework.CuratorFramework;
+import org.apache.flink.shaded.curator5.org.apache.curator.framework.CuratorFrameworkFactory;
+import org.apache.flink.shaded.curator5.org.apache.curator.retry.RetryNTimes;
 
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.ClassRule;
+import org.junit.Rule;
 import org.junit.Test;
 
 import javax.annotation.Nonnull;
@@ -52,6 +53,7 @@ import java.util.List;
 
 import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.notNullValue;
@@ -62,6 +64,10 @@ import static org.junit.Assert.assertThat;
 public class ZooKeeperHaServicesTest extends TestLogger {
 
     @ClassRule public static final ZooKeeperResource ZOO_KEEPER_RESOURCE = new ZooKeeperResource();
+
+    @Rule
+    public final TestingFatalErrorHandlerResource testingFatalErrorHandlerResource =
+            new TestingFatalErrorHandlerResource();
 
     private static CuratorFramework client;
 
@@ -148,6 +154,34 @@ public class ZooKeeperHaServicesTest extends TestLogger {
         assertThat(client.checkExists().forPath(unclePath), is(notNullValue()));
     }
 
+    /** Tests that the ZooKeeperHaServices cleans up paths for job manager. */
+    @Test
+    public void testCleanupJobData() throws Exception {
+        String rootPath = "/foo/bar/flink";
+        final Configuration configuration = createConfiguration(rootPath);
+        final String namespace = configuration.get(HighAvailabilityOptions.HA_CLUSTER_ID);
+
+        JobID jobID = new JobID();
+        final String path = rootPath + namespace + ZooKeeperUtils.getJobsPath();
+
+        final TestingBlobStoreService blobStoreService = new TestingBlobStoreService();
+
+        runCleanupTestWithJob(
+                configuration,
+                blobStoreService,
+                jobID,
+                haServices -> {
+                    final List<String> childrenBefore = client.getChildren().forPath(path);
+
+                    haServices.globalCleanupAsync(jobID, Executors.directExecutor()).join();
+
+                    final List<String> childrenAfter = client.getChildren().forPath(path);
+
+                    assertThat(childrenBefore, hasItem(jobID.toString()));
+                    assertThat(childrenAfter, not(hasItem(jobID.toString())));
+                });
+    }
+
     private static CuratorFramework startCuratorFramework() {
         return CuratorFrameworkFactory.builder()
                 .connectString(ZOO_KEEPER_RESOURCE.getConnectString())
@@ -170,9 +204,21 @@ public class ZooKeeperHaServicesTest extends TestLogger {
             TestingBlobStoreService blobStoreService,
             ThrowingConsumer<ZooKeeperHaServices, Exception> zooKeeperHaServicesConsumer)
             throws Exception {
+        runCleanupTestWithJob(
+                configuration, blobStoreService, new JobID(), zooKeeperHaServicesConsumer);
+    }
+
+    private void runCleanupTestWithJob(
+            Configuration configuration,
+            TestingBlobStoreService blobStoreService,
+            JobID jobId,
+            ThrowingConsumer<ZooKeeperHaServices, Exception> zooKeeperHaServicesConsumer)
+            throws Exception {
         try (ZooKeeperHaServices zooKeeperHaServices =
                 new ZooKeeperHaServices(
-                        ZooKeeperUtils.startCuratorFramework(configuration),
+                        ZooKeeperUtils.startCuratorFramework(
+                                configuration,
+                                testingFatalErrorHandlerResource.getFatalErrorHandler()),
                         Executors.directExecutor(),
                         configuration,
                         blobStoreService)) {
@@ -182,21 +228,35 @@ public class ZooKeeperHaServicesTest extends TestLogger {
                     zooKeeperHaServices.getResourceManagerLeaderRetriever();
             final LeaderElectionService resourceManagerLeaderElectionService =
                     zooKeeperHaServices.getResourceManagerLeaderElectionService();
-            final RunningJobsRegistry runningJobsRegistry =
-                    zooKeeperHaServices.getRunningJobsRegistry();
 
-            final TestingListener listener = new TestingListener();
-            resourceManagerLeaderRetriever.start(listener);
+            final LeaderRetrievalService jobManagerLeaderRetriever =
+                    zooKeeperHaServices.getJobManagerLeaderRetriever(jobId);
+            final LeaderElectionService jobManagerLeaderElectionService =
+                    zooKeeperHaServices.getJobManagerLeaderElectionService(jobId);
+
+            final LeaderRetrievalUtils.LeaderConnectionInfoListener resourceManagerLeaderListener =
+                    new LeaderRetrievalUtils.LeaderConnectionInfoListener();
             resourceManagerLeaderElectionService.start(
-                    new TestingContender("foobar", resourceManagerLeaderElectionService));
-            final JobID jobId = new JobID();
-            runningJobsRegistry.setJobRunning(jobId);
+                    new TestingContender(
+                            "unused-resourcemanager-address",
+                            resourceManagerLeaderElectionService));
+            resourceManagerLeaderRetriever.start(resourceManagerLeaderListener);
 
-            listener.waitForNewLeader(2000L);
+            final LeaderRetrievalUtils.LeaderConnectionInfoListener jobManagerLeaderListener =
+                    new LeaderRetrievalUtils.LeaderConnectionInfoListener();
+            jobManagerLeaderElectionService.start(
+                    new TestingContender(
+                            "unused-jobmanager-address", jobManagerLeaderElectionService));
+            jobManagerLeaderRetriever.start(jobManagerLeaderListener);
+
+            // Make sure that the respective zNodes have been properly created
+            resourceManagerLeaderListener.getLeaderConnectionInfoFuture().join();
+            jobManagerLeaderListener.getLeaderConnectionInfoFuture().join();
 
             resourceManagerLeaderRetriever.stop();
             resourceManagerLeaderElectionService.stop();
-            runningJobsRegistry.clearJob(jobId);
+            jobManagerLeaderRetriever.stop();
+            jobManagerLeaderElectionService.stop();
 
             zooKeeperHaServicesConsumer.accept(zooKeeperHaServices);
         }

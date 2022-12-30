@@ -19,6 +19,7 @@
 package org.apache.flink.mesos.util;
 
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.SecurityOptions;
 import org.apache.flink.core.fs.FSDataInputStream;
 import org.apache.flink.core.fs.FileStatus;
 import org.apache.flink.core.fs.FileSystem;
@@ -78,7 +79,13 @@ import static org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpRes
 import static org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpResponseStatus.OK;
 import static org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpVersion.HTTP_1_1;
 
-/** Implemenation of {@link MesosArtifactServer}. */
+/**
+ * Implemenation of {@link MesosArtifactServer}.
+ *
+ * @deprecated Apache Mesos support was deprecated in Flink 1.13 and is subject to removal in the
+ *     future (see FLINK-22352 for further details).
+ */
+@Deprecated
 public class MesosArtifactServerImpl implements MesosArtifactServer {
 
     private static final Logger LOG = LoggerFactory.getLogger(MesosArtifactServerImpl.class);
@@ -103,7 +110,7 @@ public class MesosArtifactServerImpl implements MesosArtifactServer {
         // Config to enable https access to the artifact server
         final boolean enableSSL =
                 config.getBoolean(MesosOptions.ARTIFACT_SERVER_SSL_ENABLED)
-                        && SSLUtils.isRestSSLEnabled(config);
+                        && SecurityOptions.isRestSSLEnabled(config);
 
         final SSLHandlerFactory sslFactory;
         if (enableSSL) {

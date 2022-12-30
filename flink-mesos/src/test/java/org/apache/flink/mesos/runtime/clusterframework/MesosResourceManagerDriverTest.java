@@ -132,13 +132,13 @@ public class MesosResourceManagerDriverTest
     }
 
     @Test
-    public void testClearStateAfterRevokeLeadership() throws Exception {
+    public void testClearStateAfterTermination() throws Exception {
         new Context() {
             {
                 preparePreviousAttemptWorkers();
                 runTest(
                         () -> {
-                            runInMainThread(() -> getDriver().onRevokeLeadership());
+                            runInMainThread(() -> getDriver().terminate());
 
                             assertThat(
                                     schedulerDriverStopFuture.get(TIMEOUT_SEC, TimeUnit.SECONDS),
@@ -437,6 +437,7 @@ public class MesosResourceManagerDriverTest
                     Option.empty(),
                     Option.empty(),
                     Collections.emptyList(),
+                    Option.empty(),
                     Collections.emptyMap());
         }
 

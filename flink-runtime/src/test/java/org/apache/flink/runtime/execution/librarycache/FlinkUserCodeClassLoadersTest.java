@@ -19,6 +19,7 @@
 package org.apache.flink.runtime.execution.librarycache;
 
 import org.apache.flink.runtime.rpc.messages.RemoteRpcInvocation;
+import org.apache.flink.runtime.util.ClassLoaderUtil;
 import org.apache.flink.testutils.ClassLoaderUtils;
 import org.apache.flink.util.SerializedValue;
 import org.apache.flink.util.TestLogger;
@@ -38,9 +39,12 @@ import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.isA;
 import static org.hamcrest.Matchers.hasItemInArray;
 import static org.hamcrest.Matchers.hasProperty;
+import static org.hamcrest.Matchers.startsWith;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotSame;
+import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertTrue;
 
 /** Tests for classloading and class loader utilities. */
 public class FlinkUserCodeClassLoadersTest extends TestLogger {
@@ -65,6 +69,7 @@ public class FlinkUserCodeClassLoadersTest extends TestLogger {
 
         RemoteRpcInvocation method =
                 new RemoteRpcInvocation(
+                        className,
                         "test",
                         new Class<?>[] {
                             int.class, Class.forName(className, false, userClassLoader)
@@ -208,6 +213,40 @@ public class FlinkUserCodeClassLoadersTest extends TestLogger {
         childClassLoader.close();
     }
 
+    @Test
+    public void testGetClassLoaderInfo() throws Exception {
+        final ClassLoader parentClassLoader = getClass().getClassLoader();
+
+        final URL childCodePath = getClass().getProtectionDomain().getCodeSource().getLocation();
+
+        final URLClassLoader childClassLoader =
+                createChildFirstClassLoader(childCodePath, parentClassLoader);
+
+        String formattedURL = ClassLoaderUtil.formatURL(childCodePath);
+
+        assertEquals(
+                ClassLoaderUtil.getUserCodeClassLoaderInfo(childClassLoader),
+                "URL ClassLoader:" + formattedURL);
+
+        childClassLoader.close();
+    }
+
+    @Test
+    public void testGetClassLoaderInfoWithClassLoaderClosed() throws Exception {
+        final ClassLoader parentClassLoader = getClass().getClassLoader();
+
+        final URL childCodePath = getClass().getProtectionDomain().getCodeSource().getLocation();
+
+        final URLClassLoader childClassLoader =
+                createChildFirstClassLoader(childCodePath, parentClassLoader);
+
+        childClassLoader.close();
+
+        assertThat(
+                ClassLoaderUtil.getUserCodeClassLoaderInfo(childClassLoader),
+                startsWith("Cannot access classloader info due to an exception."));
+    }
+
     private static URLClassLoader createParentFirstClassLoader(
             URL childCodePath, ClassLoader parentClassLoader) {
         return FlinkUserCodeClassLoaders.parentFirst(
@@ -244,6 +283,26 @@ public class FlinkUserCodeClassLoadersTest extends TestLogger {
         // after closing, no loaded class should be reachable anymore
         expectedException.expect(isA(IllegalStateException.class));
         childClassLoader.loadClass(className);
+    }
+
+    @Test
+    public void testParallelCapable() {
+        // It will be true only if all the super classes (except class Object) of the caller are
+        // registered as parallel capable.
+        assertTrue(TestParentFirstClassLoader.isParallelCapable);
+    }
+
+    private static class TestParentFirstClassLoader
+            extends FlinkUserCodeClassLoaders.ParentFirstClassLoader {
+        public static boolean isParallelCapable;
+
+        static {
+            isParallelCapable = ClassLoader.registerAsParallelCapable();
+        }
+
+        TestParentFirstClassLoader() {
+            super(null, null, null);
+        }
     }
 
     private static class ClassToLoad {}

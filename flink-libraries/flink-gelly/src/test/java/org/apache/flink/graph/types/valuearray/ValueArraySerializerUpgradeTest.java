@@ -18,11 +18,11 @@
 
 package org.apache.flink.graph.types.valuearray;
 
+import org.apache.flink.FlinkVersion;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.common.typeutils.TypeSerializerMatchers;
 import org.apache.flink.api.common.typeutils.TypeSerializerSchemaCompatibility;
 import org.apache.flink.api.common.typeutils.TypeSerializerUpgradeTestBase;
-import org.apache.flink.testutils.migration.MigrationVersion;
 import org.apache.flink.types.ByteValue;
 import org.apache.flink.types.CharValue;
 import org.apache.flink.types.DoubleValue;
@@ -34,8 +34,6 @@ import org.apache.flink.types.ShortValue;
 import org.apache.flink.types.StringValue;
 
 import org.hamcrest.Matcher;
-import org.junit.runner.RunWith;
-import org.junit.runners.Parameterized;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -43,69 +41,63 @@ import java.util.Collection;
 import static org.hamcrest.Matchers.is;
 
 /** Migration tests for boxed-value array serializer snapshots. */
-@RunWith(Parameterized.class)
-public class ValueArraySerializerUpgradeTest extends TypeSerializerUpgradeTestBase<Object, Object> {
+class ValueArraySerializerUpgradeTest extends TypeSerializerUpgradeTestBase<Object, Object> {
 
-    public ValueArraySerializerUpgradeTest(TestSpecification<Object, Object> testSpecification) {
-        super(testSpecification);
-    }
-
-    @Parameterized.Parameters(name = "Test Specification = {0}")
-    public static Collection<TestSpecification<?, ?>> testSpecifications() throws Exception {
+    public Collection<TestSpecification<?, ?>> createTestSpecifications() throws Exception {
         ArrayList<TestSpecification<?, ?>> testSpecifications = new ArrayList<>();
-        for (MigrationVersion migrationVersion : MIGRATION_VERSIONS) {
+        for (FlinkVersion flinkVersion : MIGRATION_VERSIONS) {
             testSpecifications.add(
                     new TestSpecification<>(
                             "byte-value-array-serializer",
-                            migrationVersion,
+                            flinkVersion,
                             ByteValueArraySerializerSetup.class,
                             ByteValueArraySerializerVerifier.class));
             testSpecifications.add(
                     new TestSpecification<>(
                             "char-value-array-serializer",
-                            migrationVersion,
+                            flinkVersion,
                             CharValueArraySerializerSetup.class,
                             CharValueArraySerializerVerifier.class));
             testSpecifications.add(
                     new TestSpecification<>(
                             "double-value-array-serializer",
-                            migrationVersion,
+                            flinkVersion,
                             DoubleValueArraySerializerSetup.class,
                             DoubleValueArraySerializerVerifier.class));
             testSpecifications.add(
                     new TestSpecification<>(
                             "float-value-array-serializer",
-                            migrationVersion,
+                            flinkVersion,
                             FloatValueArraySerializerSetup.class,
                             FloatValueArraySerializerVerifier.class));
             testSpecifications.add(
                     new TestSpecification<>(
                             "int-value-array-serializer",
-                            migrationVersion,
+                            flinkVersion,
                             IntValueArraySerializerSetup.class,
                             IntValueArraySerializerVerifier.class));
             testSpecifications.add(
                     new TestSpecification<>(
                             "long-value-array-serializer",
-                            migrationVersion,
+                            flinkVersion,
                             LongValueArraySerializerSetup.class,
                             LongValueArraySerializerVerifier.class));
             testSpecifications.add(
                     new TestSpecification<>(
                             "null-value-array-serializer",
-                            migrationVersion,
+                            flinkVersion,
                             NullValueArraySerializerSetup.class,
                             NullValueArraySerializerVerifier.class));
             testSpecifications.add(
                     new TestSpecification<>(
                             "short-value-array-serializer",
-                            migrationVersion,
+                            flinkVersion,
                             ShortValueArraySerializerSetup.class,
                             ShortValueArraySerializerVerifier.class));
             testSpecifications.add(
                     new TestSpecification<>(
                             "string-value-array-serializer",
-                            migrationVersion,
+                            flinkVersion,
                             StringValueArraySerializerSetup.class,
                             StringValueArraySerializerVerifier.class));
         }
@@ -157,7 +149,7 @@ public class ValueArraySerializerUpgradeTest extends TypeSerializerUpgradeTestBa
 
         @Override
         public Matcher<TypeSerializerSchemaCompatibility<ByteValueArray>>
-                schemaCompatibilityMatcher(MigrationVersion version) {
+                schemaCompatibilityMatcher(FlinkVersion version) {
             return TypeSerializerMatchers.isCompatibleAsIs();
         }
     }
@@ -209,7 +201,7 @@ public class ValueArraySerializerUpgradeTest extends TypeSerializerUpgradeTestBa
 
         @Override
         public Matcher<TypeSerializerSchemaCompatibility<CharValueArray>>
-                schemaCompatibilityMatcher(MigrationVersion version) {
+                schemaCompatibilityMatcher(FlinkVersion version) {
             return TypeSerializerMatchers.isCompatibleAsIs();
         }
     }
@@ -259,7 +251,7 @@ public class ValueArraySerializerUpgradeTest extends TypeSerializerUpgradeTestBa
 
         @Override
         public Matcher<TypeSerializerSchemaCompatibility<DoubleValueArray>>
-                schemaCompatibilityMatcher(MigrationVersion version) {
+                schemaCompatibilityMatcher(FlinkVersion version) {
             return TypeSerializerMatchers.isCompatibleAsIs();
         }
     }
@@ -309,7 +301,7 @@ public class ValueArraySerializerUpgradeTest extends TypeSerializerUpgradeTestBa
 
         @Override
         public Matcher<TypeSerializerSchemaCompatibility<FloatValueArray>>
-                schemaCompatibilityMatcher(MigrationVersion version) {
+                schemaCompatibilityMatcher(FlinkVersion version) {
             return TypeSerializerMatchers.isCompatibleAsIs();
         }
     }
@@ -359,7 +351,7 @@ public class ValueArraySerializerUpgradeTest extends TypeSerializerUpgradeTestBa
 
         @Override
         public Matcher<TypeSerializerSchemaCompatibility<IntValueArray>> schemaCompatibilityMatcher(
-                MigrationVersion version) {
+                FlinkVersion version) {
             return TypeSerializerMatchers.isCompatibleAsIs();
         }
     }
@@ -409,7 +401,7 @@ public class ValueArraySerializerUpgradeTest extends TypeSerializerUpgradeTestBa
 
         @Override
         public Matcher<TypeSerializerSchemaCompatibility<LongValueArray>>
-                schemaCompatibilityMatcher(MigrationVersion version) {
+                schemaCompatibilityMatcher(FlinkVersion version) {
             return TypeSerializerMatchers.isCompatibleAsIs();
         }
     }
@@ -459,7 +451,7 @@ public class ValueArraySerializerUpgradeTest extends TypeSerializerUpgradeTestBa
 
         @Override
         public Matcher<TypeSerializerSchemaCompatibility<NullValueArray>>
-                schemaCompatibilityMatcher(MigrationVersion version) {
+                schemaCompatibilityMatcher(FlinkVersion version) {
             return TypeSerializerMatchers.isCompatibleAsIs();
         }
     }
@@ -509,7 +501,7 @@ public class ValueArraySerializerUpgradeTest extends TypeSerializerUpgradeTestBa
 
         @Override
         public Matcher<TypeSerializerSchemaCompatibility<ShortValueArray>>
-                schemaCompatibilityMatcher(MigrationVersion version) {
+                schemaCompatibilityMatcher(FlinkVersion version) {
             return TypeSerializerMatchers.isCompatibleAsIs();
         }
     }
@@ -559,7 +551,7 @@ public class ValueArraySerializerUpgradeTest extends TypeSerializerUpgradeTestBa
 
         @Override
         public Matcher<TypeSerializerSchemaCompatibility<StringValueArray>>
-                schemaCompatibilityMatcher(MigrationVersion version) {
+                schemaCompatibilityMatcher(FlinkVersion version) {
             return TypeSerializerMatchers.isCompatibleAsIs();
         }
     }

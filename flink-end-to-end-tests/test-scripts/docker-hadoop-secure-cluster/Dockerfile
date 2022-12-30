@@ -36,7 +36,7 @@ RUN set -x \
 # install dev tools
 RUN set -x \
     && apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
-    curl tar sudo openssh-server openssh-client rsync unzip krb5-user net-tools
+    curl tar sudo openssh-server openssh-client rsync unzip krb5-user net-tools build-essential
 
 # Kerberos client
 RUN set -x \
@@ -53,11 +53,11 @@ RUN set -x \
 
 RUN sed -i 's/^#crypto.policy=unlimited/crypto.policy=unlimited/' $JAVA_HOME/jre/lib/security/java.security
 
-ARG HADOOP_VERSION=2.8.4
+ARG HADOOP_VERSION=2.8.5
 
-ENV HADOOP_URL http://archive.apache.org/dist/hadoop/common/hadoop-$HADOOP_VERSION/hadoop-$HADOOP_VERSION.tar.gz
+COPY hadoop-${HADOOP_VERSION}.tar.gz /tmp/hadoop.tar.gz
+
 RUN set -x \
-    && curl -fSL "$HADOOP_URL" -o /tmp/hadoop.tar.gz \
     && tar -xf /tmp/hadoop.tar.gz -C /usr/local/ \
     && rm /tmp/hadoop.tar.gz*
 

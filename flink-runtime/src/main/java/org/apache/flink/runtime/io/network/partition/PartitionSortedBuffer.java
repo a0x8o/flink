@@ -21,12 +21,10 @@ package org.apache.flink.runtime.io.network.partition;
 import org.apache.flink.core.memory.MemorySegment;
 import org.apache.flink.core.memory.MemorySegmentFactory;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
-import org.apache.flink.runtime.io.network.buffer.BufferBuilder;
 import org.apache.flink.runtime.io.network.buffer.BufferPool;
 import org.apache.flink.runtime.io.network.buffer.NetworkBuffer;
 
 import javax.annotation.Nullable;
-import javax.annotation.concurrent.GuardedBy;
 import javax.annotation.concurrent.NotThreadSafe;
 
 import java.io.IOException;
@@ -54,8 +52,6 @@ import static org.apache.flink.util.Preconditions.checkState;
 @NotThreadSafe
 public class PartitionSortedBuffer implements SortBuffer {
 
-    private final Object lock;
-
     /**
      * Size of an index entry: 4 bytes for record length, 4 bytes for data type and 8 bytes for
      * pointer to next entry.
@@ -66,8 +62,7 @@ public class PartitionSortedBuffer implements SortBuffer {
     private final BufferPool bufferPool;
 
     /** A segment list as a joint buffer which stores all records and index entries. */
-    @GuardedBy("lock")
-    private final ArrayList<MemorySegment> buffers = new ArrayList<>();
+    private final ArrayList<MemorySegment> segments = new ArrayList<>();
 
     /** Addresses of the first record's index entry for each subpartition. */
     private final long[] firstIndexEntryAddresses;
@@ -77,6 +72,9 @@ public class PartitionSortedBuffer implements SortBuffer {
 
     /** Size of buffers requested from buffer pool. All buffers must be of the same size. */
     private final int bufferSize;
+
+    /** Number of guaranteed buffers can be allocated from the buffer pool for data sort. */
+    private final int numGuaranteedBuffers;
 
     // ---------------------------------------------------------------------------------------------
     // Statistics and states
@@ -95,7 +93,6 @@ public class PartitionSortedBuffer implements SortBuffer {
     private boolean isFinished;
 
     /** Whether this sort buffer is released. A released sort buffer can not be used. */
-    @GuardedBy("lock")
     private boolean isReleased;
 
     // ---------------------------------------------------------------------------------------------
@@ -125,16 +122,17 @@ public class PartitionSortedBuffer implements SortBuffer {
     private int readOrderIndex = -1;
 
     public PartitionSortedBuffer(
-            Object lock,
             BufferPool bufferPool,
             int numSubpartitions,
             int bufferSize,
+            int numGuaranteedBuffers,
             @Nullable int[] customReadOrder) {
         checkArgument(bufferSize > INDEX_ENTRY_SIZE, "Buffer size is too small.");
+        checkArgument(numGuaranteedBuffers > 0, "No guaranteed buffers for sort.");
 
-        this.lock = checkNotNull(lock);
         this.bufferPool = checkNotNull(bufferPool);
         this.bufferSize = bufferSize;
+        this.numGuaranteedBuffers = numGuaranteedBuffers;
         this.firstIndexEntryAddresses = new long[numSubpartitions];
         this.lastIndexEntryAddresses = new long[numSubpartitions];
 
@@ -178,7 +176,7 @@ public class PartitionSortedBuffer implements SortBuffer {
     }
 
     private void writeIndex(int channelIndex, int numRecordBytes, Buffer.DataType dataType) {
-        MemorySegment segment = buffers.get(writeSegmentIndex);
+        MemorySegment segment = segments.get(writeSegmentIndex);
 
         // record length takes the high 32 bits and data type takes the low 32 bits
         segment.putLong(writeSegmentOffset, ((long) numRecordBytes << 32) | dataType.ordinal());
@@ -191,7 +189,7 @@ public class PartitionSortedBuffer implements SortBuffer {
 
         if (lastIndexEntryAddress >= 0) {
             // link the previous index entry of the given channel to the new index entry
-            segment = buffers.get(getSegmentIndexFromPointer(lastIndexEntryAddress));
+            segment = segments.get(getSegmentIndexFromPointer(lastIndexEntryAddress));
             segment.putLong(
                     getSegmentOffsetFromPointer(lastIndexEntryAddress) + 8, indexEntryAddress);
         } else {
@@ -204,7 +202,7 @@ public class PartitionSortedBuffer implements SortBuffer {
 
     private void writeRecord(ByteBuffer source) {
         while (source.hasRemaining()) {
-            MemorySegment segment = buffers.get(writeSegmentIndex);
+            MemorySegment segment = segments.get(writeSegmentIndex);
             int toCopy = Math.min(bufferSize - writeSegmentOffset, source.remaining());
             segment.put(writeSegmentOffset, source, toCopy);
 
@@ -216,7 +214,7 @@ public class PartitionSortedBuffer implements SortBuffer {
     private boolean allocateBuffersForRecord(int numRecordBytes) throws IOException {
         int numBytesRequired = INDEX_ENTRY_SIZE + numRecordBytes;
         int availableBytes =
-                writeSegmentIndex == buffers.size() ? 0 : bufferSize - writeSegmentOffset;
+                writeSegmentIndex == segments.size() ? 0 : bufferSize - writeSegmentOffset;
 
         // return directly if current available bytes is adequate
         if (availableBytes >= numBytesRequired) {
@@ -245,33 +243,30 @@ public class PartitionSortedBuffer implements SortBuffer {
     }
 
     private void addBuffer(MemorySegment segment) {
-        synchronized (lock) {
-            if (segment.size() != bufferSize) {
-                bufferPool.recycle(segment);
-                throw new IllegalStateException("Illegal memory segment size.");
-            }
-
-            if (isReleased) {
-                bufferPool.recycle(segment);
-                throw new IllegalStateException("Sort buffer is already released.");
-            }
-
-            buffers.add(segment);
+        if (segment.size() != bufferSize) {
+            bufferPool.recycle(segment);
+            throw new IllegalStateException("Illegal memory segment size.");
         }
+
+        if (isReleased) {
+            bufferPool.recycle(segment);
+            throw new IllegalStateException("Sort buffer is already released.");
+        }
+
+        segments.add(segment);
     }
 
     private MemorySegment requestBufferFromPool() throws IOException {
         try {
             // blocking request buffers if there is still guaranteed memory
-            if (buffers.size() < bufferPool.getNumberOfRequiredMemorySegments()) {
-                return bufferPool.requestBufferBuilderBlocking().getMemorySegment();
+            if (segments.size() < numGuaranteedBuffers) {
+                return bufferPool.requestMemorySegmentBlocking();
             }
         } catch (InterruptedException e) {
             throw new IOException("Interrupted while requesting buffer.");
         }
 
-        BufferBuilder buffer = bufferPool.requestBufferBuilder();
-        return buffer != null ? buffer.getMemorySegment() : null;
+        return bufferPool.requestMemorySegment();
     }
 
     private void updateWriteSegmentIndexAndOffset(int numBytes) {
@@ -297,7 +292,7 @@ public class PartitionSortedBuffer implements SortBuffer {
         do {
             int sourceSegmentIndex = getSegmentIndexFromPointer(readIndexEntryAddress);
             int sourceSegmentOffset = getSegmentOffsetFromPointer(readIndexEntryAddress);
-            MemorySegment sourceSegment = buffers.get(sourceSegmentIndex);
+            MemorySegment sourceSegment = segments.get(sourceSegmentIndex);
 
             long lengthAndDataType = sourceSegment.getLong(sourceSegmentOffset);
             int length = getSegmentIndexFromPointer(lengthAndDataType);
@@ -370,7 +365,7 @@ public class PartitionSortedBuffer implements SortBuffer {
             int sourceRemainingBytes =
                     Math.min(bufferSize - sourceSegmentOffset, recordRemainingBytes);
             int numBytes = Math.min(targetSegmentSize - targetSegmentOffset, sourceRemainingBytes);
-            MemorySegment sourceSegment = buffers.get(sourceSegmentIndex);
+            MemorySegment sourceSegment = segments.get(sourceSegmentIndex);
             sourceSegment.copyTo(sourceSegmentOffset, targetSegment, targetSegmentOffset, numBytes);
 
             recordRemainingBytes -= numBytes;
@@ -432,27 +427,23 @@ public class PartitionSortedBuffer implements SortBuffer {
     @Override
     public void release() {
         // the sort buffer can be released by other threads
-        synchronized (lock) {
-            if (isReleased) {
-                return;
-            }
-
-            isReleased = true;
-
-            for (MemorySegment segment : buffers) {
-                bufferPool.recycle(segment);
-            }
-            buffers.clear();
-
-            numTotalBytes = 0;
-            numTotalRecords = 0;
+        if (isReleased) {
+            return;
         }
+
+        isReleased = true;
+
+        for (MemorySegment segment : segments) {
+            bufferPool.recycle(segment);
+        }
+        segments.clear();
+
+        numTotalBytes = 0;
+        numTotalRecords = 0;
     }
 
     @Override
     public boolean isReleased() {
-        synchronized (lock) {
-            return isReleased;
-        }
+        return isReleased;
     }
 }

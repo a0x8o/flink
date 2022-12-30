@@ -28,6 +28,7 @@ import org.apache.flink.table.planner.plan.utils.LookupJoinUtil._
 import org.apache.flink.table.planner.plan.utils.PythonUtil.containsPythonCall
 import org.apache.flink.table.planner.plan.utils.RelExplainUtil.preferExpressionFormat
 import org.apache.flink.table.planner.plan.utils.{JoinTypeUtil, LookupJoinUtil, RelExplainUtil}
+import org.apache.flink.table.runtime.types.PlannerTypeUtils
 
 import org.apache.calcite.plan.{RelOptCluster, RelOptTable, RelTraitSet}
 import org.apache.calcite.rel.`type`.{RelDataType, RelDataTypeField}
@@ -104,12 +105,12 @@ abstract class CommonPhysicalLookupJoin(
       joinKeyPairs,
       calcOnTemporalTable)
   }
-  // remaining condition the filter joined records (left input record X lookup-ed records)
+  // remaining condition used to filter the joined records (left input record X lookup-ed records)
   val remainingCondition: Option[RexNode] = getRemainingJoinCondition(
     cluster.getRexBuilder,
     input.getRowType,
     calcOnTemporalTable,
-    allLookupKeys.keys.toList.sorted.toArray,
+    allLookupKeys.values.toList,
     joinInfo)
 
   if (containsPythonCall(joinInfo.getRemaining(cluster.getRexBuilder))) {
@@ -191,22 +192,17 @@ abstract class CommonPhysicalLookupJoin(
       rexBuilder: RexBuilder,
       leftRelDataType: RelDataType,
       calcOnTemporalTable: Option[RexProgram],
-      checkedLookupFields: Array[Int],
+      leftKeys: List[LookupKey],
       joinInfo: JoinInfo): Option[RexNode] = {
-
-    // indexes of right key field
-    val rightKeyIndexes = calcOnTemporalTable match {
-      case Some(program) =>
-        checkedLookupFields.map { lookupFieldIndex => // lookupFieldIndex is field index on table
-          program
-            .getOutputRowType.getFieldNames
-            .indexOf(program.getInputRowType.getFieldNames.get(lookupFieldIndex))
-        }
-      case None =>
-        checkedLookupFields
-    }
+    // indexes of left key fields
+    val leftKeyIndexes =
+      leftKeys
+        .filter(k => k.isInstanceOf[FieldRefLookupKey])
+        .map(k => k.asInstanceOf[FieldRefLookupKey].index)
     val joinPairs = joinInfo.pairs().asScala.toArray
-    val remainingPairs = joinPairs.filter(p => !rightKeyIndexes.contains(p.target))
+    // right lookup key index of temporal table may be duplicated in joinPairs,
+    // we should filter the key-pair by checking left key index.
+    val remainingPairs = joinPairs.filter(p => !leftKeyIndexes.contains(p.source))
     val joinRowType = getRowType
     // convert remaining pairs to RexInputRef tuple for building SqlStdOperatorTable.EQUALS calls
     val remainingEquals = remainingPairs.map { p =>
@@ -300,7 +296,11 @@ abstract class CommonPhysicalLookupJoin(
           expr = call.getOperands.get(0)
         case call: RexCall if call.getOperator == SqlStdOperatorTable.CAST =>
           // drill through identity function
-          expr = call.getOperands.get(0)
+          val outputType = call.getType
+          val inputType = call.getOperands.get(0).getType
+          val isCompatible = PlannerTypeUtils.isInteroperable(
+              FlinkTypeFactory.toLogicalType(outputType), FlinkTypeFactory.toLogicalType(inputType))
+          expr = if (isCompatible) call.getOperands.get(0) else expr
         case _ =>
       }
       expr match {

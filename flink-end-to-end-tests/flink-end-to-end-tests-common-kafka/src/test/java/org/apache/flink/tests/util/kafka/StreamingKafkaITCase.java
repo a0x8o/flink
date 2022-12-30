@@ -21,8 +21,6 @@ package org.apache.flink.tests.util.kafka;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.TaskManagerOptions;
 import org.apache.flink.tests.util.TestUtils;
-import org.apache.flink.tests.util.categories.PreCommit;
-import org.apache.flink.tests.util.categories.TravisGroup1;
 import org.apache.flink.tests.util.flink.ClusterController;
 import org.apache.flink.tests.util.flink.FlinkResource;
 import org.apache.flink.tests.util.flink.FlinkResourceSetup;
@@ -35,6 +33,7 @@ import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
+import org.junit.rules.Timeout;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 import org.slf4j.Logger;
@@ -46,12 +45,13 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 /** End-to-end test for the kafka connectors. */
-@Ignore // disabled because of stalling
 @RunWith(Parameterized.class)
-@Category(value = {TravisGroup1.class, PreCommit.class, FailsOnJava11.class})
+@Category(value = {FailsOnJava11.class})
+@Ignore("FLINK-25266")
 public class StreamingKafkaITCase extends TestLogger {
 
     private static final Logger LOG = LoggerFactory.getLogger(StreamingKafkaITCase.class);
@@ -64,6 +64,13 @@ public class StreamingKafkaITCase extends TestLogger {
     private final Path kafkaExampleJar;
 
     private final String kafkaVersion;
+
+    @Rule
+    public final Timeout timeout =
+            Timeout.builder()
+                    .withTimeout(3, TimeUnit.MINUTES)
+                    .withLookingForStuckThread(true)
+                    .build();
 
     @Rule public final KafkaResource kafka;
 

@@ -19,8 +19,6 @@ package org.apache.flink.runtime.scheduler.declarative;
 
 import org.apache.flink.api.common.JobStatus;
 import org.apache.flink.api.common.time.Time;
-import org.apache.flink.configuration.Configuration;
-import org.apache.flink.configuration.JobManagerOptions;
 import org.apache.flink.runtime.checkpoint.CheckpointException;
 import org.apache.flink.runtime.checkpoint.CheckpointIDCounter;
 import org.apache.flink.runtime.checkpoint.CompletedCheckpointStore;
@@ -49,13 +47,13 @@ import org.apache.flink.runtime.jobgraph.tasks.JobCheckpointingSettings;
 import org.apache.flink.runtime.jobmanager.PartitionProducerDisposedException;
 import org.apache.flink.runtime.jobmaster.slotpool.DefaultAllocatedSlotPool;
 import org.apache.flink.runtime.jobmaster.slotpool.DefaultDeclarativeSlotPool;
+import org.apache.flink.runtime.jobmaster.slotpool.ResourceCounter;
 import org.apache.flink.runtime.operators.coordination.CoordinationRequest;
 import org.apache.flink.runtime.operators.coordination.TaskNotRunningException;
 import org.apache.flink.runtime.operators.coordination.TestOperatorEvent;
 import org.apache.flink.runtime.rest.handler.legacy.utils.ArchivedExecutionGraphBuilder;
 import org.apache.flink.runtime.slots.ResourceRequirement;
 import org.apache.flink.runtime.taskmanager.TaskExecutionState;
-import org.apache.flink.runtime.util.ResourceCounter;
 import org.apache.flink.runtime.util.TestingFatalErrorHandler;
 import org.apache.flink.util.FlinkException;
 import org.apache.flink.util.TestLogger;
@@ -66,9 +64,7 @@ import org.slf4j.Logger;
 import javax.annotation.Nullable;
 
 import java.io.IOException;
-import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -259,36 +255,6 @@ public class DeclarativeSchedulerTest extends TestLogger {
                 });
 
         assertThat(fatalErrorHandler.getException(), is(exception));
-    }
-
-    @Test
-    public void testResourceTimeout() throws Exception {
-        final ManuallyTriggeredComponentMainThreadExecutor mainThreadExecutor =
-                new ManuallyTriggeredComponentMainThreadExecutor(Thread.currentThread());
-        final Duration resourceTimeout = Duration.ofMinutes(1234);
-        final Configuration configuration = new Configuration();
-
-        configuration.set(JobManagerOptions.RESOURCE_WAIT_TIMEOUT, resourceTimeout);
-
-        final DeclarativeScheduler scheduler =
-                new DeclarativeSchedulerBuilder(createJobGraph(), mainThreadExecutor)
-                        .setJobMasterConfiguration(configuration)
-                        .build();
-
-        scheduler.startScheduling();
-
-        // check whether some task was scheduled with the expected timeout
-        // this is technically not really safe, but the chosen timeout value
-        // is odd enough that it realistically won't cause issues.
-        // With this approach we don't have to make assumption as to how many
-        // tasks are being scheduled.
-        final boolean b =
-                mainThreadExecutor.getNonPeriodicScheduledTask().stream()
-                        .anyMatch(
-                                scheduledTask ->
-                                        scheduledTask.getDelay(TimeUnit.MINUTES)
-                                                == resourceTimeout.toMinutes());
-        assertThat(b, is(true));
     }
 
     // ---------------------------------------------------------------------------------------------

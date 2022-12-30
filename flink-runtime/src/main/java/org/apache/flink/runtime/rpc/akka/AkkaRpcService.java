@@ -21,9 +21,8 @@ package org.apache.flink.runtime.rpc.akka;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.runtime.akka.AkkaUtils;
-import org.apache.flink.runtime.concurrent.FutureUtils;
-import org.apache.flink.runtime.concurrent.ScheduledExecutor;
 import org.apache.flink.runtime.concurrent.akka.ActorSystemScheduledExecutorAdapter;
+import org.apache.flink.runtime.concurrent.akka.AkkaFutureUtils;
 import org.apache.flink.runtime.rpc.FencedMainThreadExecutable;
 import org.apache.flink.runtime.rpc.FencedRpcEndpoint;
 import org.apache.flink.runtime.rpc.FencedRpcGateway;
@@ -36,10 +35,12 @@ import org.apache.flink.runtime.rpc.akka.exceptions.AkkaRpcRuntimeException;
 import org.apache.flink.runtime.rpc.exceptions.RpcConnectionException;
 import org.apache.flink.runtime.rpc.messages.HandshakeSuccessMessage;
 import org.apache.flink.runtime.rpc.messages.RemoteHandshakeMessage;
-import org.apache.flink.runtime.util.ExecutorThreadFactory;
 import org.apache.flink.util.AutoCloseableAsync;
 import org.apache.flink.util.ExecutorUtils;
 import org.apache.flink.util.TimeUtils;
+import org.apache.flink.util.concurrent.ExecutorThreadFactory;
+import org.apache.flink.util.concurrent.FutureUtils;
+import org.apache.flink.util.concurrent.ScheduledExecutor;
 
 import akka.actor.AbstractActor;
 import akka.actor.ActorRef;
@@ -414,7 +415,7 @@ public class AkkaRpcService implements RpcService {
         final CompletableFuture<Void> actorSystemTerminationFuture =
                 FutureUtils.composeAfterwards(
                         supervisorTerminationFuture,
-                        () -> FutureUtils.toJava(actorSystem.terminate()));
+                        () -> AkkaFutureUtils.toJava(actorSystem.terminate()));
 
         actorSystemTerminationFuture.whenComplete(
                 (Void ignored, Throwable throwable) -> {
@@ -487,7 +488,7 @@ public class AkkaRpcService implements RpcService {
     public <T> CompletableFuture<T> execute(Callable<T> callable) {
         Future<T> scalaFuture = Futures.<T>future(callable, actorSystem.dispatcher());
 
-        return FutureUtils.toJava(scalaFuture);
+        return AkkaFutureUtils.toJava(scalaFuture);
     }
 
     // ---------------------------------------------------------------------------------------
@@ -523,7 +524,7 @@ public class AkkaRpcService implements RpcService {
         final CompletableFuture<HandshakeSuccessMessage> handshakeFuture =
                 actorRefFuture.thenCompose(
                         (ActorRef actorRef) ->
-                                FutureUtils.toJava(
+                                AkkaFutureUtils.toJava(
                                         Patterns.ask(
                                                         actorRef,
                                                         new RemoteHandshakeMessage(

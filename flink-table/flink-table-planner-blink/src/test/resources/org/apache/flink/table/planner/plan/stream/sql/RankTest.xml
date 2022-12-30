@@ -119,8 +119,8 @@ LogicalProject(a=[$0], b=[$1], count_c=[$2], rank_num=[$3])
     </Resource>
     <Resource name="optimized rel plan">
       <![CDATA[
-Calc(select=[a, b, count_c, w0$o0], changelogMode=[I,UA,D])
-+- Rank(strategy=[UpdateFastStrategy[0,1]], rankType=[ROW_NUMBER], rankRange=[rankStart=1, rankEnd=10], partitionBy=[], orderBy=[count_c DESC], select=[a, b, count_c, w0$o0, w0$o0], changelogMode=[I,UA,D])
+Calc(select=[a, b, count_c, w0$o0_0 AS w0$o0], changelogMode=[I,UA,D])
++- Rank(strategy=[UpdateFastStrategy[0,1]], rankType=[ROW_NUMBER], rankRange=[rankStart=1, rankEnd=10], partitionBy=[], orderBy=[count_c DESC], select=[a, b, count_c, w0$o0, w0$o0_0], changelogMode=[I,UA,D])
    +- Exchange(distribution=[single], changelogMode=[I,UA,D])
       +- Rank(strategy=[UpdateFastStrategy[0,1]], rankType=[ROW_NUMBER], rankRange=[rankStart=1, rankEnd=10], partitionBy=[a], orderBy=[count_c DESC], select=[a, b, count_c, w0$o0], changelogMode=[I,UA,D])
          +- Exchange(distribution=[hash[a]], changelogMode=[I,UA])
@@ -186,6 +186,42 @@ Calc(select=[a, rk, b, c])
 ]]>
     </Resource>
   </TestCase>
+  <TestCase name="testRankWithAnotherRankAsInput">
+    <Resource name="sql">
+      <![CDATA[
+SELECT CAST(rna AS INT) AS rn1, CAST(rnb AS INT) AS rn2 FROM (
+  SELECT *, row_number() over (partition by a order by b desc) AS rnb
+  FROM (
+    SELECT *, row_number() over (partition by a, c order by b desc) AS rna
+    FROM MyTable
+  )
+  WHERE rna <= 100
+)
+WHERE rnb <= 200
+]]>
+    </Resource>
+    <Resource name="ast">
+      <![CDATA[
+LogicalProject(rn1=[CAST($5):INTEGER NOT NULL], rn2=[CAST($6):INTEGER NOT NULL])
++- LogicalFilter(condition=[<=($6, 200)])
+   +- LogicalProject(a=[$0], b=[$1], c=[$2], proctime=[$3], rowtime=[$4], rna=[$5], rnb=[ROW_NUMBER() OVER (PARTITION BY $0 ORDER BY $1 DESC NULLS LAST)])
+      +- LogicalFilter(condition=[<=($5, 100)])
+         +- LogicalProject(a=[$0], b=[$1], c=[$2], proctime=[$3], rowtime=[$4], rna=[ROW_NUMBER() OVER (PARTITION BY $0, $2 ORDER BY $1 DESC NULLS LAST)])
+            +- LogicalTableScan(table=[[default_catalog, default_database, MyTable]])
+]]>
+    </Resource>
+    <Resource name="optimized exec plan">
+      <![CDATA[
+Calc(select=[CAST(w0$o0) AS rn1, CAST(w0$o0_0) AS rn2])
++- Rank(strategy=[UpdateFastStrategy[0,2,3]], rankType=[ROW_NUMBER], rankRange=[rankStart=1, rankEnd=200], partitionBy=[a], orderBy=[b DESC], select=[a, b, c, w0$o0, w0$o0_0])
+   +- Exchange(distribution=[hash[a]])
+      +- Rank(strategy=[AppendFastStrategy], rankType=[ROW_NUMBER], rankRange=[rankStart=1, rankEnd=100], partitionBy=[a, c], orderBy=[b DESC], select=[a, b, c, w0$o0])
+         +- Exchange(distribution=[hash[a, c]])
+            +- Calc(select=[a, b, c])
+               +- DataStreamScan(table=[[default_catalog, default_database, MyTable]], fields=[a, b, c, proctime, rowtime])
+]]>
+    </Resource>
+  </TestCase>
   <TestCase name="testRankWithRankEndLessThan1OrderByProctimeAsc">
     <Resource name="sql">
       <![CDATA[
@@ -241,6 +277,74 @@ Calc(select=[a, b, c])
    +- Exchange(distribution=[hash[a]])
       +- Calc(select=[a, b, c, proctime])
          +- DataStreamScan(table=[[default_catalog, default_database, MyTable]], fields=[a, b, c, proctime, rowtime])
+]]>
+    </Resource>
+  </TestCase>
+  <TestCase name="testRedundantRankNumberColumnRemove">
+    <Resource name="sql">
+      <![CDATA[
+SELECT
+  CONCAT('http://txmov2.a.yximgs.com', uri) AS url,
+  reqcount AS download_count,
+  start_time AS `timestamp`
+FROM
+  (
+    SELECT
+      uri,
+      reqcount,
+      rownum_2,
+      start_time
+    FROM
+      (
+        SELECT
+          uri,
+          reqcount,
+          start_time,
+          ROW_NUMBER() OVER (
+            PARTITION BY start_time
+            ORDER BY
+              reqcount DESC
+          ) AS rownum_2
+        FROM
+          (
+            SELECT
+            uri,
+            reqcount,
+            start_time,
+            ROW_NUMBER() OVER (
+                PARTITION BY start_time, bucket_id
+                ORDER BY
+                reqcount DESC
+            ) AS rownum_1
+            FROM MyTable1
+          )
+        WHERE
+          rownum_1 <= 100000
+      )
+    WHERE
+      rownum_2 <= 100000
+  )
+]]>
+    </Resource>
+    <Resource name="ast">
+      <![CDATA[
+LogicalProject(url=[CONCAT(_UTF-16LE'http://txmov2.a.yximgs.com', $0)], download_count=[$1], timestamp=[$2])
++- LogicalFilter(condition=[<=($3, 100000)])
+   +- LogicalProject(uri=[$0], reqcount=[$1], start_time=[$2], rownum_2=[ROW_NUMBER() OVER (PARTITION BY $2 ORDER BY $1 DESC NULLS LAST)])
+      +- LogicalFilter(condition=[<=($3, 100000)])
+         +- LogicalProject(uri=[$0], reqcount=[$1], start_time=[$2], rownum_1=[ROW_NUMBER() OVER (PARTITION BY $2, $3 ORDER BY $1 DESC NULLS LAST)])
+            +- LogicalTableScan(table=[[default_catalog, default_database, MyTable1]])
+]]>
+    </Resource>
+    <Resource name="optimized exec plan">
+      <![CDATA[
+Calc(select=[CONCAT(_UTF-16LE'http://txmov2.a.yximgs.com', uri) AS url, reqcount AS download_count, start_time AS timestamp])
++- Rank(strategy=[RetractStrategy], rankType=[ROW_NUMBER], rankRange=[rankStart=1, rankEnd=100000], partitionBy=[start_time], orderBy=[reqcount DESC], select=[uri, reqcount, start_time])
+   +- Exchange(distribution=[hash[start_time]])
+      +- Calc(select=[uri, reqcount, start_time])
+         +- Rank(strategy=[AppendFastStrategy], rankType=[ROW_NUMBER], rankRange=[rankStart=1, rankEnd=100000], partitionBy=[start_time, bucket_id], orderBy=[reqcount DESC], select=[uri, reqcount, start_time, bucket_id])
+            +- Exchange(distribution=[hash[start_time, bucket_id]])
+               +- DataStreamScan(table=[[default_catalog, default_database, MyTable1]], fields=[uri, reqcount, start_time, bucket_id])
 ]]>
     </Resource>
   </TestCase>

@@ -18,15 +18,13 @@
 
 package org.apache.flink.graph.drivers.transform;
 
+import org.apache.flink.FlinkVersion;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.common.typeutils.TypeSerializerMatchers;
 import org.apache.flink.api.common.typeutils.TypeSerializerSchemaCompatibility;
 import org.apache.flink.api.common.typeutils.TypeSerializerUpgradeTestBase;
-import org.apache.flink.testutils.migration.MigrationVersion;
 
 import org.hamcrest.Matcher;
-import org.junit.runner.RunWith;
-import org.junit.runners.Parameterized;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -37,26 +35,18 @@ import static org.hamcrest.Matchers.is;
  * A {@link TypeSerializerUpgradeTestBase} for {@link
  * LongValueWithProperHashCode.LongValueWithProperHashCodeSerializer}.
  */
-@RunWith(Parameterized.class)
-public class LongValueWithProperHashCodeSerializerUpgradeTest
+class LongValueWithProperHashCodeSerializerUpgradeTest
         extends TypeSerializerUpgradeTestBase<
                 LongValueWithProperHashCode, LongValueWithProperHashCode> {
 
-    public LongValueWithProperHashCodeSerializerUpgradeTest(
-            TestSpecification<LongValueWithProperHashCode, LongValueWithProperHashCode>
-                    testSpecification) {
-        super(testSpecification);
-    }
-
-    @Parameterized.Parameters(name = "Test Specification = {0}")
-    public static Collection<TestSpecification<?, ?>> testSpecifications() throws Exception {
+    public Collection<TestSpecification<?, ?>> createTestSpecifications() throws Exception {
 
         ArrayList<TestSpecification<?, ?>> testSpecifications = new ArrayList<>();
-        for (MigrationVersion migrationVersion : MIGRATION_VERSIONS) {
+        for (FlinkVersion flinkVersion : MIGRATION_VERSIONS) {
             testSpecifications.add(
                     new TestSpecification<>(
                             "long-value-with-proper-hash-code-serializer",
-                            migrationVersion,
+                            flinkVersion,
                             LongValueWithProperHashCodeSerializerSetup.class,
                             LongValueWithProperHashCodeSerializerVerifier.class));
         }
@@ -102,7 +92,7 @@ public class LongValueWithProperHashCodeSerializerUpgradeTest
 
         @Override
         public Matcher<TypeSerializerSchemaCompatibility<LongValueWithProperHashCode>>
-                schemaCompatibilityMatcher(MigrationVersion version) {
+                schemaCompatibilityMatcher(FlinkVersion version) {
             return TypeSerializerMatchers.isCompatibleAsIs();
         }
     }

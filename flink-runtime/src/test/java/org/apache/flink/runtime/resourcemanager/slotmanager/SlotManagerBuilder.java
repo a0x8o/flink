@@ -18,15 +18,17 @@
 
 package org.apache.flink.runtime.resourcemanager.slotmanager;
 
+import org.apache.flink.api.common.resources.CPUResource;
 import org.apache.flink.api.common.time.Time;
+import org.apache.flink.configuration.MemorySize;
 import org.apache.flink.configuration.ResourceManagerOptions;
-import org.apache.flink.runtime.concurrent.Executors;
-import org.apache.flink.runtime.concurrent.ScheduledExecutor;
 import org.apache.flink.runtime.metrics.groups.SlotManagerMetricGroup;
 import org.apache.flink.runtime.metrics.groups.UnregisteredMetricGroups;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerId;
 import org.apache.flink.runtime.resourcemanager.WorkerResourceSpec;
-import org.apache.flink.runtime.testingUtils.TestingUtils;
+import org.apache.flink.runtime.testutils.TestingUtils;
+import org.apache.flink.util.concurrent.Executors;
+import org.apache.flink.util.concurrent.ScheduledExecutor;
 
 /** Builder for {@link SlotManagerImpl}. */
 public class SlotManagerBuilder {
@@ -131,6 +133,8 @@ public class SlotManagerBuilder {
                         defaultWorkerResourceSpec,
                         numSlotsPerWorker,
                         maxSlotNum,
+                        new CPUResource(Double.MAX_VALUE),
+                        MemorySize.MAX_VALUE,
                         redundantTaskManagerNum);
 
         return new SlotManagerImpl(

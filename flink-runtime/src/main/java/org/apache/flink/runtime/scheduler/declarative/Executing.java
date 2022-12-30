@@ -61,11 +61,6 @@ class Executing extends StateWithExecutionGraph implements ResourceConsumer {
     }
 
     @Override
-    public JobStatus getJobStatus() {
-        return JobStatus.RUNNING;
-    }
-
-    @Override
     public void cancel() {
         context.goToCanceling(
                 getExecutionGraph(), getExecutionGraphHandler(), getOperatorCoordinatorHandler());

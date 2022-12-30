@@ -28,7 +28,9 @@ import org.apache.flink.configuration.ConfigConstants;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.HeartbeatManagerOptions;
 import org.apache.flink.configuration.MemorySize;
+import org.apache.flink.configuration.StateBackendOptions;
 import org.apache.flink.configuration.TaskManagerOptions;
+import org.apache.flink.core.execution.SavepointFormatType;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.jobgraph.SavepointRestoreSettings;
 import org.apache.flink.runtime.testutils.MiniClusterResourceConfiguration;
@@ -103,7 +105,7 @@ public abstract class SavepointMigrationTestBase extends TestBaseUtils {
         LOG.info("Created temporary checkpoint directory: " + checkpointDir + ".");
         LOG.info("Created savepoint directory: " + savepointDir + ".");
 
-        config.setString(CheckpointingOptions.STATE_BACKEND, "memory");
+        config.setString(StateBackendOptions.STATE_BACKEND, "memory");
         config.setString(
                 CheckpointingOptions.CHECKPOINTS_DIRECTORY, checkpointDir.toURI().toString());
         config.set(CheckpointingOptions.FS_SMALL_FILE_THRESHOLD, MemorySize.ZERO);
@@ -162,7 +164,8 @@ public abstract class SavepointMigrationTestBase extends TestBaseUtils {
 
         LOG.info("Triggering savepoint.");
 
-        CompletableFuture<String> savepointPathFuture = client.triggerSavepoint(jobID, null);
+        CompletableFuture<String> savepointPathFuture =
+                client.triggerSavepoint(jobID, null, SavepointFormatType.CANONICAL);
 
         String jobmanagerSavepointPath =
                 savepointPathFuture.get(deadLine.timeLeft().toMillis(), TimeUnit.MILLISECONDS);
@@ -205,6 +208,15 @@ public abstract class SavepointMigrationTestBase extends TestBaseUtils {
 
                 JobStatus jobStatus = jobStatusFuture.get(5, TimeUnit.SECONDS);
 
+                if (jobStatus == JobStatus.FAILED) {
+                    LOG.warn(
+                            "Job reached status failed",
+                            client.requestJobResult(jobID)
+                                    .get()
+                                    .getSerializedThrowable()
+                                    .get()
+                                    .deserializeError(ClassLoader.getSystemClassLoader()));
+                }
                 assertNotEquals(JobStatus.FAILED, jobStatus);
             } catch (Exception e) {
                 fail("Could not connect to job: " + e);

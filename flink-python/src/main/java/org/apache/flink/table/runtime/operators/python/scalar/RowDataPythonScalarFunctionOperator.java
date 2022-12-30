@@ -22,6 +22,7 @@ import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.fnexecution.v1.FlinkFnApi;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.functions.ScalarFunction;
 import org.apache.flink.table.functions.python.PythonFunctionInfo;
@@ -30,7 +31,7 @@ import org.apache.flink.table.types.logical.RowType;
 
 import java.io.IOException;
 
-/** The Python {@link ScalarFunction} operator for the blink planner. */
+/** The Python {@link ScalarFunction} operator. */
 @Internal
 public class RowDataPythonScalarFunctionOperator
         extends AbstractRowDataPythonScalarFunctionOperator {
@@ -50,17 +51,24 @@ public class RowDataPythonScalarFunctionOperator
             RowType outputType,
             int[] udfInputOffsets,
             int[] forwardedFields) {
-        super(config, scalarFunctions, inputType, outputType, udfInputOffsets, forwardedFields);
+        super(
+                config,
+                scalarFunctions,
+                inputType,
+                outputType,
+                udfInputOffsets,
+                forwardedFields,
+                toCoderParam(scalarFunctions),
+                FlinkFnApi.CoderParam.DataType.FLATTEN_ROW);
     }
 
     @Override
     @SuppressWarnings("unchecked")
     public void open() throws Exception {
         super.open();
-        udfInputTypeSerializer =
-                PythonTypeUtils.toBlinkTypeSerializer(userDefinedFunctionInputType);
+        udfInputTypeSerializer = PythonTypeUtils.toInternalSerializer(userDefinedFunctionInputType);
         udfOutputTypeSerializer =
-                PythonTypeUtils.toBlinkTypeSerializer(userDefinedFunctionOutputType);
+                PythonTypeUtils.toInternalSerializer(userDefinedFunctionOutputType);
     }
 
     @Override
@@ -80,5 +88,15 @@ public class RowDataPythonScalarFunctionOperator
         bais.setBuffer(rawUdfResult, 0, length);
         RowData udfResult = udfOutputTypeSerializer.deserialize(baisWrapper);
         rowDataWrapper.collect(reuseJoinedRow.replace(input, udfResult));
+    }
+
+    private static FlinkFnApi.CoderParam.DataType toCoderParam(
+            PythonFunctionInfo[] pythonFunctionInfos) {
+        for (PythonFunctionInfo pythonFunctionInfo : pythonFunctionInfos) {
+            if (pythonFunctionInfo.getPythonFunction().takesRowAsInput()) {
+                return FlinkFnApi.CoderParam.DataType.ROW;
+            }
+        }
+        return FlinkFnApi.CoderParam.DataType.FLATTEN_ROW;
     }
 }

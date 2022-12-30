@@ -18,7 +18,7 @@
 
 package org.apache.flink.table.runtime.operators.rank;
 
-import org.apache.flink.api.common.time.Time;
+import org.apache.flink.api.common.state.StateTtlConfig;
 import org.apache.flink.runtime.checkpoint.OperatorSubtaskState;
 import org.apache.flink.streaming.api.operators.KeyedProcessOperator;
 import org.apache.flink.streaming.util.KeyedOneInputStreamOperatorTestHarness;
@@ -28,16 +28,18 @@ import org.apache.flink.table.runtime.generated.GeneratedRecordComparator;
 import org.apache.flink.table.runtime.generated.GeneratedRecordEqualiser;
 import org.apache.flink.table.runtime.generated.RecordComparator;
 import org.apache.flink.table.runtime.generated.RecordEqualiser;
+import org.apache.flink.table.runtime.keyselector.RowDataKeySelector;
 import org.apache.flink.table.runtime.operators.sort.IntRecordComparator;
 import org.apache.flink.table.runtime.typeutils.InternalTypeInfo;
-import org.apache.flink.table.runtime.util.BinaryRowDataKeySelector;
 import org.apache.flink.table.runtime.util.GenericRowRecordSortComparator;
 import org.apache.flink.table.runtime.util.RowDataHarnessAssertor;
 import org.apache.flink.table.runtime.util.RowDataRecordEqualiser;
+import org.apache.flink.table.runtime.util.StateConfigUtil;
 import org.apache.flink.table.types.logical.BigIntType;
 import org.apache.flink.table.types.logical.IntType;
 import org.apache.flink.table.types.logical.LogicalType;
 import org.apache.flink.table.types.logical.VarCharType;
+import org.apache.flink.table.utils.HandwrittenSelectorUtil;
 
 import org.junit.Test;
 
@@ -52,8 +54,7 @@ import static org.apache.flink.table.runtime.util.StreamRecordUtils.updateBefore
 /** Base Tests for all subclass of {@link AbstractTopNFunction}. */
 abstract class TopNFunctionTestBase {
 
-    Time minTime = Time.milliseconds(10);
-    Time maxTime = Time.milliseconds(20);
+    StateTtlConfig ttlConfig = StateConfigUtil.createTtlConfig(10_000_000);
     long cacheSize = 10000L;
 
     InternalTypeInfo<RowData> inputRowType =
@@ -81,8 +82,9 @@ abstract class TopNFunctionTestBase {
 
     private int sortKeyIdx = 2;
 
-    BinaryRowDataKeySelector sortKeySelector =
-            new BinaryRowDataKeySelector(new int[] {sortKeyIdx}, inputRowType.toRowFieldTypes());
+    RowDataKeySelector sortKeySelector =
+            HandwrittenSelectorUtil.getRowDataSelector(
+                    new int[] {sortKeyIdx}, inputRowType.toRowFieldTypes());
 
     static GeneratedRecordEqualiser generatedEqualiser =
             new GeneratedRecordEqualiser("", "", new Object[0]) {
@@ -97,8 +99,8 @@ abstract class TopNFunctionTestBase {
 
     private int partitionKeyIdx = 0;
 
-    private BinaryRowDataKeySelector keySelector =
-            new BinaryRowDataKeySelector(
+    private RowDataKeySelector keySelector =
+            HandwrittenSelectorUtil.getRowDataSelector(
                     new int[] {partitionKeyIdx}, inputRowType.toRowFieldTypes());
 
     private InternalTypeInfo<RowData> outputTypeWithoutRowNumber = inputRowType;
@@ -124,8 +126,9 @@ abstract class TopNFunctionTestBase {
 
     // rowKey only used in UpdateRankFunction
     private int rowKeyIdx = 1;
-    BinaryRowDataKeySelector rowKeySelector =
-            new BinaryRowDataKeySelector(new int[] {rowKeyIdx}, inputRowType.toRowFieldTypes());
+    RowDataKeySelector rowKeySelector =
+            HandwrittenSelectorUtil.getRowDataSelector(
+                    new int[] {rowKeyIdx}, inputRowType.toRowFieldTypes());
 
     /** RankEnd column must be long, int or short type, but could not be string type yet. */
     @Test(expected = UnsupportedOperationException.class)

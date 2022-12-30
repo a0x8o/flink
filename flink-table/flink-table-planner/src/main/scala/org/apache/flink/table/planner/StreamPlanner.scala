@@ -35,6 +35,7 @@ import org.apache.flink.table.expressions.{ExpressionBridge, PlannerExpression, 
 import org.apache.flink.table.factories.{TableFactoryUtil, TableSinkFactoryContextImpl}
 import org.apache.flink.table.operations.OutputConversionModifyOperation.UpdateMode
 import org.apache.flink.table.operations._
+import org.apache.flink.table.parse.CalciteParser
 import org.apache.flink.table.plan.StreamOptimizer
 import org.apache.flink.table.plan.nodes.LogicalSink
 import org.apache.flink.table.plan.nodes.datastream.DataStreamRel
@@ -185,21 +186,14 @@ class StreamPlanner(
     }
   }
 
-  override def getCompletionHints(
-      statement: String,
-      position: Int)
-    : Array[String] = {
-    val planner = getFlinkPlanner
-    planner.getCompletionHints(statement, position)
-  }
-
   private def translateToRel(modifyOperation: ModifyOperation): (RelNode, Boolean) = {
     modifyOperation match {
       case s: UnregisteredSinkModifyOperation[_] =>
         writeToSink(s.getChild, s.getSink, "UnregisteredSink")
 
-      case s: SelectSinkOperation =>
-        val sink = new StreamSelectTableSink(s.getChild.getTableSchema)
+      case s: CollectModifyOperation =>
+        val sink = new StreamSelectTableSink(
+          TableSchema.fromResolvedSchema(s.getChild.getResolvedSchema))
         s.setSelectResultProvider(sink.getSelectResultProvider)
         writeToSink(s.getChild, sink, "collect")
 
@@ -244,7 +238,7 @@ class StreamPlanner(
         }
 
         val tableSink = new DataStreamTableSink(
-          outputConversion.getChild.getTableSchema,
+          TableSchema.fromResolvedSchema(outputConversion.getChild.getResolvedSchema),
           TypeConversions.fromDataTypeToLegacyInfo(outputConversion.getType),
           withChangeFlag)
         val input = getRelBuilder.tableOperation(modifyOperation.getChild).build()

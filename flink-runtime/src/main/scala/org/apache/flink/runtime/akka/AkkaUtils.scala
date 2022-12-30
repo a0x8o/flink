@@ -22,17 +22,16 @@ import java.io.IOException
 import java.net._
 import java.time
 import java.util.concurrent.{Callable, CompletableFuture}
-
 import akka.actor._
 import akka.pattern.{ask => akkaAsk}
 import com.typesafe.config.{Config, ConfigFactory}
 import org.apache.flink.api.common.time.Time
 import org.apache.flink.configuration._
-import org.apache.flink.runtime.clusterframework.BootstrapTools.{FixedThreadPoolExecutorConfiguration, ForkJoinExecutorConfiguration}
-import org.apache.flink.runtime.concurrent.FutureUtils
-import org.apache.flink.runtime.net.SSLUtils
+import org.apache.flink.runtime.concurrent.akka.AkkaFutureUtils
+import org.apache.flink.runtime.rpc.akka.AkkaBootstrapTools.{FixedThreadPoolExecutorConfiguration, ForkJoinExecutorConfiguration}
 import org.apache.flink.util.NetUtils
 import org.apache.flink.util.TimeUtils
+import org.apache.flink.util.concurrent.FutureUtils
 import org.apache.flink.util.function.FunctionUtils
 import org.jboss.netty.channel.ChannelException
 import org.jboss.netty.logging.{InternalLoggerFactory, Slf4JLoggerFactory}
@@ -388,20 +387,6 @@ object AkkaUtils {
     ConfigFactory.parseString(config)
   }
 
-  private def validateHeartbeat(pauseParamName: String,
-                                pauseValue: time.Duration,
-                                intervalParamName: String,
-                                intervalValue: time.Duration): Unit = {
-    if (pauseValue.compareTo(intervalValue) <= 0) {
-      throw new IllegalConfigurationException(
-        "%s [%s] must greater than %s [%s]",
-        pauseParamName,
-        pauseValue,
-        intervalParamName,
-        intervalValue)
-    }
-  }
-
   /**
    * Creates a Akka config for a remote actor system listening on port on the network interface
    * identified by bindAddress.
@@ -422,31 +407,13 @@ object AkkaUtils {
 
     val normalizedExternalHostname = NetUtils.unresolvedHostToNormalizedString(externalHostname)
 
-    val akkaAskTimeout = getTimeout(configuration)
+    val akkaAskTimeout = configuration.get(AkkaOptions.ASK_TIMEOUT_DURATION)
 
     val startupTimeout = TimeUtils.getStringInMillis(
       TimeUtils.parseDuration(
         configuration.getString(
           AkkaOptions.STARTUP_TIMEOUT,
           TimeUtils.getStringInMillis(akkaAskTimeout.multipliedBy(10L)))))
-
-    val transportHeartbeatIntervalDuration = TimeUtils.parseDuration(
-      configuration.getString(AkkaOptions.TRANSPORT_HEARTBEAT_INTERVAL))
-
-    val transportHeartbeatPauseDuration = TimeUtils.parseDuration(
-      configuration.getString(AkkaOptions.TRANSPORT_HEARTBEAT_PAUSE))
-
-    validateHeartbeat(
-      AkkaOptions.TRANSPORT_HEARTBEAT_PAUSE.key(),
-      transportHeartbeatPauseDuration,
-      AkkaOptions.TRANSPORT_HEARTBEAT_INTERVAL.key(),
-      transportHeartbeatIntervalDuration)
-
-    val transportHeartbeatInterval = TimeUtils.getStringInMillis(transportHeartbeatIntervalDuration)
-
-    val transportHeartbeatPause = TimeUtils.getStringInMillis(transportHeartbeatPauseDuration)
-
-    val transportThreshold = configuration.getDouble(AkkaOptions.TRANSPORT_THRESHOLD)
 
     val akkaTCPTimeout = TimeUtils.getStringInMillis(
       TimeUtils.parseDuration(configuration.getString(AkkaOptions.TCP_TIMEOUT)))
@@ -458,7 +425,7 @@ object AkkaUtils {
     val logLifecycleEvents = if (lifecycleEvents) "on" else "off"
 
     val akkaEnableSSLConfig = configuration.getBoolean(AkkaOptions.SSL_ENABLED) &&
-          SSLUtils.isInternalSSLEnabled(configuration)
+          SecurityOptions.isInternalSSLEnabled(configuration)
 
     val retryGateClosedFor = configuration.getLong(AkkaOptions.RETRY_GATE_CLOSED_FOR)
 
@@ -525,10 +492,11 @@ object AkkaUtils {
          |  remote {
          |    startup-timeout = $startupTimeout
          |
+         |    # disable the transport failure detector by setting very high values
          |    transport-failure-detector{
-         |      acceptable-heartbeat-pause = $transportHeartbeatPause
-         |      heartbeat-interval = $transportHeartbeatInterval
-         |      threshold = $transportThreshold
+         |      acceptable-heartbeat-pause = 6000 s
+         |      heartbeat-interval = 1000 s
+         |      threshold = 300
          |    }
          |
          |    netty {
@@ -769,31 +737,6 @@ object AkkaUtils {
     }
   }
 
-  def getTimeout(config: Configuration): time.Duration = {
-    TimeUtils.parseDuration(config.getString(AkkaOptions.ASK_TIMEOUT))
-  }
-
-  def getTimeoutAsTime(config: Configuration): Time = {
-    try {
-      val duration = getTimeout(config)
-
-      Time.milliseconds(duration.toMillis)
-    } catch {
-      case _: NumberFormatException =>
-        throw new IllegalConfigurationException(AkkaUtils.formatDurationParsingErrorMessage)
-    }
-  }
-
-  def getDefaultTimeout: Time = {
-    val duration = TimeUtils.parseDuration(AkkaOptions.ASK_TIMEOUT.defaultValue())
-
-    Time.milliseconds(duration.toMillis)
-  }
-
-  def getLookupTimeout(config: Configuration): time.Duration = {
-    TimeUtils.parseDuration(config.getString(AkkaOptions.LOOKUP_TIMEOUT))
-  }
-
   /** Returns the address of the given [[ActorSystem]]. The [[Address]] object contains
     * the port and the host under which the actor system is reachable
     *
@@ -940,7 +883,7 @@ object AkkaUtils {
     * @return Termination future
     */
   def terminateActorSystem(actorSystem: ActorSystem): CompletableFuture[Void] = {
-    FutureUtils.toJava(actorSystem.terminate).thenAccept(FunctionUtils.ignoreFn())
+    AkkaFutureUtils.toJava(actorSystem.terminate).thenAccept(FunctionUtils.ignoreFn())
   }
 }
 

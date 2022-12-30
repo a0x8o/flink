@@ -20,10 +20,9 @@ package org.apache.flink.runtime.akka
 
 import java.net.{InetAddress, InetSocketAddress}
 import java.util.Collections
-
 import org.apache.flink.configuration.{AkkaOptions, Configuration, IllegalConfigurationException, SecurityOptions}
-import org.apache.flink.runtime.clusterframework.BootstrapTools.FixedThreadPoolExecutorConfiguration
-import org.apache.flink.runtime.highavailability.HighAvailabilityServicesUtils.AddressResolution
+import org.apache.flink.runtime.rpc.AddressResolution
+import org.apache.flink.runtime.rpc.akka.AkkaBootstrapTools.FixedThreadPoolExecutorConfiguration
 import org.apache.flink.runtime.rpc.akka.AkkaRpcServiceUtils
 import org.apache.flink.runtime.rpc.akka.AkkaRpcServiceUtils.AkkaProtocol
 import org.apache.flink.util.NetUtils
@@ -31,21 +30,13 @@ import org.junit.runner.RunWith
 import org.scalatest.junit.JUnitRunner
 import org.scalatest.{BeforeAndAfterAll, FunSuite, Matchers}
 
+import java.time.Duration
+
 @RunWith(classOf[JUnitRunner])
 class AkkaUtilsTest
   extends FunSuite
   with Matchers
   with BeforeAndAfterAll {
-
-  test("getAkkaConfig should validate transport heartbeats") {
-    val configuration = new Configuration()
-    configuration.setString(
-      AkkaOptions.TRANSPORT_HEARTBEAT_PAUSE.key(),
-      AkkaOptions.TRANSPORT_HEARTBEAT_INTERVAL.defaultValue())
-    intercept[IllegalConfigurationException] {
-      AkkaUtils.getAkkaConfig(configuration, Some(("localhost", 31337)))
-    }
-  }
 
   test("getHostFromAkkaURL should return the correct host from a remote Akka URL") {
     val host = "127.0.0.1"
@@ -211,7 +202,7 @@ class AkkaUtilsTest
 
   test("getAkkaConfig should set startup timeout to be 10 times of ask timeout by default") {
     val configuration = new Configuration()
-    configuration.setString(AkkaOptions.ASK_TIMEOUT.key(), "100ms")
+    configuration.set(AkkaOptions.ASK_TIMEOUT_DURATION, Duration.ofMillis(100))
 
     val akkaConfig = AkkaUtils.getAkkaConfig(configuration, Some(("localhost", 31337)))
 

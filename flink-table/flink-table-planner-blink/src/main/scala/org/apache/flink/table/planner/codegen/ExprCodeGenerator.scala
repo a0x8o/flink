@@ -41,11 +41,11 @@ import org.apache.flink.table.runtime.typeutils.TypeCheckUtils.{isNumeric, isTem
 import org.apache.flink.table.types.logical._
 import org.apache.flink.table.types.logical.utils.LogicalTypeChecks.{getFieldCount, isCompositeType}
 import org.apache.flink.table.typeutils.TimeIndicatorTypeInfo
-
 import org.apache.calcite.rex._
 import org.apache.calcite.sql.{SqlKind, SqlOperator}
 import org.apache.calcite.sql.`type`.{ReturnTypes, SqlTypeName}
 import org.apache.calcite.util.{Sarg, TimestampString}
+import org.apache.flink.table.functions.BuiltInFunctionDefinitions
 
 import scala.collection.JavaConversions._
 
@@ -189,7 +189,7 @@ class ExprCodeGenerator(ctx: CodeGeneratorContext, nullableInput: Boolean)
         // attribute is proctime indicator.
         // we use a null literal and generate a timestamp when we need it.
         generateNullLiteral(
-          new TimestampType(true, TimestampKind.PROCTIME, 3),
+          new LocalZonedTimestampType(true, TimestampKind.PROCTIME, 3),
           ctx.nullCheck)
       case TimeIndicatorTypeInfo.PROCTIME_BATCH_MARKER =>
         // attribute is proctime field in a batch query.
@@ -797,14 +797,14 @@ class ExprCodeGenerator(ctx: CodeGeneratorContext, nullableInput: Boolean)
         // attribute is proctime indicator.
         // We use a null literal and generate a timestamp when we need it.
         generateNullLiteral(
-          new TimestampType(true, TimestampKind.PROCTIME, 3),
+          new LocalZonedTimestampType(true, TimestampKind.PROCTIME, 3),
           ctx.nullCheck)
 
       case PROCTIME_MATERIALIZE =>
         generateProctimeTimestamp(ctx, contextTerm)
 
       case STREAMRECORD_TIMESTAMP =>
-        generateRowtimeAccess(ctx, contextTerm)
+        generateRowtimeAccess(ctx, contextTerm, false)
 
       case _: SqlThrowExceptionFunction =>
         val nullValue = generateNullLiteral(resultType, nullCheck = true)
@@ -828,6 +828,10 @@ class ExprCodeGenerator(ctx: CodeGeneratorContext, nullableInput: Boolean)
           tsf.makeFunction(getOperandLiterals(operands), operands.map(_.resultType).toArray))
             .generate(ctx, operands, resultType)
 
+      case bsf: BridgingSqlFunction
+        if bsf.getDefinition eq BuiltInFunctionDefinitions.CURRENT_WATERMARK =>
+          generateWatermark(ctx, contextTerm, resultType)
+
       case _: BridgingSqlFunction =>
         new BridgingSqlFunctionCallGen(call).generate(ctx, operands, resultType)
 
@@ -836,6 +840,7 @@ class ExprCodeGenerator(ctx: CodeGeneratorContext, nullableInput: Boolean)
         StringCallGen.generateCallExpression(ctx, call.getOperator, operands, resultType)
           .getOrElse {
             FunctionGenerator
+              .getInstance(ctx.tableConfig)
               .getCallGenerator(
                 sqlOperator,
                 operands.map(expr => expr.resultType),

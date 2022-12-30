@@ -97,29 +97,10 @@ public class TableEnvironmentInternalTest extends JsonPlanTestBase {
     }
 
     @Test
-    public void testUnsupportedNodes() {
-        String srcTableDdl =
-                "CREATE TABLE src (\n"
-                        + "  a2 bigint,\n"
-                        + "  b2 int,\n"
-                        + "  c2 varchar\n"
-                        + ") with (\n"
-                        + "  'connector' = 'values',\n"
-                        + "  'bounded' = 'false')";
-        tableEnv.executeSql(srcTableDdl);
-
-        exception.expect(TableException.class);
-        exception.expectMessage(
-                "StreamExecJoin does not implement @JsonCreator annotation on constructor");
-        tableEnv.getJsonPlan(
-                "insert into MySink select a, b2, c2 from MyTable, src where a = a2 and b2 > 10");
-    }
-
-    @Test
     public void testBatchMode() {
-        EnvironmentSettings settings =
-                EnvironmentSettings.newInstance().useBlinkPlanner().inBatchMode().build();
-        tableEnv = (TableEnvironmentInternal) TableEnvironment.create(settings);
+        tableEnv =
+                (TableEnvironmentInternal)
+                        TableEnvironment.create(EnvironmentSettings.inBatchMode());
 
         String srcTableDdl =
                 "CREATE TABLE src (\n"

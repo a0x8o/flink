@@ -24,7 +24,6 @@ import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.JobStatus;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.configuration.JobManagerOptions;
 import org.apache.flink.queryablestate.KvStateID;
 import org.apache.flink.runtime.JobException;
 import org.apache.flink.runtime.accumulators.AccumulatorSnapshot;
@@ -74,6 +73,7 @@ import org.apache.flink.runtime.jobmaster.SerializedInputSplit;
 import org.apache.flink.runtime.jobmaster.SlotInfo;
 import org.apache.flink.runtime.jobmaster.slotpool.DeclarativeSlotPool;
 import org.apache.flink.runtime.jobmaster.slotpool.PhysicalSlot;
+import org.apache.flink.runtime.jobmaster.slotpool.ResourceCounter;
 import org.apache.flink.runtime.messages.FlinkJobNotFoundException;
 import org.apache.flink.runtime.messages.checkpoint.DeclineCheckpoint;
 import org.apache.flink.runtime.messages.webmonitor.JobDetails;
@@ -98,7 +98,6 @@ import org.apache.flink.runtime.scheduler.declarative.scalingpolicy.ScaleUpContr
 import org.apache.flink.runtime.scheduler.strategy.ExecutionVertexID;
 import org.apache.flink.runtime.shuffle.ShuffleMaster;
 import org.apache.flink.runtime.state.KeyGroupRange;
-import org.apache.flink.runtime.util.ResourceCounter;
 import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.FlinkException;
 import org.apache.flink.util.Preconditions;
@@ -186,8 +185,6 @@ public class DeclarativeScheduler
 
     private final ScaleUpController scaleUpController;
 
-    private final Duration resourceTimeout;
-
     private State state = new Created(this, LOG);
 
     public DeclarativeScheduler(
@@ -257,8 +254,6 @@ public class DeclarativeScheduler
         this.jobStatusListener = jobStatusListener;
 
         this.scaleUpController = new ReactiveScaleUpController(configuration);
-
-        this.resourceTimeout = configuration.get(JobManagerOptions.RESOURCE_WAIT_TIMEOUT);
     }
 
     private static void ensureFullyPipelinedStreamingJob(JobGraph jobGraph)
@@ -708,8 +703,9 @@ public class DeclarativeScheduler
         final ResourceCounter desiredResources = calculateDesiredResources();
         declarativeSlotPool.setResourceRequirements(desiredResources);
 
+        // TODO: add resourceTimeout parameter
         transitionToState(
-                new WaitingForResources(this, LOG, desiredResources, this.resourceTimeout));
+                new WaitingForResources(this, LOG, desiredResources, Duration.ofSeconds(10)));
     }
 
     private ResourceCounter calculateDesiredResources() {

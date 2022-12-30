@@ -298,7 +298,7 @@ object FlinkBatchRuleSets {
     // transpose calc past rank to reduce rank input fields
     CalcRankTransposeRule.INSTANCE,
     // remove output of rank number when it is a constant
-    RankNumberColumnRemoveRule.INSTANCE,
+    ConstantRankNumberColumnRemoveRule.INSTANCE,
 
     // calc rules
     CoreRules.FILTER_CALC_MERGE,
@@ -341,7 +341,8 @@ object FlinkBatchRuleSets {
     FlinkLogicalWindowAggregate.CONVERTER,
     FlinkLogicalSnapshot.CONVERTER,
     FlinkLogicalSink.CONVERTER,
-    FlinkLogicalLegacySink.CONVERTER
+    FlinkLogicalLegacySink.CONVERTER,
+    FlinkLogicalDistribution.BATCH_CONVERTER
   )
 
   /**
@@ -382,7 +383,9 @@ object FlinkBatchRuleSets {
     PythonCalcSplitRule.EXPAND_PROJECT,
     PythonCalcSplitRule.PUSH_CONDITION,
     PythonCalcSplitRule.REWRITE_PROJECT,
-    PythonMapMergeRule.INSTANCE
+    PythonMapMergeRule.INSTANCE,
+    // remove output of rank number when it is not used by successor calc
+    RedundantRankNumberColumnRemoveRule.INSTANCE
     )
 
   /**
@@ -435,7 +438,9 @@ object FlinkBatchRuleSets {
     BatchPhysicalPythonCorrelateRule.INSTANCE,
     // sink
     BatchPhysicalSinkRule.INSTANCE,
-    BatchPhysicalLegacySinkRule.INSTANCE
+    BatchPhysicalLegacySinkRule.INSTANCE,
+    // hive distribution
+    BatchPhysicalDistributionRule.INSTANCE
   )
 
   /**

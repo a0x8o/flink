@@ -64,7 +64,7 @@ class StreamCommonSubGraphBasedOptimizer(planner: StreamPlanner)
           ExecutionConfigOptions.TABLE_EXEC_MINIBATCH_ALLOW_LATENCY).toMillis
         Preconditions.checkArgument(miniBatchLatency > 0,
           "MiniBatch Latency must be greater than 0 ms.", null)
-        MiniBatchInterval(miniBatchLatency, MiniBatchMode.ProcTime)
+        new MiniBatchInterval(miniBatchLatency, MiniBatchMode.ProcTime)
       }  else {
         MiniBatchIntervalTrait.NONE.getMiniBatchInterval
       }
@@ -317,6 +317,7 @@ class StreamCommonSubGraphBasedOptimizer(planner: StreamPlanner)
       relNode,
       modifyKindSet,
       isUpdateBeforeRequired,
+      fmq.getUpsertKeys(relNode),
       statistic)
   }
 

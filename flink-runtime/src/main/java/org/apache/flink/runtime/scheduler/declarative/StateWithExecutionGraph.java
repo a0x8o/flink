@@ -130,7 +130,12 @@ abstract class StateWithExecutionGraph implements State {
 
     @Override
     public ArchivedExecutionGraph getJob() {
-        return ArchivedExecutionGraph.createFrom(executionGraph, getJobStatus());
+        return ArchivedExecutionGraph.createFrom(executionGraph);
+    }
+
+    @Override
+    public JobStatus getJobStatus() {
+        return executionGraph.getState();
     }
 
     @Override

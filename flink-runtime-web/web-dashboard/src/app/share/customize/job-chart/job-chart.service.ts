@@ -21,8 +21,8 @@ import { Subject } from 'rxjs';
 
 @Injectable({ providedIn: 'root' })
 export class JobChartService {
-  resize$ = new Subject();
-  resize() {
+  resize$ = new Subject<void>();
+  resize(): void {
     this.resize$.next();
   }
 }

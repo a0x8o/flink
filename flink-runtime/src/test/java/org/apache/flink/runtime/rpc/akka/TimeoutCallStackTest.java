@@ -20,12 +20,13 @@ package org.apache.flink.runtime.rpc.akka;
 
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.runtime.akka.AkkaUtils;
-import org.apache.flink.runtime.concurrent.FutureUtils;
+import org.apache.flink.runtime.concurrent.akka.AkkaFutureUtils;
 import org.apache.flink.runtime.rpc.RpcEndpoint;
 import org.apache.flink.runtime.rpc.RpcGateway;
 import org.apache.flink.runtime.rpc.RpcService;
 import org.apache.flink.runtime.rpc.RpcTimeout;
 import org.apache.flink.util.IOUtils;
+import org.apache.flink.util.concurrent.FutureUtils;
 
 import akka.actor.ActorSystem;
 import akka.actor.Terminated;
@@ -68,7 +69,7 @@ public class TimeoutCallStackTest {
 
         final CompletableFuture<Void> rpcTerminationFuture = rpcService.stopService();
         final CompletableFuture<Terminated> actorSystemTerminationFuture =
-                FutureUtils.toJava(actorSystem.terminate());
+                AkkaFutureUtils.toJava(actorSystem.terminate());
 
         FutureUtils.waitForAll(Arrays.asList(rpcTerminationFuture, actorSystemTerminationFuture))
                 .get(10_000, TimeUnit.MILLISECONDS);

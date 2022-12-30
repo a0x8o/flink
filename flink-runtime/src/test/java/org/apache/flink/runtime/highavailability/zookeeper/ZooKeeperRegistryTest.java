@@ -22,12 +22,13 @@ import org.apache.flink.api.common.JobID;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.HighAvailabilityOptions;
 import org.apache.flink.runtime.blob.VoidBlobStore;
-import org.apache.flink.runtime.concurrent.Executors;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.highavailability.RunningJobsRegistry;
 import org.apache.flink.runtime.highavailability.RunningJobsRegistry.JobSchedulingStatus;
+import org.apache.flink.runtime.rest.util.NoOpFatalErrorHandler;
 import org.apache.flink.runtime.util.ZooKeeperUtils;
 import org.apache.flink.util.TestLogger;
+import org.apache.flink.util.concurrent.Executors;
 
 import org.apache.curator.test.TestingServer;
 import org.junit.After;
@@ -53,7 +54,7 @@ public class ZooKeeperRegistryTest extends TestLogger {
 
     /**
      * Tests that the function of ZookeeperRegistry, setJobRunning(), setJobFinished(),
-     * isJobRunning()
+     * isJobRunning().
      */
     @Test
     public void testZooKeeperRegistry() throws Exception {
@@ -64,7 +65,8 @@ public class ZooKeeperRegistryTest extends TestLogger {
 
         final HighAvailabilityServices zkHaService =
                 new ZooKeeperHaServices(
-                        ZooKeeperUtils.startCuratorFramework(configuration),
+                        ZooKeeperUtils.startCuratorFramework(
+                                configuration, NoOpFatalErrorHandler.INSTANCE),
                         Executors.directExecutor(),
                         configuration,
                         new VoidBlobStore());
@@ -75,16 +77,21 @@ public class ZooKeeperRegistryTest extends TestLogger {
             JobID jobID = JobID.generate();
             assertEquals(JobSchedulingStatus.PENDING, zkRegistry.getJobSchedulingStatus(jobID));
 
+            // set when znode does not exist for job
             zkRegistry.setJobRunning(jobID);
             assertEquals(JobSchedulingStatus.RUNNING, zkRegistry.getJobSchedulingStatus(jobID));
 
+            // set when znode does exist for job
             zkRegistry.setJobFinished(jobID);
             assertEquals(JobSchedulingStatus.DONE, zkRegistry.getJobSchedulingStatus(jobID));
 
             zkRegistry.clearJob(jobID);
             assertEquals(JobSchedulingStatus.PENDING, zkRegistry.getJobSchedulingStatus(jobID));
+
+            // clear when znode does not exist for job
+            zkRegistry.clearJob(jobID);
         } finally {
-            zkHaService.close();
+            zkHaService.closeAndCleanupAllData();
         }
     }
 }

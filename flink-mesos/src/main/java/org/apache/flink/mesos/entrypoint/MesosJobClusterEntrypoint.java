@@ -26,7 +26,6 @@ import org.apache.flink.mesos.runtime.clusterframework.services.MesosServices;
 import org.apache.flink.mesos.runtime.clusterframework.services.MesosServicesUtils;
 import org.apache.flink.mesos.util.MesosConfiguration;
 import org.apache.flink.mesos.util.MesosUtils;
-import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.entrypoint.ClusterEntrypoint;
 import org.apache.flink.runtime.entrypoint.ClusterEntrypointUtils;
 import org.apache.flink.runtime.entrypoint.DynamicParametersConfigurationParserFactory;
@@ -36,11 +35,18 @@ import org.apache.flink.runtime.entrypoint.component.FileJobGraphRetriever;
 import org.apache.flink.runtime.util.EnvironmentInformation;
 import org.apache.flink.runtime.util.JvmShutdownSafeguard;
 import org.apache.flink.runtime.util.SignalHandler;
+import org.apache.flink.util.concurrent.FutureUtils;
 
 import java.io.IOException;
 import java.util.concurrent.CompletableFuture;
 
-/** Entry point for Mesos per-job clusters. */
+/**
+ * Entry point for Mesos per-job clusters.
+ *
+ * @deprecated Apache Mesos support was deprecated in Flink 1.13 and is subject to removal in the
+ *     future (see FLINK-22352 for further details).
+ */
+@Deprecated
 public class MesosJobClusterEntrypoint extends JobClusterEntrypoint {
 
     private MesosConfiguration schedulerConfiguration;
@@ -96,6 +102,9 @@ public class MesosJobClusterEntrypoint extends JobClusterEntrypoint {
                 LOG, MesosJobClusterEntrypoint.class.getSimpleName(), args);
         SignalHandler.register(LOG);
         JvmShutdownSafeguard.installAsShutdownHook(LOG);
+
+        LOG.warn(
+                "Mesos support was deprecated in Flink 1.13 and is subject to removal in the future (see FLINK-22352 for further details).");
 
         // load configuration incl. dynamic properties
         Configuration dynamicProperties =

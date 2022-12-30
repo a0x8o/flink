@@ -18,6 +18,7 @@
 
 package org.apache.flink.table.runtime.operators.rank;
 
+import org.apache.flink.api.common.state.StateTtlConfig;
 import org.apache.flink.api.common.state.ValueState;
 import org.apache.flink.api.common.state.ValueStateDescriptor;
 import org.apache.flink.api.common.typeinfo.Types;
@@ -25,11 +26,11 @@ import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.metrics.Counter;
 import org.apache.flink.metrics.Gauge;
+import org.apache.flink.streaming.api.functions.KeyedProcessFunction;
 import org.apache.flink.streaming.api.operators.KeyContext;
 import org.apache.flink.table.data.GenericRowData;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.data.utils.JoinedRowData;
-import org.apache.flink.table.runtime.functions.KeyedProcessFunctionWithCleanupState;
 import org.apache.flink.table.runtime.generated.GeneratedRecordComparator;
 import org.apache.flink.table.runtime.keyselector.RowDataKeySelector;
 import org.apache.flink.table.runtime.typeutils.InternalTypeInfo;
@@ -40,14 +41,11 @@ import org.apache.flink.util.Collector;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Collection;
 import java.util.Comparator;
-import java.util.Map;
 import java.util.function.Function;
 
 /** Base class for TopN Function. */
-public abstract class AbstractTopNFunction
-        extends KeyedProcessFunctionWithCleanupState<RowData, RowData, RowData> {
+public abstract class AbstractTopNFunction extends KeyedProcessFunction<RowData, RowData, RowData> {
 
     private static final Logger LOG = LoggerFactory.getLogger(AbstractTopNFunction.class);
 
@@ -62,6 +60,8 @@ public abstract class AbstractTopNFunction
 
     // we set default topN size to 100
     private static final long DEFAULT_TOPN_SIZE = 100;
+
+    protected final StateTtlConfig ttlConfig;
 
     // The util to compare two sortKey equals to each other.
     private GeneratedRecordComparator generatedSortKeyComparator;
@@ -88,8 +88,7 @@ public abstract class AbstractTopNFunction
     protected long requestCount = 0L;
 
     AbstractTopNFunction(
-            long minRetentionTime,
-            long maxRetentionTime,
+            StateTtlConfig ttlConfig,
             InternalTypeInfo<RowData> inputRowType,
             GeneratedRecordComparator generatedSortKeyComparator,
             RowDataKeySelector sortKeySelector,
@@ -97,7 +96,7 @@ public abstract class AbstractTopNFunction
             RankRange rankRange,
             boolean generateUpdateBefore,
             boolean outputRankNumber) {
-        super(minRetentionTime, maxRetentionTime);
+        this.ttlConfig = ttlConfig;
         // TODO support RANK and DENSE_RANK
         switch (rankType) {
             case ROW_NUMBER:
@@ -141,12 +140,14 @@ public abstract class AbstractTopNFunction
     @Override
     public void open(Configuration parameters) throws Exception {
         super.open(parameters);
-        initCleanupTimeState("RankFunctionCleanupTime");
         outputRow = new JoinedRowData();
 
         if (!isConstantRankEnd) {
             ValueStateDescriptor<Long> rankStateDesc =
                     new ValueStateDescriptor<>("rankEnd", Types.LONG);
+            if (ttlConfig.isEnabled()) {
+                rankStateDesc.enableTimeToLive(ttlConfig);
+            }
             rankEndState = getRuntimeContext().getState(rankStateDesc);
         }
         // compile comparator
@@ -226,20 +227,7 @@ public abstract class AbstractTopNFunction
      * @return true if the record should be put into the buffer.
      */
     protected boolean checkSortKeyInBufferRange(RowData sortKey, TopNBuffer buffer) {
-        Comparator<RowData> comparator = buffer.getSortKeyComparator();
-        Map.Entry<RowData, Collection<RowData>> worstEntry = buffer.lastEntry();
-        if (worstEntry == null) {
-            // return true if the buffer is empty.
-            return true;
-        } else {
-            RowData worstKey = worstEntry.getKey();
-            int compare = comparator.compare(sortKey, worstKey);
-            if (compare < 0) {
-                return true;
-            } else {
-                return buffer.getCurrentTopNum() < getDefaultTopNSize();
-            }
-        }
+        return buffer.checkSortKeyInBufferRange(sortKey, getDefaultTopNSize());
     }
 
     protected void registerMetric(long heapSize) {

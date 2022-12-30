@@ -20,13 +20,12 @@ package org.apache.flink.runtime.concurrent;
 
 import org.apache.flink.api.common.time.Deadline;
 import org.apache.flink.api.common.time.Time;
-import org.apache.flink.runtime.util.ExecutorThreadFactory;
-import org.apache.flink.runtime.util.FatalExitExceptionHandler;
 import org.apache.flink.util.ExceptionUtils;
+import org.apache.flink.util.FatalExitExceptionHandler;
+import org.apache.flink.util.concurrent.ExecutorThreadFactory;
+import org.apache.flink.util.concurrent.Executors;
 import org.apache.flink.util.function.RunnableWithException;
 import org.apache.flink.util.function.SupplierWithException;
-
-import akka.dispatch.OnComplete;
 
 import javax.annotation.Nullable;
 
@@ -54,8 +53,6 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
-
-import scala.concurrent.Future;
 
 import static org.apache.flink.util.Preconditions.checkCompletedNormally;
 import static org.apache.flink.util.Preconditions.checkNotNull;
@@ -595,6 +592,21 @@ public class FutureUtils {
     }
 
     // ------------------------------------------------------------------------
+    //  Delayed completion
+    // ------------------------------------------------------------------------
+
+    /**
+     * Asynchronously completes the future after a certain delay.
+     *
+     * @param future The future to complete.
+     * @param success The element to complete the future with.
+     * @param delay The delay after which the future should be completed.
+     */
+    public static <T> void completeDelayed(CompletableFuture<T> future, T success, Duration delay) {
+        Delayer.delay(() -> future.complete(success), delay.toMillis(), TimeUnit.MILLISECONDS);
+    }
+
+    // ------------------------------------------------------------------------
     //  Future actions
     // ------------------------------------------------------------------------
 
@@ -1046,33 +1058,6 @@ public class FutureUtils {
     // ------------------------------------------------------------------------
 
     /**
-     * Converts a Scala {@link Future} to a {@link CompletableFuture}.
-     *
-     * @param scalaFuture to convert to a Java 8 CompletableFuture
-     * @param <T> type of the future value
-     * @param <U> type of the original future
-     * @return Java 8 CompletableFuture
-     */
-    public static <T, U extends T> CompletableFuture<T> toJava(Future<U> scalaFuture) {
-        final CompletableFuture<T> result = new CompletableFuture<>();
-
-        scalaFuture.onComplete(
-                new OnComplete<U>() {
-                    @Override
-                    public void onComplete(Throwable failure, U success) {
-                        if (failure != null) {
-                            result.completeExceptionally(failure);
-                        } else {
-                            result.complete(success);
-                        }
-                    }
-                },
-                Executors.directExecutionContext());
-
-        return result;
-    }
-
-    /**
      * This function takes a {@link CompletableFuture} and a function to apply to this future. If
      * the input future is already done, this function returns {@link
      * CompletableFuture#thenApply(Function)}. Otherwise, the return value is {@link
@@ -1343,5 +1328,27 @@ public class FutureUtils {
                 target.complete(value);
             }
         };
+    }
+
+    /**
+     * Switches the execution context of the given source future. This works for normally and
+     * exceptionally completed futures.
+     *
+     * @param source source to switch the execution context for
+     * @param executor executor representing the new execution context
+     * @param <T> type of the source
+     * @return future which is executed by the given executor
+     */
+    public static <T> CompletableFuture<T> switchExecutor(
+            CompletableFuture<? extends T> source, Executor executor) {
+        return source.handleAsync(
+                (t, throwable) -> {
+                    if (throwable != null) {
+                        throw new CompletionException(throwable);
+                    } else {
+                        return t;
+                    }
+                },
+                executor);
     }
 }

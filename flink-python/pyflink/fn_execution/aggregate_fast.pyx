@@ -24,8 +24,8 @@ from typing import List, Dict
 
 from apache_beam.coders import PickleCoder, Coder
 
-from pyflink.fn_execution.aggregate import DataViewSpec, ListViewSpec, MapViewSpec, \
-    StateDataViewStore
+from pyflink.fn_execution.state_data_view import DataViewSpec, ListViewSpec, MapViewSpec, \
+    PerKeyStateDataViewStore
 from pyflink.fn_execution.state_impl import RemoteKeyedStateBackend
 from pyflink.table import AggregateFunction, TableAggregateFunction
 
@@ -432,7 +432,7 @@ cdef class GroupAggFunctionBase:
         self.buffer = {}
 
     cpdef void open(self, object function_context):
-        self.aggs_handle.open(StateDataViewStore(function_context, self.state_backend))
+        self.aggs_handle.open(PerKeyStateDataViewStore(function_context, self.state_backend))
 
     cpdef void close(self):
         self.aggs_handle.close()
@@ -444,12 +444,6 @@ cdef class GroupAggFunctionBase:
                 "accumulators", self.state_value_coder)
             accumulator_state.clear()
             self.aggs_handle.cleanup()
-
-    cdef bint is_retract_msg(self, InternalRowKind row_kind):
-        return row_kind == InternalRowKind.UPDATE_BEFORE or row_kind == InternalRowKind.DELETE
-
-    cdef bint is_accumulate_msg(self, InternalRowKind row_kind):
-        return row_kind == InternalRowKind.UPDATE_AFTER or row_kind == InternalRowKind.INSERT
 
     cpdef void process_element(self, InternalRow input_data):
         cdef list input_value, key
@@ -503,7 +497,7 @@ cdef class GroupAggFunction(GroupAggFunctionBase):
             if accumulators is None:
                 for i in range(input_rows_num):
                     input_data = input_rows[i]
-                    if self.is_retract_msg(input_data.row_kind):
+                    if input_data.is_retract_msg():
                         start_index += 1
                     else:
                         break
@@ -520,7 +514,7 @@ cdef class GroupAggFunction(GroupAggFunctionBase):
             for i in range(start_index, input_rows_num):
                 input_data = input_rows[i]
                 # update aggregate result and set to the newRow
-                if self.is_accumulate_msg(input_data.row_kind):
+                if input_data.is_accumulate_msg():
                     # accumulate input
                     aggs_handle.accumulate(input_data.values)
                 else:
@@ -609,7 +603,7 @@ cdef class GroupTableAggFunction(GroupAggFunctionBase):
             if accumulators is None:
                 for i in range(input_rows_num):
                     input_data = input_rows[i]
-                    if self.is_retract_msg(input_data.row_kind):
+                    if input_data.is_retract_msg():
                         start_index += 1
                     else:
                         break
@@ -627,7 +621,7 @@ cdef class GroupTableAggFunction(GroupAggFunctionBase):
             for i in range(start_index, input_rows_num):
                 input_data = input_rows[i]
                 # update aggregate result and set to the newRow
-                if self.is_accumulate_msg(input_data.row_kind):
+                if input_data.is_accumulate_msg():
                     # accumulate input
                     aggs_handle.accumulate(input_data.values)
                 else:

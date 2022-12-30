@@ -24,7 +24,6 @@ import org.apache.flink.api.common.time.Time;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
 import org.apache.flink.runtime.clusterframework.types.SlotID;
-import org.apache.flink.runtime.concurrent.ScheduledExecutor;
 import org.apache.flink.runtime.instance.InstanceID;
 import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.metrics.MetricNames;
@@ -35,6 +34,7 @@ import org.apache.flink.runtime.resourcemanager.WorkerResourceSpec;
 import org.apache.flink.runtime.resourcemanager.exceptions.ResourceManagerException;
 import org.apache.flink.runtime.resourcemanager.exceptions.UnfulfillableSlotRequestException;
 import org.apache.flink.runtime.resourcemanager.registration.TaskExecutorConnection;
+import org.apache.flink.runtime.rest.messages.taskmanager.SlotInfo;
 import org.apache.flink.runtime.slots.ResourceRequirements;
 import org.apache.flink.runtime.taskexecutor.SlotReport;
 import org.apache.flink.runtime.taskexecutor.SlotStatus;
@@ -45,6 +45,7 @@ import org.apache.flink.util.FlinkException;
 import org.apache.flink.util.MathUtils;
 import org.apache.flink.util.OptionalConsumer;
 import org.apache.flink.util.Preconditions;
+import org.apache.flink.util.concurrent.ScheduledExecutor;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -53,6 +54,7 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -264,6 +266,12 @@ public class SlotManagerImpl implements SlotManager {
                 .orElse(ResourceProfile.ZERO);
     }
 
+    @Override
+    public Collection<SlotInfo> getAllocatedSlotsOf(InstanceID instanceID) {
+        // This information is currently not supported for this slot manager.
+        return Collections.emptyList();
+    }
+
     @VisibleForTesting
     public int getNumberPendingTaskManagerSlots() {
         return pendingSlots.size();
@@ -384,6 +392,9 @@ public class SlotManagerImpl implements SlotManager {
     // ---------------------------------------------------------------------------------------------
     // Public API
     // ---------------------------------------------------------------------------------------------
+
+    @Override
+    public void clearResourceRequirements(JobID jobId) {}
 
     @Override
     public void processResourceRequirements(ResourceRequirements resourceRequirements) {
@@ -817,6 +828,11 @@ public class SlotManagerImpl implements SlotManager {
         final Set<TaskManagerSlotId> matchingPendingSlots = new HashSet<>();
 
         for (SlotStatus slotStatus : slotReport) {
+            if (slotStatus.getAllocationID() != null) {
+                // only empty registered slots can match pending slots
+                continue;
+            }
+
             for (PendingTaskManagerSlot pendingTaskManagerSlot : pendingSlots.values()) {
                 if (!matchingPendingSlots.contains(pendingTaskManagerSlot.getTaskManagerSlotId())
                         && isPendingSlotExactlyMatchingResourceProfile(

@@ -26,7 +26,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.Assert.assertEquals;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /** Test base for testing {@link Descriptor} together with {@link DescriptorValidator}. */
 public abstract class DescriptorTestBase {
@@ -43,6 +43,10 @@ public abstract class DescriptorTestBase {
     @Test
     public void testValidation() {
         final List<Descriptor> descriptors = descriptors();
+        if (descriptors.isEmpty()) {
+            return;
+        }
+
         final List<Map<String, String>> properties = properties();
 
         Preconditions.checkArgument(descriptors.size() == properties.size());
@@ -54,7 +58,7 @@ public abstract class DescriptorTestBase {
 
     protected void verifyProperties(Descriptor descriptor, Map<String, String> expected) {
         // test produced properties
-        assertEquals(expected, descriptor.toProperties());
+        assertThat(descriptor.toProperties()).isEqualTo(expected);
 
         // test validation logic
         final DescriptorProperties properties = new DescriptorProperties();

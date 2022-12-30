@@ -18,6 +18,7 @@
 
 package org.apache.flink.table.planner.plan.rules.logical;
 
+import org.apache.flink.table.functions.python.PythonFunctionKind;
 import org.apache.flink.table.planner.plan.nodes.logical.FlinkLogicalCalc;
 import org.apache.flink.table.planner.plan.utils.PythonUtil;
 
@@ -65,7 +66,7 @@ public class PythonMapMergeRule extends RelOptRule {
                         .collect(Collectors.toList());
 
         if (topProjects.size() != 1
-                || PythonUtil.isNonPythonCall(topProjects.get(0))
+                || !PythonUtil.isPythonCall(topProjects.get(0), null)
                 || !PythonUtil.takesRowAsInput((RexCall) topProjects.get(0))) {
             return false;
         }
@@ -75,12 +76,20 @@ public class PythonMapMergeRule extends RelOptRule {
                 bottomProgram.getProjectList().stream()
                         .map(bottomProgram::expandLocalRef)
                         .collect(Collectors.toList());
-        if (bottomProjects.size() != 1 || PythonUtil.isNonPythonCall(bottomProjects.get(0))) {
+        if (bottomProjects.size() != 1 || !PythonUtil.isPythonCall(bottomProjects.get(0), null)) {
+            return false;
+        }
+
+        // Only Python Functions with same Python function kind can be merged together.
+        if (PythonUtil.isPythonCall(topProjects.get(0), PythonFunctionKind.GENERAL)
+                ^ PythonUtil.isPythonCall(bottomProjects.get(0), PythonFunctionKind.GENERAL)) {
             return false;
         }
 
         RexProgram middleProgram = middleCalc.getProgram();
-        if (middleProgram.getCondition() != null) {
+        if (topProgram.getCondition() != null
+                || middleProgram.getCondition() != null
+                || bottomProgram.getCondition() != null) {
             return false;
         }
 
