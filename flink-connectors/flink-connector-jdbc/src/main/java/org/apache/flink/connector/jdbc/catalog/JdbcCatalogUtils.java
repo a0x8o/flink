@@ -19,8 +19,9 @@
 package org.apache.flink.connector.jdbc.catalog;
 
 import org.apache.flink.connector.jdbc.dialect.JdbcDialect;
-import org.apache.flink.connector.jdbc.dialect.JdbcDialects;
-import org.apache.flink.connector.jdbc.dialect.PostgresDialect;
+import org.apache.flink.connector.jdbc.dialect.JdbcDialectLoader;
+import org.apache.flink.connector.jdbc.dialect.mysql.MySqlDialect;
+import org.apache.flink.connector.jdbc.dialect.psql.PostgresDialect;
 
 import static org.apache.flink.util.Preconditions.checkArgument;
 
@@ -38,15 +39,20 @@ public class JdbcCatalogUtils {
 
     /** Create catalog instance from given information. */
     public static AbstractJdbcCatalog createCatalog(
+            ClassLoader userClassLoader,
             String catalogName,
             String defaultDatabase,
             String username,
             String pwd,
             String baseUrl) {
-        JdbcDialect dialect = JdbcDialects.get(baseUrl).get();
+        JdbcDialect dialect = JdbcDialectLoader.load(baseUrl, userClassLoader);
 
         if (dialect instanceof PostgresDialect) {
-            return new PostgresCatalog(catalogName, defaultDatabase, username, pwd, baseUrl);
+            return new PostgresCatalog(
+                    userClassLoader, catalogName, defaultDatabase, username, pwd, baseUrl);
+        } else if (dialect instanceof MySqlDialect) {
+            return new MySqlCatalog(
+                    userClassLoader, catalogName, defaultDatabase, username, pwd, baseUrl);
         } else {
             throw new UnsupportedOperationException(
                     String.format("Catalog for '%s' is not supported yet.", dialect));

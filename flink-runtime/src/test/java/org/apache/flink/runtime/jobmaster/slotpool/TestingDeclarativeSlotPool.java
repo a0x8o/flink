@@ -56,6 +56,14 @@ final class TestingDeclarativeSlotPool implements DeclarativeSlotPool {
                     Collection<SlotOffer>>
             offerSlotsFunction;
 
+    private final QuadFunction<
+                    Collection<? extends SlotOffer>,
+                    TaskManagerLocation,
+                    TaskManagerGateway,
+                    Long,
+                    Collection<SlotOffer>>
+            registerSlotsFunction;
+
     private final Supplier<Collection<SlotInfoWithUtilization>> getFreeSlotsInformationSupplier;
 
     private final Supplier<Collection<? extends SlotInfo>> getAllSlotsInformationSupplier;
@@ -70,6 +78,8 @@ final class TestingDeclarativeSlotPool implements DeclarativeSlotPool {
             freeReservedSlotFunction;
 
     private final Function<ResourceID, Boolean> containsSlotsFunction;
+
+    private final Function<AllocationID, Boolean> containsFreeSlotFunction;
 
     private final LongConsumer releaseIdleSlotsConsumer;
 
@@ -86,6 +96,13 @@ final class TestingDeclarativeSlotPool implements DeclarativeSlotPool {
                             Long,
                             Collection<SlotOffer>>
                     offerSlotsFunction,
+            QuadFunction<
+                            Collection<? extends SlotOffer>,
+                            TaskManagerLocation,
+                            TaskManagerGateway,
+                            Long,
+                            Collection<SlotOffer>>
+                    registerSlotsFunction,
             Supplier<Collection<SlotInfoWithUtilization>> getFreeSlotsInformationSupplier,
             Supplier<Collection<? extends SlotInfo>> getAllSlotsInformationSupplier,
             BiFunction<ResourceID, Exception, ResourceCounter> releaseSlotsFunction,
@@ -93,12 +110,14 @@ final class TestingDeclarativeSlotPool implements DeclarativeSlotPool {
             BiFunction<AllocationID, ResourceProfile, PhysicalSlot> reserveFreeSlotFunction,
             TriFunction<AllocationID, Throwable, Long, ResourceCounter> freeReservedSlotFunction,
             Function<ResourceID, Boolean> containsSlotsFunction,
+            Function<AllocationID, Boolean> containsFreeSlotFunction,
             LongConsumer releaseIdleSlotsConsumer,
             Consumer<ResourceCounter> setResourceRequirementsConsumer) {
         this.increaseResourceRequirementsByConsumer = increaseResourceRequirementsByConsumer;
         this.decreaseResourceRequirementsByConsumer = decreaseResourceRequirementsByConsumer;
         this.getResourceRequirementsSupplier = getResourceRequirementsSupplier;
         this.offerSlotsFunction = offerSlotsFunction;
+        this.registerSlotsFunction = registerSlotsFunction;
         this.getFreeSlotsInformationSupplier = getFreeSlotsInformationSupplier;
         this.getAllSlotsInformationSupplier = getAllSlotsInformationSupplier;
         this.releaseSlotsFunction = releaseSlotsFunction;
@@ -106,6 +125,7 @@ final class TestingDeclarativeSlotPool implements DeclarativeSlotPool {
         this.reserveFreeSlotFunction = reserveFreeSlotFunction;
         this.freeReservedSlotFunction = freeReservedSlotFunction;
         this.containsSlotsFunction = containsSlotsFunction;
+        this.containsFreeSlotFunction = containsFreeSlotFunction;
         this.releaseIdleSlotsConsumer = releaseIdleSlotsConsumer;
         this.setResourceRequirementsConsumer = setResourceRequirementsConsumer;
     }
@@ -141,6 +161,16 @@ final class TestingDeclarativeSlotPool implements DeclarativeSlotPool {
     }
 
     @Override
+    public Collection<SlotOffer> registerSlots(
+            Collection<? extends SlotOffer> slots,
+            TaskManagerLocation taskManagerLocation,
+            TaskManagerGateway taskManagerGateway,
+            long currentTime) {
+        return registerSlotsFunction.apply(
+                slots, taskManagerLocation, taskManagerGateway, currentTime);
+    }
+
+    @Override
     public Collection<SlotInfoWithUtilization> getFreeSlotsInformation() {
         return getFreeSlotsInformationSupplier.get();
     }
@@ -148,6 +178,11 @@ final class TestingDeclarativeSlotPool implements DeclarativeSlotPool {
     @Override
     public Collection<? extends SlotInfo> getAllSlotsInformation() {
         return getAllSlotsInformationSupplier.get();
+    }
+
+    @Override
+    public boolean containsFreeSlot(AllocationID allocationId) {
+        return containsFreeSlotFunction.apply(allocationId);
     }
 
     @Override

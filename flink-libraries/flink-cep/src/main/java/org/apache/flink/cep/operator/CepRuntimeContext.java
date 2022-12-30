@@ -40,11 +40,10 @@ import org.apache.flink.api.common.state.ReducingState;
 import org.apache.flink.api.common.state.ReducingStateDescriptor;
 import org.apache.flink.api.common.state.ValueState;
 import org.apache.flink.api.common.state.ValueStateDescriptor;
-import org.apache.flink.metrics.MetricGroup;
+import org.apache.flink.metrics.groups.OperatorMetricGroup;
 
 import java.io.Serializable;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
@@ -66,7 +65,7 @@ class CepRuntimeContext implements RuntimeContext {
     }
 
     @Override
-    public Optional<JobID> getJobId() {
+    public JobID getJobId() {
         return runtimeContext.getJobId();
     }
 
@@ -76,7 +75,7 @@ class CepRuntimeContext implements RuntimeContext {
     }
 
     @Override
-    public MetricGroup getMetricGroup() {
+    public OperatorMetricGroup getMetricGroup() {
         return runtimeContext.getMetricGroup();
     }
 

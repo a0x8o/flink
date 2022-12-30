@@ -20,8 +20,8 @@ package org.apache.flink.table.operations.utils;
 
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.table.api.TableException;
-import org.apache.flink.table.api.TableSchema;
 import org.apache.flink.table.api.ValidationException;
+import org.apache.flink.table.catalog.ResolvedSchema;
 import org.apache.flink.table.expressions.CallExpression;
 import org.apache.flink.table.expressions.Expression;
 import org.apache.flink.table.expressions.FieldReferenceExpression;
@@ -51,7 +51,6 @@ import static org.apache.flink.table.functions.BuiltInFunctionDefinitions.GET;
 import static org.apache.flink.table.operations.utils.OperationExpressionsUtils.extractName;
 import static org.apache.flink.table.operations.utils.OperationExpressionsUtils.extractNames;
 import static org.apache.flink.table.types.logical.LogicalTypeRoot.INTEGER;
-import static org.apache.flink.table.types.logical.utils.LogicalTypeChecks.hasRoot;
 
 /** Utility class for creating valid {@link ProjectQueryOperation} operation. */
 @Internal
@@ -89,9 +88,8 @@ final class ProjectionOperationFactory {
                         .map(ResolvedExpression::getOutputDataType)
                         .toArray(DataType[]::new);
 
-        TableSchema tableSchema = TableSchema.builder().fields(fieldNames, fieldTypes).build();
-
-        return new ProjectQueryOperation(finalExpression, child, tableSchema);
+        return new ProjectQueryOperation(
+                finalExpression, child, ResolvedSchema.physical(fieldNames, fieldTypes));
     }
 
     private String[] validateAndGetUniqueNames(List<ResolvedExpression> namedExpressions) {
@@ -239,7 +237,7 @@ final class ProjectionOperationFactory {
             final LogicalType keyType = key.getOutputDataType().getLogicalType();
 
             final String keySuffix;
-            if (hasRoot(keyType, INTEGER)) {
+            if (keyType.is(INTEGER)) {
                 keySuffix =
                         "$_"
                                 + key.getValueAs(Integer.class)

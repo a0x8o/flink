@@ -23,7 +23,7 @@ import org.apache.flink.kubernetes.KubernetesResourceManagerDriver;
 import org.apache.flink.kubernetes.KubernetesWorkerNode;
 import org.apache.flink.kubernetes.configuration.KubernetesConfigOptions;
 import org.apache.flink.kubernetes.configuration.KubernetesResourceManagerDriverConfiguration;
-import org.apache.flink.kubernetes.kubeclient.DefaultKubeClientFactory;
+import org.apache.flink.kubernetes.kubeclient.FlinkKubeClientFactory;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerRuntimeServicesConfiguration;
 import org.apache.flink.runtime.resourcemanager.active.ActiveResourceManager;
 import org.apache.flink.runtime.resourcemanager.active.ActiveResourceManagerFactory;
@@ -54,11 +54,13 @@ public class KubernetesResourceManagerFactory
         final KubernetesResourceManagerDriverConfiguration
                 kubernetesResourceManagerDriverConfiguration =
                         new KubernetesResourceManagerDriverConfiguration(
-                                configuration.getString(KubernetesConfigOptions.CLUSTER_ID));
+                                configuration.getString(KubernetesConfigOptions.CLUSTER_ID),
+                                webInterfaceUrl);
 
         return new KubernetesResourceManagerDriver(
                 configuration,
-                DefaultKubeClientFactory.getInstance(),
+                FlinkKubeClientFactory.getInstance()
+                        .fromConfiguration(configuration, "resourcemanager"),
                 kubernetesResourceManagerDriverConfiguration);
     }
 

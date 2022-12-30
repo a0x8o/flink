@@ -18,9 +18,9 @@
 
 package org.apache.flink.connector.jdbc.table;
 
-import org.apache.flink.connector.jdbc.internal.options.JdbcLookupOptions;
-import org.apache.flink.connector.jdbc.internal.options.JdbcOptions;
+import org.apache.flink.connector.jdbc.internal.options.JdbcConnectorOptions;
 import org.apache.flink.table.api.DataTypes;
+import org.apache.flink.table.connector.source.lookup.LookupOptions;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.data.StringData;
 import org.apache.flink.table.types.DataType;
@@ -28,7 +28,8 @@ import org.apache.flink.table.types.logical.LogicalType;
 import org.apache.flink.table.types.logical.RowType;
 import org.apache.flink.util.Collector;
 
-import org.junit.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -37,23 +38,23 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 import static org.apache.flink.connector.jdbc.JdbcTestFixture.DERBY_EBOOKSHOP_DB;
-import static org.junit.Assert.assertEquals;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /** Test suite for {@link JdbcRowDataLookupFunction}. */
 public class JdbcRowDataLookupFunctionTest extends JdbcLookupTestBase {
 
-    private static String[] fieldNames = new String[] {"id1", "id2", "comment1", "comment2"};
-    private static DataType[] fieldDataTypes =
+    private static final String[] fieldNames = new String[] {"id1", "id2", "comment1", "comment2"};
+    private static final DataType[] fieldDataTypes =
             new DataType[] {
                 DataTypes.INT(), DataTypes.STRING(), DataTypes.STRING(), DataTypes.STRING()
             };
 
-    private static String[] lookupKeys = new String[] {"id1", "id2"};
+    private static final String[] lookupKeys = new String[] {"id1", "id2"};
 
-    @Test
-    public void testEval() throws Exception {
-
-        JdbcRowDataLookupFunction lookupFunction = buildRowDataLookupFunction();
+    @ParameterizedTest(name = "withFailure = {0}")
+    @ValueSource(booleans = {false, true})
+    public void testLookup(boolean withFailure) throws Exception {
+        JdbcRowDataLookupFunction lookupFunction = buildRowDataLookupFunction(withFailure);
 
         ListOutputCollector collector = new ListOutputCollector();
         lookupFunction.setCollector(collector);
@@ -61,10 +62,12 @@ public class JdbcRowDataLookupFunctionTest extends JdbcLookupTestBase {
         lookupFunction.open(null);
 
         lookupFunction.eval(1, StringData.fromString("1"));
-
-        // close connection
-        lookupFunction.getDbConnection().close();
-
+        if (withFailure) {
+            // Close connection here, and this will be recovered by retry
+            if (lookupFunction.getDbConnection() != null) {
+                lookupFunction.getDbConnection().close();
+            }
+        }
         lookupFunction.eval(2, StringData.fromString("3"));
 
         List<String> result =
@@ -77,18 +80,16 @@ public class JdbcRowDataLookupFunctionTest extends JdbcLookupTestBase {
         expected.add("+I(2,3,null,23-c2)");
         Collections.sort(expected);
 
-        assertEquals(expected, result);
+        assertThat(result).isEqualTo(expected);
     }
 
-    private JdbcRowDataLookupFunction buildRowDataLookupFunction() {
-        JdbcOptions jdbcOptions =
-                JdbcOptions.builder()
+    private JdbcRowDataLookupFunction buildRowDataLookupFunction(boolean withFailure) {
+        JdbcConnectorOptions jdbcOptions =
+                JdbcConnectorOptions.builder()
                         .setDriverName(DERBY_EBOOKSHOP_DB.getDriverClass())
                         .setDBUrl(DB_URL)
                         .setTableName(LOOKUP_TABLE)
                         .build();
-
-        JdbcLookupOptions lookupOptions = JdbcLookupOptions.builder().build();
 
         RowType rowType =
                 RowType.of(
@@ -97,16 +98,13 @@ public class JdbcRowDataLookupFunctionTest extends JdbcLookupTestBase {
                                 .toArray(LogicalType[]::new),
                         fieldNames);
 
-        JdbcRowDataLookupFunction lookupFunction =
-                new JdbcRowDataLookupFunction(
-                        jdbcOptions,
-                        lookupOptions,
-                        fieldNames,
-                        fieldDataTypes,
-                        lookupKeys,
-                        rowType);
-
-        return lookupFunction;
+        return new JdbcRowDataLookupFunction(
+                jdbcOptions,
+                withFailure ? 1 : LookupOptions.MAX_RETRIES.defaultValue(),
+                fieldNames,
+                fieldDataTypes,
+                lookupKeys,
+                rowType);
     }
 
     private static final class ListOutputCollector implements Collector<RowData> {

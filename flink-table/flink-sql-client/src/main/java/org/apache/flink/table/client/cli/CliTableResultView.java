@@ -22,8 +22,8 @@ import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.table.client.gateway.ResultDescriptor;
 import org.apache.flink.table.client.gateway.SqlExecutionException;
 import org.apache.flink.table.client.gateway.TypedResult;
-import org.apache.flink.table.utils.PrintUtils;
-import org.apache.flink.types.Row;
+import org.apache.flink.table.data.RowData;
+import org.apache.flink.table.utils.print.PrintStyle;
 
 import org.jline.keymap.KeyMap;
 import org.jline.utils.AttributedString;
@@ -37,6 +37,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import static org.apache.flink.table.client.cli.CliUtils.TIME_FORMATTER;
 import static org.apache.flink.table.client.cli.CliUtils.formatTwoLineHelpOptions;
@@ -59,7 +60,15 @@ public class CliTableResultView extends CliResultView<CliTableResultView.ResultT
     private static final int LAST_PAGE = 0;
 
     public CliTableResultView(CliClient client, ResultDescriptor resultDescriptor) {
-        super(client, resultDescriptor);
+        super(
+                client,
+                resultDescriptor,
+                PrintStyle.tableauWithTypeInferredColumnWidths(
+                        resultDescriptor.getResultSchema(),
+                        resultDescriptor.getRowDataStringConverter(),
+                        resultDescriptor.maxColumnWidth(),
+                        false,
+                        false));
 
         refreshInterval = DEFAULT_REFRESH_INTERVAL;
         pageCount = 1;
@@ -75,11 +84,6 @@ public class CliTableResultView extends CliResultView<CliTableResultView.ResultT
     @Override
     protected String[] getRow(String[] resultRow) {
         return resultRow;
-    }
-
-    @Override
-    protected int computeColumnWidth(int idx) {
-        return MAX_COLUMN_WIDTH;
     }
 
     @Override
@@ -264,13 +268,15 @@ public class CliTableResultView extends CliResultView<CliTableResultView.ResultT
     protected List<AttributedString> computeMainHeaderLines() {
         final AttributedStringBuilder schemaHeader = new AttributedStringBuilder();
 
-        Arrays.stream(resultDescriptor.getResultSchema().getFieldNames())
+        IntStream.range(0, resultDescriptor.getResultSchema().getColumnCount())
                 .forEach(
-                        s -> {
-                            schemaHeader.append(' ');
-                            schemaHeader.style(AttributedStyle.DEFAULT.underline());
-                            normalizeColumn(schemaHeader, s, MAX_COLUMN_WIDTH);
+                        idx -> {
                             schemaHeader.style(AttributedStyle.DEFAULT);
+                            schemaHeader.append(' ');
+                            String columnName =
+                                    resultDescriptor.getResultSchema().getColumnNames().get(idx);
+                            schemaHeader.style(AttributedStyle.DEFAULT.underline());
+                            normalizeColumn(schemaHeader, columnName, columnWidths[idx]);
                         });
 
         return Collections.singletonList(schemaHeader.toAttributedString());
@@ -286,7 +292,7 @@ public class CliTableResultView extends CliResultView<CliTableResultView.ResultT
     private void updatePage() {
         // retrieve page
         final int retrievalPage = page == LAST_PAGE ? pageCount : page;
-        final List<Row> rows;
+        final List<RowData> rows;
         try {
             rows =
                     client.getExecutor()
@@ -298,7 +304,9 @@ public class CliTableResultView extends CliResultView<CliTableResultView.ResultT
 
         // convert page
         final List<String[]> stringRows =
-                rows.stream().map(PrintUtils::rowToString).collect(Collectors.toList());
+                rows.stream()
+                        .map(resultDescriptor.getRowDataStringConverter()::convert)
+                        .collect(Collectors.toList());
 
         // update results
         if (previousResultsPage == retrievalPage) {

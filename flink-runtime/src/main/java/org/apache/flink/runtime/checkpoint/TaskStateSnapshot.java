@@ -22,14 +22,23 @@ import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.state.CompositeStateHandle;
 import org.apache.flink.runtime.state.SharedStateRegistry;
 import org.apache.flink.runtime.state.StateUtil;
+import org.apache.flink.util.FlinkRuntimeException;
 import org.apache.flink.util.Preconditions;
+import org.apache.flink.util.SerializedValue;
+
+import org.apache.flink.shaded.guava30.com.google.common.collect.Iterators;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.function.Function;
+
+import static org.apache.flink.runtime.checkpoint.InflightDataRescalingDescriptor.NO_RESCALE;
 
 /**
  * This class encapsulates state handles to the snapshots of all operator instances executed within
@@ -51,19 +60,45 @@ public class TaskStateSnapshot implements CompositeStateHandle {
 
     private static final long serialVersionUID = 1L;
 
+    public static final TaskStateSnapshot FINISHED_ON_RESTORE =
+            new TaskStateSnapshot(new HashMap<>(), true, true);
+
     /** Mapping from an operator id to the state of one subtask of this operator. */
     private final Map<OperatorID, OperatorSubtaskState> subtaskStatesByOperatorID;
 
+    private final boolean isTaskDeployedAsFinished;
+
+    private final boolean isTaskFinished;
+
     public TaskStateSnapshot() {
-        this(10);
+        this(10, false);
     }
 
-    public TaskStateSnapshot(int size) {
-        this(new HashMap<>(size));
+    public TaskStateSnapshot(int size, boolean isTaskFinished) {
+        this(new HashMap<>(size), false, isTaskFinished);
     }
 
     public TaskStateSnapshot(Map<OperatorID, OperatorSubtaskState> subtaskStatesByOperatorID) {
+        this(subtaskStatesByOperatorID, false, false);
+    }
+
+    private TaskStateSnapshot(
+            Map<OperatorID, OperatorSubtaskState> subtaskStatesByOperatorID,
+            boolean isTaskDeployedAsFinished,
+            boolean isTaskFinished) {
         this.subtaskStatesByOperatorID = Preconditions.checkNotNull(subtaskStatesByOperatorID);
+        this.isTaskDeployedAsFinished = isTaskDeployedAsFinished;
+        this.isTaskFinished = isTaskFinished;
+    }
+
+    /** Returns whether all the operators of the task are already finished on restoring. */
+    public boolean isTaskDeployedAsFinished() {
+        return isTaskDeployedAsFinished;
+    }
+
+    /** Returns whether all the operators of the task have called finished methods. */
+    public boolean isTaskFinished() {
+        return isTaskFinished;
     }
 
     /** Returns the subtask state for the given operator id (or null if not contained). */
@@ -97,7 +132,23 @@ public class TaskStateSnapshot implements CompositeStateHandle {
                 return true;
             }
         }
-        return false;
+        return isTaskDeployedAsFinished;
+    }
+
+    /**
+     * Returns the input channel mapping for rescaling with in-flight data or {@link
+     * InflightDataRescalingDescriptor#NO_RESCALE}.
+     */
+    public InflightDataRescalingDescriptor getInputRescalingDescriptor() {
+        return getMapping(OperatorSubtaskState::getInputRescalingDescriptor);
+    }
+
+    /**
+     * Returns the output channel mapping for rescaling with in-flight data or {@link
+     * InflightDataRescalingDescriptor#NO_RESCALE}.
+     */
+    public InflightDataRescalingDescriptor getOutputRescalingDescriptor() {
+        return getMapping(OperatorSubtaskState::getOutputRescalingDescriptor);
     }
 
     @Override
@@ -119,10 +170,23 @@ public class TaskStateSnapshot implements CompositeStateHandle {
     }
 
     @Override
-    public void registerSharedStates(SharedStateRegistry stateRegistry) {
+    public long getCheckpointedSize() {
+        long size = 0L;
+
+        for (OperatorSubtaskState subtaskState : subtaskStatesByOperatorID.values()) {
+            if (subtaskState != null) {
+                size += subtaskState.getCheckpointedSize();
+            }
+        }
+
+        return size;
+    }
+
+    @Override
+    public void registerSharedStates(SharedStateRegistry stateRegistry, long checkpointID) {
         for (OperatorSubtaskState operatorSubtaskState : subtaskStatesByOperatorID.values()) {
             if (operatorSubtaskState != null) {
-                operatorSubtaskState.registerSharedStates(stateRegistry);
+                operatorSubtaskState.registerSharedStates(stateRegistry, checkpointID);
             }
         }
     }
@@ -138,12 +202,14 @@ public class TaskStateSnapshot implements CompositeStateHandle {
 
         TaskStateSnapshot that = (TaskStateSnapshot) o;
 
-        return subtaskStatesByOperatorID.equals(that.subtaskStatesByOperatorID);
+        return subtaskStatesByOperatorID.equals(that.subtaskStatesByOperatorID)
+                && isTaskDeployedAsFinished == that.isTaskDeployedAsFinished
+                && isTaskFinished == that.isTaskFinished;
     }
 
     @Override
     public int hashCode() {
-        return subtaskStatesByOperatorID.hashCode();
+        return Objects.hash(subtaskStatesByOperatorID, isTaskDeployedAsFinished, isTaskFinished);
     }
 
     @Override
@@ -151,6 +217,41 @@ public class TaskStateSnapshot implements CompositeStateHandle {
         return "TaskOperatorSubtaskStates{"
                 + "subtaskStatesByOperatorID="
                 + subtaskStatesByOperatorID
+                + ", isTaskDeployedAsFinished="
+                + isTaskDeployedAsFinished
+                + ", isTaskFinished="
+                + isTaskFinished
                 + '}';
+    }
+
+    /** Returns the only valid mapping as ensured by {@link StateAssignmentOperation}. */
+    private InflightDataRescalingDescriptor getMapping(
+            Function<OperatorSubtaskState, InflightDataRescalingDescriptor> mappingExtractor) {
+        return Iterators.getOnlyElement(
+                subtaskStatesByOperatorID.values().stream()
+                        .map(mappingExtractor)
+                        .filter(mapping -> !mapping.equals(NO_RESCALE))
+                        .iterator(),
+                NO_RESCALE);
+    }
+
+    @Nullable
+    public static SerializedValue<TaskStateSnapshot> serializeTaskStateSnapshot(
+            TaskStateSnapshot subtaskState) {
+        try {
+            return subtaskState == null ? null : new SerializedValue<>(subtaskState);
+        } catch (IOException e) {
+            throw new FlinkRuntimeException(e);
+        }
+    }
+
+    @Nullable
+    public static TaskStateSnapshot deserializeTaskStateSnapshot(
+            SerializedValue<TaskStateSnapshot> subtaskState, ClassLoader classLoader) {
+        try {
+            return subtaskState == null ? null : subtaskState.deserializeValue(classLoader);
+        } catch (IOException | ClassNotFoundException e) {
+            throw new FlinkRuntimeException(e);
+        }
     }
 }

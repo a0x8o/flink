@@ -19,11 +19,12 @@
 from typing import Any
 
 from pyflink.common import Duration
-from pyflink.common.serialization import SimpleStringSchema, JsonRowDeserializationSchema
+from pyflink.common.serialization import SimpleStringSchema
 from pyflink.common.typeinfo import Types
 from pyflink.common.watermark_strategy import TimestampAssigner, WatermarkStrategy
 from pyflink.datastream import StreamExecutionEnvironment, TimeCharacteristic
 from pyflink.datastream.connectors import FlinkKafkaProducer, FlinkKafkaConsumer
+from pyflink.datastream.formats.json import JsonRowDeserializationSchema
 from pyflink.datastream.functions import KeyedProcessFunction
 
 from functions import MyKeySelector
@@ -51,7 +52,7 @@ def python_data_stream_example():
 
     kafka_consumer.set_start_from_earliest()
     ds = env.add_source(kafka_consumer).assign_timestamps_and_watermarks(watermark_strategy)
-    ds.key_by(MyKeySelector(), key_type_info=Types.LONG()) \
+    ds.key_by(MyKeySelector(), key_type=Types.LONG()) \
         .process(MyProcessFunction(), output_type=Types.STRING()) \
         .add_sink(kafka_producer)
     env.execute_async("test data stream timer")

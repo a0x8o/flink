@@ -17,62 +17,76 @@
 
 package org.apache.flink.table.client.cli;
 
-import org.apache.flink.table.api.TableResult;
-import org.apache.flink.table.api.TableSchema;
-import org.apache.flink.table.api.Types;
-import org.apache.flink.table.client.cli.utils.TerminalUtils;
-import org.apache.flink.table.client.config.Environment;
+import org.apache.flink.api.common.RuntimeExecutionMode;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.ReadableConfig;
+import org.apache.flink.table.api.DataTypes;
+import org.apache.flink.table.api.internal.TableResultInternal;
+import org.apache.flink.table.catalog.Column;
+import org.apache.flink.table.catalog.ResolvedSchema;
+import org.apache.flink.table.client.config.ResultMode;
 import org.apache.flink.table.client.gateway.Executor;
 import org.apache.flink.table.client.gateway.ResultDescriptor;
-import org.apache.flink.table.client.gateway.SessionContext;
 import org.apache.flink.table.client.gateway.SqlExecutionException;
 import org.apache.flink.table.client.gateway.TypedResult;
-import org.apache.flink.table.delegation.Parser;
-import org.apache.flink.types.Row;
+import org.apache.flink.table.data.GenericRowData;
+import org.apache.flink.table.data.RowData;
+import org.apache.flink.table.operations.ModifyOperation;
+import org.apache.flink.table.operations.Operation;
+import org.apache.flink.table.operations.QueryOperation;
+import org.apache.flink.table.planner.functions.casting.RowDataToStringConverterImpl;
+import org.apache.flink.table.utils.DateTimeUtils;
 
+import org.jline.reader.MaskingCallback;
+import org.jline.terminal.Terminal;
 import org.jline.utils.AttributedString;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+
+import javax.annotation.Nullable;
 
 import java.io.File;
+import java.nio.file.Path;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
+import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
-import static org.junit.Assert.assertTrue;
+import static org.apache.flink.configuration.ExecutionOptions.RUNTIME_MODE;
+import static org.apache.flink.table.client.config.SqlClientOptions.EXECUTION_RESULT_MODE;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /** Contains basic tests for the {@link CliResultView}. */
-public class CliResultViewTest {
+class CliResultViewTest {
 
     @Test
-    public void testTableResultViewKeepJobResult() throws Exception {
+    void testTableResultViewKeepJobResult() throws Exception {
         testResultViewClearResult(TypedResult.endOfStream(), true, 0);
     }
 
     @Test
-    public void testTableResultViewClearEmptyResult() throws Exception {
+    void testTableResultViewClearEmptyResult() throws Exception {
         testResultViewClearResult(TypedResult.empty(), true, 1);
     }
 
     @Test
-    public void testTableResultViewClearPayloadResult() throws Exception {
+    void testTableResultViewClearPayloadResult() throws Exception {
         testResultViewClearResult(TypedResult.payload(1), true, 1);
     }
 
     @Test
-    public void testChangelogResultViewKeepJobResult() throws Exception {
+    void testChangelogResultViewKeepJobResult() throws Exception {
         testResultViewClearResult(TypedResult.endOfStream(), false, 0);
     }
 
     @Test
-    public void testChangelogResultViewClearEmptyResult() throws Exception {
+    void testChangelogResultViewClearEmptyResult() throws Exception {
         testResultViewClearResult(TypedResult.empty(), false, 1);
     }
 
     @Test
-    public void testChangelogResultViewClearPayloadResult() throws Exception {
+    void testChangelogResultViewClearPayloadResult() throws Exception {
         testResultViewClearResult(TypedResult.payload(Collections.emptyList()), false, 1);
     }
 
@@ -81,46 +95,56 @@ public class CliResultViewTest {
             throws Exception {
         final CountDownLatch cancellationCounterLatch =
                 new CountDownLatch(expectedCancellationCount);
-        final SessionContext session = new SessionContext("test-session", new Environment());
+
         final MockExecutor executor = new MockExecutor(typedResult, cancellationCounterLatch);
-        String sessionId = executor.openSession(session);
+        final Configuration testConfig = new Configuration();
+        testConfig.set(EXECUTION_RESULT_MODE, ResultMode.TABLE);
+        testConfig.set(RUNTIME_MODE, RuntimeExecutionMode.STREAMING);
+        String sessionId = executor.openSession("test-session");
+        ResolvedSchema schema =
+                ResolvedSchema.of(Column.physical("Null Field", DataTypes.STRING()));
         final ResultDescriptor descriptor =
                 new ResultDescriptor(
                         "result-id",
-                        TableSchema.builder().field("Null Field", Types.STRING()).build(),
+                        schema,
                         false,
-                        false,
-                        true);
+                        testConfig,
+                        new RowDataToStringConverterImpl(
+                                schema.toPhysicalRowDataType(),
+                                DateTimeUtils.UTC_ZONE.toZoneId(),
+                                Thread.currentThread().getContextClassLoader(),
+                                false));
 
-        Thread resultViewRunner = null;
-        CliClient cli = null;
-        try {
-            cli =
-                    new CliClient(
-                            TerminalUtils.createDummyTerminal(),
-                            sessionId,
-                            executor,
-                            File.createTempFile("history", "tmp").toPath());
-            resultViewRunner = new Thread(new TestingCliResultView(cli, descriptor, isTableMode));
+        try (CliClient cli =
+                new TestingCliClient(
+                        TerminalUtils.createDumbTerminal(),
+                        sessionId,
+                        executor,
+                        File.createTempFile("history", "tmp").toPath(),
+                        null)) {
+            Thread resultViewRunner =
+                    new Thread(new TestingCliResultView(cli, descriptor, isTableMode));
             resultViewRunner.start();
-        } finally {
-            if (resultViewRunner != null && !resultViewRunner.isInterrupted()) {
+
+            if (!resultViewRunner.isInterrupted()) {
                 resultViewRunner.interrupt();
             }
-            if (cli != null) {
-                cli.close();
+            // close the client until view exit
+            while (resultViewRunner.isAlive()) {
+                Thread.sleep(100);
             }
         }
 
-        assertTrue(
-                "Invalid number of cancellations.",
-                cancellationCounterLatch.await(10, TimeUnit.SECONDS));
+        assertThat(cancellationCounterLatch.await(10, TimeUnit.SECONDS))
+                .as("Invalid number of cancellations.")
+                .isTrue();
     }
 
     private static final class MockExecutor implements Executor {
 
         private final TypedResult<?> typedResult;
         private final CountDownLatch cancellationCounter;
+        private static final Configuration defaultConfig = new Configuration();
 
         public MockExecutor(TypedResult<?> typedResult, CountDownLatch cancellationCounter) {
             this.typedResult = typedResult;
@@ -133,8 +157,8 @@ public class CliResultViewTest {
         }
 
         @Override
-        public String openSession(SessionContext session) throws SqlExecutionException {
-            return UUID.randomUUID().toString();
+        public String openSession(@Nullable String sessionId) throws SqlExecutionException {
+            return sessionId;
         }
 
         @Override
@@ -143,26 +167,30 @@ public class CliResultViewTest {
         }
 
         @Override
-        public Map<String, String> getSessionProperties(String sessionId)
+        public Map<String, String> getSessionConfigMap(String sessionId)
                 throws SqlExecutionException {
-            return null;
+            return defaultConfig.toMap();
+        }
+
+        @Override
+        public ReadableConfig getSessionConfig(String sessionId) throws SqlExecutionException {
+            return defaultConfig;
         }
 
         @Override
         public void resetSessionProperties(String sessionId) throws SqlExecutionException {}
 
         @Override
+        public void resetSessionProperty(String sessionId, String key)
+                throws SqlExecutionException {}
+
+        @Override
         public void setSessionProperty(String sessionId, String key, String value)
                 throws SqlExecutionException {}
 
         @Override
-        public TableResult executeSql(String sessionId, String statement)
+        public Operation parseStatement(String sessionId, String statement)
                 throws SqlExecutionException {
-            return null;
-        }
-
-        @Override
-        public Parser getSqlParser(String sessionId) {
             return null;
         }
 
@@ -172,16 +200,28 @@ public class CliResultViewTest {
         }
 
         @Override
-        public ResultDescriptor executeQuery(String sessionId, String query)
+        public TableResultInternal executeOperation(String sessionId, Operation operation)
+                throws SqlExecutionException {
+            return null;
+        }
+
+        @Override
+        public TableResultInternal executeModifyOperations(
+                String sessionId, List<ModifyOperation> operations) throws SqlExecutionException {
+            return null;
+        }
+
+        @Override
+        public ResultDescriptor executeQuery(String sessionId, QueryOperation query)
                 throws SqlExecutionException {
             return null;
         }
 
         @Override
         @SuppressWarnings("unchecked")
-        public TypedResult<List<Row>> retrieveResultChanges(String sessionId, String resultId)
+        public TypedResult<List<RowData>> retrieveResultChanges(String sessionId, String resultId)
                 throws SqlExecutionException {
-            return (TypedResult<List<Row>>) typedResult;
+            return (TypedResult<List<RowData>>) typedResult;
         }
 
         @Override
@@ -192,14 +232,26 @@ public class CliResultViewTest {
         }
 
         @Override
-        public List<Row> retrieveResultPage(String resultId, int page)
+        public List<RowData> retrieveResultPage(String resultId, int page)
                 throws SqlExecutionException {
-            return Collections.singletonList(new Row(1));
+            return Collections.singletonList(new GenericRowData(1));
         }
 
         @Override
         public void cancelQuery(String sessionId, String resultId) throws SqlExecutionException {
             cancellationCounter.countDown();
+        }
+
+        @Override
+        public void removeJar(String sessionId, String jarUrl) {
+            throw new UnsupportedOperationException("Not implemented.");
+        }
+
+        @Override
+        public Optional<String> stopJob(
+                String sessionId, String jobId, boolean isWithSavepoint, boolean isWithDrain)
+                throws SqlExecutionException {
+            throw new UnsupportedOperationException("Not implemented.");
         }
     }
 
@@ -244,6 +296,36 @@ public class CliResultViewTest {
         @Override
         protected List<AttributedString> computeMainHeaderLines() {
             return Collections.emptyList();
+        }
+    }
+
+    private static class TestingCliClient extends CliClient {
+
+        private final Terminal terminal;
+
+        public TestingCliClient(
+                Terminal terminal,
+                String sessionId,
+                Executor executor,
+                Path historyFilePath,
+                @Nullable MaskingCallback inputTransformer) {
+            super(() -> terminal, sessionId, executor, historyFilePath, inputTransformer);
+            this.terminal = terminal;
+        }
+
+        @Override
+        public Terminal getTerminal() {
+            return terminal;
+        }
+
+        @Override
+        public boolean isPlainTerminal() {
+            return true;
+        }
+
+        @Override
+        public void clearTerminal() {
+            // do nothing
         }
     }
 }

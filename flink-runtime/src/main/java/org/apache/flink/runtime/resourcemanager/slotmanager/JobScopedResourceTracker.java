@@ -166,6 +166,10 @@ class JobScopedResourceTracker {
         return resourceRequirements.isEmpty() && excessResources.isEmpty();
     }
 
+    public boolean isRequirementEmpty() {
+        return resourceRequirements.isEmpty();
+    }
+
     private void findExcessSlots() {
         final Collection<ExcessResource> excessResources = new ArrayList<>();
 
@@ -224,8 +228,8 @@ class JobScopedResourceTracker {
         if (LOG.isTraceEnabled()) {
             LOG.trace(
                     "There are {} excess resources for job {} before re-assignment.",
-                    jobId,
-                    excessResources.getTotalResourceCount());
+                    excessResources.getTotalResourceCount(),
+                    jobId);
         }
 
         ResourceCounter assignedResources = ResourceCounter.empty();
@@ -255,8 +259,8 @@ class JobScopedResourceTracker {
         if (LOG.isTraceEnabled()) {
             LOG.trace(
                     "There are {} excess resources for job {} after re-assignment.",
-                    jobId,
-                    excessResources.getTotalResourceCount());
+                    excessResources.getTotalResourceCount(),
+                    jobId);
         }
     }
 

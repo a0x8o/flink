@@ -44,6 +44,7 @@ import java.util.Set;
  */
 @PublicEvolving
 public final class VarCharType extends LogicalType {
+    private static final long serialVersionUID = 1L;
 
     public static final int EMPTY_LITERAL_LENGTH = 0;
 
@@ -52,6 +53,8 @@ public final class VarCharType extends LogicalType {
     public static final int MAX_LENGTH = Integer.MAX_VALUE;
 
     public static final int DEFAULT_LENGTH = 1;
+
+    public static final VarCharType STRING_TYPE = new VarCharType(MAX_LENGTH);
 
     private static final String FORMAT = "VARCHAR(%d)";
 

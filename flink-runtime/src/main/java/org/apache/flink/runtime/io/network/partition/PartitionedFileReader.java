@@ -18,30 +18,28 @@
 
 package org.apache.flink.runtime.io.network.partition;
 
-import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.core.memory.MemorySegment;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
+import org.apache.flink.runtime.io.network.buffer.BufferHeader;
 import org.apache.flink.runtime.io.network.buffer.BufferRecycler;
-import org.apache.flink.util.ExceptionUtils;
-import org.apache.flink.util.IOUtils;
-
-import javax.annotation.Nullable;
+import org.apache.flink.runtime.io.network.buffer.CompositeBuffer;
+import org.apache.flink.runtime.io.network.buffer.NetworkBuffer;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
-import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
+import java.util.Queue;
+import java.util.function.Consumer;
 
-import static org.apache.flink.runtime.io.network.partition.BufferReaderWriterUtil.readFromByteChannel;
+import static org.apache.flink.runtime.io.network.partition.BufferReaderWriterUtil.HEADER_LENGTH;
+import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
-import static org.apache.flink.util.Preconditions.checkState;
 
 /** Reader which can read all data of the target subpartition from a {@link PartitionedFile}. */
-public class PartitionedFileReader implements AutoCloseable {
+class PartitionedFileReader {
 
-    /** Used to read buffers from file channel. */
-    private final ByteBuffer headerBuf = BufferReaderWriterUtil.allocatedHeaderBuffer();
+    /** Used to read buffer headers from file channel. */
+    private final ByteBuffer headerBuf;
 
     /** Used to read index entry from index file. */
     private final ByteBuffer indexEntryBuf;
@@ -61,104 +59,192 @@ public class PartitionedFileReader implements AutoCloseable {
     /** Next data region to be read. */
     private int nextRegionToRead;
 
-    /** Number of remaining buffers in the current data region read. */
-    private int currentRegionRemainingBuffers;
+    /** Next file offset to be read. */
+    private long nextOffsetToRead;
 
-    /** Whether this partitioned file reader is closed. */
-    private boolean isClosed;
+    /** Number of remaining bytes in the current data region read. */
+    private long currentRegionRemainingBytes;
 
-    public PartitionedFileReader(PartitionedFile partitionedFile, int targetSubpartition)
-            throws IOException {
+    PartitionedFileReader(
+            PartitionedFile partitionedFile,
+            int targetSubpartition,
+            FileChannel dataFileChannel,
+            FileChannel indexFileChannel,
+            ByteBuffer headerBuffer,
+            ByteBuffer indexEntryBuffer) {
+        checkArgument(checkNotNull(dataFileChannel).isOpen(), "Data file channel must be opened.");
+        checkArgument(
+                checkNotNull(indexFileChannel).isOpen(), "Index file channel must be opened.");
+
         this.partitionedFile = checkNotNull(partitionedFile);
         this.targetSubpartition = targetSubpartition;
-
-        this.indexEntryBuf = ByteBuffer.allocateDirect(PartitionedFile.INDEX_ENTRY_SIZE);
-        BufferReaderWriterUtil.configureByteBuffer(indexEntryBuf);
-
-        this.dataFileChannel = openFileChannel(partitionedFile.getDataFilePath());
-        try {
-            this.indexFileChannel = openFileChannel(partitionedFile.getIndexFilePath());
-        } catch (Throwable throwable) {
-            IOUtils.closeQuietly(dataFileChannel);
-            throw throwable;
-        }
+        this.dataFileChannel = dataFileChannel;
+        this.indexFileChannel = indexFileChannel;
+        this.headerBuf = headerBuffer;
+        this.indexEntryBuf = indexEntryBuffer;
     }
 
-    private FileChannel openFileChannel(Path path) throws IOException {
-        return FileChannel.open(path, StandardOpenOption.READ);
-    }
-
-    private boolean moveToNextReadableRegion() throws IOException {
-        if (currentRegionRemainingBuffers > 0) {
-            return true;
-        }
-
-        while (nextRegionToRead < partitionedFile.getNumRegions()) {
+    private void moveToNextReadableRegion(ByteBuffer indexEntryBuf) throws IOException {
+        while (currentRegionRemainingBytes <= 0
+                && nextRegionToRead < partitionedFile.getNumRegions()) {
             partitionedFile.getIndexEntry(
                     indexFileChannel, indexEntryBuf, nextRegionToRead, targetSubpartition);
-            long dataOffset = indexEntryBuf.getLong();
-            currentRegionRemainingBuffers = indexEntryBuf.getInt();
+            nextOffsetToRead = indexEntryBuf.getLong();
+            currentRegionRemainingBytes = indexEntryBuf.getLong();
             ++nextRegionToRead;
-
-            if (currentRegionRemainingBuffers > 0) {
-                dataFileChannel.position(dataOffset);
-                return true;
-            }
         }
-
-        return false;
     }
 
     /**
-     * Reads a buffer from the {@link PartitionedFile} and moves the read position forward.
+     * Reads a buffer from the current region of the target {@link PartitionedFile} and moves the
+     * read position forward.
      *
      * <p>Note: The caller is responsible for recycling the target buffer if any exception occurs.
+     *
+     * @param freeSegments The free {@link MemorySegment}s to read data to.
+     * @param recycler The {@link BufferRecycler} which is responsible to recycle the target buffer.
+     * @param consumer The target {@link Buffer} stores the data read from file channel.
+     * @return Whether the file reader has remaining data to read.
      */
-    @Nullable
-    public Buffer readBuffer(MemorySegment target, BufferRecycler recycler) throws IOException {
-        checkState(!isClosed, "File reader is already closed.");
-
-        if (moveToNextReadableRegion()) {
-            --currentRegionRemainingBuffers;
-            return readFromByteChannel(dataFileChannel, headerBuf, target, recycler);
+    boolean readCurrentRegion(
+            Queue<MemorySegment> freeSegments, BufferRecycler recycler, Consumer<Buffer> consumer)
+            throws IOException {
+        if (currentRegionRemainingBytes == 0) {
+            return false;
         }
 
-        return null;
+        checkArgument(!freeSegments.isEmpty(), "No buffer available for data reading.");
+        dataFileChannel.position(nextOffsetToRead);
+
+        BufferAndHeader partialBuffer = new BufferAndHeader(null, null);
+        try {
+            while (!freeSegments.isEmpty() && currentRegionRemainingBytes > 0) {
+                MemorySegment segment = freeSegments.poll();
+                int numBytes = (int) Math.min(segment.size(), currentRegionRemainingBytes);
+                ByteBuffer byteBuffer = segment.wrap(0, numBytes);
+
+                try {
+                    BufferReaderWriterUtil.readByteBufferFully(dataFileChannel, byteBuffer);
+                    byteBuffer.flip();
+                    currentRegionRemainingBytes -= byteBuffer.remaining();
+                    nextOffsetToRead += byteBuffer.remaining();
+                } catch (Throwable throwable) {
+                    freeSegments.add(segment);
+                    throw throwable;
+                }
+
+                NetworkBuffer buffer = new NetworkBuffer(segment, recycler);
+                buffer.setSize(byteBuffer.remaining());
+                try {
+                    partialBuffer = processBuffer(byteBuffer, buffer, partialBuffer, consumer);
+                } catch (Throwable throwable) {
+                    partialBuffer = new BufferAndHeader(null, null);
+                    throw throwable;
+                } finally {
+                    buffer.recycleBuffer();
+                }
+            }
+        } finally {
+            if (headerBuf.position() > 0) {
+                nextOffsetToRead -= headerBuf.position();
+                currentRegionRemainingBytes += headerBuf.position();
+                headerBuf.clear();
+            }
+            if (partialBuffer.header != null) {
+                nextOffsetToRead -= HEADER_LENGTH;
+                currentRegionRemainingBytes += HEADER_LENGTH;
+            }
+            if (partialBuffer.buffer != null) {
+                nextOffsetToRead -= partialBuffer.buffer.readableBytes();
+                currentRegionRemainingBytes += partialBuffer.buffer.readableBytes();
+                partialBuffer.buffer.recycleBuffer();
+            }
+        }
+        return hasRemaining();
     }
 
-    @VisibleForTesting
-    public boolean hasRemaining() throws IOException {
-        checkState(!isClosed, "File reader is already closed.");
-
-        return moveToNextReadableRegion();
+    boolean hasRemaining() throws IOException {
+        moveToNextReadableRegion(indexEntryBuf);
+        return currentRegionRemainingBytes > 0;
     }
 
-    @Override
-    public void close() throws IOException {
-        if (isClosed) {
-            return;
-        }
-        isClosed = true;
+    void initRegionIndex(ByteBuffer initIndexEntryBuffer) throws IOException {
+        moveToNextReadableRegion(initIndexEntryBuffer);
+    }
 
-        IOException exception = null;
-        try {
-            if (dataFileChannel != null) {
-                dataFileChannel.close();
+    /** Gets read priority of this file reader. Smaller value indicates higher priority. */
+    long getPriority() {
+        return nextOffsetToRead;
+    }
+
+    private BufferAndHeader processBuffer(
+            ByteBuffer byteBuffer,
+            Buffer buffer,
+            BufferAndHeader partialBuffer,
+            Consumer<Buffer> consumer) {
+        BufferHeader header = partialBuffer.header;
+        CompositeBuffer targetBuffer = partialBuffer.buffer;
+        while (byteBuffer.hasRemaining()) {
+            if (header == null && (header = parseBufferHeader(byteBuffer)) == null) {
+                break;
             }
-        } catch (IOException ioException) {
-            exception = ioException;
-        }
 
-        try {
-            if (indexFileChannel != null) {
-                indexFileChannel.close();
+            if (targetBuffer != null) {
+                buffer.retainBuffer();
+                int position = byteBuffer.position() + targetBuffer.missingLength();
+                targetBuffer.addPartialBuffer(
+                        buffer.readOnlySlice(byteBuffer.position(), targetBuffer.missingLength()));
+                byteBuffer.position(position);
+            } else if (byteBuffer.remaining() < header.getLength()) {
+                if (byteBuffer.hasRemaining()) {
+                    buffer.retainBuffer();
+                    targetBuffer = new CompositeBuffer(header);
+                    targetBuffer.addPartialBuffer(
+                            buffer.readOnlySlice(byteBuffer.position(), byteBuffer.remaining()));
+                }
+                break;
+            } else {
+                buffer.retainBuffer();
+                targetBuffer = new CompositeBuffer(header);
+                targetBuffer.addPartialBuffer(
+                        buffer.readOnlySlice(byteBuffer.position(), header.getLength()));
+                byteBuffer.position(byteBuffer.position() + header.getLength());
             }
-        } catch (IOException ioException) {
-            exception = ExceptionUtils.firstOrSuppressed(ioException, exception);
+
+            header = null;
+            consumer.accept(targetBuffer);
+            targetBuffer = null;
+        }
+        return new BufferAndHeader(targetBuffer, header);
+    }
+
+    private BufferHeader parseBufferHeader(ByteBuffer buffer) {
+        BufferHeader header = null;
+        if (headerBuf.position() > 0) {
+            while (headerBuf.hasRemaining()) {
+                headerBuf.put(buffer.get());
+            }
+            headerBuf.flip();
+            header = BufferReaderWriterUtil.parseBufferHeader(headerBuf);
+            headerBuf.clear();
         }
 
-        if (exception != null) {
-            throw exception;
+        if (header == null && buffer.remaining() < HEADER_LENGTH) {
+            headerBuf.put(buffer);
+        } else if (header == null) {
+            header = BufferReaderWriterUtil.parseBufferHeader(buffer);
+        }
+        return header;
+    }
+
+    private static class BufferAndHeader {
+
+        private final CompositeBuffer buffer;
+        private final BufferHeader header;
+
+        BufferAndHeader(CompositeBuffer buffer, BufferHeader header) {
+            this.buffer = buffer;
+            this.header = header;
         }
     }
 }

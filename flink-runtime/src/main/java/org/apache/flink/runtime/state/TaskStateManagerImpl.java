@@ -19,8 +19,10 @@
 package org.apache.flink.runtime.state;
 
 import org.apache.flink.api.common.JobID;
+import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.checkpoint.CheckpointMetaData;
 import org.apache.flink.runtime.checkpoint.CheckpointMetrics;
+import org.apache.flink.runtime.checkpoint.InflightDataRescalingDescriptor;
 import org.apache.flink.runtime.checkpoint.JobManagerTaskRestore;
 import org.apache.flink.runtime.checkpoint.OperatorSubtaskState;
 import org.apache.flink.runtime.checkpoint.PrioritizedOperatorSubtaskState;
@@ -29,7 +31,11 @@ import org.apache.flink.runtime.checkpoint.channel.SequentialChannelStateReader;
 import org.apache.flink.runtime.checkpoint.channel.SequentialChannelStateReaderImpl;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.jobgraph.OperatorID;
+import org.apache.flink.runtime.state.changelog.ChangelogStateHandle;
+import org.apache.flink.runtime.state.changelog.StateChangelogStorage;
+import org.apache.flink.runtime.state.changelog.StateChangelogStorageView;
 import org.apache.flink.runtime.taskmanager.CheckpointResponder;
+import org.apache.flink.util.ExceptionUtils;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,8 +43,10 @@ import org.slf4j.LoggerFactory;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
+import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * This class is the default implementation of {@link TaskStateManager} and collaborates with the
@@ -69,6 +77,11 @@ public class TaskStateManagerImpl implements TaskStateManager {
     /** The local state store to which this manager reports local state snapshots. */
     private final TaskLocalStateStore localStateStore;
 
+    /** The changelog storage where the manager reads and writes the changelog */
+    @Nullable private final StateChangelogStorage<?> stateChangelogStorage;
+
+    private final TaskExecutorStateChangelogStoragesManager changelogStoragesManager;
+
     /** The checkpoint responder through which this manager can report to the job manager. */
     private final CheckpointResponder checkpointResponder;
 
@@ -78,12 +91,16 @@ public class TaskStateManagerImpl implements TaskStateManager {
             @Nonnull JobID jobId,
             @Nonnull ExecutionAttemptID executionAttemptID,
             @Nonnull TaskLocalStateStore localStateStore,
+            @Nullable StateChangelogStorage<?> stateChangelogStorage,
+            @Nonnull TaskExecutorStateChangelogStoragesManager changelogStoragesManager,
             @Nullable JobManagerTaskRestore jobManagerTaskRestore,
             @Nonnull CheckpointResponder checkpointResponder) {
         this(
                 jobId,
                 executionAttemptID,
                 localStateStore,
+                stateChangelogStorage,
+                changelogStoragesManager,
                 jobManagerTaskRestore,
                 checkpointResponder,
                 new SequentialChannelStateReaderImpl(
@@ -96,11 +113,15 @@ public class TaskStateManagerImpl implements TaskStateManager {
             @Nonnull JobID jobId,
             @Nonnull ExecutionAttemptID executionAttemptID,
             @Nonnull TaskLocalStateStore localStateStore,
+            @Nullable StateChangelogStorage<?> stateChangelogStorage,
+            @Nonnull TaskExecutorStateChangelogStoragesManager changelogStoragesManager,
             @Nullable JobManagerTaskRestore jobManagerTaskRestore,
             @Nonnull CheckpointResponder checkpointResponder,
             @Nonnull SequentialChannelStateReaderImpl sequentialChannelStateReader) {
         this.jobId = jobId;
         this.localStateStore = localStateStore;
+        this.stateChangelogStorage = stateChangelogStorage;
+        this.changelogStoragesManager = changelogStoragesManager;
         this.jobManagerTaskRestore = jobManagerTaskRestore;
         this.executionAttemptID = executionAttemptID;
         this.checkpointResponder = checkpointResponder;
@@ -130,7 +151,40 @@ public class TaskStateManagerImpl implements TaskStateManager {
                 jobId, executionAttemptID, checkpointMetaData.getCheckpointId(), checkpointMetrics);
     }
 
-    @Nonnull
+    @Override
+    public InflightDataRescalingDescriptor getInputRescalingDescriptor() {
+        if (jobManagerTaskRestore == null) {
+            return InflightDataRescalingDescriptor.NO_RESCALE;
+        }
+        return jobManagerTaskRestore.getTaskStateSnapshot().getInputRescalingDescriptor();
+    }
+
+    @Override
+    public InflightDataRescalingDescriptor getOutputRescalingDescriptor() {
+        if (jobManagerTaskRestore == null) {
+            return InflightDataRescalingDescriptor.NO_RESCALE;
+        }
+        return jobManagerTaskRestore.getTaskStateSnapshot().getOutputRescalingDescriptor();
+    }
+
+    public boolean isTaskDeployedAsFinished() {
+        if (jobManagerTaskRestore == null) {
+            return false;
+        }
+
+        return jobManagerTaskRestore.getTaskStateSnapshot().isTaskDeployedAsFinished();
+    }
+
+    @Override
+    public Optional<Long> getRestoreCheckpointId() {
+        if (jobManagerTaskRestore == null) {
+            // This happens only if no checkpoint to restore.
+            return Optional.empty();
+        }
+
+        return Optional.of(jobManagerTaskRestore.getRestoreCheckpointId());
+    }
+
     @Override
     public PrioritizedOperatorSubtaskState prioritizedOperatorState(OperatorID operatorID) {
 
@@ -144,7 +198,8 @@ public class TaskStateManagerImpl implements TaskStateManager {
                 jobManagerStateSnapshot.getSubtaskStateByOperatorID(operatorID);
 
         if (jobManagerSubtaskState == null) {
-            return PrioritizedOperatorSubtaskState.emptyNotRestored();
+            return PrioritizedOperatorSubtaskState.empty(
+                    jobManagerTaskRestore.getRestoreCheckpointId());
         }
 
         long restoreCheckpointId = jobManagerTaskRestore.getRestoreCheckpointId();
@@ -176,7 +231,9 @@ public class TaskStateManagerImpl implements TaskStateManager {
 
         PrioritizedOperatorSubtaskState.Builder builder =
                 new PrioritizedOperatorSubtaskState.Builder(
-                        jobManagerSubtaskState, alternativesByPriority, true);
+                        jobManagerSubtaskState,
+                        alternativesByPriority,
+                        jobManagerTaskRestore.getRestoreCheckpointId());
 
         return builder.build();
     }
@@ -190,6 +247,27 @@ public class TaskStateManagerImpl implements TaskStateManager {
     @Override
     public SequentialChannelStateReader getSequentialChannelStateReader() {
         return sequentialChannelStateReader;
+    }
+
+    @Nullable
+    @Override
+    public StateChangelogStorage<?> getStateChangelogStorage() {
+        return stateChangelogStorage;
+    }
+
+    @Nullable
+    @Override
+    public StateChangelogStorageView<?> getStateChangelogStorageView(
+            Configuration configuration, ChangelogStateHandle changelogStateHandle) {
+        StateChangelogStorageView<?> storageView = null;
+        try {
+            storageView =
+                    changelogStoragesManager.stateChangelogStorageViewForJob(
+                            jobId, configuration, changelogStateHandle);
+        } catch (IOException e) {
+            ExceptionUtils.rethrow(e);
+        }
+        return storageView;
     }
 
     /** Tracking when local state can be confirmed and disposed. */

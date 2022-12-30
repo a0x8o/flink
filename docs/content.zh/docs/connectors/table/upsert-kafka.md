@@ -40,6 +40,8 @@ Upsert Kafka 连接器支持以 upsert 方式从 Kafka topic 中读取数据并�
 
 {{< sql_download_table "upsert-kafka" >}}
 
+Upsert Kafka 连接器不是二进制发行版的一部分，请查阅[这里]({{< ref "docs/dev/configuration/overview" >}})了解如何在集群运行中引用 Upsert Kafka 连接器。
+
 完整示例
 ----------------
 
@@ -88,7 +90,7 @@ GROUP BY user_region;
 Available Metadata
 ------------------
 
-See the [regular Kafka connector]({{< ref "docs/connectors/datastream/kafka" >}}#available-metadata) for a list
+See the [regular Kafka connector]({{< ref "docs/connectors/table/kafka" >}}#available-metadata) for a list
 of all available metadata fields.
 
 连接器参数
@@ -99,7 +101,7 @@ of all available metadata fields.
       <tr>
       <th class="text-left" style="width: 25%">参数</th>
       <th class="text-center" style="width: 10%">是否必选</th>
-      <th class="text-center" style="width: 10%">默认参数</th>
+      <th class="text-center" style="width: 10%">默认值</th>
       <th class="text-center" style="width: 10%">数据类型</th>
       <th class="text-center" style="width: 50%">描述</th>
     </tr>
@@ -185,6 +187,23 @@ of all available metadata fields.
       <td>Integer</td>
       <td>定义 upsert-kafka sink 算子的并行度。默认情况下，由框架确定并行度，与上游链接算子的并行度保持一致。</td>
     </tr>
+    <tr>
+      <td><h5>sink.buffer-flush.max-rows</h5></td>
+      <td>可选</td>
+      <td style="word-wrap: break-word;">0</td>
+      <td>Integer</td>
+      <td>缓存刷新前，最多能缓存多少条记录。当 sink 收到很多同 key 上的更新时，缓存将保留同 key 的最后一条记录，因此 sink 缓存能帮助减少发往 Kafka topic 的数据量，以及避免发送潜在的 tombstone 消息。
+      可以通过设置为 '0' 来禁用它。默认，该选项是未开启的。注意，如果要开启 sink 缓存，需要同时设置 <code>'sink.buffer-flush.max-rows'</code>
+      和 <code>'sink.buffer-flush.interval'</code> 两个选项为大于零的值。</td>
+    </tr>
+    <tr>
+      <td><h5>sink.buffer-flush.interval</h5></td>
+      <td>可选</td>
+      <td style="word-wrap: break-word;">0</td>
+      <td>Duration</td>
+      <td>缓存刷新的间隔时间，超过该时间后异步线程将刷新缓存数据。当 sink 收到很多同 key 上的更新时，缓存将保留同 key 的最后一条记录，因此 sink 缓存能帮助减少发往 Kafka topic 的数据量，以及避免发送潜在的 tombstone 消息。
+        可以通过设置为 '0' 来禁用它。默认，该选项是未开启的。注意，如果要开启 sink 缓存，需要同时设置 <code>'sink.buffer-flush.max-rows'</code>
+        和 <code>'sink.buffer-flush.interval'</code> 两个选项为大于零的值。</td>
     </tbody>
 </table>
 
@@ -223,7 +242,7 @@ CREATE TABLE KafkaTable (
 
 ### 主键约束
 
-Upsert Kafka 始终以 upsert 方式工作，并且需要在 DDL 中定义主键。在具有相同主键值的消息按序存储在同一个分区的前提下，在 changlog source 定义主键意味着 在物化后的 changelog 上主键具有唯一性。定义的主键将决定哪些字段出现在 Kafka 消息的 key 中。
+Upsert Kafka 始终以 upsert 方式工作，并且需要在 DDL 中定义主键。在具有相同主键值的消息按序存储在同一个分区的前提下，在 changelog source 定义主键意味着 在物化后的 changelog 上主键具有唯一性。定义的主键将决定哪些字段出现在 Kafka 消息的 key 中。
 
 ### 一致性保证
 

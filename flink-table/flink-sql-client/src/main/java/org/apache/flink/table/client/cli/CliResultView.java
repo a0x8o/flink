@@ -21,6 +21,8 @@ package org.apache.flink.table.client.cli;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.table.client.gateway.ResultDescriptor;
 import org.apache.flink.table.client.gateway.SqlExecutionException;
+import org.apache.flink.table.types.DataType;
+import org.apache.flink.table.utils.print.TableauStyle;
 
 import org.jline.utils.AttributedString;
 import org.jline.utils.AttributedStringBuilder;
@@ -33,8 +35,6 @@ import static org.apache.flink.table.client.cli.CliUtils.normalizeColumn;
 
 /** Abstract CLI view for showing results (either as changelog or table). */
 public abstract class CliResultView<O extends Enum<O>> extends CliView<O, Void> {
-
-    protected static final int MAX_COLUMN_WIDTH = 25;
 
     protected static final int NO_ROW_SELECTED = -1;
 
@@ -55,6 +55,8 @@ public abstract class CliResultView<O extends Enum<O>> extends CliView<O, Void> 
     private final RefreshThread refreshThread;
 
     protected final ResultDescriptor resultDescriptor;
+    protected final TableauStyle tableauStyle;
+    protected final int[] columnWidths;
 
     protected int refreshInterval;
 
@@ -64,10 +66,12 @@ public abstract class CliResultView<O extends Enum<O>> extends CliView<O, Void> 
 
     protected int selectedRow;
 
-    public CliResultView(CliClient client, ResultDescriptor resultDescriptor) {
+    public CliResultView(
+            CliClient client, ResultDescriptor resultDescriptor, TableauStyle tableauStyle) {
         super(client);
         this.resultDescriptor = resultDescriptor;
-
+        this.tableauStyle = tableauStyle;
+        this.columnWidths = tableauStyle.getColumnWidths();
         refreshThread = new RefreshThread();
         selectedRow = NO_ROW_SELECTED;
     }
@@ -145,9 +149,12 @@ public abstract class CliResultView<O extends Enum<O>> extends CliView<O, Void> 
         final CliRowView view =
                 new CliRowView(
                         client,
-                        resultDescriptor.getResultSchema().getFieldNames(),
+                        resultDescriptor.getResultSchema().getColumnNames().toArray(new String[0]),
                         CliUtils.typesToString(
-                                resultDescriptor.getResultSchema().getFieldDataTypes()),
+                                resultDescriptor
+                                        .getResultSchema()
+                                        .getColumnDataTypes()
+                                        .toArray(new DataType[0])),
                         getRow(results.get(selectedRow)));
         view.open(); // enter view
     }
@@ -168,8 +175,6 @@ public abstract class CliResultView<O extends Enum<O>> extends CliView<O, Void> 
     // --------------------------------------------------------------------------------------------
 
     protected abstract void refresh();
-
-    protected abstract int computeColumnWidth(int idx);
 
     protected abstract String[] getRow(String[] resultRow);
 
@@ -195,7 +200,6 @@ public abstract class CliResultView<O extends Enum<O>> extends CliView<O, Void> 
 
             for (int colIdx = 0; colIdx < line.length; colIdx++) {
                 final String col = line[colIdx];
-                final int columnWidth = computeColumnWidth(colIdx);
 
                 row.append(' ');
                 // check if value was present before last update, if not, highlight it
@@ -207,10 +211,10 @@ public abstract class CliResultView<O extends Enum<O>> extends CliView<O, Void> 
                         && (lineIdx >= previousResults.size()
                                 || !col.equals(previousResults.get(lineIdx)[colIdx]))) {
                     row.style(AttributedStyle.BOLD);
-                    normalizeColumn(row, col, columnWidth);
+                    normalizeColumn(row, col, columnWidths[colIdx]);
                     row.style(AttributedStyle.DEFAULT);
                 } else {
-                    normalizeColumn(row, col, columnWidth);
+                    normalizeColumn(row, col, columnWidths[colIdx]);
                 }
             }
             lines.add(row.toAttributedString());
@@ -224,6 +228,11 @@ public abstract class CliResultView<O extends Enum<O>> extends CliView<O, Void> 
     @Override
     protected void cleanUp() {
         stopRetrieval(true);
+        try {
+            refreshThread.join();
+        } catch (InterruptedException ex) {
+            // ignore
+        }
     }
 
     // --------------------------------------------------------------------------------------------

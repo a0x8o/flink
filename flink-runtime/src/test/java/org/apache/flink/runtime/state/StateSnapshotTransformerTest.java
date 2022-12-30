@@ -42,12 +42,12 @@ import java.util.concurrent.RunnableFuture;
 import java.util.concurrent.atomic.AtomicReference;
 
 class StateSnapshotTransformerTest {
-    private final AbstractKeyedStateBackend<Integer> backend;
+    private final CheckpointableKeyedStateBackend<Integer> backend;
     private final BlockerCheckpointStreamFactory streamFactory;
     private final StateSnapshotTransformFactory<?> snapshotTransformFactory;
 
     StateSnapshotTransformerTest(
-            AbstractKeyedStateBackend<Integer> backend,
+            CheckpointableKeyedStateBackend<Integer> backend,
             BlockerCheckpointStreamFactory streamFactory) {
 
         this.backend = backend;
@@ -106,7 +106,7 @@ class StateSnapshotTransformerTest {
 
         private TestValueState() throws Exception {
             this.state =
-                    backend.createInternalState(
+                    backend.createOrUpdateInternalState(
                             VoidNamespaceSerializer.INSTANCE,
                             new ValueStateDescriptor<>("TestValueState", StringSerializer.INSTANCE),
                             snapshotTransformFactory);
@@ -124,7 +124,7 @@ class StateSnapshotTransformerTest {
 
         private TestListState() throws Exception {
             this.state =
-                    backend.createInternalState(
+                    backend.createOrUpdateInternalState(
                             VoidNamespaceSerializer.INSTANCE,
                             new ListStateDescriptor<>(
                                     "TestListState",
@@ -148,7 +148,7 @@ class StateSnapshotTransformerTest {
 
         private TestMapState() throws Exception {
             this.state =
-                    backend.createInternalState(
+                    backend.createOrUpdateInternalState(
                             VoidNamespaceSerializer.INSTANCE,
                             new MapStateDescriptor<>(
                                     "TestMapState",

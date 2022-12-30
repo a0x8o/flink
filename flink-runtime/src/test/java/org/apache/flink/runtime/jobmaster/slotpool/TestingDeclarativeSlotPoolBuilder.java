@@ -30,6 +30,7 @@ import org.apache.flink.runtime.util.ResourceCounter;
 import org.apache.flink.util.function.QuadFunction;
 import org.apache.flink.util.function.TriFunction;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.function.BiFunction;
@@ -68,6 +69,15 @@ public class TestingDeclarativeSlotPoolBuilder {
     private Function<ResourceID, Boolean> containsSlotsFunction = ignored -> false;
     private LongConsumer returnIdleSlotsConsumer = ignored -> {};
     private Consumer<ResourceCounter> setResourceRequirementsConsumer = ignored -> {};
+    private Function<AllocationID, Boolean> containsFreeSlotFunction = ignored -> false;
+    private QuadFunction<
+                    Collection<? extends SlotOffer>,
+                    TaskManagerLocation,
+                    TaskManagerGateway,
+                    Long,
+                    Collection<SlotOffer>>
+            registerSlotsFunction =
+                    (slotOffers, ignoredB, ignoredC, ignoredD) -> new ArrayList<>(slotOffers);
 
     public TestingDeclarativeSlotPoolBuilder setIncreaseResourceRequirementsByConsumer(
             Consumer<ResourceCounter> increaseResourceRequirementsByConsumer) {
@@ -102,6 +112,18 @@ public class TestingDeclarativeSlotPoolBuilder {
                             Collection<SlotOffer>>
                     offerSlotsFunction) {
         this.offerSlotsFunction = offerSlotsFunction;
+        return this;
+    }
+
+    public TestingDeclarativeSlotPoolBuilder setRegisterSlotsFunction(
+            QuadFunction<
+                            Collection<? extends SlotOffer>,
+                            TaskManagerLocation,
+                            TaskManagerGateway,
+                            Long,
+                            Collection<SlotOffer>>
+                    registerSlotsFunction) {
+        this.registerSlotsFunction = registerSlotsFunction;
         return this;
     }
 
@@ -148,6 +170,12 @@ public class TestingDeclarativeSlotPoolBuilder {
         return this;
     }
 
+    public TestingDeclarativeSlotPoolBuilder setContainsFreeSlotFunction(
+            Function<AllocationID, Boolean> containsFreeSlotFunction) {
+        this.containsFreeSlotFunction = containsFreeSlotFunction;
+        return this;
+    }
+
     public TestingDeclarativeSlotPoolBuilder setReturnIdleSlotsConsumer(
             LongConsumer returnIdleSlotsConsumer) {
         this.returnIdleSlotsConsumer = returnIdleSlotsConsumer;
@@ -160,6 +188,7 @@ public class TestingDeclarativeSlotPoolBuilder {
                 decreaseResourceRequirementsByConsumer,
                 getResourceRequirementsSupplier,
                 offerSlotsFunction,
+                registerSlotsFunction,
                 getFreeSlotsInformationSupplier,
                 getAllSlotsInformationSupplier,
                 releaseSlotsFunction,
@@ -167,6 +196,7 @@ public class TestingDeclarativeSlotPoolBuilder {
                 reserveFreeSlotFunction,
                 freeReservedSlotFunction,
                 containsSlotsFunction,
+                containsFreeSlotFunction,
                 returnIdleSlotsConsumer,
                 setResourceRequirementsConsumer);
     }

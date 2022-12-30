@@ -18,20 +18,23 @@
 
 package org.apache.flink.runtime.resourcemanager.slotmanager;
 
+import org.apache.flink.api.common.resources.CPUResource;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.configuration.AkkaOptions;
 import org.apache.flink.configuration.ClusterOptions;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.JobManagerOptions;
+import org.apache.flink.configuration.MemorySize;
 import org.apache.flink.configuration.ResourceManagerOptions;
 import org.apache.flink.configuration.TaskManagerOptions;
-import org.apache.flink.runtime.akka.AkkaUtils;
 import org.apache.flink.runtime.resourcemanager.WorkerResourceSpec;
 import org.apache.flink.util.ConfigurationException;
 import org.apache.flink.util.Preconditions;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.time.Duration;
 
 /** Configuration for the {@link SlotManager}. */
 public class SlotManagerConfiguration {
@@ -41,27 +44,37 @@ public class SlotManagerConfiguration {
     private final Time taskManagerRequestTimeout;
     private final Time slotRequestTimeout;
     private final Time taskManagerTimeout;
+    private final Duration requirementCheckDelay;
+    private final Duration declareNeededResourceDelay;
     private final boolean waitResultConsumedBeforeRelease;
     private final SlotMatchingStrategy slotMatchingStrategy;
     private final WorkerResourceSpec defaultWorkerResourceSpec;
     private final int numSlotsPerWorker;
     private final int maxSlotNum;
+    private final CPUResource maxTotalCpu;
+    private final MemorySize maxTotalMem;
     private final int redundantTaskManagerNum;
 
     public SlotManagerConfiguration(
             Time taskManagerRequestTimeout,
             Time slotRequestTimeout,
             Time taskManagerTimeout,
+            Duration requirementCheckDelay,
+            Duration declareNeededResourceDelay,
             boolean waitResultConsumedBeforeRelease,
             SlotMatchingStrategy slotMatchingStrategy,
             WorkerResourceSpec defaultWorkerResourceSpec,
             int numSlotsPerWorker,
             int maxSlotNum,
+            CPUResource maxTotalCpu,
+            MemorySize maxTotalMem,
             int redundantTaskManagerNum) {
 
         this.taskManagerRequestTimeout = Preconditions.checkNotNull(taskManagerRequestTimeout);
         this.slotRequestTimeout = Preconditions.checkNotNull(slotRequestTimeout);
         this.taskManagerTimeout = Preconditions.checkNotNull(taskManagerTimeout);
+        this.requirementCheckDelay = Preconditions.checkNotNull(requirementCheckDelay);
+        this.declareNeededResourceDelay = Preconditions.checkNotNull(declareNeededResourceDelay);
         this.waitResultConsumedBeforeRelease = waitResultConsumedBeforeRelease;
         this.slotMatchingStrategy = Preconditions.checkNotNull(slotMatchingStrategy);
         this.defaultWorkerResourceSpec = Preconditions.checkNotNull(defaultWorkerResourceSpec);
@@ -69,6 +82,8 @@ public class SlotManagerConfiguration {
         Preconditions.checkState(maxSlotNum > 0);
         this.numSlotsPerWorker = numSlotsPerWorker;
         this.maxSlotNum = maxSlotNum;
+        this.maxTotalCpu = Preconditions.checkNotNull(maxTotalCpu);
+        this.maxTotalMem = Preconditions.checkNotNull(maxTotalMem);
         Preconditions.checkState(redundantTaskManagerNum >= 0);
         this.redundantTaskManagerNum = redundantTaskManagerNum;
     }
@@ -83,6 +98,14 @@ public class SlotManagerConfiguration {
 
     public Time getTaskManagerTimeout() {
         return taskManagerTimeout;
+    }
+
+    public Duration getRequirementCheckDelay() {
+        return requirementCheckDelay;
+    }
+
+    public Duration getDeclareNeededResourceDelay() {
+        return declareNeededResourceDelay;
     }
 
     public boolean isWaitResultConsumedBeforeRelease() {
@@ -105,6 +128,14 @@ public class SlotManagerConfiguration {
         return maxSlotNum;
     }
 
+    public CPUResource getMaxTotalCpu() {
+        return maxTotalCpu;
+    }
+
+    public MemorySize getMaxTotalMem() {
+        return maxTotalMem;
+    }
+
     public int getRedundantTaskManagerNum() {
         return redundantTaskManagerNum;
     }
@@ -113,22 +144,19 @@ public class SlotManagerConfiguration {
             Configuration configuration, WorkerResourceSpec defaultWorkerResourceSpec)
             throws ConfigurationException {
 
-        final Time rpcTimeout;
-        try {
-            rpcTimeout = AkkaUtils.getTimeoutAsTime(configuration);
-        } catch (IllegalArgumentException e) {
-            throw new ConfigurationException(
-                    "Could not parse the resource manager's timeout "
-                            + "value "
-                            + AkkaOptions.ASK_TIMEOUT
-                            + '.',
-                    e);
-        }
+        final Time rpcTimeout =
+                Time.fromDuration(configuration.get(AkkaOptions.ASK_TIMEOUT_DURATION));
 
         final Time slotRequestTimeout = getSlotRequestTimeout(configuration);
         final Time taskManagerTimeout =
                 Time.milliseconds(
                         configuration.getLong(ResourceManagerOptions.TASK_MANAGER_TIMEOUT));
+
+        final Duration requirementCheckDelay =
+                configuration.get(ResourceManagerOptions.REQUIREMENTS_CHECK_DELAY);
+
+        final Duration declareNeededResourceDelay =
+                configuration.get(ResourceManagerOptions.DECLARE_NEEDED_RESOURCE_DELAY);
 
         boolean waitResultConsumedBeforeRelease =
                 configuration.getBoolean(
@@ -152,11 +180,15 @@ public class SlotManagerConfiguration {
                 rpcTimeout,
                 slotRequestTimeout,
                 taskManagerTimeout,
+                requirementCheckDelay,
+                declareNeededResourceDelay,
                 waitResultConsumedBeforeRelease,
                 slotMatchingStrategy,
                 defaultWorkerResourceSpec,
                 numSlotsPerWorker,
                 maxSlotNum,
+                getMaxTotalCpu(configuration, defaultWorkerResourceSpec, maxSlotNum),
+                getMaxTotalMem(configuration, defaultWorkerResourceSpec, maxSlotNum),
                 redundantTaskManagerNum);
     }
 
@@ -173,5 +205,38 @@ public class SlotManagerConfiguration {
             slotRequestTimeoutMs = configuration.getLong(JobManagerOptions.SLOT_REQUEST_TIMEOUT);
         }
         return Time.milliseconds(slotRequestTimeoutMs);
+    }
+
+    private static CPUResource getMaxTotalCpu(
+            final Configuration configuration,
+            final WorkerResourceSpec defaultWorkerResourceSpec,
+            final int maxSlotNum) {
+        return configuration
+                .getOptional(ResourceManagerOptions.MAX_TOTAL_CPU)
+                .map(CPUResource::new)
+                .orElseGet(
+                        () ->
+                                maxSlotNum == Integer.MAX_VALUE
+                                        ? new CPUResource(Double.MAX_VALUE)
+                                        : defaultWorkerResourceSpec
+                                                .getCpuCores()
+                                                .divide(defaultWorkerResourceSpec.getNumSlots())
+                                                .multiply(maxSlotNum));
+    }
+
+    private static MemorySize getMaxTotalMem(
+            final Configuration configuration,
+            final WorkerResourceSpec defaultWorkerResourceSpec,
+            final int maxSlotNum) {
+        return configuration
+                .getOptional(ResourceManagerOptions.MAX_TOTAL_MEM)
+                .orElseGet(
+                        () ->
+                                maxSlotNum == Integer.MAX_VALUE
+                                        ? MemorySize.MAX_VALUE
+                                        : defaultWorkerResourceSpec
+                                                .getTotalMemSize()
+                                                .divide(defaultWorkerResourceSpec.getNumSlots())
+                                                .multiply(maxSlotNum));
     }
 }

@@ -20,13 +20,11 @@ package org.apache.flink.test.checkpointing;
 
 import org.apache.flink.configuration.CheckpointingOptions;
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.testutils.junit.FailsWithAdaptiveScheduler;
 import org.apache.flink.util.TestLogger;
 
 import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
-import org.junit.experimental.categories.Category;
 import org.junit.rules.TestName;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
@@ -36,8 +34,8 @@ import java.util.Arrays;
 import java.util.Collection;
 
 import static org.apache.flink.test.checkpointing.EventTimeWindowCheckpointingITCase.StateBackendEnum;
-import static org.apache.flink.test.checkpointing.EventTimeWindowCheckpointingITCase.StateBackendEnum.FILE_ASYNC;
-import static org.apache.flink.test.checkpointing.EventTimeWindowCheckpointingITCase.StateBackendEnum.ROCKSDB_FULLY_ASYNC;
+import static org.apache.flink.test.checkpointing.EventTimeWindowCheckpointingITCase.StateBackendEnum.FILE;
+import static org.apache.flink.test.checkpointing.EventTimeWindowCheckpointingITCase.StateBackendEnum.ROCKSDB_FULL;
 import static org.apache.flink.test.checkpointing.EventTimeWindowCheckpointingITCase.StateBackendEnum.ROCKSDB_INCREMENTAL_ZK;
 
 /**
@@ -48,7 +46,6 @@ import static org.apache.flink.test.checkpointing.EventTimeWindowCheckpointingIT
  * EventTimeWindowCheckpointingITCase}.
  */
 @RunWith(Parameterized.class)
-@Category(FailsWithAdaptiveScheduler.class) // FLINK-21400
 public class LocalRecoveryITCase extends TestLogger {
 
     @Rule public TestName testName = new TestName();
@@ -57,7 +54,7 @@ public class LocalRecoveryITCase extends TestLogger {
 
     @Parameterized.Parameters(name = "statebackend type ={0}")
     public static Collection<StateBackendEnum> parameter() {
-        return Arrays.asList(ROCKSDB_FULLY_ASYNC, ROCKSDB_INCREMENTAL_ZK, FILE_ASYNC);
+        return Arrays.asList(ROCKSDB_FULL, ROCKSDB_INCREMENTAL_ZK, FILE);
     }
 
     @Test
@@ -104,6 +101,8 @@ public class LocalRecoveryITCase extends TestLogger {
 
         public EventTimeWindowCheckpointingITCaseInstance(
                 StateBackendEnum backendEnum, boolean localRecoveryEnabled) {
+            super(backendEnum, 2);
+
             this.backendEnum = backendEnum;
             this.localRecoveryEnabled = localRecoveryEnabled;
         }

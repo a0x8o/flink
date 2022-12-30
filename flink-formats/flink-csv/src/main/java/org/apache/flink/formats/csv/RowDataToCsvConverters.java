@@ -19,6 +19,7 @@
 package org.apache.flink.formats.csv;
 
 import org.apache.flink.annotation.Internal;
+import org.apache.flink.formats.common.Converter;
 import org.apache.flink.table.data.ArrayData;
 import org.apache.flink.table.data.DecimalData;
 import org.apache.flink.table.data.RowData;
@@ -40,11 +41,12 @@ import java.io.Serializable;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
-import java.time.format.DateTimeFormatterBuilder;
 import java.util.Arrays;
 
 import static java.time.format.DateTimeFormatter.ISO_LOCAL_DATE;
 import static java.time.format.DateTimeFormatter.ISO_LOCAL_TIME;
+import static org.apache.flink.formats.common.TimeFormats.SQL_TIMESTAMP_FORMAT;
+import static org.apache.flink.formats.common.TimeFormats.SQL_TIMESTAMP_WITH_LOCAL_TIMEZONE_FORMAT;
 
 /** Tool class used to convert from {@link RowData} to CSV-format {@link JsonNode}. * */
 @Internal
@@ -56,8 +58,23 @@ public class RowDataToCsvConverters implements Serializable {
      * Runtime converter that converts objects of Flink Table & SQL internal data structures to
      * corresponding {@link JsonNode}s.
      */
-    public interface RowDataToCsvConverter extends Serializable {
-        JsonNode convert(CsvMapper csvMapper, ContainerNode<?> container, RowData row);
+    interface RowDataToCsvConverter
+            extends Converter<
+                    RowData, JsonNode, RowDataToCsvConverter.RowDataToCsvFormatConverterContext> {
+        /**
+         * Converter context for passing the {@code CsvMapper} and the {@code container} that can be
+         * reused between transformations of the individual elements for performance reasons.
+         */
+        class RowDataToCsvFormatConverterContext {
+            CsvMapper csvMapper;
+            ContainerNode<?> container;
+
+            public RowDataToCsvFormatConverterContext(
+                    CsvMapper csvMapper, ContainerNode<?> container) {
+                this.csvMapper = csvMapper;
+                this.container = container;
+            }
+        }
     }
 
     private interface RowFieldConverter extends Serializable {
@@ -79,12 +96,19 @@ public class RowDataToCsvConverters implements Serializable {
                         .map(RowDataToCsvConverters::createNullableRowFieldConverter)
                         .toArray(RowFieldConverter[]::new);
         final int rowArity = type.getFieldCount();
-        return (csvMapper, container, row) -> {
+        return (row, context) -> {
             // top level reuses the object node container
-            final ObjectNode objectNode = (ObjectNode) container;
+            final ObjectNode objectNode = (ObjectNode) context.container;
             for (int i = 0; i < rowArity; i++) {
-                objectNode.set(
-                        fieldNames[i], fieldConverters[i].convert(csvMapper, container, row, i));
+                try {
+                    objectNode.set(
+                            fieldNames[i],
+                            fieldConverters[i].convert(
+                                    context.csvMapper, context.container, row, i));
+                } catch (Throwable t) {
+                    throw new RuntimeException(
+                            String.format("Fail to serialize at field: %s.", fieldNames[i]), t);
+                }
             }
             return objectNode;
         };
@@ -132,15 +156,21 @@ public class RowDataToCsvConverters implements Serializable {
                 return (csvMapper, container, row, pos) -> convertDate(row.getInt(pos), container);
             case TIME_WITHOUT_TIME_ZONE:
                 return (csvMapper, container, row, pos) -> convertTime(row.getInt(pos), container);
-            case TIMESTAMP_WITH_TIME_ZONE:
-                final int zonedTimestampPrecision =
-                        ((LocalZonedTimestampType) fieldType).getPrecision();
-                return (csvMapper, container, row, pos) ->
-                        convertTimestamp(row.getTimestamp(pos, zonedTimestampPrecision), container);
             case TIMESTAMP_WITHOUT_TIME_ZONE:
                 final int timestampPrecision = ((TimestampType) fieldType).getPrecision();
                 return (csvMapper, container, row, pos) ->
-                        convertTimestamp(row.getTimestamp(pos, timestampPrecision), container);
+                        convertTimestamp(
+                                row.getTimestamp(pos, timestampPrecision),
+                                container,
+                                SQL_TIMESTAMP_FORMAT);
+            case TIMESTAMP_WITH_LOCAL_TIME_ZONE:
+                final int zonedTimestampPrecision =
+                        ((LocalZonedTimestampType) fieldType).getPrecision();
+                return (csvMapper, container, row, pos) ->
+                        convertTimestamp(
+                                row.getTimestamp(pos, zonedTimestampPrecision),
+                                container,
+                                SQL_TIMESTAMP_WITH_LOCAL_TIMEZONE_FORMAT);
             case DECIMAL:
                 return createDecimalRowFieldConverter((DecimalType) fieldType);
             case ARRAY:
@@ -207,16 +237,21 @@ public class RowDataToCsvConverters implements Serializable {
             case TIME_WITHOUT_TIME_ZONE:
                 return (csvMapper, container, array, pos) ->
                         convertTime(array.getInt(pos), container);
-            case TIMESTAMP_WITH_TIME_ZONE:
-                final int zonedTimestampPrecision =
-                        ((LocalZonedTimestampType) fieldType).getPrecision();
-                return (csvMapper, container, array, pos) ->
-                        convertTimestamp(
-                                array.getTimestamp(pos, zonedTimestampPrecision), container);
             case TIMESTAMP_WITHOUT_TIME_ZONE:
                 final int timestampPrecision = ((TimestampType) fieldType).getPrecision();
                 return (csvMapper, container, array, pos) ->
-                        convertTimestamp(array.getTimestamp(pos, timestampPrecision), container);
+                        convertTimestamp(
+                                array.getTimestamp(pos, timestampPrecision),
+                                container,
+                                SQL_TIMESTAMP_FORMAT);
+            case TIMESTAMP_WITH_LOCAL_TIME_ZONE:
+                final int localZonedTimestampPrecision =
+                        ((LocalZonedTimestampType) fieldType).getPrecision();
+                return (csvMapper, container, array, pos) ->
+                        convertTimestamp(
+                                array.getTimestamp(pos, localZonedTimestampPrecision),
+                                container,
+                                SQL_TIMESTAMP_WITH_LOCAL_TIMEZONE_FORMAT);
             case DECIMAL:
                 return createDecimalArrayElementConverter((DecimalType) fieldType);
                 // we don't support ARRAY and ROW in an ARRAY, see
@@ -268,8 +303,9 @@ public class RowDataToCsvConverters implements Serializable {
         return container.textNode(ISO_LOCAL_TIME.format(time));
     }
 
-    private static JsonNode convertTimestamp(TimestampData timestamp, ContainerNode<?> container) {
-        return container.textNode(DATE_TIME_FORMATTER.format(timestamp.toLocalDateTime()));
+    private static JsonNode convertTimestamp(
+            TimestampData timestamp, ContainerNode<?> container, DateTimeFormatter formatter) {
+        return container.textNode(formatter.format(timestamp.toLocalDateTime()));
     }
 
     private static RowFieldConverter createArrayRowFieldConverter(ArrayType type) {
@@ -307,12 +343,4 @@ public class RowDataToCsvConverters implements Serializable {
             return arrayNode;
         };
     }
-
-    private static final DateTimeFormatter DATE_TIME_FORMATTER =
-            new DateTimeFormatterBuilder()
-                    .parseCaseInsensitive()
-                    .append(ISO_LOCAL_DATE)
-                    .appendLiteral(' ')
-                    .append(ISO_LOCAL_TIME)
-                    .toFormatter();
 }

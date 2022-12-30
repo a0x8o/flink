@@ -26,6 +26,7 @@ import org.apache.flink.api.common.state.State;
 import org.apache.flink.api.common.state.StateDescriptor;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.api.java.tuple.Tuple3;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.metrics.MetricGroup;
 import org.apache.flink.runtime.state.internal.InternalListState;
@@ -41,12 +42,12 @@ import org.apache.flink.table.data.util.RowDataUtil;
 import org.apache.flink.table.data.utils.JoinedRowData;
 import org.apache.flink.table.functions.AggregateFunction;
 import org.apache.flink.table.functions.python.PythonFunctionInfo;
-import org.apache.flink.table.planner.calcite.FlinkRelBuilder;
-import org.apache.flink.table.planner.expressions.PlannerProctimeAttribute;
-import org.apache.flink.table.planner.expressions.PlannerRowtimeAttribute;
-import org.apache.flink.table.planner.expressions.PlannerWindowEnd;
-import org.apache.flink.table.planner.expressions.PlannerWindowProperty;
-import org.apache.flink.table.planner.expressions.PlannerWindowStart;
+import org.apache.flink.table.runtime.generated.GeneratedProjection;
+import org.apache.flink.table.runtime.groupwindow.NamedWindowProperty;
+import org.apache.flink.table.runtime.groupwindow.ProctimeAttribute;
+import org.apache.flink.table.runtime.groupwindow.RowtimeAttribute;
+import org.apache.flink.table.runtime.groupwindow.WindowEnd;
+import org.apache.flink.table.runtime.groupwindow.WindowStart;
 import org.apache.flink.table.runtime.operators.python.aggregate.arrow.AbstractArrowPythonAggregateFunctionOperator;
 import org.apache.flink.table.runtime.operators.window.TimeWindow;
 import org.apache.flink.table.runtime.operators.window.Window;
@@ -57,10 +58,15 @@ import org.apache.flink.table.runtime.typeutils.RowDataSerializer;
 import org.apache.flink.table.types.logical.RowType;
 import org.apache.flink.types.RowKind;
 
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedList;
 import java.util.List;
+
+import static org.apache.flink.table.runtime.util.TimeWindowUtil.toEpochMills;
+import static org.apache.flink.table.runtime.util.TimeWindowUtil.toEpochMillsForTimer;
+import static org.apache.flink.table.runtime.util.TimeWindowUtil.toUtcTimestampMills;
 
 /** The Stream Arrow Python {@link AggregateFunction} Operator for Group Window Aggregation. */
 @Internal
@@ -94,6 +100,13 @@ public class StreamArrowPythonGroupWindowAggregateFunctionOperator<K, W extends 
      * </ul>
      */
     private final long allowedLateness;
+
+    /**
+     * The shift timezone of the window, if the proctime or rowtime type is TIMESTAMP_LTZ, the shift
+     * timezone is the timezone user configured in TableConfig, other cases the timezone is UTC
+     * which means never shift when assigning windows.
+     */
+    private final ZoneId shiftTimeZone;
 
     /** Interface for working with time and timers. */
     private transient InternalTimerService<W> internalTimerService;
@@ -132,31 +145,33 @@ public class StreamArrowPythonGroupWindowAggregateFunctionOperator<K, W extends 
             Configuration config,
             PythonFunctionInfo[] pandasAggFunctions,
             RowType inputType,
-            RowType outputType,
+            RowType udfInputType,
+            RowType udfOutputType,
             int inputTimeFieldIndex,
             WindowAssigner<W> windowAssigner,
             Trigger<W> trigger,
             long allowedLateness,
-            FlinkRelBuilder.PlannerNamedWindowProperty[] namedProperties,
-            int[] groupingSet,
-            int[] udafInputOffsets) {
-        super(config, pandasAggFunctions, inputType, outputType, groupingSet, udafInputOffsets);
+            NamedWindowProperty[] namedProperties,
+            ZoneId shiftTimeZone,
+            GeneratedProjection generatedProjection) {
+        super(
+                config,
+                pandasAggFunctions,
+                inputType,
+                udfInputType,
+                udfOutputType,
+                generatedProjection);
         this.inputTimeFieldIndex = inputTimeFieldIndex;
         this.windowAssigner = windowAssigner;
         this.trigger = trigger;
         this.allowedLateness = allowedLateness;
+        this.shiftTimeZone = shiftTimeZone;
         buildWindow(namedProperties);
     }
 
     @Override
     public void open() throws Exception {
-        userDefinedFunctionOutputType =
-                new RowType(
-                        outputType
-                                .getFields()
-                                .subList(
-                                        groupingSet.length,
-                                        outputType.getFieldCount() - namedProperties.length));
+        super.open();
         windowSerializer = windowAssigner.getWindowSerializer(new ExecutionConfig());
 
         internalTimerService = getInternalTimerService("window-timers", windowSerializer, this);
@@ -180,7 +195,6 @@ public class StreamArrowPythonGroupWindowAggregateFunctionOperator<K, W extends 
 
         WindowContext windowContext = new WindowContext();
         windowAssigner.open(windowContext);
-        super.open();
     }
 
     @Override
@@ -190,6 +204,8 @@ public class StreamArrowPythonGroupWindowAggregateFunctionOperator<K, W extends 
         } else {
             timestamp = internalTimerService.currentProcessingTime();
         }
+        timestamp = toUtcTimestampMills(timestamp, shiftTimeZone);
+
         // Given the timestamp and element, returns the set of windows into which it
         // should be placed.
         elementWindows = windowAssigner.assignWindows(input, timestamp);
@@ -225,9 +241,9 @@ public class StreamArrowPythonGroupWindowAggregateFunctionOperator<K, W extends 
 
     @Override
     @SuppressWarnings("ConstantConditions")
-    public void emitResult(Tuple2<byte[], Integer> resultTuple) throws Exception {
-        byte[] udafResult = resultTuple.f0;
-        int length = resultTuple.f1;
+    public void emitResult(Tuple3<String, byte[], Integer> resultTuple) throws Exception {
+        byte[] udafResult = resultTuple.f1;
+        int length = resultTuple.f2;
         bais.setBuffer(udafResult, 0, length);
         int rowCount = arrowSerializer.load();
         for (int i = 0; i < rowCount; i++) {
@@ -271,18 +287,27 @@ public class StreamArrowPythonGroupWindowAggregateFunctionOperator<K, W extends 
         }
     }
 
-    private void buildWindow(FlinkRelBuilder.PlannerNamedWindowProperty[] namedProperties) {
+    private void buildWindow(NamedWindowProperty[] namedProperties) {
         this.namedProperties = new WindowProperty[namedProperties.length];
         for (int i = 0; i < namedProperties.length; i++) {
-            PlannerWindowProperty property = namedProperties[i].property();
-            if (property instanceof PlannerWindowStart) {
-                this.namedProperties[i] = WindowProperty.WINDOW_START;
-            } else if (property instanceof PlannerWindowEnd) {
-                this.namedProperties[i] = WindowProperty.WINDOW_END;
-            } else if (property instanceof PlannerRowtimeAttribute) {
-                this.namedProperties[i] = WindowProperty.ROW_TIME_ATTRIBUTE;
-            } else if (property instanceof PlannerProctimeAttribute) {
-                this.namedProperties[i] = WindowProperty.PROC_TIME_ATTRIBUTE;
+            org.apache.flink.table.runtime.groupwindow.WindowProperty property =
+                    namedProperties[i].getProperty();
+            if (property instanceof WindowStart) {
+                this.namedProperties[i] =
+                        StreamArrowPythonGroupWindowAggregateFunctionOperator.WindowProperty
+                                .WINDOW_START;
+            } else if (property instanceof WindowEnd) {
+                this.namedProperties[i] =
+                        StreamArrowPythonGroupWindowAggregateFunctionOperator.WindowProperty
+                                .WINDOW_END;
+            } else if (property instanceof RowtimeAttribute) {
+                this.namedProperties[i] =
+                        StreamArrowPythonGroupWindowAggregateFunctionOperator.WindowProperty
+                                .ROW_TIME_ATTRIBUTE;
+            } else if (property instanceof ProctimeAttribute) {
+                this.namedProperties[i] =
+                        StreamArrowPythonGroupWindowAggregateFunctionOperator.WindowProperty
+                                .PROC_TIME_ATTRIBUTE;
             } else {
                 throw new RuntimeException("Unsupported Property " + property);
             }
@@ -295,7 +320,8 @@ public class StreamArrowPythonGroupWindowAggregateFunctionOperator<K, W extends 
      */
     private boolean isWindowLate(W window) {
         return windowAssigner.isEventTime()
-                && (cleanupTime(window) <= internalTimerService.currentWatermark());
+                && (toEpochMillsForTimer(cleanupTime(window), shiftTimeZone)
+                        <= internalTimerService.currentWatermark());
     }
 
     /**
@@ -369,7 +395,7 @@ public class StreamArrowPythonGroupWindowAggregateFunctionOperator<K, W extends 
      * @param window the window whose state to discard
      */
     private void registerCleanupTimer(W window) {
-        long cleanupTime = cleanupTime(window);
+        long cleanupTime = toEpochMillsForTimer(cleanupTime(window), shiftTimeZone);
         if (cleanupTime == Long.MAX_VALUE) {
             // don't set a GC timer for "end of time"
             return;
@@ -399,7 +425,7 @@ public class StreamArrowPythonGroupWindowAggregateFunctionOperator<K, W extends 
                     windowProperty.setField(
                             i,
                             TimestampData.fromEpochMillis(
-                                    ((TimeWindow) currentWindow).getEnd() - 1));
+                                    getShiftEpochMills(((TimeWindow) currentWindow).getEnd() - 1)));
                     break;
                 case PROC_TIME_ATTRIBUTE:
                     windowProperty.setField(i, TimestampData.fromEpochMillis(-1));
@@ -407,8 +433,12 @@ public class StreamArrowPythonGroupWindowAggregateFunctionOperator<K, W extends 
         }
     }
 
+    private long getShiftEpochMills(long utcTimestampMills) {
+        return toEpochMills(utcTimestampMills, shiftTimeZone);
+    }
+
     private void cleanWindowIfNeeded(W window, long currentTime) throws Exception {
-        if (currentTime == cleanupTime(window)) {
+        if (currentTime == toEpochMillsForTimer(cleanupTime(window), shiftTimeZone)) {
             windowAccumulateData.setCurrentNamespace(window);
             windowAccumulateData.clear();
             windowRetractData.setCurrentNamespace(window);
@@ -483,6 +513,11 @@ public class StreamArrowPythonGroupWindowAggregateFunctionOperator<K, W extends 
         }
 
         @Override
+        public ZoneId getShiftTimeZone() {
+            return shiftTimeZone;
+        }
+
+        @Override
         public <S extends State> S getPartitionedState(StateDescriptor<S, ?> stateDescriptor) {
             try {
                 return StreamArrowPythonGroupWindowAggregateFunctionOperator.this
@@ -514,6 +549,11 @@ public class StreamArrowPythonGroupWindowAggregateFunctionOperator<K, W extends 
         @Override
         public long currentWatermark() {
             throw new RuntimeException("The method currentWatermark should not be called.");
+        }
+
+        @Override
+        public ZoneId getShiftTimeZone() {
+            return shiftTimeZone;
         }
 
         @Override

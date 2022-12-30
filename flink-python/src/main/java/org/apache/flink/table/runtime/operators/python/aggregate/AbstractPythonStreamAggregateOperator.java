@@ -30,29 +30,26 @@ import org.apache.flink.core.memory.ManagedMemoryUseCase;
 import org.apache.flink.fnexecution.v1.FlinkFnApi;
 import org.apache.flink.python.PythonFunctionRunner;
 import org.apache.flink.python.PythonOptions;
-import org.apache.flink.streaming.api.operators.python.AbstractOneInputPythonFunctionOperator;
-import org.apache.flink.streaming.api.utils.PythonOperatorUtils;
+import org.apache.flink.python.util.ProtoUtils;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
-import org.apache.flink.table.data.GenericRowData;
+import org.apache.flink.table.connector.Projection;
 import org.apache.flink.table.data.RowData;
-import org.apache.flink.table.data.UpdatableRowData;
 import org.apache.flink.table.functions.python.PythonAggregateFunctionInfo;
 import org.apache.flink.table.functions.python.PythonEnv;
-import org.apache.flink.table.planner.plan.utils.KeySelectorUtil;
-import org.apache.flink.table.planner.typeutils.DataViewUtils;
-import org.apache.flink.table.runtime.keyselector.RowDataKeySelector;
+import org.apache.flink.table.runtime.dataview.DataViewSpec;
+import org.apache.flink.table.runtime.operators.python.AbstractOneInputPythonFunctionOperator;
 import org.apache.flink.table.runtime.operators.python.utils.StreamRecordRowDataWrappingCollector;
-import org.apache.flink.table.runtime.runners.python.beam.BeamTableStatefulPythonFunctionRunner;
-import org.apache.flink.table.runtime.typeutils.InternalTypeInfo;
+import org.apache.flink.table.runtime.runners.python.beam.BeamTablePythonFunctionRunner;
 import org.apache.flink.table.runtime.typeutils.PythonTypeUtils;
 import org.apache.flink.table.types.logical.RowType;
 import org.apache.flink.util.Preconditions;
 
 import java.util.Arrays;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.stream.Collectors;
 
+import static org.apache.flink.python.PythonOptions.PYTHON_METRIC_ENABLED;
+import static org.apache.flink.python.PythonOptions.PYTHON_PROFILE_ENABLED;
+import static org.apache.flink.python.util.ProtoUtils.createRowTypeCoderInfoDescriptorProto;
 import static org.apache.flink.table.runtime.typeutils.PythonTypeUtils.toProtoType;
 
 /**
@@ -65,26 +62,19 @@ public abstract class AbstractPythonStreamAggregateOperator
 
     private static final long serialVersionUID = 1L;
 
-    @VisibleForTesting
-    protected static final String FLINK_AGGREGATE_FUNCTION_SCHEMA_CODER_URN =
-            "flink:coder:schema:aggregate_function:v1";
-
     @VisibleForTesting static final byte NORMAL_RECORD = 0;
 
     @VisibleForTesting static final byte TRIGGER_TIMER = 1;
 
     private final PythonAggregateFunctionInfo[] aggregateFunctions;
 
-    private final DataViewUtils.DataViewSpec[][] dataViewSpecs;
+    private final DataViewSpec[][] dataViewSpecs;
 
     /** The input logical type. */
     protected final RowType inputType;
 
     /** The output logical type. */
     protected final RowType outputType;
-
-    /** The options used to configure the Python worker process. */
-    private final Map<String, String> jobOptions;
 
     /** The array of the key indexes. */
     private final int[] grouping;
@@ -129,10 +119,6 @@ public abstract class AbstractPythonStreamAggregateOperator
     /** OutputStream Wrapper. */
     protected transient DataOutputViewStreamWrapper baosWrapper;
 
-    protected transient UpdatableRowData reuseRowData;
-
-    protected transient UpdatableRowData reuseTimerRowData;
-
     /** The collector used to collect records. */
     protected transient StreamRecordRowDataWrappingCollector rowDataWrapper;
 
@@ -141,7 +127,7 @@ public abstract class AbstractPythonStreamAggregateOperator
             RowType inputType,
             RowType outputType,
             PythonAggregateFunctionInfo[] aggregateFunctions,
-            DataViewUtils.DataViewSpec[][] dataViewSpecs,
+            DataViewSpec[][] dataViewSpecs,
             int[] grouping,
             int indexOfCountStar,
             boolean generateUpdateBefore) {
@@ -150,7 +136,6 @@ public abstract class AbstractPythonStreamAggregateOperator
         this.outputType = Preconditions.checkNotNull(outputType);
         this.aggregateFunctions = aggregateFunctions;
         this.dataViewSpecs = dataViewSpecs;
-        this.jobOptions = buildJobOptions(config);
         this.grouping = grouping;
         this.indexOfCountStar = indexOfCountStar;
         this.generateUpdateBefore = generateUpdateBefore;
@@ -166,19 +151,11 @@ public abstract class AbstractPythonStreamAggregateOperator
         baisWrapper = new DataInputViewStreamWrapper(bais);
         baos = new ByteArrayOutputStreamWithPos();
         baosWrapper = new DataOutputViewStreamWrapper(baos);
-        userDefinedFunctionInputType = getUserDefinedFunctionInputType();
-        udfInputTypeSerializer =
-                PythonTypeUtils.toBlinkTypeSerializer(userDefinedFunctionInputType);
-        userDefinedFunctionOutputType = getUserDefinedFunctionOutputType();
+        userDefinedFunctionInputType = createUserDefinedFunctionInputType();
+        udfInputTypeSerializer = PythonTypeUtils.toInternalSerializer(userDefinedFunctionInputType);
+        userDefinedFunctionOutputType = createUserDefinedFunctionOutputType();
         udfOutputTypeSerializer =
-                PythonTypeUtils.toBlinkTypeSerializer(userDefinedFunctionOutputType);
-        // The structure is:  [type]|[normal record]|[timestamp of timer]|[row key /timer data]
-        // If the type is 'NORMAL_RECORD', store the RowData object in the 2nd column.
-        // If the type is 'TRIGGER_TIMER', store the timestamp in 3rd column and the row key/timer
-        // data in 4th column.
-        reuseRowData = new UpdatableRowData(GenericRowData.of(NORMAL_RECORD, null, null, null), 4);
-        reuseTimerRowData =
-                new UpdatableRowData(GenericRowData.of(TRIGGER_TIMER, null, null, null), 4);
+                PythonTypeUtils.toInternalSerializer(userDefinedFunctionOutputType);
         rowDataWrapper = new StreamRecordRowDataWrappingCollector(output);
         super.open();
     }
@@ -194,18 +171,15 @@ public abstract class AbstractPythonStreamAggregateOperator
 
     @Override
     public PythonFunctionRunner createPythonFunctionRunner() throws Exception {
-        return new BeamTableStatefulPythonFunctionRunner(
+        return BeamTablePythonFunctionRunner.stateful(
                 getRuntimeContext().getTaskName(),
                 createPythonEnvironmentManager(),
-                userDefinedFunctionInputType,
-                userDefinedFunctionOutputType,
                 getFunctionUrn(),
                 getUserDefinedFunctionsProto(),
-                FLINK_AGGREGATE_FUNCTION_SCHEMA_CODER_URN,
-                jobOptions,
                 getFlinkMetricContainer(),
                 getKeyedStateBackend(),
                 getKeySerializer(),
+                getWindowSerializer(),
                 getContainingTask().getEnvironment().getMemoryManager(),
                 getOperatorConfig()
                         .getManagedMemoryFractionOperatorUseCaseOfSlot(
@@ -217,7 +191,9 @@ public abstract class AbstractPythonStreamAggregateOperator
                                 getContainingTask()
                                         .getEnvironment()
                                         .getUserCodeClassLoader()
-                                        .asClassLoader()));
+                                        .asClassLoader()),
+                createInputCoderInfoDescriptor(userDefinedFunctionInputType),
+                createOutputCoderInfoDescriptor(userDefinedFunctionOutputType));
     }
 
     /**
@@ -242,13 +218,15 @@ public abstract class AbstractPythonStreamAggregateOperator
 
     @VisibleForTesting
     TypeSerializer getKeySerializer() {
-        return PythonTypeUtils.toBlinkTypeSerializer(getKeyType());
+        return PythonTypeUtils.toInternalSerializer(getKeyType());
     }
 
     protected RowType getKeyType() {
-        RowDataKeySelector selector =
-                KeySelectorUtil.getRowDataSelector(grouping, InternalTypeInfo.of(inputType));
-        return selector.getProducedType().toRowType();
+        return (RowType) Projection.of(grouping).project(inputType);
+    }
+
+    TypeSerializer getWindowSerializer() {
+        return null;
     }
 
     /**
@@ -257,7 +235,8 @@ public abstract class AbstractPythonStreamAggregateOperator
     protected FlinkFnApi.UserDefinedAggregateFunctions getUserDefinedFunctionsProto() {
         FlinkFnApi.UserDefinedAggregateFunctions.Builder builder =
                 FlinkFnApi.UserDefinedAggregateFunctions.newBuilder();
-        builder.setMetricEnabled(getPythonConfig().isMetricEnabled());
+        builder.setMetricEnabled(config.get(PYTHON_METRIC_ENABLED));
+        builder.setProfileEnabled(config.get(PYTHON_PROFILE_ENABLED));
         builder.addAllGrouping(Arrays.stream(grouping).boxed().collect(Collectors.toList()));
         builder.setGenerateUpdateBefore(generateUpdateBefore);
         builder.setIndexOfCountStar(indexOfCountStar);
@@ -266,12 +245,12 @@ public abstract class AbstractPythonStreamAggregateOperator
         builder.setMapStateReadCacheSize(mapStateReadCacheSize);
         builder.setMapStateWriteCacheSize(mapStateWriteCacheSize);
         for (int i = 0; i < aggregateFunctions.length; i++) {
-            DataViewUtils.DataViewSpec[] specs = null;
+            DataViewSpec[] specs = null;
             if (i < dataViewSpecs.length) {
                 specs = dataViewSpecs[i];
             }
             builder.addUdfs(
-                    PythonOperatorUtils.getUserDefinedAggregateFunctionProto(
+                    ProtoUtils.createUserDefinedAggregateFunctionProto(
                             aggregateFunctions[i], specs));
         }
         return builder.build();
@@ -281,21 +260,17 @@ public abstract class AbstractPythonStreamAggregateOperator
 
     public abstract void processElementInternal(RowData value) throws Exception;
 
-    public abstract RowType getUserDefinedFunctionInputType();
+    public abstract RowType createUserDefinedFunctionInputType();
 
-    public abstract RowType getUserDefinedFunctionOutputType();
+    public abstract RowType createUserDefinedFunctionOutputType();
 
-    private Map<String, String> buildJobOptions(Configuration config) {
-        Map<String, String> jobOptions = new HashMap<>();
-        if (config.containsKey("table.exec.timezone")) {
-            jobOptions.put("table.exec.timezone", config.getString("table.exec.timezone", null));
-        }
-        jobOptions.put(
-                PythonOptions.STATE_CACHE_SIZE.key(),
-                String.valueOf(config.get(PythonOptions.STATE_CACHE_SIZE)));
-        jobOptions.put(
-                PythonOptions.MAP_STATE_ITERATE_RESPONSE_BATCH_SIZE.key(),
-                String.valueOf(config.get(PythonOptions.MAP_STATE_ITERATE_RESPONSE_BATCH_SIZE)));
-        return jobOptions;
+    public FlinkFnApi.CoderInfoDescriptor createInputCoderInfoDescriptor(RowType runnerInputType) {
+        return createRowTypeCoderInfoDescriptorProto(
+                runnerInputType, FlinkFnApi.CoderInfoDescriptor.Mode.MULTIPLE, false);
+    }
+
+    public FlinkFnApi.CoderInfoDescriptor createOutputCoderInfoDescriptor(RowType runnerOutType) {
+        return createRowTypeCoderInfoDescriptorProto(
+                runnerOutType, FlinkFnApi.CoderInfoDescriptor.Mode.MULTIPLE, false);
     }
 }

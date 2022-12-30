@@ -17,10 +17,12 @@
 # limitations under the License.
 ################################################################################
 
-if [[ -z $TEST_DATA_DIR ]]; then
+if [[ -z "${TEST_DATA_DIR:-}" ]]; then
   echo "Must run common.sh before kafka-common.sh."
   exit 1
 fi
+
+source "$(dirname "$0")"/common_artifact_download_cacher.sh
 
 KAFKA_VERSION="$1"
 CONFLUENT_VERSION="$2"
@@ -37,7 +39,8 @@ function setup_kafka_dist {
   mkdir -p $TEST_DATA_DIR
   KAFKA_URL="https://archive.apache.org/dist/kafka/$KAFKA_VERSION/kafka_2.12-$KAFKA_VERSION.tgz"
   echo "Downloading Kafka from $KAFKA_URL"
-  curl ${KAFKA_URL} --retry 10 --retry-max-time 120 --output ${TEST_DATA_DIR}/kafka.tgz
+  cache_path=$(get_artifact $KAFKA_URL)
+  ln "$cache_path" "${TEST_DATA_DIR}/kafka.tgz"
 
   tar xzf $TEST_DATA_DIR/kafka.tgz -C $TEST_DATA_DIR/
 
@@ -49,9 +52,10 @@ function setup_kafka_dist {
 function setup_confluent_dist {
   # download confluent
   mkdir -p $TEST_DATA_DIR
-  CONFLUENT_URL="http://packages.confluent.io/archive/$CONFLUENT_MAJOR_VERSION/confluent-oss-$CONFLUENT_VERSION-2.11.tar.gz"
+  CONFLUENT_URL="http://packages.confluent.io/archive/$CONFLUENT_MAJOR_VERSION/confluent-community-$CONFLUENT_VERSION.tar.gz"
   echo "Downloading confluent from $CONFLUENT_URL"
-  curl ${CONFLUENT_URL} --retry 10 --retry-max-time 120 --output ${TEST_DATA_DIR}/confluent.tgz
+  cache_path=$(get_artifact $CONFLUENT_URL)
+  ln "$cache_path" "${TEST_DATA_DIR}/confluent.tgz"
 
   tar xzf $TEST_DATA_DIR/confluent.tgz -C $TEST_DATA_DIR/
 
@@ -91,7 +95,7 @@ function start_kafka_cluster {
 
   start_time=$(date +%s)
   #
-  # Wait for the broker info to appear in ZK. We assume propery registration once an entry
+  # Wait for the broker info to appear in ZK. We assume property registration once an entry
   # similar to this is in ZK: {"listener_security_protocol_map":{"PLAINTEXT":"PLAINTEXT"},"endpoints":["PLAINTEXT://my-host:9092"],"jmx_port":-1,"host":"honorary-pig","timestamp":"1583157804932","port":9092,"version":4}
   #
   while ! [[ $($KAFKA_DIR/bin/zookeeper-shell.sh localhost:2181 get /brokers/ids/0 2>&1) =~ .*listener_security_protocol_map.* ]]; do
@@ -132,7 +136,7 @@ function stop_kafka_cluster {
 }
 
 function create_kafka_topic {
-  $KAFKA_DIR/bin/kafka-topics.sh --create --zookeeper localhost:2181 --replication-factor $1 --partitions $2 --topic $3
+  $KAFKA_DIR/bin/kafka-topics.sh --create --bootstrap-server localhost:9092 --replication-factor $1 --partitions $2 --topic $3
 }
 
 function send_messages_to_kafka {
@@ -160,11 +164,11 @@ function read_messages_from_kafka_avro {
 }
 
 function modify_num_partitions {
-  $KAFKA_DIR/bin/kafka-topics.sh --alter --topic $1 --partitions $2 --zookeeper localhost:2181
+  $KAFKA_DIR/bin/kafka-topics.sh --alter --topic $1 --partitions $2 --bootstrap-server localhost:9092
 }
 
 function get_num_partitions {
-  $KAFKA_DIR/bin/kafka-topics.sh --describe --topic $1 --zookeeper localhost:2181 | grep -Eo "PartitionCount:[0-9]+" | cut -d ":" -f 2
+  $KAFKA_DIR/bin/kafka-topics.sh --describe --topic $1 --bootstrap-server localhost:9092 | grep -Eo "PartitionCount:[0-9]+" | cut -d ":" -f 2
 }
 
 function get_partition_end_offset {

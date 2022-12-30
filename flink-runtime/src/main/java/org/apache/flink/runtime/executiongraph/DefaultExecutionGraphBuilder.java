@@ -23,8 +23,6 @@ import org.apache.flink.api.common.time.Time;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.IllegalConfigurationException;
 import org.apache.flink.configuration.JobManagerOptions;
-import org.apache.flink.configuration.WebOptions;
-import org.apache.flink.metrics.MetricGroup;
 import org.apache.flink.runtime.JobException;
 import org.apache.flink.runtime.blob.BlobWriter;
 import org.apache.flink.runtime.checkpoint.CheckpointIDCounter;
@@ -36,17 +34,15 @@ import org.apache.flink.runtime.checkpoint.hooks.MasterHooks;
 import org.apache.flink.runtime.client.JobExecutionException;
 import org.apache.flink.runtime.client.JobSubmissionException;
 import org.apache.flink.runtime.deployment.TaskDeploymentDescriptorFactory;
-import org.apache.flink.runtime.executiongraph.failover.flip1.partitionrelease.PartitionReleaseStrategy;
-import org.apache.flink.runtime.executiongraph.failover.flip1.partitionrelease.PartitionReleaseStrategyFactoryLoader;
-import org.apache.flink.runtime.executiongraph.metrics.DownTimeGauge;
-import org.apache.flink.runtime.executiongraph.metrics.RestartTimeGauge;
-import org.apache.flink.runtime.executiongraph.metrics.UpTimeGauge;
+import org.apache.flink.runtime.executiongraph.failover.flip1.partitionrelease.PartitionGroupReleaseStrategy;
+import org.apache.flink.runtime.executiongraph.failover.flip1.partitionrelease.PartitionGroupReleaseStrategyFactoryLoader;
 import org.apache.flink.runtime.io.network.partition.JobMasterPartitionTracker;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.jobgraph.JobVertex;
 import org.apache.flink.runtime.jobgraph.jsonplan.JsonPlanGenerator;
 import org.apache.flink.runtime.jobgraph.tasks.CheckpointCoordinatorConfiguration;
 import org.apache.flink.runtime.jobgraph.tasks.JobCheckpointingSettings;
+import org.apache.flink.runtime.scheduler.VertexParallelismStore;
 import org.apache.flink.runtime.shuffle.ShuffleMaster;
 import org.apache.flink.runtime.state.CheckpointStorage;
 import org.apache.flink.runtime.state.CheckpointStorageLoader;
@@ -63,7 +59,9 @@ import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.function.Supplier;
 
+import static org.apache.flink.configuration.StateChangelogOptions.STATE_CHANGE_LOG_STORAGE;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
@@ -82,7 +80,6 @@ public class DefaultExecutionGraphBuilder {
             CheckpointsCleaner checkpointsCleaner,
             CheckpointIDCounter checkpointIdCounter,
             Time rpcTimeout,
-            MetricGroup metrics,
             BlobWriter blobWriter,
             Logger log,
             ShuffleMaster<?> shuffleMaster,
@@ -90,7 +87,13 @@ public class DefaultExecutionGraphBuilder {
             TaskDeploymentDescriptorFactory.PartitionLocationConstraint partitionLocationConstraint,
             ExecutionDeploymentListener executionDeploymentListener,
             ExecutionStateUpdateListener executionStateUpdateListener,
-            long initializationTimestamp)
+            long initializationTimestamp,
+            VertexAttemptNumberStore vertexAttemptNumberStore,
+            VertexParallelismStore vertexParallelismStore,
+            Supplier<CheckpointStatsTracker> checkpointStatsTrackerFactory,
+            boolean isDynamicGraph,
+            ExecutionJobVertex.Factory executionJobVertexFactory,
+            MarkPartitionFinishedStrategy markPartitionFinishedStrategy)
             throws JobExecutionException, JobException {
 
         checkNotNull(jobGraph, "job graph cannot be null");
@@ -107,11 +110,11 @@ public class DefaultExecutionGraphBuilder {
                         jobGraph.getUserJarBlobKeys(),
                         jobGraph.getClasspaths());
 
-        final int maxPriorAttemptsHistoryLength =
+        final int executionHistorySizeLimit =
                 jobManagerConfig.getInteger(JobManagerOptions.MAX_ATTEMPTS_HISTORY_SIZE);
 
-        final PartitionReleaseStrategy.Factory partitionReleaseStrategyFactory =
-                PartitionReleaseStrategyFactoryLoader.loadPartitionReleaseStrategyFactory(
+        final PartitionGroupReleaseStrategy.Factory partitionGroupReleaseStrategyFactory =
+                PartitionGroupReleaseStrategyFactoryLoader.loadPartitionGroupReleaseStrategyFactory(
                         jobManagerConfig);
 
         // create a new execution graph, if none exists so far
@@ -123,16 +126,22 @@ public class DefaultExecutionGraphBuilder {
                             futureExecutor,
                             ioExecutor,
                             rpcTimeout,
-                            maxPriorAttemptsHistoryLength,
+                            executionHistorySizeLimit,
                             classLoader,
                             blobWriter,
-                            partitionReleaseStrategyFactory,
+                            partitionGroupReleaseStrategyFactory,
                             shuffleMaster,
                             partitionTracker,
                             partitionLocationConstraint,
                             executionDeploymentListener,
                             executionStateUpdateListener,
-                            initializationTimestamp);
+                            initializationTimestamp,
+                            vertexAttemptNumberStore,
+                            vertexParallelismStore,
+                            isDynamicGraph,
+                            executionJobVertexFactory,
+                            jobGraph.getJobStatusHooks(),
+                            markPartitionFinishedStrategy);
         } catch (IOException e) {
             throw new JobException("Could not create the ExecutionGraph.", e);
         }
@@ -166,7 +175,12 @@ public class DefaultExecutionGraphBuilder {
             }
 
             try {
-                vertex.initializeOnMaster(classLoader);
+                vertex.initializeOnMaster(
+                        new SimpleInitializeOnMasterContext(
+                                classLoader,
+                                vertexParallelismStore
+                                        .getParallelismInfo(vertex.getID())
+                                        .getParallelism()));
             } catch (Throwable t) {
                 throw new JobExecutionException(
                         jobId,
@@ -196,17 +210,11 @@ public class DefaultExecutionGraphBuilder {
         }
 
         // configure the state checkpointing
-        if (isCheckpointingEnabled(jobGraph)) {
+        if (isDynamicGraph) {
+            // dynamic graph does not support checkpointing so we skip it
+            log.warn("Skip setting up checkpointing for a job with dynamic graph.");
+        } else if (isCheckpointingEnabled(jobGraph)) {
             JobCheckpointingSettings snapshotSettings = jobGraph.getCheckpointingSettings();
-
-            // Maximum number of remembered checkpoints
-            int historySize = jobManagerConfig.getInteger(WebOptions.CHECKPOINTS_HISTORY_SIZE);
-
-            CheckpointStatsTracker checkpointStatsTracker =
-                    new CheckpointStatsTracker(
-                            historySize,
-                            snapshotSettings.getCheckpointCoordinatorConfiguration(),
-                            metrics);
 
             // load the state backend from the application settings
             final StateBackend applicationConfiguredBackend;
@@ -229,7 +237,11 @@ public class DefaultExecutionGraphBuilder {
             try {
                 rootBackend =
                         StateBackendLoader.fromApplicationOrConfigOrDefault(
-                                applicationConfiguredBackend, jobManagerConfig, classLoader, log);
+                                applicationConfiguredBackend,
+                                snapshotSettings.isChangelogStateBackendEnabled(),
+                                jobManagerConfig,
+                                classLoader,
+                                log);
             } catch (IllegalConfigurationException | IOException | DynamicCodeLoadingException e) {
                 throw new JobExecutionException(
                         jobId, "Could not instantiate configured state backend", e);
@@ -302,6 +314,7 @@ public class DefaultExecutionGraphBuilder {
 
             final CheckpointCoordinatorConfiguration chkConfig =
                     snapshotSettings.getCheckpointCoordinatorConfiguration();
+            String changelogStorage = jobManagerConfig.getString(STATE_CHANGE_LOG_STORAGE);
 
             executionGraph.enableCheckpointing(
                     chkConfig,
@@ -310,15 +323,10 @@ public class DefaultExecutionGraphBuilder {
                     completedCheckpointStore,
                     rootBackend,
                     rootStorage,
-                    checkpointStatsTracker,
-                    checkpointsCleaner);
+                    checkpointStatsTrackerFactory.get(),
+                    checkpointsCleaner,
+                    jobManagerConfig.getString(STATE_CHANGE_LOG_STORAGE));
         }
-
-        // create all the metrics for the Execution Graph
-
-        metrics.gauge(RestartTimeGauge.METRIC_NAME, new RestartTimeGauge(executionGraph));
-        metrics.gauge(DownTimeGauge.METRIC_NAME, new DownTimeGauge(executionGraph));
-        metrics.gauge(UpTimeGauge.METRIC_NAME, new UpTimeGauge(executionGraph));
 
         return executionGraph;
     }

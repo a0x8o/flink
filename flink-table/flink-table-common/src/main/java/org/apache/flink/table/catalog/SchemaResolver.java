@@ -18,20 +18,12 @@
 
 package org.apache.flink.table.catalog;
 
+import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.table.api.Schema;
-import org.apache.flink.table.api.Schema.UnresolvedMetadataColumn;
 
 /** Resolves a {@link Schema} to a validated {@link ResolvedSchema}. */
+@PublicEvolving
 public interface SchemaResolver {
 
     ResolvedSchema resolve(Schema schema);
-
-    /** Returns whether the resolution happens in streaming mode. */
-    boolean isStreamingMode();
-
-    /**
-     * Returns whether metadata columns are supported or an exception should be thrown during the
-     * resolution of {@link UnresolvedMetadataColumn}.
-     */
-    boolean supportsMetadata();
 }

@@ -19,16 +19,22 @@
 package org.apache.flink.runtime.scheduler.adaptive;
 
 import org.apache.flink.api.common.JobStatus;
+import org.apache.flink.core.testutils.CompletedScheduledFuture;
 import org.apache.flink.runtime.JobException;
 import org.apache.flink.runtime.client.JobExecutionException;
 import org.apache.flink.runtime.executiongraph.ExecutionGraph;
 import org.apache.flink.runtime.scheduler.ExecutionGraphHandler;
 import org.apache.flink.runtime.scheduler.OperatorCoordinatorHandler;
+import org.apache.flink.runtime.scheduler.exceptionhistory.ExceptionHistoryEntry;
+import org.apache.flink.runtime.scheduler.exceptionhistory.RootExceptionHistoryEntry;
 import org.apache.flink.util.TestLogger;
 
 import org.junit.Test;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.ScheduledFuture;
 import java.util.function.Consumer;
 
 import static org.apache.flink.runtime.scheduler.adaptive.WaitingForResourcesTest.assertNonNull;
@@ -117,11 +123,7 @@ public class RestartingTest extends TestLogger {
                         ctx.getMainThreadExecutor(),
                         ctx.getMainThreadExecutor());
         final OperatorCoordinatorHandler operatorCoordinatorHandler =
-                new OperatorCoordinatorHandler(
-                        executionGraph,
-                        (throwable) -> {
-                            throw new RuntimeException("Error in test", throwable);
-                        });
+                new TestingOperatorCoordinatorHandler();
         executionGraph.transitionToRunning();
         return new Restarting(
                 ctx,
@@ -129,7 +131,9 @@ public class RestartingTest extends TestLogger {
                 executionGraphHandler,
                 operatorCoordinatorHandler,
                 log,
-                Duration.ZERO);
+                Duration.ZERO,
+                ClassLoader.getSystemClassLoader(),
+                new ArrayList<>());
     }
 
     public Restarting createRestartingState(MockRestartingContext ctx)
@@ -158,12 +162,16 @@ public class RestartingTest extends TestLogger {
         public void goToCanceling(
                 ExecutionGraph executionGraph,
                 ExecutionGraphHandler executionGraphHandler,
-                OperatorCoordinatorHandler operatorCoordinatorHandler) {
+                OperatorCoordinatorHandler operatorCoordinatorHandler,
+                List<ExceptionHistoryEntry> failureCollection) {
             cancellingStateValidator.validateInput(
                     new ExecutingTest.CancellingArguments(
                             executionGraph, executionGraphHandler, operatorCoordinatorHandler));
             hadStateTransition = true;
         }
+
+        @Override
+        public void archiveFailure(RootExceptionHistoryEntry failure) {}
 
         @Override
         public void goToWaitingForResources() {
@@ -172,10 +180,11 @@ public class RestartingTest extends TestLogger {
         }
 
         @Override
-        public void runIfState(State expectedState, Runnable action, Duration delay) {
+        public ScheduledFuture<?> runIfState(State expectedState, Runnable action, Duration delay) {
             if (!hadStateTransition) {
                 action.run();
             }
+            return CompletedScheduledFuture.create(null);
         }
 
         @Override

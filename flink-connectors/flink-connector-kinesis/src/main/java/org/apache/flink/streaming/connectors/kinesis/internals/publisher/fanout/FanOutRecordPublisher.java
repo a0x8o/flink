@@ -21,6 +21,7 @@ import org.apache.flink.annotation.Internal;
 import org.apache.flink.streaming.connectors.kinesis.internals.publisher.RecordBatch;
 import org.apache.flink.streaming.connectors.kinesis.internals.publisher.RecordPublisher;
 import org.apache.flink.streaming.connectors.kinesis.internals.publisher.fanout.FanOutShardSubscriber.FanOutSubscriberException;
+import org.apache.flink.streaming.connectors.kinesis.internals.publisher.fanout.FanOutShardSubscriber.FanOutSubscriberInterruptedException;
 import org.apache.flink.streaming.connectors.kinesis.internals.publisher.fanout.FanOutShardSubscriber.RecoverableFanOutSubscriberException;
 import org.apache.flink.streaming.connectors.kinesis.model.SequenceNumber;
 import org.apache.flink.streaming.connectors.kinesis.model.StartingPosition;
@@ -43,8 +44,11 @@ import java.util.Date;
 import java.util.List;
 import java.util.function.Consumer;
 
+import static com.amazonaws.services.kinesis.model.ShardIteratorType.AT_TIMESTAMP;
+import static org.apache.flink.streaming.connectors.kinesis.internals.publisher.RecordPublisher.RecordPublisherRunResult.CANCELLED;
 import static org.apache.flink.streaming.connectors.kinesis.internals.publisher.RecordPublisher.RecordPublisherRunResult.COMPLETE;
 import static org.apache.flink.streaming.connectors.kinesis.internals.publisher.RecordPublisher.RecordPublisherRunResult.INCOMPLETE;
+import static org.apache.flink.streaming.connectors.kinesis.model.SentinelSequenceNumber.SENTINEL_AT_TIMESTAMP_SEQUENCE_NUM;
 import static software.amazon.awssdk.services.kinesis.model.StartingPosition.builder;
 
 /**
@@ -114,8 +118,7 @@ public class FanOutRecordPublisher implements RecordPublisher {
                                     subscribedShard,
                                     event.millisBehindLatest());
                     SequenceNumber sequenceNumber = recordConsumer.accept(recordBatch);
-                    nextStartingPosition =
-                            StartingPosition.continueFromSequenceNumber(sequenceNumber);
+                    nextStartingPosition = getNextStartingPosition(sequenceNumber);
                 };
 
         RecordPublisherRunResult result = runWithBackoff(eventConsumer);
@@ -127,6 +130,20 @@ public class FanOutRecordPublisher implements RecordPublisher {
                 result);
 
         return result;
+    }
+
+    private StartingPosition getNextStartingPosition(final SequenceNumber latestSequenceNumber) {
+        // When consuming from a timestamp sentinel/AT_TIMESTAMP ShardIteratorType.
+        // If the first RecordBatch has no deaggregated records, then the latestSequenceNumber would
+        // be the timestamp sentinel.
+        // This is because we have not yet received any real sequence numbers on this shard.
+        // In this condition we should retry from the previous starting position (AT_TIMESTAMP).
+        if (SENTINEL_AT_TIMESTAMP_SEQUENCE_NUM.get().equals(latestSequenceNumber)) {
+            Preconditions.checkState(nextStartingPosition.getShardIteratorType() == AT_TIMESTAMP);
+            return nextStartingPosition;
+        } else {
+            return StartingPosition.continueFromSequenceNumber(latestSequenceNumber);
+        }
     }
 
     /**
@@ -141,7 +158,10 @@ public class FanOutRecordPublisher implements RecordPublisher {
             final Consumer<SubscribeToShardEvent> eventConsumer) throws InterruptedException {
         FanOutShardSubscriber fanOutShardSubscriber =
                 new FanOutShardSubscriber(
-                        consumerArn, subscribedShard.getShard().getShardId(), kinesisProxy);
+                        consumerArn,
+                        subscribedShard.getShard().getShardId(),
+                        kinesisProxy,
+                        configuration.getSubscribeToShardTimeout());
         boolean complete;
 
         try {
@@ -149,6 +169,12 @@ public class FanOutRecordPublisher implements RecordPublisher {
                     fanOutShardSubscriber.subscribeToShardAndConsumeRecords(
                             toSdkV2StartingPosition(nextStartingPosition), eventConsumer);
             attempt = 0;
+        } catch (FanOutSubscriberInterruptedException ex) {
+            LOG.info(
+                    "Thread interrupted, closing record publisher for shard {}.",
+                    subscribedShard.getShard().getShardId(),
+                    ex);
+            return CANCELLED;
         } catch (RecoverableFanOutSubscriberException ex) {
             // Recoverable errors should be reattempted without contributing to the retry policy
             // A recoverable error would not result in the Flink job being cancelled

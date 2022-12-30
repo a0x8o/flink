@@ -27,18 +27,21 @@ import org.apache.flink.table.types.logical.BigIntType;
 import org.apache.flink.table.types.logical.BooleanType;
 import org.apache.flink.table.types.logical.CharType;
 import org.apache.flink.table.types.logical.DateType;
+import org.apache.flink.table.types.logical.DayTimeIntervalType;
 import org.apache.flink.table.types.logical.DecimalType;
 import org.apache.flink.table.types.logical.DoubleType;
 import org.apache.flink.table.types.logical.FloatType;
 import org.apache.flink.table.types.logical.IntType;
 import org.apache.flink.table.types.logical.LogicalType;
 import org.apache.flink.table.types.logical.MapType;
+import org.apache.flink.table.types.logical.NullType;
 import org.apache.flink.table.types.logical.RowType;
 import org.apache.flink.table.types.logical.SmallIntType;
 import org.apache.flink.table.types.logical.TimestampType;
 import org.apache.flink.table.types.logical.TinyIntType;
 import org.apache.flink.table.types.logical.VarBinaryType;
 import org.apache.flink.table.types.logical.VarCharType;
+import org.apache.flink.table.types.logical.YearMonthIntervalType;
 import org.apache.flink.table.types.logical.utils.LogicalTypeDefaultVisitor;
 
 import org.apache.hadoop.hive.common.type.HiveChar;
@@ -81,6 +84,22 @@ public class HiveTypeUtil {
         checkNotNull(dataType, "type cannot be null");
         LogicalType logicalType = dataType.getLogicalType();
         return logicalType.accept(new TypeInfoLogicalTypeVisitor(dataType, checkPrecision));
+    }
+
+    /**
+     * Convert Flink LogicalType to Hive TypeInfo. For types with a precision parameter, e.g.
+     * timestamp, the supported precisions in Hive and Flink can be different. Therefore the
+     * conversion will fail for those types if the precision is not supported by Hive and
+     * checkPrecision is true.
+     *
+     * @param logicalType a Flink LogicalType
+     * @param checkPrecision whether to fail the conversion if the precision of the LogicalType is
+     *     not supported by Hive
+     * @return the corresponding Hive data type
+     */
+    public static TypeInfo toHiveTypeInfo(LogicalType logicalType, boolean checkPrecision) {
+        checkNotNull(logicalType, "type cannot be null");
+        return logicalType.accept(new TypeInfoLogicalTypeVisitor(logicalType, checkPrecision));
     }
 
     /**
@@ -166,6 +185,10 @@ public class HiveTypeUtil {
                 DecimalTypeInfo decimalTypeInfo = (DecimalTypeInfo) hiveType;
                 return DataTypes.DECIMAL(
                         decimalTypeInfo.getPrecision(), decimalTypeInfo.getScale());
+            case INTERVAL_YEAR_MONTH:
+                return DataTypes.INTERVAL(DataTypes.MONTH());
+            case INTERVAL_DAY_TIME:
+                return DataTypes.INTERVAL(DataTypes.SECOND(3));
             default:
                 throw new UnsupportedOperationException(
                         String.format(
@@ -174,12 +197,16 @@ public class HiveTypeUtil {
     }
 
     private static class TypeInfoLogicalTypeVisitor extends LogicalTypeDefaultVisitor<TypeInfo> {
-        private final DataType dataType;
+        private final LogicalType type;
         // whether to check type precision
         private final boolean checkPrecision;
 
         TypeInfoLogicalTypeVisitor(DataType dataType, boolean checkPrecision) {
-            this.dataType = dataType;
+            this(dataType.getLogicalType(), checkPrecision);
+        }
+
+        TypeInfoLogicalTypeVisitor(LogicalType type, boolean checkPrecision) {
+            this.type = type;
             this.checkPrecision = checkPrecision;
         }
 
@@ -301,6 +328,16 @@ public class HiveTypeUtil {
         }
 
         @Override
+        public TypeInfo visit(YearMonthIntervalType yearMonthIntervalType) {
+            return TypeInfoFactory.intervalYearMonthTypeInfo;
+        }
+
+        @Override
+        public TypeInfo visit(DayTimeIntervalType dayTimeIntervalType) {
+            return TypeInfoFactory.intervalDayTimeTypeInfo;
+        }
+
+        @Override
         public TypeInfo visit(ArrayType arrayType) {
             LogicalType elementType = arrayType.getElementType();
             TypeInfo elementTypeInfo = elementType.accept(this);
@@ -340,11 +377,16 @@ public class HiveTypeUtil {
         }
 
         @Override
+        public TypeInfo visit(NullType nullType) {
+            return TypeInfoFactory.voidTypeInfo;
+        }
+
+        @Override
         protected TypeInfo defaultMethod(LogicalType logicalType) {
             throw new UnsupportedOperationException(
                     String.format(
                             "Flink doesn't support converting type %s to Hive type yet.",
-                            dataType.toString()));
+                            type.toString()));
         }
     }
 

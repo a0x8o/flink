@@ -56,6 +56,7 @@ import java.util.Set;
  */
 @PublicEvolving
 public final class DayTimeIntervalType extends LogicalType {
+    private static final long serialVersionUID = 1L;
 
     public static final int MIN_DAY_PRECISION = 1;
 
@@ -103,6 +104,7 @@ public final class DayTimeIntervalType extends LogicalType {
      *
      * <p>Note: The order of this enum reflects the granularity from coarse to fine.
      */
+    @PublicEvolving
     public enum DayTimeResolution {
         DAY,
         DAY_TO_HOUR,

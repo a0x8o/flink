@@ -18,9 +18,10 @@
 package org.apache.flink.streaming.connectors.kinesis.util;
 
 import org.apache.flink.annotation.Internal;
-import org.apache.flink.runtime.util.EnvironmentInformation;
+import org.apache.flink.connector.aws.config.AWSConfigConstants.CredentialProvider;
+import org.apache.flink.connector.aws.util.AWSAsyncSinkUtil;
+import org.apache.flink.connector.kinesis.sink.KinesisStreamsConfigConstants;
 import org.apache.flink.streaming.connectors.kinesis.config.AWSConfigConstants;
-import org.apache.flink.streaming.connectors.kinesis.config.AWSConfigConstants.CredentialProvider;
 import org.apache.flink.streaming.connectors.kinesis.model.SentinelSequenceNumber;
 import org.apache.flink.streaming.connectors.kinesis.model.SequenceNumber;
 import org.apache.flink.streaming.connectors.kinesis.model.StartingPosition;
@@ -37,7 +38,6 @@ import com.amazonaws.auth.SystemPropertiesCredentialsProvider;
 import com.amazonaws.auth.WebIdentityTokenCredentialsProvider;
 import com.amazonaws.auth.profile.ProfileCredentialsProvider;
 import com.amazonaws.client.builder.AwsClientBuilder;
-import com.amazonaws.regions.Regions;
 import com.amazonaws.services.kinesis.AmazonKinesis;
 import com.amazonaws.services.kinesis.AmazonKinesisClientBuilder;
 import com.amazonaws.services.securitytoken.AWSSecurityTokenService;
@@ -54,6 +54,7 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
+import java.util.regex.Pattern;
 
 import static org.apache.flink.streaming.connectors.kinesis.model.SentinelSequenceNumber.SENTINEL_AT_TIMESTAMP_SEQUENCE_NUM;
 import static org.apache.flink.streaming.connectors.kinesis.model.SentinelSequenceNumber.SENTINEL_LATEST_SEQUENCE_NUM;
@@ -61,9 +62,6 @@ import static org.apache.flink.streaming.connectors.kinesis.model.SentinelSequen
 /** Some utilities specific to Amazon Web Service. */
 @Internal
 public class AWSUtil {
-    /** Used for formatting Flink-specific user agent string when creating Kinesis client. */
-    private static final String USER_AGENT_FORMAT = "Apache Flink %s (%s) Kinesis Connector";
-
     /**
      * Creates an AmazonKinesis client.
      *
@@ -84,7 +82,9 @@ public class AWSUtil {
     public static AmazonKinesis createKinesisClient(
             Properties configProps, ClientConfiguration awsClientConfig) {
         // set a Flink-specific user agent
-        awsClientConfig.setUserAgentPrefix(formatFlinkUserAgentPrefix());
+        awsClientConfig.setUserAgentPrefix(
+                AWSAsyncSinkUtil.formatFlinkUserAgentPrefix(
+                        KinesisStreamsConfigConstants.BASE_KINESIS_USER_AGENT_PREFIX_FORMAT));
 
         // utilize automatic refreshment of credentials by directly passing the
         // AWSCredentialsProvider
@@ -102,22 +102,9 @@ public class AWSUtil {
                             configProps.getProperty(AWSConfigConstants.AWS_ENDPOINT),
                             configProps.getProperty(AWSConfigConstants.AWS_REGION)));
         } else {
-            builder.withRegion(
-                    Regions.fromName(configProps.getProperty(AWSConfigConstants.AWS_REGION)));
+            builder.withRegion(configProps.getProperty(AWSConfigConstants.AWS_REGION));
         }
         return builder.build();
-    }
-
-    /**
-     * Creates a user agent prefix for Flink. This can be used by HTTP Clients.
-     *
-     * @return a user agent prefix for Flink
-     */
-    public static String formatFlinkUserAgentPrefix() {
-        return String.format(
-                USER_AGENT_FORMAT,
-                EnvironmentInformation.getVersion(),
-                EnvironmentInformation.getRevisionInformation().commitId);
     }
 
     /**
@@ -129,28 +116,6 @@ public class AWSUtil {
      */
     public static AWSCredentialsProvider getCredentialsProvider(final Properties configProps) {
         return getCredentialsProvider(configProps, AWSConfigConstants.AWS_CREDENTIALS_PROVIDER);
-    }
-
-    /**
-     * Determines and returns the credential provider type from the given properties.
-     *
-     * @return the credential provider type
-     */
-    static CredentialProvider getCredentialProviderType(
-            final Properties configProps, final String configPrefix) {
-        if (!configProps.containsKey(configPrefix)) {
-            if (configProps.containsKey(AWSConfigConstants.accessKeyId(configPrefix))
-                    && configProps.containsKey(AWSConfigConstants.secretKey(configPrefix))) {
-                // if the credential provider type is not specified, but the Access Key ID and
-                // Secret Key are given, it will default to BASIC
-                return CredentialProvider.BASIC;
-            } else {
-                // if the credential provider type is not specified, it will default to AUTO
-                return CredentialProvider.AUTO;
-            }
-        } else {
-            return CredentialProvider.valueOf(configProps.getProperty(configPrefix));
-        }
     }
 
     /**
@@ -166,7 +131,7 @@ public class AWSUtil {
     private static AWSCredentialsProvider getCredentialsProvider(
             final Properties configProps, final String configPrefix) {
         CredentialProvider credentialProviderType =
-                getCredentialProviderType(configProps, configPrefix);
+                AWSAsyncSinkUtil.getCredentialProviderType(configProps, configPrefix);
 
         switch (credentialProviderType) {
             case ENV_VAR:
@@ -202,15 +167,6 @@ public class AWSUtil {
                 };
 
             case ASSUME_ROLE:
-                final AWSSecurityTokenService baseCredentials =
-                        AWSSecurityTokenServiceClientBuilder.standard()
-                                .withCredentials(
-                                        getCredentialsProvider(
-                                                configProps,
-                                                AWSConfigConstants.roleCredentialsProvider(
-                                                        configPrefix)))
-                                .withRegion(configProps.getProperty(AWSConfigConstants.AWS_REGION))
-                                .build();
                 return new STSAssumeRoleSessionCredentialsProvider.Builder(
                                 configProps.getProperty(AWSConfigConstants.roleArn(configPrefix)),
                                 configProps.getProperty(
@@ -218,7 +174,7 @@ public class AWSUtil {
                         .withExternalId(
                                 configProps.getProperty(
                                         AWSConfigConstants.externalId(configPrefix)))
-                        .withStsClient(baseCredentials)
+                        .withStsClient(createStsClient(configProps, configPrefix))
                         .build();
 
             case WEB_IDENTITY_TOKEN:
@@ -244,6 +200,29 @@ public class AWSUtil {
         }
     }
 
+    private static AWSSecurityTokenService createStsClient(
+            final Properties configProps, final String configPrefix) {
+        final String region = configProps.getProperty(AWSConfigConstants.AWS_REGION);
+        final AWSSecurityTokenServiceClientBuilder stsClientBuilder =
+                AWSSecurityTokenServiceClientBuilder.standard()
+                        .withCredentials(
+                                getCredentialsProvider(
+                                        configProps,
+                                        AWSConfigConstants.roleCredentialsProvider(configPrefix)));
+
+        if (configProps.containsKey(AWSConfigConstants.AWS_ROLE_STS_ENDPOINT)) {
+            AwsClientBuilder.EndpointConfiguration endpointConfiguration =
+                    new AwsClientBuilder.EndpointConfiguration(
+                            configProps.getProperty(AWSConfigConstants.AWS_ROLE_STS_ENDPOINT),
+                            region);
+            stsClientBuilder.withEndpointConfiguration(endpointConfiguration);
+        } else {
+            stsClientBuilder.withRegion(region);
+        }
+
+        return stsClientBuilder.build();
+    }
+
     /**
      * Checks whether or not a region ID is valid.
      *
@@ -251,12 +230,7 @@ public class AWSUtil {
      * @return true if the supplied region ID is valid, false otherwise
      */
     public static boolean isValidRegion(String region) {
-        try {
-            Regions.fromName(region.toLowerCase());
-        } catch (IllegalArgumentException e) {
-            return false;
-        }
-        return true;
+        return Pattern.matches("^[a-z]+-([a-z]+[-]{0,1}[a-z]+-([0-9]|global)|global)$", region);
     }
 
     /** The prefix used for properties that should be applied to {@link ClientConfiguration}. */

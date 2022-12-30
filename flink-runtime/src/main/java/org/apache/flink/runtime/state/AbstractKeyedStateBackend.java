@@ -20,16 +20,18 @@ package org.apache.flink.runtime.state;
 
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.ExecutionConfig;
-import org.apache.flink.api.common.state.CheckpointListener;
+import org.apache.flink.api.common.state.InternalCheckpointListener;
 import org.apache.flink.api.common.state.State;
 import org.apache.flink.api.common.state.StateDescriptor;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.core.fs.CloseableRegistry;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
-import org.apache.flink.runtime.checkpoint.CheckpointType;
+import org.apache.flink.runtime.checkpoint.SnapshotType;
 import org.apache.flink.runtime.query.TaskKvStateRegistry;
 import org.apache.flink.runtime.state.heap.InternalKeyContext;
 import org.apache.flink.runtime.state.internal.InternalKvState;
+import org.apache.flink.runtime.state.metrics.LatencyTrackingStateConfig;
+import org.apache.flink.runtime.state.metrics.LatencyTrackingStateFactory;
 import org.apache.flink.runtime.state.ttl.TtlStateFactory;
 import org.apache.flink.runtime.state.ttl.TtlTimeProvider;
 import org.apache.flink.util.IOUtils;
@@ -49,7 +51,10 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * @param <K> Type of the key by which state is keyed.
  */
 public abstract class AbstractKeyedStateBackend<K>
-        implements CheckpointableKeyedStateBackend<K>, CheckpointListener {
+        implements CheckpointableKeyedStateBackend<K>,
+                InternalCheckpointListener,
+                TestableKeyedStateBackend<K>,
+                InternalKeyContext<K> {
 
     /** The key serializer. */
     protected final TypeSerializer<K> keySerializer;
@@ -87,6 +92,8 @@ public abstract class AbstractKeyedStateBackend<K>
 
     protected final TtlTimeProvider ttlTimeProvider;
 
+    protected final LatencyTrackingStateConfig latencyTrackingStateConfig;
+
     /** Decorates the input and output streams to write key-groups compressed. */
     protected final StreamCompressionDecorator keyGroupCompressionDecorator;
 
@@ -99,6 +106,7 @@ public abstract class AbstractKeyedStateBackend<K>
             ClassLoader userCodeClassLoader,
             ExecutionConfig executionConfig,
             TtlTimeProvider ttlTimeProvider,
+            LatencyTrackingStateConfig latencyTrackingStateConfig,
             CloseableRegistry cancelStreamRegistry,
             InternalKeyContext<K> keyContext) {
         this(
@@ -107,6 +115,7 @@ public abstract class AbstractKeyedStateBackend<K>
                 userCodeClassLoader,
                 executionConfig,
                 ttlTimeProvider,
+                latencyTrackingStateConfig,
                 cancelStreamRegistry,
                 determineStreamCompression(executionConfig),
                 keyContext);
@@ -118,12 +127,68 @@ public abstract class AbstractKeyedStateBackend<K>
             ClassLoader userCodeClassLoader,
             ExecutionConfig executionConfig,
             TtlTimeProvider ttlTimeProvider,
+            LatencyTrackingStateConfig latencyTrackingStateConfig,
             CloseableRegistry cancelStreamRegistry,
             StreamCompressionDecorator keyGroupCompressionDecorator,
             InternalKeyContext<K> keyContext) {
+        this(
+                kvStateRegistry,
+                keySerializer,
+                userCodeClassLoader,
+                executionConfig,
+                ttlTimeProvider,
+                latencyTrackingStateConfig,
+                cancelStreamRegistry,
+                keyGroupCompressionDecorator,
+                Preconditions.checkNotNull(keyContext),
+                keyContext.getNumberOfKeyGroups(),
+                keyContext.getKeyGroupRange(),
+                new HashMap<>(),
+                new ArrayList<>(1),
+                null,
+                null);
+    }
+
+    // Copy constructor
+    protected AbstractKeyedStateBackend(AbstractKeyedStateBackend<K> abstractKeyedStateBackend) {
+        this(
+                abstractKeyedStateBackend.kvStateRegistry,
+                abstractKeyedStateBackend.keySerializer,
+                abstractKeyedStateBackend.userCodeClassLoader,
+                abstractKeyedStateBackend.executionConfig,
+                abstractKeyedStateBackend.ttlTimeProvider,
+                abstractKeyedStateBackend.latencyTrackingStateConfig,
+                abstractKeyedStateBackend.cancelStreamRegistry,
+                abstractKeyedStateBackend.keyGroupCompressionDecorator,
+                abstractKeyedStateBackend.keyContext,
+                abstractKeyedStateBackend.numberOfKeyGroups,
+                abstractKeyedStateBackend.keyGroupRange,
+                abstractKeyedStateBackend.keyValueStatesByName,
+                abstractKeyedStateBackend.keySelectionListeners,
+                abstractKeyedStateBackend.lastState,
+                abstractKeyedStateBackend.lastName);
+    }
+
+    @SuppressWarnings("rawtypes")
+    private AbstractKeyedStateBackend(
+            TaskKvStateRegistry kvStateRegistry,
+            TypeSerializer<K> keySerializer,
+            ClassLoader userCodeClassLoader,
+            ExecutionConfig executionConfig,
+            TtlTimeProvider ttlTimeProvider,
+            LatencyTrackingStateConfig latencyTrackingStateConfig,
+            CloseableRegistry cancelStreamRegistry,
+            StreamCompressionDecorator keyGroupCompressionDecorator,
+            InternalKeyContext<K> keyContext,
+            int numberOfKeyGroups,
+            KeyGroupRange keyGroupRange,
+            HashMap<String, InternalKvState<K, ?, ?>> keyValueStatesByName,
+            ArrayList<KeySelectionListener<K>> keySelectionListeners,
+            InternalKvState lastState,
+            String lastName) {
         this.keyContext = Preconditions.checkNotNull(keyContext);
-        this.numberOfKeyGroups = keyContext.getNumberOfKeyGroups();
-        this.keyGroupRange = Preconditions.checkNotNull(keyContext.getKeyGroupRange());
+        this.numberOfKeyGroups = numberOfKeyGroups;
+        this.keyGroupRange = Preconditions.checkNotNull(keyGroupRange);
         Preconditions.checkArgument(
                 numberOfKeyGroups >= 1, "NumberOfKeyGroups must be a positive number");
         Preconditions.checkArgument(
@@ -137,11 +202,14 @@ public abstract class AbstractKeyedStateBackend<K>
         this.keySerializer = keySerializer;
         this.userCodeClassLoader = Preconditions.checkNotNull(userCodeClassLoader);
         this.cancelStreamRegistry = cancelStreamRegistry;
-        this.keyValueStatesByName = new HashMap<>();
+        this.keyValueStatesByName = keyValueStatesByName;
         this.executionConfig = executionConfig;
         this.keyGroupCompressionDecorator = keyGroupCompressionDecorator;
         this.ttlTimeProvider = Preconditions.checkNotNull(ttlTimeProvider);
-        this.keySelectionListeners = new ArrayList<>(1);
+        this.latencyTrackingStateConfig = Preconditions.checkNotNull(latencyTrackingStateConfig);
+        this.keySelectionListeners = keySelectionListeners;
+        this.lastState = lastState;
+        this.lastName = lastName;
     }
 
     private static StreamCompressionDecorator determineStreamCompression(
@@ -152,6 +220,9 @@ public abstract class AbstractKeyedStateBackend<K>
             return UncompressedStreamCompressionDecorator.INSTANCE;
         }
     }
+
+    @Override
+    public void notifyCheckpointSubsumed(long checkpointId) throws Exception {}
 
     /**
      * Closes the state backend, releasing all internal resources, but does not delete any
@@ -234,9 +305,26 @@ public abstract class AbstractKeyedStateBackend<K>
             final KeyedStateFunction<K, S> function)
             throws Exception {
 
+        applyToAllKeys(
+                namespace,
+                namespaceSerializer,
+                stateDescriptor,
+                function,
+                this::getPartitionedState);
+    }
+
+    public <N, S extends State, T> void applyToAllKeys(
+            final N namespace,
+            final TypeSerializer<N> namespaceSerializer,
+            final StateDescriptor<S, T> stateDescriptor,
+            final KeyedStateFunction<K, S> function,
+            final PartitionStateFactory partitionStateFactory)
+            throws Exception {
+
         try (Stream<K> keyStream = getKeys(stateDescriptor.getName(), namespace)) {
 
-            final S state = getPartitionedState(namespace, namespaceSerializer, stateDescriptor);
+            final S state =
+                    partitionStateFactory.get(namespace, namespaceSerializer, stateDescriptor);
 
             keyStream.forEach(
                     (K key) -> {
@@ -270,15 +358,18 @@ public abstract class AbstractKeyedStateBackend<K>
                 stateDescriptor.initializeSerializerUnlessSet(executionConfig);
             }
             kvState =
-                    TtlStateFactory.createStateAndWrapWithTtlIfEnabled(
-                            namespaceSerializer, stateDescriptor, this, ttlTimeProvider);
+                    LatencyTrackingStateFactory.createStateAndWrapWithLatencyTrackingIfEnabled(
+                            TtlStateFactory.createStateAndWrapWithTtlIfEnabled(
+                                    namespaceSerializer, stateDescriptor, this, ttlTimeProvider),
+                            stateDescriptor,
+                            latencyTrackingStateConfig);
             keyValueStatesByName.put(stateDescriptor.getName(), kvState);
             publishQueryableStateIfEnabled(stateDescriptor, kvState);
         }
         return (S) kvState;
     }
 
-    private void publishQueryableStateIfEnabled(
+    public void publishQueryableStateIfEnabled(
             StateDescriptor<?, ?> stateDescriptor, InternalKvState<?, ?, ?> kvState) {
         if (stateDescriptor.isQueryable()) {
             if (kvStateRegistry == null) {
@@ -334,14 +425,14 @@ public abstract class AbstractKeyedStateBackend<K>
         cancelStreamRegistry.close();
     }
 
+    public LatencyTrackingStateConfig getLatencyTrackingStateConfig() {
+        return latencyTrackingStateConfig;
+    }
+
     @VisibleForTesting
     public StreamCompressionDecorator getKeyGroupCompressionDecorator() {
         return keyGroupCompressionDecorator;
     }
-
-    /** Returns the total number of state entries across all keys/namespaces. */
-    @VisibleForTesting
-    public abstract int numKeyValueStateEntries();
 
     @VisibleForTesting
     public int numKeyValueStatesByName() {
@@ -349,11 +440,24 @@ public abstract class AbstractKeyedStateBackend<K>
     }
 
     // TODO remove this once heap-based timers are working with RocksDB incremental snapshots!
-    public boolean requiresLegacySynchronousTimerSnapshots(CheckpointType checkpointType) {
+    public boolean requiresLegacySynchronousTimerSnapshots(SnapshotType checkpointType) {
         return false;
     }
 
-    public boolean isStateImmutableInStateBackend(CheckpointType checkpointType) {
-        return false;
+    public InternalKeyContext<K> getKeyContext() {
+        return keyContext;
+    }
+
+    public interface PartitionStateFactory {
+        <N, S extends State> S get(
+                final N namespace,
+                final TypeSerializer<N> namespaceSerializer,
+                final StateDescriptor<S, ?> stateDescriptor)
+                throws Exception;
+    }
+
+    @Override
+    public void setCurrentKeyGroupIndex(int currentKeyGroupIndex) {
+        keyContext.setCurrentKeyGroupIndex(currentKeyGroupIndex);
     }
 }

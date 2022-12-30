@@ -18,17 +18,18 @@
 
 package org.apache.flink.table.client.cli;
 
-import org.apache.flink.runtime.util.ExecutorThreadFactory;
-import org.apache.flink.table.api.TableColumn;
 import org.apache.flink.table.client.gateway.Executor;
 import org.apache.flink.table.client.gateway.ResultDescriptor;
 import org.apache.flink.table.client.gateway.SqlExecutionException;
 import org.apache.flink.table.client.gateway.TypedResult;
-import org.apache.flink.table.utils.PrintUtils;
-import org.apache.flink.types.Row;
+import org.apache.flink.table.data.RowData;
+import org.apache.flink.table.utils.print.PrintStyle;
+import org.apache.flink.table.utils.print.TableauStyle;
+import org.apache.flink.util.concurrent.ExecutorThreadFactory;
 
 import org.jline.terminal.Terminal;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
@@ -36,12 +37,9 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.Stream;
 
 /** Print result in tableau mode. */
 public class CliTableauResultView implements AutoCloseable {
-
-    private static final int DEFAULT_COLUMN_WIDTH = 20;
 
     private final Terminal terminal;
     private final Executor sqlExecutor;
@@ -68,7 +66,11 @@ public class CliTableauResultView implements AutoCloseable {
         Future<?> resultFuture =
                 displayResultExecutorService.submit(
                         () -> {
-                            printResults(receivedRowCount, resultDescriptor.isStreamingMode());
+                            if (resultDescriptor.isStreamingMode()) {
+                                printStreamingResults(receivedRowCount);
+                            } else {
+                                printBatchResults(receivedRowCount);
+                            }
                         });
 
         // capture CTRL-C
@@ -87,7 +89,8 @@ public class CliTableauResultView implements AutoCloseable {
                     .println(
                             "Query terminated, received a total of "
                                     + receivedRowCount.get()
-                                    + " rows");
+                                    + " "
+                                    + getRowTerm(receivedRowCount));
             terminal.flush();
         } catch (ExecutionException e) {
             if (e.getCause() instanceof SqlExecutionException) {
@@ -116,50 +119,53 @@ public class CliTableauResultView implements AutoCloseable {
         }
     }
 
-    private void printResults(AtomicInteger receivedRowCount, boolean isStreamingMode) {
-        List<TableColumn> columns = resultDescriptor.getResultSchema().getTableColumns();
-        final String[] fieldNames;
-        final int[] colWidths;
-        if (isStreamingMode) {
-            fieldNames =
-                    Stream.concat(
-                                    Stream.of(PrintUtils.ROW_KIND_COLUMN),
-                                    columns.stream().map(TableColumn::getName))
-                            .toArray(String[]::new);
-            colWidths =
-                    PrintUtils.columnWidthsByType(
-                            columns,
-                            DEFAULT_COLUMN_WIDTH,
-                            PrintUtils.NULL_COLUMN,
-                            PrintUtils.ROW_KIND_COLUMN);
-        } else {
-            fieldNames = columns.stream().map(TableColumn::getName).toArray(String[]::new);
-            colWidths =
-                    PrintUtils.columnWidthsByType(
-                            columns, DEFAULT_COLUMN_WIDTH, PrintUtils.NULL_COLUMN, null);
-        }
+    private void printBatchResults(AtomicInteger receivedRowCount) {
+        final List<RowData> resultRows = waitBatchResults();
+        receivedRowCount.addAndGet(resultRows.size());
+        TableauStyle style =
+                PrintStyle.tableauWithDataInferredColumnWidths(
+                        resultDescriptor.getResultSchema(),
+                        resultDescriptor.getRowDataStringConverter(),
+                        PrintStyle.DEFAULT_MAX_COLUMN_WIDTH,
+                        false,
+                        false);
+        style.print(resultRows.iterator(), terminal.writer());
+    }
 
-        String borderline = PrintUtils.genBorderLine(colWidths);
+    private void printStreamingResults(AtomicInteger receivedRowCount) {
+        TableauStyle style =
+                PrintStyle.tableauWithTypeInferredColumnWidths(
+                        resultDescriptor.getResultSchema(),
+                        resultDescriptor.getRowDataStringConverter(),
+                        resultDescriptor.maxColumnWidth(),
+                        false,
+                        true);
 
         // print filed names
-        terminal.writer().println(borderline);
-        PrintUtils.printSingleRow(colWidths, fieldNames, terminal.writer());
-        terminal.writer().println(borderline);
+        style.printBorderLine(terminal.writer());
+        style.printColumnNamesTableauRow(terminal.writer());
+        style.printBorderLine(terminal.writer());
         terminal.flush();
 
         while (true) {
-            final TypedResult<List<Row>> result =
+            final TypedResult<List<RowData>> result =
                     sqlExecutor.retrieveResultChanges(sessionId, resultDescriptor.getResultId());
 
             switch (result.getType()) {
                 case EMPTY:
-                    // do nothing
+                    try {
+                        // prevent busy loop
+                        Thread.sleep(1);
+                    } catch (InterruptedException e) {
+                        // get ctrl+c from terminal and fallback
+                        return;
+                    }
                     break;
                 case EOS:
                     if (receivedRowCount.get() > 0) {
-                        terminal.writer().println(borderline);
+                        style.printBorderLine(terminal.writer());
                     }
-                    String rowTerm = receivedRowCount.get() > 1 ? "rows" : "row";
+                    String rowTerm = getRowTerm(receivedRowCount);
                     terminal.writer()
                             .println(
                                     "Received a total of "
@@ -169,12 +175,9 @@ public class CliTableauResultView implements AutoCloseable {
                     terminal.flush();
                     return;
                 case PAYLOAD:
-                    List<Row> changes = result.getPayload();
-                    for (Row change : changes) {
-                        final String[] row =
-                                PrintUtils.rowToString(
-                                        change, PrintUtils.NULL_COLUMN, isStreamingMode);
-                        PrintUtils.printSingleRow(colWidths, row, terminal.writer());
+                    List<RowData> changes = result.getPayload();
+                    for (RowData change : changes) {
+                        style.printTableauRow(style.rowFieldsToString(change), terminal.writer());
                         receivedRowCount.incrementAndGet();
                     }
                     break;
@@ -182,5 +185,30 @@ public class CliTableauResultView implements AutoCloseable {
                     throw new SqlExecutionException("Unknown result type: " + result.getType());
             }
         }
+    }
+
+    private List<RowData> waitBatchResults() {
+        List<RowData> resultRows = new ArrayList<>();
+        do {
+            try {
+                Thread.sleep(50);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            TypedResult<List<RowData>> result =
+                    sqlExecutor.retrieveResultChanges(sessionId, resultDescriptor.getResultId());
+
+            if (result.getType() == TypedResult.ResultType.EOS) {
+                break;
+            } else if (result.getType() == TypedResult.ResultType.PAYLOAD) {
+                resultRows.addAll(result.getPayload());
+            }
+        } while (true);
+
+        return resultRows;
+    }
+
+    private String getRowTerm(AtomicInteger receivedRowCount) {
+        return receivedRowCount.get() > 1 ? "rows" : "row";
     }
 }

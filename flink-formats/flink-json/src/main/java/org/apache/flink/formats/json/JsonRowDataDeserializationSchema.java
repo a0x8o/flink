@@ -21,10 +21,12 @@ package org.apache.flink.formats.json;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.common.serialization.DeserializationSchema;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.formats.common.TimestampFormat;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.types.logical.DecimalType;
 import org.apache.flink.table.types.logical.RowType;
 import org.apache.flink.table.types.logical.utils.LogicalTypeChecks;
+import org.apache.flink.util.jackson.JacksonMapperFactory;
 
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.core.json.JsonReadFeature;
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.databind.DeserializationFeature;
@@ -66,10 +68,12 @@ public class JsonRowDataDeserializationSchema implements DeserializationSchema<R
     private final JsonToRowDataConverters.JsonToRowDataConverter runtimeConverter;
 
     /** Object mapper for parsing the JSON. */
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private transient ObjectMapper objectMapper;
 
     /** Timestamp format specification which is used to parse timestamp. */
     private final TimestampFormat timestampFormat;
+
+    private final boolean hasDecimalType;
 
     public JsonRowDataDeserializationSchema(
             RowType rowType,
@@ -88,12 +92,19 @@ public class JsonRowDataDeserializationSchema implements DeserializationSchema<R
                 new JsonToRowDataConverters(failOnMissingField, ignoreParseErrors, timestampFormat)
                         .createConverter(checkNotNull(rowType));
         this.timestampFormat = timestampFormat;
-        boolean hasDecimalType =
-                LogicalTypeChecks.hasNested(rowType, t -> t instanceof DecimalType);
+        this.hasDecimalType = LogicalTypeChecks.hasNested(rowType, t -> t instanceof DecimalType);
+    }
+
+    @Override
+    public void open(InitializationContext context) throws Exception {
+        objectMapper =
+                JacksonMapperFactory.createObjectMapper()
+                        .configure(
+                                JsonReadFeature.ALLOW_UNESCAPED_CONTROL_CHARS.mappedFeature(),
+                                true);
         if (hasDecimalType) {
             objectMapper.enable(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS);
         }
-        objectMapper.configure(JsonReadFeature.ALLOW_UNESCAPED_CONTROL_CHARS.mappedFeature(), true);
     }
 
     @Override

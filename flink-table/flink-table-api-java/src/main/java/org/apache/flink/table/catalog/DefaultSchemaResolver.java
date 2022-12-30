@@ -34,8 +34,8 @@ import org.apache.flink.table.expressions.LocalReferenceExpression;
 import org.apache.flink.table.expressions.ResolvedExpression;
 import org.apache.flink.table.expressions.resolver.ExpressionResolver.ExpressionResolverBuilder;
 import org.apache.flink.table.types.DataType;
+import org.apache.flink.table.types.logical.LocalZonedTimestampType;
 import org.apache.flink.table.types.logical.LogicalType;
-import org.apache.flink.table.types.logical.LogicalTypeRoot;
 import org.apache.flink.table.types.logical.TimestampKind;
 import org.apache.flink.table.types.logical.TimestampType;
 
@@ -43,6 +43,7 @@ import javax.annotation.Nullable;
 
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -53,8 +54,8 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static org.apache.flink.table.expressions.ApiExpressionUtils.localRef;
+import static org.apache.flink.table.types.logical.utils.LogicalTypeChecks.canBeTimeAttributeType;
 import static org.apache.flink.table.types.logical.utils.LogicalTypeChecks.getPrecision;
-import static org.apache.flink.table.types.logical.utils.LogicalTypeChecks.hasRoot;
 import static org.apache.flink.table.types.logical.utils.LogicalTypeChecks.isProctimeAttribute;
 import static org.apache.flink.table.types.utils.DataTypeUtils.replaceLogicalType;
 
@@ -63,24 +64,16 @@ import static org.apache.flink.table.types.utils.DataTypeUtils.replaceLogicalTyp
 class DefaultSchemaResolver implements SchemaResolver {
 
     private final boolean isStreamingMode;
-    private final boolean supportsMetadata;
     private final DataTypeFactory dataTypeFactory;
     private final ExpressionResolverBuilder resolverBuilder;
 
     DefaultSchemaResolver(
             boolean isStreamingMode,
-            boolean supportsMetadata,
             DataTypeFactory dataTypeFactory,
             ExpressionResolverBuilder resolverBuilder) {
         this.isStreamingMode = isStreamingMode;
-        this.supportsMetadata = supportsMetadata;
         this.dataTypeFactory = dataTypeFactory;
         this.resolverBuilder = resolverBuilder;
-    }
-
-    public SchemaResolver withMetadata(boolean supportsMetadata) {
-        return new DefaultSchemaResolver(
-                isStreamingMode, supportsMetadata, dataTypeFactory, resolverBuilder);
     }
 
     @Override
@@ -98,21 +91,12 @@ class DefaultSchemaResolver implements SchemaResolver {
         return new ResolvedSchema(columnsWithRowtime, watermarkSpecs, primaryKey);
     }
 
-    @Override
-    public boolean isStreamingMode() {
-        return isStreamingMode;
-    }
-
-    @Override
-    public boolean supportsMetadata() {
-        return supportsMetadata;
-    }
-
     // --------------------------------------------------------------------------------------------
 
     private List<Column> resolveColumns(List<Schema.UnresolvedColumn> unresolvedColumns) {
 
         validateDuplicateColumns(unresolvedColumns);
+        validateDuplicateMetadataKeys(unresolvedColumns);
 
         final Column[] resolvedColumns = new Column[unresolvedColumns.size()];
         // process source columns first before computed columns
@@ -146,27 +130,26 @@ class DefaultSchemaResolver implements SchemaResolver {
 
     private PhysicalColumn resolvePhysicalColumn(UnresolvedPhysicalColumn unresolvedColumn) {
         return Column.physical(
-                unresolvedColumn.getName(),
-                dataTypeFactory.createDataType(unresolvedColumn.getDataType()));
+                        unresolvedColumn.getName(),
+                        dataTypeFactory.createDataType(unresolvedColumn.getDataType()))
+                .withComment(unresolvedColumn.getComment().orElse(null));
     }
 
     private MetadataColumn resolveMetadataColumn(UnresolvedMetadataColumn unresolvedColumn) {
-        if (!supportsMetadata) {
-            throw new ValidationException(
-                    "Metadata columns are not supported in a schema at the current location.");
-        }
         return Column.metadata(
-                unresolvedColumn.getName(),
-                dataTypeFactory.createDataType(unresolvedColumn.getDataType()),
-                unresolvedColumn.getMetadataKey(),
-                unresolvedColumn.isVirtual());
+                        unresolvedColumn.getName(),
+                        dataTypeFactory.createDataType(unresolvedColumn.getDataType()),
+                        unresolvedColumn.getMetadataKey(),
+                        unresolvedColumn.isVirtual())
+                .withComment(unresolvedColumn.getComment().orElse(null));
     }
 
     private ComputedColumn resolveComputedColumn(
             UnresolvedComputedColumn unresolvedColumn, List<Column> inputColumns) {
         final ResolvedExpression resolvedExpression;
         try {
-            resolvedExpression = resolveExpression(inputColumns, unresolvedColumn.getExpression());
+            resolvedExpression =
+                    resolveExpression(inputColumns, unresolvedColumn.getExpression(), null);
         } catch (Exception e) {
             throw new ValidationException(
                     String.format(
@@ -174,7 +157,8 @@ class DefaultSchemaResolver implements SchemaResolver {
                             unresolvedColumn.getName()),
                     e);
         }
-        return Column.computed(unresolvedColumn.getName(), resolvedExpression);
+        return Column.computed(unresolvedColumn.getName(), resolvedExpression)
+                .withComment(unresolvedColumn.getComment().orElse(null));
     }
 
     private void validateDuplicateColumns(List<Schema.UnresolvedColumn> columns) {
@@ -193,6 +177,32 @@ class DefaultSchemaResolver implements SchemaResolver {
         }
     }
 
+    private void validateDuplicateMetadataKeys(List<Schema.UnresolvedColumn> columns) {
+        Map<String, String> metadataKeyToColumnNames = new HashMap<>();
+        for (Schema.UnresolvedColumn column : columns) {
+            if (!(column instanceof UnresolvedMetadataColumn)) {
+                continue;
+            }
+
+            UnresolvedMetadataColumn metadataColumn = (UnresolvedMetadataColumn) column;
+            String metadataKey =
+                    metadataColumn.getMetadataKey() == null
+                            ? metadataColumn.getName()
+                            : metadataColumn.getMetadataKey();
+            if (metadataKeyToColumnNames.containsKey(metadataKey)) {
+                throw new ValidationException(
+                        String.format(
+                                "The column `%s` and `%s` in the table are both from the same metadata key '%s'. "
+                                        + "Please specify one of the columns as the metadata column and use the "
+                                        + "computed column syntax to specify the others.",
+                                metadataKeyToColumnNames.get(metadataKey),
+                                metadataColumn.getName(),
+                                metadataKey));
+            }
+            metadataKeyToColumnNames.put(metadataKey, metadataColumn.getName());
+        }
+    }
+
     private List<WatermarkSpec> resolveWatermarkSpecs(
             List<UnresolvedWatermarkSpec> unresolvedWatermarkSpecs, List<Column> inputColumns) {
         if (unresolvedWatermarkSpecs.size() == 0) {
@@ -205,26 +215,39 @@ class DefaultSchemaResolver implements SchemaResolver {
 
         // validate time attribute
         final String timeColumn = watermarkSpec.getColumnName();
-        validateTimeColumn(timeColumn, inputColumns);
+        final Column validatedTimeColumn = validateTimeColumn(timeColumn, inputColumns);
 
         // resolve watermark expression
         final ResolvedExpression watermarkExpression;
         try {
             watermarkExpression =
-                    resolveExpression(inputColumns, watermarkSpec.getWatermarkExpression());
+                    resolveExpression(
+                            inputColumns,
+                            watermarkSpec.getWatermarkExpression(),
+                            validatedTimeColumn.getDataType());
         } catch (Exception e) {
             throw new ValidationException(
                     String.format(
                             "Invalid expression for watermark '%s'.", watermarkSpec.toString()),
                     e);
         }
-        validateWatermarkExpression(watermarkExpression.getOutputDataType().getLogicalType());
+        final LogicalType outputType = watermarkExpression.getOutputDataType().getLogicalType();
+        final LogicalType timeColumnType = validatedTimeColumn.getDataType().getLogicalType();
+        validateWatermarkExpression(outputType);
+
+        if (outputType.getTypeRoot() != timeColumnType.getTypeRoot()) {
+            throw new ValidationException(
+                    String.format(
+                            "The watermark declaration's output data type '%s' is different "
+                                    + "from the time field's data type '%s'.",
+                            outputType, timeColumnType));
+        }
 
         return Collections.singletonList(
-                new WatermarkSpec(watermarkSpec.getColumnName(), watermarkExpression));
+                WatermarkSpec.of(watermarkSpec.getColumnName(), watermarkExpression));
     }
 
-    private void validateTimeColumn(String columnName, List<Column> columns) {
+    private Column validateTimeColumn(String columnName, List<Column> columns) {
         final Optional<Column> timeColumn =
                 columns.stream().filter(c -> c.getName().equals(columnName)).findFirst();
         if (!timeColumn.isPresent()) {
@@ -235,24 +258,29 @@ class DefaultSchemaResolver implements SchemaResolver {
                             columns.stream().map(Column::getName).collect(Collectors.toList())));
         }
         final LogicalType timeFieldType = timeColumn.get().getDataType().getLogicalType();
-        if (!hasRoot(timeFieldType, LogicalTypeRoot.TIMESTAMP_WITHOUT_TIME_ZONE)
-                || getPrecision(timeFieldType) != 3) {
+        if (!canBeTimeAttributeType(timeFieldType) || getPrecision(timeFieldType) > 3) {
             throw new ValidationException(
-                    "Invalid data type of time field for watermark definition. "
-                            + "The field must be of type TIMESTAMP(3) WITHOUT TIME ZONE.");
+                    String.format(
+                            "Invalid data type of time field for watermark definition. "
+                                    + "The field must be of type TIMESTAMP(p) or TIMESTAMP_LTZ(p),"
+                                    + " the supported precision 'p' is from 0 to 3, but the time field type is %s",
+                            timeFieldType));
         }
         if (isProctimeAttribute(timeFieldType)) {
             throw new ValidationException(
                     "A watermark can not be defined for a processing-time attribute.");
         }
+        return timeColumn.get();
     }
 
     private void validateWatermarkExpression(LogicalType watermarkType) {
-        if (!hasRoot(watermarkType, LogicalTypeRoot.TIMESTAMP_WITHOUT_TIME_ZONE)
-                || getPrecision(watermarkType) != 3) {
+        if (!canBeTimeAttributeType(watermarkType) || getPrecision(watermarkType) > 3) {
             throw new ValidationException(
-                    "Invalid data type of expression for watermark definition. "
-                            + "The field must be of type TIMESTAMP(3) WITHOUT TIME ZONE.");
+                    String.format(
+                            "Invalid data type of expression for watermark definition. "
+                                    + "The field must be of type TIMESTAMP(p) or TIMESTAMP_LTZ(p),"
+                                    + " the supported precision 'p' is from 0 to 3, but the watermark expression type is %s",
+                            watermarkType));
         }
     }
 
@@ -270,13 +298,30 @@ class DefaultSchemaResolver implements SchemaResolver {
         final boolean hasWatermarkSpec =
                 watermarkSpecs.stream().anyMatch(s -> s.getRowtimeAttribute().equals(name));
         if (hasWatermarkSpec && isStreamingMode) {
-            final TimestampType originalType = (TimestampType) dataType.getLogicalType();
-            final LogicalType rowtimeType =
-                    new TimestampType(
-                            originalType.isNullable(),
-                            TimestampKind.ROWTIME,
-                            originalType.getPrecision());
-            return column.copy(replaceLogicalType(dataType, rowtimeType));
+            switch (dataType.getLogicalType().getTypeRoot()) {
+                case TIMESTAMP_WITHOUT_TIME_ZONE:
+                    final TimestampType originalType = (TimestampType) dataType.getLogicalType();
+                    final LogicalType rowtimeType =
+                            new TimestampType(
+                                    originalType.isNullable(),
+                                    TimestampKind.ROWTIME,
+                                    originalType.getPrecision());
+                    return column.copy(replaceLogicalType(dataType, rowtimeType));
+                case TIMESTAMP_WITH_LOCAL_TIME_ZONE:
+                    final LocalZonedTimestampType timestampLtzType =
+                            (LocalZonedTimestampType) dataType.getLogicalType();
+                    final LogicalType rowtimeLtzType =
+                            new LocalZonedTimestampType(
+                                    timestampLtzType.isNullable(),
+                                    TimestampKind.ROWTIME,
+                                    timestampLtzType.getPrecision());
+                    return column.copy(replaceLogicalType(dataType, rowtimeLtzType));
+                default:
+                    throw new ValidationException(
+                            "Invalid data type of expression for rowtime definition. "
+                                    + "The field must be of type TIMESTAMP(p) or TIMESTAMP_LTZ(p),"
+                                    + " the supported precision 'p' is from 0 to 3.");
+            }
         }
         return column;
     }
@@ -339,13 +384,15 @@ class DefaultSchemaResolver implements SchemaResolver {
         }
     }
 
-    private ResolvedExpression resolveExpression(List<Column> columns, Expression expression) {
+    private ResolvedExpression resolveExpression(
+            List<Column> columns, Expression expression, @Nullable DataType outputDataType) {
         final LocalReferenceExpression[] localRefs =
                 columns.stream()
                         .map(c -> localRef(c.getName(), c.getDataType()))
                         .toArray(LocalReferenceExpression[]::new);
         return resolverBuilder
                 .withLocalReferences(localRefs)
+                .withOutputDataType(outputDataType)
                 .build()
                 .resolve(Collections.singletonList(expression))
                 .get(0);

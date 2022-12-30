@@ -18,11 +18,18 @@
 
 package org.apache.flink.runtime.scheduler.stopwithsavepoint;
 
+import org.apache.flink.api.common.JobID;
+import org.apache.flink.configuration.CheckpointingOptions;
+import org.apache.flink.runtime.checkpoint.CheckpointCoordinator;
 import org.apache.flink.runtime.checkpoint.CompletedCheckpoint;
 import org.apache.flink.runtime.concurrent.ComponentMainThreadExecutor;
-import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.util.Preconditions;
+import org.apache.flink.util.concurrent.FutureUtils;
+
+import org.slf4j.Logger;
+
+import javax.annotation.Nullable;
 
 import java.util.Collection;
 import java.util.concurrent.CompletableFuture;
@@ -78,5 +85,32 @@ public class StopWithSavepointTerminationManager {
                                                         mainThreadExecutor))));
 
         return stopWithSavepointTerminationHandler.getSavepointPath();
+    }
+
+    public static void checkSavepointActionPreconditions(
+            CheckpointCoordinator checkpointCoordinator,
+            @Nullable String targetDirectory,
+            JobID jobId,
+            Logger logger) {
+        if (checkpointCoordinator == null) {
+            throw new IllegalStateException(String.format("Job %s is not a streaming job.", jobId));
+        }
+
+        if (targetDirectory == null
+                && !checkpointCoordinator.getCheckpointStorage().hasDefaultSavepointLocation()) {
+            logger.info(
+                    "Trying to cancel job {} with savepoint, but no savepoint directory configured.",
+                    jobId);
+
+            throw new IllegalStateException(
+                    "No savepoint directory configured. "
+                            + "You can either specify a directory via configure a cluster-wide "
+                            + "default via key '"
+                            + CheckpointingOptions.SAVEPOINT_DIRECTORY.key()
+                            + "' or specify a directory in the command line, like "
+                            + "-s :targetDirectory for cancelling, "
+                            + "-p :targetDirectory for stopping "
+                            + "or :targetDirectory for purely taking savepoint.");
+        }
     }
 }

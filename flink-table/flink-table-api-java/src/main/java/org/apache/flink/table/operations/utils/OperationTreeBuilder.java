@@ -25,10 +25,10 @@ import org.apache.flink.table.api.GroupWindow;
 import org.apache.flink.table.api.OverWindow;
 import org.apache.flink.table.api.TableConfig;
 import org.apache.flink.table.api.TableException;
-import org.apache.flink.table.api.TableSchema;
 import org.apache.flink.table.api.ValidationException;
 import org.apache.flink.table.catalog.DataTypeFactory;
 import org.apache.flink.table.catalog.FunctionLookup;
+import org.apache.flink.table.catalog.ResolvedSchema;
 import org.apache.flink.table.expressions.ApiExpressionUtils;
 import org.apache.flink.table.expressions.Expression;
 import org.apache.flink.table.expressions.ExpressionUtils;
@@ -43,7 +43,6 @@ import org.apache.flink.table.functions.AggregateFunctionDefinition;
 import org.apache.flink.table.functions.BuiltInFunctionDefinitions;
 import org.apache.flink.table.functions.FunctionDefinition;
 import org.apache.flink.table.functions.FunctionKind;
-import org.apache.flink.table.functions.TableFunctionDefinition;
 import org.apache.flink.table.operations.DistinctQueryOperation;
 import org.apache.flink.table.operations.FilterQueryOperation;
 import org.apache.flink.table.operations.JoinQueryOperation.JoinType;
@@ -51,8 +50,6 @@ import org.apache.flink.table.operations.QueryOperation;
 import org.apache.flink.table.operations.ValuesQueryOperation;
 import org.apache.flink.table.operations.WindowAggregateQueryOperation.ResolvedGroupWindow;
 import org.apache.flink.table.types.DataType;
-import org.apache.flink.table.types.logical.LogicalTypeRoot;
-import org.apache.flink.table.types.logical.utils.LogicalTypeChecks;
 import org.apache.flink.table.types.utils.DataTypeUtils;
 import org.apache.flink.table.types.utils.TypeConversions;
 import org.apache.flink.table.typeutils.FieldInfoUtils;
@@ -70,6 +67,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import static org.apache.flink.table.expressions.ApiExpressionUtils.isFunctionOfKind;
 import static org.apache.flink.table.expressions.ApiExpressionUtils.localRef;
 import static org.apache.flink.table.expressions.ApiExpressionUtils.unresolvedCall;
 import static org.apache.flink.table.expressions.ApiExpressionUtils.unresolvedRef;
@@ -77,12 +75,15 @@ import static org.apache.flink.table.expressions.ApiExpressionUtils.valueLiteral
 import static org.apache.flink.table.operations.SetQueryOperation.SetQueryOperationType.INTERSECT;
 import static org.apache.flink.table.operations.SetQueryOperation.SetQueryOperationType.MINUS;
 import static org.apache.flink.table.operations.SetQueryOperation.SetQueryOperationType.UNION;
+import static org.apache.flink.table.types.logical.LogicalTypeRoot.BOOLEAN;
+import static org.apache.flink.table.types.logical.LogicalTypeRoot.ROW;
 
 /** A builder for constructing validated {@link QueryOperation}s. */
 @Internal
 public final class OperationTreeBuilder {
 
-    private final TableConfig config;
+    private final TableConfig tableConfig;
+    private final ClassLoader userClassLoader;
     private final FunctionLookup functionCatalog;
     private final DataTypeFactory typeFactory;
     private final TableReferenceLookup tableReferenceLookup;
@@ -100,7 +101,8 @@ public final class OperationTreeBuilder {
     private final ValuesOperationFactory valuesOperationFactory;
 
     private OperationTreeBuilder(
-            TableConfig config,
+            TableConfig tableConfig,
+            ClassLoader userClassLoader,
             FunctionLookup functionLookup,
             DataTypeFactory typeFactory,
             TableReferenceLookup tableReferenceLookup,
@@ -112,7 +114,8 @@ public final class OperationTreeBuilder {
             AggregateOperationFactory aggregateOperationFactory,
             JoinOperationFactory joinOperationFactory,
             ValuesOperationFactory valuesOperationFactory) {
-        this.config = config;
+        this.tableConfig = tableConfig;
+        this.userClassLoader = userClassLoader;
         this.functionCatalog = functionLookup;
         this.typeFactory = typeFactory;
         this.tableReferenceLookup = tableReferenceLookup;
@@ -128,14 +131,16 @@ public final class OperationTreeBuilder {
     }
 
     public static OperationTreeBuilder create(
-            TableConfig config,
+            TableConfig tableConfig,
+            ClassLoader userClassLoader,
             FunctionLookup functionCatalog,
             DataTypeFactory typeFactory,
             TableReferenceLookup tableReferenceLookup,
             SqlExpressionResolver sqlExpressionResolver,
             boolean isStreamingMode) {
         return new OperationTreeBuilder(
-                config,
+                tableConfig,
+                userClassLoader,
                 functionCatalog,
                 typeFactory,
                 tableReferenceLookup,
@@ -190,15 +195,7 @@ public final class OperationTreeBuilder {
             List<OverWindow> overWindows) {
 
         ExpressionResolver resolver =
-                ExpressionResolver.resolverFor(
-                                config,
-                                tableReferenceLookup,
-                                functionCatalog,
-                                typeFactory,
-                                sqlExpressionResolver,
-                                child)
-                        .withOverWindows(overWindows)
-                        .build();
+                getResolverBuilder(child).withOverWindows(overWindows).build();
         List<ResolvedExpression> projections = resolver.resolve(projectList);
         return projectionOperationFactory.create(
                 projections, child, explicitAlias, resolver.postResolverFactory());
@@ -209,9 +206,8 @@ public final class OperationTreeBuilder {
             boolean replaceIfExist, List<Expression> fieldLists, QueryOperation child) {
         final List<Expression> newColumns;
         if (replaceIfExist) {
-            String[] fieldNames = child.getTableSchema().getFieldNames();
-            newColumns =
-                    ColumnOperationUtils.addOrReplaceColumns(Arrays.asList(fieldNames), fieldLists);
+            final List<String> fieldNames = child.getResolvedSchema().getColumnNames();
+            newColumns = ColumnOperationUtils.addOrReplaceColumns(fieldNames, fieldLists);
         } else {
             newColumns = new ArrayList<>(fieldLists);
             newColumns.add(0, unresolvedRef("*"));
@@ -222,10 +218,10 @@ public final class OperationTreeBuilder {
     public QueryOperation renameColumns(List<Expression> aliases, QueryOperation child) {
 
         ExpressionResolver resolver = getResolver(child);
-        String[] inputFieldNames = child.getTableSchema().getFieldNames();
+        final List<String> inputFieldNames = child.getResolvedSchema().getColumnNames();
         List<Expression> validateAliases =
                 ColumnOperationUtils.renameColumns(
-                        Arrays.asList(inputFieldNames), resolver.resolveExpanding(aliases));
+                        inputFieldNames, resolver.resolveExpanding(aliases));
 
         return project(validateAliases, child, false);
     }
@@ -233,10 +229,10 @@ public final class OperationTreeBuilder {
     public QueryOperation dropColumns(List<Expression> fieldLists, QueryOperation child) {
 
         ExpressionResolver resolver = getResolver(child);
-        String[] inputFieldNames = child.getTableSchema().getFieldNames();
+        List<String> inputFieldNames = child.getResolvedSchema().getColumnNames();
         List<Expression> finalFields =
                 ColumnOperationUtils.dropFields(
-                        Arrays.asList(inputFieldNames), resolver.resolveExpanding(fieldLists));
+                        inputFieldNames, resolver.resolveExpanding(fieldLists));
 
         return project(finalFields, child, false);
     }
@@ -246,8 +242,7 @@ public final class OperationTreeBuilder {
             List<Expression> aggregates,
             QueryOperation child) {
 
-        ExpressionResolver resolver = getResolver(child);
-
+        ExpressionResolver resolver = getAggResolver(child, groupingExpressions);
         List<ResolvedExpression> resolvedGroupings = resolver.resolve(groupingExpressions);
         List<ResolvedExpression> resolvedAggregates = resolver.resolve(aggregates);
 
@@ -262,18 +257,12 @@ public final class OperationTreeBuilder {
             List<Expression> aggregates,
             QueryOperation child) {
 
-        ExpressionResolver resolver = getResolver(child);
+        ExpressionResolver resolver = getAggResolver(child, groupingExpressions);
         ResolvedGroupWindow resolvedWindow =
                 aggregateOperationFactory.createResolvedWindow(window, resolver);
 
         ExpressionResolver resolverWithWindowReferences =
-                ExpressionResolver.resolverFor(
-                                config,
-                                tableReferenceLookup,
-                                functionCatalog,
-                                typeFactory,
-                                sqlExpressionResolver,
-                                child)
+                getResolverBuilder(child)
                         .withLocalReferences(
                                 localRef(
                                         resolvedWindow.getAlias(),
@@ -302,7 +291,7 @@ public final class OperationTreeBuilder {
             Expression aggregateFunction,
             QueryOperation child) {
 
-        ExpressionResolver resolver = getResolver(child);
+        ExpressionResolver resolver = getAggResolver(child, groupingExpressions);
         Expression resolvedAggregate = aggregateFunction.accept(lookupResolver);
         AggregateWithAlias aggregateWithAlias =
                 resolvedAggregate.accept(new ExtractAliasAndAggregate(true, resolver));
@@ -311,7 +300,7 @@ public final class OperationTreeBuilder {
         groupsAndAggregate.add(aggregateWithAlias.aggregate);
         List<Expression> namedGroupsAndAggregate =
                 addAliasToTheCallInAggregate(
-                        Arrays.asList(child.getTableSchema().getFieldNames()), groupsAndAggregate);
+                        child.getResolvedSchema().getColumnNames(), groupsAndAggregate);
 
         // Step1: add a default name to the call in the grouping expressions, e.g., groupBy(a % 5)
         // to
@@ -327,13 +316,7 @@ public final class OperationTreeBuilder {
         ResolvedGroupWindow resolvedWindow =
                 aggregateOperationFactory.createResolvedWindow(window, resolver);
         ExpressionResolver resolverWithWindowReferences =
-                ExpressionResolver.resolverFor(
-                                config,
-                                tableReferenceLookup,
-                                functionCatalog,
-                                typeFactory,
-                                sqlExpressionResolver,
-                                child)
+                getResolverBuilder(child)
                         .withLocalReferences(
                                 localRef(
                                         resolvedWindow.getAlias(),
@@ -357,16 +340,16 @@ public final class OperationTreeBuilder {
                         child);
 
         // Step5: flatten the aggregate function
-        String[] aggNames = aggregateOperation.getTableSchema().getFieldNames();
+        List<String> aggNames = aggregateOperation.getResolvedSchema().getColumnNames();
         List<Expression> flattenedExpressions =
-                Arrays.stream(aggNames)
+                aggNames.stream()
                         .map(ApiExpressionUtils::unresolvedRef)
                         .collect(Collectors.toCollection(ArrayList::new));
         flattenedExpressions.set(
                 groupingExpressions.size(),
                 unresolvedCall(
                         BuiltInFunctionDefinitions.FLATTEN,
-                        unresolvedRef(aggNames[groupingExpressions.size()])));
+                        unresolvedRef(aggNames.get(groupingExpressions.size()))));
         QueryOperation flattenedProjection = this.project(flattenedExpressions, aggregateOperation);
 
         // Step6: add a top project to alias the output fields of the aggregate. Also, project the
@@ -381,16 +364,7 @@ public final class OperationTreeBuilder {
             JoinType joinType,
             Optional<Expression> condition,
             boolean correlated) {
-        ExpressionResolver resolver =
-                ExpressionResolver.resolverFor(
-                                config,
-                                tableReferenceLookup,
-                                functionCatalog,
-                                typeFactory,
-                                sqlExpressionResolver,
-                                left,
-                                right)
-                        .build();
+        ExpressionResolver resolver = getResolver(left, right);
         Optional<ResolvedExpression> resolvedCondition =
                 condition.map(expr -> resolveSingleExpression(expr, resolver));
 
@@ -408,23 +382,26 @@ public final class OperationTreeBuilder {
 
         QueryOperation temporalTable =
                 calculatedTableFactory.create(
-                        resolvedFunction, left.getTableSchema().getFieldNames());
+                        resolvedFunction, left.getResolvedSchema().getColumnNames());
 
         return join(left, temporalTable, joinType, condition, true);
     }
 
     public Expression resolveExpression(Expression expression, QueryOperation... tableOperation) {
-        ExpressionResolver resolver =
-                ExpressionResolver.resolverFor(
-                                config,
-                                tableReferenceLookup,
-                                functionCatalog,
-                                typeFactory,
-                                sqlExpressionResolver,
-                                tableOperation)
-                        .build();
-
+        final ExpressionResolver resolver = getResolver(tableOperation);
         return resolveSingleExpression(expression, resolver);
+    }
+
+    public ExpressionResolver.ExpressionResolverBuilder getResolverBuilder(
+            QueryOperation... tableOperation) {
+        return ExpressionResolver.resolverFor(
+                tableConfig,
+                userClassLoader,
+                tableReferenceLookup,
+                functionCatalog,
+                typeFactory,
+                sqlExpressionResolver,
+                tableOperation);
     }
 
     private ResolvedExpression resolveSingleExpression(
@@ -469,7 +446,7 @@ public final class OperationTreeBuilder {
         ExpressionResolver resolver = getResolver(child);
         ResolvedExpression resolvedExpression = resolveSingleExpression(condition, resolver);
         DataType conditionType = resolvedExpression.getOutputDataType();
-        if (!LogicalTypeChecks.hasRoot(conditionType.getLogicalType(), LogicalTypeRoot.BOOLEAN)) {
+        if (!conditionType.getLogicalType().is(BOOLEAN)) {
             throw new ValidationException(
                     "Filter operator requires a boolean expression as input,"
                             + " but $condition is of type "
@@ -496,40 +473,40 @@ public final class OperationTreeBuilder {
     }
 
     public QueryOperation map(Expression mapFunction, QueryOperation child) {
+        final ExpressionResolver resolver = getResolverBuilder(child).build();
+        final ResolvedExpression resolvedCall = resolveSingleExpression(mapFunction, resolver);
 
-        Expression resolvedMapFunction = mapFunction.accept(lookupResolver);
-
-        if (!ApiExpressionUtils.isFunctionOfKind(resolvedMapFunction, FunctionKind.SCALAR)) {
+        if (!isFunctionOfKind(resolvedCall, FunctionKind.SCALAR)) {
             throw new ValidationException(
                     "Only a scalar function can be used in the map operator.");
         }
 
+        final List<String> originFieldNames =
+                DataTypeUtils.flattenToNames(resolvedCall.getOutputDataType());
+
         Expression expandedFields =
-                unresolvedCall(BuiltInFunctionDefinitions.FLATTEN, resolvedMapFunction);
-        return project(Collections.singletonList(expandedFields), child, false);
+                unresolvedCall(BuiltInFunctionDefinitions.FLATTEN, resolvedCall);
+        return alias(
+                originFieldNames.stream()
+                        .map(ApiExpressionUtils::unresolvedRef)
+                        .collect(Collectors.toList()),
+                project(Collections.singletonList(expandedFields), child, false));
     }
 
-    public QueryOperation flatMap(Expression tableFunction, QueryOperation child) {
+    public QueryOperation flatMap(Expression tableFunctionCall, QueryOperation child) {
+        final ExpressionResolver resolver = getResolverBuilder(child).build();
+        final ResolvedExpression resolvedCall =
+                resolveSingleExpression(tableFunctionCall, resolver);
 
-        Expression resolvedTableFunction = tableFunction.accept(lookupResolver);
-
-        if (!ApiExpressionUtils.isFunctionOfKind(resolvedTableFunction, FunctionKind.TABLE)) {
+        if (!isFunctionOfKind(resolvedCall, FunctionKind.TABLE)) {
             throw new ValidationException(
                     "Only a table function can be used in the flatMap operator.");
         }
 
-        FunctionDefinition functionDefinition =
-                ((UnresolvedCallExpression) resolvedTableFunction).getFunctionDefinition();
-        if (!(functionDefinition instanceof TableFunctionDefinition)) {
-            throw new ValidationException(
-                    "The new type inference for functions is not supported in the flatMap yet.");
-        }
+        final List<String> originFieldNames =
+                DataTypeUtils.flattenToNames(resolvedCall.getOutputDataType());
 
-        TypeInformation<?> resultType =
-                ((TableFunctionDefinition) functionDefinition).getResultType();
-        List<String> originFieldNames = Arrays.asList(FieldInfoUtils.getFieldNames(resultType));
-
-        List<String> childFields = Arrays.asList(child.getTableSchema().getFieldNames());
+        List<String> childFields = child.getResolvedSchema().getColumnNames();
         Set<String> usedFieldNames = new HashSet<>(childFields);
 
         List<Expression> args = new ArrayList<>();
@@ -539,7 +516,7 @@ public final class OperationTreeBuilder {
             args.add(valueLiteral(resultName));
         }
 
-        args.add(0, resolvedTableFunction);
+        args.add(0, tableFunctionCall);
         Expression renamedTableFunction =
                 unresolvedCall(BuiltInFunctionDefinitions.AS, args.toArray(new Expression[0]));
         QueryOperation joinNode =
@@ -560,14 +537,15 @@ public final class OperationTreeBuilder {
     public QueryOperation aggregate(
             List<Expression> groupingExpressions, Expression aggregate, QueryOperation child) {
         Expression resolvedAggregate = aggregate.accept(lookupResolver);
+        ExpressionResolver resolver = getAggResolver(child, groupingExpressions);
         AggregateWithAlias aggregateWithAlias =
-                resolvedAggregate.accept(new ExtractAliasAndAggregate(true, getResolver(child)));
+                resolvedAggregate.accept(new ExtractAliasAndAggregate(true, resolver));
 
         List<Expression> groupsAndAggregate = new ArrayList<>(groupingExpressions);
         groupsAndAggregate.add(aggregateWithAlias.aggregate);
         List<Expression> namedGroupsAndAggregate =
                 addAliasToTheCallInAggregate(
-                        Arrays.asList(child.getTableSchema().getFieldNames()), groupsAndAggregate);
+                        child.getResolvedSchema().getColumnNames(), groupsAndAggregate);
 
         // Step1: add a default name to the call in the grouping expressions, e.g., groupBy(a % 5)
         // to
@@ -585,16 +563,16 @@ public final class OperationTreeBuilder {
                         newGroupingExpressions, Collections.singletonList(aggregateRenamed), child);
 
         // Step4: flatten the aggregate function
-        String[] aggNames = aggregateOperation.getTableSchema().getFieldNames();
+        List<String> aggNames = aggregateOperation.getResolvedSchema().getColumnNames();
         List<Expression> flattenedExpressions =
-                Arrays.asList(aggNames).subList(0, groupingExpressions.size()).stream()
+                aggNames.subList(0, groupingExpressions.size()).stream()
                         .map(ApiExpressionUtils::unresolvedRef)
                         .collect(Collectors.toCollection(ArrayList::new));
 
         flattenedExpressions.add(
                 unresolvedCall(
                         BuiltInFunctionDefinitions.FLATTEN,
-                        unresolvedRef(aggNames[aggNames.length - 1])));
+                        unresolvedRef(aggNames.get(aggNames.size() - 1))));
 
         QueryOperation flattenedProjection = this.project(flattenedExpressions, aggregateOperation);
 
@@ -604,11 +582,13 @@ public final class OperationTreeBuilder {
     }
 
     public QueryOperation values(DataType rowType, Expression... expressions) {
-        final TableSchema valuesSchema;
-        if (LogicalTypeChecks.hasRoot(rowType.getLogicalType(), LogicalTypeRoot.ROW)) {
+        final ResolvedSchema valuesSchema;
+        if (rowType.getLogicalType().is(ROW)) {
             valuesSchema = DataTypeUtils.expandCompositeTypeToSchema(rowType);
         } else {
-            valuesSchema = TableSchema.builder().field("f0", rowType).build();
+            valuesSchema =
+                    ResolvedSchema.physical(
+                            Collections.singletonList("f0"), Collections.singletonList(rowType));
         }
 
         return valuesInternal(valuesSchema, expressions);
@@ -619,22 +599,19 @@ public final class OperationTreeBuilder {
     }
 
     private QueryOperation valuesInternal(
-            @Nullable TableSchema valuesSchema, Expression... expressions) {
+            @Nullable ResolvedSchema valuesSchema, Expression... expressions) {
         if (expressions.length == 0) {
             return new ValuesQueryOperation(
                     Collections.emptyList(),
                     Optional.ofNullable(valuesSchema)
-                            .orElseGet(() -> TableSchema.builder().build()));
+                            .orElseGet(
+                                    () ->
+                                            ResolvedSchema.physical(
+                                                    Collections.emptyList(),
+                                                    Collections.emptyList())));
         }
 
-        ExpressionResolver resolver =
-                ExpressionResolver.resolverFor(
-                                config,
-                                tableReferenceLookup,
-                                functionCatalog,
-                                typeFactory,
-                                sqlExpressionResolver)
-                        .build();
+        ExpressionResolver resolver = getResolver();
 
         return valuesOperationFactory.create(
                 valuesSchema,
@@ -699,7 +676,7 @@ public final class OperationTreeBuilder {
         private Optional<AggregateWithAlias> getAggregate(
                 UnresolvedCallExpression unresolvedCall, List<String> aliases) {
             FunctionDefinition functionDefinition = unresolvedCall.getFunctionDefinition();
-            if (ApiExpressionUtils.isFunctionOfKind(unresolvedCall, FunctionKind.AGGREGATE)) {
+            if (isFunctionOfKind(unresolvedCall, FunctionKind.AGGREGATE)) {
                 final List<String> fieldNames;
                 if (aliases.isEmpty()) {
                     if (functionDefinition instanceof AggregateFunctionDefinition) {
@@ -760,10 +737,10 @@ public final class OperationTreeBuilder {
         // table aggregate function in Step4.
         List<Expression> newGroupingExpressions =
                 addAliasToTheCallInAggregate(
-                        Arrays.asList(child.getTableSchema().getFieldNames()), groupingExpressions);
+                        child.getResolvedSchema().getColumnNames(), groupingExpressions);
 
         // Step2: resolve expressions
-        ExpressionResolver resolver = getResolver(child);
+        ExpressionResolver resolver = getAggResolver(child, groupingExpressions);
         List<ResolvedExpression> resolvedGroupings = resolver.resolve(newGroupingExpressions);
         Tuple2<ResolvedExpression, List<String>> resolvedFunctionAndAlias =
                 aggregateOperationFactory.extractTableAggFunctionAndAliases(
@@ -794,21 +771,15 @@ public final class OperationTreeBuilder {
         // table aggregate function in Step4.
         List<Expression> newGroupingExpressions =
                 addAliasToTheCallInAggregate(
-                        Arrays.asList(child.getTableSchema().getFieldNames()), groupingExpressions);
+                        child.getResolvedSchema().getColumnNames(), groupingExpressions);
 
         // Step2: resolve expressions, including grouping, aggregates and window properties.
-        ExpressionResolver resolver = getResolver(child);
+        ExpressionResolver resolver = getAggResolver(child, groupingExpressions);
         ResolvedGroupWindow resolvedWindow =
                 aggregateOperationFactory.createResolvedWindow(window, resolver);
 
         ExpressionResolver resolverWithWindowReferences =
-                ExpressionResolver.resolverFor(
-                                config,
-                                tableReferenceLookup,
-                                functionCatalog,
-                                typeFactory,
-                                sqlExpressionResolver,
-                                child)
+                getResolverBuilder(child)
                         .withLocalReferences(
                                 localRef(
                                         resolvedWindow.getAlias(),
@@ -846,8 +817,8 @@ public final class OperationTreeBuilder {
             QueryOperation inputOperation, List<String> alias, int aliasStartIndex) {
 
         if (!alias.isEmpty()) {
-            String[] namesBeforeAlias = inputOperation.getTableSchema().getFieldNames();
-            List<String> namesAfterAlias = new ArrayList<>(Arrays.asList(namesBeforeAlias));
+            List<String> namesBeforeAlias = inputOperation.getResolvedSchema().getColumnNames();
+            List<String> namesAfterAlias = new ArrayList<>(namesBeforeAlias);
             for (int i = 0; i < alias.size(); i++) {
                 int withOffset = aliasStartIndex + i;
                 namesAfterAlias.remove(withOffset);
@@ -906,14 +877,14 @@ public final class OperationTreeBuilder {
         return resultName;
     }
 
-    private ExpressionResolver getResolver(QueryOperation child) {
-        return ExpressionResolver.resolverFor(
-                        config,
-                        tableReferenceLookup,
-                        functionCatalog,
-                        typeFactory,
-                        sqlExpressionResolver,
-                        child)
+    private ExpressionResolver getResolver(QueryOperation... children) {
+        return getResolverBuilder(children).build();
+    }
+
+    private ExpressionResolver getAggResolver(
+            QueryOperation child, List<Expression> groupingExpressions) {
+        return getResolverBuilder(child)
+                .withGroupedAggregation(groupingExpressions.size() > 0)
                 .build();
     }
 
@@ -949,7 +920,7 @@ public final class OperationTreeBuilder {
 
         @Override
         public Void visit(UnresolvedCallExpression call) {
-            if (ApiExpressionUtils.isFunctionOfKind(call, FunctionKind.AGGREGATE)) {
+            if (isFunctionOfKind(call, FunctionKind.AGGREGATE)) {
                 throw new ValidationException(exceptionMessage);
             }
             call.getChildren().forEach(expr -> expr.accept(this));

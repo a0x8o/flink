@@ -26,11 +26,15 @@ import org.apache.flink.annotation.Internal;
  */
 @Internal
 public interface ModifyOperationVisitor<T> {
-    T visit(CatalogSinkModifyOperation catalogSink);
+    T visit(SinkModifyOperation catalogSink);
 
     T visit(OutputConversionModifyOperation outputConversion);
 
+    T visit(ExternalModifyOperation externalModifyOperation);
+
     <U> T visit(UnregisteredSinkModifyOperation<U> unregisteredSink);
 
-    T visit(SelectSinkOperation selectOperation);
+    T visit(CollectModifyOperation selectOperation);
+
+    T visit(CreateTableASOperation ctas);
 }

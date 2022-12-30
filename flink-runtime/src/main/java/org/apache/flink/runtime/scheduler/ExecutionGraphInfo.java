@@ -20,12 +20,11 @@ package org.apache.flink.runtime.scheduler;
 
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.runtime.executiongraph.ArchivedExecutionGraph;
-import org.apache.flink.runtime.executiongraph.ErrorInfo;
 import org.apache.flink.runtime.executiongraph.ExecutionGraph;
+import org.apache.flink.runtime.scheduler.exceptionhistory.RootExceptionHistoryEntry;
 
 import java.io.Serializable;
 import java.util.Collections;
-import java.util.List;
 
 /**
  * {@code ExecutionGraphInfo} serves as a composite class that provides different {@link
@@ -36,14 +35,21 @@ public class ExecutionGraphInfo implements Serializable {
     private static final long serialVersionUID = -6134203195124124202L;
 
     private final ArchivedExecutionGraph executionGraph;
-    private final List<ErrorInfo> exceptionHistory;
+    private final Iterable<RootExceptionHistoryEntry> exceptionHistory;
 
     public ExecutionGraphInfo(ArchivedExecutionGraph executionGraph) {
-        this(executionGraph, Collections.emptyList());
+        this(
+                executionGraph,
+                executionGraph.getFailureInfo() != null
+                        ? Collections.singleton(
+                                RootExceptionHistoryEntry.fromGlobalFailure(
+                                        executionGraph.getFailureInfo()))
+                        : Collections.emptyList());
     }
 
     public ExecutionGraphInfo(
-            ArchivedExecutionGraph executionGraph, List<ErrorInfo> exceptionHistory) {
+            ArchivedExecutionGraph executionGraph,
+            Iterable<RootExceptionHistoryEntry> exceptionHistory) {
         this.executionGraph = executionGraph;
         this.exceptionHistory = exceptionHistory;
     }
@@ -56,7 +62,7 @@ public class ExecutionGraphInfo implements Serializable {
         return executionGraph;
     }
 
-    public List<ErrorInfo> getExceptionHistory() {
+    public Iterable<RootExceptionHistoryEntry> getExceptionHistory() {
         return exceptionHistory;
     }
 }

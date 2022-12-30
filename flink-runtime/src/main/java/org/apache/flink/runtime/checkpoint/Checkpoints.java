@@ -24,7 +24,7 @@ import org.apache.flink.runtime.OperatorIDPair;
 import org.apache.flink.runtime.checkpoint.metadata.CheckpointMetadata;
 import org.apache.flink.runtime.checkpoint.metadata.MetadataSerializer;
 import org.apache.flink.runtime.checkpoint.metadata.MetadataSerializers;
-import org.apache.flink.runtime.checkpoint.metadata.MetadataV3Serializer;
+import org.apache.flink.runtime.checkpoint.metadata.MetadataV4Serializer;
 import org.apache.flink.runtime.executiongraph.ExecutionJobVertex;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobgraph.OperatorID;
@@ -84,12 +84,20 @@ public class Checkpoints {
 
     public static void storeCheckpointMetadata(
             CheckpointMetadata checkpointMetadata, DataOutputStream out) throws IOException {
+        storeCheckpointMetadata(checkpointMetadata, out, MetadataV4Serializer.INSTANCE);
+    }
+
+    public static void storeCheckpointMetadata(
+            CheckpointMetadata checkpointMetadata,
+            DataOutputStream out,
+            MetadataSerializer serializer)
+            throws IOException {
 
         // write generic header
         out.writeInt(HEADER_MAGIC_NUMBER);
 
-        out.writeInt(MetadataV3Serializer.VERSION);
-        MetadataV3Serializer.serialize(checkpointMetadata, out);
+        out.writeInt(serializer.getVersion());
+        serializer.serialize(checkpointMetadata, out);
     }
 
     // ------------------------------------------------------------------------
@@ -122,7 +130,8 @@ public class Checkpoints {
             Map<JobVertexID, ExecutionJobVertex> tasks,
             CompletedCheckpointStorageLocation location,
             ClassLoader classLoader,
-            boolean allowNonRestoredState)
+            boolean allowNonRestoredState,
+            CheckpointProperties checkpointProperties)
             throws IOException {
 
         checkNotNull(jobId, "jobId");
@@ -162,7 +171,8 @@ public class Checkpoints {
             if (executionJobVertex != null) {
 
                 if (executionJobVertex.getMaxParallelism() == operatorState.getMaxParallelism()
-                        || !executionJobVertex.isMaxParallelismConfigured()) {
+                        || executionJobVertex.canRescaleMaxParallelism(
+                                operatorState.getMaxParallelism())) {
                     operatorStates.put(operatorState.getOperatorID(), operatorState);
                 } else {
                     String msg =
@@ -201,9 +211,6 @@ public class Checkpoints {
             }
         }
 
-        // (3) convert to checkpoint so the system can fall back to it
-        CheckpointProperties props = CheckpointProperties.forSavepoint(false);
-
         return new CompletedCheckpoint(
                 jobId,
                 checkpointMetadata.getCheckpointId(),
@@ -211,8 +218,10 @@ public class Checkpoints {
                 0L,
                 operatorStates,
                 checkpointMetadata.getMasterStates(),
-                props,
-                location);
+                checkpointProperties,
+                location,
+                null,
+                checkpointMetadata.getCheckpointProperties());
     }
 
     private static void throwNonRestoredStateException(
