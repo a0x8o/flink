@@ -20,19 +20,25 @@ package org.apache.flink.runtime.executiongraph;
 
 import org.apache.flink.api.common.JobStatus;
 import org.apache.flink.runtime.concurrent.ComponentMainThreadExecutorServiceAdapter;
-import org.apache.flink.runtime.concurrent.ManuallyTriggeredScheduledExecutor;
 import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.executiongraph.failover.flip1.TestRestartBackoffTimeStrategy;
 import org.apache.flink.runtime.jobgraph.JobGraphTestUtils;
 import org.apache.flink.runtime.jobgraph.JobVertex;
 import org.apache.flink.runtime.jobmanager.slots.TaskManagerGateway;
+import org.apache.flink.runtime.scheduler.DefaultSchedulerBuilder;
 import org.apache.flink.runtime.scheduler.SchedulerBase;
 import org.apache.flink.runtime.scheduler.SchedulerTestingUtils;
 import org.apache.flink.runtime.scheduler.TestingPhysicalSlotProvider;
 import org.apache.flink.runtime.testtasks.NoOpInvokable;
+import org.apache.flink.testutils.TestingUtils;
+import org.apache.flink.testutils.executor.TestExecutorResource;
 import org.apache.flink.util.TestLogger;
+import org.apache.flink.util.concurrent.ManuallyTriggeredScheduledExecutor;
 
+import org.junit.ClassRule;
 import org.junit.Test;
+
+import java.util.concurrent.ScheduledExecutorService;
 
 import static org.hamcrest.Matchers.is;
 import static org.junit.Assert.assertEquals;
@@ -40,6 +46,10 @@ import static org.junit.Assert.assertThat;
 
 /** Validates that suspending out of various states works correctly. */
 public class ExecutionGraphSuspendTest extends TestLogger {
+
+    @ClassRule
+    public static final TestExecutorResource<ScheduledExecutorService> EXECUTOR_RESOURCE =
+            TestingUtils.defaultExecutorResource();
 
     /**
      * Going into SUSPENDED out of CREATED should immediately cancel everything and not send out RPC
@@ -57,7 +67,7 @@ public class ExecutionGraphSuspendTest extends TestLogger {
 
         // suspend
 
-        scheduler.suspend(new Exception("suspend"));
+        scheduler.closeAsync();
 
         assertEquals(JobStatus.SUSPENDED, eg.getState());
         validateAllVerticesInState(eg, ExecutionState.CANCELED);
@@ -83,7 +93,7 @@ public class ExecutionGraphSuspendTest extends TestLogger {
         validateAllVerticesInState(eg, ExecutionState.DEPLOYING);
 
         // suspend
-        scheduler.suspend(new Exception("suspend"));
+        scheduler.closeAsync();
 
         assertEquals(JobStatus.SUSPENDED, eg.getState());
         validateCancelRpcCalls(gateway, parallelism);
@@ -109,7 +119,7 @@ public class ExecutionGraphSuspendTest extends TestLogger {
         validateAllVerticesInState(eg, ExecutionState.RUNNING);
 
         // suspend
-        scheduler.suspend(new Exception("suspend"));
+        scheduler.closeAsync();
 
         assertEquals(JobStatus.SUSPENDED, eg.getState());
         validateCancelRpcCalls(gateway, parallelism);
@@ -135,7 +145,7 @@ public class ExecutionGraphSuspendTest extends TestLogger {
         validateCancelRpcCalls(gateway, parallelism);
 
         // suspend
-        scheduler.suspend(new Exception("suspend"));
+        scheduler.closeAsync();
 
         assertEquals(JobStatus.SUSPENDED, eg.getState());
         ensureCannotLeaveSuspendedState(scheduler, gateway);
@@ -162,7 +172,7 @@ public class ExecutionGraphSuspendTest extends TestLogger {
         assertEquals(JobStatus.FAILED, eg.getState());
 
         // suspend
-        scheduler.suspend(new Exception("suspend"));
+        scheduler.closeAsync();
 
         // still in failed state
         assertEquals(JobStatus.FAILED, eg.getState());
@@ -187,7 +197,7 @@ public class ExecutionGraphSuspendTest extends TestLogger {
         validateCancelRpcCalls(gateway, parallelism);
 
         // suspend
-        scheduler.suspend(new Exception("suspend"));
+        scheduler.closeAsync();
 
         assertEquals(JobStatus.SUSPENDED, eg.getState());
 
@@ -215,7 +225,7 @@ public class ExecutionGraphSuspendTest extends TestLogger {
         assertEquals(JobStatus.CANCELED, eg.getTerminationFuture().get());
 
         // suspend
-        scheduler.suspend(new Exception("suspend"));
+        scheduler.closeAsync();
 
         // still in failed state
         assertEquals(JobStatus.CANCELED, eg.getState());
@@ -228,9 +238,10 @@ public class ExecutionGraphSuspendTest extends TestLogger {
         final ManuallyTriggeredScheduledExecutor taskRestartExecutor =
                 new ManuallyTriggeredScheduledExecutor();
         final SchedulerBase scheduler =
-                SchedulerTestingUtils.newSchedulerBuilder(
+                new DefaultSchedulerBuilder(
                                 JobGraphTestUtils.emptyJobGraph(),
-                                ComponentMainThreadExecutorServiceAdapter.forMainThread())
+                                ComponentMainThreadExecutorServiceAdapter.forMainThread(),
+                                EXECUTOR_RESOURCE.getExecutor())
                         .setRestartBackoffTimeStrategy(
                                 new TestRestartBackoffTimeStrategy(true, Long.MAX_VALUE))
                         .setDelayExecutor(taskRestartExecutor)
@@ -249,13 +260,9 @@ public class ExecutionGraphSuspendTest extends TestLogger {
         ExecutionGraphTestUtils.completeCancellingForAllVertices(eg);
         assertEquals(JobStatus.RESTARTING, eg.getState());
 
-        final Exception exception = new Exception("Suspended");
-
-        scheduler.suspend(exception);
+        scheduler.closeAsync();
 
         assertEquals(JobStatus.SUSPENDED, eg.getState());
-
-        assertEquals(exception, eg.getFailureCause());
 
         taskRestartExecutor.triggerScheduledTasks();
         assertEquals(JobStatus.SUSPENDED, eg.getState());
@@ -281,7 +288,7 @@ public class ExecutionGraphSuspendTest extends TestLogger {
         assertEquals(JobStatus.SUSPENDED, eg.getState());
         validateNoInteractions(gateway);
 
-        scheduler.suspend(new Exception("suspend again"));
+        scheduler.closeAsync();
         assertEquals(JobStatus.SUSPENDED, eg.getState());
         validateNoInteractions(gateway);
 
@@ -312,9 +319,10 @@ public class ExecutionGraphSuspendTest extends TestLogger {
         vertex.setParallelism(parallelism);
 
         final SchedulerBase scheduler =
-                SchedulerTestingUtils.newSchedulerBuilder(
+                new DefaultSchedulerBuilder(
                                 JobGraphTestUtils.streamingJobGraph(vertex),
-                                ComponentMainThreadExecutorServiceAdapter.forMainThread())
+                                ComponentMainThreadExecutorServiceAdapter.forMainThread(),
+                                EXECUTOR_RESOURCE.getExecutor())
                         .setExecutionSlotAllocatorFactory(
                                 SchedulerTestingUtils.newSlotSharingExecutionSlotAllocatorFactory(
                                         TestingPhysicalSlotProvider

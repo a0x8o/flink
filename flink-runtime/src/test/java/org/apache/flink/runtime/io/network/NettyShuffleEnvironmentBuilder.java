@@ -18,15 +18,17 @@
 
 package org.apache.flink.runtime.io.network;
 
+import org.apache.flink.configuration.Configuration;
 import org.apache.flink.metrics.MetricGroup;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
-import org.apache.flink.runtime.concurrent.Executors;
 import org.apache.flink.runtime.io.network.netty.NettyConfig;
 import org.apache.flink.runtime.io.network.partition.BoundedBlockingSubpartitionType;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionManager;
 import org.apache.flink.runtime.metrics.groups.UnregisteredMetricGroups;
 import org.apache.flink.runtime.taskmanager.NettyShuffleEnvironmentConfiguration;
+import org.apache.flink.runtime.throughput.BufferDebloatConfiguration;
 import org.apache.flink.runtime.util.EnvironmentInformation;
+import org.apache.flink.util.concurrent.Executors;
 
 import java.time.Duration;
 import java.util.concurrent.Executor;
@@ -34,6 +36,7 @@ import java.util.concurrent.Executor;
 /** Builder for the {@link NettyShuffleEnvironment}. */
 public class NettyShuffleEnvironmentBuilder {
 
+    private static final int DEFAULT_NUM_SLOTS = 1;
     private static final int DEFAULT_NETWORK_BUFFER_SIZE = 32 << 10;
     private static final int DEFAULT_NUM_NETWORK_BUFFERS = 1024;
 
@@ -58,9 +61,15 @@ public class NettyShuffleEnvironmentBuilder {
 
     private int sortShuffleMinParallelism = Integer.MAX_VALUE;
 
+    private long batchShuffleReadMemoryBytes = 64 * DEFAULT_NETWORK_BUFFER_SIZE;
+
     private int maxBuffersPerChannel = Integer.MAX_VALUE;
 
     private boolean blockingShuffleCompressionEnabled = false;
+
+    private boolean connectionReuseEnabled = true;
+
+    private int maxOverdraftBuffersPerGate = 0;
 
     private String compressionCodec = "LZ4";
 
@@ -74,6 +83,10 @@ public class NettyShuffleEnvironmentBuilder {
     private ResultPartitionManager resultPartitionManager = new ResultPartitionManager();
 
     private Executor ioExecutor = Executors.directExecutor();
+    private BufferDebloatConfiguration debloatConfiguration =
+            BufferDebloatConfiguration.fromConfiguration(new Configuration());
+
+    private int maxNumberOfConnections = 1;
 
     public NettyShuffleEnvironmentBuilder setTaskManagerLocation(ResourceID taskManagerLocation) {
         this.taskManagerLocation = taskManagerLocation;
@@ -130,9 +143,27 @@ public class NettyShuffleEnvironmentBuilder {
         return this;
     }
 
+    public NettyShuffleEnvironmentBuilder setBatchShuffleReadMemoryBytes(
+            long batchShuffleReadMemoryBytes) {
+        this.batchShuffleReadMemoryBytes = batchShuffleReadMemoryBytes;
+        return this;
+    }
+
     public NettyShuffleEnvironmentBuilder setBlockingShuffleCompressionEnabled(
             boolean blockingShuffleCompressionEnabled) {
         this.blockingShuffleCompressionEnabled = blockingShuffleCompressionEnabled;
+        return this;
+    }
+
+    public NettyShuffleEnvironmentBuilder setConnectionReuseEnabled(
+            boolean connectionReuseEnabled) {
+        this.connectionReuseEnabled = connectionReuseEnabled;
+        return this;
+    }
+
+    public NettyShuffleEnvironmentBuilder setMaxOverdraftBuffersPerGate(
+            int maxOverdraftBuffersPerGate) {
+        this.maxOverdraftBuffersPerGate = maxOverdraftBuffersPerGate;
         return this;
     }
 
@@ -162,6 +193,17 @@ public class NettyShuffleEnvironmentBuilder {
         return this;
     }
 
+    public NettyShuffleEnvironmentBuilder setDebloatConfig(
+            BufferDebloatConfiguration debloatConfiguration) {
+        this.debloatConfiguration = debloatConfiguration;
+        return this;
+    }
+
+    public NettyShuffleEnvironmentBuilder setMaxNumberOfConnections(int maxNumberOfConnections) {
+        this.maxNumberOfConnections = maxNumberOfConnections;
+        return this;
+    }
+
     public NettyShuffleEnvironment build() {
         return NettyShuffleServiceFactory.createNettyShuffleEnvironment(
                 new NettyShuffleEnvironmentConfiguration(
@@ -179,12 +221,19 @@ public class NettyShuffleEnvironmentBuilder {
                         blockingShuffleCompressionEnabled,
                         compressionCodec,
                         maxBuffersPerChannel,
+                        batchShuffleReadMemoryBytes,
                         sortShuffleMinBuffers,
-                        sortShuffleMinParallelism),
+                        sortShuffleMinParallelism,
+                        debloatConfiguration,
+                        maxNumberOfConnections,
+                        connectionReuseEnabled,
+                        maxOverdraftBuffersPerGate),
                 taskManagerLocation,
                 new TaskEventDispatcher(),
                 resultPartitionManager,
                 metricGroup,
-                ioExecutor);
+                ioExecutor,
+                DEFAULT_NUM_SLOTS,
+                DEFAULT_TEMP_DIRS);
     }
 }

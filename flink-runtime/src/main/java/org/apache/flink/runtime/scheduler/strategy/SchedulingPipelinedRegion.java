@@ -29,4 +29,18 @@ public interface SchedulingPipelinedRegion
                 ExecutionVertexID,
                 IntermediateResultPartitionID,
                 SchedulingExecutionVertex,
-                SchedulingResultPartition> {}
+                SchedulingResultPartition> {
+    /**
+     * Get all distinct blocking {@link ConsumedPartitionGroup}s.
+     *
+     * @return set of {@link ConsumedPartitionGroup}s
+     */
+    Iterable<ConsumedPartitionGroup> getAllNonPipelinedConsumedPartitionGroups();
+
+    /**
+     * Get all distinct releaseByScheduler {@link ConsumedPartitionGroup}s.
+     *
+     * @return set of {@link ConsumedPartitionGroup}s
+     */
+    Iterable<ConsumedPartitionGroup> getAllReleaseBySchedulerConsumedPartitionGroups();
+}

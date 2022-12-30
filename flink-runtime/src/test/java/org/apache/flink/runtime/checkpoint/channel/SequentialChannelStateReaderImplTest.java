@@ -40,18 +40,22 @@ import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.state.InputChannelStateHandle;
 import org.apache.flink.runtime.state.ResultSubpartitionStateHandle;
 import org.apache.flink.runtime.state.memory.ByteStreamStateHandle;
+import org.apache.flink.testutils.junit.extensions.parameterized.Parameter;
+import org.apache.flink.testutils.junit.extensions.parameterized.ParameterizedTestExtension;
+import org.apache.flink.testutils.junit.extensions.parameterized.Parameters;
 import org.apache.flink.util.function.ThrowingConsumer;
 
-import org.apache.flink.shaded.guava18.com.google.common.io.Closer;
+import org.apache.flink.shaded.guava30.com.google.common.io.Closer;
 
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.junit.runners.Parameterized;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.TestTemplate;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -65,51 +69,51 @@ import static java.util.function.Function.identity;
 import static java.util.stream.Collectors.toList;
 import static java.util.stream.Collectors.toMap;
 import static java.util.stream.IntStream.range;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /** {@link SequentialChannelStateReaderImpl} Test. */
-@RunWith(Parameterized.class)
+@ExtendWith(ParameterizedTestExtension.class)
 public class SequentialChannelStateReaderImplTest {
 
-    @Parameterized.Parameters(
+    @Parameters(
             name =
                     "{0}: stateParLevel={1}, statePartsPerChannel={2}, stateBytesPerPart={3},  parLevel={4}, bufferSize={5}")
-    public static Object[][] parameters() {
-        return new Object[][] {
-            {"NoStateAndNoChannels", 0, 0, 0, 0, 0},
-            {"NoState", 0, 10, 10, 10, 10},
-            {"ReadPermutedStateWithEqualBuffer", 10, 10, 10, 10, 10},
-            {"ReadPermutedStateWithReducedBuffer", 10, 10, 10, 20, 10},
-            {"ReadPermutedStateWithIncreasedBuffer", 10, 10, 10, 10, 20},
-        };
+    public static List<Object[]> parameters() {
+        return Arrays.asList(
+                new Object[] {"NoStateAndNoChannels", 0, 0, 0, 0, 0},
+                new Object[] {"NoState", 0, 10, 10, 10, 10},
+                new Object[] {"ReadPermutedStateWithEqualBuffer", 10, 10, 10, 10, 10},
+                new Object[] {"ReadPermutedStateWithReducedBuffer", 10, 10, 10, 20, 10},
+                new Object[] {"ReadPermutedStateWithIncreasedBuffer", 10, 10, 10, 10, 20});
     }
 
-    private final ChannelStateSerializer serializer;
-    private final Random random;
-    private final int parLevel;
-    private final int statePartsPerChannel;
-    private final int stateBytesPerPart;
-    private final int bufferSize;
-    private final int stateParLevel;
-    private final int buffersPerChannel;
+    @Parameter public String desc;
 
-    public SequentialChannelStateReaderImplTest(
-            String desc,
-            int stateParLevel,
-            int statePartsPerChannel,
-            int stateBytesPerPart,
-            int parLevel,
-            int bufferSize) {
-        this.serializer = new ChannelStateSerializerImpl();
-        this.random = new Random();
-        this.parLevel = parLevel;
-        this.statePartsPerChannel = statePartsPerChannel;
-        this.stateBytesPerPart = stateBytesPerPart;
-        this.bufferSize = bufferSize;
-        this.stateParLevel = stateParLevel;
+    @Parameter(value = 1)
+    public int stateParLevel;
+
+    @Parameter(value = 2)
+    public int statePartsPerChannel;
+
+    @Parameter(value = 3)
+    public int stateBytesPerPart;
+
+    @Parameter(value = 4)
+    public int parLevel;
+
+    @Parameter(value = 5)
+    public int bufferSize;
+
+    private ChannelStateSerializer serializer;
+    private Random random;
+    private int buffersPerChannel;
+
+    @BeforeEach
+    void before() {
+        serializer = new ChannelStateSerializerImpl();
+        random = new Random();
         // will read without waiting for consumption
-        this.buffersPerChannel =
+        buffersPerChannel =
                 Math.max(
                         1,
                         statePartsPerChannel
@@ -118,8 +122,8 @@ public class SequentialChannelStateReaderImplTest {
                                         : stateBytesPerPart / bufferSize));
     }
 
-    @Test
-    public void testReadPermutedState() throws Exception {
+    @TestTemplate
+    void testReadPermutedState() throws Exception {
         Map<InputChannelInfo, List<byte[]>> inputChannelsData =
                 generateState(InputChannelInfo::new);
         Map<ResultSubpartitionInfo, List<byte[]>> resultPartitionsData =
@@ -172,8 +176,10 @@ public class SequentialChannelStateReaderImplTest {
             for (Optional<BufferOrEvent> next = gate.pollNext();
                     next.isPresent();
                     next = gate.pollNext()) {
-                actual.computeIfAbsent(next.get().getChannelInfo(), unused -> new ArrayList<>())
-                        .add(next.get().getBuffer());
+                if (next.get().isBuffer()) {
+                    actual.computeIfAbsent(next.get().getChannelInfo(), unused -> new ArrayList<>())
+                            .add(next.get().getBuffer());
+                }
             }
         }
         return actual;
@@ -182,7 +188,7 @@ public class SequentialChannelStateReaderImplTest {
     private void assertConsumed(InputGate[] gates)
             throws InterruptedException, java.util.concurrent.ExecutionException {
         for (InputGate gate : gates) {
-            assertTrue(gate.getStateConsumedFuture().isDone());
+            assertThat(gate.getStateConsumedFuture()).isDone();
             gate.getStateConsumedFuture().get();
         }
     }
@@ -216,8 +222,8 @@ public class SequentialChannelStateReaderImplTest {
                 }
                 action.accept(gates);
             }
-            assertEquals(
-                    segmentsToAllocate, networkBufferPool.getNumberOfAvailableMemorySegments());
+            assertThat(networkBufferPool.getNumberOfAvailableMemorySegments())
+                    .isEqualTo(segmentsToAllocate);
         }
     }
 
@@ -245,8 +251,8 @@ public class SequentialChannelStateReaderImplTest {
                 resultPartition.close();
             }
             try {
-                assertEquals(
-                        segmentsToAllocate, networkBufferPool.getNumberOfAvailableMemorySegments());
+                assertThat(networkBufferPool.getNumberOfAvailableMemorySegments())
+                        .isEqualTo(segmentsToAllocate);
             } finally {
                 networkBufferPool.destroyAllBufferPools();
                 networkBufferPool.destroy();
@@ -361,9 +367,8 @@ public class SequentialChannelStateReaderImplTest {
     private <T> void assertBuffersEquals(
             Map<T, List<byte[]>> expected, Map<T, List<Buffer>> actual) {
         try {
-            assertEquals(
-                    mapValues(expected, this::concat),
-                    mapValues(actual, buffers -> concat(toBytes(buffers))));
+            assertThat(mapValues(actual, buffers -> concat(toBytes(buffers))))
+                    .isEqualTo(mapValues(expected, this::concat));
         } finally {
             actual.values().stream().flatMap(List::stream).forEach(Buffer::recycleBuffer);
         }

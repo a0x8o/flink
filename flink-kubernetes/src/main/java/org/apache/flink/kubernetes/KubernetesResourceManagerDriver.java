@@ -18,14 +18,17 @@
 
 package org.apache.flink.kubernetes;
 
+import org.apache.flink.configuration.BlobServerOptions;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.GlobalConfiguration;
+import org.apache.flink.configuration.JobManagerOptions;
 import org.apache.flink.configuration.TaskManagerOptions;
 import org.apache.flink.kubernetes.configuration.KubernetesConfigOptions;
 import org.apache.flink.kubernetes.configuration.KubernetesResourceManagerDriverConfiguration;
 import org.apache.flink.kubernetes.kubeclient.FlinkKubeClient;
 import org.apache.flink.kubernetes.kubeclient.FlinkPod;
-import org.apache.flink.kubernetes.kubeclient.KubeClientFactory;
+import org.apache.flink.kubernetes.kubeclient.decorators.ExternalServiceDecorator;
+import org.apache.flink.kubernetes.kubeclient.decorators.InternalServiceDecorator;
 import org.apache.flink.kubernetes.kubeclient.factory.KubernetesTaskManagerFactory;
 import org.apache.flink.kubernetes.kubeclient.parameters.KubernetesTaskManagerParameters;
 import org.apache.flink.kubernetes.kubeclient.resources.KubernetesPod;
@@ -38,14 +41,17 @@ import org.apache.flink.runtime.clusterframework.BootstrapTools;
 import org.apache.flink.runtime.clusterframework.ContaineredTaskManagerParameters;
 import org.apache.flink.runtime.clusterframework.TaskExecutorProcessSpec;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
-import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.externalresource.ExternalResourceUtils;
+import org.apache.flink.runtime.jobmanager.HighAvailabilityMode;
 import org.apache.flink.runtime.resourcemanager.active.AbstractResourceManagerDriver;
 import org.apache.flink.runtime.resourcemanager.active.ResourceManagerDriver;
 import org.apache.flink.runtime.resourcemanager.exceptions.ResourceManagerException;
+import org.apache.flink.runtime.util.ResourceManagerUtils;
+import org.apache.flink.runtime.util.config.memory.ProcessMemoryUtils;
 import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.FlinkException;
 import org.apache.flink.util.Preconditions;
+import org.apache.flink.util.concurrent.FutureUtils;
 
 import javax.annotation.Nullable;
 
@@ -55,6 +61,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 /** Implementation of {@link ResourceManagerDriver} for Kubernetes deployment. */
@@ -66,9 +73,9 @@ public class KubernetesResourceManagerDriver
 
     private final String clusterId;
 
-    private final KubeClientFactory kubeClientFactory;
+    private final String webInterfaceUrl;
 
-    private Optional<FlinkKubeClient> kubeClientOpt;
+    private final FlinkKubeClient flinkKubeClient;
 
     /** Request resource futures, keyed by pod names. */
     private final Map<String, CompletableFuture<KubernetesWorkerNode>> requestResourceFutures;
@@ -87,11 +94,12 @@ public class KubernetesResourceManagerDriver
 
     public KubernetesResourceManagerDriver(
             Configuration flinkConfig,
-            KubeClientFactory kubeClientFactory,
+            FlinkKubeClient flinkKubeClient,
             KubernetesResourceManagerDriverConfiguration configuration) {
         super(flinkConfig, GlobalConfiguration.loadConfiguration());
         this.clusterId = Preconditions.checkNotNull(configuration.getClusterId());
-        this.kubeClientFactory = Preconditions.checkNotNull(kubeClientFactory);
+        this.webInterfaceUrl = configuration.getWebInterfaceUrl();
+        this.flinkKubeClient = Preconditions.checkNotNull(flinkKubeClient);
         this.requestResourceFutures = new HashMap<>();
         this.running = false;
     }
@@ -102,25 +110,24 @@ public class KubernetesResourceManagerDriver
 
     @Override
     protected void initializeInternal() throws Exception {
-        kubeClientOpt =
-                Optional.of(kubeClientFactory.fromConfiguration(flinkConfig, getIoExecutor()));
         podsWatchOpt = watchTaskManagerPods();
         final File podTemplateFile = KubernetesUtils.getTaskManagerPodTemplateFileInPod();
         if (podTemplateFile.exists()) {
             taskManagerPodTemplate =
                     KubernetesUtils.loadPodFromTemplateFile(
-                            kubeClientOpt.get(), podTemplateFile, Constants.MAIN_CONTAINER_NAME);
+                            flinkKubeClient, podTemplateFile, Constants.MAIN_CONTAINER_NAME);
         } else {
             taskManagerPodTemplate = new FlinkPod.Builder().build();
         }
+        updateKubernetesServiceTargetPortIfNecessary();
         recoverWorkerNodesFromPreviousAttempts();
         this.running = true;
     }
 
     @Override
-    public CompletableFuture<Void> terminate() {
+    public void terminate() throws Exception {
         if (!running) {
-            return FutureUtils.completedVoidFuture();
+            return;
         }
         running = false;
 
@@ -134,16 +141,14 @@ public class KubernetesResourceManagerDriver
         }
 
         try {
-            if (kubeClientOpt.isPresent()) {
-                kubeClientOpt.get().close();
-            }
+            flinkKubeClient.close();
         } catch (Exception e) {
             exception = ExceptionUtils.firstOrSuppressed(e, exception);
         }
 
-        return exception == null
-                ? FutureUtils.completedVoidFuture()
-                : FutureUtils.completedExceptionally(exception);
+        if (exception != null) {
+            throw exception;
+        }
     }
 
     @Override
@@ -153,14 +158,15 @@ public class KubernetesResourceManagerDriver
                 "Deregistering Flink Kubernetes cluster, clusterId: {}, diagnostics: {}",
                 clusterId,
                 optionalDiagnostics == null ? "" : optionalDiagnostics);
-        getKubeClient().stopAndCleanupCluster(clusterId);
+        flinkKubeClient.stopAndCleanupCluster(clusterId);
     }
 
     @Override
     public CompletableFuture<KubernetesWorkerNode> requestResource(
             TaskExecutorProcessSpec taskExecutorProcessSpec) {
         final KubernetesTaskManagerParameters parameters =
-                createKubernetesTaskManagerParameters(taskExecutorProcessSpec);
+                createKubernetesTaskManagerParameters(
+                        taskExecutorProcessSpec, getBlockedNodeRetriever().getAllBlockedNodeIds());
         final KubernetesPod taskManagerPod =
                 KubernetesTaskManagerFactory.buildTaskManagerKubernetesPod(
                         taskManagerPodTemplate, parameters);
@@ -177,7 +183,7 @@ public class KubernetesResourceManagerDriver
                 parameters.getTaskManagerCPU());
 
         final CompletableFuture<Void> createPodFuture =
-                getKubeClient().createTaskManagerPod(taskManagerPod);
+                flinkKubeClient.createTaskManagerPod(taskManagerPod);
 
         FutureUtils.assertNoException(
                 createPodFuture.handleAsync(
@@ -217,7 +223,8 @@ public class KubernetesResourceManagerDriver
 
     private void recoverWorkerNodesFromPreviousAttempts() throws ResourceManagerException {
         List<KubernetesPod> podList =
-                getKubeClient().getPodsWithLabels(KubernetesUtils.getTaskManagerLabels(clusterId));
+                flinkKubeClient.getPodsWithLabels(
+                        KubernetesUtils.getTaskManagerSelectors(clusterId));
         final List<KubernetesWorkerNode> recoveredWorkers = new ArrayList<>();
 
         for (KubernetesPod pod : podList) {
@@ -240,13 +247,41 @@ public class KubernetesResourceManagerDriver
                 recoveredWorkers.size(),
                 ++currentMaxAttemptId);
 
-        // Should not invoke resource event handler on the main thread executor.
-        // We are in the initializing thread. The main thread executor is not yet ready.
         getResourceEventHandler().onPreviousAttemptWorkersRecovered(recoveredWorkers);
     }
 
+    private void updateKubernetesServiceTargetPortIfNecessary() throws Exception {
+        if (!KubernetesUtils.isHostNetwork(flinkConfig)) {
+            return;
+        }
+        final int restPort =
+                ResourceManagerUtils.parseRestBindPortFromWebInterfaceUrl(webInterfaceUrl);
+        Preconditions.checkArgument(
+                restPort > 0, "Failed to parse rest port from " + webInterfaceUrl);
+        final String restServiceName = ExternalServiceDecorator.getExternalServiceName(clusterId);
+        flinkKubeClient
+                .updateServiceTargetPort(restServiceName, Constants.REST_PORT_NAME, restPort)
+                .get();
+        if (!HighAvailabilityMode.isHighAvailabilityModeActivated(flinkConfig)) {
+            final String internalServiceName =
+                    InternalServiceDecorator.getInternalServiceName(clusterId);
+            flinkKubeClient
+                    .updateServiceTargetPort(
+                            internalServiceName,
+                            Constants.BLOB_SERVER_PORT_NAME,
+                            Integer.parseInt(flinkConfig.getString(BlobServerOptions.PORT)))
+                    .get();
+            flinkKubeClient
+                    .updateServiceTargetPort(
+                            internalServiceName,
+                            Constants.JOB_MANAGER_RPC_PORT_NAME,
+                            flinkConfig.getInteger(JobManagerOptions.PORT))
+                    .get();
+        }
+    }
+
     private KubernetesTaskManagerParameters createKubernetesTaskManagerParameters(
-            TaskExecutorProcessSpec taskExecutorProcessSpec) {
+            TaskExecutorProcessSpec taskExecutorProcessSpec, Set<String> blockedNodes) {
         final String podName =
                 String.format(
                         TASK_MANAGER_POD_FORMAT, clusterId, currentMaxAttemptId, ++currentMaxPodId);
@@ -259,15 +294,18 @@ public class KubernetesResourceManagerDriver
 
         final String dynamicProperties =
                 BootstrapTools.getDynamicPropertiesAsString(flinkClientConfig, taskManagerConfig);
-
+        final String jvmMemOpts =
+                ProcessMemoryUtils.generateJvmParametersStr(taskExecutorProcessSpec);
         return new KubernetesTaskManagerParameters(
                 flinkConfig,
                 podName,
                 dynamicProperties,
+                jvmMemOpts,
                 taskManagerParameters,
-                ExternalResourceUtils.getExternalResources(
+                ExternalResourceUtils.getExternalResourceConfigurationKeys(
                         flinkConfig,
-                        KubernetesConfigOptions.EXTERNAL_RESOURCE_KUBERNETES_CONFIG_KEY_SUFFIX));
+                        KubernetesConfigOptions.EXTERNAL_RESOURCE_KUBERNETES_CONFIG_KEY_SUFFIX),
+                blockedNodes);
     }
 
     private void handlePodEventsInMainThread(List<KubernetesPod> pods) {
@@ -317,7 +355,7 @@ public class KubernetesResourceManagerDriver
     }
 
     private void stopPod(String podName) {
-        getKubeClient()
+        flinkKubeClient
                 .stopPod(podName)
                 .whenComplete(
                         (ignore, throwable) -> {
@@ -330,19 +368,11 @@ public class KubernetesResourceManagerDriver
                         });
     }
 
-    private FlinkKubeClient getKubeClient() {
-        Preconditions.checkState(
-                kubeClientOpt.isPresent(),
-                "Cannot get the kube client. Resource manager driver is not initialized.");
-        return kubeClientOpt.get();
-    }
-
-    private Optional<KubernetesWatch> watchTaskManagerPods() {
+    private Optional<KubernetesWatch> watchTaskManagerPods() throws Exception {
         return Optional.of(
-                getKubeClient()
-                        .watchPodsAndDoCallback(
-                                KubernetesUtils.getTaskManagerLabels(clusterId),
-                                new PodCallbackHandlerImpl()));
+                flinkKubeClient.watchPodsAndDoCallback(
+                        KubernetesUtils.getTaskManagerSelectors(clusterId),
+                        new PodCallbackHandlerImpl()));
     }
 
     // ------------------------------------------------------------------------
@@ -380,7 +410,11 @@ public class KubernetesResourceManagerDriver
                                     if (running) {
                                         podsWatchOpt.ifPresent(KubernetesWatch::close);
                                         log.info("Creating a new watch on TaskManager pods.");
-                                        podsWatchOpt = watchTaskManagerPods();
+                                        try {
+                                            podsWatchOpt = watchTaskManagerPods();
+                                        } catch (Exception e) {
+                                            getResourceEventHandler().onError(e);
+                                        }
                                     }
                                 });
             } else {

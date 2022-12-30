@@ -61,13 +61,9 @@ version = "2.3.4"
 t_env.load_module(name, HiveModule(version))
 ```
 {{< /tab >}}
-{{< tab "YAML" >}}
-```yaml
-modules:
-   - name: core
-     type: core
-   - name: myhive
-     type: hive
+{{< tab "SQL Client" >}}
+```sql
+LOAD MODULE hive WITH ('hive-version' = '2.3.4');
 ```
 {{< /tab >}}
 {{< /tabs >}}
@@ -97,7 +93,6 @@ To use a Hive User Defined Function, user have to
 
 - set a HiveCatalog backed by Hive Metastore that contains that function as current catalog of the session
 - include a jar that contains that function in Flink's classpath
-- use Blink planner.
 
 ## Using Hive User Defined Functions
 

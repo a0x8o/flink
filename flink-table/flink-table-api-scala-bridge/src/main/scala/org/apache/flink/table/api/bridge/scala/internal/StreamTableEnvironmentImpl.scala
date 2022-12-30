@@ -19,65 +19,177 @@ package org.apache.flink.table.api.bridge.scala.internal
 
 import org.apache.flink.annotation.Internal
 import org.apache.flink.api.common.typeinfo.TypeInformation
-import org.apache.flink.api.dag.Transformation
 import org.apache.flink.api.scala._
 import org.apache.flink.streaming.api.TimeCharacteristic
-import org.apache.flink.streaming.api.datastream.{DataStream => JDataStream}
-import org.apache.flink.streaming.api.environment.{StreamExecutionEnvironment => JStreamExecutionEnvironment}
 import org.apache.flink.streaming.api.scala.{DataStream, StreamExecutionEnvironment}
 import org.apache.flink.table.api._
-import org.apache.flink.table.api.bridge.scala.StreamTableEnvironment
-import org.apache.flink.table.api.internal.TableEnvironmentImpl
-import org.apache.flink.table.catalog.{CatalogManager, FunctionCatalog, GenericInMemoryCatalog, ObjectIdentifier}
-import org.apache.flink.table.delegation.{Executor, ExecutorFactory, Planner, PlannerFactory}
-import org.apache.flink.table.descriptors.{ConnectorDescriptor, StreamTableDescriptor}
+import org.apache.flink.table.api.bridge.internal.AbstractStreamTableEnvironmentImpl
+import org.apache.flink.table.api.bridge.scala.{StreamStatementSet, StreamTableEnvironment}
+import org.apache.flink.table.catalog._
+import org.apache.flink.table.connector.ChangelogMode
+import org.apache.flink.table.delegation.{Executor, Planner}
 import org.apache.flink.table.expressions.Expression
-import org.apache.flink.table.factories.ComponentFactoryService
+import org.apache.flink.table.factories.PlannerFactoryUtil
 import org.apache.flink.table.functions.{AggregateFunction, TableAggregateFunction, TableFunction, UserDefinedFunctionHelper}
 import org.apache.flink.table.module.ModuleManager
-import org.apache.flink.table.operations.{OutputConversionModifyOperation, QueryOperation, ScalaDataStreamQueryOperation}
+import org.apache.flink.table.operations._
+import org.apache.flink.table.resource.ResourceManager
 import org.apache.flink.table.sources.{TableSource, TableSourceValidation}
+import org.apache.flink.table.types.AbstractDataType
 import org.apache.flink.table.types.utils.TypeConversions
-import org.apache.flink.table.typeutils.FieldInfoUtils
+import org.apache.flink.types.Row
+import org.apache.flink.util.{FlinkUserCodeClassLoaders, MutableURLClassLoader, Preconditions}
 
-import java.util
-import java.util.{Collections, List => JList, Map => JMap}
+import java.net.URL
+import java.util.Optional
 
 import scala.collection.JavaConverters._
 
 /**
-  * The implementation for a Scala [[StreamTableEnvironment]]. This enables conversions from/to
-  * [[DataStream]]. It is bound to a given [[StreamExecutionEnvironment]].
-  */
+ * The implementation for a Scala [[StreamTableEnvironment]]. This enables conversions from/to
+ * [[DataStream]]. It is bound to a given [[StreamExecutionEnvironment]].
+ */
 @Internal
-class StreamTableEnvironmentImpl (
+class StreamTableEnvironmentImpl(
     catalogManager: CatalogManager,
     moduleManager: ModuleManager,
+    resourceManager: ResourceManager,
     functionCatalog: FunctionCatalog,
-    config: TableConfig,
+    tableConfig: TableConfig,
     scalaExecutionEnvironment: StreamExecutionEnvironment,
     planner: Planner,
     executor: Executor,
-    isStreaming: Boolean,
-    userClassLoader: ClassLoader)
-  extends TableEnvironmentImpl(
+    isStreaming: Boolean)
+  extends AbstractStreamTableEnvironmentImpl(
     catalogManager,
     moduleManager,
-    config,
+    resourceManager,
+    tableConfig,
     executor,
     functionCatalog,
     planner,
     isStreaming,
-    userClassLoader)
-  with org.apache.flink.table.api.bridge.scala.StreamTableEnvironment {
+    scalaExecutionEnvironment.getWrappedStreamExecutionEnvironment)
+  with StreamTableEnvironment {
 
   override def fromDataStream[T](dataStream: DataStream[T]): Table = {
-    val queryOperation = asQueryOperation(dataStream, None)
-    createTable(queryOperation)
+    Preconditions.checkNotNull(dataStream, "Data stream must not be null.")
+    fromStreamInternal(dataStream.javaStream, null, null, ChangelogMode.insertOnly())
+  }
+
+  override def fromDataStream[T](dataStream: DataStream[T], schema: Schema): Table = {
+    Preconditions.checkNotNull(dataStream, "Data stream must not be null.")
+    Preconditions.checkNotNull(schema, "Schema must not be null.")
+    fromStreamInternal(dataStream.javaStream, schema, null, ChangelogMode.insertOnly())
+  }
+
+  override def fromChangelogStream(dataStream: DataStream[Row]): Table = {
+    Preconditions.checkNotNull(dataStream, "Data stream must not be null.")
+    fromStreamInternal(dataStream.javaStream, null, null, ChangelogMode.all())
+  }
+
+  override def fromChangelogStream(dataStream: DataStream[Row], schema: Schema): Table = {
+    Preconditions.checkNotNull(dataStream, "Data stream must not be null.")
+    Preconditions.checkNotNull(schema, "Schema must not be null.")
+    fromStreamInternal(dataStream.javaStream, schema, null, ChangelogMode.all())
+  }
+
+  override def fromChangelogStream(
+      dataStream: DataStream[Row],
+      schema: Schema,
+      changelogMode: ChangelogMode): Table = {
+    Preconditions.checkNotNull(dataStream, "Data stream must not be null.")
+    Preconditions.checkNotNull(schema, "Schema must not be null.")
+    fromStreamInternal(dataStream.javaStream, schema, null, changelogMode)
+  }
+
+  override def createTemporaryView[T](path: String, dataStream: DataStream[T]): Unit = {
+    Preconditions.checkNotNull(dataStream, "Data stream must not be null.")
+    createTemporaryView(
+      path,
+      fromStreamInternal(dataStream.javaStream, null, path, ChangelogMode.insertOnly()))
+  }
+
+  override def createTemporaryView[T](
+      path: String,
+      dataStream: DataStream[T],
+      schema: Schema): Unit = {
+    Preconditions.checkNotNull(dataStream, "Data stream must not be null.")
+    Preconditions.checkNotNull(schema, "Schema must not be null.")
+    createTemporaryView(
+      path,
+      fromStreamInternal(dataStream.javaStream, schema, path, ChangelogMode.insertOnly()))
+  }
+
+  override def toDataStream(table: Table): DataStream[Row] = {
+    Preconditions.checkNotNull(table, "Table must not be null.")
+    // include all columns of the query (incl. metadata and computed columns)
+    val sourceType = table.getResolvedSchema.toSourceRowDataType
+    toDataStream(table, sourceType)
+  }
+
+  override def toDataStream[T](table: Table, targetClass: Class[T]): DataStream[T] = {
+    Preconditions.checkNotNull(table, "Table must not be null.")
+    Preconditions.checkNotNull(targetClass, "Target class must not be null.")
+    if (targetClass == classOf[Row]) {
+      // for convenience, we allow the Row class here as well
+      return toDataStream(table).asInstanceOf[DataStream[T]]
+    }
+
+    toDataStream(table, DataTypes.of(targetClass))
+  }
+
+  override def toDataStream[T](table: Table, targetDataType: AbstractDataType[_]): DataStream[T] = {
+    Preconditions.checkNotNull(table, "Table must not be null.")
+    Preconditions.checkNotNull(targetDataType, "Target data type must not be null.")
+
+    val schemaTranslationResult = SchemaTranslator.createProducingResult(
+      catalogManager.getDataTypeFactory,
+      table.getResolvedSchema,
+      targetDataType)
+
+    new DataStream[T](toStreamInternal(table, schemaTranslationResult, ChangelogMode.insertOnly()))
+  }
+
+  override def toChangelogStream(table: Table): DataStream[Row] = {
+    Preconditions.checkNotNull(table, "Table must not be null.")
+
+    val schemaTranslationResult =
+      SchemaTranslator.createProducingResult(table.getResolvedSchema, null)
+
+    new DataStream[Row](toStreamInternal(table, schemaTranslationResult, null))
+  }
+
+  override def toChangelogStream(table: Table, targetSchema: Schema): DataStream[Row] = {
+    Preconditions.checkNotNull(table, "Table must not be null.")
+    Preconditions.checkNotNull(targetSchema, "Target schema must not be null.")
+
+    val schemaTranslationResult =
+      SchemaTranslator.createProducingResult(table.getResolvedSchema, targetSchema)
+
+    new DataStream[Row](toStreamInternal(table, schemaTranslationResult, null))
+  }
+
+  override def toChangelogStream(
+      table: Table,
+      targetSchema: Schema,
+      changelogMode: ChangelogMode): DataStream[Row] = {
+    Preconditions.checkNotNull(table, "Table must not be null.")
+    Preconditions.checkNotNull(targetSchema, "Target schema must not be null.")
+    Preconditions.checkNotNull(changelogMode, "Changelog mode must not be null.")
+
+    val schemaTranslationResult =
+      SchemaTranslator.createProducingResult(table.getResolvedSchema, targetSchema)
+
+    new DataStream[Row](toStreamInternal(table, schemaTranslationResult, changelogMode))
+  }
+
+  override def createStatementSet(): StreamStatementSet = {
+    new StreamStatementSetImpl(this)
   }
 
   override def fromDataStream[T](dataStream: DataStream[T], fields: Expression*): Table = {
-    val queryOperation = asQueryOperation(dataStream, Some(fields.toList.asJava))
+    val queryOperation = asQueryOperation(dataStream.javaStream, Optional.of(fields.toList.asJava))
     createTable(queryOperation)
   }
 
@@ -88,8 +200,7 @@ class StreamTableEnvironmentImpl (
   override def registerDataStream[T](
       name: String,
       dataStream: DataStream[T],
-      fields: Expression*)
-    : Unit = {
+      fields: Expression*): Unit = {
     registerTable(name, fromDataStream(dataStream, fields: _*))
   }
 
@@ -100,7 +211,7 @@ class StreamTableEnvironmentImpl (
       table.getQueryOperation,
       TypeConversions.fromLegacyInfoToDataType(returnType),
       OutputConversionModifyOperation.UpdateMode.APPEND)
-    toDataStream[T](table, modifyOperation)
+    new DataStream[T](toStreamInternal[T](table, modifyOperation))
   }
 
   override def toRetractStream[T: TypeInformation](table: Table): DataStream[(Boolean, T)] = {
@@ -110,7 +221,7 @@ class StreamTableEnvironmentImpl (
       table.getQueryOperation,
       TypeConversions.fromLegacyInfoToDataType(returnType),
       OutputConversionModifyOperation.UpdateMode.RETRACT)
-    toDataStream(table, modifyOperation)
+    new DataStream[(Boolean, T)](toStreamInternal(table, modifyOperation))
   }
 
   override def registerFunction[T: TypeInformation](name: String, tf: TableFunction[T]): Unit = {
@@ -125,8 +236,7 @@ class StreamTableEnvironmentImpl (
 
   override def registerFunction[T: TypeInformation, ACC: TypeInformation](
       name: String,
-      f: AggregateFunction[T, ACC])
-    : Unit = {
+      f: AggregateFunction[T, ACC]): Unit = {
     val typeInfo = UserDefinedFunctionHelper
       .getReturnTypeOfAggregateFunction(f, implicitly[TypeInformation[T]])
     val accTypeInfo = UserDefinedFunctionHelper
@@ -141,8 +251,7 @@ class StreamTableEnvironmentImpl (
 
   override def registerFunction[T: TypeInformation, ACC: TypeInformation](
       name: String,
-      f: TableAggregateFunction[T, ACC])
-    : Unit = {
+      f: TableAggregateFunction[T, ACC]): Unit = {
     val typeInfo = UserDefinedFunctionHelper
       .getReturnTypeOfAggregateFunction(f, implicitly[TypeInformation[T]])
     val accTypeInfo = UserDefinedFunctionHelper
@@ -155,91 +264,20 @@ class StreamTableEnvironmentImpl (
     )
   }
 
-  override def connect(connectorDescriptor: ConnectorDescriptor): StreamTableDescriptor = super
-    .connect(connectorDescriptor).asInstanceOf[StreamTableDescriptor]
-
-
   override protected def validateTableSource(tableSource: TableSource[_]): Unit = {
     super.validateTableSource(tableSource)
     // check that event-time is enabled if table source includes rowtime attributes
-    if (TableSourceValidation.hasRowtimeAttribute(tableSource) &&
-      scalaExecutionEnvironment.getStreamTimeCharacteristic != TimeCharacteristic.EventTime) {
-      throw new TableException(String.format(
-        "A rowtime attribute requires an EventTime time characteristic in stream " +
-          "environment. But is: %s}", scalaExecutionEnvironment.getStreamTimeCharacteristic))
-    }
-  }
-
-  private def toDataStream[T](
-      table: Table,
-      modifyOperation: OutputConversionModifyOperation)
-    : DataStream[T] = {
-    val transformations = planner
-      .translate(Collections.singletonList(modifyOperation))
-    val streamTransformation: Transformation[T] = getTransformation(
-      table,
-      transformations)
-    scalaExecutionEnvironment.getWrappedStreamExecutionEnvironment.addOperator(streamTransformation)
-    new DataStream[T](new JDataStream[T](
-      scalaExecutionEnvironment
-        .getWrappedStreamExecutionEnvironment, streamTransformation))
-  }
-
-  private def getTransformation[T](
-      table: Table,
-      transformations: util.List[Transformation[_]])
-    : Transformation[T] = {
-    if (transformations.size != 1) {
-      throw new TableException(String
-        .format(
-          "Expected a single transformation for query: %s\n Got: %s",
-          table.getQueryOperation.asSummaryString,
-          transformations))
-    }
-    transformations.get(0).asInstanceOf[Transformation[T]]
-  }
-
-  private def asQueryOperation[T](
-      dataStream: DataStream[T],
-      fields: Option[util.List[Expression]]) = {
-    val streamType = dataStream.javaStream.getType
-    // get field names and types for all non-replaced fields
-    val typeInfoSchema = fields.map((f: JList[Expression]) => {
-      val fieldsInfo = FieldInfoUtils.getFieldsInfo(streamType, f.toArray(new Array[Expression](0)))
-      // check if event-time is enabled
-      if (fieldsInfo.isRowtimeDefined &&
-        (scalaExecutionEnvironment.getStreamTimeCharacteristic ne TimeCharacteristic.EventTime)) {
-        throw new ValidationException(String.format(
+    if (
+      TableSourceValidation.hasRowtimeAttribute(tableSource) &&
+      scalaExecutionEnvironment.getStreamTimeCharacteristic != TimeCharacteristic.EventTime
+    ) {
+      throw new TableException(
+        String.format(
           "A rowtime attribute requires an EventTime time characteristic in stream " +
-            "environment. But is: %s",
-          scalaExecutionEnvironment.getStreamTimeCharacteristic))
-      }
-      fieldsInfo
-    }).getOrElse(FieldInfoUtils.getFieldsInfo(streamType))
-    new ScalaDataStreamQueryOperation[T](
-      dataStream.javaStream,
-      typeInfoSchema.getIndices,
-      typeInfoSchema.toTableSchema)
-  }
-
-  override protected def qualifyQueryOperation(
-    identifier: ObjectIdentifier,
-    queryOperation: QueryOperation): QueryOperation = queryOperation match {
-    case qo: ScalaDataStreamQueryOperation[Any] =>
-      new ScalaDataStreamQueryOperation[Any](
-        identifier,
-        qo.getDataStream,
-        qo.getFieldIndices,
-        qo.getTableSchema
-      )
-    case _ =>
-      queryOperation
-  }
-
-  override def createTemporaryView[T](
-      path: String,
-      dataStream: DataStream[T]): Unit = {
-    createTemporaryView(path, fromDataStream(dataStream))
+            "environment. But is: %s}",
+          scalaExecutionEnvironment.getStreamTimeCharacteristic
+        ))
+    }
   }
 
   override def createTemporaryView[T](
@@ -254,82 +292,53 @@ object StreamTableEnvironmentImpl {
 
   def create(
       executionEnvironment: StreamExecutionEnvironment,
-      settings: EnvironmentSettings,
-      tableConfig: TableConfig)
-    : StreamTableEnvironmentImpl = {
+      settings: EnvironmentSettings): StreamTableEnvironmentImpl = {
+    val userClassLoader: MutableURLClassLoader =
+      FlinkUserCodeClassLoaders.create(
+        new Array[URL](0),
+        settings.getUserClassLoader,
+        settings.getConfiguration)
 
-    tableConfig.addConfiguration(settings.toConfiguration)
+    val executor = AbstractStreamTableEnvironmentImpl.lookupExecutor(
+      userClassLoader,
+      executionEnvironment.getWrappedStreamExecutionEnvironment)
 
-    if (!settings.isStreamingMode) {
-      throw new TableException(
-        "StreamTableEnvironment can not run in batch mode for now, please use TableEnvironment.")
-    }
+    val tableConfig = TableConfig.getDefault
+    tableConfig.setRootConfiguration(executor.getConfiguration)
+    tableConfig.addConfiguration(settings.getConfiguration)
 
-    // temporary solution until FLINK-15635 is fixed
-    val classLoader = Thread.currentThread.getContextClassLoader
-
+    val resourceManager = new ResourceManager(settings.getConfiguration, userClassLoader)
     val moduleManager = new ModuleManager
-
     val catalogManager = CatalogManager.newBuilder
-      .classLoader(classLoader)
-      .config(tableConfig.getConfiguration)
+      .classLoader(userClassLoader)
+      .config(tableConfig)
       .defaultCatalog(
         settings.getBuiltInCatalogName,
-        new GenericInMemoryCatalog(
-          settings.getBuiltInCatalogName,
-          settings.getBuiltInDatabaseName))
+        new GenericInMemoryCatalog(settings.getBuiltInCatalogName, settings.getBuiltInDatabaseName))
       .executionConfig(executionEnvironment.getConfig)
       .build
 
-    val functionCatalog = new FunctionCatalog(tableConfig, catalogManager, moduleManager)
+    val functionCatalog =
+      new FunctionCatalog(tableConfig, resourceManager, catalogManager, moduleManager)
 
-    val executorProperties = settings.toExecutorProperties
-    val executor = lookupExecutor(executorProperties, executionEnvironment)
-
-    val plannerProperties = settings.toPlannerProperties
-    val planner = ComponentFactoryService.find(classOf[PlannerFactory], plannerProperties)
-      .create(
-        plannerProperties,
-        executor,
-        tableConfig,
-        functionCatalog,
-        catalogManager)
+    val planner = PlannerFactoryUtil.createPlanner(
+      executor,
+      tableConfig,
+      userClassLoader,
+      moduleManager,
+      catalogManager,
+      functionCatalog)
 
     new StreamTableEnvironmentImpl(
       catalogManager,
       moduleManager,
+      resourceManager,
       functionCatalog,
       tableConfig,
       executionEnvironment,
       planner,
       executor,
-      settings.isStreamingMode,
-      classLoader
+      settings.isStreamingMode
     )
   }
-
-  private def lookupExecutor(
-      executorProperties: JMap[String, String],
-      executionEnvironment: StreamExecutionEnvironment)
-    :Executor =
-    try {
-      val executorFactory = ComponentFactoryService
-        .find(classOf[ExecutorFactory], executorProperties)
-      val createMethod = executorFactory.getClass
-        .getMethod(
-          "create",
-          classOf[util.Map[String, String]],
-          classOf[JStreamExecutionEnvironment])
-
-      createMethod
-        .invoke(
-          executorFactory,
-          executorProperties,
-          executionEnvironment.getWrappedStreamExecutionEnvironment)
-        .asInstanceOf[Executor]
-    } catch {
-      case e: Exception =>
-        throw new TableException("Could not instantiate the executor. Make sure a planner module " +
-          "is on the classpath", e)
-    }
 }

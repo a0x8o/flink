@@ -17,12 +17,13 @@
 # limitations under the License.
 ################################################################################
 
-if ! command -v COMMAND &> /dev/null
+if ! command -v hugo &> /dev/null
 then
 	echo "Hugo must be installed to run the docs locally"
 	echo "Please see docs/README.md for more details"
 	exit 1
 fi
 git submodule update --init --recursive
-
+./setup_docs.sh
+hugo mod get -u
 hugo -b "" serve 

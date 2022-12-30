@@ -20,6 +20,7 @@ package org.apache.flink.streaming.runtime.io.checkpointing;
 import org.apache.flink.api.common.time.Deadline;
 import org.apache.flink.core.testutils.CheckedThread;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
+import org.apache.flink.runtime.checkpoint.CheckpointType;
 import org.apache.flink.runtime.checkpoint.channel.InputChannelInfo;
 import org.apache.flink.runtime.checkpoint.channel.MockChannelStateWriter;
 import org.apache.flink.runtime.checkpoint.channel.RecordingChannelStateWriter;
@@ -47,8 +48,9 @@ import org.apache.flink.runtime.state.CheckpointStorageLocationReference;
 import org.apache.flink.streaming.runtime.tasks.StreamTaskActionExecutor;
 import org.apache.flink.streaming.runtime.tasks.mailbox.MailboxExecutorImpl;
 import org.apache.flink.streaming.runtime.tasks.mailbox.TaskMailboxImpl;
+import org.apache.flink.util.clock.SystemClock;
 
-import org.apache.flink.shaded.guava18.com.google.common.io.Closer;
+import org.apache.flink.shaded.guava30.com.google.common.io.Closer;
 
 import org.junit.Before;
 import org.junit.Test;
@@ -84,7 +86,13 @@ public class CheckpointedInputGateTest {
             assertFalse(gate.pollNext().isPresent());
             for (int channelIndex = 0; channelIndex < numberOfChannels - 1; channelIndex++) {
                 enqueueEndOfState(gate, channelIndex);
-                assertFalse("should align (block all channels)", gate.pollNext().isPresent());
+                Optional<BufferOrEvent> bufferOrEvent = gate.pollNext();
+                while (bufferOrEvent.isPresent()
+                        && bufferOrEvent.get().getEvent() instanceof EndOfChannelStateEvent
+                        && !gate.allChannelsRecovered()) {
+                    bufferOrEvent = gate.pollNext();
+                }
+                assertFalse("should align (block all channels)", bufferOrEvent.isPresent());
             }
 
             enqueueEndOfState(gate, numberOfChannels - 1);
@@ -210,7 +218,7 @@ public class CheckpointedInputGateTest {
                                 .setChannelFactory(InputChannelBuilder::buildRemoteChannel)
                                 .build();
                 singleInputGate.setup();
-                ((RemoteInputChannel) singleInputGate.getChannel(0)).requestSubpartition(0);
+                ((RemoteInputChannel) singleInputGate.getChannel(0)).requestSubpartition();
 
                 final TaskMailboxImpl mailbox = new TaskMailboxImpl();
                 MailboxExecutorImpl mailboxExecutor =
@@ -218,8 +226,8 @@ public class CheckpointedInputGateTest {
 
                 ValidatingCheckpointHandler validatingHandler = new ValidatingCheckpointHandler(1);
                 SingleCheckpointBarrierHandler barrierHandler =
-                        AlternatingControllerTest.barrierHandler(
-                                singleInputGate, validatingHandler, new MockChannelStateWriter());
+                        TestBarrierHandlerFactory.forTarget(validatingHandler)
+                                .create(singleInputGate, new MockChannelStateWriter());
                 CheckpointedInputGate checkpointedInputGate =
                         new CheckpointedInputGate(
                                 singleInputGate,
@@ -263,7 +271,9 @@ public class CheckpointedInputGateTest {
         return new CheckpointBarrier(
                 barrierId,
                 barrierId,
-                CheckpointOptions.unaligned(CheckpointStorageLocationReference.getDefault()));
+                CheckpointOptions.unaligned(
+                        CheckpointType.CHECKPOINT,
+                        CheckpointStorageLocationReference.getDefault()));
     }
 
     private void assertAddedInputSize(
@@ -334,7 +344,9 @@ public class CheckpointedInputGateTest {
                         new AbstractInvokable(new DummyEnvironment()) {
                             @Override
                             public void invoke() {}
-                        });
+                        },
+                        SystemClock.getInstance(),
+                        true);
 
         CheckpointedInputGate checkpointedInputGate =
                 new CheckpointedInputGate(
@@ -343,7 +355,7 @@ public class CheckpointedInputGateTest {
                         mailboxExecutor,
                         UpstreamRecoveryTracker.forInputGate(singleInputGate));
         for (int i = 0; i < numberOfChannels; i++) {
-            ((RemoteInputChannel) checkpointedInputGate.getChannel(i)).requestSubpartition(0);
+            ((RemoteInputChannel) checkpointedInputGate.getChannel(i)).requestSubpartition();
         }
         return checkpointedInputGate;
     }
@@ -374,8 +386,8 @@ public class CheckpointedInputGateTest {
                         new TaskMailboxImpl(), 0, StreamTaskActionExecutor.IMMEDIATE);
 
         SingleCheckpointBarrierHandler barrierHandler =
-                AlternatingControllerTest.barrierHandler(
-                        singleInputGate, abstractInvokable, stateWriter);
+                TestBarrierHandlerFactory.forTarget(abstractInvokable)
+                        .create(singleInputGate, stateWriter);
         CheckpointedInputGate checkpointedInputGate =
                 new CheckpointedInputGate(
                         singleInputGate,
@@ -383,7 +395,7 @@ public class CheckpointedInputGateTest {
                         mailboxExecutor,
                         UpstreamRecoveryTracker.forInputGate(singleInputGate));
         for (int i = 0; i < numberOfChannels; i++) {
-            ((RemoteInputChannel) checkpointedInputGate.getChannel(i)).requestSubpartition(0);
+            ((RemoteInputChannel) checkpointedInputGate.getChannel(i)).requestSubpartition();
         }
         return checkpointedInputGate;
     }

@@ -20,6 +20,7 @@ package org.apache.flink.streaming.connectors.kinesis.internals;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.functions.RuntimeContext;
+import org.apache.flink.api.common.operators.ProcessingTimeService.ProcessingTimeCallback;
 import org.apache.flink.api.common.serialization.RuntimeContextInitializationContextAdapters;
 import org.apache.flink.metrics.MetricGroup;
 import org.apache.flink.streaming.api.functions.AssignerWithPeriodicWatermarks;
@@ -52,7 +53,6 @@ import org.apache.flink.streaming.connectors.kinesis.util.RecordEmitter;
 import org.apache.flink.streaming.connectors.kinesis.util.StreamConsumerRegistrarUtil;
 import org.apache.flink.streaming.connectors.kinesis.util.WatermarkTracker;
 import org.apache.flink.streaming.runtime.operators.windowing.TimestampedValue;
-import org.apache.flink.streaming.runtime.tasks.ProcessingTimeCallback;
 import org.apache.flink.streaming.runtime.tasks.ProcessingTimeService;
 import org.apache.flink.util.InstantiationUtil;
 import org.apache.flink.util.Preconditions;
@@ -73,11 +73,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -215,8 +217,7 @@ public class KinesisDataFetcher<T> {
     /** The factory used to create record publishers that consumer from Kinesis shards. */
     private final RecordPublisherFactory recordPublisherFactory;
 
-    /** Thread that executed runFetcher(). */
-    private volatile Thread mainThread;
+    private final CompletableFuture<Void> cancelFuture = new CompletableFuture<>();
 
     /**
      * The current number of shards that are actively read by this fetcher.
@@ -246,7 +247,7 @@ public class KinesisDataFetcher<T> {
      * The most recent watermark, calculated from the per shard watermarks. The initial value will
      * never be emitted and also apply after recovery. The fist watermark that will be emitted is
      * derived from actually consumed records. In case of recovery and replay, the watermark will
-     * rewind, consistent wth the shard consumer sequence.
+     * rewind, consistent with the shard consumer sequence.
      */
     private long lastWatermark = Long.MIN_VALUE;
 
@@ -511,8 +512,6 @@ public class KinesisDataFetcher<T> {
             return;
         }
 
-        this.mainThread = Thread.currentThread();
-
         // ------------------------------------------------------------------------
         //  Procedures before starting the infinite while loop:
         // ------------------------------------------------------------------------
@@ -748,9 +747,10 @@ public class KinesisDataFetcher<T> {
             // interval if the running flag was set to false during the middle of the while loop
             if (running && discoveryIntervalMillis != 0) {
                 try {
-                    Thread.sleep(discoveryIntervalMillis);
-                } catch (InterruptedException iex) {
-                    // the sleep may be interrupted by shutdownFetcher()
+                    cancelFuture.get(discoveryIntervalMillis, TimeUnit.MILLISECONDS);
+                    LOG.debug("Cancelled discovery");
+                } catch (TimeoutException iex) {
+                    // timeout is expected when fetcher is not cancelled
                 }
             }
         }
@@ -800,28 +800,70 @@ public class KinesisDataFetcher<T> {
      * executed and all shard consuming threads will be interrupted.
      */
     public void shutdownFetcher() {
+        LOG.info(
+                "Starting shutdown of shard consumer threads and AWS SDK resources of subtask {} ...",
+                indexOfThisConsumerSubtask,
+                error.get());
+
         running = false;
+        try {
+            try {
+                deregisterStreamConsumer();
+            } catch (Exception e) {
+                LOG.warn("Encountered exception deregistering stream consumers", e);
+            }
 
-        StreamConsumerRegistrarUtil.deregisterStreamConsumers(configProps, streams);
+            try {
+                closeRecordPublisherFactory();
+            } catch (Exception e) {
+                LOG.warn("Encountered exception closing record publisher factory", e);
+            }
+        } finally {
+            gracefulShutdownShardConsumers();
 
+            cancelFuture.complete(null);
+
+            if (watermarkTracker != null) {
+                watermarkTracker.close();
+            }
+            this.recordEmitter.stop();
+        }
+
+        LOG.info(
+                "Shutting down the shard consumer threads of subtask {} ...",
+                indexOfThisConsumerSubtask);
+    }
+
+    /**
+     * Closes recordRecordPublisherFactory. Allows test to override this to simulate exception for
+     * shutdown logic.
+     */
+    @VisibleForTesting
+    protected void closeRecordPublisherFactory() {
         recordPublisherFactory.close();
+    }
 
-        shardConsumersExecutor.shutdownNow();
+    /**
+     * Deregisters stream consumers. Allows test to override this to simulate exception for shutdown
+     * logic.
+     */
+    @VisibleForTesting
+    protected void deregisterStreamConsumer() {
+        StreamConsumerRegistrarUtil.deregisterStreamConsumers(configProps, streams);
+    }
 
-        if (mainThread != null) {
-            mainThread.interrupt(); // the main thread may be sleeping for the discovery interval
-        }
+    /** Gracefully stops shardConsumersExecutor without interrupting running threads. */
+    private void gracefulShutdownShardConsumers() {
+        shardConsumersExecutor.shutdown();
+    }
 
-        if (watermarkTracker != null) {
-            watermarkTracker.close();
-        }
-        this.recordEmitter.stop();
-
-        if (LOG.isInfoEnabled()) {
-            LOG.info(
-                    "Shutting down the shard consumer threads of subtask {} ...",
-                    indexOfThisConsumerSubtask);
-        }
+    /**
+     * Returns a flag indicating if this fetcher is running.
+     *
+     * @return true if the fetch is running, false if it has been shutdown
+     */
+    boolean isRunning() {
+        return running;
     }
 
     /**
@@ -1132,6 +1174,14 @@ public class KinesisDataFetcher<T> {
             }
         }
 
+        LOG.debug(
+                "WatermarkEmitter subtask: {}, last watermark: {}, potential watermark: {}"
+                        + ", potential next watermark: {}",
+                indexOfThisConsumerSubtask,
+                lastWatermark,
+                potentialWatermark,
+                potentialNextWatermark);
+
         // advance watermark if possible (watermarks can only be ascending)
         if (potentialWatermark == Long.MAX_VALUE) {
             if (shardWatermarks.isEmpty() || shardIdleIntervalMillis > 0) {
@@ -1223,11 +1273,11 @@ public class KinesisDataFetcher<T> {
         public void onProcessingTime(long timestamp) {
             if (nextWatermark != Long.MIN_VALUE) {
                 long globalWatermark = lastGlobalWatermark;
-                // TODO: refresh watermark while idle
                 if (!(isIdle && nextWatermark == propagatedLocalWatermark)) {
                     globalWatermark = watermarkTracker.updateWatermark(nextWatermark);
                     propagatedLocalWatermark = nextWatermark;
                 } else {
+                    globalWatermark = watermarkTracker.updateWatermark(Long.MIN_VALUE);
                     LOG.info(
                             "WatermarkSyncCallback subtask: {} is idle",
                             indexOfThisConsumerSubtask);
@@ -1237,12 +1287,14 @@ public class KinesisDataFetcher<T> {
                     lastLogged = System.currentTimeMillis();
                     LOG.info(
                             "WatermarkSyncCallback subtask: {} local watermark: {}"
-                                    + ", global watermark: {}, delta: {} timeouts: {}, emitter: {}",
+                                    + ", global watermark: {}, delta: {} timeouts: {}, idle: {}"
+                                    + ", emitter: {}",
                             indexOfThisConsumerSubtask,
                             nextWatermark,
                             globalWatermark,
                             nextWatermark - globalWatermark,
                             watermarkTracker.getUpdateTimeoutCount(),
+                            isIdle,
                             recordEmitter.printInfo());
 
                     // Following is for debugging non-reproducible issue with stalled watermark

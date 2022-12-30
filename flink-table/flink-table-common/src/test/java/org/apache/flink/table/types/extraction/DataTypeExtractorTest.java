@@ -45,13 +45,8 @@ import org.apache.flink.table.types.utils.DataTypeFactoryMock;
 import org.apache.flink.types.Row;
 
 import org.hamcrest.Matcher;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.rules.ExpectedException;
-import org.junit.runner.RunWith;
-import org.junit.runners.Parameterized;
-import org.junit.runners.Parameterized.Parameter;
-import org.junit.runners.Parameterized.Parameters;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import javax.annotation.Nullable;
 
@@ -65,21 +60,21 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
+import java.util.stream.Stream;
 
+import static org.apache.flink.core.testutils.FlinkAssertions.anyCauseMatches;
 import static org.apache.flink.core.testutils.FlinkMatchers.containsCause;
+import static org.apache.flink.table.test.TableAssertions.assertThat;
 import static org.apache.flink.table.types.utils.DataTypeFactoryMock.dummyRaw;
-import static org.hamcrest.CoreMatchers.equalTo;
-import static org.junit.Assert.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** Tests for {@link DataTypeExtractor}. */
-@RunWith(Parameterized.class)
 @SuppressWarnings("unused")
-public class DataTypeExtractorTest {
+class DataTypeExtractorTest {
 
     @SuppressWarnings({"unchecked", "rawtypes"})
-    @Parameters(name = "{index}: {0}")
-    public static List<TestSpec> testData() {
-        return Arrays.asList(
+    private static Stream<TestSpec> testData() {
+        return Stream.of(
                 // simple extraction of INT
                 TestSpec.forType(Integer.class).expectDataType(DataTypes.INT()),
 
@@ -466,20 +461,27 @@ public class DataTypeExtractorTest {
                                         DataTypes.FIELD("f8", DataTypes.STRING()),
                                         DataTypes.FIELD("f9", DataTypes.STRING()),
                                         DataTypes.FIELD("f10", DataTypes.STRING()),
-                                        DataTypes.FIELD("f11", DataTypes.INT()))));
+                                        DataTypes.FIELD("f11", DataTypes.INT()))),
+                TestSpec.forType(PojoWithUnderscore.class)
+                        .expectDataType(
+                                DataTypes.STRUCTURED(
+                                        PojoWithUnderscore.class,
+                                        DataTypes.FIELD("int_field", DataTypes.INT()),
+                                        DataTypes.FIELD("string_field", DataTypes.STRING()))));
     }
 
-    @Parameter public TestSpec testSpec;
-
-    @Rule public ExpectedException thrown = ExpectedException.none();
-
-    @Test
-    public void testExtraction() {
+    @ParameterizedTest(name = "{index}: {0}")
+    @MethodSource("testData")
+    void testExtraction(TestSpec testSpec) {
         if (testSpec.expectedErrorMessage != null) {
-            thrown.expect(ValidationException.class);
-            thrown.expectCause(errorMatcher(testSpec));
+            assertThatThrownBy(() -> runExtraction(testSpec))
+                    .isInstanceOf(ValidationException.class)
+                    .satisfies(
+                            anyCauseMatches(
+                                    ValidationException.class, testSpec.expectedErrorMessage));
+        } else {
+            runExtraction(testSpec);
         }
-        runExtraction(testSpec);
     }
 
     // --------------------------------------------------------------------------------------------
@@ -598,7 +600,7 @@ public class DataTypeExtractorTest {
     static void runExtraction(TestSpec testSpec) {
         final DataType dataType = testSpec.extractor.apply(testSpec.typeFactory);
         if (testSpec.expectedDataType != null) {
-            assertThat(dataType, equalTo(testSpec.expectedDataType));
+            assertThat(dataType).isEqualTo(testSpec.expectedDataType);
         }
     }
 
@@ -614,8 +616,7 @@ public class DataTypeExtractorTest {
                         new StructuredAttribute("intField", new IntType(true)),
                         new StructuredAttribute("primitiveBooleanField", new BooleanType(false)),
                         new StructuredAttribute("primitiveIntField", new IntType(false)),
-                        new StructuredAttribute(
-                                "stringField", new VarCharType(VarCharType.MAX_LENGTH))));
+                        new StructuredAttribute("stringField", VarCharType.STRING_TYPE)));
         builder.setFinal(true);
         builder.setInstantiable(true);
         final StructuredType structuredType = builder.build();
@@ -636,9 +637,7 @@ public class DataTypeExtractorTest {
         builder.attributes(
                 Arrays.asList(
                         new StructuredAttribute(
-                                "mapField",
-                                new MapType(
-                                        new VarCharType(VarCharType.MAX_LENGTH), new IntType())),
+                                "mapField", new MapType(VarCharType.STRING_TYPE, new IntType())),
                         new StructuredAttribute(
                                 "simplePojoField",
                                 getSimplePojoDataType(simplePojoClass).getLogicalType()),
@@ -695,7 +694,7 @@ public class DataTypeExtractorTest {
         final StructuredType.Builder builder = StructuredType.newBuilder(Tuple2.class);
         builder.attributes(
                 Arrays.asList(
-                        new StructuredAttribute("f0", new VarCharType(VarCharType.MAX_LENGTH)),
+                        new StructuredAttribute("f0", VarCharType.STRING_TYPE),
                         new StructuredAttribute("f1", new BooleanType())));
         builder.setFinal(true);
         builder.setInstantiable(true);
@@ -1066,6 +1065,29 @@ public class DataTypeExtractorTest {
                             Integer>> {
         public void eval() {
             // nothing to do
+        }
+    }
+
+    // --------------------------------------------------------------------------------------------
+
+    /** Lenient POJO detection for fields with underscores. */
+    public static class PojoWithUnderscore {
+        // CHECKSTYLE.OFF: MemberName
+        private final String string_field;
+        private final Integer int_field;
+        // CHECKSTYLE.ON: MemberName
+
+        public PojoWithUnderscore(Integer intField, String stringField) {
+            this.int_field = intField;
+            this.string_field = stringField;
+        }
+
+        public String getStringField() {
+            return string_field;
+        }
+
+        public Integer getIntField() {
+            return int_field;
         }
     }
 }

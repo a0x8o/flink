@@ -23,7 +23,7 @@ import org.apache.flink.runtime.checkpoint.AbstractCheckpointStats;
 import org.apache.flink.runtime.checkpoint.CheckpointStatsCounts;
 import org.apache.flink.runtime.checkpoint.CheckpointStatsHistory;
 import org.apache.flink.runtime.checkpoint.CheckpointStatsSnapshot;
-import org.apache.flink.runtime.checkpoint.CompletedCheckpointStatsSummary;
+import org.apache.flink.runtime.checkpoint.CompletedCheckpointStatsSummarySnapshot;
 import org.apache.flink.runtime.checkpoint.RestoredCheckpointStats;
 import org.apache.flink.runtime.executiongraph.AccessExecutionGraph;
 import org.apache.flink.runtime.rest.handler.HandlerRequest;
@@ -38,10 +38,10 @@ import org.apache.flink.runtime.rest.messages.MessageHeaders;
 import org.apache.flink.runtime.rest.messages.ResponseBody;
 import org.apache.flink.runtime.rest.messages.checkpoints.CheckpointStatistics;
 import org.apache.flink.runtime.rest.messages.checkpoints.CheckpointingStatistics;
-import org.apache.flink.runtime.rest.messages.checkpoints.MinMaxAvgStatistics;
+import org.apache.flink.runtime.rest.messages.checkpoints.StatsSummaryDto;
 import org.apache.flink.runtime.webmonitor.RestfulGateway;
 import org.apache.flink.runtime.webmonitor.history.ArchivedJson;
-import org.apache.flink.runtime.webmonitor.history.JsonArchivist;
+import org.apache.flink.runtime.webmonitor.history.OnlyExecutionGraphJsonArchivist;
 import org.apache.flink.runtime.webmonitor.retriever.GatewayRetriever;
 
 import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpResponseStatus;
@@ -57,7 +57,7 @@ import java.util.concurrent.Executor;
 /** Handler which serves the checkpoint statistics. */
 public class CheckpointingStatisticsHandler
         extends AbstractAccessExecutionGraphHandler<CheckpointingStatistics, JobMessageParameters>
-        implements JsonArchivist {
+        implements OnlyExecutionGraphJsonArchivist {
 
     public CheckpointingStatisticsHandler(
             GatewayRetriever<? extends RestfulGateway> leaderRetriever,
@@ -78,8 +78,7 @@ public class CheckpointingStatisticsHandler
 
     @Override
     protected CheckpointingStatistics handleRequest(
-            HandlerRequest<EmptyRequestBody, JobMessageParameters> request,
-            AccessExecutionGraph executionGraph)
+            HandlerRequest<EmptyRequestBody> request, AccessExecutionGraph executionGraph)
             throws RestHandlerException {
         return createCheckpointingStatistics(executionGraph);
     }
@@ -121,18 +120,18 @@ public class CheckpointingStatisticsHandler
                             checkpointStatsCounts.getNumberOfCompletedCheckpoints(),
                             checkpointStatsCounts.getNumberOfFailedCheckpoints());
 
-            final CompletedCheckpointStatsSummary checkpointStatsSummary =
+            final CompletedCheckpointStatsSummarySnapshot checkpointStatsSummary =
                     checkpointStatsSnapshot.getSummaryStats();
 
             final CheckpointingStatistics.Summary summary =
                     new CheckpointingStatistics.Summary(
-                            MinMaxAvgStatistics.valueOf(checkpointStatsSummary.getStateSizeStats()),
-                            MinMaxAvgStatistics.valueOf(
+                            StatsSummaryDto.valueOf(checkpointStatsSummary.getCheckpointedSize()),
+                            StatsSummaryDto.valueOf(checkpointStatsSummary.getStateSizeStats()),
+                            StatsSummaryDto.valueOf(
                                     checkpointStatsSummary.getEndToEndDurationStats()),
-                            new MinMaxAvgStatistics(0, 0, 0),
-                            MinMaxAvgStatistics.valueOf(
-                                    checkpointStatsSummary.getProcessedDataStats()),
-                            MinMaxAvgStatistics.valueOf(
+                            new StatsSummaryDto(0, 0, 0, 0, 0, 0, 0, 0),
+                            StatsSummaryDto.valueOf(checkpointStatsSummary.getProcessedDataStats()),
+                            StatsSummaryDto.valueOf(
                                     checkpointStatsSummary.getPersistedDataStats()));
 
             final CheckpointStatsHistory checkpointStatsHistory =

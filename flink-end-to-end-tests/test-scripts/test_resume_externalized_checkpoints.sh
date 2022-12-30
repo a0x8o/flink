@@ -37,15 +37,10 @@ function run_resume_externalized_checkpoints() {
   else
    NUM_SLOTS=$NEW_DOP
   fi
-  if (( $ORIGINAL_DOP != $NEW_DOP )); then
-    # checkpoints currently do not support rescaling
-    # https://issues.apache.org/jira/browse/FLINK-18404
-    set_config_key "execution.checkpointing.unaligned" "false"
-  fi
 
   set_config_key "taskmanager.numberOfTaskSlots" "${NUM_SLOTS}"
   set_config_key "metrics.fetcher.update-interval" "2000"
-  setup_flink_slf4j_metric_reporter
+  setup_flink_slf4j_metric_reporter "numRecordsIn"
   start_cluster
 
   CHECKPOINT_DIR="$TEST_DATA_DIR/externalized-chckpt-e2e-backend-dir"
@@ -109,7 +104,7 @@ function run_resume_externalized_checkpoints() {
   # take the latest checkpoint
   CHECKPOINT_PATH=$(find_latest_completed_checkpoint ${CHECKPOINT_DIR}/${DATASTREAM_JOB})
 
-  if [ -z $CHECKPOINT_PATH ]; then
+  if [ -z "${CHECKPOINT_PATH:-}" ]; then
     echo "Expected an externalized checkpoint to be present, but none exists."
     exit 1
   fi

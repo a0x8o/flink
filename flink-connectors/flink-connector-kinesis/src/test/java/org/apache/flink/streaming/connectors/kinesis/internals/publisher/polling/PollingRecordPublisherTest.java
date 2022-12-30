@@ -17,7 +17,6 @@
 
 package org.apache.flink.streaming.connectors.kinesis.internals.publisher.polling;
 
-import org.apache.flink.metrics.MetricGroup;
 import org.apache.flink.streaming.connectors.kinesis.metrics.PollingRecordPublisherMetricsReporter;
 import org.apache.flink.streaming.connectors.kinesis.model.StartingPosition;
 import org.apache.flink.streaming.connectors.kinesis.proxy.KinesisProxyInterface;
@@ -29,11 +28,13 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.ExpectedException;
 
+import static org.apache.flink.streaming.connectors.kinesis.internals.ShardConsumerTestUtils.createFakeShardConsumerMetricGroup;
 import static org.apache.flink.streaming.connectors.kinesis.internals.publisher.RecordPublisher.RecordPublisherRunResult.COMPLETE;
 import static org.apache.flink.streaming.connectors.kinesis.internals.publisher.RecordPublisher.RecordPublisherRunResult.INCOMPLETE;
 import static org.apache.flink.streaming.connectors.kinesis.model.SentinelSequenceNumber.SENTINEL_EARLIEST_SEQUENCE_NUM;
 import static org.apache.flink.streaming.connectors.kinesis.testutils.FakeKinesisBehavioursFactory.totalNumOfRecordsAfterNumOfGetRecordsCalls;
-import static org.junit.Assert.assertEquals;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.AdditionalMatchers.geq;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
@@ -42,6 +43,8 @@ import static org.mockito.Mockito.verify;
 
 /** Tests for {@link PollingRecordPublisher}. */
 public class PollingRecordPublisherTest {
+
+    private static final long FETCH_INTERVAL_MILLIS = 500L;
 
     @Rule public ExpectedException thrown = ExpectedException.none();
 
@@ -53,9 +56,26 @@ public class PollingRecordPublisherTest {
         TestConsumer consumer = new TestConsumer();
         recordPublisher.run(consumer);
 
-        assertEquals(1, consumer.getRecordBatches().size());
-        assertEquals(5, consumer.getRecordBatches().get(0).getDeaggregatedRecordSize());
-        assertEquals(100L, consumer.getRecordBatches().get(0).getMillisBehindLatest(), 0);
+        assertThat(consumer.getRecordBatches()).hasSize(1);
+        assertThat(consumer.getRecordBatches().get(0).getDeaggregatedRecordSize()).isEqualTo(5);
+        assertThat(consumer.getRecordBatches().get(0).getMillisBehindLatest()).isEqualTo(100L);
+    }
+
+    @Test
+    public void testRunEmitsRunLoopTimeNanos() throws Exception {
+        PollingRecordPublisherMetricsReporter metricsReporter =
+                spy(
+                        new PollingRecordPublisherMetricsReporter(
+                                createFakeShardConsumerMetricGroup()));
+
+        KinesisProxyInterface fakeKinesis = totalNumOfRecordsAfterNumOfGetRecordsCalls(5, 5, 100);
+        PollingRecordPublisher recordPublisher =
+                createPollingRecordPublisher(fakeKinesis, metricsReporter);
+
+        recordPublisher.run(new TestConsumer());
+
+        // Expect that the run loop took at least FETCH_INTERVAL_MILLIS in nanos
+        verify(metricsReporter).setRunLoopTimeNanos(geq(FETCH_INTERVAL_MILLIS * 1_000_000));
     }
 
     @Test
@@ -65,10 +85,10 @@ public class PollingRecordPublisherTest {
         PollingRecordPublisher recordPublisher = createPollingRecordPublisher(fakeKinesis);
 
         // First call results in INCOMPLETE, there is one batch left
-        assertEquals(INCOMPLETE, recordPublisher.run(new TestConsumer()));
+        assertThat(recordPublisher.run(new TestConsumer())).isEqualTo(INCOMPLETE);
 
         // After second call the shard is complete
-        assertEquals(COMPLETE, recordPublisher.run(new TestConsumer()));
+        assertThat(recordPublisher.run(new TestConsumer())).isEqualTo(COMPLETE);
     }
 
     @Test
@@ -76,8 +96,8 @@ public class PollingRecordPublisherTest {
         KinesisProxyInterface fakeKinesis = totalNumOfRecordsAfterNumOfGetRecordsCalls(5, 1, 100);
         PollingRecordPublisher recordPublisher = createPollingRecordPublisher(fakeKinesis);
 
-        assertEquals(COMPLETE, recordPublisher.run(new TestConsumer()));
-        assertEquals(COMPLETE, recordPublisher.run(new TestConsumer()));
+        assertThat(recordPublisher.run(new TestConsumer())).isEqualTo(COMPLETE);
+        assertThat(recordPublisher.run(new TestConsumer())).isEqualTo(COMPLETE);
     }
 
     @Test
@@ -86,7 +106,7 @@ public class PollingRecordPublisherTest {
                 FakeKinesisBehavioursFactory.noShardsFoundForRequestedStreamsBehaviour();
         PollingRecordPublisher recordPublisher = createPollingRecordPublisher(fakeKinesis);
 
-        assertEquals(COMPLETE, recordPublisher.run(new TestConsumer()));
+        assertThat(recordPublisher.run(new TestConsumer())).isEqualTo(COMPLETE);
     }
 
     @Test
@@ -134,14 +154,21 @@ public class PollingRecordPublisherTest {
     PollingRecordPublisher createPollingRecordPublisher(final KinesisProxyInterface kinesis)
             throws Exception {
         PollingRecordPublisherMetricsReporter metricsReporter =
-                new PollingRecordPublisherMetricsReporter(mock(MetricGroup.class));
+                new PollingRecordPublisherMetricsReporter(createFakeShardConsumerMetricGroup());
 
+        return createPollingRecordPublisher(kinesis, metricsReporter);
+    }
+
+    PollingRecordPublisher createPollingRecordPublisher(
+            final KinesisProxyInterface kinesis,
+            final PollingRecordPublisherMetricsReporter metricGroupReporter)
+            throws Exception {
         return new PollingRecordPublisher(
                 StartingPosition.restartFromSequenceNumber(SENTINEL_EARLIEST_SEQUENCE_NUM.get()),
                 TestUtils.createDummyStreamShardHandle(),
-                metricsReporter,
+                metricGroupReporter,
                 kinesis,
                 10000,
-                500L);
+                FETCH_INTERVAL_MILLIS);
     }
 }

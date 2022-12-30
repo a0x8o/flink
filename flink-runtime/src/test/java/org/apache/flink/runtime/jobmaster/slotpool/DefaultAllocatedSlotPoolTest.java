@@ -29,7 +29,7 @@ import org.apache.flink.runtime.taskmanager.LocalTaskManagerLocation;
 import org.apache.flink.runtime.taskmanager.TaskManagerLocation;
 import org.apache.flink.util.TestLogger;
 
-import org.apache.flink.shaded.guava18.com.google.common.collect.Iterables;
+import org.apache.flink.shaded.guava30.com.google.common.collect.Iterables;
 
 import org.hamcrest.Description;
 import org.hamcrest.Matcher;
@@ -49,6 +49,7 @@ import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import static org.hamcrest.CoreMatchers.hasItems;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.Matchers.closeTo;
 import static org.hamcrest.Matchers.hasSize;
@@ -103,6 +104,25 @@ public class DefaultAllocatedSlotPoolTest extends TestLogger {
         slotPool.removeSlots(owner);
 
         assertSlotPoolContainsSlots(slotPool, Collections.singleton(otherSlot));
+    }
+
+    @Test
+    public void testRemoveSlotsReturnValue() {
+        final DefaultAllocatedSlotPool slotPool = new DefaultAllocatedSlotPool();
+
+        final ResourceID owner = ResourceID.generate();
+        final AllocatedSlot slot1 = createAllocatedSlot(owner);
+        final AllocatedSlot slot2 = createAllocatedSlot(owner);
+
+        slotPool.addSlots(Arrays.asList(slot1, slot2), 0);
+        slotPool.reserveFreeSlot(slot1.getAllocationId());
+
+        final AllocatedSlotPool.AllocatedSlotsAndReservationStatus
+                allocatedSlotsAndReservationStatus = slotPool.removeSlots(owner);
+
+        assertThat(allocatedSlotsAndReservationStatus.getAllocatedSlots(), hasItems(slot1, slot2));
+        assertThat(allocatedSlotsAndReservationStatus.wasFree(slot1.getAllocationId()), is(false));
+        assertThat(allocatedSlotsAndReservationStatus.wasFree(slot2.getAllocationId()), is(true));
     }
 
     @Test
@@ -232,6 +252,34 @@ public class DefaultAllocatedSlotPoolTest extends TestLogger {
         final DefaultAllocatedSlotPool slotPool = new DefaultAllocatedSlotPool();
 
         slotPool.removeSlots(ResourceID.generate());
+    }
+
+    @Test
+    public void testContainsFreeSlotReturnsTrueIfSlotIsFree() {
+        final DefaultAllocatedSlotPool slotPool = new DefaultAllocatedSlotPool();
+        final AllocatedSlot allocatedSlot = createAllocatedSlot(ResourceID.generate());
+
+        slotPool.addSlots(Collections.singleton(allocatedSlot), 0);
+
+        assertTrue(slotPool.containsFreeSlot(allocatedSlot.getAllocationId()));
+    }
+
+    @Test
+    public void testContainsFreeSlotReturnsFalseIfSlotDoesNotExist() {
+        final DefaultAllocatedSlotPool slotPool = new DefaultAllocatedSlotPool();
+
+        assertFalse(slotPool.containsFreeSlot(new AllocationID()));
+    }
+
+    @Test
+    public void testContainsFreeSlotReturnsFalseIfSlotIsReserved() {
+        final DefaultAllocatedSlotPool slotPool = new DefaultAllocatedSlotPool();
+        final AllocatedSlot allocatedSlot = createAllocatedSlot(ResourceID.generate());
+
+        slotPool.addSlots(Collections.singleton(allocatedSlot), 0);
+        slotPool.reserveFreeSlot(allocatedSlot.getAllocationId());
+
+        assertFalse(slotPool.containsFreeSlot(allocatedSlot.getAllocationId()));
     }
 
     private void assertSlotPoolContainsSlots(

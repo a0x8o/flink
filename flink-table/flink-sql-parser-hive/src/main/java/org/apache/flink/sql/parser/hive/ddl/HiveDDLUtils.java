@@ -26,7 +26,7 @@ import org.apache.flink.sql.parser.hive.impl.ParseException;
 import org.apache.flink.sql.parser.type.ExtendedSqlCollectionTypeNameSpec;
 import org.apache.flink.sql.parser.type.ExtendedSqlRowTypeNameSpec;
 import org.apache.flink.sql.parser.type.SqlMapTypeNameSpec;
-import org.apache.flink.table.catalog.config.CatalogConfig;
+import org.apache.flink.table.catalog.CatalogPropertiesUtil;
 
 import org.apache.calcite.sql.SqlBasicTypeNameSpec;
 import org.apache.calcite.sql.SqlCall;
@@ -40,7 +40,7 @@ import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.sql.util.SqlShuttle;
 import org.apache.calcite.util.NlsString;
-import org.apache.commons.lang3.StringEscapeUtils;
+import org.apache.commons.text.StringEscapeUtils;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -115,7 +115,7 @@ public class HiveDDLUtils {
             if (node instanceof SqlTableOption
                     && ((SqlTableOption) node)
                             .getKeyString()
-                            .equalsIgnoreCase(CatalogConfig.IS_GENERIC)) {
+                            .equalsIgnoreCase(CatalogPropertiesUtil.IS_GENERIC)) {
                 if (!((SqlTableOption) node).getValueString().equalsIgnoreCase("false")) {
                     throw new ParseException(
                             "Creating generic object with Hive dialect is not allowed");
@@ -450,7 +450,8 @@ public class HiveDDLUtils {
             if (literal instanceof SqlCharStringLiteral) {
                 SqlCharStringLiteral stringLiteral = (SqlCharStringLiteral) literal;
                 String unescaped =
-                        StringEscapeUtils.unescapeJava(stringLiteral.getNlsString().getValue());
+                        StringEscapeUtils.unescapeJava(
+                                stringLiteral.getValueAs(NlsString.class).getValue());
                 return SqlLiteral.createCharString(unescaped, stringLiteral.getParserPosition());
             }
             return literal;

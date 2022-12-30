@@ -19,7 +19,7 @@ package org.apache.flink.streaming.connectors.kafka;
 
 import org.apache.flink.api.common.serialization.DeserializationSchema;
 import org.apache.flink.api.common.serialization.SerializationSchema;
-import org.apache.flink.networking.NetworkFailuresProxy;
+import org.apache.flink.connector.kafka.source.KafkaSourceBuilder;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.DataStreamSink;
 import org.apache.flink.streaming.api.operators.StreamSink;
@@ -27,10 +27,8 @@ import org.apache.flink.streaming.connectors.kafka.internals.KafkaDeserializatio
 import org.apache.flink.streaming.connectors.kafka.partitioner.FlinkKafkaPartitioner;
 import org.apache.flink.streaming.util.serialization.KeyedSerializationSchema;
 
-import kafka.server.KafkaServer;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -44,7 +42,6 @@ public abstract class KafkaTestEnvironment {
         private int kafkaServersNumber = 1;
         private Properties kafkaServerProperties = null;
         private boolean secureMode = false;
-        private boolean hideKafkaBehindProxy = false;
 
         /** Please use {@link KafkaTestEnvironment#createConfig()} method. */
         private Config() {}
@@ -76,19 +73,12 @@ public abstract class KafkaTestEnvironment {
             return this;
         }
 
-        public boolean isHideKafkaBehindProxy() {
-            return hideKafkaBehindProxy;
-        }
-
         public Config setHideKafkaBehindProxy(boolean hideKafkaBehindProxy) {
-            this.hideKafkaBehindProxy = hideKafkaBehindProxy;
             return this;
         }
     }
 
     protected static final String KAFKA_HOST = "localhost";
-
-    protected final List<NetworkFailuresProxy> networkFailuresProxies = new ArrayList<>();
 
     public static Config createConfig() {
         return new Config();
@@ -96,11 +86,7 @@ public abstract class KafkaTestEnvironment {
 
     public abstract void prepare(Config config) throws Exception;
 
-    public void shutdown() throws Exception {
-        for (NetworkFailuresProxy proxy : networkFailuresProxies) {
-            proxy.close();
-        }
-    }
+    public void shutdown() throws Exception {}
 
     public abstract void deleteTestTopic(String topic);
 
@@ -118,8 +104,6 @@ public abstract class KafkaTestEnvironment {
     public abstract String getBrokerConnectionString();
 
     public abstract String getVersion();
-
-    public abstract List<KafkaServer> getBrokers();
 
     public Properties getIdempotentProducerConfig() {
         Properties props = new Properties();
@@ -149,8 +133,27 @@ public abstract class KafkaTestEnvironment {
     public abstract <T> FlinkKafkaConsumerBase<T> getConsumer(
             List<String> topics, KafkaDeserializationSchema<T> readSchema, Properties props);
 
+    public <T> KafkaSourceBuilder<T> getSourceBuilder(
+            List<String> topics, DeserializationSchema<T> deserializationSchema, Properties props) {
+        return getSourceBuilder(
+                topics, new KafkaDeserializationSchemaWrapper<T>(deserializationSchema), props);
+    }
+
+    public <T> KafkaSourceBuilder<T> getSourceBuilder(
+            String topic, KafkaDeserializationSchema<T> readSchema, Properties props) {
+        return getSourceBuilder(Collections.singletonList(topic), readSchema, props);
+    }
+
+    public <T> KafkaSourceBuilder<T> getSourceBuilder(
+            String topic, DeserializationSchema<T> deserializationSchema, Properties props) {
+        return getSourceBuilder(Collections.singletonList(topic), deserializationSchema, props);
+    }
+
+    public abstract <T> KafkaSourceBuilder<T> getSourceBuilder(
+            List<String> topics, KafkaDeserializationSchema<T> readSchema, Properties props);
+
     public abstract <K, V> Collection<ConsumerRecord<K, V>> getAllRecordsFromTopic(
-            Properties properties, String topic, int partition, long timeout);
+            Properties properties, String topic);
 
     public abstract <T> StreamSink<T> getProducerSink(
             String topic,
@@ -199,29 +202,11 @@ public abstract class KafkaTestEnvironment {
 
     public abstract void restartBroker(int leaderId) throws Exception;
 
+    public abstract void stopBroker(int brokerId) throws Exception;
+
     public abstract int getLeaderToShutDown(String topic) throws Exception;
 
-    public abstract int getBrokerId(KafkaServer server);
-
     public abstract boolean isSecureRunSupported();
-
-    public void blockProxyTraffic() {
-        for (NetworkFailuresProxy proxy : networkFailuresProxies) {
-            proxy.blockTraffic();
-        }
-    }
-
-    public void unblockProxyTraffic() {
-        for (NetworkFailuresProxy proxy : networkFailuresProxies) {
-            proxy.unblockTraffic();
-        }
-    }
-
-    protected NetworkFailuresProxy createProxy(String remoteHost, int remotePort) {
-        NetworkFailuresProxy proxy = new NetworkFailuresProxy(0, remoteHost, remotePort);
-        networkFailuresProxies.add(proxy);
-        return proxy;
-    }
 
     protected void maybePrintDanglingThreadStacktrace(String threadNameKeyword) {
         for (Map.Entry<Thread, StackTraceElement[]> threadEntry :

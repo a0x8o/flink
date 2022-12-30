@@ -19,22 +19,21 @@
 package org.apache.flink.table.catalog;
 
 import org.apache.flink.annotation.Internal;
-import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.configuration.ReadableConfig;
 import org.apache.flink.table.api.CatalogNotExistException;
+import org.apache.flink.table.api.EnvironmentSettings;
+import org.apache.flink.table.api.Schema;
 import org.apache.flink.table.api.TableException;
-import org.apache.flink.table.api.TableSchema;
 import org.apache.flink.table.api.ValidationException;
-import org.apache.flink.table.api.internal.CatalogTableSchemaResolver;
 import org.apache.flink.table.api.internal.TableEnvironmentImpl;
 import org.apache.flink.table.catalog.exceptions.CatalogException;
 import org.apache.flink.table.catalog.exceptions.DatabaseNotExistException;
 import org.apache.flink.table.catalog.exceptions.PartitionNotExistException;
 import org.apache.flink.table.catalog.exceptions.TableAlreadyExistException;
 import org.apache.flink.table.catalog.exceptions.TableNotExistException;
-import org.apache.flink.table.delegation.Parser;
 import org.apache.flink.table.delegation.Planner;
+import org.apache.flink.table.expressions.resolver.ExpressionResolver.ExpressionResolverBuilder;
 import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.StringUtils;
 
@@ -46,6 +45,7 @@ import javax.annotation.Nullable;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -66,26 +66,31 @@ public final class CatalogManager {
     private static final Logger LOG = LoggerFactory.getLogger(CatalogManager.class);
 
     // A map between names and catalogs.
-    private Map<String, Catalog> catalogs;
+    private final Map<String, Catalog> catalogs;
 
     // Those tables take precedence over corresponding permanent tables, thus they shadow
     // tables coming from catalogs.
-    private Map<ObjectIdentifier, CatalogBaseTable> temporaryTables;
+    private final Map<ObjectIdentifier, CatalogBaseTable> temporaryTables;
 
     // The name of the current catalog and database
     private String currentCatalogName;
 
     private String currentDatabaseName;
 
-    private CatalogTableSchemaResolver schemaResolver;
+    private DefaultSchemaResolver schemaResolver;
 
     // The name of the built-in catalog
     private final String builtInCatalogName;
 
     private final DataTypeFactory typeFactory;
 
+    private final ManagedTableListener managedTableListener;
+
     private CatalogManager(
-            String defaultCatalogName, Catalog defaultCatalog, DataTypeFactory typeFactory) {
+            String defaultCatalogName,
+            Catalog defaultCatalog,
+            DataTypeFactory typeFactory,
+            ManagedTableListener managedTableListener) {
         checkArgument(
                 !StringUtils.isNullOrWhitespaceOnly(defaultCatalogName),
                 "Default catalog name cannot be null or empty");
@@ -101,6 +106,7 @@ public final class CatalogManager {
         builtInCatalogName = defaultCatalogName;
 
         this.typeFactory = typeFactory;
+        this.managedTableListener = managedTableListener;
     }
 
     public static Builder newBuilder() {
@@ -119,6 +125,8 @@ public final class CatalogManager {
         private @Nullable Catalog defaultCatalog;
 
         private @Nullable ExecutionConfig executionConfig;
+
+        private @Nullable DataTypeFactory dataTypeFactory;
 
         public Builder classLoader(ClassLoader classLoader) {
             this.classLoader = classLoader;
@@ -141,24 +149,41 @@ public final class CatalogManager {
             return this;
         }
 
+        public Builder dataTypeFactory(DataTypeFactory dataTypeFactory) {
+            this.dataTypeFactory = dataTypeFactory;
+            return this;
+        }
+
         public CatalogManager build() {
             checkNotNull(classLoader, "Class loader cannot be null");
             checkNotNull(config, "Config cannot be null");
             return new CatalogManager(
                     defaultCatalogName,
                     defaultCatalog,
-                    new DataTypeFactoryImpl(classLoader, config, executionConfig));
+                    dataTypeFactory != null
+                            ? dataTypeFactory
+                            : new DataTypeFactoryImpl(classLoader, config, executionConfig),
+                    new ManagedTableListener(classLoader, config));
         }
     }
 
     /**
-     * We do not pass it in the ctor, because we need a {@link Parser} that is constructed in a
-     * {@link Planner}. At the same time {@link Planner} needs a {@link CatalogManager} to be
-     * constructed. Thus we can't get {@link Parser} instance when creating a {@link
-     * CatalogManager}. See {@link TableEnvironmentImpl#create}.
+     * Initializes a {@link SchemaResolver} for {@link Schema} resolution.
+     *
+     * <p>Currently, the resolver cannot be passed in the constructor because of a chicken-and-egg
+     * problem between {@link Planner} and {@link CatalogManager}.
+     *
+     * @see TableEnvironmentImpl#create(EnvironmentSettings)
      */
-    public void setCatalogTableSchemaResolver(CatalogTableSchemaResolver schemaResolver) {
-        this.schemaResolver = schemaResolver;
+    public void initSchemaResolver(
+            boolean isStreamingMode, ExpressionResolverBuilder expressionResolverBuilder) {
+        this.schemaResolver =
+                new DefaultSchemaResolver(isStreamingMode, typeFactory, expressionResolverBuilder);
+    }
+
+    /** Returns a {@link SchemaResolver} for creating {@link ResolvedSchema} from {@link Schema}. */
+    public SchemaResolver getSchemaResolver() {
+        return schemaResolver;
     }
 
     /** Returns a factory for creating fully resolved data types that can be used for planning. */
@@ -201,6 +226,9 @@ public final class CatalogManager {
                 "Catalog name cannot be null or empty.");
 
         if (catalogs.containsKey(catalogName)) {
+            if (currentCatalogName.equals(catalogName)) {
+                throw new CatalogException("Cannot drop a catalog which is currently in use.");
+            }
             Catalog catalog = catalogs.remove(catalogName);
             catalog.close();
         } else if (!ignoreIfNotExists) {
@@ -320,67 +348,35 @@ public final class CatalogManager {
     }
 
     /**
-     * Result of a lookup for a table through {@link #getTable(ObjectIdentifier)}. It combines the
-     * {@link CatalogBaseTable} with additional information such as if the table is a temporary
-     * table or comes from the catalog.
-     */
-    public static class TableLookupResult {
-        private final boolean isTemporary;
-        private final CatalogBaseTable table;
-        private final TableSchema resolvedSchema;
-
-        @VisibleForTesting
-        public static TableLookupResult temporary(
-                CatalogBaseTable table, TableSchema resolvedSchema) {
-            return new TableLookupResult(true, table, resolvedSchema);
-        }
-
-        @VisibleForTesting
-        public static TableLookupResult permanent(
-                CatalogBaseTable table, TableSchema resolvedSchema) {
-            return new TableLookupResult(false, table, resolvedSchema);
-        }
-
-        private TableLookupResult(
-                boolean isTemporary, CatalogBaseTable table, TableSchema resolvedSchema) {
-            this.isTemporary = isTemporary;
-            this.table = table;
-            this.resolvedSchema = resolvedSchema;
-        }
-
-        public boolean isTemporary() {
-            return isTemporary;
-        }
-
-        public CatalogBaseTable getTable() {
-            return table;
-        }
-
-        public TableSchema getResolvedSchema() {
-            return resolvedSchema;
-        }
-    }
-
-    /**
      * Retrieves a fully qualified table. If the path is not yet fully qualified use {@link
      * #qualifyIdentifier(UnresolvedIdentifier)} first.
      *
      * @param objectIdentifier full path of the table to retrieve
      * @return table that the path points to.
      */
-    public Optional<TableLookupResult> getTable(ObjectIdentifier objectIdentifier) {
-        Preconditions.checkNotNull(schemaResolver, "schemaResolver should not be null");
+    public Optional<ContextResolvedTable> getTable(ObjectIdentifier objectIdentifier) {
         CatalogBaseTable temporaryTable = temporaryTables.get(objectIdentifier);
         if (temporaryTable != null) {
-            TableSchema resolvedSchema = resolveTableSchema(temporaryTable);
-            return Optional.of(TableLookupResult.temporary(temporaryTable, resolvedSchema));
+            final ResolvedCatalogBaseTable<?> resolvedTable =
+                    resolveCatalogBaseTable(temporaryTable);
+            return Optional.of(ContextResolvedTable.temporary(objectIdentifier, resolvedTable));
         } else {
-            return getPermanentTable(objectIdentifier, true);
+            return getPermanentTable(objectIdentifier);
         }
     }
 
-    private TableSchema resolveTableSchema(CatalogBaseTable table) {
-        return schemaResolver.resolve(table.getSchema());
+    /**
+     * Like {@link #getTable(ObjectIdentifier)}, but throws an error when the table is not available
+     * in any of the catalogs.
+     */
+    public ContextResolvedTable getTableOrError(ObjectIdentifier objectIdentifier) {
+        return getTable(objectIdentifier)
+                .orElseThrow(
+                        () ->
+                                new TableException(
+                                        String.format(
+                                                "Cannot find table '%s' in any of the catalogs %s, nor as a temporary table.",
+                                                objectIdentifier, listCatalogs())));
     }
 
     /**
@@ -404,18 +400,30 @@ public final class CatalogManager {
         return Optional.empty();
     }
 
-    private Optional<TableLookupResult> getPermanentTable(
-            ObjectIdentifier objectIdentifier, boolean needResolveSchema) {
+    private Optional<ContextResolvedTable> getPermanentTable(ObjectIdentifier objectIdentifier) {
         Catalog currentCatalog = catalogs.get(objectIdentifier.getCatalogName());
         ObjectPath objectPath = objectIdentifier.toObjectPath();
         if (currentCatalog != null) {
             try {
-                CatalogBaseTable catalogTable = currentCatalog.getTable(objectPath);
-                TableSchema resolvedSchema =
-                        needResolveSchema
-                                ? resolveTableSchema(catalogTable)
-                                : catalogTable.getSchema();
-                return Optional.of(TableLookupResult.permanent(catalogTable, resolvedSchema));
+                final CatalogBaseTable table = currentCatalog.getTable(objectPath);
+                final ResolvedCatalogBaseTable<?> resolvedTable = resolveCatalogBaseTable(table);
+                return Optional.of(
+                        ContextResolvedTable.permanent(
+                                objectIdentifier, currentCatalog, resolvedTable));
+            } catch (TableNotExistException e) {
+                // Ignore.
+            }
+        }
+        return Optional.empty();
+    }
+
+    private Optional<CatalogBaseTable> getUnresolvedTable(ObjectIdentifier objectIdentifier) {
+        Catalog currentCatalog = catalogs.get(objectIdentifier.getCatalogName());
+        ObjectPath objectPath = objectIdentifier.toObjectPath();
+        if (currentCatalog != null) {
+            try {
+                final CatalogBaseTable table = currentCatalog.getTable(objectPath);
+                return Optional.of(table);
             } catch (TableNotExistException e) {
                 // Ignore.
             }
@@ -444,21 +452,25 @@ public final class CatalogManager {
 
     /**
      * Returns an array of names of all tables (tables and views, both temporary and permanent)
-     * registered in the namespace of the current catalog and database.
+     * registered in the namespace of the given catalog and database.
      *
      * @return names of all registered tables
      */
     public Set<String> listTables(String catalogName, String databaseName) {
-        Catalog currentCatalog = catalogs.get(getCurrentCatalog());
+        Catalog catalog = catalogs.get(catalogName);
+        if (catalog == null) {
+            throw new ValidationException(String.format("Catalog %s does not exist", catalogName));
+        }
 
         try {
             return Stream.concat(
-                            currentCatalog.listTables(getCurrentDatabase()).stream(),
+                            catalog.listTables(databaseName).stream(),
                             listTemporaryTablesInternal(catalogName, databaseName)
                                     .map(e -> e.getKey().getObjectName()))
                     .collect(Collectors.toSet());
         } catch (DatabaseNotExistException e) {
-            throw new ValidationException("Current database does not exist", e);
+            throw new ValidationException(
+                    String.format("Database %s does not exist", databaseName), e);
         }
     }
 
@@ -509,21 +521,25 @@ public final class CatalogManager {
 
     /**
      * Returns an array of names of all views(both temporary and permanent) registered in the
-     * namespace of the current catalog and database.
+     * namespace of the given catalog and database.
      *
      * @return names of registered views
      */
     public Set<String> listViews(String catalogName, String databaseName) {
-        Catalog currentCatalog = catalogs.get(getCurrentCatalog());
+        Catalog catalog = catalogs.get(catalogName);
+        if (catalog == null) {
+            throw new ValidationException(String.format("Catalog %s does not exist", catalogName));
+        }
 
         try {
             return Stream.concat(
-                            currentCatalog.listViews(getCurrentDatabase()).stream(),
+                            catalog.listViews(databaseName).stream(),
                             listTemporaryViewsInternal(catalogName, databaseName)
                                     .map(e -> e.getKey().getObjectName()))
                     .collect(Collectors.toSet());
         } catch (DatabaseNotExistException e) {
-            throw new ValidationException("Current database does not exist", e);
+            throw new ValidationException(
+                    String.format("Database %s does not exist", databaseName), e);
         }
     }
 
@@ -634,7 +650,18 @@ public final class CatalogManager {
     public void createTable(
             CatalogBaseTable table, ObjectIdentifier objectIdentifier, boolean ignoreIfExists) {
         execute(
-                (catalog, path) -> catalog.createTable(path, table, ignoreIfExists),
+                (catalog, path) -> {
+                    ResolvedCatalogBaseTable<?> resolvedTable = resolveCatalogBaseTable(table);
+                    ResolvedCatalogBaseTable<?> resolvedListenedTable =
+                            managedTableListener.notifyTableCreation(
+                                    catalog,
+                                    objectIdentifier,
+                                    resolvedTable,
+                                    false,
+                                    ignoreIfExists);
+
+                    catalog.createTable(path, resolvedListenedTable, ignoreIfExists);
+                },
                 objectIdentifier,
                 false,
                 "CreateTable");
@@ -663,13 +690,43 @@ public final class CatalogManager {
                         }
                         return v;
                     } else {
+                        ResolvedCatalogBaseTable<?> resolvedTable = resolveCatalogBaseTable(table);
+                        ResolvedCatalogBaseTable<?> resolvedListenedTable =
+                                managedTableListener.notifyTableCreation(
+                                        getCatalog(objectIdentifier.getCatalogName()).orElse(null),
+                                        objectIdentifier,
+                                        resolvedTable,
+                                        true,
+                                        ignoreIfExists);
+
                         if (listener.isPresent()) {
                             return listener.get()
-                                    .onCreateTemporaryTable(objectIdentifier.toObjectPath(), table);
+                                    .onCreateTemporaryTable(
+                                            objectIdentifier.toObjectPath(), resolvedListenedTable);
                         }
-                        return table;
+                        return resolvedListenedTable;
                     }
                 });
+    }
+
+    /**
+     * Resolve dynamic options for compact operation on a Flink's managed table.
+     *
+     * @param origin The resolved managed table with enriched options.
+     * @param tableIdentifier The fully qualified path of the managed table.
+     * @param partitionSpec User-specified unresolved partition spec.
+     * @return dynamic options which describe the metadata of compaction
+     */
+    public Map<String, String> resolveCompactManagedTableOptions(
+            ResolvedCatalogTable origin,
+            ObjectIdentifier tableIdentifier,
+            CatalogPartitionSpec partitionSpec) {
+        return managedTableListener.notifyTableCompaction(
+                catalogs.getOrDefault(tableIdentifier.getCatalogName(), null),
+                tableIdentifier,
+                origin,
+                partitionSpec,
+                false);
     }
 
     /**
@@ -704,6 +761,12 @@ public final class CatalogManager {
         if (filter.test(catalogBaseTable)) {
             getTemporaryOperationListener(objectIdentifier)
                     .ifPresent(l -> l.onDropTemporaryTable(objectIdentifier.toObjectPath()));
+
+            Catalog catalog = catalogs.get(objectIdentifier.getCatalogName());
+            ResolvedCatalogBaseTable<?> resolvedTable = resolveCatalogBaseTable(catalogBaseTable);
+            managedTableListener.notifyTableDrop(
+                    catalog, objectIdentifier, resolvedTable, true, ignoreIfNotExists);
+
             temporaryTables.remove(objectIdentifier);
         } else if (!ignoreIfNotExists) {
             throw new ValidationException(
@@ -734,7 +797,34 @@ public final class CatalogManager {
     public void alterTable(
             CatalogBaseTable table, ObjectIdentifier objectIdentifier, boolean ignoreIfNotExists) {
         execute(
-                (catalog, path) -> catalog.alterTable(path, table, ignoreIfNotExists),
+                (catalog, path) -> {
+                    final CatalogBaseTable resolvedTable = resolveCatalogBaseTable(table);
+                    catalog.alterTable(path, resolvedTable, ignoreIfNotExists);
+                },
+                objectIdentifier,
+                ignoreIfNotExists,
+                "AlterTable");
+    }
+
+    /**
+     * Alters a table in a given fully qualified path with table changes.
+     *
+     * @param table The table to put in the given path
+     * @param changes The table changes from the original table to the new table.
+     * @param objectIdentifier The fully qualified path where to alter the table.
+     * @param ignoreIfNotExists If false exception will be thrown if the table or database or
+     *     catalog to be altered does not exist.
+     */
+    public void alterTable(
+            CatalogBaseTable table,
+            List<TableChange> changes,
+            ObjectIdentifier objectIdentifier,
+            boolean ignoreIfNotExists) {
+        execute(
+                (catalog, path) -> {
+                    final CatalogBaseTable resolvedTable = resolveCatalogBaseTable(table);
+                    catalog.alterTable(path, resolvedTable, changes, ignoreIfNotExists);
+                },
                 objectIdentifier,
                 ignoreIfNotExists,
                 "AlterTable");
@@ -777,12 +867,17 @@ public final class CatalogManager {
                                     + "Drop it first before removing the permanent %s.",
                             tableOrView, objectIdentifier, tableOrView));
         }
-        // we can't resolve the schema here, because the schema might be illegal and DROP TABLE
-        // doesn't care about the schema, so we skip schema resolve here, see FLINK-20937
-        final Optional<TableLookupResult> resultOpt = getPermanentTable(objectIdentifier, false);
-        if (resultOpt.isPresent() && filter.test(resultOpt.get().getTable())) {
+        final Optional<CatalogBaseTable> resultOpt = getUnresolvedTable(objectIdentifier);
+        if (resultOpt.isPresent() && filter.test(resultOpt.get())) {
             execute(
-                    (catalog, path) -> catalog.dropTable(path, ignoreIfNotExists),
+                    (catalog, path) -> {
+                        ResolvedCatalogBaseTable<?> resolvedTable =
+                                resolveCatalogBaseTable(resultOpt.get());
+                        managedTableListener.notifyTableDrop(
+                                catalog, objectIdentifier, resolvedTable, false, ignoreIfNotExists);
+
+                        catalog.dropTable(path, ignoreIfNotExists);
+                    },
                     objectIdentifier,
                     ignoreIfNotExists,
                     "DropTable");
@@ -827,5 +922,58 @@ public final class CatalogManager {
 
     private String getErrorMessage(ObjectIdentifier objectIdentifier, String commandName) {
         return String.format("Could not execute %s in path %s", commandName, objectIdentifier);
+    }
+
+    /** Resolves a {@link CatalogBaseTable} to a validated {@link ResolvedCatalogBaseTable}. */
+    public ResolvedCatalogBaseTable<?> resolveCatalogBaseTable(CatalogBaseTable baseTable) {
+        Preconditions.checkNotNull(schemaResolver, "Schema resolver is not initialized.");
+        if (baseTable instanceof CatalogTable) {
+            return resolveCatalogTable((CatalogTable) baseTable);
+        } else if (baseTable instanceof CatalogView) {
+            return resolveCatalogView((CatalogView) baseTable);
+        }
+        throw new IllegalArgumentException(
+                "Unknown kind of catalog base table: " + baseTable.getClass());
+    }
+
+    /** Resolves a {@link CatalogTable} to a validated {@link ResolvedCatalogTable}. */
+    public ResolvedCatalogTable resolveCatalogTable(CatalogTable table) {
+        Preconditions.checkNotNull(schemaResolver, "Schema resolver is not initialized.");
+        if (table instanceof ResolvedCatalogTable) {
+            return (ResolvedCatalogTable) table;
+        }
+
+        final ResolvedSchema resolvedSchema = table.getUnresolvedSchema().resolve(schemaResolver);
+
+        // Validate partition keys are included in physical columns
+        final List<String> physicalColumns =
+                resolvedSchema.getColumns().stream()
+                        .filter(Column::isPhysical)
+                        .map(Column::getName)
+                        .collect(Collectors.toList());
+        table.getPartitionKeys()
+                .forEach(
+                        partitionKey -> {
+                            if (!physicalColumns.contains(partitionKey)) {
+                                throw new ValidationException(
+                                        String.format(
+                                                "Invalid partition key '%s'. A partition key must "
+                                                        + "reference a physical column in the schema. "
+                                                        + "Available columns are: %s",
+                                                partitionKey, physicalColumns));
+                            }
+                        });
+
+        return new ResolvedCatalogTable(table, resolvedSchema);
+    }
+
+    /** Resolves a {@link CatalogView} to a validated {@link ResolvedCatalogView}. */
+    public ResolvedCatalogView resolveCatalogView(CatalogView view) {
+        Preconditions.checkNotNull(schemaResolver, "Schema resolver is not initialized.");
+        if (view instanceof ResolvedCatalogView) {
+            return (ResolvedCatalogView) view;
+        }
+        final ResolvedSchema resolvedSchema = view.getUnresolvedSchema().resolve(schemaResolver);
+        return new ResolvedCatalogView(view, resolvedSchema);
     }
 }

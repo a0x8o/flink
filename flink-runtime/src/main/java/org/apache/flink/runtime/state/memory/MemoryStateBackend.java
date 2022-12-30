@@ -21,8 +21,8 @@ package org.apache.flink.runtime.state.memory;
 import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
-import org.apache.flink.configuration.CheckpointingOptions;
 import org.apache.flink.configuration.ReadableConfig;
+import org.apache.flink.core.execution.SavepointFormatType;
 import org.apache.flink.core.fs.CloseableRegistry;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.metrics.MetricGroup;
@@ -42,6 +42,7 @@ import org.apache.flink.runtime.state.TaskStateManager;
 import org.apache.flink.runtime.state.filesystem.AbstractFileStateBackend;
 import org.apache.flink.runtime.state.heap.HeapKeyedStateBackendBuilder;
 import org.apache.flink.runtime.state.heap.HeapPriorityQueueSetFactory;
+import org.apache.flink.runtime.state.metrics.LatencyTrackingStateConfig;
 import org.apache.flink.runtime.state.ttl.TtlTimeProvider;
 import org.apache.flink.util.TernaryBoolean;
 
@@ -72,7 +73,7 @@ import static org.apache.flink.util.Preconditions.checkArgument;
  * following changes:
  *
  * <pre>{@code
- * state.backend: hashmap
+ * state.backend.type: hashmap
  * state.checkpoint-storage: jobmanager
  * }</pre>
  *
@@ -136,12 +137,6 @@ public class MemoryStateBackend extends AbstractFileStateBackend
     /** The maximal size that the snapshotted memory state may have. */
     private final int maxStateSize;
 
-    /**
-     * Switch to chose between synchronous and asynchronous snapshots. A value of 'UNDEFINED' means
-     * not yet configured, in which case the default will be used.
-     */
-    private final TernaryBoolean asynchronousSnapshots;
-
     // ------------------------------------------------------------------------
 
     /**
@@ -163,7 +158,8 @@ public class MemoryStateBackend extends AbstractFileStateBackend
      * <p>Checkpoint and default savepoint locations are used as specified in the runtime
      * configuration.
      *
-     * @param asynchronousSnapshots Switch to enable asynchronous snapshots.
+     * @param asynchronousSnapshots This parameter is only there for API compatibility. Checkpoints
+     *     are always asynchronous now.
      */
     public MemoryStateBackend(boolean asynchronousSnapshots) {
         this(null, null, DEFAULT_MAX_STATE_SIZE, TernaryBoolean.fromBoolean(asynchronousSnapshots));
@@ -200,7 +196,8 @@ public class MemoryStateBackend extends AbstractFileStateBackend
      * able to hold all aggregated state in its memory.
      *
      * @param maxStateSize The maximal size of the serialized state
-     * @param asynchronousSnapshots Switch to enable asynchronous snapshots.
+     * @param asynchronousSnapshots This parameter is only there for API compatibility. Checkpoints
+     *     are always asynchronous now.
      */
     public MemoryStateBackend(int maxStateSize, boolean asynchronousSnapshots) {
         this(null, null, maxStateSize, TernaryBoolean.fromBoolean(asynchronousSnapshots));
@@ -233,8 +230,8 @@ public class MemoryStateBackend extends AbstractFileStateBackend
      * @param savepointPath The path to write savepoints to. If null, the value from the runtime
      *     configuration will be used.
      * @param maxStateSize The maximal size of the serialized state.
-     * @param asynchronousSnapshots Flag to switch between synchronous and asynchronous snapshot
-     *     mode. If null, the value configured in the runtime configuration will be used.
+     * @param asynchronousSnapshots This parameter is only there for API compatibility. Checkpoints
+     *     are always asynchronous now.
      */
     public MemoryStateBackend(
             @Nullable String checkpointPath,
@@ -248,8 +245,6 @@ public class MemoryStateBackend extends AbstractFileStateBackend
 
         checkArgument(maxStateSize > 0, "maxStateSize must be > 0");
         this.maxStateSize = maxStateSize;
-
-        this.asynchronousSnapshots = asynchronousSnapshots;
     }
 
     /**
@@ -265,11 +260,9 @@ public class MemoryStateBackend extends AbstractFileStateBackend
 
         this.maxStateSize = original.maxStateSize;
 
-        // if asynchronous snapshots were configured, use that setting,
-        // else check the configuration
-        this.asynchronousSnapshots =
-                original.asynchronousSnapshots.resolveUndefined(
-                        configuration.get(CheckpointingOptions.ASYNC_SNAPSHOTS));
+        // configure latency tracking
+        latencyTrackingConfigBuilder =
+                original.latencyTrackingConfigBuilder.configure(configuration);
     }
 
     // ------------------------------------------------------------------------
@@ -287,14 +280,22 @@ public class MemoryStateBackend extends AbstractFileStateBackend
     }
 
     /**
-     * Gets whether the key/value data structures are asynchronously snapshotted.
-     *
-     * <p>If not explicitly configured, this is the default value of {@link
-     * CheckpointingOptions#ASYNC_SNAPSHOTS}.
+     * Gets whether the key/value data structures are asynchronously snapshotted, which is always
+     * true for this state backend.
      */
     public boolean isUsingAsynchronousSnapshots() {
-        return asynchronousSnapshots.getOrDefault(
-                CheckpointingOptions.ASYNC_SNAPSHOTS.defaultValue());
+        return true;
+    }
+
+    @Override
+    public boolean supportsNoClaimRestoreMode() {
+        // we never share any files, all snapshots are full
+        return true;
+    }
+
+    @Override
+    public boolean supportsSavepointFormat(SavepointFormatType formatType) {
+        return true;
     }
 
     // ------------------------------------------------------------------------
@@ -363,6 +364,8 @@ public class MemoryStateBackend extends AbstractFileStateBackend
         TaskStateManager taskStateManager = env.getTaskStateManager();
         HeapPriorityQueueSetFactory priorityQueueSetFactory =
                 new HeapPriorityQueueSetFactory(keyGroupRange, numberOfKeyGroups, 128);
+        LatencyTrackingStateConfig latencyTrackingStateConfig =
+                latencyTrackingConfigBuilder.setMetricGroup(metricGroup).build();
         return new HeapKeyedStateBackendBuilder<>(
                         kvStateRegistry,
                         keySerializer,
@@ -371,6 +374,7 @@ public class MemoryStateBackend extends AbstractFileStateBackend
                         keyGroupRange,
                         env.getExecutionConfig(),
                         ttlTimeProvider,
+                        latencyTrackingStateConfig,
                         stateHandles,
                         AbstractStateBackend.getCompressionDecorator(env.getExecutionConfig()),
                         taskStateManager.createLocalRecoveryConfig(),
@@ -391,8 +395,6 @@ public class MemoryStateBackend extends AbstractFileStateBackend
                 + getCheckpointPath()
                 + "', savepoints: '"
                 + getSavepointPath()
-                + "', asynchronous: "
-                + asynchronousSnapshots
                 + ", maxStateSize: "
                 + maxStateSize
                 + ")";

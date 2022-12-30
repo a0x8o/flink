@@ -19,27 +19,26 @@
 package org.apache.flink.table.client.gateway.local.result;
 
 import org.apache.flink.table.api.TableResult;
+import org.apache.flink.table.api.internal.TableResultInternal;
 import org.apache.flink.table.client.gateway.SqlExecutionException;
 import org.apache.flink.table.client.gateway.TypedResult;
-import org.apache.flink.types.Row;
+import org.apache.flink.table.data.RowData;
 import org.apache.flink.util.CloseableIterator;
 
 import java.util.concurrent.atomic.AtomicReference;
 
 /** A result that works through {@link TableResult#collect()}. */
 public abstract class CollectResultBase implements DynamicResult {
-    private final CloseableIterator<Row> result;
-    private final ResultRetrievalThread retrievalThread;
+    private final CloseableIterator<RowData> result;
 
     protected final Object resultLock;
     protected AtomicReference<SqlExecutionException> executionException = new AtomicReference<>();
+    protected final ResultRetrievalThread retrievalThread;
 
-    public CollectResultBase(TableResult tableResult) {
-        result = tableResult.collect();
+    public CollectResultBase(TableResultInternal tableResult) {
+        result = tableResult.collectInternal();
         resultLock = new Object();
         retrievalThread = new ResultRetrievalThread();
-        // start listener thread
-        retrievalThread.start();
     }
 
     @Override
@@ -58,7 +57,7 @@ public abstract class CollectResultBase implements DynamicResult {
         return TypedResult.endOfStream();
     }
 
-    protected abstract void processRecord(Row row);
+    protected abstract void processRecord(RowData row);
 
     protected boolean isRetrieving() {
         return retrievalThread.isRunning;
@@ -66,7 +65,8 @@ public abstract class CollectResultBase implements DynamicResult {
 
     // --------------------------------------------------------------------------------------------
 
-    private class ResultRetrievalThread extends Thread {
+    /** Thread to retrieve data from the {@link CloseableIterator} and process. */
+    protected class ResultRetrievalThread extends Thread {
         public volatile boolean isRunning = true;
 
         @Override

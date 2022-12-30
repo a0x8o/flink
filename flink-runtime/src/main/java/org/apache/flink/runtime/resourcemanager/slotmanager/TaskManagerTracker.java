@@ -21,13 +21,15 @@ import org.apache.flink.api.common.JobID;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
 import org.apache.flink.runtime.instance.InstanceID;
+import org.apache.flink.runtime.resourcemanager.WorkerResourceSpec;
 import org.apache.flink.runtime.resourcemanager.registration.TaskExecutorConnection;
 import org.apache.flink.runtime.util.ResourceCounter;
 
 import java.util.Map;
 
 /** Tracks TaskManager's resource and slot status. */
-interface TaskManagerTracker extends TaskManagerResourceInfoProvider {
+interface TaskManagerTracker
+        extends TaskManagerResourceInfoProvider, ClusterResourceStatisticsProvider {
 
     // ---------------------------------------------------------------------------------------------
     // Add / Remove (pending) Resource
@@ -67,6 +69,16 @@ interface TaskManagerTracker extends TaskManagerResourceInfoProvider {
      */
     Map<JobID, ResourceCounter> removePendingTaskManager(PendingTaskManagerId pendingTaskManagerId);
 
+    /**
+     * Add an unwanted task manager.
+     *
+     * @param instanceId identifier of task manager.
+     */
+    void addUnWantedTaskManager(InstanceID instanceId);
+
+    /** Get unwanted task managers. */
+    Map<InstanceID, WorkerResourceSpec> getUnWantedTaskManager();
+
     // ---------------------------------------------------------------------------------------------
     // Slot status updates
     // ---------------------------------------------------------------------------------------------
@@ -95,6 +107,13 @@ interface TaskManagerTracker extends TaskManagerResourceInfoProvider {
      */
     void replaceAllPendingAllocations(
             Map<PendingTaskManagerId, Map<JobID, ResourceCounter>> pendingSlotAllocations);
+
+    /**
+     * Clear all previous pending slot allocation records for the given job.
+     *
+     * @param jobId of the given job
+     */
+    void clearPendingAllocationsOfJob(JobID jobId);
 
     /** Removes all state from the tracker. */
     void clear();

@@ -18,13 +18,14 @@
 
 package org.apache.flink.sql.parser.hive.ddl;
 
+import org.apache.flink.sql.parser.SqlUnparseUtils;
 import org.apache.flink.sql.parser.ddl.SqlCreateTable;
 import org.apache.flink.sql.parser.ddl.SqlTableColumn;
 import org.apache.flink.sql.parser.ddl.SqlTableColumn.SqlRegularColumn;
 import org.apache.flink.sql.parser.ddl.SqlTableOption;
 import org.apache.flink.sql.parser.ddl.constraint.SqlTableConstraint;
 import org.apache.flink.sql.parser.hive.impl.ParseException;
-import org.apache.flink.table.catalog.config.CatalogConfig;
+import org.apache.flink.table.factories.FactoryUtil;
 
 import org.apache.calcite.sql.SqlCharStringLiteral;
 import org.apache.calcite.sql.SqlIdentifier;
@@ -42,6 +43,8 @@ import java.util.stream.Collectors;
 
 /** CREATE Table DDL for Hive dialect. */
 public class SqlCreateHiveTable extends SqlCreateTable {
+
+    public static final String IDENTIFIER = "hive";
 
     public static final String TABLE_LOCATION_URI = "hive.location-uri";
     public static final String TABLE_IS_EXTERNAL = "hive.is-external";
@@ -83,7 +86,6 @@ public class SqlCreateHiveTable extends SqlCreateTable {
                 extractPartColIdentifiers(partColList),
                 null,
                 HiveDDLUtils.unescapeStringLiteral(comment),
-                null,
                 isTemporary,
                 ifNotExists);
 
@@ -96,8 +98,7 @@ public class SqlCreateHiveTable extends SqlCreateTable {
         HiveDDLUtils.convertDataTypes(partColList);
         originPropList = new SqlNodeList(propertyList.getList(), propertyList.getParserPosition());
         // mark it as a hive table
-        HiveDDLUtils.ensureNonGeneric(propertyList);
-        propertyList.add(HiveDDLUtils.toTableOption(CatalogConfig.IS_GENERIC, "false", pos));
+        propertyList.add(HiveDDLUtils.toTableOption(FactoryUtil.CONNECTOR.key(), IDENTIFIER, pos));
         // set external
         this.isExternal = isExternal;
         if (isExternal) {
@@ -189,7 +190,7 @@ public class SqlCreateHiveTable extends SqlCreateTable {
         SqlWriter.Frame frame = writer.startList(SqlWriter.FrameTypeEnum.create("sds"), "(", ")");
         unparseColumns(creationContext, origColList, writer, leftPrec, rightPrec);
         for (SqlTableConstraint tableConstraint : creationContext.constraints) {
-            printIndent(writer);
+            SqlUnparseUtils.printIndent(writer);
             tableConstraint
                     .getConstraintNameIdentifier()
                     .ifPresent(
@@ -323,7 +324,7 @@ public class SqlCreateHiveTable extends SqlCreateTable {
             SqlNodeList propList, SqlWriter writer, int leftPrec, int rightPrec) {
         SqlWriter.Frame withFrame = writer.startList("(", ")");
         for (SqlNode property : propList) {
-            printIndent(writer);
+            SqlUnparseUtils.printIndent(writer);
             property.unparse(writer, leftPrec, rightPrec);
         }
         writer.newlineAndIndent();
@@ -339,7 +340,7 @@ public class SqlCreateHiveTable extends SqlCreateTable {
         List<SqlHiveConstraintTrait> notNullTraits = context.notNullTraits;
         int traitIndex = 0;
         for (SqlNode node : columns) {
-            printIndent(writer);
+            SqlUnparseUtils.printIndent(writer);
             SqlRegularColumn column = (SqlRegularColumn) node;
             column.getName().unparse(writer, leftPrec, rightPrec);
             writer.print(" ");
@@ -460,12 +461,12 @@ public class SqlCreateHiveTable extends SqlCreateTable {
 
         public static final String SERDE_LIB_CLASS_NAME = "hive.serde.lib.class.name";
         public static final String SERDE_INFO_PROP_PREFIX = "hive.serde.info.prop.";
-        private static final String FIELD_DELIM = SERDE_INFO_PROP_PREFIX + "field.delim";
+        public static final String FIELD_DELIM = SERDE_INFO_PROP_PREFIX + "field.delim";
         public static final String COLLECTION_DELIM = SERDE_INFO_PROP_PREFIX + "collection.delim";
-        private static final String ESCAPE_CHAR = SERDE_INFO_PROP_PREFIX + "escape.delim";
-        private static final String MAPKEY_DELIM = SERDE_INFO_PROP_PREFIX + "mapkey.delim";
-        private static final String LINE_DELIM = SERDE_INFO_PROP_PREFIX + "line.delim";
-        private static final String SERIALIZATION_NULL_FORMAT =
+        public static final String ESCAPE_CHAR = SERDE_INFO_PROP_PREFIX + "escape.delim";
+        public static final String MAPKEY_DELIM = SERDE_INFO_PROP_PREFIX + "mapkey.delim";
+        public static final String LINE_DELIM = SERDE_INFO_PROP_PREFIX + "line.delim";
+        public static final String SERIALIZATION_NULL_FORMAT =
                 SERDE_INFO_PROP_PREFIX + "serialization.null.format";
 
         private final SqlParserPos pos;

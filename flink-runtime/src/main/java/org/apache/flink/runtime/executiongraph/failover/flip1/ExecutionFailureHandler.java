@@ -18,6 +18,7 @@
 package org.apache.flink.runtime.executiongraph.failover.flip1;
 
 import org.apache.flink.runtime.JobException;
+import org.apache.flink.runtime.executiongraph.Execution;
 import org.apache.flink.runtime.scheduler.strategy.ExecutionVertexID;
 import org.apache.flink.runtime.scheduler.strategy.SchedulingExecutionVertex;
 import org.apache.flink.runtime.scheduler.strategy.SchedulingTopology;
@@ -72,16 +73,18 @@ public class ExecutionFailureHandler {
      * Return result of failure handling. Can be a set of task vertices to restart and a delay of
      * the restarting. Or that the failure is not recoverable and the reason for it.
      *
-     * @param failedTask is the ID of the failed task vertex
+     * @param failedExecution is the failed execution
      * @param cause of the task failure
+     * @param timestamp of the task failure
      * @return result of the failure handling
      */
     public FailureHandlingResult getFailureHandlingResult(
-            ExecutionVertexID failedTask, Throwable cause) {
+            Execution failedExecution, Throwable cause, long timestamp) {
         return handleFailure(
-                failedTask,
+                failedExecution,
                 cause,
-                failoverStrategy.getTasksNeedingRestart(failedTask, cause),
+                timestamp,
+                failoverStrategy.getTasksNeedingRestart(failedExecution.getVertex().getID(), cause),
                 false);
     }
 
@@ -91,12 +94,15 @@ public class ExecutionFailureHandler {
      * for it.
      *
      * @param cause of the task failure
+     * @param timestamp of the task failure
      * @return result of the failure handling
      */
-    public FailureHandlingResult getGlobalFailureHandlingResult(final Throwable cause) {
+    public FailureHandlingResult getGlobalFailureHandlingResult(
+            final Throwable cause, long timestamp) {
         return handleFailure(
                 null,
                 cause,
+                timestamp,
                 IterableUtils.toStream(schedulingTopology.getVertices())
                         .map(SchedulingExecutionVertex::getId)
                         .collect(Collectors.toSet()),
@@ -104,15 +110,17 @@ public class ExecutionFailureHandler {
     }
 
     private FailureHandlingResult handleFailure(
-            @Nullable final ExecutionVertexID failingExecutionVertexId,
+            @Nullable final Execution failedExecution,
             final Throwable cause,
+            long timestamp,
             final Set<ExecutionVertexID> verticesToRestart,
             final boolean globalFailure) {
 
         if (isUnrecoverableError(cause)) {
             return FailureHandlingResult.unrecoverable(
-                    failingExecutionVertexId,
+                    failedExecution,
                     new JobException("The failure is not recoverable", cause),
+                    timestamp,
                     globalFailure);
         }
 
@@ -121,16 +129,18 @@ public class ExecutionFailureHandler {
             numberOfRestarts++;
 
             return FailureHandlingResult.restartable(
-                    failingExecutionVertexId,
+                    failedExecution,
                     cause,
+                    timestamp,
                     verticesToRestart,
                     restartBackoffTimeStrategy.getBackoffTime(),
                     globalFailure);
         } else {
             return FailureHandlingResult.unrecoverable(
-                    failingExecutionVertexId,
+                    failedExecution,
                     new JobException(
                             "Recovery is suppressed by " + restartBackoffTimeStrategy, cause),
+                    timestamp,
                     globalFailure);
         }
     }

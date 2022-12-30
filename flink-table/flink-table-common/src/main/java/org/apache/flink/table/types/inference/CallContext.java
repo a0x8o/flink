@@ -86,10 +86,33 @@ public interface CallContext {
     Optional<DataType> getOutputDataType();
 
     /**
-     * Creates a validation error for exiting the type inference process with a meaningful
+     * Creates a validation exception for exiting the type inference process with a meaningful
      * exception.
      */
     default ValidationException newValidationError(String message, Object... args) {
         return new ValidationException(String.format(message, args));
     }
+
+    /**
+     * Helper method for handling failures during the type inference process while considering the
+     * {@code throwOnFailure} flag.
+     *
+     * <p>Shorthand for {@code if (throwOnFailure) throw ValidationException(...) else return
+     * Optional.empty()}.
+     */
+    default <T> Optional<T> fail(boolean throwOnFailure, String message, Object... args) {
+        if (throwOnFailure) {
+            throw newValidationError(message, args);
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * Returns whether the function call happens as part of an aggregation that defines grouping
+     * columns.
+     *
+     * <p>E.g. {@code SELECT COUNT(*) FROM t} is not a grouped aggregation but {@code SELECT
+     * COUNT(*) FROM t GROUP BY k} is.
+     */
+    boolean isGroupedAggregation();
 }

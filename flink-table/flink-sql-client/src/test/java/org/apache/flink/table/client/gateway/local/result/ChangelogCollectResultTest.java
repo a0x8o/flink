@@ -20,25 +20,27 @@ package org.apache.flink.table.client.gateway.local.result;
 
 import org.apache.flink.table.api.DataTypes;
 import org.apache.flink.table.api.ResultKind;
-import org.apache.flink.table.api.TableSchema;
+import org.apache.flink.table.catalog.Column;
+import org.apache.flink.table.catalog.ResolvedSchema;
 import org.apache.flink.table.client.cli.utils.TestTableResult;
 import org.apache.flink.table.client.gateway.SqlExecutionException;
 import org.apache.flink.table.client.gateway.TypedResult;
+import org.apache.flink.table.data.RowData;
 import org.apache.flink.types.Row;
 import org.apache.flink.util.CloseableIterator;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.stream.IntStream;
 
-import static org.junit.Assert.assertEquals;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /** Tests for {@link ChangelogCollectResult}. */
-public class ChangelogCollectResultTest {
+class ChangelogCollectResultTest {
 
     @Test
-    public void testRetrieveChanges() throws Exception {
+    void testRetrieveChanges() throws Exception {
         int totalCount = ChangelogCollectResult.CHANGE_RECORD_BUFFER_SIZE * 2;
         CloseableIterator<Row> data =
                 CloseableIterator.adapterForIterator(
@@ -47,13 +49,13 @@ public class ChangelogCollectResultTest {
                 new ChangelogCollectResult(
                         new TestTableResult(
                                 ResultKind.SUCCESS_WITH_CONTENT,
-                                TableSchema.builder().field("id", DataTypes.INT()).build(),
+                                ResolvedSchema.of(Column.physical("id", DataTypes.INT())),
                                 data));
 
         int count = 0;
         boolean running = true;
         while (running) {
-            final TypedResult<List<Row>> result = changelogResult.retrieveChanges();
+            final TypedResult<List<RowData>> result = changelogResult.retrieveChanges();
             Thread.sleep(100); // slow the processing down
             switch (result.getType()) {
                 case EMPTY:
@@ -69,6 +71,6 @@ public class ChangelogCollectResultTest {
                     throw new SqlExecutionException("Unknown result type: " + result.getType());
             }
         }
-        assertEquals(totalCount, count);
+        assertThat(count).isEqualTo(totalCount);
     }
 }

@@ -18,6 +18,7 @@
 
 package org.apache.flink.kubernetes.kubeclient.parameters;
 
+import org.apache.flink.api.common.resources.ExternalResource;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.TaskManagerOptions;
 import org.apache.flink.kubernetes.configuration.KubernetesConfigOptions;
@@ -28,6 +29,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
@@ -42,21 +44,30 @@ public class KubernetesTaskManagerParameters extends AbstractKubernetesParameter
 
     private final String dynamicProperties;
 
+    private final String jvmMemOptsEnv;
+
     private final ContaineredTaskManagerParameters containeredTaskManagerParameters;
 
-    private final Map<String, Long> taskManagerExternalResources;
+    private final Map<String, String> taskManagerExternalResourceConfigKeys;
+
+    private final Set<String> blockedNodes;
 
     public KubernetesTaskManagerParameters(
             Configuration flinkConfig,
             String podName,
             String dynamicProperties,
+            String jvmMemOptsEnv,
             ContaineredTaskManagerParameters containeredTaskManagerParameters,
-            Map<String, Long> taskManagerExternalResources) {
+            Map<String, String> taskManagerExternalResourceConfigKeys,
+            Set<String> blockedNodes) {
         super(flinkConfig);
         this.podName = checkNotNull(podName);
         this.dynamicProperties = checkNotNull(dynamicProperties);
+        this.jvmMemOptsEnv = checkNotNull(jvmMemOptsEnv);
         this.containeredTaskManagerParameters = checkNotNull(containeredTaskManagerParameters);
-        this.taskManagerExternalResources = checkNotNull(taskManagerExternalResources);
+        this.taskManagerExternalResourceConfigKeys =
+                checkNotNull(taskManagerExternalResourceConfigKeys);
+        this.blockedNodes = checkNotNull(blockedNodes);
     }
 
     @Override
@@ -66,8 +77,13 @@ public class KubernetesTaskManagerParameters extends AbstractKubernetesParameter
                 flinkConfig
                         .getOptional(KubernetesConfigOptions.TASK_MANAGER_LABELS)
                         .orElse(Collections.emptyMap()));
-        labels.putAll(KubernetesUtils.getTaskManagerLabels(getClusterId()));
+        labels.putAll(getSelectors());
         return Collections.unmodifiableMap(labels);
+    }
+
+    @Override
+    public Map<String, String> getSelectors() {
+        return KubernetesUtils.getTaskManagerSelectors(getClusterId());
     }
 
     @Override
@@ -116,12 +132,36 @@ public class KubernetesTaskManagerParameters extends AbstractKubernetesParameter
                 .doubleValue();
     }
 
+    public double getTaskManagerCPULimitFactor() {
+        final double limitFactor =
+                flinkConfig.getDouble(KubernetesConfigOptions.TASK_MANAGER_CPU_LIMIT_FACTOR);
+        checkArgument(
+                limitFactor >= 1,
+                "%s should be greater or equal to 1.",
+                KubernetesConfigOptions.TASK_MANAGER_CPU_LIMIT_FACTOR.key());
+        return limitFactor;
+    }
+
+    public double getTaskManagerMemoryLimitFactor() {
+        final double limitFactor =
+                flinkConfig.getDouble(KubernetesConfigOptions.TASK_MANAGER_MEMORY_LIMIT_FACTOR);
+        checkArgument(
+                limitFactor >= 1,
+                "%s should be greater or equal to 1.",
+                KubernetesConfigOptions.TASK_MANAGER_MEMORY_LIMIT_FACTOR.key());
+        return limitFactor;
+    }
+
+    public Map<String, ExternalResource> getTaskManagerExternalResources() {
+        return containeredTaskManagerParameters.getTaskExecutorProcessSpec().getExtendedResources();
+    }
+
     public String getServiceAccount() {
         return flinkConfig.get(KubernetesConfigOptions.TASK_MANAGER_SERVICE_ACCOUNT);
     }
 
-    public Map<String, Long> getTaskManagerExternalResources() {
-        return taskManagerExternalResources;
+    public Map<String, String> getTaskManagerExternalResourceConfigKeys() {
+        return Collections.unmodifiableMap(taskManagerExternalResourceConfigKeys);
     }
 
     public int getRPCPort() {
@@ -136,7 +176,24 @@ public class KubernetesTaskManagerParameters extends AbstractKubernetesParameter
         return dynamicProperties;
     }
 
+    public String getJvmMemOptsEnv() {
+        return jvmMemOptsEnv;
+    }
+
     public ContaineredTaskManagerParameters getContaineredTaskManagerParameters() {
         return containeredTaskManagerParameters;
+    }
+
+    public Set<String> getBlockedNodes() {
+        return Collections.unmodifiableSet(blockedNodes);
+    }
+
+    public String getNodeNameLabel() {
+        return checkNotNull(flinkConfig.get(KubernetesConfigOptions.KUBERNETES_NODE_NAME_LABEL));
+    }
+
+    public String getEntrypointArgs() {
+        return flinkConfig.getString(
+                KubernetesConfigOptions.KUBERNETES_TASKMANAGER_ENTRYPOINT_ARGS);
     }
 }

@@ -38,9 +38,11 @@ Flink 自身既没有复用 "RabbitMQ AMQP Java Client" 的代码，也没有将
 
 这个连接器可以访问 [RabbitMQ](http://www.rabbitmq.com/) 的数据流。使用这个连接器，需要在工程里添加下面的依赖：
 
-{{< artifact flink-connector-rabbitmq withScalaVersion >}}
+{{< artifact flink-connector-rabbitmq >}}
 
-注意连接器现在没有包含在二进制发行版中。集群执行的相关信息请参考 [这里]({{< ref "docs/dev/datastream/project-configuration" >}}).
+{{< py_download_link "rabbitmq" >}}
+
+注意连接器现在没有包含在二进制发行版中。集群执行的相关信息请参考 [这里]({{< ref "docs/dev/configuration/overview" >}}).
 
 ### 安装 RabbitMQ
 安装 RabbitMQ 请参考 [RabbitMQ 下载页面](http://www.rabbitmq.com/download.html)。安装完成之后，服务会自动拉起，应用程序就可以尝试连接到 RabbitMQ 了。
@@ -108,6 +110,28 @@ val stream = env
     .setParallelism(1)               // non-parallel source is only required for exactly-once
 ```
 {{< /tab >}}
+{{< tab "Python" >}}
+```python
+env = StreamExecutionEnvironment.get_execution_environment()
+# checkpointing is required for exactly-once or at-least-once guarantees
+env.enable_checkpointing(...)
+
+connection_config = RMQConnectionConfig.Builder() \
+    .set_host("localhost") \
+    .set_port(5000) \
+    ...
+    .build()
+
+stream = env \
+    .add_source(RMQSource(
+        connection_config,
+        "queueName",
+        True,
+        SimpleStringSchema(),
+    )) \
+    .set_parallelism(1)
+```
+{{< /tab >}}
 {{< /tabs >}}
 
 #### 服务质量 (QoS) / 消费者预取(Consumer Prefetch)
@@ -130,6 +154,14 @@ val connectionConfig = new RMQConnectionConfig.Builder()
     .setPrefetchCount(30000)
     ...
     .build
+```
+{{< /tab >}}
+{{< tab "Python" >}}
+```python
+connection_config = RMQConnectionConfig.Builder() \
+    .set_prefetch_count(30000) \
+    ...
+    .build()
 ```
 {{< /tab >}}
 {{< /tabs >}}
@@ -173,6 +205,22 @@ stream.addSink(new RMQSink[String](
     connectionConfig,         // config for the RabbitMQ connection
     "queueName",              // name of the RabbitMQ queue to send messages to
     new SimpleStringSchema))  // serialization schema to turn Java objects to messages
+```
+{{< /tab >}}
+{{< tab "Python" >}}
+```python
+stream = ...
+
+connection_config = RMQConnectionConfig.Builder() \
+    .set_host("localhost") \
+    .set_port(5000) \
+    ...
+    .build()
+
+stream.add_sink(RMQSink(
+    connection_config,      # config for the RabbitMQ connection
+    'queueName',            # name of the RabbitMQ queue to send messages to
+    SimpleStringSchema()))  # serialization schema to turn Java objects to messages
 ```
 {{< /tab >}}
 {{< /tabs >}}

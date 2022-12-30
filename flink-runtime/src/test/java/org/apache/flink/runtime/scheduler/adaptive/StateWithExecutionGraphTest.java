@@ -24,12 +24,12 @@ import org.apache.flink.runtime.executiongraph.TaskExecutionStateTransition;
 import org.apache.flink.runtime.scheduler.ExecutionGraphHandler;
 import org.apache.flink.runtime.scheduler.OperatorCoordinatorHandler;
 import org.apache.flink.util.FlinkException;
-import org.apache.flink.util.FlinkRuntimeException;
 import org.apache.flink.util.TestLogger;
 
 import org.junit.Test;
 import org.slf4j.Logger;
 
+import java.util.ArrayList;
 import java.util.concurrent.CompletableFuture;
 
 import static org.hamcrest.Matchers.is;
@@ -61,7 +61,9 @@ public class StateWithExecutionGraphTest extends TestLogger {
                             assertThat(archivedExecutionGraph.getState(), is(JobStatus.FAILED)));
 
             // transition to FAILED
-            testingExecutionGraph.failJob(new FlinkException("Transition job to FAILED state"));
+            testingExecutionGraph.failJob(
+                    new FlinkException("Transition job to FAILED state"),
+                    System.currentTimeMillis());
             testingExecutionGraph.completeTerminationFuture(JobStatus.FAILED);
 
             assertThat(testingExecutionGraph.getState(), is(JobStatus.FAILED));
@@ -75,34 +77,112 @@ public class StateWithExecutionGraphTest extends TestLogger {
         }
     }
 
+    @Test
+    public void testOperatorCoordinatorShutdownOnLeave() throws Exception {
+        try (MockStateWithExecutionGraphContext context =
+                new MockStateWithExecutionGraphContext()) {
+
+            final TestingOperatorCoordinatorHandler testingOperatorCoordinatorHandler =
+                    new TestingOperatorCoordinatorHandler();
+            final TestingStateWithExecutionGraph stateWithExecutionGraph =
+                    createStateWithExecutionGraph(context, testingOperatorCoordinatorHandler);
+
+            stateWithExecutionGraph.onLeave(AdaptiveSchedulerTest.DummyState.class);
+
+            assertThat(testingOperatorCoordinatorHandler.isDisposed(), is(true));
+        }
+    }
+
+    @Test
+    public void testSuspendToFinished() throws Exception {
+        try (MockStateWithExecutionGraphContext context =
+                new MockStateWithExecutionGraphContext()) {
+
+            final TestingStateWithExecutionGraph stateWithExecutionGraph =
+                    createStateWithExecutionGraph(context);
+
+            context.setExpectFinished(aeg -> assertThat(aeg.getState(), is(JobStatus.SUSPENDED)));
+
+            stateWithExecutionGraph.suspend(new RuntimeException());
+        }
+    }
+
+    @Test
+    public void testOnGloballyTerminalStateCalled() throws Exception {
+        MockStateWithExecutionGraphContext context = new MockStateWithExecutionGraphContext();
+
+        StateTrackingMockExecutionGraph mockExecutionGraph = new StateTrackingMockExecutionGraph();
+        final TestingStateWithExecutionGraph stateWithExecutionGraph =
+                createStateWithExecutionGraph(context, mockExecutionGraph);
+
+        mockExecutionGraph.completeTerminationFuture(JobStatus.FINISHED);
+
+        context.close();
+
+        assertThat(
+                stateWithExecutionGraph.getGloballyTerminalStateFuture().get(),
+                is(JobStatus.FINISHED));
+    }
+
+    @Test
+    public void testOnGloballyTerminalStateNotCalledOnNonGloballyTerminalState() throws Exception {
+        MockStateWithExecutionGraphContext context = new MockStateWithExecutionGraphContext();
+
+        StateTrackingMockExecutionGraph mockExecutionGraph = new StateTrackingMockExecutionGraph();
+        final TestingStateWithExecutionGraph stateWithExecutionGraph =
+                createStateWithExecutionGraph(context, mockExecutionGraph);
+
+        mockExecutionGraph.completeTerminationFuture(JobStatus.SUSPENDED);
+
+        context.close();
+
+        assertThat(stateWithExecutionGraph.getGloballyTerminalStateFuture().isDone(), is(false));
+    }
+
+    private TestingStateWithExecutionGraph createStateWithExecutionGraph(
+            MockStateWithExecutionGraphContext context) {
+        final ExecutionGraph executionGraph = new StateTrackingMockExecutionGraph();
+        return createStateWithExecutionGraph(context, executionGraph);
+    }
+
     private TestingStateWithExecutionGraph createStateWithExecutionGraph(
             MockStateWithExecutionGraphContext context,
-            StateTrackingMockExecutionGraph testingExecutionGraph) {
+            OperatorCoordinatorHandler operatorCoordinatorHandler) {
+        final ExecutionGraph executionGraph = new StateTrackingMockExecutionGraph();
+        return createStateWithExecutionGraph(context, executionGraph, operatorCoordinatorHandler);
+    }
+
+    private TestingStateWithExecutionGraph createStateWithExecutionGraph(
+            MockStateWithExecutionGraphContext context, ExecutionGraph executionGraph) {
+        final OperatorCoordinatorHandler operatorCoordinatorHandler =
+                new TestingOperatorCoordinatorHandler();
+        return createStateWithExecutionGraph(context, executionGraph, operatorCoordinatorHandler);
+    }
+
+    private TestingStateWithExecutionGraph createStateWithExecutionGraph(
+            MockStateWithExecutionGraphContext context,
+            ExecutionGraph executionGraph,
+            OperatorCoordinatorHandler operatorCoordinatorHandler) {
 
         final ExecutionGraphHandler executionGraphHandler =
                 new ExecutionGraphHandler(
-                        testingExecutionGraph,
+                        executionGraph,
                         log,
                         context.getMainThreadExecutor(),
                         context.getMainThreadExecutor());
 
-        final OperatorCoordinatorHandler operatorCoordinatorHandler =
-                new OperatorCoordinatorHandler(
-                        testingExecutionGraph,
-                        globalFailure -> {
-                            throw new FlinkRuntimeException(
-                                    "No global failures are expected", globalFailure);
-                        });
+        executionGraph.transitionToRunning();
 
         return new TestingStateWithExecutionGraph(
                 context,
-                testingExecutionGraph,
+                executionGraph,
                 executionGraphHandler,
                 operatorCoordinatorHandler,
-                log);
+                log,
+                ClassLoader.getSystemClassLoader());
     }
 
-    private final class TestingStateWithExecutionGraph extends StateWithExecutionGraph {
+    private static final class TestingStateWithExecutionGraph extends StateWithExecutionGraph {
 
         private final CompletableFuture<JobStatus> globallyTerminalStateFuture =
                 new CompletableFuture<>();
@@ -112,13 +192,16 @@ public class StateWithExecutionGraphTest extends TestLogger {
                 ExecutionGraph executionGraph,
                 ExecutionGraphHandler executionGraphHandler,
                 OperatorCoordinatorHandler operatorCoordinatorHandler,
-                Logger logger) {
+                Logger logger,
+                ClassLoader userCodeClassLoader) {
             super(
                     context,
                     executionGraph,
                     executionGraphHandler,
                     operatorCoordinatorHandler,
-                    logger);
+                    logger,
+                    userCodeClassLoader,
+                    new ArrayList<>());
         }
 
         public CompletableFuture<JobStatus> getGloballyTerminalStateFuture() {
@@ -134,17 +217,20 @@ public class StateWithExecutionGraphTest extends TestLogger {
         }
 
         @Override
+        void onFailure(Throwable cause) {}
+
+        @Override
+        void onGloballyTerminalState(JobStatus globallyTerminalState) {
+            globallyTerminalStateFuture.complete(globallyTerminalState);
+        }
+
+        @Override
         public void handleGlobalFailure(Throwable cause) {}
 
         @Override
         boolean updateTaskExecutionState(
                 TaskExecutionStateTransition taskExecutionStateTransition) {
             return false;
-        }
-
-        @Override
-        void onGloballyTerminalState(JobStatus globallyTerminalState) {
-            globallyTerminalStateFuture.complete(globallyTerminalState);
         }
     }
 }

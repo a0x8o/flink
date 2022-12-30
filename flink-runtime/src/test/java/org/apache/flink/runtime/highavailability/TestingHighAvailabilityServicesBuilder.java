@@ -21,7 +21,7 @@ package org.apache.flink.runtime.highavailability;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.runtime.checkpoint.CheckpointRecoveryFactory;
 import org.apache.flink.runtime.checkpoint.StandaloneCheckpointRecoveryFactory;
-import org.apache.flink.runtime.highavailability.nonha.standalone.StandaloneRunningJobsRegistry;
+import org.apache.flink.runtime.highavailability.nonha.embedded.EmbeddedJobResultStore;
 import org.apache.flink.runtime.jobmanager.JobGraphStore;
 import org.apache.flink.runtime.jobmanager.StandaloneJobGraphStore;
 import org.apache.flink.runtime.leaderelection.LeaderElectionService;
@@ -29,6 +29,7 @@ import org.apache.flink.runtime.leaderelection.StandaloneLeaderElectionService;
 import org.apache.flink.runtime.leaderretrieval.LeaderRetrievalService;
 import org.apache.flink.runtime.leaderretrieval.StandaloneLeaderRetrievalService;
 
+import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
 
 /** Builder for the {@link TestingHighAvailabilityServices}. */
@@ -68,7 +69,11 @@ public class TestingHighAvailabilityServicesBuilder {
 
     private JobGraphStore jobGraphStore = new StandaloneJobGraphStore();
 
-    private RunningJobsRegistry runningJobsRegistry = new StandaloneRunningJobsRegistry();
+    private JobResultStore jobResultStore = new EmbeddedJobResultStore();
+
+    private CompletableFuture<Void> closeFuture = new CompletableFuture<>();
+
+    private CompletableFuture<Void> closeAndCleanupAllDataFuture = new CompletableFuture<>();
 
     public TestingHighAvailabilityServices build() {
         final TestingHighAvailabilityServices testingHighAvailabilityServices =
@@ -94,7 +99,11 @@ public class TestingHighAvailabilityServicesBuilder {
 
         testingHighAvailabilityServices.setCheckpointRecoveryFactory(checkpointRecoveryFactory);
         testingHighAvailabilityServices.setJobGraphStore(jobGraphStore);
-        testingHighAvailabilityServices.setRunningJobsRegistry(runningJobsRegistry);
+        testingHighAvailabilityServices.setJobResultStore(jobResultStore);
+
+        testingHighAvailabilityServices.setCloseFuture(closeFuture);
+        testingHighAvailabilityServices.setCloseAndCleanupAllDataFuture(
+                closeAndCleanupAllDataFuture);
 
         return testingHighAvailabilityServices;
     }
@@ -158,9 +167,20 @@ public class TestingHighAvailabilityServicesBuilder {
         return this;
     }
 
-    public TestingHighAvailabilityServicesBuilder setRunningJobsRegistry(
-            RunningJobsRegistry runningJobsRegistry) {
-        this.runningJobsRegistry = runningJobsRegistry;
+    public TestingHighAvailabilityServicesBuilder setJobResultStore(JobResultStore jobResultStore) {
+        this.jobResultStore = jobResultStore;
+        return this;
+    }
+
+    public TestingHighAvailabilityServicesBuilder setCloseFuture(
+            CompletableFuture<Void> closeFuture) {
+        this.closeFuture = closeFuture;
+        return this;
+    }
+
+    public TestingHighAvailabilityServicesBuilder setCloseAndCleanupAllDataFuture(
+            CompletableFuture<Void> closeAndCleanupAllDataFuture) {
+        this.closeAndCleanupAllDataFuture = closeAndCleanupAllDataFuture;
         return this;
     }
 }

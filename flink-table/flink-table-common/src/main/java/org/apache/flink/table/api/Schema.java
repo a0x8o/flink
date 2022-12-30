@@ -43,13 +43,12 @@ import javax.annotation.Nullable;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
-
-import static org.apache.flink.table.types.logical.utils.LogicalTypeChecks.hasRoot;
 
 /**
  * Schema of a table or view.
@@ -61,13 +60,16 @@ import static org.apache.flink.table.types.logical.utils.LogicalTypeChecks.hasRo
  *
  * <p>This class is used in the API and catalogs to define an unresolved schema that will be
  * translated to {@link ResolvedSchema}. Some methods of this class perform basic validation,
- * however, the main validation happens during the resolution.
+ * however, the main validation happens during the resolution. Thus, an unresolved schema can be
+ * incomplete and might be enriched or merged with a different schema at a later stage.
  *
  * <p>Since an instance of this class is unresolved, it should not be directly persisted. The {@link
  * #toString()} shows only a summary of the contained objects.
  */
 @PublicEvolving
 public final class Schema {
+
+    private static final Schema EMPTY = Schema.newBuilder().build();
 
     private final List<UnresolvedColumn> columns;
 
@@ -79,14 +81,27 @@ public final class Schema {
             List<UnresolvedColumn> columns,
             List<UnresolvedWatermarkSpec> watermarkSpecs,
             @Nullable UnresolvedPrimaryKey primaryKey) {
-        this.columns = columns;
-        this.watermarkSpecs = watermarkSpecs;
+        this.columns = Collections.unmodifiableList(columns);
+        this.watermarkSpecs = Collections.unmodifiableList(watermarkSpecs);
         this.primaryKey = primaryKey;
     }
 
     /** Builder for configuring and creating instances of {@link Schema}. */
     public static Schema.Builder newBuilder() {
         return new Builder();
+    }
+
+    /**
+     * Convenience method for stating explicitly that a schema is empty and should be fully derived
+     * by the framework.
+     *
+     * <p>The semantics are equivalent to calling {@code Schema.newBuilder().build()}.
+     *
+     * <p>Note that derivation depends on the context. Usually, the method that accepts a {@link
+     * Schema} instance will mention whether schema derivation is supported or not.
+     */
+    public static Schema derived() {
+        return EMPTY;
     }
 
     public List<UnresolvedColumn> getColumns() {
@@ -117,7 +132,7 @@ public final class Schema {
         return components.stream()
                 .map(Objects::toString)
                 .map(s -> "  " + s)
-                .collect(Collectors.joining(", \n", "(\n", "\n)"));
+                .collect(Collectors.joining(",\n", "(\n", "\n)"));
     }
 
     @Override
@@ -142,6 +157,7 @@ public final class Schema {
     // --------------------------------------------------------------------------------------------
 
     /** A builder for constructing an immutable but still unresolved {@link Schema}. */
+    @PublicEvolving
     public static final class Builder {
 
         private final List<UnresolvedColumn> columns;
@@ -179,12 +195,43 @@ public final class Schema {
         public Builder fromRowDataType(DataType dataType) {
             Preconditions.checkNotNull(dataType, "Data type must not be null.");
             Preconditions.checkArgument(
-                    hasRoot(dataType.getLogicalType(), LogicalTypeRoot.ROW),
+                    dataType.getLogicalType().is(LogicalTypeRoot.ROW),
                     "Data type of ROW expected.");
             final List<DataType> fieldDataTypes = dataType.getChildren();
             final List<String> fieldNames = ((RowType) dataType.getLogicalType()).getFieldNames();
             IntStream.range(0, fieldDataTypes.size())
                     .forEach(i -> column(fieldNames.get(i), fieldDataTypes.get(i)));
+            return this;
+        }
+
+        /** Adopts the given field names and field data types as physical columns of the schema. */
+        public Builder fromFields(String[] fieldNames, AbstractDataType<?>[] fieldDataTypes) {
+            Preconditions.checkNotNull(fieldNames, "Field names must not be null.");
+            Preconditions.checkNotNull(fieldDataTypes, "Field data types must not be null.");
+            Preconditions.checkArgument(
+                    fieldNames.length == fieldDataTypes.length,
+                    "Field names and field data types must have the same length.");
+            IntStream.range(0, fieldNames.length)
+                    .forEach(i -> column(fieldNames[i], fieldDataTypes[i]));
+            return this;
+        }
+
+        /** Adopts the given field names and field data types as physical columns of the schema. */
+        public Builder fromFields(
+                List<String> fieldNames, List<? extends AbstractDataType<?>> fieldDataTypes) {
+            Preconditions.checkNotNull(fieldNames, "Field names must not be null.");
+            Preconditions.checkNotNull(fieldDataTypes, "Field data types must not be null.");
+            Preconditions.checkArgument(
+                    fieldNames.size() == fieldDataTypes.size(),
+                    "Field names and field data types must have the same length.");
+            IntStream.range(0, fieldNames.size())
+                    .forEach(i -> column(fieldNames.get(i), fieldDataTypes.get(i)));
+            return this;
+        }
+
+        /** Adopts all columns from the given list. */
+        public Builder fromColumns(List<UnresolvedColumn> unresolvedColumns) {
+            columns.addAll(unresolvedColumns);
             return this;
         }
 
@@ -280,6 +327,43 @@ public final class Schema {
          * column differs from the data type of the metadata field. Of course, this requires that
          * the two data types are compatible.
          *
+         * <p>Note: This method assumes that the metadata key is equal to the column name and the
+         * metadata column can be used for both reading and writing.
+         *
+         * @param columnName column name
+         * @param dataType data type of the column
+         */
+        public Builder columnByMetadata(String columnName, AbstractDataType<?> dataType) {
+            return columnByMetadata(columnName, dataType, null, false);
+        }
+
+        /**
+         * Declares a metadata column that is appended to this schema.
+         *
+         * <p>See {@link #column(String, AbstractDataType)} for a detailed explanation.
+         *
+         * <p>This method uses a type string that can be easily persisted in a durable catalog.
+         *
+         * @param columnName column name
+         * @param serializableTypeString data type of the column
+         */
+        public Builder columnByMetadata(String columnName, String serializableTypeString) {
+            return columnByMetadata(columnName, serializableTypeString, null, false);
+        }
+
+        /**
+         * Declares a metadata column that is appended to this schema.
+         *
+         * <p>Metadata columns allow to access connector and/or format specific fields for every row
+         * of a table. For example, a metadata column can be used to read and write the timestamp
+         * from and to Kafka records for time-based operations. The connector and format
+         * documentation lists the available metadata fields for every component.
+         *
+         * <p>Every metadata field is identified by a string-based key and has a documented data
+         * type. For convenience, the runtime will perform an explicit cast if the data type of the
+         * column differs from the data type of the metadata field. Of course, this requires that
+         * the two data types are compatible.
+         *
          * <p>By default, a metadata column can be used for both reading and writing. However, in
          * many cases an external system provides more read-only metadata fields than writable
          * fields. Therefore, it is possible to exclude metadata columns from persisting by setting
@@ -293,27 +377,7 @@ public final class Schema {
          */
         public Builder columnByMetadata(
                 String columnName, AbstractDataType<?> dataType, boolean isVirtual) {
-            Preconditions.checkNotNull(columnName, "Column name must not be null.");
-            Preconditions.checkNotNull(dataType, "Data type must not be null.");
-            columns.add(new UnresolvedMetadataColumn(columnName, dataType, null, isVirtual));
-            return this;
-        }
-
-        /**
-         * Declares a metadata column that is appended to this schema.
-         *
-         * <p>See {@link #columnByMetadata(String, AbstractDataType, boolean)} for a detailed
-         * explanation.
-         *
-         * <p>This method uses a type string that can be easily persisted in a durable catalog.
-         *
-         * @param columnName column name
-         * @param serializableTypeString data type of the column
-         * @param isVirtual whether the column should be persisted or not
-         */
-        public Builder columnByMetadata(
-                String columnName, String serializableTypeString, boolean isVirtual) {
-            return columnByMetadata(columnName, DataTypes.of(serializableTypeString), isVirtual);
+            return columnByMetadata(columnName, dataType, null, isVirtual);
         }
 
         /**
@@ -340,28 +404,7 @@ public final class Schema {
          */
         public Builder columnByMetadata(
                 String columnName, AbstractDataType<?> dataType, @Nullable String metadataKey) {
-            Preconditions.checkNotNull(columnName, "Column name must not be null.");
-            Preconditions.checkNotNull(dataType, "Data type must not be null.");
-            columns.add(new UnresolvedMetadataColumn(columnName, dataType, metadataKey, false));
-            return this;
-        }
-
-        /**
-         * Declares a metadata column that is appended to this schema.
-         *
-         * <p>See {@link #columnByMetadata(String, AbstractDataType, String)} for a detailed
-         * explanation.
-         *
-         * <p>This method uses a type string that can be easily persisted in a durable catalog.
-         *
-         * @param columnName column name
-         * @param serializableTypeString data type of the column
-         * @param metadataKey identifying metadata key, if null the column name will be used as
-         *     metadata key
-         */
-        public Builder columnByMetadata(
-                String columnName, String serializableTypeString, @Nullable String metadataKey) {
-            return columnByMetadata(columnName, DataTypes.of(serializableTypeString), metadataKey);
+            return columnByMetadata(columnName, dataType, metadataKey, false);
         }
 
         /**
@@ -395,6 +438,7 @@ public final class Schema {
                 @Nullable String metadataKey,
                 boolean isVirtual) {
             Preconditions.checkNotNull(columnName, "Column name must not be null.");
+            Preconditions.checkNotNull(dataType, "Data type must not be null.");
             columns.add(new UnresolvedMetadataColumn(columnName, dataType, metadataKey, isVirtual));
             return this;
         }
@@ -422,12 +466,25 @@ public final class Schema {
                     columnName, DataTypes.of(serializableTypeString), metadataKey, isVirtual);
         }
 
+        /** Apply comment to the previous column. */
+        public Builder withComment(@Nullable String comment) {
+            if (columns.size() > 0) {
+                columns.set(
+                        columns.size() - 1, columns.get(columns.size() - 1).withComment(comment));
+            } else {
+                throw new IllegalArgumentException(
+                        "Method 'withComment(...)' must be called after a column definition, "
+                                + "but there is no preceding column defined.");
+            }
+            return this;
+        }
+
         /**
          * Declares that the given column should serve as an event-time (i.e. rowtime) attribute and
          * specifies a corresponding watermark strategy as an expression.
          *
-         * <p>The column must be of type {@code TIMESTAMP(3)} and be a top-level column in the
-         * schema. It may be a computed column.
+         * <p>The column must be of type {@code TIMESTAMP(3)} or {@code TIMESTAMP_LTZ(3)} and be a
+         * top-level column in the schema. It may be a computed column.
          *
          * <p>The watermark generation expression is evaluated by the framework for every record
          * during runtime. The framework will periodically emit the largest generated watermark. If
@@ -588,16 +645,25 @@ public final class Schema {
     // --------------------------------------------------------------------------------------------
 
     /** Super class for all kinds of columns in an unresolved schema. */
+    @PublicEvolving
     public abstract static class UnresolvedColumn {
         final String columnName;
+        final @Nullable String comment;
 
-        UnresolvedColumn(String columnName) {
+        UnresolvedColumn(String columnName, @Nullable String comment) {
             this.columnName = columnName;
+            this.comment = comment;
         }
 
         public String getName() {
             return columnName;
         }
+
+        public Optional<String> getComment() {
+            return Optional.ofNullable(comment);
+        }
+
+        abstract UnresolvedColumn withComment(@Nullable String comment);
 
         @Override
         public String toString() {
@@ -613,7 +679,7 @@ public final class Schema {
                 return false;
             }
             UnresolvedColumn that = (UnresolvedColumn) o;
-            return columnName.equals(that.columnName);
+            return columnName.equals(that.columnName) && Objects.equals(comment, that.comment);
         }
 
         @Override
@@ -626,13 +692,24 @@ public final class Schema {
      * Declaration of a physical column that will be resolved to {@link PhysicalColumn} during
      * schema resolution.
      */
+    @PublicEvolving
     public static final class UnresolvedPhysicalColumn extends UnresolvedColumn {
 
         private final AbstractDataType<?> dataType;
 
-        UnresolvedPhysicalColumn(String columnName, AbstractDataType<?> dataType) {
-            super(columnName);
+        public UnresolvedPhysicalColumn(String columnName, AbstractDataType<?> dataType) {
+            this(columnName, dataType, null);
+        }
+
+        public UnresolvedPhysicalColumn(
+                String columnName, AbstractDataType<?> dataType, @Nullable String comment) {
+            super(columnName, comment);
             this.dataType = dataType;
+        }
+
+        @Override
+        UnresolvedPhysicalColumn withComment(String comment) {
+            return new UnresolvedPhysicalColumn(columnName, dataType, comment);
         }
 
         public AbstractDataType<?> getDataType() {
@@ -641,7 +718,16 @@ public final class Schema {
 
         @Override
         public String toString() {
-            return String.format("%s %s", super.toString(), dataType.toString());
+            final StringBuilder sb = new StringBuilder();
+            sb.append(String.format("%s %s", super.toString(), dataType.toString()));
+            getComment()
+                    .ifPresent(
+                            c -> {
+                                sb.append(" COMMENT '");
+                                sb.append(EncodingUtils.escapeSingleQuotes(c));
+                                sb.append("'");
+                            });
+            return sb.toString();
         }
 
         @Override
@@ -669,13 +755,23 @@ public final class Schema {
      * Declaration of a computed column that will be resolved to {@link ComputedColumn} during
      * schema resolution.
      */
+    @PublicEvolving
     public static final class UnresolvedComputedColumn extends UnresolvedColumn {
 
         private final Expression expression;
 
-        UnresolvedComputedColumn(String columnName, Expression expression) {
-            super(columnName);
+        public UnresolvedComputedColumn(String columnName, Expression expression) {
+            this(columnName, expression, null);
+        }
+
+        public UnresolvedComputedColumn(String columnName, Expression expression, String comment) {
+            super(columnName, comment);
             this.expression = expression;
+        }
+
+        @Override
+        public UnresolvedComputedColumn withComment(String comment) {
+            return new UnresolvedComputedColumn(columnName, expression, comment);
         }
 
         public Expression getExpression() {
@@ -684,7 +780,16 @@ public final class Schema {
 
         @Override
         public String toString() {
-            return String.format("%s AS %s", super.toString(), expression.asSummaryString());
+            final StringBuilder sb = new StringBuilder();
+            sb.append(String.format("%s AS %s", super.toString(), expression.asSummaryString()));
+            getComment()
+                    .ifPresent(
+                            c -> {
+                                sb.append(" COMMENT '");
+                                sb.append(EncodingUtils.escapeSingleQuotes(c));
+                                sb.append("'");
+                            });
+            return sb.toString();
         }
 
         @Override
@@ -712,21 +817,37 @@ public final class Schema {
      * Declaration of a metadata column that will be resolved to {@link MetadataColumn} during
      * schema resolution.
      */
+    @PublicEvolving
     public static final class UnresolvedMetadataColumn extends UnresolvedColumn {
 
         private final AbstractDataType<?> dataType;
         private final @Nullable String metadataKey;
         private final boolean isVirtual;
 
-        UnresolvedMetadataColumn(
+        public UnresolvedMetadataColumn(
                 String columnName,
                 AbstractDataType<?> dataType,
                 @Nullable String metadataKey,
                 boolean isVirtual) {
-            super(columnName);
+            this(columnName, dataType, metadataKey, isVirtual, null);
+        }
+
+        public UnresolvedMetadataColumn(
+                String columnName,
+                AbstractDataType<?> dataType,
+                @Nullable String metadataKey,
+                boolean isVirtual,
+                @Nullable String comment) {
+            super(columnName, comment);
             this.dataType = dataType;
             this.metadataKey = metadataKey;
             this.isVirtual = isVirtual;
+        }
+
+        @Override
+        UnresolvedMetadataColumn withComment(@Nullable String comment) {
+            return new UnresolvedMetadataColumn(
+                    columnName, dataType, metadataKey, isVirtual, comment);
         }
 
         public AbstractDataType<?> getDataType() {
@@ -754,6 +875,13 @@ public final class Schema {
             if (isVirtual) {
                 sb.append(" VIRTUAL");
             }
+            getComment()
+                    .ifPresent(
+                            c -> {
+                                sb.append(" COMMENT '");
+                                sb.append(EncodingUtils.escapeSingleQuotes(c));
+                                sb.append("'");
+                            });
             return sb.toString();
         }
 
@@ -784,12 +912,13 @@ public final class Schema {
      * Declaration of a watermark strategy that will be resolved to {@link WatermarkSpec} during
      * schema resolution.
      */
+    @PublicEvolving
     public static final class UnresolvedWatermarkSpec {
 
         private final String columnName;
         private final Expression watermarkExpression;
 
-        UnresolvedWatermarkSpec(String columnName, Expression watermarkExpression) {
+        public UnresolvedWatermarkSpec(String columnName, Expression watermarkExpression) {
             this.columnName = columnName;
             this.watermarkExpression = watermarkExpression;
         }
@@ -830,6 +959,7 @@ public final class Schema {
     }
 
     /** Super class for all kinds of constraints in an unresolved schema. */
+    @PublicEvolving
     public abstract static class UnresolvedConstraint {
 
         private final String constraintName;
@@ -869,11 +999,12 @@ public final class Schema {
      * Declaration of a primary key that will be resolved to {@link UniqueConstraint} during schema
      * resolution.
      */
+    @PublicEvolving
     public static final class UnresolvedPrimaryKey extends UnresolvedConstraint {
 
         private final List<String> columnNames;
 
-        UnresolvedPrimaryKey(String constraintName, List<String> columnNames) {
+        public UnresolvedPrimaryKey(String constraintName, List<String> columnNames) {
             super(constraintName);
             this.columnNames = columnNames;
         }

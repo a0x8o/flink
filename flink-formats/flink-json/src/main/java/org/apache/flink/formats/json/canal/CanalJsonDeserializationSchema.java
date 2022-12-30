@@ -21,8 +21,8 @@ package org.apache.flink.formats.json.canal;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.common.serialization.DeserializationSchema;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.formats.common.TimestampFormat;
 import org.apache.flink.formats.json.JsonRowDataDeserializationSchema;
-import org.apache.flink.formats.json.TimestampFormat;
 import org.apache.flink.formats.json.canal.CanalJsonDecodingFormat.ReadableMetadata;
 import org.apache.flink.table.api.DataTypes;
 import org.apache.flink.table.data.ArrayData;
@@ -197,6 +197,11 @@ public final class CanalJsonDeserializationSchema implements DeserializationSche
     }
 
     // ------------------------------------------------------------------------------------------
+
+    @Override
+    public void open(InitializationContext context) throws Exception {
+        jsonDeserializer.open(context);
+    }
 
     @Override
     public RowData deserialize(byte[] message) throws IOException {

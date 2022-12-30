@@ -18,67 +18,61 @@
 
 package org.apache.flink.table.factories;
 
-import org.apache.flink.configuration.Configuration;
+import org.apache.flink.connector.blackhole.table.BlackHoleTableSinkFactory;
 import org.apache.flink.table.api.DataTypes;
-import org.apache.flink.table.api.TableSchema;
 import org.apache.flink.table.api.ValidationException;
-import org.apache.flink.table.catalog.CatalogTableImpl;
-import org.apache.flink.table.catalog.ObjectIdentifier;
+import org.apache.flink.table.catalog.Column;
+import org.apache.flink.table.catalog.ResolvedSchema;
 import org.apache.flink.table.connector.sink.DynamicTableSink;
+import org.apache.flink.table.connector.sink.abilities.SupportsPartitioning;
 
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
-import static org.junit.Assert.assertEquals;
+import static org.apache.flink.table.factories.utils.FactoryMocks.createTableSink;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.fail;
 
 /** Tests for {@link BlackHoleTableSinkFactory}. */
-public class BlackHoleSinkFactoryTest {
+class BlackHoleSinkFactoryTest {
 
-    private static final TableSchema TEST_SCHEMA =
-            TableSchema.builder()
-                    .field("f0", DataTypes.STRING())
-                    .field("f1", DataTypes.BIGINT())
-                    .field("f2", DataTypes.BIGINT())
-                    .build();
+    private static final ResolvedSchema SCHEMA =
+            ResolvedSchema.of(
+                    Column.physical("f0", DataTypes.STRING()),
+                    Column.physical("f1", DataTypes.BIGINT()),
+                    Column.physical("f2", DataTypes.BIGINT()));
 
     @Test
-    public void testBlackHole() {
+    void testBlackHole() {
         Map<String, String> properties = new HashMap<>();
         properties.put("connector", "blackhole");
 
-        DynamicTableSink sink = createSink(properties);
+        List<String> partitionKeys = Arrays.asList("f0", "f1");
+        DynamicTableSink sink = createTableSink(SCHEMA, partitionKeys, properties);
 
-        assertEquals("BlackHole", sink.asSummaryString());
-    }
-
-    private DynamicTableSink createSink(Map<String, String> properties) {
-        return FactoryUtil.createTableSink(
-                null,
-                ObjectIdentifier.of("", "", ""),
-                new CatalogTableImpl(TEST_SCHEMA, properties, ""),
-                new Configuration(),
-                Thread.currentThread().getContextClassLoader(),
-                false);
+        assertThat(sink.asSummaryString()).isEqualTo("BlackHole");
+        assertThat(sink).isInstanceOf(SupportsPartitioning.class);
     }
 
     @Test
-    public void testWrongKey() {
+    void testWrongKey() {
         try {
             Map<String, String> properties = new HashMap<>();
             properties.put("connector", "blackhole");
             properties.put("unknown-key", "1");
-            createSink(properties);
+            createTableSink(SCHEMA, properties);
         } catch (ValidationException e) {
             Throwable cause = e.getCause();
-            Assert.assertTrue(cause.toString(), cause instanceof ValidationException);
-            Assert.assertTrue(
-                    cause.getMessage(),
-                    cause.getMessage().contains("Unsupported options:\n\nunknown-key"));
+            assertThat(cause).as(cause.toString()).isInstanceOf(ValidationException.class);
+            assertThat(cause.getMessage())
+                    .as(cause.getMessage())
+                    .contains("Unsupported options:\n\nunknown-key");
             return;
         }
-        Assert.fail("Should fail by ValidationException.");
+        fail("Should fail by ValidationException.");
     }
 }

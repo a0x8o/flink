@@ -35,7 +35,7 @@ import org.apache.flink.runtime.rest.messages.SubtasksTimesInfo;
 import org.apache.flink.runtime.taskmanager.TaskManagerLocation;
 import org.apache.flink.runtime.webmonitor.RestfulGateway;
 import org.apache.flink.runtime.webmonitor.history.ArchivedJson;
-import org.apache.flink.runtime.webmonitor.history.JsonArchivist;
+import org.apache.flink.runtime.webmonitor.history.OnlyExecutionGraphJsonArchivist;
 import org.apache.flink.runtime.webmonitor.retriever.GatewayRetriever;
 
 import java.io.IOException;
@@ -49,7 +49,7 @@ import java.util.concurrent.Executor;
 /** Request handler for the subtasks times info. */
 public class SubtasksTimesHandler
         extends AbstractJobVertexHandler<SubtasksTimesInfo, JobVertexMessageParameters>
-        implements JsonArchivist {
+        implements OnlyExecutionGraphJsonArchivist {
     public SubtasksTimesHandler(
             GatewayRetriever<? extends RestfulGateway> leaderRetriever,
             Time timeout,
@@ -69,8 +69,7 @@ public class SubtasksTimesHandler
 
     @Override
     protected SubtasksTimesInfo handleRequest(
-            HandlerRequest<EmptyRequestBody, JobVertexMessageParameters> request,
-            AccessExecutionJobVertex jobVertex) {
+            HandlerRequest<EmptyRequestBody> request, AccessExecutionJobVertex jobVertex) {
         return createSubtaskTimesInfo(jobVertex);
     }
 
@@ -102,7 +101,8 @@ public class SubtasksTimesHandler
 
         int num = 0;
         for (AccessExecutionVertex vertex : jobVertex.getTaskVertices()) {
-
+            // Use one of the current execution attempts to represent the subtask, rather than
+            // adding times info of all attempts.
             long[] timestamps = vertex.getCurrentExecutionAttempt().getStateTimestamps();
             ExecutionState status = vertex.getExecutionState();
 

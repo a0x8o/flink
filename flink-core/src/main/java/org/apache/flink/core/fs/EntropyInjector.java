@@ -22,6 +22,7 @@ import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.core.fs.FileSystem.WriteMode;
 import org.apache.flink.util.FlinkRuntimeException;
+import org.apache.flink.util.WrappingProxy;
 
 import javax.annotation.Nullable;
 
@@ -45,15 +46,30 @@ public class EntropyInjector {
      * EntropyInjectingFileSystem#getEntropyInjectionKey()}.
      *
      * <p>If the given file system does not implement {@code EntropyInjectingFileSystem}, then this
+     * method returns the same path.
+     */
+    public static Path addEntropy(FileSystem fs, Path path) throws IOException {
+        // check and possibly inject entropy into the path
+        final EntropyInjectingFileSystem efs = getEntropyFs(fs);
+        return efs == null ? path : resolveEntropy(path, efs, true);
+    }
+
+    /**
+     * Handles entropy injection across regular and entropy-aware file systems.
+     *
+     * <p>If the given file system is entropy-aware (a implements {@link
+     * EntropyInjectingFileSystem}), then this method replaces the entropy marker in the path with
+     * random characters. The entropy marker is defined by {@link
+     * EntropyInjectingFileSystem#getEntropyInjectionKey()}.
+     *
+     * <p>If the given file system does not implement {@code EntropyInjectingFileSystem}, then this
      * method delegates to {@link FileSystem#create(Path, WriteMode)} and returns the same path in
      * the resulting {@code OutputStreamAndPath}.
      */
     public static OutputStreamAndPath createEntropyAware(
             FileSystem fs, Path path, WriteMode writeMode) throws IOException {
 
-        // check and possibly inject entropy into the path
-        final EntropyInjectingFileSystem efs = getEntropyFs(fs);
-        final Path processedPath = efs == null ? path : resolveEntropy(path, efs, true);
+        final Path processedPath = addEntropy(fs, path);
 
         // create the stream on the original file system to let the safety net
         // take its effect
@@ -88,30 +104,22 @@ public class EntropyInjector {
     // ------------------------------------------------------------------------
 
     public static boolean isEntropyInjecting(FileSystem fs) {
-        return getEntropyFs(fs) != null;
+        final EntropyInjectingFileSystem entropyFs = getEntropyFs(fs);
+        return entropyFs != null && entropyFs.getEntropyInjectionKey() != null;
     }
 
     @Nullable
     private static EntropyInjectingFileSystem getEntropyFs(FileSystem fs) {
         if (fs instanceof EntropyInjectingFileSystem) {
             return (EntropyInjectingFileSystem) fs;
-        } else if (fs instanceof SafetyNetWrapperFileSystem) {
-            FileSystem delegate = ((SafetyNetWrapperFileSystem) fs).getWrappedDelegate();
-            if (delegate instanceof EntropyInjectingFileSystem) {
-                return (EntropyInjectingFileSystem) delegate;
-            } else if (delegate instanceof PluginFileSystemFactory.ClassLoaderFixingFileSystem) {
-                FileSystem innerFs =
-                        ((PluginFileSystemFactory.ClassLoaderFixingFileSystem) delegate).getInner();
-                if (innerFs instanceof EntropyInjectingFileSystem) {
-                    return (EntropyInjectingFileSystem) innerFs;
-                }
-                return null;
-            } else {
-                return null;
-            }
-        } else {
-            return null;
         }
+
+        if (fs instanceof WrappingProxy) {
+            FileSystem delegate = ((WrappingProxy<FileSystem>) fs).getWrappedDelegate();
+            return getEntropyFs(delegate);
+        }
+
+        return null;
     }
 
     @VisibleForTesting

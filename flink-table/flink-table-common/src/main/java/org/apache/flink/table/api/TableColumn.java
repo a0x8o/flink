@@ -19,6 +19,8 @@
 package org.apache.flink.table.api;
 
 import org.apache.flink.annotation.PublicEvolving;
+import org.apache.flink.table.catalog.Column;
+import org.apache.flink.table.catalog.ResolvedSchema;
 import org.apache.flink.table.types.DataType;
 import org.apache.flink.util.Preconditions;
 
@@ -32,7 +34,10 @@ import java.util.Optional;
  *
  * <p>A table column is fully resolved with a name and {@link DataType}. It describes either a
  * {@link PhysicalColumn}, {@link ComputedColumn}, or {@link MetadataColumn}.
+ *
+ * @deprecated See {@link ResolvedSchema} and {@link Column}.
  */
+@Deprecated
 @PublicEvolving
 public abstract class TableColumn {
 
@@ -177,6 +182,7 @@ public abstract class TableColumn {
     // --------------------------------------------------------------------------------------------
 
     /** Representation of a physical column. */
+    @PublicEvolving
     public static class PhysicalColumn extends TableColumn {
 
         private PhysicalColumn(String name, DataType type) {
@@ -200,6 +206,7 @@ public abstract class TableColumn {
     }
 
     /** Representation of a computed column. */
+    @PublicEvolving
     public static class ComputedColumn extends TableColumn {
 
         private final String expression;
@@ -250,6 +257,7 @@ public abstract class TableColumn {
     }
 
     /** Representation of a metadata column. */
+    @PublicEvolving
     public static class MetadataColumn extends TableColumn {
 
         private final @Nullable String metadataAlias;

@@ -211,10 +211,11 @@ public class WindowedStream<T, K, W extends Window> {
         function = input.getExecutionEnvironment().clean(function);
         reduceFunction = input.getExecutionEnvironment().clean(reduceFunction);
 
-        final String opName = builder.generateOperatorName(reduceFunction, function);
+        final String opName = builder.generateOperatorName();
+        final String opDescription = builder.generateOperatorDescription(reduceFunction, function);
 
         OneInputStreamOperator<T, R> operator = builder.reduce(reduceFunction, function);
-        return input.transform(opName, resultType, operator);
+        return input.transform(opName, resultType, operator).setDescription(opDescription);
     }
 
     /**
@@ -258,10 +259,11 @@ public class WindowedStream<T, K, W extends Window> {
         function = input.getExecutionEnvironment().clean(function);
         reduceFunction = input.getExecutionEnvironment().clean(reduceFunction);
 
-        final String opName = builder.generateOperatorName(reduceFunction, function);
+        final String opName = builder.generateOperatorName();
+        final String opDescription = builder.generateOperatorDescription(reduceFunction, function);
         OneInputStreamOperator<T, R> operator = builder.reduce(reduceFunction, function);
 
-        return input.transform(opName, resultType, operator);
+        return input.transform(opName, resultType, operator).setDescription(opDescription);
     }
 
     // ------------------------------------------------------------------------
@@ -405,12 +407,14 @@ public class WindowedStream<T, K, W extends Window> {
         windowFunction = input.getExecutionEnvironment().clean(windowFunction);
         aggregateFunction = input.getExecutionEnvironment().clean(aggregateFunction);
 
-        final String opName = builder.generateOperatorName(aggregateFunction, windowFunction);
+        final String opName = builder.generateOperatorName();
+        final String opDescription =
+                builder.generateOperatorDescription(aggregateFunction, windowFunction);
 
         OneInputStreamOperator<T, R> operator =
                 builder.aggregate(aggregateFunction, windowFunction, accumulatorType);
 
-        return input.transform(opName, resultType, operator);
+        return input.transform(opName, resultType, operator).setDescription(opDescription);
     }
 
     /**
@@ -454,7 +458,7 @@ public class WindowedStream<T, K, W extends Window> {
     private static <IN, OUT, KEY> TypeInformation<OUT> getWindowFunctionReturnType(
             WindowFunction<IN, OUT, KEY, ?> function, TypeInformation<IN> inType) {
         return TypeExtractor.getUnaryOperatorReturnType(
-                function, WindowFunction.class, 0, 1, new int[] {3, 0}, inType, null, false);
+                function, WindowFunction.class, 0, 1, new int[] {3, 0}, inType, null, true);
     }
 
     private static <IN, OUT, KEY> TypeInformation<OUT> getProcessWindowFunctionReturnType(
@@ -469,7 +473,7 @@ public class WindowedStream<T, K, W extends Window> {
                 TypeExtractor.NO_INDEX,
                 inType,
                 functionName,
-                false);
+                true);
     }
 
     /**
@@ -514,12 +518,14 @@ public class WindowedStream<T, K, W extends Window> {
         windowFunction = input.getExecutionEnvironment().clean(windowFunction);
         aggregateFunction = input.getExecutionEnvironment().clean(aggregateFunction);
 
-        final String opName = builder.generateOperatorName(aggregateFunction, windowFunction);
+        final String opName = builder.generateOperatorName();
+        final String opDescription =
+                builder.generateOperatorDescription(aggregateFunction, windowFunction);
 
         OneInputStreamOperator<T, R> operator =
                 builder.aggregate(aggregateFunction, windowFunction, accumulatorType);
 
-        return input.transform(opName, resultType, operator);
+        return input.transform(opName, resultType, operator).setDescription(opDescription);
     }
 
     // ------------------------------------------------------------------------
@@ -559,10 +565,11 @@ public class WindowedStream<T, K, W extends Window> {
             WindowFunction<T, R, K, W> function, TypeInformation<R> resultType) {
         function = input.getExecutionEnvironment().clean(function);
 
-        final String opName = builder.generateOperatorName(function, null);
+        final String opName = builder.generateOperatorName();
+        final String opDescription = builder.generateOperatorDescription(function, null);
         OneInputStreamOperator<T, R> operator = builder.apply(function);
 
-        return input.transform(opName, resultType, operator);
+        return input.transform(opName, resultType, operator).setDescription(opDescription);
     }
 
     /**
@@ -601,11 +608,12 @@ public class WindowedStream<T, K, W extends Window> {
             ProcessWindowFunction<T, R, K, W> function, TypeInformation<R> resultType) {
         function = input.getExecutionEnvironment().clean(function);
 
-        final String opName = builder.generateOperatorName(function, null);
+        final String opName = builder.generateOperatorName();
+        final String opDesc = builder.generateOperatorDescription(function, null);
 
         OneInputStreamOperator<T, R> operator = builder.process(function);
 
-        return input.transform(opName, resultType, operator);
+        return input.transform(opName, resultType, operator).setDescription(opDesc);
     }
 
     /**
@@ -651,11 +659,12 @@ public class WindowedStream<T, K, W extends Window> {
         function = input.getExecutionEnvironment().clean(function);
         reduceFunction = input.getExecutionEnvironment().clean(reduceFunction);
 
-        final String opName = builder.generateOperatorName(reduceFunction, function);
+        final String opName = builder.generateOperatorName();
+        final String opDesc = builder.generateOperatorDescription(reduceFunction, function);
 
         OneInputStreamOperator<T, R> operator = builder.reduce(reduceFunction, function);
 
-        return input.transform(opName, resultType, operator);
+        return input.transform(opName, resultType, operator).setDescription(opDesc);
     }
 
     // ------------------------------------------------------------------------

@@ -17,7 +17,7 @@
 
 package org.apache.flink.streaming.kinesis.test.model;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
+import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.util.Objects;
 
@@ -56,5 +56,10 @@ public class Order {
     @Override
     public int hashCode() {
         return Objects.hash(code, quantity);
+    }
+
+    @Override
+    public String toString() {
+        return "Order{" + "code='" + code + '\'' + ", quantity=" + quantity + '}';
     }
 }

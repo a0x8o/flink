@@ -23,6 +23,7 @@ import org.apache.flink.util.Preconditions;
 
 import javax.annotation.Nullable;
 
+import java.util.UUID;
 import java.util.function.Consumer;
 
 /**
@@ -32,7 +33,9 @@ import java.util.function.Consumer;
 public class TestingLeaderElectionEventHandler extends TestingLeaderBase
         implements LeaderElectionEventHandler {
 
-    private final LeaderInformation leaderInformation;
+    private final Object lock = new Object();
+
+    private final String leaderAddress;
 
     private final OneShotLatch initializationLatch;
 
@@ -40,8 +43,10 @@ public class TestingLeaderElectionEventHandler extends TestingLeaderBase
 
     private LeaderInformation confirmedLeaderInformation = LeaderInformation.empty();
 
-    public TestingLeaderElectionEventHandler(LeaderInformation leaderInformation) {
-        this.leaderInformation = leaderInformation;
+    private boolean running = true;
+
+    public TestingLeaderElectionEventHandler(String leaderAddress) {
+        this.leaderAddress = leaderAddress;
         this.initializationLatch = new OneShotLatch();
     }
 
@@ -51,35 +56,55 @@ public class TestingLeaderElectionEventHandler extends TestingLeaderBase
         initializationLatch.trigger();
     }
 
+    private void ifRunning(Runnable action) {
+        synchronized (lock) {
+            if (running) {
+                action.run();
+            }
+        }
+    }
+
     @Override
-    public void onGrantLeadership() {
-        waitForInitialization(
-                leaderElectionDriver -> {
-                    confirmedLeaderInformation = leaderInformation;
-                    leaderElectionDriver.writeLeaderInformation(confirmedLeaderInformation);
-                    leaderEventQueue.offer(confirmedLeaderInformation);
-                });
+    public void onGrantLeadership(UUID newLeaderSessionId) {
+        ifRunning(
+                () ->
+                        waitForInitialization(
+                                leaderElectionDriver -> {
+                                    confirmedLeaderInformation =
+                                            LeaderInformation.known(
+                                                    newLeaderSessionId, leaderAddress);
+                                    leaderElectionDriver.writeLeaderInformation(
+                                            confirmedLeaderInformation);
+                                    leaderEventQueue.offer(confirmedLeaderInformation);
+                                }));
     }
 
     @Override
     public void onRevokeLeadership() {
-        waitForInitialization(
-                (leaderElectionDriver) -> {
-                    confirmedLeaderInformation = LeaderInformation.empty();
-                    leaderElectionDriver.writeLeaderInformation(confirmedLeaderInformation);
-                    leaderEventQueue.offer(confirmedLeaderInformation);
-                });
+        ifRunning(
+                () ->
+                        waitForInitialization(
+                                (leaderElectionDriver) -> {
+                                    confirmedLeaderInformation = LeaderInformation.empty();
+                                    leaderElectionDriver.writeLeaderInformation(
+                                            confirmedLeaderInformation);
+                                    leaderEventQueue.offer(confirmedLeaderInformation);
+                                }));
     }
 
     @Override
     public void onLeaderInformationChange(LeaderInformation leaderInformation) {
-        waitForInitialization(
-                leaderElectionDriver -> {
-                    if (confirmedLeaderInformation.getLeaderSessionID() != null
-                            && !this.confirmedLeaderInformation.equals(leaderInformation)) {
-                        leaderElectionDriver.writeLeaderInformation(confirmedLeaderInformation);
-                    }
-                });
+        ifRunning(
+                () ->
+                        waitForInitialization(
+                                leaderElectionDriver -> {
+                                    if (confirmedLeaderInformation.getLeaderSessionID() != null
+                                            && !this.confirmedLeaderInformation.equals(
+                                                    leaderInformation)) {
+                                        leaderElectionDriver.writeLeaderInformation(
+                                                confirmedLeaderInformation);
+                                    }
+                                }));
     }
 
     private void waitForInitialization(Consumer<? super LeaderElectionDriver> operation) {
@@ -94,6 +119,14 @@ public class TestingLeaderElectionEventHandler extends TestingLeaderBase
     }
 
     public LeaderInformation getConfirmedLeaderInformation() {
-        return confirmedLeaderInformation;
+        synchronized (lock) {
+            return confirmedLeaderInformation;
+        }
+    }
+
+    public void close() {
+        synchronized (lock) {
+            running = false;
+        }
     }
 }

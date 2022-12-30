@@ -48,6 +48,7 @@ import java.util.Set;
  */
 @PublicEvolving
 public final class YearMonthIntervalType extends LogicalType {
+    private static final long serialVersionUID = 1L;
 
     public static final int MIN_PRECISION = 1;
 
@@ -75,6 +76,7 @@ public final class YearMonthIntervalType extends LogicalType {
      *
      * <p>Note: The order of this enum reflects the granularity from coarse to fine.
      */
+    @PublicEvolving
     public enum YearMonthResolution {
         YEAR,
         YEAR_TO_MONTH,

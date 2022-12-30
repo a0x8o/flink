@@ -36,7 +36,7 @@ import org.apache.flink.runtime.rest.messages.checkpoints.CheckpointConfigHeader
 import org.apache.flink.runtime.rest.messages.checkpoints.CheckpointConfigInfo;
 import org.apache.flink.runtime.webmonitor.RestfulGateway;
 import org.apache.flink.runtime.webmonitor.history.ArchivedJson;
-import org.apache.flink.runtime.webmonitor.history.JsonArchivist;
+import org.apache.flink.runtime.webmonitor.history.OnlyExecutionGraphJsonArchivist;
 import org.apache.flink.runtime.webmonitor.retriever.GatewayRetriever;
 
 import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpResponseStatus;
@@ -50,7 +50,7 @@ import java.util.concurrent.Executor;
 /** Handler which serves the checkpoint configuration. */
 public class CheckpointConfigHandler
         extends AbstractAccessExecutionGraphHandler<CheckpointConfigInfo, JobMessageParameters>
-        implements JsonArchivist {
+        implements OnlyExecutionGraphJsonArchivist {
 
     public CheckpointConfigHandler(
             GatewayRetriever<? extends RestfulGateway> leaderRetriever,
@@ -71,8 +71,7 @@ public class CheckpointConfigHandler
 
     @Override
     protected CheckpointConfigInfo handleRequest(
-            HandlerRequest<EmptyRequestBody, JobMessageParameters> request,
-            AccessExecutionGraph executionGraph)
+            HandlerRequest<EmptyRequestBody> request, AccessExecutionGraph executionGraph)
             throws RestHandlerException {
         return createCheckpointConfigInfo(executionGraph);
     }
@@ -117,6 +116,16 @@ public class CheckpointConfigHandler
 
             String stateBackendName = executionGraph.getStateBackendName().orElse(null);
             String checkpointStorageName = executionGraph.getCheckpointStorageName().orElse(null);
+            long periodicMaterializeIntervalMillis =
+                    executionGraph
+                            .getArchivedExecutionConfig()
+                            .getPeriodicMaterializeIntervalMillis();
+            String changelogStorageName = executionGraph.getChangelogStorageName().orElse(null);
+
+            boolean stateChangelogEnabled =
+                    executionGraph.isChangelogStateBackendEnabled() != null
+                            ? executionGraph.isChangelogStateBackendEnabled().getOrDefault(false)
+                            : false;
 
             return new CheckpointConfigInfo(
                     checkpointCoordinatorConfiguration.isExactlyOnce()
@@ -130,7 +139,12 @@ public class CheckpointConfigHandler
                     stateBackendName,
                     checkpointStorageName,
                     checkpointCoordinatorConfiguration.isUnalignedCheckpointsEnabled(),
-                    checkpointCoordinatorConfiguration.getTolerableCheckpointFailureNumber());
+                    checkpointCoordinatorConfiguration.getTolerableCheckpointFailureNumber(),
+                    checkpointCoordinatorConfiguration.getAlignedCheckpointTimeout(),
+                    checkpointCoordinatorConfiguration.isEnableCheckpointsAfterTasksFinish(),
+                    stateChangelogEnabled,
+                    periodicMaterializeIntervalMillis,
+                    changelogStorageName);
         }
     }
 }

@@ -21,9 +21,12 @@ package org.apache.flink.runtime.scheduler;
 
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.JobStatus;
+import org.apache.flink.core.execution.CheckpointType;
+import org.apache.flink.core.execution.SavepointFormatType;
 import org.apache.flink.queryablestate.KvStateID;
 import org.apache.flink.runtime.accumulators.AccumulatorSnapshot;
 import org.apache.flink.runtime.checkpoint.CheckpointMetrics;
+import org.apache.flink.runtime.checkpoint.CompletedCheckpoint;
 import org.apache.flink.runtime.checkpoint.TaskStateSnapshot;
 import org.apache.flink.runtime.concurrent.ComponentMainThreadExecutor;
 import org.apache.flink.runtime.execution.ExecutionState;
@@ -47,6 +50,7 @@ import org.apache.flink.runtime.query.KvStateLocation;
 import org.apache.flink.runtime.query.UnknownKvStateLocation;
 import org.apache.flink.runtime.state.KeyGroupRange;
 import org.apache.flink.runtime.taskmanager.TaskExecutionState;
+import org.apache.flink.util.AutoCloseableAsync;
 import org.apache.flink.util.FlinkException;
 
 import javax.annotation.Nullable;
@@ -64,17 +68,13 @@ import java.util.concurrent.CompletableFuture;
  * <p>Implementations can expect that methods will not be invoked concurrently. In fact, all
  * invocations will originate from a thread in the {@link ComponentMainThreadExecutor}.
  */
-public interface SchedulerNG {
+public interface SchedulerNG extends GlobalFailureHandler, AutoCloseableAsync {
 
     void startScheduling();
 
-    void suspend(Throwable cause);
-
     void cancel();
 
-    CompletableFuture<Void> getTerminationFuture();
-
-    void handleGlobalFailure(Throwable cause);
+    CompletableFuture<JobStatus> getJobTerminationFuture();
 
     default boolean updateTaskExecutionState(TaskExecutionState taskExecutionState) {
         return updateTaskExecutionState(new TaskExecutionStateTransition(taskExecutionState));
@@ -88,8 +88,6 @@ public interface SchedulerNG {
     ExecutionState requestPartitionState(
             IntermediateDataSetID intermediateResultId, ResultPartitionID resultPartitionId)
             throws PartitionProducerDisposedException;
-
-    void notifyPartitionDataAvailable(ResultPartitionID partitionID);
 
     ExecutionGraphInfo requestJob();
 
@@ -126,7 +124,10 @@ public interface SchedulerNG {
 
     // ------------------------------------------------------------------------
 
-    CompletableFuture<String> triggerSavepoint(@Nullable String targetDirectory, boolean cancelJob);
+    CompletableFuture<String> triggerSavepoint(
+            @Nullable String targetDirectory, boolean cancelJob, SavepointFormatType formatType);
+
+    CompletableFuture<CompletedCheckpoint> triggerCheckpoint(CheckpointType checkpointType);
 
     void acknowledgeCheckpoint(
             JobID jobID,
@@ -143,7 +144,8 @@ public interface SchedulerNG {
 
     void declineCheckpoint(DeclineCheckpoint decline);
 
-    CompletableFuture<String> stopWithSavepoint(String targetDirectory, boolean terminate);
+    CompletableFuture<String> stopWithSavepoint(
+            String targetDirectory, boolean terminate, SavepointFormatType formatType);
 
     // ------------------------------------------------------------------------
     //  Operator Coordinator related methods

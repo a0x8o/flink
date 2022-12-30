@@ -22,47 +22,55 @@ import org.apache.flink.core.execution.JobClient;
 import org.apache.flink.table.api.DataTypes;
 import org.apache.flink.table.api.ResultKind;
 import org.apache.flink.table.api.TableResult;
-import org.apache.flink.table.api.TableSchema;
+import org.apache.flink.table.api.internal.TableResultInternal;
+import org.apache.flink.table.catalog.Column;
+import org.apache.flink.table.catalog.ResolvedSchema;
+import org.apache.flink.table.data.RowData;
+import org.apache.flink.table.data.conversion.DataStructureConverter;
+import org.apache.flink.table.data.conversion.DataStructureConverters;
+import org.apache.flink.table.planner.functions.casting.RowDataToStringConverterImpl;
+import org.apache.flink.table.utils.DateTimeUtils;
+import org.apache.flink.table.utils.print.RowDataToStringConverter;
 import org.apache.flink.types.Row;
 import org.apache.flink.util.CloseableIterator;
 
 import java.util.Collections;
 import java.util.Optional;
-import java.util.concurrent.ExecutionException;
+import java.util.Spliterators;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
+import java.util.stream.StreamSupport;
 
 /** {@link TableResult} for testing. */
-public class TestTableResult implements TableResult {
+public class TestTableResult implements TableResultInternal {
     private final JobClient jobClient;
-    private final TableSchema tableSchema;
+    private final ResolvedSchema resolvedSchema;
     private final ResultKind resultKind;
     private final CloseableIterator<Row> data;
 
     public static final TestTableResult TABLE_RESULT_OK =
             new TestTableResult(
                     ResultKind.SUCCESS,
-                    TableSchema.builder().field("result", DataTypes.STRING()).build(),
+                    ResolvedSchema.of(Column.physical("result", DataTypes.STRING())),
                     CloseableIterator.adapterForIterator(
                             Collections.singletonList(Row.of("OK")).iterator()));
 
-    public TestTableResult(ResultKind resultKind, TableSchema tableSchema) {
-        this(resultKind, tableSchema, CloseableIterator.empty());
+    public TestTableResult(ResultKind resultKind, ResolvedSchema resolvedSchema) {
+        this(resultKind, resolvedSchema, CloseableIterator.empty());
     }
 
     public TestTableResult(
-            ResultKind resultKind, TableSchema tableSchema, CloseableIterator<Row> data) {
-        this(null, resultKind, tableSchema, data);
+            ResultKind resultKind, ResolvedSchema resolvedSchema, CloseableIterator<Row> data) {
+        this(null, resultKind, resolvedSchema, data);
     }
 
     public TestTableResult(
             JobClient jobClient,
             ResultKind resultKind,
-            TableSchema tableSchema,
+            ResolvedSchema resolvedSchema,
             CloseableIterator<Row> data) {
         this.jobClient = jobClient;
         this.resultKind = resultKind;
-        this.tableSchema = tableSchema;
+        this.resolvedSchema = resolvedSchema;
         this.data = data;
     }
 
@@ -72,15 +80,16 @@ public class TestTableResult implements TableResult {
     }
 
     @Override
-    public void await() throws InterruptedException, ExecutionException {}
+    public void await() throws InterruptedException {
+        Thread.sleep(60000);
+    }
 
     @Override
-    public void await(long timeout, TimeUnit unit)
-            throws InterruptedException, ExecutionException, TimeoutException {}
+    public void await(long timeout, TimeUnit unit) {}
 
     @Override
-    public TableSchema getTableSchema() {
-        return tableSchema;
+    public ResolvedSchema getResolvedSchema() {
+        return resolvedSchema;
     }
 
     @Override
@@ -96,5 +105,26 @@ public class TestTableResult implements TableResult {
     @Override
     public void print() {
         // do nothing
+    }
+
+    @Override
+    public CloseableIterator<RowData> collectInternal() {
+        DataStructureConverter<Object, Object> converter =
+                DataStructureConverters.getConverter(resolvedSchema.toPhysicalRowDataType());
+        converter.open(TestTableResult.class.getClassLoader());
+        return CloseableIterator.adapterForIterator(
+                StreamSupport.stream(Spliterators.spliteratorUnknownSize(data, 0), false)
+                        .map(row -> (RowData) converter.toInternalOrNull(row))
+                        .iterator(),
+                data);
+    }
+
+    @Override
+    public RowDataToStringConverter getRowDataToStringConverter() {
+        return new RowDataToStringConverterImpl(
+                resolvedSchema.toPhysicalRowDataType(),
+                DateTimeUtils.UTC_ZONE.toZoneId(),
+                Thread.currentThread().getContextClassLoader(),
+                false);
     }
 }

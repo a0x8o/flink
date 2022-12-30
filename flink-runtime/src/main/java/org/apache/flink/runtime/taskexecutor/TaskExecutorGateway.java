@@ -39,7 +39,7 @@ import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.operators.coordination.OperatorEvent;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerId;
 import org.apache.flink.runtime.rest.messages.LogInfo;
-import org.apache.flink.runtime.rest.messages.taskmanager.ThreadDumpInfo;
+import org.apache.flink.runtime.rest.messages.ThreadDumpInfo;
 import org.apache.flink.runtime.rpc.RpcGateway;
 import org.apache.flink.runtime.rpc.RpcTimeout;
 import org.apache.flink.runtime.taskmanager.Task;
@@ -51,7 +51,8 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 /** {@link TaskExecutor} RPC gateway interface. */
-public interface TaskExecutorGateway extends RpcGateway, TaskExecutorOperatorEventGateway {
+public interface TaskExecutorGateway
+        extends RpcGateway, TaskExecutorOperatorEventGateway, TaskExecutorThreadInfoGateway {
 
     /**
      * Requests a slot from the TaskManager.
@@ -100,16 +101,22 @@ public interface TaskExecutorGateway extends RpcGateway, TaskExecutorOperatorEve
             @RpcTimeout Time timeout);
 
     /**
-     * Batch release/promote intermediate result partitions.
+     * Batch release intermediate result partitions.
      *
      * @param jobId id of the job that the partitions belong to
-     * @param partitionToRelease partition ids to release
-     * @param partitionsToPromote partitions ids to promote
+     * @param partitionIds partition ids to release
      */
-    void releaseOrPromotePartitions(
-            JobID jobId,
-            Set<ResultPartitionID> partitionToRelease,
-            Set<ResultPartitionID> partitionsToPromote);
+    void releasePartitions(JobID jobId, Set<ResultPartitionID> partitionIds);
+
+    /**
+     * Batch promote intermediate result partitions.
+     *
+     * @param jobId id of the job that the partitions belong to
+     * @param partitionIds partition ids to release
+     * @return Future acknowledge that the partitions are successfully promoted.
+     */
+    CompletableFuture<Acknowledge> promotePartitions(
+            JobID jobId, Set<ResultPartitionID> partitionIds);
 
     /**
      * Releases all cluster partitions belong to any of the given data sets.
@@ -142,12 +149,16 @@ public interface TaskExecutorGateway extends RpcGateway, TaskExecutorOperatorEve
      * and the checkpoint timestamp.
      *
      * @param executionAttemptID identifying the task
-     * @param checkpointId unique id for the checkpoint
-     * @param checkpointTimestamp is the timestamp when the checkpoint has been initiated
+     * @param completedCheckpointId unique id for the completed checkpoint
+     * @param completedCheckpointTimestamp is the timestamp when the checkpoint has been initiated
+     * @param lastSubsumedCheckpointId unique id for the checkpoint to be subsumed
      * @return Future acknowledge if the checkpoint has been successfully confirmed
      */
     CompletableFuture<Acknowledge> confirmCheckpoint(
-            ExecutionAttemptID executionAttemptID, long checkpointId, long checkpointTimestamp);
+            ExecutionAttemptID executionAttemptID,
+            long completedCheckpointId,
+            long completedCheckpointTimestamp,
+            long lastSubsumedCheckpointId);
 
     /**
      * Abort a checkpoint for the given task. The checkpoint is identified by the checkpoint ID and
@@ -155,11 +166,15 @@ public interface TaskExecutorGateway extends RpcGateway, TaskExecutorOperatorEve
      *
      * @param executionAttemptID identifying the task
      * @param checkpointId unique id for the checkpoint
+     * @param latestCompletedCheckpointId the id of the latest completed checkpoint
      * @param checkpointTimestamp is the timestamp when the checkpoint has been initiated
      * @return Future acknowledge if the checkpoint has been successfully confirmed
      */
     CompletableFuture<Acknowledge> abortCheckpoint(
-            ExecutionAttemptID executionAttemptID, long checkpointId, long checkpointTimestamp);
+            ExecutionAttemptID executionAttemptID,
+            long checkpointId,
+            long latestCompletedCheckpointId,
+            long checkpointTimestamp);
 
     /**
      * Cancel the given task.
@@ -175,16 +190,18 @@ public interface TaskExecutorGateway extends RpcGateway, TaskExecutorOperatorEve
      * Heartbeat request from the job manager.
      *
      * @param heartbeatOrigin unique id of the job manager
+     * @return future which is completed exceptionally if the operation fails
      */
-    void heartbeatFromJobManager(
+    CompletableFuture<Void> heartbeatFromJobManager(
             ResourceID heartbeatOrigin, AllocatedSlotReport allocatedSlotReport);
 
     /**
      * Heartbeat request from the resource manager.
      *
      * @param heartbeatOrigin unique id of the resource manager
+     * @return future which is completed exceptionally if the operation fails
      */
-    void heartbeatFromResourceManager(ResourceID heartbeatOrigin);
+    CompletableFuture<Void> heartbeatFromResourceManager(ResourceID heartbeatOrigin);
 
     /**
      * Disconnects the given JobManager from the TaskManager.
@@ -211,6 +228,14 @@ public interface TaskExecutorGateway extends RpcGateway, TaskExecutorOperatorEve
      */
     CompletableFuture<Acknowledge> freeSlot(
             final AllocationID allocationId, final Throwable cause, @RpcTimeout final Time timeout);
+
+    /**
+     * Frees all currently inactive slot allocated for the given job.
+     *
+     * @param jobId job for which all inactive slots should be released
+     * @param timeout for the operation
+     */
+    void freeInactiveSlots(JobID jobId, @RpcTimeout Time timeout);
 
     /**
      * Requests the file upload of the specified type to the cluster's {@link BlobServer}.
@@ -266,4 +291,14 @@ public interface TaskExecutorGateway extends RpcGateway, TaskExecutorOperatorEve
      * @return the {@link ThreadDumpInfo} for this TaskManager.
      */
     CompletableFuture<ThreadDumpInfo> requestThreadDump(@RpcTimeout Time timeout);
+
+    /**
+     * Sends new delegation tokens to this TaskManager.
+     *
+     * @param resourceManagerId current leader id of the ResourceManager
+     * @param tokens new tokens
+     * @return Future acknowledge of the successful operation
+     */
+    CompletableFuture<Acknowledge> updateDelegationTokens(
+            ResourceManagerId resourceManagerId, byte[] tokens);
 }

@@ -30,6 +30,7 @@ import py4j.GatewayServer;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -101,18 +102,26 @@ public final class PythonDriver {
             Runtime.getRuntime().addShutdownHook(shutdownHook);
 
             BufferedReader in =
-                    new BufferedReader(new InputStreamReader(pythonProcess.getInputStream()));
+                    new BufferedReader(
+                            new InputStreamReader(
+                                    pythonProcess.getInputStream(), StandardCharsets.UTF_8));
             LOG.info(
                     "--------------------------- Python Process Started --------------------------");
             // print the python process output to stdout and log file
-            while (true) {
-                String line = in.readLine();
-                if (line == null) {
-                    break;
-                } else {
-                    System.out.println(line);
-                    LOG.info(line);
+            final StringBuilder sb = new StringBuilder();
+            try {
+                while (true) {
+                    String line = in.readLine();
+                    if (line == null) {
+                        break;
+                    } else {
+                        System.out.println(line);
+                        sb.append(line);
+                        sb.append("\n");
+                    }
                 }
+            } finally {
+                LOG.info(sb.toString());
             }
             int exitCode = pythonProcess.waitFor();
             LOG.info(
@@ -128,11 +137,11 @@ public final class PythonDriver {
             } else {
                 // throw ProgramAbortException if the caller is interested in the program plan,
                 // there is no harm to throw ProgramAbortException even if it is not the case.
-                throw new ProgramAbortException();
+                throw new ProgramAbortException(e);
             }
         } finally {
             PythonEnvUtils.setGatewayServer(null);
-            if (Runtime.getRuntime().removeShutdownHook(shutdownHook)) {
+            if (shutdownHook != null && Runtime.getRuntime().removeShutdownHook(shutdownHook)) {
                 shutdownHook.run();
             }
         }
@@ -145,10 +154,14 @@ public final class PythonDriver {
      */
     static List<String> constructPythonCommands(final PythonDriverOptions pythonDriverOptions) {
         final List<String> commands = new ArrayList<>();
+        commands.add("-m");
         if (pythonDriverOptions.getEntryPointScript().isPresent()) {
-            commands.add(pythonDriverOptions.getEntryPointScript().get());
+            String pythonFileName = pythonDriverOptions.getEntryPointScript().get();
+            commands.add(
+                    pythonFileName.substring(
+                            pythonFileName.lastIndexOf(File.separator) + 1,
+                            pythonFileName.lastIndexOf(".py")));
         } else {
-            commands.add("-m");
             commands.add(pythonDriverOptions.getEntryPointModule());
         }
         commands.addAll(pythonDriverOptions.getProgramArgs());

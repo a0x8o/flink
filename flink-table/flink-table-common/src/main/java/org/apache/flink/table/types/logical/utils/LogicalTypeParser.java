@@ -79,6 +79,7 @@ import java.util.stream.Stream;
  *   <li>{@code DOUBLE PRECISION} as a synonym for {@code DOUBLE}
  *   <li>{@code TIME WITHOUT TIME ZONE} as a synonym for {@code TIME}
  *   <li>{@code TIMESTAMP WITHOUT TIME ZONE} as a synonym for {@code TIMESTAMP}
+ *   <li>{@code TIMESTAMP WITH LOCAL TIME ZONE} as a synonym for {@code TIMESTAMP_LTZ}
  *   <li>{@code type ARRAY} as a synonym for {@code ARRAY<type>}
  *   <li>{@code type MULTISET} as a synonym for {@code MULTISET<type>}
  *   <li>{@code ROW(...)} as a synonym for {@code ROW<...>}
@@ -111,7 +112,9 @@ public final class LogicalTypeParser {
      *
      * @param typeString a string like "ROW(field1 INT, field2 BOOLEAN)"
      * @throws ValidationException in case of parsing errors.
+     * @deprecated You should use {@link #parse(String, ClassLoader)} to correctly load user types
      */
+    @Deprecated
     public static LogicalType parse(String typeString) {
         return parse(typeString, Thread.currentThread().getContextClassLoader());
     }
@@ -319,6 +322,7 @@ public final class LogicalTypeParser {
         LOCAL,
         ZONE,
         TIMESTAMP,
+        TIMESTAMP_LTZ,
         INTERVAL,
         YEAR,
         MONTH,
@@ -526,7 +530,7 @@ public final class LogicalTypeParser {
                 case VARCHAR:
                     return parseVarCharType();
                 case STRING:
-                    return new VarCharType(VarCharType.MAX_LENGTH);
+                    return VarCharType.STRING_TYPE;
                 case BOOLEAN:
                     return new BooleanType();
                 case BINARY:
@@ -558,6 +562,8 @@ public final class LogicalTypeParser {
                     return parseTimeType();
                 case TIMESTAMP:
                     return parseTimestampType();
+                case TIMESTAMP_LTZ:
+                    return parseTimestampLtzType();
                 case INTERVAL:
                     return parseIntervalType();
                 case ARRAY:
@@ -711,6 +717,11 @@ public final class LogicalTypeParser {
                 }
             }
             return new TimestampType(precision);
+        }
+
+        private LogicalType parseTimestampLtzType() {
+            int precision = parseOptionalPrecision(LocalZonedTimestampType.DEFAULT_PRECISION);
+            return new LocalZonedTimestampType(precision);
         }
 
         private LogicalType parseIntervalType() {

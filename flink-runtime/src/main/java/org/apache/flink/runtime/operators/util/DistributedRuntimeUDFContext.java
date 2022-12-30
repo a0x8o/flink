@@ -27,7 +27,7 @@ import org.apache.flink.api.common.functions.BroadcastVariableInitializer;
 import org.apache.flink.api.common.functions.RuntimeContext;
 import org.apache.flink.api.common.functions.util.AbstractRuntimeUDFContext;
 import org.apache.flink.core.fs.Path;
-import org.apache.flink.metrics.MetricGroup;
+import org.apache.flink.metrics.groups.OperatorMetricGroup;
 import org.apache.flink.runtime.broadcast.BroadcastVariableMaterialization;
 import org.apache.flink.runtime.broadcast.InitializationTypeConflictException;
 import org.apache.flink.runtime.externalresource.ExternalResourceInfoProvider;
@@ -37,7 +37,6 @@ import org.apache.flink.util.UserCodeClassLoader;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.Future;
 
@@ -57,7 +56,7 @@ public class DistributedRuntimeUDFContext extends AbstractRuntimeUDFContext {
             ExecutionConfig executionConfig,
             Map<String, Future<Path>> cpTasks,
             Map<String, Accumulator<?, ?>> accumulators,
-            MetricGroup metrics,
+            OperatorMetricGroup metrics,
             ExternalResourceInfoProvider externalResourceInfoProvider,
             JobID jobID) {
         super(taskInfo, userCodeClassLoader, executionConfig, accumulators, cpTasks, metrics);
@@ -115,8 +114,8 @@ public class DistributedRuntimeUDFContext extends AbstractRuntimeUDFContext {
     }
 
     @Override
-    public Optional<JobID> getJobId() {
-        return Optional.of(jobID);
+    public JobID getJobId() {
+        return jobID;
     }
 
     @Override
