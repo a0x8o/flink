@@ -28,8 +28,8 @@ import org.apache.flink.contrib.streaming.state.restore.RocksDBNoneRestoreOperat
 import org.apache.flink.contrib.streaming.state.restore.RocksDBRestoreOperation;
 import org.apache.flink.contrib.streaming.state.restore.RocksDBRestoreResult;
 import org.apache.flink.contrib.streaming.state.snapshot.RocksDBSnapshotStrategyBase;
-import org.apache.flink.contrib.streaming.state.snapshot.RocksFullSnapshotStrategy;
 import org.apache.flink.contrib.streaming.state.snapshot.RocksIncrementalSnapshotStrategy;
+import org.apache.flink.contrib.streaming.state.snapshot.RocksNativeFullSnapshotStrategy;
 import org.apache.flink.contrib.streaming.state.ttl.RocksDbTtlCompactFiltersManager;
 import org.apache.flink.core.fs.CloseableRegistry;
 import org.apache.flink.metrics.MetricGroup;
@@ -45,10 +45,12 @@ import org.apache.flink.runtime.state.PriorityQueueSetFactory;
 import org.apache.flink.runtime.state.SerializedCompositeKeyBuilder;
 import org.apache.flink.runtime.state.StateHandleID;
 import org.apache.flink.runtime.state.StreamCompressionDecorator;
+import org.apache.flink.runtime.state.StreamStateHandle;
 import org.apache.flink.runtime.state.heap.HeapPriorityQueueSetFactory;
 import org.apache.flink.runtime.state.heap.HeapPriorityQueueSnapshotRestoreWrapper;
 import org.apache.flink.runtime.state.heap.InternalKeyContext;
 import org.apache.flink.runtime.state.heap.InternalKeyContextImpl;
+import org.apache.flink.runtime.state.metrics.LatencyTrackingStateConfig;
 import org.apache.flink.runtime.state.ttl.TtlTimeProvider;
 import org.apache.flink.util.FileUtils;
 import org.apache.flink.util.IOUtils;
@@ -69,12 +71,12 @@ import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.SortedMap;
 import java.util.TreeMap;
 import java.util.UUID;
 import java.util.function.Function;
 
+import static org.apache.flink.contrib.streaming.state.RocksDBConfigurableOptions.RESTORE_OVERLAP_FRACTION_THRESHOLD;
 import static org.apache.flink.util.Preconditions.checkArgument;
 
 /**
@@ -112,13 +114,17 @@ public class RocksDBKeyedStateBackendBuilder<K> extends AbstractKeyedStateBacken
     /** True if incremental checkpointing is enabled. */
     private boolean enableIncrementalCheckpointing;
 
+    /** RocksDB property-based and statistics-based native metrics options. */
     private RocksDBNativeMetricOptions nativeMetricOptions;
+
     private int numberOfTransferingThreads;
     private long writeBatchSize =
             RocksDBConfigurableOptions.WRITE_BATCH_SIZE.defaultValue().getBytes();
 
     private RocksDB injectedTestDB; // for testing
+    private double overlapFractionThreshold = RESTORE_OVERLAP_FRACTION_THRESHOLD.defaultValue();
     private ColumnFamilyHandle injectedDefaultColumnFamilyHandle; // for testing
+    private RocksDBStateUploader injectRocksDBStateUploader; // for testing
 
     public RocksDBKeyedStateBackendBuilder(
             String operatorIdentifier,
@@ -134,6 +140,7 @@ public class RocksDBKeyedStateBackendBuilder<K> extends AbstractKeyedStateBacken
             LocalRecoveryConfig localRecoveryConfig,
             EmbeddedRocksDBStateBackend.PriorityQueueStateType priorityQueueStateType,
             TtlTimeProvider ttlTimeProvider,
+            LatencyTrackingStateConfig latencyTrackingStateConfig,
             MetricGroup metricGroup,
             @Nonnull Collection<KeyedStateHandle> stateHandles,
             StreamCompressionDecorator keyGroupCompressionDecorator,
@@ -147,6 +154,7 @@ public class RocksDBKeyedStateBackendBuilder<K> extends AbstractKeyedStateBacken
                 keyGroupRange,
                 executionConfig,
                 ttlTimeProvider,
+                latencyTrackingStateConfig,
                 stateHandles,
                 keyGroupCompressionDecorator,
                 cancelStreamRegistry);
@@ -181,6 +189,7 @@ public class RocksDBKeyedStateBackendBuilder<K> extends AbstractKeyedStateBacken
             LocalRecoveryConfig localRecoveryConfig,
             EmbeddedRocksDBStateBackend.PriorityQueueStateType priorityQueueStateType,
             TtlTimeProvider ttlTimeProvider,
+            LatencyTrackingStateConfig latencyTrackingStateConfig,
             MetricGroup metricGroup,
             @Nonnull Collection<KeyedStateHandle> stateHandles,
             StreamCompressionDecorator keyGroupCompressionDecorator,
@@ -201,6 +210,7 @@ public class RocksDBKeyedStateBackendBuilder<K> extends AbstractKeyedStateBacken
                 localRecoveryConfig,
                 priorityQueueStateType,
                 ttlTimeProvider,
+                latencyTrackingStateConfig,
                 metricGroup,
                 stateHandles,
                 keyGroupCompressionDecorator,
@@ -223,6 +233,9 @@ public class RocksDBKeyedStateBackendBuilder<K> extends AbstractKeyedStateBacken
 
     RocksDBKeyedStateBackendBuilder<K> setNumberOfTransferingThreads(
             int numberOfTransferingThreads) {
+        Preconditions.checkState(
+                injectRocksDBStateUploader == null,
+                "numberOfTransferingThreads can be set only when injectRocksDBStateUploader is null.");
         this.numberOfTransferingThreads = numberOfTransferingThreads;
         return this;
     }
@@ -230,6 +243,24 @@ public class RocksDBKeyedStateBackendBuilder<K> extends AbstractKeyedStateBacken
     RocksDBKeyedStateBackendBuilder<K> setWriteBatchSize(long writeBatchSize) {
         checkArgument(writeBatchSize >= 0, "Write batch size should be non negative.");
         this.writeBatchSize = writeBatchSize;
+        return this;
+    }
+
+    RocksDBKeyedStateBackendBuilder<K> setRocksDBStateUploader(
+            RocksDBStateUploader rocksDBStateUploader) {
+        Preconditions.checkState(
+                injectRocksDBStateUploader == null, "rocksDBStateUploader can be only set once");
+        Preconditions.checkState(
+                numberOfTransferingThreads
+                        == RocksDBOptions.CHECKPOINT_TRANSFER_THREAD_NUM.defaultValue(),
+                "RocksDBStateUploader can only be set if numberOfTransferingThreads has not been manually set.");
+        this.injectRocksDBStateUploader = rocksDBStateUploader;
+        return this;
+    }
+
+    RocksDBKeyedStateBackendBuilder<K> setOverlapFractionThreshold(
+            double overlapFractionThreshold) {
+        this.overlapFractionThreshold = overlapFractionThreshold;
         return this;
     }
 
@@ -260,7 +291,7 @@ public class RocksDBKeyedStateBackendBuilder<K> extends AbstractKeyedStateBacken
                 new RocksDbTtlCompactFiltersManager(ttlTimeProvider);
 
         ResourceGuard rocksDBResourceGuard = new ResourceGuard();
-        RocksDBSnapshotStrategyBase<K, ?> checkpointStrategy;
+        RocksDBSnapshotStrategyBase<K, ?> checkpointStrategy = null;
         PriorityQueueSetFactory priorityQueueFactory;
         SerializedCompositeKeyBuilder<K> sharedRocksKeyBuilder;
         // Number of bytes required to prefix the key groups.
@@ -271,7 +302,8 @@ public class RocksDBKeyedStateBackendBuilder<K> extends AbstractKeyedStateBacken
         try {
             // Variables for snapshot strategy when incremental checkpoint is enabled
             UUID backendUID = UUID.randomUUID();
-            SortedMap<Long, Set<StateHandleID>> materializedSstFiles = new TreeMap<>();
+            SortedMap<Long, Map<StateHandleID, StreamStateHandle>> materializedSstFiles =
+                    new TreeMap<>();
             long lastCompletedCheckpointId = -1L;
             if (injectedTestDB != null) {
                 db = injectedTestDB;
@@ -279,7 +311,7 @@ public class RocksDBKeyedStateBackendBuilder<K> extends AbstractKeyedStateBacken
                 nativeMetricMonitor =
                         nativeMetricOptions.isEnabled()
                                 ? new RocksDBNativeMetricMonitor(
-                                        nativeMetricOptions, metricGroup, db)
+                                        nativeMetricOptions, metricGroup, db, null)
                                 : null;
             } else {
                 prepareDirectories();
@@ -358,6 +390,7 @@ public class RocksDBKeyedStateBackendBuilder<K> extends AbstractKeyedStateBacken
             IOUtils.closeQuietly(optionsContainer);
             ttlCompactFiltersManager.disposeAndClearRegisteredCompactionFactories();
             kvStateInformation.clear();
+            IOUtils.closeQuietly(checkpointStrategy);
             try {
                 FileUtils.deleteDirectory(instanceBasePath);
             } catch (Exception ex) {
@@ -384,6 +417,7 @@ public class RocksDBKeyedStateBackendBuilder<K> extends AbstractKeyedStateBacken
                 this.keySerializerProvider.currentSchemaSerializer(),
                 this.executionConfig,
                 this.ttlTimeProvider,
+                latencyTrackingStateConfig,
                 db,
                 kvStateInformation,
                 registeredPQStates,
@@ -440,7 +474,8 @@ public class RocksDBKeyedStateBackendBuilder<K> extends AbstractKeyedStateBacken
                     restoreStateHandles,
                     ttlCompactFiltersManager,
                     writeBatchSize,
-                    optionsContainer.getWriteBufferManagerCapacity());
+                    optionsContainer.getWriteBufferManagerCapacity(),
+                    overlapFractionThreshold);
         } else if (priorityQueueStateType
                 == EmbeddedRocksDBStateBackend.PriorityQueueStateType.HEAP) {
             return new RocksDBHeapTimersFullRestoreOperation<>(
@@ -486,9 +521,13 @@ public class RocksDBKeyedStateBackendBuilder<K> extends AbstractKeyedStateBacken
             int keyGroupPrefixBytes,
             RocksDB db,
             UUID backendUID,
-            SortedMap<Long, Set<StateHandleID>> materializedSstFiles,
+            SortedMap<Long, Map<StateHandleID, StreamStateHandle>> materializedSstFiles,
             long lastCompletedCheckpointId) {
         RocksDBSnapshotStrategyBase<K, ?> checkpointSnapshotStrategy;
+        RocksDBStateUploader stateUploader =
+                injectRocksDBStateUploader == null
+                        ? new RocksDBStateUploader(numberOfTransferingThreads)
+                        : injectRocksDBStateUploader;
         if (enableIncrementalCheckpointing) {
             checkpointSnapshotStrategy =
                     new RocksIncrementalSnapshotStrategy<>(
@@ -503,20 +542,21 @@ public class RocksDBKeyedStateBackendBuilder<K> extends AbstractKeyedStateBacken
                             instanceBasePath,
                             backendUID,
                             materializedSstFiles,
-                            lastCompletedCheckpointId,
-                            numberOfTransferingThreads);
+                            stateUploader,
+                            lastCompletedCheckpointId);
         } else {
             checkpointSnapshotStrategy =
-                    new RocksFullSnapshotStrategy<>(
+                    new RocksNativeFullSnapshotStrategy<>(
                             db,
                             rocksDBResourceGuard,
                             keySerializerProvider.currentSchemaSerializer(),
                             kvStateInformation,
-                            registeredPQStates,
                             keyGroupRange,
                             keyGroupPrefixBytes,
                             localRecoveryConfig,
-                            keyGroupCompressionDecorator);
+                            instanceBasePath,
+                            backendUID,
+                            stateUploader);
         }
         return checkpointSnapshotStrategy;
     }

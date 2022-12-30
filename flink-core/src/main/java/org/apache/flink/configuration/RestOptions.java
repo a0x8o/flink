@@ -22,6 +22,8 @@ import org.apache.flink.annotation.Internal;
 import org.apache.flink.annotation.docs.Documentation;
 import org.apache.flink.configuration.description.Description;
 
+import java.time.Duration;
+
 import static org.apache.flink.configuration.ConfigOptions.key;
 import static org.apache.flink.configuration.description.TextElement.text;
 
@@ -35,6 +37,7 @@ public class RestOptions {
     @Documentation.Section(Documentation.Sections.COMMON_HOST_PORT)
     public static final ConfigOption<String> BIND_ADDRESS =
             key("rest.bind-address")
+                    .stringType()
                     .noDefaultValue()
                     .withFallbackKeys(WebOptions.ADDRESS.key())
                     .withDeprecatedKeys(
@@ -45,6 +48,7 @@ public class RestOptions {
     @Documentation.Section(Documentation.Sections.COMMON_HOST_PORT)
     public static final ConfigOption<String> BIND_PORT =
             key("rest.bind-port")
+                    .stringType()
                     .defaultValue("8081")
                     .withFallbackKeys(REST_PORT_KEY)
                     .withDeprecatedKeys(
@@ -58,6 +62,7 @@ public class RestOptions {
     @Documentation.Section(Documentation.Sections.COMMON_HOST_PORT)
     public static final ConfigOption<String> ADDRESS =
             key("rest.address")
+                    .stringType()
                     .noDefaultValue()
                     .withFallbackKeys(JobManagerOptions.ADDRESS.key())
                     .withDescription(
@@ -70,6 +75,7 @@ public class RestOptions {
     @Documentation.Section(Documentation.Sections.COMMON_HOST_PORT)
     public static final ConfigOption<Integer> PORT =
             key(REST_PORT_KEY)
+                    .intType()
                     .defaultValue(8081)
                     .withDeprecatedKeys(WebOptions.PORT.key())
                     .withDescription(
@@ -86,6 +92,7 @@ public class RestOptions {
     @Documentation.Section(Documentation.Sections.EXPERT_REST)
     public static final ConfigOption<Long> AWAIT_LEADER_TIMEOUT =
             key("rest.await-leader-timeout")
+                    .longType()
                     .defaultValue(30_000L)
                     .withDescription(
                             "The time in ms that the client waits for the leader address, e.g., "
@@ -99,6 +106,7 @@ public class RestOptions {
     @Documentation.Section(Documentation.Sections.EXPERT_REST)
     public static final ConfigOption<Integer> RETRY_MAX_ATTEMPTS =
             key("rest.retry.max-attempts")
+                    .intType()
                     .defaultValue(20)
                     .withDescription(
                             "The number of retries the client will attempt if a retryable "
@@ -112,6 +120,7 @@ public class RestOptions {
     @Documentation.Section(Documentation.Sections.EXPERT_REST)
     public static final ConfigOption<Long> RETRY_DELAY =
             key("rest.retry.delay")
+                    .longType()
                     .defaultValue(3_000L)
                     .withDescription(
                             String.format(
@@ -123,6 +132,7 @@ public class RestOptions {
     @Documentation.Section(Documentation.Sections.EXPERT_REST)
     public static final ConfigOption<Long> CONNECTION_TIMEOUT =
             key("rest.connection-timeout")
+                    .longType()
                     .defaultValue(15_000L)
                     .withDescription(
                             "The maximum time in ms for the client to establish a TCP connection.");
@@ -131,6 +141,7 @@ public class RestOptions {
     @Documentation.Section(Documentation.Sections.EXPERT_REST)
     public static final ConfigOption<Long> IDLENESS_TIMEOUT =
             key("rest.idleness-timeout")
+                    .longType()
                     .defaultValue(5L * 60L * 1_000L) // 5 minutes
                     .withDescription(
                             "The maximum time in ms for a connection to stay idle before failing.");
@@ -139,6 +150,7 @@ public class RestOptions {
     @Documentation.Section(Documentation.Sections.EXPERT_REST)
     public static final ConfigOption<Integer> SERVER_MAX_CONTENT_LENGTH =
             key("rest.server.max-content-length")
+                    .intType()
                     .defaultValue(104_857_600)
                     .withDescription(
                             "The maximum content length in bytes that the server will handle.");
@@ -147,6 +159,7 @@ public class RestOptions {
     @Documentation.Section(Documentation.Sections.EXPERT_REST)
     public static final ConfigOption<Integer> CLIENT_MAX_CONTENT_LENGTH =
             key("rest.client.max-content-length")
+                    .intType()
                     .defaultValue(104_857_600)
                     .withDescription(
                             "The maximum content length in bytes that the client will handle.");
@@ -154,6 +167,7 @@ public class RestOptions {
     @Documentation.Section(Documentation.Sections.EXPERT_REST)
     public static final ConfigOption<Integer> SERVER_NUM_THREADS =
             key("rest.server.numThreads")
+                    .intType()
                     .defaultValue(4)
                     .withDescription(
                             "The number of threads for the asynchronous processing of requests.");
@@ -161,9 +175,80 @@ public class RestOptions {
     @Documentation.Section(Documentation.Sections.EXPERT_REST)
     public static final ConfigOption<Integer> SERVER_THREAD_PRIORITY =
             key("rest.server.thread-priority")
+                    .intType()
                     .defaultValue(Thread.NORM_PRIORITY)
                     .withDescription(
                             "Thread priority of the REST server's executor for processing asynchronous requests. "
                                     + "Lowering the thread priority will give Flink's main components more CPU time whereas "
                                     + "increasing will allocate more time for the REST server's processing.");
+
+    /** Enables the experimental flame graph feature. */
+    @Documentation.Section(Documentation.Sections.EXPERT_REST)
+    public static final ConfigOption<Boolean> ENABLE_FLAMEGRAPH =
+            key("rest.flamegraph.enabled")
+                    .booleanType()
+                    .defaultValue(false)
+                    .withDescription("Enables the experimental flame graph feature.");
+
+    /**
+     * "Time after which cached stats are cleaned up if not accessed. It can be specified using
+     * notation: "100 s", "10 m".
+     */
+    @Documentation.Section(Documentation.Sections.EXPERT_REST)
+    public static final ConfigOption<Duration> FLAMEGRAPH_CLEANUP_INTERVAL =
+            key("rest.flamegraph.cleanup-interval")
+                    .durationType()
+                    .defaultValue(Duration.ofMinutes(10))
+                    .withDescription(
+                            "Time after which cached stats are cleaned up if not accessed. It can"
+                                    + " be specified using notation: \"100 s\", \"10 m\".");
+
+    /**
+     * Time after which available stats are deprecated and need to be refreshed (by resampling). It
+     * can be specified using notation: "30 s", "1 m".
+     */
+    @Documentation.Section(Documentation.Sections.EXPERT_REST)
+    public static final ConfigOption<Duration> FLAMEGRAPH_REFRESH_INTERVAL =
+            key("rest.flamegraph.refresh-interval")
+                    .durationType()
+                    .defaultValue(Duration.ofSeconds(60))
+                    .withDescription(
+                            "Time after which available stats are deprecated and need to be refreshed"
+                                    + " (by resampling).  It can be specified using notation: \"30 s\", \"1 m\".");
+
+    /** Number of samples to take to build a FlameGraph. */
+    @Documentation.Section(Documentation.Sections.EXPERT_REST)
+    public static final ConfigOption<Integer> FLAMEGRAPH_NUM_SAMPLES =
+            key("rest.flamegraph.num-samples")
+                    .intType()
+                    .defaultValue(100)
+                    .withDescription("Number of samples to take to build a FlameGraph.");
+
+    /**
+     * Delay between individual stack trace samples taken for building a FlameGraph. It can be
+     * specified using notation: "100 ms", "1 s".
+     */
+    @Documentation.Section(Documentation.Sections.EXPERT_REST)
+    public static final ConfigOption<Duration> FLAMEGRAPH_DELAY =
+            key("rest.flamegraph.delay-between-samples")
+                    .durationType()
+                    .defaultValue(Duration.ofMillis(50))
+                    .withDescription(
+                            "Delay between individual stack trace samples taken for building a FlameGraph. It can be specified using notation: \"100 ms\", \"1 s\".");
+
+    /** Maximum depth of stack traces used to create FlameGraphs. */
+    @Documentation.Section(Documentation.Sections.EXPERT_REST)
+    public static final ConfigOption<Integer> FLAMEGRAPH_STACK_TRACE_DEPTH =
+            key("rest.flamegraph.stack-depth")
+                    .intType()
+                    .defaultValue(100)
+                    .withDescription("Maximum depth of stack traces used to create FlameGraphs.");
+
+    @Documentation.Section(Documentation.Sections.EXPERT_REST)
+    public static final ConfigOption<Duration> ASYNC_OPERATION_STORE_DURATION =
+            key("rest.async.store-duration")
+                    .durationType()
+                    .defaultValue(Duration.ofMinutes(5))
+                    .withDescription(
+                            "Maximum duration that the result of an async operation is stored. Once elapsed the result of the operation can no longer be retrieved.");
 }

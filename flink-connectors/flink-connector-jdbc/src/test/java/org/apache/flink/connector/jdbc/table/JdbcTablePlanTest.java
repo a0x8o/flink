@@ -28,7 +28,7 @@ import org.junit.Test;
 /** Plan tests for JDBC connector, for example, testing projection push down. */
 public class JdbcTablePlanTest extends TableTestBase {
 
-    private final StreamTableTestUtil util = streamTestUtil(new TableConfig());
+    private final StreamTableTestUtil util = streamTestUtil(TableConfig.getDefault());
 
     @Before
     public void setup() {
@@ -57,5 +57,11 @@ public class JdbcTablePlanTest extends TableTestBase {
     @Test
     public void testLimitPushDown() {
         util.verifyExecPlan("SELECT id, time_col FROM jdbc LIMIT 3");
+    }
+
+    @Test
+    public void testFilterPushdown() {
+        util.verifyExecPlan(
+                "SELECT id, time_col, real_col FROM jdbc WHERE id = 900001 AND time_col <> TIME '11:11:11' OR double_col >= -1000.23");
     }
 }

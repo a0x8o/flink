@@ -28,6 +28,7 @@ import org.apache.flink.client.program.ClusterClient;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.MemorySize;
 import org.apache.flink.configuration.TaskManagerOptions;
+import org.apache.flink.core.execution.SavepointFormatType;
 import org.apache.flink.core.testutils.MultiShotLatch;
 import org.apache.flink.runtime.checkpoint.CheckpointException;
 import org.apache.flink.runtime.checkpoint.CheckpointFailureReason;
@@ -50,7 +51,6 @@ import org.apache.flink.streaming.api.windowing.assigners.TumblingEventTimeWindo
 import org.apache.flink.streaming.api.windowing.time.Time;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.test.util.MiniClusterWithClientResource;
-import org.apache.flink.testutils.junit.FailsWithAdaptiveScheduler;
 import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.TestLogger;
 
@@ -58,13 +58,13 @@ import org.junit.Assert;
 import org.junit.Before;
 import org.junit.ClassRule;
 import org.junit.Test;
-import org.junit.experimental.categories.Category;
 
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import static org.apache.flink.test.checkpointing.SavepointITCase.waitUntilAllTasksAreRunning;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertTrue;
@@ -161,7 +161,25 @@ public class TimestampITCase extends TestLogger {
     }
 
     @Test
-    @Category(FailsWithAdaptiveScheduler.class) // FLINK-21333
+    public void testSelfUnionWatermarkPropagation() throws Exception {
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.setParallelism(1);
+        DataStream<Integer> dataStream1 = env.fromElements(1, 2, 3);
+
+        dataStream1
+                .union(dataStream1)
+                .transform(
+                        "Custom Operator", BasicTypeInfo.INT_TYPE_INFO, new CustomOperator(false))
+                .addSink(new DiscardingSink<>());
+        env.execute();
+
+        assertEquals(
+                Watermark.MAX_WATERMARK,
+                CustomOperator.finalWatermarks[0].get(
+                        CustomOperator.finalWatermarks[0].size() - 1));
+    }
+
+    @Test
     public void testWatermarkPropagationNoFinalWatermarkOnStop() throws Exception {
 
         // for this test to work, we need to be sure that no other jobs are being executed
@@ -204,10 +222,17 @@ public class TimestampITCase extends TestLogger {
 
                             JobID id = running.get(0);
 
+                            waitUntilAllTasksAreRunning(CLUSTER.getRestClusterClient(), id);
                             // send stop until the job is stopped
                             do {
                                 try {
-                                    clusterClient.stopWithSavepoint(id, false, "test").get();
+                                    clusterClient
+                                            .stopWithSavepoint(
+                                                    id,
+                                                    false,
+                                                    "test",
+                                                    SavepointFormatType.CANONICAL)
+                                            .get();
                                 } catch (Exception e) {
                                     boolean ignoreException =
                                             ExceptionUtils.findThrowable(
@@ -640,7 +665,8 @@ public class TimestampITCase extends TestLogger {
 
     /**
      * This verifies that an event time source works when setting stream time characteristic to
-     * processing time. In this case, the watermarks should just be swallowed.
+     * processing time. In this case, the watermarks should just be swallowed apart from the last
+     * final watermark marking the end of time.
      */
     @Test
     public void testEventTimeSourceWithProcessingTime() throws Exception {
@@ -659,7 +685,8 @@ public class TimestampITCase extends TestLogger {
 
         // verify that we don't get any watermarks, the source is used as watermark source in
         // other tests, so it normally emits watermarks
-        Assert.assertTrue(CustomOperator.finalWatermarks[0].size() == 0);
+        Assert.assertTrue(CustomOperator.finalWatermarks[0].size() == 1);
+        Assert.assertEquals(Watermark.MAX_WATERMARK, CustomOperator.finalWatermarks[0].get(0));
     }
 
     @Test
@@ -896,10 +923,7 @@ public class TimestampITCase extends TestLogger {
     private static List<JobID> getRunningJobs(ClusterClient<?> client) throws Exception {
         Collection<JobStatusMessage> statusMessages = client.listJobs().get();
         return statusMessages.stream()
-                .filter(
-                        status ->
-                                !status.getJobState().isGloballyTerminalState()
-                                        && status.getJobState() != JobStatus.INITIALIZING)
+                .filter(status -> status.getJobState() == JobStatus.RUNNING)
                 .map(JobStatusMessage::getJobId)
                 .collect(Collectors.toList());
     }

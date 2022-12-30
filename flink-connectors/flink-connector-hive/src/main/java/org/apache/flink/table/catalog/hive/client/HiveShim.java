@@ -38,8 +38,11 @@ import org.apache.hadoop.hive.metastore.api.UnknownDBException;
 import org.apache.hadoop.hive.ql.exec.FileSinkOperator;
 import org.apache.hadoop.hive.ql.exec.FunctionInfo;
 import org.apache.hadoop.hive.ql.io.HiveOutputFormat;
+import org.apache.hadoop.hive.ql.metadata.Hive;
 import org.apache.hadoop.hive.ql.udf.generic.SimpleGenericUDAFParameterInfo;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
+import org.apache.hadoop.hive.serde2.objectinspector.PrimitiveObjectInspector;
+import org.apache.hadoop.hive.serde2.typeinfo.PrimitiveTypeInfo;
 import org.apache.hadoop.io.Writable;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.thrift.TException;
@@ -50,6 +53,7 @@ import java.io.Serializable;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
@@ -118,12 +122,18 @@ public interface HiveShim extends Serializable {
      */
     Class<?> getDateDataTypeClass();
 
+    /** Gets writable class for Date type. */
+    Class<?> getDateWritableClass();
+
     /**
      * Hive Timestamp data type class was changed in Hive 3.1.0.
      *
      * @return Hive's Timestamp class
      */
     Class<?> getTimestampDataTypeClass();
+
+    /** Gets writable class for Timestamp type. */
+    Class<?> getTimestampWritableClass();
 
     /**
      * Generate Hive ColumnStatisticsData from Flink CatalogColumnStatisticsDataDate for DATE
@@ -207,4 +217,41 @@ public interface HiveShim extends Serializable {
     /** Create orc {@link BulkWriter.Factory} for different hive versions. */
     BulkWriter.Factory<RowData> createOrcBulkWriterFactory(
             Configuration conf, String schema, LogicalType[] fieldTypes);
+
+    /** Checks whether a hive table is a materialized view. */
+    default boolean isMaterializedView(org.apache.hadoop.hive.ql.metadata.Table table) {
+        return false;
+    }
+
+    default PrimitiveTypeInfo getIntervalYearMonthTypeInfo() {
+        throw new UnsupportedOperationException(
+                "INTERVAL YEAR MONTH type not supported until 1.2.0");
+    }
+
+    default PrimitiveTypeInfo getIntervalDayTimeTypeInfo() {
+        throw new UnsupportedOperationException("INTERVAL DAY TIME type not supported until 1.2.0");
+    }
+
+    default boolean isIntervalYearMonthType(
+            PrimitiveObjectInspector.PrimitiveCategory primitiveCategory) {
+        return false;
+    }
+
+    default boolean isIntervalDayTimeType(
+            PrimitiveObjectInspector.PrimitiveCategory primitiveCategory) {
+        return false;
+    }
+
+    void registerTemporaryFunction(String funcName, Class funcClass);
+
+    void loadPartition(
+            Hive hive,
+            Path loadPath,
+            String tableName,
+            Map<String, String> partSpec,
+            boolean isSkewedStoreAsSubdir,
+            boolean replace,
+            boolean isSrcLocal);
+
+    void loadTable(Hive hive, Path loadPath, String tableName, boolean replace, boolean isSrcLocal);
 }

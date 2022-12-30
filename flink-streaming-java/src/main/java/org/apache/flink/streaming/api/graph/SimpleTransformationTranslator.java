@@ -24,6 +24,7 @@ import org.apache.flink.streaming.util.graph.StreamGraphUtils;
 
 import java.util.Collection;
 
+import static org.apache.flink.runtime.util.config.memory.ManagedMemoryUtils.validateUseCaseWeightsNotConflict;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
@@ -116,12 +117,16 @@ public abstract class SimpleTransformationTranslator<OUT, T extends Transformati
         }
 
         final StreamNode streamNode = streamGraph.getStreamNode(transformationId);
-        if (streamNode != null
-                && streamNode.getManagedMemoryOperatorScopeUseCaseWeights().isEmpty()
-                && streamNode.getManagedMemorySlotScopeUseCases().isEmpty()) {
+        if (streamNode != null) {
+            validateUseCaseWeightsNotConflict(
+                    streamNode.getManagedMemoryOperatorScopeUseCaseWeights(),
+                    transformation.getManagedMemoryOperatorScopeUseCaseWeights());
             streamNode.setManagedMemoryUseCaseWeights(
                     transformation.getManagedMemoryOperatorScopeUseCaseWeights(),
                     transformation.getManagedMemorySlotScopeUseCases());
+            if (null != transformation.getDescription()) {
+                streamNode.setOperatorDescription(transformation.getDescription());
+            }
         }
     }
 }

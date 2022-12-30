@@ -28,6 +28,7 @@ import org.apache.flink.api.java.typeutils.ObjectArrayTypeInfo;
 import org.apache.flink.api.java.typeutils.RowTypeInfo;
 import org.apache.flink.types.Row;
 import org.apache.flink.util.Preconditions;
+import org.apache.flink.util.jackson.JacksonMapperFactory;
 
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.databind.JsonNode;
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.databind.ObjectWriter;
@@ -40,14 +41,14 @@ import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.dataformat.csv.Csv
 import java.io.Serializable;
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.time.Instant;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
-import java.time.format.DateTimeFormatterBuilder;
+import java.time.ZoneId;
 import java.util.Arrays;
 import java.util.Objects;
 
-import static java.time.format.DateTimeFormatter.ISO_LOCAL_DATE;
-import static java.time.format.DateTimeFormatter.ISO_LOCAL_TIME;
+import static org.apache.flink.formats.common.TimeFormats.SQL_TIMESTAMP_FORMAT;
+import static org.apache.flink.formats.common.TimeFormats.SQL_TIMESTAMP_WITH_LOCAL_TIMEZONE_FORMAT;
 
 /**
  * Serialization schema that serializes an object of Flink types into a CSV bytes.
@@ -56,8 +57,13 @@ import static java.time.format.DateTimeFormatter.ISO_LOCAL_TIME;
  *
  * <p>Result <code>byte[]</code> messages can be deserialized using {@link
  * CsvRowDeserializationSchema}.
+ *
+ * @deprecated The format was developed for the Table API users and will not be maintained for
+ *     DataStream API users anymore. Either use Table API or switch to Data Stream, defining your
+ *     own {@link SerializationSchema}.
  */
 @PublicEvolving
+@Deprecated
 public final class CsvRowSerializationSchema implements SerializationSchema<Row> {
 
     private static final long serialVersionUID = 2098447220136965L;
@@ -69,13 +75,13 @@ public final class CsvRowSerializationSchema implements SerializationSchema<Row>
     private final RuntimeConverter runtimeConverter;
 
     /** CsvMapper used to write {@link JsonNode} into bytes. */
-    private final CsvMapper csvMapper;
+    private transient CsvMapper csvMapper;
 
     /** Schema describing the input CSV data. */
     private final CsvSchema csvSchema;
 
     /** Object writer used to write rows. It is configured by {@link CsvSchema}. */
-    private final ObjectWriter objectWriter;
+    private transient ObjectWriter objectWriter;
 
     /** Reusable object node. */
     private transient ObjectNode root;
@@ -83,8 +89,12 @@ public final class CsvRowSerializationSchema implements SerializationSchema<Row>
     private CsvRowSerializationSchema(RowTypeInfo typeInfo, CsvSchema csvSchema) {
         this.typeInfo = typeInfo;
         this.runtimeConverter = createRowRuntimeConverter(typeInfo, true);
-        this.csvMapper = new CsvMapper();
         this.csvSchema = csvSchema;
+    }
+
+    @Override
+    public void open(InitializationContext context) throws Exception {
+        this.csvMapper = JacksonMapperFactory.createCsvMapper();
         this.objectWriter = csvMapper.writer(csvSchema);
     }
 
@@ -209,14 +219,6 @@ public final class CsvRowSerializationSchema implements SerializationSchema<Row>
 
     // --------------------------------------------------------------------------------------------
 
-    private static final DateTimeFormatter DATE_TIME_FORMATTER =
-            new DateTimeFormatterBuilder()
-                    .parseCaseInsensitive()
-                    .append(ISO_LOCAL_DATE)
-                    .appendLiteral(' ')
-                    .append(ISO_LOCAL_TIME)
-                    .toFormatter();
-
     private interface RuntimeConverter extends Serializable {
         JsonNode convert(CsvMapper csvMapper, ContainerNode<?> container, Object obj);
     }
@@ -319,7 +321,12 @@ public final class CsvRowSerializationSchema implements SerializationSchema<Row>
             return (csvMapper, container, obj) -> container.textNode(obj.toString());
         } else if (info.equals(Types.LOCAL_DATE_TIME)) {
             return (csvMapper, container, obj) ->
-                    container.textNode(DATE_TIME_FORMATTER.format((LocalDateTime) obj));
+                    container.textNode(SQL_TIMESTAMP_FORMAT.format((LocalDateTime) obj));
+        } else if (info.equals(Types.INSTANT)) {
+            return (csvMapper, container, obj) ->
+                    container.textNode(
+                            LocalDateTime.ofInstant((Instant) obj, ZoneId.of("UTC"))
+                                    .format(SQL_TIMESTAMP_WITH_LOCAL_TIMEZONE_FORMAT));
         } else if (info instanceof RowTypeInfo) {
             return createRowRuntimeConverter((RowTypeInfo) info, false);
         } else if (info instanceof BasicArrayTypeInfo) {

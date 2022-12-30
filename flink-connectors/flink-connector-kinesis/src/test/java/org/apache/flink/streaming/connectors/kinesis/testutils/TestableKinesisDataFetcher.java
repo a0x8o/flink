@@ -26,29 +26,25 @@ import org.apache.flink.streaming.connectors.kinesis.proxy.KinesisProxyInterface
 import org.apache.flink.streaming.connectors.kinesis.proxy.KinesisProxyV2Interface;
 import org.apache.flink.streaming.connectors.kinesis.serialization.KinesisDeserializationSchema;
 
-import org.mockito.invocation.InvocationOnMock;
-
+import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Properties;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
-
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 /** Extension of the {@link KinesisDataFetcher} for testing. */
 public class TestableKinesisDataFetcher<T> extends KinesisDataFetcher<T> {
 
     private final OneShotLatch runWaiter;
-    private final OneShotLatch initialDiscoveryWaiter;
+    private final Semaphore discoveryWaiter = new Semaphore(0);
     private final OneShotLatch shutdownWaiter;
-
-    private volatile boolean running;
 
     public TestableKinesisDataFetcher(
             List<String> fakeStreams,
@@ -105,10 +101,7 @@ public class TestableKinesisDataFetcher<T> extends KinesisDataFetcher<T> {
                 properties -> fakeKinesisV2);
 
         this.runWaiter = new OneShotLatch();
-        this.initialDiscoveryWaiter = new OneShotLatch();
         this.shutdownWaiter = new OneShotLatch();
-
-        this.running = true;
     }
 
     @Override
@@ -128,20 +121,7 @@ public class TestableKinesisDataFetcher<T> extends KinesisDataFetcher<T> {
     @Override
     protected ExecutorService createShardConsumersThreadPool(String subtaskName) {
         // this is just a dummy fetcher, so no need to create a thread pool for shard consumers
-        ExecutorService mockExecutor = mock(ExecutorService.class);
-        when(mockExecutor.isTerminated()).thenAnswer((InvocationOnMock invocation) -> !running);
-        try {
-            when(mockExecutor.awaitTermination(anyLong(), any())).thenReturn(!running);
-        } catch (InterruptedException e) {
-            // We're just trying to stub the method. Must acknowledge the checked exception.
-        }
-        return mockExecutor;
-    }
-
-    @Override
-    public void awaitTermination() throws InterruptedException {
-        this.running = false;
-        super.awaitTermination();
+        return new TestExecutorService();
     }
 
     @Override
@@ -153,11 +133,85 @@ public class TestableKinesisDataFetcher<T> extends KinesisDataFetcher<T> {
     @Override
     public List<StreamShardHandle> discoverNewShardsToSubscribe() throws InterruptedException {
         List<StreamShardHandle> newShards = super.discoverNewShardsToSubscribe();
-        initialDiscoveryWaiter.trigger();
+        discoveryWaiter.release();
         return newShards;
     }
 
     public void waitUntilInitialDiscovery() throws InterruptedException {
-        initialDiscoveryWaiter.await();
+        discoveryWaiter.acquire();
+    }
+
+    public void waitUntilDiscovery(int number) throws InterruptedException {
+        discoveryWaiter.acquire(number);
+    }
+
+    private static class TestExecutorService implements ExecutorService {
+        boolean terminated = false;
+
+        @Override
+        public void execute(Runnable command) {}
+
+        @Override
+        public void shutdown() {
+            terminated = true;
+        }
+
+        @Override
+        public List<Runnable> shutdownNow() {
+            terminated = true;
+            return Collections.emptyList();
+        }
+
+        @Override
+        public boolean isShutdown() {
+            return terminated;
+        }
+
+        @Override
+        public boolean isTerminated() {
+            return terminated;
+        }
+
+        @Override
+        public boolean awaitTermination(long timeout, TimeUnit unit) {
+            return terminated;
+        }
+
+        @Override
+        public <T> Future<T> submit(Callable<T> task) {
+            return null;
+        }
+
+        @Override
+        public <T> Future<T> submit(Runnable task, T result) {
+            return null;
+        }
+
+        @Override
+        public Future<?> submit(Runnable task) {
+            return null;
+        }
+
+        @Override
+        public <T> List<Future<T>> invokeAll(Collection<? extends Callable<T>> tasks) {
+            return null;
+        }
+
+        @Override
+        public <T> List<Future<T>> invokeAll(
+                Collection<? extends Callable<T>> tasks, long timeout, TimeUnit unit) {
+            return null;
+        }
+
+        @Override
+        public <T> T invokeAny(Collection<? extends Callable<T>> tasks) {
+            return null;
+        }
+
+        @Override
+        public <T> T invokeAny(
+                Collection<? extends Callable<T>> tasks, long timeout, TimeUnit unit) {
+            return null;
+        }
     }
 }

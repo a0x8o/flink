@@ -23,7 +23,7 @@ import org.apache.flink.kubernetes.kubeclient.parameters.KubernetesTaskManagerPa
 import org.apache.flink.runtime.clusterframework.ContaineredTaskManagerParameters;
 import org.apache.flink.runtime.clusterframework.TaskExecutorProcessUtils;
 
-import org.apache.flink.shaded.guava18.com.google.common.io.Files;
+import org.apache.flink.shaded.guava30.com.google.common.io.Files;
 
 import org.apache.commons.lang3.StringUtils;
 
@@ -58,6 +58,12 @@ public class KubernetesTestUtils {
                 ContaineredTaskManagerParameters.create(
                         flinkConfig, TaskExecutorProcessUtils.processSpecFromConfig(flinkConfig));
         return new KubernetesTaskManagerParameters(
-                flinkConfig, podName, "", containeredTaskManagerParameters, Collections.emptyMap());
+                flinkConfig,
+                podName,
+                "",
+                "",
+                containeredTaskManagerParameters,
+                Collections.emptyMap(),
+                Collections.emptySet());
     }
 }

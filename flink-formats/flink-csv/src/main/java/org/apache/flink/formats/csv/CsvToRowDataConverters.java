@@ -19,6 +19,7 @@
 package org.apache.flink.formats.csv;
 
 import org.apache.flink.annotation.Internal;
+import org.apache.flink.formats.common.Converter;
 import org.apache.flink.table.data.DecimalData;
 import org.apache.flink.table.data.GenericArrayData;
 import org.apache.flink.table.data.GenericRowData;
@@ -40,8 +41,12 @@ import java.io.Serializable;
 import java.lang.reflect.Array;
 import java.math.BigDecimal;
 import java.sql.Date;
-import java.sql.Timestamp;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
+
+import static org.apache.flink.formats.common.TimeFormats.SQL_TIMESTAMP_FORMAT;
+import static org.apache.flink.formats.common.TimeFormats.SQL_TIMESTAMP_WITH_LOCAL_TIMEZONE_FORMAT;
 
 /** Tool class used to convert from CSV-format {@link JsonNode} to {@link RowData}. * */
 @Internal
@@ -61,7 +66,12 @@ public class CsvToRowDataConverters implements Serializable {
      * data structures.
      */
     @FunctionalInterface
-    public interface CsvToRowDataConverter extends Serializable {
+    interface CsvToRowDataConverter extends Converter<JsonNode, Object, Void> {
+        @Override
+        default Object convert(JsonNode source, Void context) {
+            return convert(source);
+        }
+
         Object convert(JsonNode jsonNode);
     }
 
@@ -92,10 +102,15 @@ public class CsvToRowDataConverters implements Serializable {
                 } else {
                     field = jsonNode.get(i);
                 }
-                if (field == null) {
-                    row.setField(i, null);
-                } else {
-                    row.setField(i, fieldConverters[i].convert(field));
+                try {
+                    if (field == null) {
+                        row.setField(i, null);
+                    } else {
+                        row.setField(i, fieldConverters[i].convert(field));
+                    }
+                } catch (Throwable t) {
+                    throw new RuntimeException(
+                            String.format("Fail to deserialize at field: %s.", fieldNames[i]), t);
                 }
             }
             return row;
@@ -141,9 +156,11 @@ public class CsvToRowDataConverters implements Serializable {
                 return this::convertToDate;
             case TIME_WITHOUT_TIME_ZONE:
                 return convertToTime((TimeType) type);
-            case TIMESTAMP_WITH_TIME_ZONE:
             case TIMESTAMP_WITHOUT_TIME_ZONE:
-                return this::convertToTimestamp;
+                return jsonNode -> convertToTimestamp(jsonNode, SQL_TIMESTAMP_FORMAT);
+            case TIMESTAMP_WITH_LOCAL_TIME_ZONE:
+                return jsonNode ->
+                        convertToTimestamp(jsonNode, SQL_TIMESTAMP_WITH_LOCAL_TIMEZONE_FORMAT);
             case FLOAT:
                 return this::convertToFloat;
             case DOUBLE:
@@ -245,10 +262,10 @@ public class CsvToRowDataConverters implements Serializable {
         };
     }
 
-    private TimestampData convertToTimestamp(JsonNode jsonNode) {
-        // csv currently is using Timestamp.valueOf() to parse timestamp string
-        Timestamp timestamp = Timestamp.valueOf(jsonNode.asText());
-        return TimestampData.fromTimestamp(timestamp);
+    private TimestampData convertToTimestamp(
+            JsonNode jsonNode, DateTimeFormatter dateTimeFormatter) {
+        return TimestampData.fromLocalDateTime(
+                LocalDateTime.parse(jsonNode.asText().trim(), dateTimeFormatter));
     }
 
     private StringData convertToString(JsonNode jsonNode) {
@@ -294,7 +311,7 @@ public class CsvToRowDataConverters implements Serializable {
     }
 
     private static void validateArity(int expected, int actual, boolean ignoreParseErrors) {
-        if (expected != actual && !ignoreParseErrors) {
+        if (expected > actual && !ignoreParseErrors) {
             throw new RuntimeException(
                     "Row length mismatch. "
                             + expected

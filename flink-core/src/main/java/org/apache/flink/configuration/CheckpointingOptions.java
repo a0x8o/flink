@@ -26,7 +26,7 @@ import org.apache.flink.configuration.description.TextElement;
 public class CheckpointingOptions {
 
     // ------------------------------------------------------------------------
-    //  general checkpoint and state backend options
+    //  general checkpoint options
     // ------------------------------------------------------------------------
 
     /**
@@ -39,12 +39,17 @@ public class CheckpointingOptions {
      * StateBackendFactory#createFromConfig(ReadableConfig, ClassLoader)} method is called.
      *
      * <p>Recognized shortcut names are 'hashmap' and 'rocksdb'.
+     *
+     * @deprecated Use {@link StateBackendOptions#STATE_BACKEND}.
      */
-    @Documentation.Section(value = Documentation.Sections.COMMON_STATE_BACKENDS, position = 1)
+    @Documentation.Section(value = Documentation.Sections.COMMON_STATE_BACKENDS)
+    @Documentation.ExcludeFromDocumentation("Hidden for deprecated")
+    @Deprecated
     public static final ConfigOption<String> STATE_BACKEND =
-            ConfigOptions.key("state.backend")
+            ConfigOptions.key("state.backend.type")
                     .stringType()
                     .noDefaultValue()
+                    .withDeprecatedKeys("state.backend")
                     .withDescription(
                             Description.builder()
                                     .text("The state backend to be used to store state.")
@@ -100,24 +105,17 @@ public class CheckpointingOptions {
     @Documentation.Section(Documentation.Sections.COMMON_STATE_BACKENDS)
     public static final ConfigOption<Integer> MAX_RETAINED_CHECKPOINTS =
             ConfigOptions.key("state.checkpoints.num-retained")
+                    .intType()
                     .defaultValue(1)
                     .withDescription("The maximum number of completed checkpoints to retain.");
 
-    /**
-     * Option whether the state backend should use an asynchronous snapshot method where possible
-     * and configurable.
-     *
-     * <p>Some state backends may not support asynchronous snapshots, or only support asynchronous
-     * snapshots, and ignore this option.
-     */
-    @Documentation.Section(Documentation.Sections.EXPERT_STATE_BACKENDS)
+    /** @deprecated Checkpoints are always asynchronous. */
+    @Deprecated
     public static final ConfigOption<Boolean> ASYNC_SNAPSHOTS =
             ConfigOptions.key("state.backend.async")
+                    .booleanType()
                     .defaultValue(true)
-                    .withDescription(
-                            "Option whether the state backend should use an asynchronous snapshot method where"
-                                    + " possible and configurable. Some state backends may not support asynchronous snapshots, or only support"
-                                    + " asynchronous snapshots, and ignore this option.");
+                    .withDescription("Deprecated option. All state snapshots are asynchronous.");
 
     /**
      * Option whether the state backend should create incremental checkpoints, if possible. For an
@@ -132,6 +130,7 @@ public class CheckpointingOptions {
     @Documentation.Section(Documentation.Sections.COMMON_STATE_BACKENDS)
     public static final ConfigOption<Boolean> INCREMENTAL_CHECKPOINTS =
             ConfigOptions.key("state.backend.incremental")
+                    .booleanType()
                     .defaultValue(false)
                     .withDescription(
                             "Option whether the state backend should create incremental checkpoints, if possible. For"
@@ -144,17 +143,18 @@ public class CheckpointingOptions {
      * This option configures local recovery for this state backend. By default, local recovery is
      * deactivated.
      *
-     * <p>Local recovery currently only covers keyed state backends. Currently, MemoryStateBackend
-     * and HashMapStateBackend do not support local recovery and ignore this option.
+     * <p>Local recovery currently only covers keyed state backends (including both the
+     * EmbeddedRocksDBStateBackend and the HashMapStateBackend).
      */
     @Documentation.Section(Documentation.Sections.COMMON_STATE_BACKENDS)
     public static final ConfigOption<Boolean> LOCAL_RECOVERY =
             ConfigOptions.key("state.backend.local-recovery")
+                    .booleanType()
                     .defaultValue(false)
                     .withDescription(
                             "This option configures local recovery for this state backend. By default, local recovery is "
-                                    + "deactivated. Local recovery currently only covers keyed state backends. Currently, MemoryStateBackend and "
-                                    + "HashMapStateBackend do not support local recovery and ignore this option.");
+                                    + "deactivated. Local recovery currently only covers keyed state backends "
+                                    + "(including both the EmbeddedRocksDBStateBackend and the HashMapStateBackend).");
 
     /**
      * The config parameter defining the root directories for storing file-based state for local
@@ -166,11 +166,20 @@ public class CheckpointingOptions {
     @Documentation.Section(Documentation.Sections.COMMON_STATE_BACKENDS)
     public static final ConfigOption<String> LOCAL_RECOVERY_TASK_MANAGER_STATE_ROOT_DIRS =
             ConfigOptions.key("taskmanager.state.local.root-dirs")
+                    .stringType()
                     .noDefaultValue()
                     .withDescription(
-                            "The config parameter defining the root directories for storing file-based state for local "
-                                    + "recovery. Local recovery currently only covers keyed state backends. Currently, MemoryStateBackend does "
-                                    + "not support local recovery and ignore this option");
+                            Description.builder()
+                                    .text(
+                                            "The config parameter defining the root directories for storing file-based "
+                                                    + "state for local recovery. Local recovery currently only covers keyed "
+                                                    + "state backends. If not configured it will default to <WORKING_DIR>/localState. "
+                                                    + "The <WORKING_DIR> can be configured via %s",
+                                            TextElement.code(
+                                                    ClusterOptions
+                                                            .TASK_MANAGER_PROCESS_WORKING_DIR_BASE
+                                                            .key()))
+                                    .build());
 
     // ------------------------------------------------------------------------
     //  Options specific to the file-system-based state backends
@@ -183,6 +192,7 @@ public class CheckpointingOptions {
     @Documentation.Section(value = Documentation.Sections.COMMON_STATE_BACKENDS, position = 3)
     public static final ConfigOption<String> SAVEPOINT_DIRECTORY =
             ConfigOptions.key("state.savepoints.dir")
+                    .stringType()
                     .noDefaultValue()
                     .withDeprecatedKeys("savepoints.state.backend.fs.dir")
                     .withDescription(

@@ -29,6 +29,7 @@ import org.apache.flink.table.api.TableException;
 import org.apache.flink.table.api.TableSchema;
 import org.apache.flink.table.api.Types;
 import org.apache.flink.table.api.ValidationException;
+import org.apache.flink.table.catalog.ResolvedSchema;
 import org.apache.flink.table.expressions.ApiExpressionUtils;
 import org.apache.flink.table.expressions.Expression;
 import org.apache.flink.table.expressions.ExpressionUtils;
@@ -39,8 +40,8 @@ import org.apache.flink.table.functions.BuiltInFunctionDefinitions;
 import org.apache.flink.table.types.AtomicDataType;
 import org.apache.flink.table.types.DataType;
 import org.apache.flink.table.types.DataTypeQueryable;
+import org.apache.flink.table.types.logical.LocalZonedTimestampType;
 import org.apache.flink.table.types.logical.LogicalType;
-import org.apache.flink.table.types.logical.LogicalTypeRoot;
 import org.apache.flink.table.types.logical.TimestampKind;
 import org.apache.flink.table.types.logical.TimestampType;
 import org.apache.flink.table.types.logical.utils.LogicalTypeChecks;
@@ -62,7 +63,7 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 import static java.lang.String.format;
-import static org.apache.flink.table.types.logical.utils.LogicalTypeChecks.hasRoot;
+import static org.apache.flink.table.types.logical.LogicalTypeRoot.TIMESTAMP_WITHOUT_TIME_ZONE;
 import static org.apache.flink.table.types.logical.utils.LogicalTypeChecks.isCompositeType;
 import static org.apache.flink.table.types.logical.utils.LogicalTypeChecks.isProctimeAttribute;
 import static org.apache.flink.table.types.logical.utils.LogicalTypeChecks.isRowtimeAttribute;
@@ -152,8 +153,8 @@ public class FieldInfoUtils {
             return isRowtimeDefined;
         }
 
-        public TableSchema toTableSchema() {
-            return TableSchema.builder().fields(fieldNames, fieldTypes).build();
+        public ResolvedSchema toResolvedSchema() {
+            return ResolvedSchema.physical(fieldNames, fieldTypes);
         }
     }
 
@@ -747,15 +748,12 @@ public class FieldInfoUtils {
     }
 
     private static boolean isRowtimeField(FieldInfo field) {
-        DataType type = field.getType();
-        return hasRoot(type.getLogicalType(), LogicalTypeRoot.TIMESTAMP_WITHOUT_TIME_ZONE)
-                && isRowtimeAttribute(type.getLogicalType());
+        final LogicalType logicalType = field.getType().getLogicalType();
+        return logicalType.is(TIMESTAMP_WITHOUT_TIME_ZONE) && isRowtimeAttribute(logicalType);
     }
 
     private static boolean isProctimeField(FieldInfo field) {
-        DataType type = field.getType();
-        return hasRoot(type.getLogicalType(), LogicalTypeRoot.TIMESTAMP_WITHOUT_TIME_ZONE)
-                && isProctimeAttribute(type.getLogicalType());
+        return isProctimeAttribute(field.getType().getLogicalType());
     }
 
     private static boolean isRowTimeExpression(Expression origExpr) {
@@ -819,8 +817,13 @@ public class FieldInfoUtils {
     }
 
     private static DataType createTimeIndicatorType(TimestampKind kind) {
-        return new AtomicDataType(new TimestampType(true, kind, 3))
-                .bridgedTo(java.sql.Timestamp.class);
+        if (kind == TimestampKind.PROCTIME) {
+            return new AtomicDataType(new LocalZonedTimestampType(true, kind, 3))
+                    .bridgedTo(java.time.Instant.class);
+        } else {
+            return new AtomicDataType(new TimestampType(true, kind, 3))
+                    .bridgedTo(java.sql.Timestamp.class);
+        }
     }
 
     private FieldInfoUtils() {}

@@ -19,23 +19,24 @@
 package org.apache.flink.connector.hbase2;
 
 import org.apache.flink.api.common.typeinfo.Types;
-import org.apache.flink.configuration.Configuration;
 import org.apache.flink.connector.hbase.options.HBaseWriteOptions;
 import org.apache.flink.connector.hbase.source.HBaseRowDataLookupFunction;
 import org.apache.flink.connector.hbase.util.HBaseConfigurationUtil;
 import org.apache.flink.connector.hbase.util.HBaseTableSchema;
 import org.apache.flink.connector.hbase2.sink.HBaseDynamicTableSink;
 import org.apache.flink.connector.hbase2.source.HBaseDynamicTableSource;
-import org.apache.flink.table.api.TableSchema;
-import org.apache.flink.table.catalog.CatalogTableImpl;
-import org.apache.flink.table.catalog.ObjectIdentifier;
+import org.apache.flink.connector.hbase2.source.HBaseRowDataAsyncLookupFunction;
+import org.apache.flink.table.catalog.Column;
+import org.apache.flink.table.catalog.ResolvedSchema;
 import org.apache.flink.table.connector.sink.DynamicTableSink;
 import org.apache.flink.table.connector.sink.SinkFunctionProvider;
 import org.apache.flink.table.connector.source.DynamicTableSource;
 import org.apache.flink.table.connector.source.LookupTableSource;
-import org.apache.flink.table.connector.source.TableFunctionProvider;
-import org.apache.flink.table.factories.FactoryUtil;
-import org.apache.flink.table.functions.TableFunction;
+import org.apache.flink.table.connector.source.lookup.AsyncLookupFunctionProvider;
+import org.apache.flink.table.connector.source.lookup.LookupFunctionProvider;
+import org.apache.flink.table.connector.source.lookup.cache.DefaultLookupCache;
+import org.apache.flink.table.functions.AsyncLookupFunction;
+import org.apache.flink.table.functions.LookupFunction;
 import org.apache.flink.table.runtime.connector.sink.SinkRuntimeProviderContext;
 import org.apache.flink.table.runtime.connector.source.LookupRuntimeProviderContext;
 import org.apache.flink.table.types.DataType;
@@ -47,6 +48,7 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.ExpectedException;
 
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -62,6 +64,9 @@ import static org.apache.flink.table.api.DataTypes.ROW;
 import static org.apache.flink.table.api.DataTypes.STRING;
 import static org.apache.flink.table.api.DataTypes.TIME;
 import static org.apache.flink.table.api.DataTypes.TIMESTAMP;
+import static org.apache.flink.table.factories.utils.FactoryMocks.createTableSink;
+import static org.apache.flink.table.factories.utils.FactoryMocks.createTableSource;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -85,25 +90,24 @@ public class HBaseDynamicTableFactoryTest {
     @SuppressWarnings("rawtypes")
     @Test
     public void testTableSourceFactory() {
-        TableSchema schema =
-                TableSchema.builder()
-                        .field(FAMILY1, ROW(FIELD(COL1, INT())))
-                        .field(FAMILY2, ROW(FIELD(COL1, INT()), FIELD(COL2, BIGINT())))
-                        .field(ROWKEY, BIGINT())
-                        .field(
+        ResolvedSchema schema =
+                ResolvedSchema.of(
+                        Column.physical(FAMILY1, ROW(FIELD(COL1, INT()))),
+                        Column.physical(FAMILY2, ROW(FIELD(COL1, INT()), FIELD(COL2, BIGINT()))),
+                        Column.physical(ROWKEY, BIGINT()),
+                        Column.physical(
                                 FAMILY3,
                                 ROW(
                                         FIELD(COL1, DOUBLE()),
                                         FIELD(COL2, BOOLEAN()),
-                                        FIELD(COL3, STRING())))
-                        .field(
+                                        FIELD(COL3, STRING()))),
+                        Column.physical(
                                 FAMILY4,
                                 ROW(
                                         FIELD(COL1, DECIMAL(10, 3)),
                                         FIELD(COL2, TIMESTAMP(3)),
                                         FIELD(COL3, DATE()),
-                                        FIELD(COL4, TIME())))
-                        .build();
+                                        FIELD(COL4, TIME()))));
 
         DynamicTableSource source = createTableSource(schema, getAllOptions());
         assertTrue(source instanceof HBaseDynamicTableSource);
@@ -112,10 +116,10 @@ public class HBaseDynamicTableFactoryTest {
         int[][] lookupKey = {{2}};
         LookupTableSource.LookupRuntimeProvider lookupProvider =
                 hbaseSource.getLookupRuntimeProvider(new LookupRuntimeProviderContext(lookupKey));
-        assertTrue(lookupProvider instanceof TableFunctionProvider);
+        assertTrue(lookupProvider instanceof LookupFunctionProvider);
 
-        TableFunction tableFunction =
-                ((TableFunctionProvider) lookupProvider).createTableFunction();
+        LookupFunction tableFunction =
+                ((LookupFunctionProvider) lookupProvider).createLookupFunction();
         assertTrue(tableFunction instanceof HBaseRowDataLookupFunction);
         assertEquals(
                 "testHBastTable", ((HBaseRowDataLookupFunction) tableFunction).getHTableName());
@@ -143,21 +147,47 @@ public class HBaseDynamicTableFactoryTest {
     }
 
     @Test
+    public void testLookupOptions() {
+        ResolvedSchema schema = ResolvedSchema.of(Column.physical(ROWKEY, STRING()));
+        Map<String, String> options = getAllOptions();
+        options.put("lookup.cache", "PARTIAL");
+        options.put("lookup.partial-cache.expire-after-access", "15213s");
+        options.put("lookup.partial-cache.expire-after-write", "18213s");
+        options.put("lookup.partial-cache.max-rows", "10000");
+        options.put("lookup.partial-cache.cache-missing-key", "false");
+        options.put("lookup.max-retries", "15513");
+
+        DynamicTableSource source = createTableSource(schema, options);
+        HBaseDynamicTableSource hbaseSource = (HBaseDynamicTableSource) source;
+        assertThat(((HBaseDynamicTableSource) source).getMaxRetryTimes()).isEqualTo(15513);
+        assertThat(hbaseSource.getCache()).isInstanceOf(DefaultLookupCache.class);
+        DefaultLookupCache cache = (DefaultLookupCache) hbaseSource.getCache();
+        assertThat(cache)
+                .isEqualTo(
+                        DefaultLookupCache.newBuilder()
+                                .expireAfterAccess(Duration.ofSeconds(15213))
+                                .expireAfterWrite(Duration.ofSeconds(18213))
+                                .maximumSize(10000)
+                                .cacheMissingKey(false)
+                                .build());
+    }
+
+    @Test
     public void testTableSinkFactory() {
-        TableSchema schema =
-                TableSchema.builder()
-                        .field(ROWKEY, STRING())
-                        .field(FAMILY1, ROW(FIELD(COL1, DOUBLE()), FIELD(COL2, INT())))
-                        .field(FAMILY2, ROW(FIELD(COL1, INT()), FIELD(COL3, BIGINT())))
-                        .field(FAMILY3, ROW(FIELD(COL2, BOOLEAN()), FIELD(COL3, STRING())))
-                        .field(
+        ResolvedSchema schema =
+                ResolvedSchema.of(
+                        Column.physical(ROWKEY, STRING()),
+                        Column.physical(FAMILY1, ROW(FIELD(COL1, DOUBLE()), FIELD(COL2, INT()))),
+                        Column.physical(FAMILY2, ROW(FIELD(COL1, INT()), FIELD(COL3, BIGINT()))),
+                        Column.physical(
+                                FAMILY3, ROW(FIELD(COL2, BOOLEAN()), FIELD(COL3, STRING()))),
+                        Column.physical(
                                 FAMILY4,
                                 ROW(
                                         FIELD(COL1, DECIMAL(10, 3)),
                                         FIELD(COL2, TIMESTAMP(3)),
                                         FIELD(COL3, DATE()),
-                                        FIELD(COL4, TIME())))
-                        .build();
+                                        FIELD(COL4, TIME()))));
 
         DynamicTableSink sink = createTableSink(schema, getAllOptions());
         assertTrue(sink instanceof HBaseDynamicTableSink);
@@ -217,7 +247,7 @@ public class HBaseDynamicTableFactoryTest {
         options.put("sink.buffer-flush.max-rows", "100");
         options.put("sink.buffer-flush.interval", "10s");
 
-        TableSchema schema = TableSchema.builder().field(ROWKEY, STRING()).build();
+        ResolvedSchema schema = ResolvedSchema.of(Column.physical(ROWKEY, STRING()));
 
         DynamicTableSink sink = createTableSink(schema, options);
         HBaseWriteOptions expected =
@@ -235,7 +265,7 @@ public class HBaseDynamicTableFactoryTest {
         Map<String, String> options = getAllOptions();
         options.put("sink.parallelism", "2");
 
-        TableSchema schema = TableSchema.builder().field(ROWKEY, STRING()).build();
+        ResolvedSchema schema = ResolvedSchema.of(Column.physical(ROWKEY, STRING()));
 
         DynamicTableSink sink = createTableSink(schema, options);
         assertTrue(sink instanceof HBaseDynamicTableSink);
@@ -247,13 +277,38 @@ public class HBaseDynamicTableFactoryTest {
     }
 
     @Test
+    public void testLookupAsync() {
+        Map<String, String> options = getAllOptions();
+        options.put("lookup.async", "true");
+        ResolvedSchema schema =
+                ResolvedSchema.of(
+                        Column.physical(ROWKEY, STRING()),
+                        Column.physical(FAMILY1, ROW(FIELD(COL1, DOUBLE()), FIELD(COL2, INT()))));
+        DynamicTableSource source = createTableSource(schema, options);
+        assertTrue(source instanceof HBaseDynamicTableSource);
+        HBaseDynamicTableSource hbaseSource = (HBaseDynamicTableSource) source;
+
+        int[][] lookupKey = {{0}};
+        LookupTableSource.LookupRuntimeProvider lookupProvider =
+                hbaseSource.getLookupRuntimeProvider(new LookupRuntimeProviderContext(lookupKey));
+        assertTrue(lookupProvider instanceof AsyncLookupFunctionProvider);
+
+        AsyncLookupFunction asyncTableFunction =
+                ((AsyncLookupFunctionProvider) lookupProvider).createAsyncLookupFunction();
+        assertTrue(asyncTableFunction instanceof HBaseRowDataAsyncLookupFunction);
+        assertEquals(
+                "testHBastTable",
+                ((HBaseRowDataAsyncLookupFunction) asyncTableFunction).getHTableName());
+    }
+
+    @Test
     public void testDisabledBufferFlushOptions() {
         Map<String, String> options = getAllOptions();
         options.put("sink.buffer-flush.max-size", "0");
         options.put("sink.buffer-flush.max-rows", "0");
         options.put("sink.buffer-flush.interval", "0");
 
-        TableSchema schema = TableSchema.builder().field(ROWKEY, STRING()).build();
+        ResolvedSchema schema = ResolvedSchema.of(Column.physical(ROWKEY, STRING()));
 
         DynamicTableSink sink = createTableSink(schema, options);
         HBaseWriteOptions expected =
@@ -270,11 +325,10 @@ public class HBaseDynamicTableFactoryTest {
     public void testUnknownOption() {
         Map<String, String> options = getAllOptions();
         options.put("sink.unknown.key", "unknown-value");
-        TableSchema schema =
-                TableSchema.builder()
-                        .field(ROWKEY, STRING())
-                        .field(FAMILY1, ROW(FIELD(COL1, DOUBLE()), FIELD(COL2, INT())))
-                        .build();
+        ResolvedSchema schema =
+                ResolvedSchema.of(
+                        Column.physical(ROWKEY, STRING()),
+                        Column.physical(FAMILY1, ROW(FIELD(COL1, DOUBLE()), FIELD(COL2, INT()))));
 
         try {
             createTableSource(schema, options);
@@ -301,11 +355,11 @@ public class HBaseDynamicTableFactoryTest {
     public void testTypeWithUnsupportedPrecision() {
         Map<String, String> options = getAllOptions();
         // test unsupported timestamp precision
-        TableSchema schema =
-                TableSchema.builder()
-                        .field(ROWKEY, STRING())
-                        .field(FAMILY1, ROW(FIELD(COL1, TIMESTAMP(6)), FIELD(COL2, INT())))
-                        .build();
+        ResolvedSchema schema =
+                ResolvedSchema.of(
+                        Column.physical(ROWKEY, STRING()),
+                        Column.physical(
+                                FAMILY1, ROW(FIELD(COL1, TIMESTAMP(6)), FIELD(COL2, INT()))));
         try {
             createTableSource(schema, options);
             fail("Should fail");
@@ -331,10 +385,9 @@ public class HBaseDynamicTableFactoryTest {
         }
         // test unsupported time precision
         schema =
-                TableSchema.builder()
-                        .field(ROWKEY, STRING())
-                        .field(FAMILY1, ROW(FIELD(COL1, TIME(6)), FIELD(COL2, INT())))
-                        .build();
+                ResolvedSchema.of(
+                        Column.physical(ROWKEY, STRING()),
+                        Column.physical(FAMILY1, ROW(FIELD(COL1, TIME(6)), FIELD(COL2, INT()))));
 
         try {
             createTableSource(schema, options);
@@ -369,27 +422,5 @@ public class HBaseDynamicTableFactoryTest {
         options.put("zookeeper.znode.parent", "/flink");
         options.put("properties.hbase.security.authentication", "kerberos");
         return options;
-    }
-
-    private static DynamicTableSource createTableSource(
-            TableSchema schema, Map<String, String> options) {
-        return FactoryUtil.createTableSource(
-                null,
-                ObjectIdentifier.of("default", "default", "t1"),
-                new CatalogTableImpl(schema, options, "mock source"),
-                new Configuration(),
-                HBase2DynamicTableFactory.class.getClassLoader(),
-                false);
-    }
-
-    private static DynamicTableSink createTableSink(
-            TableSchema schema, Map<String, String> options) {
-        return FactoryUtil.createTableSink(
-                null,
-                ObjectIdentifier.of("default", "default", "t1"),
-                new CatalogTableImpl(schema, options, "mock sink"),
-                new Configuration(),
-                HBase2DynamicTableFactory.class.getClassLoader(),
-                false);
     }
 }

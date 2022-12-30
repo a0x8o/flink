@@ -16,10 +16,10 @@
 # limitations under the License.
 ################################################################################
 from abc import ABC, abstractmethod
-from typing import Generic, TypeVar, List, Iterable
+from typing import Generic, TypeVar, List, Iterable, Collection
 
 from pyflink.datastream.state import State, ValueState, AppendingState, MergingState, ListState, \
-    AggregatingState, ReducingState, MapState
+    AggregatingState, ReducingState, MapState, ReadOnlyBroadcastState, BroadcastState
 
 N = TypeVar('N')
 T = TypeVar('T')
@@ -74,7 +74,7 @@ class InternalMergingState(InternalAppendingState[N, IN, OUT], MergingState[IN, 
     """
 
     @abstractmethod
-    def merge_namespaces(self, target: N, sources: Iterable[N]) -> None:
+    def merge_namespaces(self, target: N, sources: Collection[N]) -> None:
         """
         Merges the state of the current key for the given source namespaces into the state of the
         target namespace.
@@ -111,3 +111,23 @@ class InternalMapState(InternalKvState[N], MapState[K, V], ABC):
     The peer to the :class:MapState in the internal state type hierarchy.
     """
     pass
+
+
+class InternalReadOnlyBroadcastState(ReadOnlyBroadcastState[K, V], ABC):
+    """
+    The peer to :class:`ReadOnlyBroadcastState`.
+    """
+    pass
+
+
+class InternalBroadcastState(InternalReadOnlyBroadcastState[K, V], BroadcastState[K, V], ABC):
+    """
+    The peer to :class:`BroadcastState`.
+    """
+
+    @abstractmethod
+    def to_read_only_broadcast_state(self) -> InternalReadOnlyBroadcastState[K, V]:
+        """
+        Convert to :class:`ReadOnlyBroadcastState` interface with the same underlying state.
+        """
+        pass

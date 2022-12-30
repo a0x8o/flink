@@ -21,6 +21,7 @@ package org.apache.flink.streaming.connectors.kafka;
 import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.JobStatus;
+import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.functions.FlatMapFunction;
 import org.apache.flink.api.common.functions.RichFlatMapFunction;
 import org.apache.flink.api.common.functions.RichMapFunction;
@@ -40,6 +41,9 @@ import org.apache.flink.api.java.tuple.Tuple3;
 import org.apache.flink.client.program.ClusterClient;
 import org.apache.flink.client.program.ProgramInvocationException;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.connector.kafka.source.KafkaSource;
+import org.apache.flink.connector.kafka.source.KafkaSourceBuilder;
+import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer;
 import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataInputViewStreamWrapper;
 import org.apache.flink.core.memory.DataOutputView;
@@ -73,22 +77,20 @@ import org.apache.flink.streaming.util.serialization.KeyedSerializationSchema;
 import org.apache.flink.streaming.util.serialization.TypeInformationKeyValueSerializationSchema;
 import org.apache.flink.test.util.SuccessException;
 import org.apache.flink.testutils.junit.RetryOnException;
-import org.apache.flink.testutils.junit.RetryRule;
 import org.apache.flink.util.Collector;
 import org.apache.flink.util.ExceptionUtils;
 
-import org.apache.flink.shaded.guava18.com.google.common.collect.Iterables;
+import org.apache.flink.shaded.guava30.com.google.common.collect.Iterables;
 
-import kafka.server.KafkaServer;
 import org.apache.commons.io.output.ByteArrayOutputStream;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.consumer.OffsetResetStrategy;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.errors.NotLeaderForPartitionException;
 import org.apache.kafka.common.errors.TimeoutException;
-import org.junit.Assert;
 import org.junit.Before;
-import org.junit.Rule;
 
 import javax.annotation.Nullable;
 import javax.management.MBeanServer;
@@ -116,19 +118,23 @@ import static org.apache.flink.streaming.connectors.kafka.testutils.ClusterCommu
 import static org.apache.flink.streaming.connectors.kafka.testutils.ClusterCommunicationUtils.waitUntilNoJobIsRunning;
 import static org.apache.flink.test.util.TestUtils.submitJobAndWaitForResult;
 import static org.apache.flink.test.util.TestUtils.tryExecute;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.fail;
 
 /** Abstract test base for all Kafka consumer tests. */
 @SuppressWarnings("serial")
 public abstract class KafkaConsumerTestBase extends KafkaTestBaseWithFlink {
-
-    @Rule public RetryRule retryRule = new RetryRule();
+    protected final boolean useNewSource;
 
     private ClusterClient<?> client;
+
+    protected KafkaConsumerTestBase() {
+        this(false);
+    }
+
+    protected KafkaConsumerTestBase(boolean useNewSource) {
+        this.useNewSource = useNewSource;
+    }
 
     // ------------------------------------------------------------------------
     //  Common Test Preparation
@@ -153,8 +159,8 @@ public abstract class KafkaConsumerTestBase extends KafkaTestBaseWithFlink {
     // ------------------------------------------------------------------------
 
     /**
-     * Test that ensures the KafkaConsumer is properly failing if the topic doesnt exist and a wrong
-     * broker was specified.
+     * Test that ensures the KafkaConsumer is properly failing if the topic doesn't exist and a
+     * wrong broker was specified.
      *
      * @throws Exception
      */
@@ -175,30 +181,22 @@ public abstract class KafkaConsumerTestBase extends KafkaTestBaseWithFlink {
             properties.setProperty("fetch.max.wait.ms", "2000");
             properties.setProperty("heartbeat.interval.ms", "1000");
             properties.putAll(secureProps);
-            FlinkKafkaConsumerBase<String> source =
-                    kafkaServer.getConsumer("doesntexist", new SimpleStringSchema(), properties);
-            DataStream<String> stream = see.addSource(source);
+            DataStream<String> stream =
+                    getStream(see, "doesntexist", new SimpleStringSchema(), properties);
             stream.print();
             see.execute("No broker test");
         } catch (JobExecutionException jee) {
-            if (kafkaServer.getVersion().equals("0.9")
-                    || kafkaServer.getVersion().equals("0.10")
-                    || kafkaServer.getVersion().equals("0.11")
-                    || kafkaServer.getVersion().equals("2.0")) {
-                final Optional<TimeoutException> optionalTimeoutException =
-                        ExceptionUtils.findThrowable(jee, TimeoutException.class);
-                assertTrue(optionalTimeoutException.isPresent());
+            final Optional<TimeoutException> optionalTimeoutException =
+                    ExceptionUtils.findThrowable(jee, TimeoutException.class);
+            assertThat(optionalTimeoutException).isPresent();
 
-                final TimeoutException timeoutException = optionalTimeoutException.get();
-                assertEquals(
-                        "Timeout expired while fetching topic metadata",
-                        timeoutException.getMessage());
+            final TimeoutException timeoutException = optionalTimeoutException.get();
+            if (useNewSource) {
+                assertThat(timeoutException)
+                        .hasMessageContaining("Timed out waiting for a node assignment.");
             } else {
-                final Optional<Throwable> optionalThrowable =
-                        ExceptionUtils.findThrowableWithMessage(
-                                jee, "Unable to retrieve any partitions");
-                assertTrue(optionalThrowable.isPresent());
-                assertTrue(optionalThrowable.get() instanceof RuntimeException);
+                assertThat(timeoutException)
+                        .hasMessage("Timeout expired while fetching topic metadata");
             }
         }
     }
@@ -222,9 +220,7 @@ public abstract class KafkaConsumerTestBase extends KafkaTestBaseWithFlink {
         env.enableCheckpointing(200);
 
         DataStream<String> stream =
-                env.addSource(
-                        kafkaServer.getConsumer(
-                                topicName, new SimpleStringSchema(), standardProps));
+                getStream(env, topicName, new SimpleStringSchema(), standardProps);
         stream.addSink(new DiscardingSink<String>());
 
         final AtomicReference<Throwable> errorRef = new AtomicReference<>();
@@ -274,9 +270,9 @@ public abstract class KafkaConsumerTestBase extends KafkaTestBaseWithFlink {
         Long o1 = kafkaOffsetHandler.getCommittedOffset(topicName, 0);
         Long o2 = kafkaOffsetHandler.getCommittedOffset(topicName, 1);
         Long o3 = kafkaOffsetHandler.getCommittedOffset(topicName, 2);
-        Assert.assertEquals(Long.valueOf(50L), o1);
-        Assert.assertEquals(Long.valueOf(50L), o2);
-        Assert.assertEquals(Long.valueOf(50L), o3);
+        assertThat(o1).isEqualTo(Long.valueOf(50L));
+        assertThat(o2).isEqualTo(Long.valueOf(50L));
+        assertThat(o3).isEqualTo(Long.valueOf(50L));
 
         kafkaOffsetHandler.close();
         deleteTestTopic(topicName);
@@ -316,9 +312,7 @@ public abstract class KafkaConsumerTestBase extends KafkaTestBaseWithFlink {
                 "auto.offset.reset",
                 "latest"); // set to reset to latest, so that partitions are initially not read
 
-        DataStream<String> stream =
-                env.addSource(
-                        kafkaServer.getConsumer(topicName, new SimpleStringSchema(), readProps));
+        DataStream<String> stream = getStream(env, topicName, new SimpleStringSchema(), readProps);
         stream.addSink(new DiscardingSink<String>());
 
         final AtomicReference<Throwable> errorRef = new AtomicReference<>();
@@ -367,9 +361,9 @@ public abstract class KafkaConsumerTestBase extends KafkaTestBaseWithFlink {
         Long o1 = kafkaOffsetHandler.getCommittedOffset(topicName, 0);
         Long o2 = kafkaOffsetHandler.getCommittedOffset(topicName, 1);
         Long o3 = kafkaOffsetHandler.getCommittedOffset(topicName, 2);
-        Assert.assertEquals(Long.valueOf(50L), o1);
-        Assert.assertEquals(Long.valueOf(50L), o2);
-        Assert.assertEquals(Long.valueOf(50L), o3);
+        assertThat(o1).isEqualTo(Long.valueOf(50L));
+        assertThat(o2).isEqualTo(Long.valueOf(50L));
+        assertThat(o3).isEqualTo(Long.valueOf(50L));
 
         kafkaOffsetHandler.close();
         deleteTestTopic(topicName);
@@ -471,12 +465,22 @@ public abstract class KafkaConsumerTestBase extends KafkaTestBaseWithFlink {
         readProps.putAll(standardProps);
         readProps.setProperty("auto.offset.reset", "earliest"); // this should be ignored
 
-        FlinkKafkaConsumerBase<Tuple2<Integer, Integer>> latestReadingConsumer =
-                kafkaServer.getConsumer(topicName, deserSchema, readProps);
-        latestReadingConsumer.setStartFromLatest();
+        DataStreamSource<Tuple2<Integer, Integer>> stream;
+        if (useNewSource) {
+            KafkaSource<Tuple2<Integer, Integer>> source =
+                    kafkaServer
+                            .getSourceBuilder(topicName, deserSchema, readProps)
+                            .setStartingOffsets(OffsetsInitializer.latest())
+                            .build();
+            stream = env.fromSource(source, WatermarkStrategy.noWatermarks(), "KafkaSource");
+        } else {
+            FlinkKafkaConsumerBase<Tuple2<Integer, Integer>> latestReadingConsumer =
+                    kafkaServer.getConsumer(topicName, deserSchema, readProps);
+            latestReadingConsumer.setStartFromLatest();
+            stream = env.addSource(latestReadingConsumer);
+        }
 
-        env.addSource(latestReadingConsumer)
-                .setParallelism(parallelism)
+        stream.setParallelism(parallelism)
                 .flatMap(
                         new FlatMapFunction<Tuple2<Integer, Integer>, Object>() {
                             @Override
@@ -801,14 +805,14 @@ public abstract class KafkaConsumerTestBase extends KafkaTestBaseWithFlink {
      */
     @RetryOnException(times = 2, exception = NotLeaderForPartitionException.class)
     public void runSimpleConcurrentProducerConsumerTopology() throws Exception {
-        final String topic = "concurrentProducerConsumerTopic_" + UUID.randomUUID().toString();
-        final String additionalEmptyTopic = "additionalEmptyTopic_" + UUID.randomUUID().toString();
+        final String topic = "concurrentProducerConsumerTopic_" + UUID.randomUUID();
+        final String additionalEmptyTopic = "additionalEmptyTopic_" + UUID.randomUUID();
 
         final int parallelism = 3;
         final int elementsPerPartition = 100;
         final int totalElements = parallelism * elementsPerPartition;
 
-        createTestTopic(topic, parallelism, 2);
+        createTestTopic(topic, parallelism, 1);
         createTestTopic(
                 additionalEmptyTopic,
                 parallelism,
@@ -874,30 +878,25 @@ public abstract class KafkaConsumerTestBase extends KafkaTestBaseWithFlink {
         Properties props = new Properties();
         props.putAll(standardProps);
         props.putAll(secureProps);
-        FlinkKafkaConsumerBase<Tuple2<Long, String>> source =
-                kafkaServer.getConsumer(topics, sourceSchema, props);
-
         DataStreamSource<Tuple2<Long, String>> consuming =
-                env.addSource(source).setParallelism(parallelism);
+                getStream(env, topics, sourceSchema, props);
 
         consuming
                 .addSink(
                         new RichSinkFunction<Tuple2<Long, String>>() {
 
                             private int elCnt = 0;
+
                             private BitSet validator = new BitSet(totalElements);
 
                             @Override
                             public void invoke(Tuple2<Long, String> value) throws Exception {
                                 String[] sp = value.f1.split("-");
                                 int v = Integer.parseInt(sp[1]);
-
-                                assertEquals(value.f0 - 1000, (long) v);
-
-                                assertFalse("Received tuple twice", validator.get(v));
+                                assertThat((long) v).isEqualTo(value.f0 - 1000);
+                                assertThat(validator.get(v)).as("Received tuple twice").isFalse();
                                 validator.set(v);
                                 elCnt++;
-
                                 if (elCnt == totalElements) {
                                     // check if everything in the bitset is set to true
                                     int nc;
@@ -945,7 +944,7 @@ public abstract class KafkaConsumerTestBase extends KafkaTestBaseWithFlink {
      */
     public void runOneToOneExactlyOnceTest() throws Exception {
 
-        final String topic = "oneToOneTopic";
+        final String topic = "oneToOneTopic-" + UUID.randomUUID();
         final int parallelism = 5;
         final int numElementsPerPartition = 1000;
         final int totalElements = parallelism * numElementsPerPartition;
@@ -976,9 +975,7 @@ public abstract class KafkaConsumerTestBase extends KafkaTestBaseWithFlink {
         props.putAll(standardProps);
         props.putAll(secureProps);
 
-        FlinkKafkaConsumerBase<Integer> kafkaSource = kafkaServer.getConsumer(topic, schema, props);
-
-        env.addSource(kafkaSource)
+        getStream(env, topic, schema, props)
                 .map(new PartitionValidatingMapper(parallelism, 1))
                 .map(new FailingIdentityMapper<Integer>(failAfterElements))
                 .addSink(new ValidatingExactlyOnceSink(totalElements))
@@ -995,7 +992,7 @@ public abstract class KafkaConsumerTestBase extends KafkaTestBaseWithFlink {
      * Flink source will read multiple Kafka partitions.
      */
     public void runOneSourceMultiplePartitionsExactlyOnceTest() throws Exception {
-        final String topic = "oneToManyTopic";
+        final String topic = "oneToManyTopic-" + UUID.randomUUID();
         final int numPartitions = 5;
         final int numElementsPerPartition = 1000;
         final int totalElements = numPartitions * numElementsPerPartition;
@@ -1027,9 +1024,8 @@ public abstract class KafkaConsumerTestBase extends KafkaTestBaseWithFlink {
         Properties props = new Properties();
         props.putAll(standardProps);
         props.putAll(secureProps);
-        FlinkKafkaConsumerBase<Integer> kafkaSource = kafkaServer.getConsumer(topic, schema, props);
 
-        env.addSource(kafkaSource)
+        getStream(env, topic, schema, props)
                 .map(new PartitionValidatingMapper(numPartitions, 3))
                 .map(new FailingIdentityMapper<Integer>(failAfterElements))
                 .addSink(new ValidatingExactlyOnceSink(totalElements))
@@ -1046,7 +1042,7 @@ public abstract class KafkaConsumerTestBase extends KafkaTestBaseWithFlink {
      * means that some Flink sources will read no partitions.
      */
     public void runMultipleSourcesOnePartitionExactlyOnceTest() throws Exception {
-        final String topic = "manyToOneTopic";
+        final String topic = "manyToOneTopic-" + UUID.randomUUID();
         final int numPartitions = 5;
         final int numElementsPerPartition = 1000;
         final int totalElements = numPartitions * numElementsPerPartition;
@@ -1081,12 +1077,13 @@ public abstract class KafkaConsumerTestBase extends KafkaTestBaseWithFlink {
         Properties props = new Properties();
         props.putAll(standardProps);
         props.putAll(secureProps);
-        FlinkKafkaConsumerBase<Integer> kafkaSource = kafkaServer.getConsumer(topic, schema, props);
 
-        env.addSource(kafkaSource)
+        getStream(env, topic, schema, props)
                 .map(new PartitionValidatingMapper(numPartitions, 1))
+                // Job only fails after a checkpoint is taken and the necessary number of elements
+                // is seen
                 .map(new FailingIdentityMapper<Integer>(failAfterElements))
-                .addSink(new ValidatingExactlyOnceSink(totalElements))
+                .addSink(new ValidatingExactlyOnceSink(totalElements, true))
                 .setParallelism(1);
 
         FailingIdentityMapper.failedBefore = false;
@@ -1097,7 +1094,7 @@ public abstract class KafkaConsumerTestBase extends KafkaTestBaseWithFlink {
 
     /** Tests that the source can be properly canceled when reading full partitions. */
     public void runCancelingOnFullInputTest() throws Exception {
-        final String topic = "cancelingOnFullTopic";
+        final String topic = "cancelingOnFullTopic-" + UUID.randomUUID();
 
         final int parallelism = 3;
         createTestTopic(topic, parallelism, 1);
@@ -1118,10 +1115,8 @@ public abstract class KafkaConsumerTestBase extends KafkaTestBaseWithFlink {
         Properties props = new Properties();
         props.putAll(standardProps);
         props.putAll(secureProps);
-        FlinkKafkaConsumerBase<String> source =
-                kafkaServer.getConsumer(topic, new SimpleStringSchema(), props);
-
-        env.addSource(source).addSink(new DiscardingSink<String>());
+        getStream(env, topic, new SimpleStringSchema(), props)
+                .addSink(new DiscardingSink<String>());
 
         JobGraph jobGraph = StreamingJobGraphGenerator.createJobGraph(env.getStreamGraph());
         final JobID jobId = jobGraph.getJobID();
@@ -1144,7 +1139,7 @@ public abstract class KafkaConsumerTestBase extends KafkaTestBaseWithFlink {
         Throwable failueCause = jobError.get();
         if (failueCause != null) {
             failueCause.printStackTrace();
-            Assert.fail("Test failed prematurely with: " + failueCause.getMessage());
+            fail("Test failed prematurely with: " + failueCause.getMessage());
         }
 
         // cancel
@@ -1153,7 +1148,7 @@ public abstract class KafkaConsumerTestBase extends KafkaTestBaseWithFlink {
         // wait for the program to be done and validate that we failed with the right exception
         runnerThread.join();
 
-        assertEquals(JobStatus.CANCELED, client.getJobStatus(jobId).get());
+        assertThat(client.getJobStatus(jobId).get()).isEqualTo(JobStatus.CANCELED);
 
         if (generator.isAlive()) {
             generator.shutdown();
@@ -1173,7 +1168,7 @@ public abstract class KafkaConsumerTestBase extends KafkaTestBaseWithFlink {
 
     /** Tests that the source can be properly canceled when reading empty partitions. */
     public void runCancelingOnEmptyInputTest() throws Exception {
-        final String topic = "cancelingOnEmptyInputTopic";
+        final String topic = "cancelingOnEmptyInputTopic-" + UUID.randomUUID();
 
         final int parallelism = 3;
         createTestTopic(topic, parallelism, 1);
@@ -1187,10 +1182,9 @@ public abstract class KafkaConsumerTestBase extends KafkaTestBaseWithFlink {
         Properties props = new Properties();
         props.putAll(standardProps);
         props.putAll(secureProps);
-        FlinkKafkaConsumerBase<String> source =
-                kafkaServer.getConsumer(topic, new SimpleStringSchema(), props);
 
-        env.addSource(source).addSink(new DiscardingSink<String>());
+        getStream(env, topic, new SimpleStringSchema(), props)
+                .addSink(new DiscardingSink<String>());
 
         JobGraph jobGraph = StreamingJobGraphGenerator.createJobGraph(env.getStreamGraph());
         final JobID jobId = jobGraph.getJobID();
@@ -1214,7 +1208,7 @@ public abstract class KafkaConsumerTestBase extends KafkaTestBaseWithFlink {
         Throwable failueCause = error.get();
         if (failueCause != null) {
             failueCause.printStackTrace();
-            Assert.fail("Test failed prematurely with: " + failueCause.getMessage());
+            fail("Test failed prematurely with: " + failueCause.getMessage());
         }
         // cancel
         client.cancel(jobId).get();
@@ -1222,7 +1216,7 @@ public abstract class KafkaConsumerTestBase extends KafkaTestBaseWithFlink {
         // wait for the program to be done and validate that we failed with the right exception
         runnerThread.join();
 
-        assertEquals(JobStatus.CANCELED, client.getJobStatus(jobId).get());
+        assertThat(client.getJobStatus(jobId).get()).isEqualTo(JobStatus.CANCELED);
 
         deleteTestTopic(topic);
     }
@@ -1233,6 +1227,9 @@ public abstract class KafkaConsumerTestBase extends KafkaTestBaseWithFlink {
      * @throws Exception
      */
     public void runProduceConsumeMultipleTopics(boolean useLegacySchema) throws Exception {
+        final String topicNamePrefix =
+                "runProduceConsumeMultipleTopics-" + (useLegacySchema ? "legacy" : "");
+
         final int numTopics = 5;
         final int numElements = 20;
 
@@ -1241,7 +1238,7 @@ public abstract class KafkaConsumerTestBase extends KafkaTestBaseWithFlink {
         // create topics with content
         final List<String> topics = new ArrayList<>();
         for (int i = 0; i < numTopics; i++) {
-            final String topic = "topic-" + i;
+            final String topic = topicNamePrefix + i + "-" + UUID.randomUUID();
             topics.add(topic);
             // create topic
             createTestTopic(topic, i + 1 /*partitions*/, 1);
@@ -1256,13 +1253,13 @@ public abstract class KafkaConsumerTestBase extends KafkaTestBaseWithFlink {
                         new RichParallelSourceFunction<Tuple3<Integer, Integer, String>>() {
 
                             @Override
-                            public void run(SourceContext<Tuple3<Integer, Integer, String>> ctx)
-                                    throws Exception {
+                            public void run(SourceContext<Tuple3<Integer, Integer, String>> ctx) {
                                 int partition = getRuntimeContext().getIndexOfThisSubtask();
 
                                 for (int topicId = 0; topicId < numTopics; topicId++) {
                                     for (int i = 0; i < numElements; i++) {
-                                        ctx.collect(new Tuple3<>(partition, i, "topic-" + topicId));
+                                        ctx.collect(
+                                                new Tuple3<>(partition, i, topics.get(topicId)));
                                     }
                                 }
                             }
@@ -1290,10 +1287,10 @@ public abstract class KafkaConsumerTestBase extends KafkaTestBaseWithFlink {
 
         if (useLegacySchema) {
             Tuple2WithTopicSchema schema = new Tuple2WithTopicSchema(env.getConfig());
-            stream = env.addSource(kafkaServer.getConsumer(topics, schema, props));
+            stream = getStream(env, topics, schema, props);
         } else {
             TestDeserializer schema = new TestDeserializer(env.getConfig());
-            stream = env.addSource(kafkaServer.getConsumer(topics, schema, props));
+            stream = getStream(env, topics, schema, props);
         }
 
         stream.flatMap(
@@ -1334,8 +1331,7 @@ public abstract class KafkaConsumerTestBase extends KafkaTestBaseWithFlink {
         tryExecute(env, "Count elements from the topics");
 
         // delete all topics again
-        for (int i = 0; i < numTopics; i++) {
-            final String topic = "topic-" + i;
+        for (String topic : topics) {
             deleteTestTopic(topic);
         }
     }
@@ -1347,7 +1343,7 @@ public abstract class KafkaConsumerTestBase extends KafkaTestBaseWithFlink {
      */
     public void runBigRecordTestTopology() throws Exception {
 
-        final String topic = "bigRecordTestTopic";
+        final String topic = "bigRecordTestTopic-" + UUID.randomUUID();
         final int parallelism = 1; // otherwise, the kafka mini clusters may run out of heap space
 
         createTestTopic(topic, parallelism, 1);
@@ -1373,9 +1369,8 @@ public abstract class KafkaConsumerTestBase extends KafkaTestBaseWithFlink {
         consumerProps.setProperty("queued.max.message.chunks", "1");
         consumerProps.putAll(secureProps);
 
-        FlinkKafkaConsumerBase<Tuple2<Long, byte[]>> source =
-                kafkaServer.getConsumer(topic, serSchema, consumerProps);
-        DataStreamSource<Tuple2<Long, byte[]>> consuming = env.addSource(source);
+        DataStreamSource<Tuple2<Long, byte[]>> consuming =
+                getStream(env, topic, serSchema, consumerProps);
 
         consuming.addSink(
                 new SinkFunction<Tuple2<Long, byte[]>>() {
@@ -1455,23 +1450,30 @@ public abstract class KafkaConsumerTestBase extends KafkaTestBaseWithFlink {
     public void runBrokerFailureTest() throws Exception {
         final String topic = "brokerFailureTestTopic";
 
+        // Start a temporary multi-broker cluster.
+        // This test case relies on stopping a broker and switching partition leader to another
+        // during the test, so single-broker cluster (kafkaServer) could not fulfill the
+        // requirement.
+        KafkaTestEnvironment multiBrokerCluster = constructKafkaTestEnvironment();
+        multiBrokerCluster.prepare(KafkaTestEnvironment.createConfig().setKafkaServersNumber(3));
+
         final int parallelism = 2;
         final int numElementsPerPartition = 1000;
         final int totalElements = parallelism * numElementsPerPartition;
         final int failAfterElements = numElementsPerPartition / 3;
 
-        createTestTopic(topic, parallelism, 2);
+        multiBrokerCluster.createTestTopic(topic, parallelism, 2);
 
         DataGenerators.generateRandomizedIntegerSequence(
                 StreamExecutionEnvironment.getExecutionEnvironment(),
-                kafkaServer,
+                multiBrokerCluster,
                 topic,
                 parallelism,
                 numElementsPerPartition,
                 true);
 
         // find leader to shut down
-        int leaderId = kafkaServer.getLeaderToShutDown(topic);
+        int leaderId = multiBrokerCluster.getLeaderToShutDown(topic);
 
         LOG.info("Leader to shutdown {}", leaderId);
 
@@ -1487,25 +1489,26 @@ public abstract class KafkaConsumerTestBase extends KafkaTestBaseWithFlink {
         env.setRestartStrategy(RestartStrategies.noRestart());
 
         Properties props = new Properties();
-        props.putAll(standardProps);
-        props.putAll(secureProps);
-        FlinkKafkaConsumerBase<Integer> kafkaSource = kafkaServer.getConsumer(topic, schema, props);
+        props.putAll(multiBrokerCluster.getStandardProperties());
+        props.putAll(multiBrokerCluster.getSecureProperties());
 
-        env.addSource(kafkaSource)
+        getStream(env, topic, schema, props)
                 .map(new PartitionValidatingMapper(parallelism, 1))
-                .map(new BrokerKillingMapper<Integer>(leaderId, failAfterElements))
+                .map(new BrokerKillingMapper<>(multiBrokerCluster, leaderId, failAfterElements))
                 .addSink(new ValidatingExactlyOnceSink(totalElements))
                 .setParallelism(1);
 
-        BrokerKillingMapper.killedLeaderBefore = false;
-        tryExecute(env, "Broker failure once test");
-
-        // start a new broker:
-        kafkaServer.restartBroker(leaderId);
+        try {
+            BrokerKillingMapper.killedLeaderBefore = false;
+            tryExecute(env, "Broker failure once test");
+        } finally {
+            // Tear down the temporary cluster anyway
+            multiBrokerCluster.shutdown();
+        }
     }
 
     public void runKeyValueTest() throws Exception {
-        final String topic = "keyvaluetest";
+        final String topic = "keyvaluetest-" + UUID.randomUUID();
         createTestTopic(topic, 1, 1);
         final int elementCount = 5000;
 
@@ -1560,21 +1563,23 @@ public abstract class KafkaConsumerTestBase extends KafkaTestBaseWithFlink {
         Properties props = new Properties();
         props.putAll(standardProps);
         props.putAll(secureProps);
-        DataStream<Tuple2<Long, PojoValue>> fromKafka =
-                env.addSource(kafkaServer.getConsumer(topic, readSchema, props));
+        DataStream<Tuple2<Long, PojoValue>> fromKafka = getStream(env, topic, readSchema, props);
         fromKafka.flatMap(
                 new RichFlatMapFunction<Tuple2<Long, PojoValue>, Object>() {
+
                     long counter = 0;
 
                     @Override
                     public void flatMap(Tuple2<Long, PojoValue> value, Collector<Object> out)
                             throws Exception {
                         // the elements should be in order.
-                        Assert.assertTrue("Wrong value " + value.f1.lat, value.f1.lat == counter);
+                        assertThat(value.f1.lat)
+                                .as("Wrong value " + value.f1.lat)
+                                .isEqualTo(counter);
                         if (value.f1.lat % 2 == 0) {
-                            assertNull("key was not null", value.f0);
+                            assertThat(value.f0).as("key was not null").isNull();
                         } else {
-                            Assert.assertTrue("Wrong value " + value.f0, value.f0 == counter);
+                            assertThat(value.f0).as("Wrong value " + value.f0).isEqualTo(counter);
                         }
                         counter++;
                         if (counter == elementCount) {
@@ -1603,7 +1608,7 @@ public abstract class KafkaConsumerTestBase extends KafkaTestBaseWithFlink {
      * @throws Exception
      */
     public void runAllDeletesTest() throws Exception {
-        final String topic = "alldeletestest";
+        final String topic = "alldeletestest-" + UUID.randomUUID();
         createTestTopic(topic, 1, 1);
         final int elementCount = 300;
 
@@ -1652,18 +1657,18 @@ public abstract class KafkaConsumerTestBase extends KafkaTestBaseWithFlink {
         Properties props = new Properties();
         props.putAll(standardProps);
         props.putAll(secureProps);
-        DataStream<Tuple2<byte[], PojoValue>> fromKafka =
-                env.addSource(kafkaServer.getConsumer(topic, schema, props));
+        DataStream<Tuple2<byte[], PojoValue>> fromKafka = getStream(env, topic, schema, props);
 
         fromKafka.flatMap(
                 new RichFlatMapFunction<Tuple2<byte[], PojoValue>, Object>() {
+
                     long counter = 0;
 
                     @Override
                     public void flatMap(Tuple2<byte[], PojoValue> value, Collector<Object> out)
                             throws Exception {
                         // ensure that deleted messages are passed as nulls
-                        assertNull(value.f1);
+                        assertThat(value.f1).isNull();
                         counter++;
                         if (counter == elementCount) {
                             // we got the right number of elements
@@ -1696,11 +1701,9 @@ public abstract class KafkaConsumerTestBase extends KafkaTestBaseWithFlink {
         Properties props = new Properties();
         props.putAll(standardProps);
         props.putAll(secureProps);
-
         DataStream<Tuple2<Integer, Integer>> fromKafka =
-                env1.addSource(
-                        kafkaServer.getConsumer(
-                                topic, new FixedNumberDeserializationSchema(elementCount), props));
+                getStream(env1, topic, new FixedNumberDeserializationSchema(elementCount), props);
+
         fromKafka.flatMap(
                 new FlatMapFunction<Tuple2<Integer, Integer>, Void>() {
                     @Override
@@ -1789,7 +1792,7 @@ public abstract class KafkaConsumerTestBase extends KafkaTestBaseWithFlink {
     public void runMetricsTest() throws Throwable {
 
         // create a stream with 5 topics
-        final String topic = "metricsStream";
+        final String topic = "metricsStream-" + UUID.randomUUID();
         createTestTopic(topic, 5, 1);
 
         final Tuple1<Throwable> error = new Tuple1<>(null);
@@ -1807,7 +1810,7 @@ public abstract class KafkaConsumerTestBase extends KafkaTestBaseWithFlink {
                         env1.getConfig());
 
         DataStream<Tuple2<Integer, Integer>> fromKafka =
-                env1.addSource(kafkaServer.getConsumer(topic, schema, standardProps));
+                getStream(env1, topic, schema, standardProps);
         fromKafka.flatMap(
                 new FlatMapFunction<Tuple2<Integer, Integer>, Void>() {
                     @Override
@@ -1876,7 +1879,7 @@ public abstract class KafkaConsumerTestBase extends KafkaTestBaseWithFlink {
                 offsetMetrics = mBeanServer.queryNames(new ObjectName("*current-offsets*:*"), null);
                 Thread.sleep(50);
             }
-            Assert.assertEquals(5, offsetMetrics.size());
+            assertThat(offsetMetrics).hasSize(5);
             // we can't rely on the consumer to have touched all the partitions already
             // that's why we'll wait until all five partitions have a positive offset.
             // The test will fail if we never meet the condition
@@ -1899,7 +1902,7 @@ public abstract class KafkaConsumerTestBase extends KafkaTestBaseWithFlink {
             // check if producer metrics are also available.
             Set<ObjectName> producerMetrics =
                     mBeanServer.queryNames(new ObjectName("*KafkaProducer*:*"), null);
-            Assert.assertTrue("No producer metrics found", producerMetrics.size() > 30);
+            assertThat(producerMetrics.size()).as("No producer metrics found").isGreaterThan(30);
 
             LOG.info("Found all JMX metrics. Cancelling job.");
         } finally {
@@ -2026,20 +2029,35 @@ public abstract class KafkaConsumerTestBase extends KafkaTestBaseWithFlink {
 
         // create the consumer
         cc.putAll(secureProps);
-        FlinkKafkaConsumerBase<Tuple2<Integer, Integer>> consumer =
-                kafkaServer.getConsumer(topicName, deser, cc);
-        setKafkaConsumerOffset(startupMode, consumer, specificStartupOffsets, startupTimestamp);
+        DataStreamSource<Tuple2<Integer, Integer>> source;
+        if (useNewSource) {
+            KafkaSourceBuilder<Tuple2<Integer, Integer>> sourceBuilder =
+                    kafkaServer.getSourceBuilder(topicName, deser, cc);
+            Map<TopicPartition, Long> startOffsets = new HashMap<>();
+            if (specificStartupOffsets != null) {
+                specificStartupOffsets.forEach(
+                        (ktp, offset) ->
+                                startOffsets.put(
+                                        new TopicPartition(ktp.getTopic(), ktp.getPartition()),
+                                        offset));
+            }
+            setKafkaSourceOffset(startupMode, sourceBuilder, startOffsets, startupTimestamp);
+            source =
+                    env.fromSource(
+                            sourceBuilder.build(), WatermarkStrategy.noWatermarks(), "KafkaSource");
+        } else {
+            FlinkKafkaConsumerBase<Tuple2<Integer, Integer>> consumer =
+                    kafkaServer.getConsumer(topicName, deser, cc);
+            setKafkaConsumerOffset(startupMode, consumer, specificStartupOffsets, startupTimestamp);
 
-        DataStream<Tuple2<Integer, Integer>> source =
-                env.addSource(consumer)
-                        .setParallelism(sourceParallelism)
-                        .map(new ThrottledMapper<Tuple2<Integer, Integer>>(20))
-                        .setParallelism(sourceParallelism);
+            source = env.addSource(consumer);
+        }
 
-        // verify data
-        source.flatMap(
+        source.setParallelism(sourceParallelism)
+                .map(new ThrottledMapper<>(20))
+                .setParallelism(sourceParallelism)
+                .flatMap(
                         new RichFlatMapFunction<Tuple2<Integer, Integer>, Integer>() {
-
                             private HashMap<Integer, BitSet> partitionsToValueCheck;
                             private int count = 0;
 
@@ -2167,6 +2185,33 @@ public abstract class KafkaConsumerTestBase extends KafkaTestBaseWithFlink {
         }
     }
 
+    protected void setKafkaSourceOffset(
+            final StartupMode startupMode,
+            final KafkaSourceBuilder<?> kafkaSourceBuilder,
+            final Map<TopicPartition, Long> specificStartupOffsets,
+            final Long startupTimestamp) {
+        switch (startupMode) {
+            case EARLIEST:
+                kafkaSourceBuilder.setStartingOffsets(OffsetsInitializer.earliest());
+                break;
+            case LATEST:
+                kafkaSourceBuilder.setStartingOffsets(OffsetsInitializer.latest());
+                break;
+            case SPECIFIC_OFFSETS:
+                kafkaSourceBuilder.setStartingOffsets(
+                        OffsetsInitializer.offsets(specificStartupOffsets));
+                break;
+            case GROUP_OFFSETS:
+                kafkaSourceBuilder.setStartingOffsets(
+                        OffsetsInitializer.committedOffsets(OffsetResetStrategy.EARLIEST));
+                break;
+            case TIMESTAMP:
+                kafkaSourceBuilder.setStartingOffsets(
+                        OffsetsInitializer.timestamp(startupTimestamp));
+                break;
+        }
+    }
+
     protected String writeSequence(
             String baseTopicName,
             final int numElements,
@@ -2199,7 +2244,7 @@ public abstract class KafkaConsumerTestBase extends KafkaTestBaseWithFlink {
 
         for (int attempt = 1; attempt <= maxNumAttempts; attempt++) {
 
-            final String topicName = baseTopicName + '-' + attempt;
+            final String topicName = baseTopicName + '-' + attempt + '-' + UUID.randomUUID();
 
             LOG.info("Writing attempt #" + attempt);
 
@@ -2390,11 +2435,24 @@ public abstract class KafkaConsumerTestBase extends KafkaTestBaseWithFlink {
         Properties readProps = (Properties) standardProps.clone();
         readProps.setProperty("group.id", "flink-tests-validator");
         readProps.putAll(secureProps);
-        FlinkKafkaConsumerBase<Tuple2<Integer, Integer>> consumer =
-                kafkaServer.getConsumer(topic, deserSchema, readProps);
-        consumer.setStartFromEarliest();
+        DataStreamSource<Tuple2<Integer, Integer>> dataStreamSource;
 
-        readEnv.addSource(consumer)
+        if (useNewSource) {
+            KafkaSource<Tuple2<Integer, Integer>> source =
+                    kafkaServer
+                            .getSourceBuilder(topic, deserSchema, readProps)
+                            .setStartingOffsets(OffsetsInitializer.earliest())
+                            .build();
+            dataStreamSource =
+                    readEnv.fromSource(source, WatermarkStrategy.noWatermarks(), "KafkaSource");
+        } else {
+            FlinkKafkaConsumerBase<Tuple2<Integer, Integer>> consumer =
+                    kafkaServer.getConsumer(topic, deserSchema, readProps);
+            consumer.setStartFromEarliest();
+            dataStreamSource = readEnv.addSource(consumer);
+        }
+
+        dataStreamSource
                 .map(
                         new RichMapFunction<Tuple2<Integer, Integer>, Tuple2<Integer, Integer>>() {
 
@@ -2464,6 +2522,54 @@ public abstract class KafkaConsumerTestBase extends KafkaTestBaseWithFlink {
         return success;
     }
 
+    private <T> DataStreamSource<T> getStream(
+            StreamExecutionEnvironment env,
+            String topic,
+            DeserializationSchema<T> schema,
+            Properties props) {
+        return getStream(env, Collections.singletonList(topic), schema, props);
+    }
+
+    private <T> DataStreamSource<T> getStream(
+            StreamExecutionEnvironment env,
+            String topic,
+            KafkaDeserializationSchema<T> schema,
+            Properties props) {
+        return getStream(env, Collections.singletonList(topic), schema, props);
+    }
+
+    private <T> DataStreamSource<T> getStream(
+            StreamExecutionEnvironment env,
+            List<String> topics,
+            DeserializationSchema<T> schema,
+            Properties props) {
+        if (useNewSource) {
+            KafkaSource<T> kafkaSource =
+                    kafkaServer.getSourceBuilder(topics, schema, props).build();
+            return env.fromSource(kafkaSource, WatermarkStrategy.noWatermarks(), "KafkaSource");
+        } else {
+            FlinkKafkaConsumerBase<T> flinkKafkaConsumer =
+                    kafkaServer.getConsumer(topics, schema, props);
+            return env.addSource(flinkKafkaConsumer);
+        }
+    }
+
+    private <T> DataStreamSource<T> getStream(
+            StreamExecutionEnvironment env,
+            List<String> topics,
+            KafkaDeserializationSchema<T> schema,
+            Properties props) {
+        if (useNewSource) {
+            KafkaSource<T> kafkaSource =
+                    kafkaServer.getSourceBuilder(topics, schema, props).build();
+            return env.fromSource(kafkaSource, WatermarkStrategy.noWatermarks(), "KafkaSource");
+        } else {
+            FlinkKafkaConsumerBase<T> flinkKafkaConsumer =
+                    kafkaServer.getConsumer(topics, schema, props);
+            return env.addSource(flinkKafkaConsumer);
+        }
+    }
+
     // ------------------------------------------------------------------------
     //  Debugging utilities
     // ------------------------------------------------------------------------
@@ -2476,6 +2582,7 @@ public abstract class KafkaConsumerTestBase extends KafkaTestBaseWithFlink {
         public static volatile boolean killedLeaderBefore;
         public static volatile boolean hasBeenCheckpointedBeforeFailure;
 
+        private static KafkaTestEnvironment kafkaServerToKill;
         private final int shutdownBrokerId;
         private final int failCount;
         private int numElementsTotal;
@@ -2483,7 +2590,9 @@ public abstract class KafkaConsumerTestBase extends KafkaTestBaseWithFlink {
         private boolean failer;
         private boolean hasBeenCheckpointed;
 
-        public BrokerKillingMapper(int shutdownBrokerId, int failCount) {
+        public BrokerKillingMapper(
+                KafkaTestEnvironment kafkaServer, int shutdownBrokerId, int failCount) {
+            kafkaServerToKill = kafkaServer;
             this.shutdownBrokerId = shutdownBrokerId;
             this.failCount = failCount;
         }
@@ -2502,32 +2611,9 @@ public abstract class KafkaConsumerTestBase extends KafkaTestBaseWithFlink {
 
                 if (failer && numElementsTotal >= failCount) {
                     // shut down a Kafka broker
-                    KafkaServer toShutDown = null;
-                    for (KafkaServer server : kafkaServer.getBrokers()) {
-
-                        if (kafkaServer.getBrokerId(server) == shutdownBrokerId) {
-                            toShutDown = server;
-                            break;
-                        }
-                    }
-
-                    if (toShutDown == null) {
-                        StringBuilder listOfBrokers = new StringBuilder();
-                        for (KafkaServer server : kafkaServer.getBrokers()) {
-                            listOfBrokers.append(kafkaServer.getBrokerId(server));
-                            listOfBrokers.append(" ; ");
-                        }
-
-                        throw new Exception(
-                                "Cannot find broker to shut down: "
-                                        + shutdownBrokerId
-                                        + " ; available brokers: "
-                                        + listOfBrokers.toString());
-                    } else {
-                        hasBeenCheckpointedBeforeFailure = hasBeenCheckpointed;
-                        killedLeaderBefore = true;
-                        toShutDown.shutdown();
-                    }
+                    kafkaServerToKill.stopBroker(shutdownBrokerId);
+                    hasBeenCheckpointedBeforeFailure = hasBeenCheckpointed;
+                    killedLeaderBefore = true;
                 }
             }
             return value;

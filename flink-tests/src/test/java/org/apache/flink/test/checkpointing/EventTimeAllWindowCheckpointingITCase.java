@@ -37,13 +37,13 @@ import org.apache.flink.test.checkpointing.utils.FailingSource;
 import org.apache.flink.test.checkpointing.utils.IntType;
 import org.apache.flink.test.checkpointing.utils.ValidatingSink;
 import org.apache.flink.test.util.MiniClusterWithClientResource;
-import org.apache.flink.testutils.junit.FailsWithAdaptiveScheduler;
 import org.apache.flink.util.Collector;
 import org.apache.flink.util.TestLogger;
 
 import org.junit.ClassRule;
 import org.junit.Test;
-import org.junit.experimental.categories.Category;
+
+import java.time.Duration;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -55,7 +55,6 @@ import static org.junit.Assert.fail;
  * <p>This is a version of {@link EventTimeWindowCheckpointingITCase} for All-Windows.
  */
 @SuppressWarnings("serial")
-@Category(FailsWithAdaptiveScheduler.class) // FLINK-21400
 public class EventTimeAllWindowCheckpointingITCase extends TestLogger {
 
     private static final int PARALLELISM = 4;
@@ -72,8 +71,8 @@ public class EventTimeAllWindowCheckpointingITCase extends TestLogger {
     private static Configuration getConfiguration() {
         Configuration config = new Configuration();
         config.set(TaskManagerOptions.MANAGED_MEMORY_SIZE, MemorySize.parse("48m"));
-        config.setString(AkkaOptions.LOOKUP_TIMEOUT, "60 s");
-        config.setString(AkkaOptions.ASK_TIMEOUT, "60 s");
+        config.set(AkkaOptions.LOOKUP_TIMEOUT_DURATION, Duration.ofMinutes(1));
+        config.set(AkkaOptions.ASK_TIMEOUT_DURATION, Duration.ofMinutes(1));
         return config;
     }
 

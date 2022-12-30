@@ -22,6 +22,7 @@ import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
 import org.apache.flink.runtime.instance.InstanceID;
+import org.apache.flink.runtime.resourcemanager.WorkerResourceSpec;
 import org.apache.flink.runtime.resourcemanager.registration.TaskExecutorConnection;
 import org.apache.flink.runtime.util.ResourceCounter;
 import org.apache.flink.util.Preconditions;
@@ -47,10 +48,16 @@ public class FineGrainedTaskManagerTracker implements TaskManagerTracker {
     /** All currently registered task managers. */
     private final Map<InstanceID, FineGrainedTaskManagerRegistration> taskManagerRegistrations;
 
+    /** All unwanted task managers. */
+    private final Map<InstanceID, WorkerResourceSpec> unWantedTaskManagers;
+
     private final Map<PendingTaskManagerId, PendingTaskManager> pendingTaskManagers;
 
     private final Map<PendingTaskManagerId, Map<JobID, ResourceCounter>>
             pendingSlotAllocationRecords;
+
+    private ResourceProfile totalRegisteredResource = ResourceProfile.ZERO;
+    private ResourceProfile totalPendingResource = ResourceProfile.ZERO;
 
     /**
      * Pending task manager indexed by the tuple of total resource profile and default slot resource
@@ -62,6 +69,7 @@ public class FineGrainedTaskManagerTracker implements TaskManagerTracker {
     public FineGrainedTaskManagerTracker() {
         slots = new HashMap<>();
         taskManagerRegistrations = new HashMap<>();
+        unWantedTaskManagers = new HashMap<>();
         pendingTaskManagers = new HashMap<>();
         pendingSlotAllocationRecords = new HashMap<>();
         totalAndDefaultSlotProfilesToPendingTaskManagers = new HashMap<>();
@@ -74,6 +82,12 @@ public class FineGrainedTaskManagerTracker implements TaskManagerTracker {
         LOG.trace("Record the pending allocations {}.", pendingSlotAllocations);
         pendingSlotAllocationRecords.clear();
         pendingSlotAllocationRecords.putAll(pendingSlotAllocations);
+    }
+
+    @Override
+    public void clearPendingAllocationsOfJob(JobID jobId) {
+        LOG.info("Clear all pending allocations for job {}.", jobId);
+        pendingSlotAllocationRecords.values().forEach(allocation -> allocation.remove(jobId));
     }
 
     @Override
@@ -94,13 +108,16 @@ public class FineGrainedTaskManagerTracker implements TaskManagerTracker {
                         taskExecutorConnection, totalResourceProfile, defaultSlotResourceProfile);
         taskManagerRegistrations.put(
                 taskExecutorConnection.getInstanceID(), taskManagerRegistration);
+        totalRegisteredResource = totalRegisteredResource.merge(totalResourceProfile);
     }
 
     @Override
     public void removeTaskManager(InstanceID instanceId) {
         Preconditions.checkNotNull(instanceId);
+        unWantedTaskManagers.remove(instanceId);
         final FineGrainedTaskManagerRegistration taskManager =
                 Preconditions.checkNotNull(taskManagerRegistrations.remove(instanceId));
+        totalRegisteredResource = totalRegisteredResource.subtract(taskManager.getTotalResource());
         LOG.debug("Remove task manager {}.", instanceId);
         for (AllocationID allocationId : taskManager.getAllocatedSlots().keySet()) {
             slots.remove(allocationId);
@@ -108,10 +125,34 @@ public class FineGrainedTaskManagerTracker implements TaskManagerTracker {
     }
 
     @Override
+    public void addUnWantedTaskManager(InstanceID instanceId) {
+        final FineGrainedTaskManagerRegistration taskManager =
+                taskManagerRegistrations.get(instanceId);
+        if (taskManager != null) {
+            unWantedTaskManagers.put(
+                    instanceId,
+                    WorkerResourceSpec.fromTotalResourceProfile(
+                            taskManager.getTotalResource(),
+                            SlotManagerUtils.calculateDefaultNumSlots(
+                                    taskManager.getTotalResource(),
+                                    taskManager.getDefaultSlotResourceProfile())));
+        } else {
+            LOG.debug("Unwanted task manager {} does not exists.", instanceId);
+        }
+    }
+
+    @Override
+    public Map<InstanceID, WorkerResourceSpec> getUnWantedTaskManager() {
+        return unWantedTaskManagers;
+    }
+
+    @Override
     public void addPendingTaskManager(PendingTaskManager pendingTaskManager) {
         Preconditions.checkNotNull(pendingTaskManager);
         LOG.debug("Add pending task manager {}.", pendingTaskManager);
         pendingTaskManagers.put(pendingTaskManager.getPendingTaskManagerId(), pendingTaskManager);
+        totalPendingResource =
+                totalPendingResource.merge(pendingTaskManager.getTotalResourceProfile());
         totalAndDefaultSlotProfilesToPendingTaskManagers
                 .computeIfAbsent(
                         Tuple2.of(
@@ -127,6 +168,8 @@ public class FineGrainedTaskManagerTracker implements TaskManagerTracker {
         Preconditions.checkNotNull(pendingTaskManagerId);
         final PendingTaskManager pendingTaskManager =
                 Preconditions.checkNotNull(pendingTaskManagers.remove(pendingTaskManagerId));
+        totalPendingResource =
+                totalPendingResource.subtract(pendingTaskManager.getTotalResourceProfile());
         LOG.debug("Remove pending task manager {}.", pendingTaskManagerId);
         totalAndDefaultSlotProfilesToPendingTaskManagers.compute(
                 Tuple2.of(
@@ -257,11 +300,6 @@ public class FineGrainedTaskManagerTracker implements TaskManagerTracker {
     }
 
     @Override
-    public ClusterResourceOverview getClusterResourceOverview() {
-        return new ClusterResourceOverview(taskManagerRegistrations);
-    }
-
-    @Override
     public Collection<PendingTaskManager>
             getPendingTaskManagersByTotalAndDefaultSlotResourceProfile(
                     ResourceProfile totalResourceProfile,
@@ -273,10 +311,77 @@ public class FineGrainedTaskManagerTracker implements TaskManagerTracker {
     }
 
     @Override
+    public int getNumberRegisteredSlots() {
+        return taskManagerRegistrations.values().stream()
+                .mapToInt(TaskManagerInfo::getDefaultNumSlots)
+                .sum();
+    }
+
+    @Override
+    public int getNumberRegisteredSlotsOf(InstanceID instanceId) {
+        return Optional.ofNullable(taskManagerRegistrations.get(instanceId))
+                .map(TaskManagerInfo::getDefaultNumSlots)
+                .orElse(0);
+    }
+
+    @Override
+    public int getNumberFreeSlots() {
+        return taskManagerRegistrations.keySet().stream()
+                .mapToInt(this::getNumberFreeSlotsOf)
+                .sum();
+    }
+
+    @Override
+    public int getNumberFreeSlotsOf(InstanceID instanceId) {
+        return Optional.ofNullable(taskManagerRegistrations.get(instanceId))
+                .map(
+                        taskManager ->
+                                Math.max(
+                                        taskManager.getDefaultNumSlots()
+                                                - taskManager.getAllocatedSlots().size(),
+                                        0))
+                .orElse(0);
+    }
+
+    @Override
+    public ResourceProfile getRegisteredResource() {
+        return totalRegisteredResource;
+    }
+
+    @Override
+    public ResourceProfile getRegisteredResourceOf(InstanceID instanceId) {
+        return Optional.ofNullable(taskManagerRegistrations.get(instanceId))
+                .map(TaskManagerInfo::getTotalResource)
+                .orElse(ResourceProfile.ZERO);
+    }
+
+    @Override
+    public ResourceProfile getFreeResource() {
+        return taskManagerRegistrations.values().stream()
+                .map(TaskManagerInfo::getAvailableResource)
+                .reduce(ResourceProfile.ZERO, ResourceProfile::merge);
+    }
+
+    @Override
+    public ResourceProfile getFreeResourceOf(InstanceID instanceId) {
+        return Optional.ofNullable(taskManagerRegistrations.get(instanceId))
+                .map(TaskManagerInfo::getAvailableResource)
+                .orElse(ResourceProfile.ZERO);
+    }
+
+    @Override
+    public ResourceProfile getPendingResource() {
+        return totalPendingResource;
+    }
+
+    @Override
     public void clear() {
         slots.clear();
         taskManagerRegistrations.clear();
+        totalRegisteredResource = ResourceProfile.ZERO;
         pendingTaskManagers.clear();
+        totalPendingResource = ResourceProfile.ZERO;
         pendingSlotAllocationRecords.clear();
+        unWantedTaskManagers.clear();
     }
 }

@@ -401,7 +401,6 @@ public class FlinkKinesisConsumer<T> extends RichParallelSourceFunction<T>
         running = false;
 
         KinesisDataFetcher fetcher = this.fetcher;
-        this.fetcher = null;
 
         // this method might be called before the subtask actually starts running,
         // so we must check if the fetcher is actually created
@@ -409,7 +408,6 @@ public class FlinkKinesisConsumer<T> extends RichParallelSourceFunction<T>
             try {
                 // interrupt the fetcher of any work
                 fetcher.shutdownFetcher();
-                fetcher.awaitTermination();
             } catch (Exception e) {
                 LOG.warn("Error while closing Kinesis data fetcher", e);
             }
@@ -419,6 +417,14 @@ public class FlinkKinesisConsumer<T> extends RichParallelSourceFunction<T>
     @Override
     public void close() throws Exception {
         cancel();
+        // safe-guard when the fetcher has been interrupted, make sure to not leak resources
+        // application might be stopped before connector subtask has been started
+        // so we must check if the fetcher is actually created
+        KinesisDataFetcher fetcher = this.fetcher;
+        if (fetcher != null) {
+            fetcher.awaitTermination();
+        }
+        this.fetcher = null;
         super.close();
     }
 

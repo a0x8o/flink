@@ -22,7 +22,7 @@ import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.common.state.ValueState;
 import org.apache.flink.api.common.state.ValueStateDescriptor;
 import org.apache.flink.api.common.typeinfo.Types;
-import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.api.java.tuple.Tuple3;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.fnexecution.v1.FlinkFnApi;
 import org.apache.flink.runtime.state.VoidNamespace;
@@ -31,9 +31,11 @@ import org.apache.flink.streaming.api.SimpleTimerService;
 import org.apache.flink.streaming.api.TimerService;
 import org.apache.flink.streaming.api.operators.InternalTimer;
 import org.apache.flink.streaming.api.operators.Triggerable;
+import org.apache.flink.table.data.GenericRowData;
 import org.apache.flink.table.data.RowData;
+import org.apache.flink.table.data.UpdatableRowData;
 import org.apache.flink.table.functions.python.PythonAggregateFunctionInfo;
-import org.apache.flink.table.planner.typeutils.DataViewUtils;
+import org.apache.flink.table.runtime.dataview.DataViewSpec;
 import org.apache.flink.table.runtime.functions.CleanupState;
 import org.apache.flink.table.types.logical.BigIntType;
 import org.apache.flink.table.types.logical.RowType;
@@ -69,12 +71,16 @@ public abstract class AbstractPythonStreamGroupAggregateOperator
     // holds the latest registered cleanup timer
     private transient ValueState<Long> cleanupTimeState;
 
+    private transient UpdatableRowData reuseRowData;
+
+    private transient UpdatableRowData reuseTimerRowData;
+
     public AbstractPythonStreamGroupAggregateOperator(
             Configuration config,
             RowType inputType,
             RowType outputType,
             PythonAggregateFunctionInfo[] aggregateFunctions,
-            DataViewUtils.DataViewSpec[][] dataViewSpecs,
+            DataViewSpec[][] dataViewSpecs,
             int[] grouping,
             int indexOfCountStar,
             boolean generateUpdateBefore,
@@ -96,6 +102,12 @@ public abstract class AbstractPythonStreamGroupAggregateOperator
 
     @Override
     public void open() throws Exception {
+        // The structure is:  [type]|[normal record]|[timestamp of timer]|[row key]
+        // If the type is 'NORMAL_RECORD', store the RowData object in the 2nd column.
+        // If the type is 'TRIGGER_TIMER', store the timestamp in 3rd column and the row key
+        reuseRowData = new UpdatableRowData(GenericRowData.of(NORMAL_RECORD, null, null, null), 4);
+        reuseTimerRowData =
+                new UpdatableRowData(GenericRowData.of(TRIGGER_TIMER, null, null, null), 4);
         timerService =
                 new SimpleTimerService(
                         getInternalTimerService(
@@ -134,16 +146,16 @@ public abstract class AbstractPythonStreamGroupAggregateOperator
     }
 
     @Override
-    public void emitResult(Tuple2<byte[], Integer> resultTuple) throws Exception {
-        byte[] rawUdfResult = resultTuple.f0;
-        int length = resultTuple.f1;
+    public void emitResult(Tuple3<String, byte[], Integer> resultTuple) throws Exception {
+        byte[] rawUdfResult = resultTuple.f1;
+        int length = resultTuple.f2;
         bais.setBuffer(rawUdfResult, 0, length);
         RowData udfResult = udfOutputTypeSerializer.deserialize(baisWrapper);
         rowDataWrapper.collect(udfResult);
     }
 
     @Override
-    public RowType getUserDefinedFunctionInputType() {
+    public RowType createUserDefinedFunctionInputType() {
         List<RowType.RowField> fields = new ArrayList<>();
         fields.add(new RowType.RowField("record_type", new TinyIntType()));
         fields.add(new RowType.RowField("row", inputType));
@@ -153,7 +165,7 @@ public abstract class AbstractPythonStreamGroupAggregateOperator
     }
 
     @Override
-    public RowType getUserDefinedFunctionOutputType() {
+    public RowType createUserDefinedFunctionOutputType() {
         return outputType;
     }
 

@@ -44,7 +44,8 @@ import java.util.function.Supplier;
 public interface SubtaskCheckpointCoordinator extends Closeable {
 
     /** Initialize new checkpoint. */
-    void initCheckpoint(long id, CheckpointOptions checkpointOptions) throws IOException;
+    void initInputsCheckpoint(long id, CheckpointOptions checkpointOptions)
+            throws CheckpointException;
 
     ChannelStateWriter getChannelStateWriter();
 
@@ -54,12 +55,13 @@ public interface SubtaskCheckpointCoordinator extends Closeable {
             long checkpointId, CheckpointException cause, OperatorChain<?, ?> operatorChain)
             throws IOException;
 
-    /** Must be called after {@link #initCheckpoint(long, CheckpointOptions)}. */
+    /** Must be called after {@link #initInputsCheckpoint(long, CheckpointOptions)}. */
     void checkpointState(
             CheckpointMetaData checkpointMetaData,
             CheckpointOptions checkpointOptions,
             CheckpointMetricsBuilder checkpointMetrics,
             OperatorChain<?, ?> operatorChain,
+            boolean isTaskFinished,
             Supplier<Boolean> isRunning)
             throws Exception;
 
@@ -84,4 +86,21 @@ public interface SubtaskCheckpointCoordinator extends Closeable {
     void notifyCheckpointAborted(
             long checkpointId, OperatorChain<?, ?> operatorChain, Supplier<Boolean> isRunning)
             throws Exception;
+
+    /**
+     * Notified on the task side once a distributed checkpoint has been subsumed.
+     *
+     * @param checkpointId The checkpoint id to notify as been subsumed.
+     * @param operatorChain The chain of operators executed by the task.
+     * @param isRunning Whether the task is running.
+     */
+    void notifyCheckpointSubsumed(
+            long checkpointId, OperatorChain<?, ?> operatorChain, Supplier<Boolean> isRunning)
+            throws Exception;
+
+    /** Waits for all the pending checkpoints to finish their asynchronous step. */
+    void waitForPendingCheckpoints() throws Exception;
+
+    /** Cancel all resources. */
+    void cancel() throws IOException;
 }

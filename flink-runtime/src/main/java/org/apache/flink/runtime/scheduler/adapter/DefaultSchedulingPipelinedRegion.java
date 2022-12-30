@@ -19,8 +19,11 @@
 
 package org.apache.flink.runtime.scheduler.adapter;
 
+import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
+import org.apache.flink.runtime.scheduler.strategy.ConsumedPartitionGroup;
 import org.apache.flink.runtime.scheduler.strategy.ExecutionVertexID;
 import org.apache.flink.runtime.scheduler.strategy.SchedulingPipelinedRegion;
+import org.apache.flink.runtime.scheduler.strategy.SchedulingResultPartition;
 import org.apache.flink.util.Preconditions;
 
 import java.util.Collections;
@@ -28,21 +31,35 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
+
+import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /** Default implementation of {@link SchedulingPipelinedRegion}. */
 public class DefaultSchedulingPipelinedRegion implements SchedulingPipelinedRegion {
 
     private final Map<ExecutionVertexID, DefaultExecutionVertex> executionVertices;
 
-    private Set<DefaultResultPartition> consumedResults;
+    private Set<ConsumedPartitionGroup> nonPipelinedConsumedPartitionGroups;
 
-    public DefaultSchedulingPipelinedRegion(Set<DefaultExecutionVertex> defaultExecutionVertices) {
+    private Set<ConsumedPartitionGroup> releaseBySchedulerConsumedPartitionGroups;
+
+    private final Function<IntermediateResultPartitionID, DefaultResultPartition>
+            resultPartitionRetriever;
+
+    public DefaultSchedulingPipelinedRegion(
+            Set<DefaultExecutionVertex> defaultExecutionVertices,
+            Function<IntermediateResultPartitionID, DefaultResultPartition>
+                    resultPartitionRetriever) {
+
         Preconditions.checkNotNull(defaultExecutionVertices);
 
         this.executionVertices = new HashMap<>();
         for (DefaultExecutionVertex executionVertex : defaultExecutionVertices) {
             this.executionVertices.put(executionVertex.getId(), executionVertex);
         }
+
+        this.resultPartitionRetriever = checkNotNull(resultPartitionRetriever);
     }
 
     @Override
@@ -60,23 +77,49 @@ public class DefaultSchedulingPipelinedRegion implements SchedulingPipelinedRegi
         return executionVertex;
     }
 
-    @Override
-    public Iterable<DefaultResultPartition> getConsumedResults() {
-        if (consumedResults == null) {
-            initializeConsumedResults();
-        }
-        return consumedResults;
-    }
-
-    private void initializeConsumedResults() {
-        final Set<DefaultResultPartition> consumedResults = new HashSet<>();
+    private void initializeConsumedPartitionGroups() {
+        final Set<ConsumedPartitionGroup> nonPipelinedConsumedPartitionGroupSet = new HashSet<>();
+        final Set<ConsumedPartitionGroup> releaseBySchedulerConsumedPartitionGroupSet =
+                new HashSet<>();
         for (DefaultExecutionVertex executionVertex : executionVertices.values()) {
-            for (DefaultResultPartition resultPartition : executionVertex.getConsumedResults()) {
-                if (!executionVertices.containsKey(resultPartition.getProducer().getId())) {
-                    consumedResults.add(resultPartition);
+            for (ConsumedPartitionGroup consumedPartitionGroup :
+                    executionVertex.getConsumedPartitionGroups()) {
+                SchedulingResultPartition consumedPartition =
+                        resultPartitionRetriever.apply(consumedPartitionGroup.getFirst());
+
+                if (!consumedPartition.getResultType().mustBePipelinedConsumed()) {
+                    nonPipelinedConsumedPartitionGroupSet.add(consumedPartitionGroup);
+                }
+                if (consumedPartition.getResultType().isReleaseByScheduler()) {
+                    releaseBySchedulerConsumedPartitionGroupSet.add(consumedPartitionGroup);
                 }
             }
         }
-        this.consumedResults = Collections.unmodifiableSet(consumedResults);
+
+        this.nonPipelinedConsumedPartitionGroups =
+                Collections.unmodifiableSet(nonPipelinedConsumedPartitionGroupSet);
+        this.releaseBySchedulerConsumedPartitionGroups =
+                Collections.unmodifiableSet(releaseBySchedulerConsumedPartitionGroupSet);
+    }
+
+    @Override
+    public Iterable<ConsumedPartitionGroup> getAllNonPipelinedConsumedPartitionGroups() {
+        if (nonPipelinedConsumedPartitionGroups == null) {
+            initializeConsumedPartitionGroups();
+        }
+        return nonPipelinedConsumedPartitionGroups;
+    }
+
+    @Override
+    public Iterable<ConsumedPartitionGroup> getAllReleaseBySchedulerConsumedPartitionGroups() {
+        if (releaseBySchedulerConsumedPartitionGroups == null) {
+            initializeConsumedPartitionGroups();
+        }
+        return releaseBySchedulerConsumedPartitionGroups;
+    }
+
+    @Override
+    public boolean contains(final ExecutionVertexID vertexId) {
+        return executionVertices.containsKey(vertexId);
     }
 }

@@ -50,18 +50,13 @@ public class ContinuousProcessingTimeTrigger<W extends Window> extends Trigger<O
     @Override
     public TriggerResult onElement(Object element, long timestamp, W window, TriggerContext ctx)
             throws Exception {
-        ReducingState<Long> fireTimestamp = ctx.getPartitionedState(stateDesc);
+        ReducingState<Long> fireTimestampState = ctx.getPartitionedState(stateDesc);
 
         timestamp = ctx.getCurrentProcessingTime();
 
-        if (fireTimestamp.get() == null) {
-            long start = timestamp - (timestamp % interval);
-            long nextFireTimestamp = start + interval;
-
-            ctx.registerProcessingTimeTimer(nextFireTimestamp);
-
-            fireTimestamp.add(nextFireTimestamp);
-            return TriggerResult.CONTINUE;
+        if (fireTimestampState.get() == null) {
+            registerNextFireTimestamp(
+                    timestamp - (timestamp % interval), window, ctx, fireTimestampState);
         }
         return TriggerResult.CONTINUE;
     }
@@ -74,12 +69,11 @@ public class ContinuousProcessingTimeTrigger<W extends Window> extends Trigger<O
     @Override
     public TriggerResult onProcessingTime(long time, W window, TriggerContext ctx)
             throws Exception {
-        ReducingState<Long> fireTimestamp = ctx.getPartitionedState(stateDesc);
+        ReducingState<Long> fireTimestampState = ctx.getPartitionedState(stateDesc);
 
-        if (fireTimestamp.get().equals(time)) {
-            fireTimestamp.clear();
-            fireTimestamp.add(time + interval);
-            ctx.registerProcessingTimeTimer(time + interval);
+        if (fireTimestampState.get().equals(time)) {
+            fireTimestampState.clear();
+            registerNextFireTimestamp(time, window, ctx, fireTimestampState);
             return TriggerResult.FIRE;
         }
         return TriggerResult.CONTINUE;
@@ -87,10 +81,13 @@ public class ContinuousProcessingTimeTrigger<W extends Window> extends Trigger<O
 
     @Override
     public void clear(W window, TriggerContext ctx) throws Exception {
+        // State could be merged into new window.
         ReducingState<Long> fireTimestamp = ctx.getPartitionedState(stateDesc);
-        long timestamp = fireTimestamp.get();
-        ctx.deleteProcessingTimeTimer(timestamp);
-        fireTimestamp.clear();
+        Long timestamp = fireTimestamp.get();
+        if (timestamp != null) {
+            ctx.deleteProcessingTimeTimer(timestamp);
+            fireTimestamp.clear();
+        }
     }
 
     @Override
@@ -99,8 +96,15 @@ public class ContinuousProcessingTimeTrigger<W extends Window> extends Trigger<O
     }
 
     @Override
-    public void onMerge(W window, OnMergeContext ctx) {
+    public void onMerge(W window, OnMergeContext ctx) throws Exception {
+        // States for old windows will lose after the call.
         ctx.mergePartitionedState(stateDesc);
+
+        // Register timer for this new window.
+        Long nextFireTimestamp = ctx.getPartitionedState(stateDesc).get();
+        if (nextFireTimestamp != null) {
+            ctx.registerProcessingTimeTimer(nextFireTimestamp);
+        }
     }
 
     @VisibleForTesting
@@ -130,5 +134,13 @@ public class ContinuousProcessingTimeTrigger<W extends Window> extends Trigger<O
         public Long reduce(Long value1, Long value2) throws Exception {
             return Math.min(value1, value2);
         }
+    }
+
+    private void registerNextFireTimestamp(
+            long time, W window, TriggerContext ctx, ReducingState<Long> fireTimestampState)
+            throws Exception {
+        long nextFireTimestamp = Math.min(time + interval, window.maxTimestamp());
+        fireTimestampState.add(nextFireTimestamp);
+        ctx.registerProcessingTimeTimer(nextFireTimestamp);
     }
 }

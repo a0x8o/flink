@@ -20,8 +20,8 @@ package org.apache.flink.table.operations.utils;
 
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.table.api.TableException;
-import org.apache.flink.table.api.TableSchema;
 import org.apache.flink.table.api.ValidationException;
+import org.apache.flink.table.catalog.ResolvedSchema;
 import org.apache.flink.table.expressions.CallExpression;
 import org.apache.flink.table.expressions.Expression;
 import org.apache.flink.table.expressions.ExpressionDefaultVisitor;
@@ -37,7 +37,6 @@ import org.apache.flink.table.types.DataType;
 import org.apache.flink.table.types.FieldsDataType;
 import org.apache.flink.table.types.KeyValueDataType;
 import org.apache.flink.table.types.logical.LogicalType;
-import org.apache.flink.table.types.logical.LogicalTypeRoot;
 import org.apache.flink.table.types.logical.utils.LogicalTypeMerging;
 import org.apache.flink.table.types.utils.TypeConversions;
 
@@ -53,8 +52,11 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import static org.apache.flink.table.expressions.ApiExpressionUtils.valueLiteral;
+import static org.apache.flink.table.types.logical.LogicalTypeRoot.ARRAY;
+import static org.apache.flink.table.types.logical.LogicalTypeRoot.MAP;
+import static org.apache.flink.table.types.logical.LogicalTypeRoot.NULL;
+import static org.apache.flink.table.types.logical.LogicalTypeRoot.ROW;
 import static org.apache.flink.table.types.logical.utils.LogicalTypeCasts.supportsExplicitCast;
-import static org.apache.flink.table.types.logical.utils.LogicalTypeChecks.hasRoot;
 
 /** Utility class for creating valid {@link ValuesQueryOperation} operation. */
 @Internal
@@ -69,16 +71,16 @@ class ValuesOperationFactory {
      * automatically derived from the types of the expressions.
      */
     QueryOperation create(
-            @Nullable TableSchema expectedSchema,
+            @Nullable ResolvedSchema expectedSchema,
             List<ResolvedExpression> resolvedExpressions,
             ExpressionResolver.PostResolverFactory postResolverFactory) {
         List<List<ResolvedExpression>> resolvedRows = unwrapFromRowConstructor(resolvedExpressions);
 
         if (expectedSchema != null) {
-            verifyAllSameSize(resolvedRows, expectedSchema.getFieldCount());
+            verifyAllSameSize(resolvedRows, expectedSchema.getColumnCount());
         }
 
-        TableSchema schema =
+        ResolvedSchema schema =
                 Optional.ofNullable(expectedSchema).orElseGet(() -> extractSchema(resolvedRows));
 
         List<List<ResolvedExpression>> castedExpressions =
@@ -87,23 +89,23 @@ class ValuesOperationFactory {
                                 row ->
                                         convertTopLevelExpressionToExpectedRowType(
                                                 postResolverFactory,
-                                                schema.getFieldDataTypes(),
+                                                schema.getColumnDataTypes(),
                                                 row))
                         .collect(Collectors.toList());
 
         return new ValuesQueryOperation(castedExpressions, schema);
     }
 
-    private TableSchema extractSchema(List<List<ResolvedExpression>> resolvedRows) {
+    private ResolvedSchema extractSchema(List<List<ResolvedExpression>> resolvedRows) {
         DataType[] dataTypes = findRowType(resolvedRows);
         String[] fieldNames =
                 IntStream.range(0, dataTypes.length).mapToObj(i -> "f" + i).toArray(String[]::new);
-        return TableSchema.builder().fields(fieldNames, dataTypes).build();
+        return ResolvedSchema.physical(fieldNames, dataTypes);
     }
 
     private List<ResolvedExpression> convertTopLevelExpressionToExpectedRowType(
             ExpressionResolver.PostResolverFactory postResolverFactory,
-            DataType[] dataTypes,
+            List<DataType> dataTypes,
             List<ResolvedExpression> row) {
         return IntStream.range(0, row.size())
                 .mapToObj(
@@ -112,13 +114,13 @@ class ValuesOperationFactory {
                                     row.get(i)
                                             .getOutputDataType()
                                             .getLogicalType()
-                                            .equals(dataTypes[i].getLogicalType());
+                                            .equals(dataTypes.get(i).getLogicalType());
                             if (typesMatch) {
                                 return row.get(i);
                             }
 
                             ResolvedExpression castedExpr = row.get(i);
-                            DataType targetDataType = dataTypes[i];
+                            DataType targetDataType = dataTypes.get(i);
 
                             return convertToExpectedType(
                                             castedExpr, targetDataType, postResolverFactory)
@@ -157,7 +159,7 @@ class ValuesOperationFactory {
         // if the expression is a literal try converting the literal in place instead of casting
         if (sourceExpression instanceof ValueLiteralExpression) {
             // Assign a type to a null literal
-            if (hasRoot(sourceLogicalType, LogicalTypeRoot.NULL)) {
+            if (sourceLogicalType.is(NULL)) {
                 return Optional.of(valueLiteral(null, targetDataType));
             }
 
@@ -188,16 +190,15 @@ class ValuesOperationFactory {
         if (sourceExpression instanceof CallExpression) {
             FunctionDefinition functionDefinition =
                     ((CallExpression) sourceExpression).getFunctionDefinition();
-            if (functionDefinition == BuiltInFunctionDefinitions.ROW
-                    && hasRoot(targetLogicalType, LogicalTypeRoot.ROW)) {
+            if (functionDefinition == BuiltInFunctionDefinitions.ROW && targetLogicalType.is(ROW)) {
                 return convertRowToExpectedType(
                         sourceExpression, (FieldsDataType) targetDataType, postResolverFactory);
             } else if (functionDefinition == BuiltInFunctionDefinitions.ARRAY
-                    && hasRoot(targetLogicalType, LogicalTypeRoot.ARRAY)) {
+                    && targetLogicalType.is(ARRAY)) {
                 return convertArrayToExpectedType(
                         sourceExpression, (CollectionDataType) targetDataType, postResolverFactory);
             } else if (functionDefinition == BuiltInFunctionDefinitions.MAP
-                    && hasRoot(targetLogicalType, LogicalTypeRoot.MAP)) {
+                    && targetLogicalType.is(MAP)) {
                 return convertMapToExpectedType(
                         sourceExpression, (KeyValueDataType) targetDataType, postResolverFactory);
             }

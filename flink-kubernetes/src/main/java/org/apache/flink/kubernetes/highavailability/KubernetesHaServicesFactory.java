@@ -19,11 +19,11 @@
 package org.apache.flink.kubernetes.highavailability;
 
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.kubernetes.kubeclient.DefaultKubeClientFactory;
-import org.apache.flink.kubernetes.kubeclient.KubeClientFactory;
+import org.apache.flink.kubernetes.kubeclient.FlinkKubeClientFactory;
 import org.apache.flink.runtime.blob.BlobUtils;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServicesFactory;
+import org.apache.flink.util.FatalExitExceptionHandler;
 
 import java.util.concurrent.Executor;
 
@@ -33,11 +33,14 @@ public class KubernetesHaServicesFactory implements HighAvailabilityServicesFact
     @Override
     public HighAvailabilityServices createHAServices(Configuration configuration, Executor executor)
             throws Exception {
-        final KubeClientFactory kubeClientFactory = new DefaultKubeClientFactory();
-        return new KubernetesHaServices(
-                kubeClientFactory.fromConfiguration(configuration, executor),
+        return new KubernetesMultipleComponentLeaderElectionHaServices(
+                FlinkKubeClientFactory.getInstance()
+                        .fromConfiguration(configuration, "kubernetes-ha-services"),
                 executor,
                 configuration,
-                BlobUtils.createBlobStoreFromConfig(configuration));
+                BlobUtils.createBlobStoreFromConfig(configuration),
+                error ->
+                        FatalExitExceptionHandler.INSTANCE.uncaughtException(
+                                Thread.currentThread(), error));
     }
 }

@@ -346,18 +346,8 @@ public abstract class AbstractMetricGroup<A extends AbstractMetricGroup<?>> impl
     // -----------------------------------------------------------------------------------------------------------------
 
     @Override
-    public Counter counter(int name) {
-        return counter(String.valueOf(name));
-    }
-
-    @Override
     public Counter counter(String name) {
         return counter(name, new SimpleCounter());
-    }
-
-    @Override
-    public <C extends Counter> C counter(int name, C counter) {
-        return counter(String.valueOf(name), counter);
     }
 
     @Override
@@ -367,30 +357,15 @@ public abstract class AbstractMetricGroup<A extends AbstractMetricGroup<?>> impl
     }
 
     @Override
-    public <T, G extends Gauge<T>> G gauge(int name, G gauge) {
-        return gauge(String.valueOf(name), gauge);
-    }
-
-    @Override
     public <T, G extends Gauge<T>> G gauge(String name, G gauge) {
         addMetric(name, gauge);
         return gauge;
     }
 
     @Override
-    public <H extends Histogram> H histogram(int name, H histogram) {
-        return histogram(String.valueOf(name), histogram);
-    }
-
-    @Override
     public <H extends Histogram> H histogram(String name, H histogram) {
         addMetric(name, histogram);
         return histogram;
-    }
-
-    @Override
-    public <M extends Meter> M meter(int name, M meter) {
-        return meter(String.valueOf(name), meter);
     }
 
     @Override
@@ -459,11 +434,6 @@ public abstract class AbstractMetricGroup<A extends AbstractMetricGroup<?>> impl
     // ------------------------------------------------------------------------
 
     @Override
-    public MetricGroup addGroup(int name) {
-        return addGroup(String.valueOf(name), ChildType.GENERIC);
-    }
-
-    @Override
     public MetricGroup addGroup(String name) {
         return addGroup(name, ChildType.GENERIC);
     }
@@ -491,8 +461,8 @@ public abstract class AbstractMetricGroup<A extends AbstractMetricGroup<?>> impl
 
                 AbstractMetricGroup newGroup = createChildGroup(name, childType);
                 AbstractMetricGroup prior = groups.put(name, newGroup);
-                if (prior == null) {
-                    // no prior group with that name
+                if (prior == null || prior.isClosed()) {
+                    // no prior group or closed group with that name
                     return newGroup;
                 } else {
                     // had a prior group with that name, add the prior group back

@@ -19,12 +19,13 @@
 package org.apache.flink.runtime.scheduler.strategy;
 
 import org.apache.flink.runtime.execution.ExecutionState;
-import org.apache.flink.runtime.executiongraph.failover.flip1.PipelinedRegionComputeUtil;
+import org.apache.flink.runtime.executiongraph.failover.flip1.SchedulingPipelinedRegionComputeUtil;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionType;
 import org.apache.flink.runtime.jobgraph.DistributionPattern;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
+import org.apache.flink.runtime.scheduler.SchedulingTopologyListener;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -34,6 +35,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import static org.apache.flink.util.Preconditions.checkState;
@@ -78,6 +80,9 @@ public class TestingSchedulingTopology implements SchedulingTopology {
     }
 
     @Override
+    public void registerSchedulingTopologyListener(SchedulingTopologyListener listener) {}
+
+    @Override
     public Iterable<SchedulingPipelinedRegion> getAllPipelinedRegions() {
         return new HashSet<>(getVertexRegions().values());
     }
@@ -98,7 +103,8 @@ public class TestingSchedulingTopology implements SchedulingTopology {
         vertexRegions = new HashMap<>();
 
         final Set<Set<SchedulingExecutionVertex>> rawRegions =
-                PipelinedRegionComputeUtil.computePipelinedRegions(getVertices());
+                SchedulingPipelinedRegionComputeUtil.computePipelinedRegions(
+                        getVertices(), this::getVertex, this::getResultPartition);
 
         for (Set<SchedulingExecutionVertex> rawRegion : rawRegions) {
             final Set<TestingSchedulingExecutionVertex> vertices =
@@ -188,7 +194,8 @@ public class TestingSchedulingTopology implements SchedulingTopology {
                         .withResultPartitionType(resultPartitionType)
                         .build();
 
-        resultPartition.addConsumer(consumer);
+        resultPartition.addConsumerGroup(
+                Collections.singleton(consumer), resultPartition.getResultType());
         resultPartition.setProducer(producer);
 
         producer.addProducedPartition(resultPartition);
@@ -225,7 +232,8 @@ public class TestingSchedulingTopology implements SchedulingTopology {
 
         protected ResultPartitionType resultPartitionType = ResultPartitionType.BLOCKING;
 
-        protected ResultPartitionState resultPartitionState = ResultPartitionState.CONSUMABLE;
+        protected ResultPartitionState resultPartitionState =
+                ResultPartitionState.ALL_DATA_PRODUCED;
 
         protected ProducerConsumerConnectionBuilder(
                 final List<TestingSchedulingExecutionVertex> producers,
@@ -293,11 +301,13 @@ public class TestingSchedulingTopology implements SchedulingTopology {
                         initTestingSchedulingResultPartitionBuilder()
                                 .withIntermediateDataSetID(intermediateDataSetId)
                                 .withResultPartitionState(resultPartitionState)
+                                .withPartitionNum(idx)
                                 .build();
                 resultPartition.setProducer(producer);
                 producer.addProducedPartition(resultPartition);
                 consumer.addConsumedPartition(resultPartition);
-                resultPartition.addConsumer(consumer);
+                resultPartition.addConsumerGroup(
+                        Collections.singleton(consumer), resultPartitionType);
                 resultPartitions.add(resultPartition);
             }
 
@@ -323,21 +333,47 @@ public class TestingSchedulingTopology implements SchedulingTopology {
             final List<TestingSchedulingResultPartition> resultPartitions = new ArrayList<>();
             final IntermediateDataSetID intermediateDataSetId = new IntermediateDataSetID();
 
+            TestingSchedulingResultPartition.Builder resultPartitionBuilder =
+                    initTestingSchedulingResultPartitionBuilder()
+                            .withIntermediateDataSetID(intermediateDataSetId)
+                            .withResultPartitionState(resultPartitionState);
+
+            int partitionNum = 0;
+
             for (TestingSchedulingExecutionVertex producer : producers) {
 
                 final TestingSchedulingResultPartition resultPartition =
-                        initTestingSchedulingResultPartitionBuilder()
-                                .withIntermediateDataSetID(intermediateDataSetId)
-                                .withResultPartitionState(resultPartitionState)
-                                .build();
+                        resultPartitionBuilder.withPartitionNum(partitionNum++).build();
                 resultPartition.setProducer(producer);
                 producer.addProducedPartition(resultPartition);
 
-                for (TestingSchedulingExecutionVertex consumer : consumers) {
-                    consumer.addConsumedPartition(resultPartition);
-                    resultPartition.addConsumer(consumer);
-                }
+                resultPartition.addConsumerGroup(consumers, resultPartitionType);
                 resultPartitions.add(resultPartition);
+            }
+
+            ConsumedPartitionGroup consumedPartitionGroup =
+                    ConsumedPartitionGroup.fromMultiplePartitions(
+                            consumers.size(),
+                            resultPartitions.stream()
+                                    .map(TestingSchedulingResultPartition::getId)
+                                    .collect(Collectors.toList()),
+                            resultPartitions.get(0).getResultType());
+            Map<IntermediateResultPartitionID, TestingSchedulingResultPartition>
+                    consumedPartitionById =
+                            resultPartitions.stream()
+                                    .collect(
+                                            Collectors.toMap(
+                                                    TestingSchedulingResultPartition::getId,
+                                                    Function.identity()));
+            for (TestingSchedulingExecutionVertex consumer : consumers) {
+                consumer.addConsumedPartitionGroup(consumedPartitionGroup, consumedPartitionById);
+            }
+
+            for (TestingSchedulingResultPartition resultPartition : resultPartitions) {
+                resultPartition.registerConsumedPartitionGroup(consumedPartitionGroup);
+                if (resultPartition.getState() == ResultPartitionState.ALL_DATA_PRODUCED) {
+                    consumedPartitionGroup.partitionFinished();
+                }
             }
 
             return resultPartitions;
@@ -347,12 +383,17 @@ public class TestingSchedulingTopology implements SchedulingTopology {
     /** Builder for {@link TestingSchedulingExecutionVertex}. */
     public class SchedulingExecutionVerticesBuilder {
 
-        private final JobVertexID jobVertexId = new JobVertexID();
+        private JobVertexID jobVertexId = new JobVertexID();
 
         private int parallelism = 1;
 
         public SchedulingExecutionVerticesBuilder withParallelism(final int parallelism) {
             this.parallelism = parallelism;
+            return this;
+        }
+
+        public SchedulingExecutionVerticesBuilder withJobVertexID(final JobVertexID jobVertexId) {
+            this.jobVertexId = jobVertexId;
             return this;
         }
 

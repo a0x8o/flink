@@ -30,6 +30,7 @@ import org.apache.flink.table.catalog.ResolvedSchema;
 import org.apache.flink.table.types.DataType;
 import org.apache.flink.table.types.logical.LegacyTypeInformationType;
 import org.apache.flink.table.types.logical.LogicalType;
+import org.apache.flink.table.types.logical.LogicalTypeRoot;
 import org.apache.flink.table.types.logical.utils.LogicalTypeChecks;
 import org.apache.flink.table.types.utils.TypeConversions;
 import org.apache.flink.types.Row;
@@ -54,12 +55,20 @@ import java.util.stream.IntStream;
 import static org.apache.flink.table.api.DataTypes.FIELD;
 import static org.apache.flink.table.api.DataTypes.Field;
 import static org.apache.flink.table.api.DataTypes.ROW;
-import static org.apache.flink.table.types.logical.LogicalTypeRoot.TIMESTAMP_WITHOUT_TIME_ZONE;
+import static org.apache.flink.table.types.logical.utils.LogicalTypeChecks.canBeTimeAttributeType;
 import static org.apache.flink.table.types.logical.utils.LogicalTypeChecks.isCompositeType;
 import static org.apache.flink.table.types.utils.TypeConversions.fromDataTypeToLegacyInfo;
 import static org.apache.flink.table.types.utils.TypeConversions.fromLegacyInfoToDataType;
 
-/** A table schema that represents a table's structure with field names and data types. */
+/**
+ * A table schema that represents a table's structure with field names and data types.
+ *
+ * @deprecated This class has been deprecated as part of FLIP-164. It has been replaced by two more
+ *     dedicated classes {@link Schema} and {@link ResolvedSchema}. Use {@link Schema} for
+ *     declaration in APIs. {@link ResolvedSchema} is offered by the framework after resolution and
+ *     validation.
+ */
+@Deprecated
 @PublicEvolving
 public class TableSchema {
 
@@ -305,6 +314,11 @@ public class TableSchema {
 
     /** Helps to migrate to the new {@link Schema} class. */
     public Schema toSchema() {
+        return toSchema(Collections.emptyMap());
+    }
+
+    /** Helps to migrate to the new {@link Schema} class, retain comments when needed. */
+    public Schema toSchema(Map<String, String> comments) {
         final Schema.Builder builder = Schema.newBuilder();
 
         columns.forEach(
@@ -324,6 +338,10 @@ public class TableSchema {
                         builder.columnByExpression(c.getName(), c.getExpression());
                     } else {
                         throw new IllegalArgumentException("Unsupported column type: " + column);
+                    }
+                    String colName = column.getName();
+                    if (comments.containsKey(colName)) {
+                        builder.withComment(comments.get(colName));
                     }
                 });
 
@@ -511,18 +529,19 @@ public class TableSchema {
                                                     String.format(
                                                             "Rowtime attribute '%s' is not defined in schema.",
                                                             rowtimeAttribute)));
-            if (rowtimeType.getTypeRoot() != TIMESTAMP_WITHOUT_TIME_ZONE) {
+            if (!(rowtimeType.getTypeRoot() == LogicalTypeRoot.TIMESTAMP_WITH_LOCAL_TIME_ZONE
+                    || rowtimeType.getTypeRoot() == LogicalTypeRoot.TIMESTAMP_WITHOUT_TIME_ZONE)) {
                 throw new ValidationException(
                         String.format(
-                                "Rowtime attribute '%s' must be of type TIMESTAMP but is of type '%s'.",
+                                "Rowtime attribute '%s' must be of type TIMESTAMP or TIMESTAMP_LTZ but is of type '%s'.",
                                 rowtimeAttribute, rowtimeType));
             }
             LogicalType watermarkOutputType =
                     watermark.getWatermarkExprOutputType().getLogicalType();
-            if (watermarkOutputType.getTypeRoot() != TIMESTAMP_WITHOUT_TIME_ZONE) {
+            if (!canBeTimeAttributeType(watermarkOutputType)) {
                 throw new ValidationException(
                         String.format(
-                                "Watermark strategy %s must be of type TIMESTAMP but is of type '%s'.",
+                                "Watermark strategy %s must be of type TIMESTAMP or TIMESTAMP_LTZ but is of type '%s'.",
                                 watermark.getWatermarkExpr(),
                                 watermarkOutputType.asSummaryString()));
             }
@@ -605,6 +624,7 @@ public class TableSchema {
     // --------------------------------------------------------------------------------------------
 
     /** Builder for creating a {@link TableSchema}. */
+    @PublicEvolving
     public static class Builder {
 
         private List<TableColumn> columns;

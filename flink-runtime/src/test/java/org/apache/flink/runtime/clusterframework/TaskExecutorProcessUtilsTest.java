@@ -19,9 +19,11 @@
 package org.apache.flink.runtime.clusterframework;
 
 import org.apache.flink.api.common.resources.CPUResource;
+import org.apache.flink.api.common.resources.ExternalResource;
 import org.apache.flink.configuration.ConfigOption;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.ConfigurationUtils;
+import org.apache.flink.configuration.ExternalResourceOptions;
 import org.apache.flink.configuration.IllegalConfigurationException;
 import org.apache.flink.configuration.MemorySize;
 import org.apache.flink.configuration.NettyShuffleEnvironmentOptions;
@@ -31,6 +33,7 @@ import org.apache.flink.runtime.util.config.memory.ProcessMemoryUtilsTestBase;
 
 import org.junit.Test;
 
+import java.util.Arrays;
 import java.util.Map;
 import java.util.function.Consumer;
 
@@ -52,6 +55,8 @@ public class TaskExecutorProcessUtilsTest
     private static final MemorySize MANAGED_MEM_SIZE = MemorySize.parse("200m");
     private static final MemorySize TOTAL_FLINK_MEM_SIZE = MemorySize.parse("1280m");
     private static final MemorySize TOTAL_PROCESS_MEM_SIZE = MemorySize.parse("1536m");
+    private static final String EXTERNAL_RESOURCE_NAME_1 = "gpu";
+    private static final String EXTERNAL_RESOURCE_NAME_2 = "custom";
 
     private static final TaskExecutorProcessSpec TM_RESOURCE_SPEC =
             new TaskExecutorProcessSpec(
@@ -63,7 +68,10 @@ public class TaskExecutorProcessUtilsTest
                     MemorySize.parse("5m"),
                     MemorySize.parse("6m"),
                     MemorySize.parse("7m"),
-                    MemorySize.parse("8m"));
+                    MemorySize.parse("8m"),
+                    Arrays.asList(
+                            new ExternalResource(EXTERNAL_RESOURCE_NAME_1, 1),
+                            new ExternalResource(EXTERNAL_RESOURCE_NAME_2, 2)));
 
     public TaskExecutorProcessUtilsTest() {
         super(
@@ -112,6 +120,34 @@ public class TaskExecutorProcessUtilsTest
         assertThat(
                 MemorySize.parse(configs.get(TaskManagerOptions.JVM_OVERHEAD_MAX.key())),
                 is(TM_RESOURCE_SPEC.getJvmMetaspaceAndOverhead().getOverhead()));
+        assertThat(
+                Integer.valueOf(configs.get(TaskManagerOptions.NUM_TASK_SLOTS.key())),
+                is(TM_RESOURCE_SPEC.getNumSlots()));
+        assertThat(
+                configs.get(ExternalResourceOptions.EXTERNAL_RESOURCE_LIST.key()),
+                is('"' + String.join(";", TM_RESOURCE_SPEC.getExtendedResources().keySet()) + '"'));
+        assertThat(
+                configs.get(
+                        ExternalResourceOptions.getAmountConfigOptionForResource(
+                                EXTERNAL_RESOURCE_NAME_1)),
+                is(
+                        String.valueOf(
+                                TM_RESOURCE_SPEC
+                                        .getExtendedResources()
+                                        .get(EXTERNAL_RESOURCE_NAME_1)
+                                        .getValue()
+                                        .longValue())));
+        assertThat(
+                configs.get(
+                        ExternalResourceOptions.getAmountConfigOptionForResource(
+                                EXTERNAL_RESOURCE_NAME_2)),
+                is(
+                        String.valueOf(
+                                TM_RESOURCE_SPEC
+                                        .getExtendedResources()
+                                        .get(EXTERNAL_RESOURCE_NAME_2)
+                                        .getValue()
+                                        .longValue())));
     }
 
     @Test
@@ -123,6 +159,8 @@ public class TaskExecutorProcessUtilsTest
                         .setTaskOffHeapMemoryMB(200)
                         .setNetworkMemoryMB(300)
                         .setManagedMemoryMB(400)
+                        .setNumSlots(5)
+                        .setExtendedResource(new ExternalResource(EXTERNAL_RESOURCE_NAME_1, 1))
                         .build();
         final TaskExecutorProcessSpec taskExecutorProcessSpec =
                 TaskExecutorProcessUtils.processSpecFromWorkerResourceSpec(
@@ -139,6 +177,10 @@ public class TaskExecutorProcessUtilsTest
         assertEquals(
                 workerResourceSpec.getManagedMemSize(),
                 taskExecutorProcessSpec.getManagedMemorySize());
+        assertEquals(workerResourceSpec.getNumSlots(), taskExecutorProcessSpec.getNumSlots());
+        assertEquals(
+                workerResourceSpec.getExtendedResources(),
+                taskExecutorProcessSpec.getExtendedResources());
     }
 
     @Test
@@ -594,6 +636,41 @@ public class TaskExecutorProcessUtilsTest
             assertThat(
                     e.getMessage(), containsString(TaskManagerOptions.TOTAL_PROCESS_MEMORY.key()));
         }
+    }
+
+    @Test
+    public void testConfigNumSlots() {
+        final int numSlots = 5;
+
+        Configuration conf = new Configuration();
+        conf.set(TaskManagerOptions.NUM_TASK_SLOTS, numSlots);
+
+        validateInAllConfigurations(
+                conf,
+                taskExecutorProcessSpec -> {
+                    assertThat(taskExecutorProcessSpec.getNumSlots(), is(numSlots));
+                });
+    }
+
+    @Test
+    public void testProcessSpecFromConfigWithExternalResource() {
+        final Configuration config = new Configuration();
+        config.setString(
+                ExternalResourceOptions.EXTERNAL_RESOURCE_LIST.key(), EXTERNAL_RESOURCE_NAME_1);
+        config.setLong(
+                ExternalResourceOptions.getAmountConfigOptionForResource(EXTERNAL_RESOURCE_NAME_1),
+                1);
+        config.set(TaskManagerOptions.TOTAL_PROCESS_MEMORY, MemorySize.ofMebiBytes(4096));
+        final TaskExecutorProcessSpec taskExecutorProcessSpec =
+                TaskExecutorProcessUtils.processSpecFromConfig(config);
+        assertThat(taskExecutorProcessSpec.getExtendedResources().size(), is(1));
+        assertThat(
+                taskExecutorProcessSpec
+                        .getExtendedResources()
+                        .get(EXTERNAL_RESOURCE_NAME_1)
+                        .getValue()
+                        .longValue(),
+                is(1L));
     }
 
     @Override

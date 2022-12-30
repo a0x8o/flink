@@ -22,13 +22,13 @@ import org.apache.flink.table.annotation.DataTypeHint;
 import org.apache.flink.table.annotation.FunctionHint;
 import org.apache.flink.table.api.DataTypes;
 import org.apache.flink.table.api.TableConfig;
-import org.apache.flink.table.api.TableSchema;
 import org.apache.flink.table.api.ValidationException;
+import org.apache.flink.table.catalog.Column;
+import org.apache.flink.table.catalog.ResolvedSchema;
 import org.apache.flink.table.expressions.CallExpression;
 import org.apache.flink.table.expressions.Expression;
 import org.apache.flink.table.expressions.ResolvedExpression;
 import org.apache.flink.table.functions.BuiltInFunctionDefinitions;
-import org.apache.flink.table.functions.FunctionIdentifier;
 import org.apache.flink.table.functions.ScalarFunction;
 import org.apache.flink.table.operations.ValuesQueryOperation;
 import org.apache.flink.table.types.DataType;
@@ -36,11 +36,8 @@ import org.apache.flink.table.types.utils.DataTypeFactoryMock;
 import org.apache.flink.table.utils.FunctionLookupMock;
 import org.apache.flink.types.Row;
 
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.rules.ExpectedException;
-import org.junit.runner.RunWith;
-import org.junit.runners.Parameterized;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import javax.annotation.Nullable;
 
@@ -48,9 +45,9 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.Optional;
+import java.util.stream.Stream;
 
 import static java.util.Arrays.asList;
 import static java.util.Collections.singletonList;
@@ -58,16 +55,14 @@ import static org.apache.flink.table.api.Expressions.call;
 import static org.apache.flink.table.api.Expressions.row;
 import static org.apache.flink.table.expressions.ApiExpressionUtils.typeLiteral;
 import static org.apache.flink.table.expressions.ApiExpressionUtils.valueLiteral;
-import static org.hamcrest.CoreMatchers.equalTo;
-import static org.junit.Assert.assertThat;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** Tests for {@link OperationTreeBuilder#values}. */
-@RunWith(Parameterized.class)
 public class ValuesOperationTreeBuilderTest {
 
-    @Parameterized.Parameters(name = "{0}")
-    public static Collection<TestSpec> parameters() {
-        return asList(
+    static Stream<TestSpec> parameters() {
+        return Stream.of(
                 TestSpec.test("Flattening row constructor")
                         .values(row(1, "ABC"), row(2, "EFG"))
                         .equalTo(
@@ -75,10 +70,10 @@ public class ValuesOperationTreeBuilderTest {
                                         asList(
                                                 asList(valueLiteral(1), valueLiteral("ABC")),
                                                 asList(valueLiteral(2), valueLiteral("EFG"))),
-                                        TableSchema.builder()
-                                                .field("f0", DataTypes.INT().notNull())
-                                                .field("f1", DataTypes.CHAR(3).notNull())
-                                                .build())),
+                                        ResolvedSchema.of(
+                                                Column.physical("f0", DataTypes.INT().notNull()),
+                                                Column.physical(
+                                                        "f1", DataTypes.CHAR(3).notNull())))),
                 TestSpec.test("Finding common type")
                         .values(row(1L, "ABC"), row(3.1f, "DEFG"))
                         .equalTo(
@@ -96,10 +91,10 @@ public class ValuesOperationTreeBuilderTest {
                                                         valueLiteral(
                                                                 "DEFG",
                                                                 DataTypes.VARCHAR(4).notNull()))),
-                                        TableSchema.builder()
-                                                .field("f0", DataTypes.FLOAT().notNull())
-                                                .field("f1", DataTypes.VARCHAR(4).notNull())
-                                                .build())),
+                                        ResolvedSchema.of(
+                                                Column.physical("f0", DataTypes.FLOAT().notNull()),
+                                                Column.physical(
+                                                        "f1", DataTypes.VARCHAR(4).notNull())))),
                 TestSpec.test("Explicit common type")
                         .values(
                                 DataTypes.ROW(
@@ -130,10 +125,9 @@ public class ValuesOperationTreeBuilderTest {
                                                                         DataTypes.STRING()
                                                                                 .notNull()),
                                                                 DataTypes.STRING()))),
-                                        TableSchema.builder()
-                                                .field("id", DataTypes.DECIMAL(10, 2))
-                                                .field("name", DataTypes.STRING())
-                                                .build())),
+                                        ResolvedSchema.of(
+                                                Column.physical("id", DataTypes.DECIMAL(10, 2)),
+                                                Column.physical("name", DataTypes.STRING())))),
                 TestSpec.test("Explicit common type for nested rows")
                         .values(
                                 DataTypes.ROW(
@@ -201,17 +195,17 @@ public class ValuesOperationTreeBuilderTest {
                                                                                         .notNull()),
                                                                         DataTypes.DECIMAL(
                                                                                 10, 2))))),
-                                        TableSchema.builder()
-                                                .field("id", DataTypes.DECIMAL(10, 2))
-                                                .field(
+                                        ResolvedSchema.of(
+                                                Column.physical("id", DataTypes.DECIMAL(10, 2)),
+                                                Column.physical(
                                                         "details",
                                                         DataTypes.ROW(
                                                                 DataTypes.FIELD(
                                                                         "name", DataTypes.STRING()),
                                                                 DataTypes.FIELD(
                                                                         "amount",
-                                                                        DataTypes.DECIMAL(10, 2))))
-                                                .build())),
+                                                                        DataTypes.DECIMAL(
+                                                                                10, 2))))))),
                 TestSpec.test("Finding a common type for nested rows")
                         .values(row(1L, row(1L, "ABC")), row(3.1f, row(3.1f, "DEFG")))
                         .equalTo(
@@ -267,9 +261,9 @@ public class ValuesOperationTreeBuilderTest {
                                                                         "DEFG",
                                                                         DataTypes.VARCHAR(4)
                                                                                 .notNull())))),
-                                        TableSchema.builder()
-                                                .field("f0", DataTypes.FLOAT().notNull())
-                                                .field(
+                                        ResolvedSchema.of(
+                                                Column.physical("f0", DataTypes.FLOAT().notNull()),
+                                                Column.physical(
                                                         "f1",
                                                         DataTypes.ROW(
                                                                         DataTypes.FIELD(
@@ -280,8 +274,7 @@ public class ValuesOperationTreeBuilderTest {
                                                                                 "f1",
                                                                                 DataTypes.VARCHAR(4)
                                                                                         .notNull()))
-                                                                .notNull())
-                                                .build())),
+                                                                .notNull())))),
                 TestSpec.test("Finding common type. Insert cast for calls")
                         .values(call(new IntScalarFunction()), row(3.1f))
                         .equalTo(
@@ -289,7 +282,7 @@ public class ValuesOperationTreeBuilderTest {
                                         asList(
                                                 singletonList(
                                                         cast(
-                                                                new CallExpression(
+                                                                CallExpression.anonymous(
                                                                         new IntScalarFunction(),
                                                                         Collections.emptyList(),
                                                                         DataTypes.INT()),
@@ -298,16 +291,15 @@ public class ValuesOperationTreeBuilderTest {
                                                         cast(
                                                                 valueLiteral(3.1f),
                                                                 DataTypes.FLOAT()))),
-                                        TableSchema.builder()
-                                                .field("f0", DataTypes.FLOAT())
-                                                .build())),
+                                        ResolvedSchema.of(
+                                                Column.physical("f0", DataTypes.FLOAT())))),
                 TestSpec.test("Row in a function result is not flattened")
                         .values(call(new RowScalarFunction()))
                         .equalTo(
                                 new ValuesQueryOperation(
                                         singletonList(
                                                 singletonList(
-                                                        new CallExpression(
+                                                        CallExpression.anonymous(
                                                                 new RowScalarFunction(),
                                                                 Collections.emptyList(),
                                                                 DataTypes.ROW(
@@ -318,15 +310,15 @@ public class ValuesOperationTreeBuilderTest {
                                                                                 "f1",
                                                                                 DataTypes
                                                                                         .STRING()))))),
-                                        TableSchema.builder()
-                                                .field(
+                                        ResolvedSchema.of(
+                                                Column.physical(
                                                         "f0",
                                                         DataTypes.ROW(
                                                                 DataTypes.FIELD(
                                                                         "f0", DataTypes.INT()),
                                                                 DataTypes.FIELD(
-                                                                        "f1", DataTypes.STRING())))
-                                                .build())),
+                                                                        "f1",
+                                                                        DataTypes.STRING())))))),
                 TestSpec.test("Cannot find a common super type")
                         .values(
                                 valueLiteral(LocalTime.of(1, 1)),
@@ -409,16 +401,25 @@ public class ValuesOperationTreeBuilderTest {
         }
     }
 
-    @Parameterized.Parameter public TestSpec testSpec;
-
-    @Rule public ExpectedException thrown = ExpectedException.none();
-
-    @Test
-    public void testValues() {
-
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("parameters")
+    public void testValues(TestSpec testSpec) {
         if (testSpec.exceptionMessage != null) {
-            thrown.expect(ValidationException.class);
-            thrown.expectMessage(testSpec.exceptionMessage);
+            if (testSpec.expectedRowType != null) {
+                assertThatThrownBy(
+                                () ->
+                                        testSpec.getTreeBuilder()
+                                                .values(
+                                                        testSpec.expectedRowType,
+                                                        testSpec.expressions))
+                        .isInstanceOf(ValidationException.class)
+                        .hasMessage(testSpec.exceptionMessage);
+            } else {
+                assertThatThrownBy(() -> testSpec.getTreeBuilder().values(testSpec.expressions))
+                        .isInstanceOf(ValidationException.class)
+                        .hasMessage(testSpec.exceptionMessage);
+            }
+            return;
         }
 
         ValuesQueryOperation operation;
@@ -433,23 +434,19 @@ public class ValuesOperationTreeBuilderTest {
         }
 
         if (testSpec.queryOperation != null) {
-            assertThat(
-                    operation.getTableSchema(), equalTo(testSpec.queryOperation.getTableSchema()));
-            assertThat(operation.getValues(), equalTo(testSpec.queryOperation.getValues()));
+            assertThat(operation.getResolvedSchema())
+                    .isEqualTo(testSpec.queryOperation.getResolvedSchema());
+            assertThat(operation.getValues()).isEqualTo(testSpec.queryOperation.getValues());
         }
     }
 
     private static ResolvedExpression rowCtor(DataType dataType, ResolvedExpression... expression) {
-        return new CallExpression(
-                FunctionIdentifier.of("row"),
-                BuiltInFunctionDefinitions.ROW,
-                Arrays.asList(expression),
-                dataType);
+        return CallExpression.permanent(
+                BuiltInFunctionDefinitions.ROW, Arrays.asList(expression), dataType);
     }
 
     private static ResolvedExpression cast(ResolvedExpression expression, DataType dataType) {
-        return new CallExpression(
-                FunctionIdentifier.of("cast"),
+        return CallExpression.permanent(
                 BuiltInFunctionDefinitions.CAST,
                 Arrays.asList(expression, typeLiteral(dataType)),
                 dataType);
@@ -493,11 +490,12 @@ public class ValuesOperationTreeBuilderTest {
 
         public OperationTreeBuilder getTreeBuilder() {
             return OperationTreeBuilder.create(
-                    new TableConfig(),
+                    TableConfig.getDefault(),
+                    Thread.currentThread().getContextClassLoader(),
                     new FunctionLookupMock(Collections.emptyMap()),
                     new DataTypeFactoryMock(),
                     name -> Optional.empty(), // do not support
-                    (sqlExpression, inputSchema) -> {
+                    (sqlExpression, inputRowType, outputType) -> {
                         throw new UnsupportedOperationException();
                     },
                     true);

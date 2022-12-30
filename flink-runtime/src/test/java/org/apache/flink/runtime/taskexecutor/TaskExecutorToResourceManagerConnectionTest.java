@@ -21,7 +21,6 @@ package org.apache.flink.runtime.taskexecutor;
 
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
-import org.apache.flink.runtime.concurrent.Executors;
 import org.apache.flink.runtime.entrypoint.ClusterInformation;
 import org.apache.flink.runtime.instance.HardwareDescription;
 import org.apache.flink.runtime.instance.InstanceID;
@@ -33,23 +32,21 @@ import org.apache.flink.runtime.resourcemanager.ResourceManagerId;
 import org.apache.flink.runtime.resourcemanager.TaskExecutorRegistration;
 import org.apache.flink.runtime.resourcemanager.utils.TestingResourceManagerGateway;
 import org.apache.flink.runtime.rpc.TestingRpcService;
-import org.apache.flink.util.TestLogger;
+import org.apache.flink.util.concurrent.Executors;
 
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
-import static org.hamcrest.Matchers.equalTo;
-import static org.hamcrest.Matchers.is;
-import static org.junit.Assert.assertThat;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /** Tests for {@link TaskExecutorToResourceManagerConnection}. */
-public class TaskExecutorToResourceManagerConnectionTest extends TestLogger {
+class TaskExecutorToResourceManagerConnectionTest {
 
     private static final Logger LOGGER =
             LoggerFactory.getLogger(TaskExecutorToResourceManagerConnectionTest.class);
@@ -68,6 +65,8 @@ public class TaskExecutorToResourceManagerConnectionTest extends TestLogger {
 
     private static final int TASK_MANAGER_JMX_PORT = 23456;
 
+    private static final String TASK_MANAGER_NODE_ID = "local";
+
     private static final HardwareDescription TASK_MANAGER_HARDWARE_DESCRIPTION =
             HardwareDescription.extractFromSystem(Long.MAX_VALUE);
 
@@ -80,8 +79,10 @@ public class TaskExecutorToResourceManagerConnectionTest extends TestLogger {
 
     private CompletableFuture<Void> registrationSuccessFuture;
 
+    private CompletableFuture<Void> registrationRejectionFuture;
+
     @Test
-    public void testResourceManagerRegistration() throws Exception {
+    void testResourceManagerRegistration() throws Exception {
         final TaskExecutorToResourceManagerConnection resourceManagerRegistration =
                 createTaskExecutorToResourceManagerConnection();
 
@@ -94,20 +95,37 @@ public class TaskExecutorToResourceManagerConnectionTest extends TestLogger {
                             taskExecutorRegistration.getHardwareDescription();
                     final TaskExecutorMemoryConfiguration actualMemoryConfiguration =
                             taskExecutorRegistration.getMemoryConfiguration();
+                    final String nodeID = taskExecutorRegistration.getNodeId();
 
-                    assertThat(actualAddress, is(equalTo(TASK_MANAGER_ADDRESS)));
-                    assertThat(actualResourceId, is(equalTo(TASK_MANAGER_RESOURCE_ID)));
-                    assertThat(actualDataPort, is(equalTo(TASK_MANAGER_DATA_PORT)));
-                    assertThat(
-                            actualHardwareDescription,
-                            is(equalTo(TASK_MANAGER_HARDWARE_DESCRIPTION)));
-                    assertThat(actualMemoryConfiguration, is(TASK_MANAGER_MEMORY_CONFIGURATION));
+                    assertThat(actualAddress).isEqualTo(TASK_MANAGER_ADDRESS);
+                    assertThat(actualResourceId).isEqualTo(TASK_MANAGER_RESOURCE_ID);
+                    assertThat(actualDataPort).isEqualTo(TASK_MANAGER_DATA_PORT);
+                    assertThat(actualHardwareDescription)
+                            .isEqualTo(TASK_MANAGER_HARDWARE_DESCRIPTION);
+                    assertThat(actualMemoryConfiguration)
+                            .isEqualTo(TASK_MANAGER_MEMORY_CONFIGURATION);
+                    assertThat(nodeID).isEqualTo(TASK_MANAGER_NODE_ID);
 
                     return CompletableFuture.completedFuture(successfulRegistration());
                 });
 
         resourceManagerRegistration.start();
         registrationSuccessFuture.get(TEST_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
+    }
+
+    @Test
+    void testResourceManagerRegistrationIsRejected() {
+        final TaskExecutorToResourceManagerConnection resourceManagerRegistration =
+                createTaskExecutorToResourceManagerConnection();
+
+        testingResourceManagerGateway.setRegisterTaskExecutorFunction(
+                taskExecutorRegistration -> {
+                    return CompletableFuture.completedFuture(
+                            new TaskExecutorRegistrationRejection("Foobar"));
+                });
+
+        resourceManagerRegistration.start();
+        registrationRejectionFuture.join();
     }
 
     private TaskExecutorToResourceManagerConnection
@@ -121,7 +139,8 @@ public class TaskExecutorToResourceManagerConnectionTest extends TestLogger {
                         TASK_MANAGER_HARDWARE_DESCRIPTION,
                         TASK_MANAGER_MEMORY_CONFIGURATION,
                         ResourceProfile.ZERO,
-                        ResourceProfile.ZERO);
+                        ResourceProfile.ZERO,
+                        TASK_MANAGER_NODE_ID);
         return new TaskExecutorToResourceManagerConnection(
                 LOGGER,
                 rpcService,
@@ -137,28 +156,31 @@ public class TaskExecutorToResourceManagerConnectionTest extends TestLogger {
         return new TaskExecutorRegistrationSuccess(
                 new InstanceID(),
                 ResourceID.generate(),
-                new ClusterInformation("blobServerHost", 55555));
+                new ClusterInformation("blobServerHost", 55555),
+                null);
     }
 
-    @Before
-    public void setUp() {
+    @BeforeEach
+    void setUp() {
         rpcService = new TestingRpcService();
 
         testingResourceManagerGateway = new TestingResourceManagerGateway();
         rpcService.registerGateway(RESOURCE_MANAGER_ADDRESS, testingResourceManagerGateway);
 
         registrationSuccessFuture = new CompletableFuture<>();
+        registrationRejectionFuture = new CompletableFuture<>();
     }
 
-    @After
-    public void tearDown() throws Exception {
-        rpcService.stopService().get(TEST_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
+    @AfterEach
+    void tearDown() throws Exception {
+        rpcService.closeAsync().get(TEST_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
     }
 
     private class TestRegistrationConnectionListener<
-                    T extends RegisteredRpcConnection<?, ?, S>,
-                    S extends RegistrationResponse.Success>
-            implements RegistrationConnectionListener<T, S> {
+                    T extends RegisteredRpcConnection<?, ?, S, ?>,
+                    S extends RegistrationResponse.Success,
+                    R extends RegistrationResponse.Rejection>
+            implements RegistrationConnectionListener<T, S, R> {
 
         @Override
         public void onRegistrationSuccess(final T connection, final S success) {
@@ -168,6 +190,11 @@ public class TaskExecutorToResourceManagerConnectionTest extends TestLogger {
         @Override
         public void onRegistrationFailure(final Throwable failure) {
             registrationSuccessFuture.completeExceptionally(failure);
+        }
+
+        @Override
+        public void onRegistrationRejection(String targetAddress, R rejection) {
+            registrationRejectionFuture.complete(null);
         }
     }
 }

@@ -22,6 +22,7 @@ import org.apache.flink.api.common.state.State;
 import org.apache.flink.api.common.state.StateDescriptor;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.runtime.checkpoint.CheckpointType;
 import org.apache.flink.util.Disposable;
 
 import java.util.stream.Stream;
@@ -135,6 +136,25 @@ public interface KeyedStateBackend<K>
      * @return returns true iff listener was registered before.
      */
     boolean deregisterKeySelectionListener(KeySelectionListener<K> listener);
+
+    @Deprecated
+    default boolean isStateImmutableInStateBackend(CheckpointType checkpointOptions) {
+        return false;
+    }
+
+    /**
+     * Whether it's safe to reuse key-values from the state-backend, e.g for the purpose of
+     * optimization.
+     *
+     * <p>NOTE: this method should not be used to check for {@link InternalPriorityQueue}, as the
+     * priority queue could be stored on different locations, e.g RocksDB state-backend could store
+     * that on JVM heap if configuring HEAP as the time-service factory.
+     *
+     * @return returns ture if safe to reuse the key-values from the state-backend.
+     */
+    default boolean isSafeToReuseKVState() {
+        return false;
+    }
 
     /** Listener is given a callback when {@link #setCurrentKey} is called (key context changes). */
     @FunctionalInterface

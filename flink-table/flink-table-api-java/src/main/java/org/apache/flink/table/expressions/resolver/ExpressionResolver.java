@@ -24,6 +24,7 @@ import org.apache.flink.table.api.GroupWindow;
 import org.apache.flink.table.api.OverWindow;
 import org.apache.flink.table.api.TableConfig;
 import org.apache.flink.table.api.TableException;
+import org.apache.flink.table.catalog.ContextResolvedFunction;
 import org.apache.flink.table.catalog.DataTypeFactory;
 import org.apache.flink.table.catalog.FunctionLookup;
 import org.apache.flink.table.expressions.CallExpression;
@@ -43,9 +44,12 @@ import org.apache.flink.table.operations.QueryOperation;
 import org.apache.flink.table.types.DataType;
 import org.apache.flink.util.Preconditions;
 
+import javax.annotation.Nullable;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -102,6 +106,8 @@ public class ExpressionResolver {
 
     private final ReadableConfig config;
 
+    private final ClassLoader userClassLoader;
+
     private final FieldReferenceLookup fieldLookup;
 
     private final TableReferenceLookup tableLookup;
@@ -116,18 +122,26 @@ public class ExpressionResolver {
 
     private final Map<String, LocalReferenceExpression> localReferences;
 
+    private final @Nullable DataType outputDataType;
+
     private final Map<Expression, LocalOverWindow> localOverWindows;
 
+    private final boolean isGroupedAggregation;
+
     private ExpressionResolver(
-            TableConfig config,
+            TableConfig tableConfig,
+            ClassLoader userClassLoader,
             TableReferenceLookup tableLookup,
             FunctionLookup functionLookup,
             DataTypeFactory typeFactory,
             SqlExpressionResolver sqlExpressionResolver,
             FieldReferenceLookup fieldLookup,
             List<OverWindow> localOverWindows,
-            List<LocalReferenceExpression> localReferences) {
-        this.config = Preconditions.checkNotNull(config).getConfiguration();
+            List<LocalReferenceExpression> localReferences,
+            @Nullable DataType outputDataType,
+            boolean isGroupedAggregation) {
+        this.config = Preconditions.checkNotNull(tableConfig);
+        this.userClassLoader = Preconditions.checkNotNull(userClassLoader);
         this.tableLookup = Preconditions.checkNotNull(tableLookup);
         this.fieldLookup = Preconditions.checkNotNull(fieldLookup);
         this.functionLookup = Preconditions.checkNotNull(functionLookup);
@@ -138,8 +152,16 @@ public class ExpressionResolver {
                 localReferences.stream()
                         .collect(
                                 Collectors.toMap(
-                                        LocalReferenceExpression::getName, Function.identity()));
+                                        LocalReferenceExpression::getName,
+                                        Function.identity(),
+                                        (u, v) -> {
+                                            throw new IllegalStateException(
+                                                    "Duplicate local reference: " + u);
+                                        },
+                                        LinkedHashMap::new));
+        this.outputDataType = outputDataType;
         this.localOverWindows = prepareOverWindows(localOverWindows);
+        this.isGroupedAggregation = isGroupedAggregation;
     }
 
     /**
@@ -147,7 +169,7 @@ public class ExpressionResolver {
      * resolver like e.g. {@link GroupWindow} or {@link OverWindow}. You can also add additional
      * {@link ResolverRule}.
      *
-     * @param config general configuration
+     * @param tableConfig general configuration
      * @param tableCatalog a way to lookup a table reference by name
      * @param functionLookup a way to lookup call by name
      * @param typeFactory a way to lookup and create data types
@@ -155,14 +177,21 @@ public class ExpressionResolver {
      * @return builder for resolver
      */
     public static ExpressionResolverBuilder resolverFor(
-            TableConfig config,
+            TableConfig tableConfig,
+            ClassLoader userClassLoader,
             TableReferenceLookup tableCatalog,
             FunctionLookup functionLookup,
             DataTypeFactory typeFactory,
             SqlExpressionResolver sqlExpressionResolver,
             QueryOperation... inputs) {
         return new ExpressionResolverBuilder(
-                inputs, config, tableCatalog, functionLookup, typeFactory, sqlExpressionResolver);
+                inputs,
+                tableConfig,
+                userClassLoader,
+                tableCatalog,
+                functionLookup,
+                typeFactory,
+                sqlExpressionResolver);
     }
 
     /**
@@ -274,6 +303,11 @@ public class ExpressionResolver {
         }
 
         @Override
+        public ClassLoader userClassLoader() {
+            return userClassLoader;
+        }
+
+        @Override
         public FieldReferenceLookup referenceLookup() {
             return fieldLookup;
         }
@@ -313,8 +347,18 @@ public class ExpressionResolver {
         }
 
         @Override
+        public Optional<DataType> getOutputDataType() {
+            return Optional.ofNullable(outputDataType);
+        }
+
+        @Override
         public Optional<LocalOverWindow> getOverWindow(Expression alias) {
             return Optional.ofNullable(localOverWindows.get(alias));
+        }
+
+        @Override
+        public boolean isGroupedAggregation() {
+            return isGroupedAggregation;
         }
     }
 
@@ -337,89 +381,63 @@ public class ExpressionResolver {
     public class PostResolverFactory {
 
         public CallExpression as(ResolvedExpression expression, String alias) {
-            final FunctionLookup.Result lookupOfAs =
-                    functionLookup.lookupBuiltInFunction(BuiltInFunctionDefinitions.AS);
-
-            return new CallExpression(
-                    lookupOfAs.getFunctionIdentifier(),
-                    lookupOfAs.getFunctionDefinition(),
+            return createCallExpression(
+                    BuiltInFunctionDefinitions.AS,
                     Arrays.asList(expression, valueLiteral(alias)),
                     expression.getOutputDataType());
         }
 
         public CallExpression cast(ResolvedExpression expression, DataType dataType) {
-            final FunctionLookup.Result lookupOfCast =
-                    functionLookup.lookupBuiltInFunction(BuiltInFunctionDefinitions.CAST);
-
-            return new CallExpression(
-                    lookupOfCast.getFunctionIdentifier(),
-                    lookupOfCast.getFunctionDefinition(),
+            return createCallExpression(
+                    BuiltInFunctionDefinitions.CAST,
                     Arrays.asList(expression, typeLiteral(dataType)),
                     dataType);
         }
 
         public CallExpression row(DataType dataType, ResolvedExpression... expression) {
-            final FunctionLookup.Result lookupOfRow =
-                    functionLookup.lookupBuiltInFunction(BuiltInFunctionDefinitions.ROW);
-
-            return new CallExpression(
-                    lookupOfRow.getFunctionIdentifier(),
-                    lookupOfRow.getFunctionDefinition(),
-                    Arrays.asList(expression),
-                    dataType);
+            return createCallExpression(
+                    BuiltInFunctionDefinitions.ROW, Arrays.asList(expression), dataType);
         }
 
         public CallExpression array(DataType dataType, ResolvedExpression... expression) {
-            final FunctionLookup.Result lookupOfArray =
-                    functionLookup.lookupBuiltInFunction(BuiltInFunctionDefinitions.ARRAY);
-
-            return new CallExpression(
-                    lookupOfArray.getFunctionIdentifier(),
-                    lookupOfArray.getFunctionDefinition(),
-                    Arrays.asList(expression),
-                    dataType);
+            return createCallExpression(
+                    BuiltInFunctionDefinitions.ARRAY, Arrays.asList(expression), dataType);
         }
 
         public CallExpression map(DataType dataType, ResolvedExpression... expression) {
-            final FunctionLookup.Result lookupOfArray =
-                    functionLookup.lookupBuiltInFunction(BuiltInFunctionDefinitions.MAP);
-
-            return new CallExpression(
-                    lookupOfArray.getFunctionIdentifier(),
-                    lookupOfArray.getFunctionDefinition(),
-                    Arrays.asList(expression),
-                    dataType);
+            return createCallExpression(
+                    BuiltInFunctionDefinitions.MAP, Arrays.asList(expression), dataType);
         }
 
         public CallExpression wrappingCall(
                 BuiltInFunctionDefinition definition, ResolvedExpression expression) {
-            final FunctionLookup.Result lookupOfDefinition =
-                    functionLookup.lookupBuiltInFunction(definition);
-
-            return new CallExpression(
-                    lookupOfDefinition.getFunctionIdentifier(),
-                    lookupOfDefinition.getFunctionDefinition(),
+            return createCallExpression(
+                    definition,
                     Collections.singletonList(expression),
                     expression.getOutputDataType()); // the output type is equal to the input type
         }
 
         public CallExpression get(
                 ResolvedExpression composite, ValueLiteralExpression key, DataType dataType) {
-            final FunctionLookup.Result lookupOfGet =
-                    functionLookup.lookupBuiltInFunction(BuiltInFunctionDefinitions.GET);
+            return createCallExpression(
+                    BuiltInFunctionDefinitions.GET, Arrays.asList(composite, key), dataType);
+        }
 
-            return new CallExpression(
-                    lookupOfGet.getFunctionIdentifier(),
-                    lookupOfGet.getFunctionDefinition(),
-                    Arrays.asList(composite, key),
-                    dataType);
+        private CallExpression createCallExpression(
+                BuiltInFunctionDefinition builtInDefinition,
+                List<ResolvedExpression> resolvedArgs,
+                DataType outputDataType) {
+            final ContextResolvedFunction resolvedFunction =
+                    functionLookup.lookupBuiltInFunction(builtInDefinition);
+            return resolvedFunction.toCallExpression(resolvedArgs, outputDataType);
         }
     }
 
     /** Builder for creating {@link ExpressionResolver}. */
     public static class ExpressionResolverBuilder {
 
-        private final TableConfig config;
+        private final TableConfig tableConfig;
+        private final ClassLoader userClassLoader;
         private final List<QueryOperation> queryOperations;
         private final TableReferenceLookup tableCatalog;
         private final FunctionLookup functionLookup;
@@ -427,15 +445,19 @@ public class ExpressionResolver {
         private final SqlExpressionResolver sqlExpressionResolver;
         private List<OverWindow> logicalOverWindows = new ArrayList<>();
         private List<LocalReferenceExpression> localReferences = new ArrayList<>();
+        private @Nullable DataType outputDataType;
+        private boolean isGroupedAggregation;
 
         private ExpressionResolverBuilder(
                 QueryOperation[] queryOperations,
-                TableConfig config,
+                TableConfig tableConfig,
+                ClassLoader userClassLoader,
                 TableReferenceLookup tableCatalog,
                 FunctionLookup functionLookup,
                 DataTypeFactory typeFactory,
                 SqlExpressionResolver sqlExpressionResolver) {
-            this.config = config;
+            this.tableConfig = tableConfig;
+            this.userClassLoader = userClassLoader;
             this.queryOperations = Arrays.asList(queryOperations);
             this.tableCatalog = tableCatalog;
             this.functionLookup = functionLookup;
@@ -454,16 +476,29 @@ public class ExpressionResolver {
             return this;
         }
 
+        public ExpressionResolverBuilder withOutputDataType(@Nullable DataType outputDataType) {
+            this.outputDataType = outputDataType;
+            return this;
+        }
+
+        public ExpressionResolverBuilder withGroupedAggregation(boolean isGroupedAggregation) {
+            this.isGroupedAggregation = isGroupedAggregation;
+            return this;
+        }
+
         public ExpressionResolver build() {
             return new ExpressionResolver(
-                    config,
+                    tableConfig,
+                    userClassLoader,
                     tableCatalog,
                     functionLookup,
                     typeFactory,
                     sqlExpressionResolver,
                     new FieldReferenceLookup(queryOperations),
                     logicalOverWindows,
-                    localReferences);
+                    localReferences,
+                    outputDataType,
+                    isGroupedAggregation);
         }
     }
 }

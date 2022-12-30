@@ -18,15 +18,17 @@
 
 package org.apache.flink.table.runtime.operators.python.aggregate;
 
+import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.core.memory.ByteArrayOutputStreamWithPos;
 import org.apache.flink.core.memory.DataInputDeserializer;
 import org.apache.flink.core.memory.DataOutputSerializer;
+import org.apache.flink.core.memory.DataOutputViewStreamWrapper;
 import org.apache.flink.fnexecution.v1.FlinkFnApi;
 import org.apache.flink.python.PythonFunctionRunner;
 import org.apache.flink.streaming.api.operators.InternalTimer;
 import org.apache.flink.streaming.api.operators.InternalTimerServiceImpl;
 import org.apache.flink.streaming.api.operators.Triggerable;
-import org.apache.flink.table.api.TableConfig;
 import org.apache.flink.table.data.GenericRowData;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.data.StringData;
@@ -35,26 +37,27 @@ import org.apache.flink.table.data.binary.BinaryRowData;
 import org.apache.flink.table.data.util.RowDataUtil;
 import org.apache.flink.table.data.utils.JoinedRowData;
 import org.apache.flink.table.functions.python.PythonAggregateFunctionInfo;
-import org.apache.flink.table.planner.calcite.FlinkRelBuilder;
 import org.apache.flink.table.planner.codegen.CodeGeneratorContext;
 import org.apache.flink.table.planner.codegen.ProjectionCodeGenerator;
-import org.apache.flink.table.planner.expressions.PlannerProctimeAttribute;
-import org.apache.flink.table.planner.expressions.PlannerRowtimeAttribute;
-import org.apache.flink.table.planner.expressions.PlannerWindowEnd;
-import org.apache.flink.table.planner.expressions.PlannerWindowProperty;
-import org.apache.flink.table.planner.expressions.PlannerWindowStart;
-import org.apache.flink.table.planner.plan.logical.LogicalWindow;
-import org.apache.flink.table.planner.typeutils.DataViewUtils;
+import org.apache.flink.table.runtime.dataview.DataViewSpec;
 import org.apache.flink.table.runtime.generated.GeneratedProjection;
 import org.apache.flink.table.runtime.generated.Projection;
+import org.apache.flink.table.runtime.groupwindow.NamedWindowProperty;
+import org.apache.flink.table.runtime.groupwindow.ProctimeAttribute;
+import org.apache.flink.table.runtime.groupwindow.RowtimeAttribute;
+import org.apache.flink.table.runtime.groupwindow.WindowEnd;
+import org.apache.flink.table.runtime.groupwindow.WindowProperty;
+import org.apache.flink.table.runtime.groupwindow.WindowStart;
 import org.apache.flink.table.runtime.operators.window.TimeWindow;
 import org.apache.flink.table.runtime.operators.window.assigners.WindowAssigner;
+import org.apache.flink.table.runtime.util.TimeWindowUtil;
 import org.apache.flink.table.runtime.utils.PassThroughStreamGroupWindowAggregatePythonFunctionRunner;
 import org.apache.flink.table.runtime.utils.PythonTestUtils;
 import org.apache.flink.table.types.logical.RowType;
 import org.apache.flink.types.RowKind;
 
 import java.io.IOException;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -65,6 +68,9 @@ import java.util.Map;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+
+import static org.apache.flink.python.Constants.OUTPUT_COLLECTION_ID;
+import static org.apache.flink.table.runtime.util.TimeWindowUtil.toEpochMillsForTimer;
 
 /** PassThroughPythonStreamGroupWindowAggregateOperator. */
 public class PassThroughPythonStreamGroupWindowAggregateOperator<K>
@@ -81,14 +87,16 @@ public class PassThroughPythonStreamGroupWindowAggregateOperator<K>
 
     private transient UpdatableRowData reusePythonTimerRowData;
     private transient UpdatableRowData reusePythonTimerData;
-    private transient LinkedBlockingQueue<byte[]> resultBuffer;
+    private transient LinkedBlockingQueue<Tuple2<String, byte[]>> resultBuffer;
     private Projection<RowData, BinaryRowData> groupKeyProjection;
     private Function<RowData, RowData> aggExtracter;
     private Function<TimeWindow, RowData> windowExtractor;
     private JoinedRowData reuseJoinedRow;
     private JoinedRowData windowAggResult;
+    private transient ByteArrayOutputStreamWithPos windowBaos;
+    private transient DataOutputViewStreamWrapper windowBaosWrapper;
 
-    public PassThroughPythonStreamGroupWindowAggregateOperator(
+    protected PassThroughPythonStreamGroupWindowAggregateOperator(
             Configuration config,
             RowType inputType,
             RowType outputType,
@@ -99,24 +107,36 @@ public class PassThroughPythonStreamGroupWindowAggregateOperator<K>
             boolean countStarInserted,
             int inputTimeFieldIndex,
             WindowAssigner<TimeWindow> windowAssigner,
-            LogicalWindow window,
+            FlinkFnApi.GroupWindow.WindowType windowType,
+            boolean isRowTime,
+            boolean isTimeWindow,
+            long size,
+            long slide,
+            long gap,
             long allowedLateness,
-            FlinkRelBuilder.PlannerNamedWindowProperty[] namedProperties) {
+            NamedWindowProperty[] namedProperties,
+            ZoneId shiftTimeZone) {
         super(
                 config,
                 inputType,
                 outputType,
                 aggregateFunctions,
-                new DataViewUtils.DataViewSpec[0][0],
+                new DataViewSpec[0][0],
                 grouping,
                 indexOfCountStar,
                 generateUpdateBefore,
                 countStarInserted,
                 inputTimeFieldIndex,
                 windowAssigner,
-                window,
+                windowType,
+                isRowTime,
+                isTimeWindow,
+                size,
+                slide,
+                gap,
                 allowedLateness,
-                namedProperties);
+                namedProperties,
+                shiftTimeZone);
         this.mockPythonWindowOperator = new MockPythonWindowOperator<>();
         this.aggregateFunction = aggregateFunctions[0];
         this.grouping = grouping;
@@ -126,11 +146,12 @@ public class PassThroughPythonStreamGroupWindowAggregateOperator<K>
     @Override
     public void open() throws Exception {
         super.open();
+        windowBaos = new ByteArrayOutputStreamWithPos();
+        windowBaosWrapper = new DataOutputViewStreamWrapper(windowBaos);
         reusePythonRowData = new UpdatableRowData(GenericRowData.of(NORMAL_RECORD, null, null), 3);
         reusePythonTimerRowData =
                 new UpdatableRowData(GenericRowData.of(TRIGGER_TIMER, null, null), 3);
-        reusePythonTimerData =
-                new UpdatableRowData(GenericRowData.of(0, null, null, null, null), 5);
+        reusePythonTimerData = new UpdatableRowData(GenericRowData.of(0, null, null, null), 4);
         reuseJoinedRow = new JoinedRowData();
         windowAggResult = new JoinedRowData();
         reusePythonTimerRowData.setField(2, reusePythonTimerData);
@@ -156,13 +177,13 @@ public class PassThroughPythonStreamGroupWindowAggregateOperator<K>
                     for (int i = 0; i < namedProperties.length; i++) {
                         switch (namedProperties[i]) {
                             case WINDOW_START:
-                                windowProperty.setField(i, window.getStart());
+                                windowProperty.setField(i, getShiftEpochMills(window.getStart()));
                                 break;
                             case WINDOW_END:
-                                windowProperty.setField(i, window.getEnd());
+                                windowProperty.setField(i, getShiftEpochMills(window.getEnd()));
                                 break;
                             case ROW_TIME_ATTRIBUTE:
-                                windowProperty.setField(i, window.getEnd() - 1);
+                                windowProperty.setField(i, getShiftEpochMills(window.getEnd() - 1));
                                 break;
                             case PROC_TIME_ATTRIBUTE:
                                 windowProperty.setField(i, -1L);
@@ -176,30 +197,28 @@ public class PassThroughPythonStreamGroupWindowAggregateOperator<K>
     public PythonFunctionRunner createPythonFunctionRunner() throws Exception {
         return new PassThroughStreamGroupWindowAggregatePythonFunctionRunner(
                 getRuntimeContext().getTaskName(),
-                PythonTestUtils.createTestEnvironmentManager(),
+                PythonTestUtils.createTestProcessEnvironmentManager(),
                 userDefinedFunctionInputType,
                 userDefinedFunctionOutputType,
                 STREAM_GROUP_WINDOW_AGGREGATE_URN,
                 getUserDefinedFunctionsProto(),
-                FLINK_AGGREGATE_FUNCTION_SCHEMA_CODER_URN,
-                new HashMap<>(),
                 PythonTestUtils.createMockFlinkMetricContainer(),
                 getKeyedStateBackend(),
                 getKeySerializer(),
                 this);
     }
 
-    private void buildWindow(FlinkRelBuilder.PlannerNamedWindowProperty[] namedProperties) {
+    private void buildWindow(NamedWindowProperty[] namedProperties) {
         this.namedProperties = new FlinkFnApi.GroupWindow.WindowProperty[namedProperties.length];
         for (int i = 0; i < namedProperties.length; i++) {
-            PlannerWindowProperty namedProperty = namedProperties[i].property();
-            if (namedProperty instanceof PlannerWindowStart) {
+            WindowProperty namedProperty = namedProperties[i].getProperty();
+            if (namedProperty instanceof WindowStart) {
                 this.namedProperties[i] = FlinkFnApi.GroupWindow.WindowProperty.WINDOW_START;
-            } else if (namedProperty instanceof PlannerWindowEnd) {
+            } else if (namedProperty instanceof WindowEnd) {
                 this.namedProperties[i] = FlinkFnApi.GroupWindow.WindowProperty.WINDOW_END;
-            } else if (namedProperty instanceof PlannerRowtimeAttribute) {
+            } else if (namedProperty instanceof RowtimeAttribute) {
                 this.namedProperties[i] = FlinkFnApi.GroupWindow.WindowProperty.ROW_TIME_ATTRIBUTE;
-            } else if (namedProperty instanceof PlannerProctimeAttribute) {
+            } else if (namedProperty instanceof ProctimeAttribute) {
                 this.namedProperties[i] = FlinkFnApi.GroupWindow.WindowProperty.PROC_TIME_ATTRIBUTE;
 
             } else {
@@ -223,12 +242,14 @@ public class PassThroughPythonStreamGroupWindowAggregateOperator<K>
                         windowRetractData.computeIfAbsent(
                                 key.getString(0).toString(), k -> new HashMap<>());
 
-                long watermark = input.getLong(2);
+                long watermark = input.getLong(3);
                 // advance watermark
                 mockPythonInternalService.advanceWatermark(watermark);
 
                 // get timestamp
                 long timestamp = inputRow.getLong(inputTimeFieldIndex);
+                timestamp = TimeWindowUtil.toUtcTimestampMills(timestamp, shiftTimeZone);
+
                 Collection<TimeWindow> elementWindows =
                         windowAssigner.assignWindows(inputRow, timestamp);
                 for (TimeWindow window : elementWindows) {
@@ -259,12 +280,12 @@ public class PassThroughPythonStreamGroupWindowAggregateOperator<K>
                     registerCleanupTimer(key, window);
                 }
             } else {
-                RowData timerData = input.getRow(3, 4);
+                RowData timerData = input.getRow(4, 3);
                 long timestamp = input.getLong(2);
                 RowData key = timerData.getRow(1, getKeyType().getFieldCount());
-                long start = timerData.getLong(2);
-                long end = timerData.getLong(3);
-                TimeWindow window = TimeWindow.of(start, end);
+                byte[] encodedNamespace = timerData.getBinary(2);
+                bais.setBuffer(encodedNamespace, 0, encodedNamespace.length);
+                TimeWindow window = windowSerializer.deserialize(baisWrapper);
                 if (timestamp == window.maxTimestamp()) {
                     triggerWindowProcess(key, window);
                 }
@@ -275,7 +296,7 @@ public class PassThroughPythonStreamGroupWindowAggregateOperator<K>
         }
     }
 
-    public void setResultBuffer(LinkedBlockingQueue<byte[]> resultBuffer) {
+    public void setResultBuffer(LinkedBlockingQueue<Tuple2<String, byte[]>> resultBuffer) {
         this.resultBuffer = resultBuffer;
     }
 
@@ -285,11 +306,12 @@ public class PassThroughPythonStreamGroupWindowAggregateOperator<K>
     }
 
     private long cleanupTime(TimeWindow window) {
+        long windowMaxTs = toEpochMillsForTimer(window.maxTimestamp(), shiftTimeZone);
         if (windowAssigner.isEventTime()) {
-            long cleanupTime = Math.max(0, window.maxTimestamp() + allowedLateness);
-            return cleanupTime >= window.maxTimestamp() ? cleanupTime : Long.MAX_VALUE;
+            long cleanupTime = Math.max(0, windowMaxTs + allowedLateness);
+            return cleanupTime >= windowMaxTs ? cleanupTime : Long.MAX_VALUE;
         } else {
-            return Math.max(0, window.maxTimestamp());
+            return Math.max(0, windowMaxTs);
         }
     }
 
@@ -322,7 +344,7 @@ public class PassThroughPythonStreamGroupWindowAggregateOperator<K>
                     reuseJoinedRow.replace(windowAggResult, windowProperty);
                     reusePythonRowData.setField(1, reuseJoinedRow);
                     udfOutputTypeSerializer.serialize(reusePythonRowData, output);
-                    resultBuffer.add(output.getCopyOfBuffer());
+                    resultBuffer.add(Tuple2.of(OUTPUT_COLLECTION_ID, output.getCopyOfBuffer()));
                     break;
                 }
             }
@@ -354,7 +376,9 @@ public class PassThroughPythonStreamGroupWindowAggregateOperator<K>
                                 .collect(Collectors.toList()));
         final GeneratedProjection generatedProjection =
                 ProjectionCodeGenerator.generateProjection(
-                        CodeGeneratorContext.apply(new TableConfig()),
+                        new CodeGeneratorContext(
+                                new Configuration(),
+                                Thread.currentThread().getContextClassLoader()),
                         name,
                         inputType,
                         forwardedFieldType,
@@ -377,51 +401,35 @@ public class PassThroughPythonStreamGroupWindowAggregateOperator<K>
     }
 
     private void registerEventTimeTimer(RowData key, TimeWindow window) throws IOException {
-        reusePythonTimerData.setByte(
-                0, PythonStreamGroupWindowAggregateOperator.REGISTER_EVENT_TIMER);
-        reusePythonTimerData.setField(1, key);
-        reusePythonTimerData.setLong(2, window.maxTimestamp());
-        reusePythonTimerData.setLong(3, window.getStart());
-        reusePythonTimerData.setLong(4, window.getEnd());
-        DataOutputSerializer output = new DataOutputSerializer(1);
-        udfOutputTypeSerializer.serialize(reusePythonTimerRowData, output);
-        resultBuffer.add(output.getCopyOfBuffer());
+        emitTimerData(key, window, PythonStreamGroupWindowAggregateOperator.REGISTER_EVENT_TIMER);
     }
 
     private void deleteEventTimeTimer(RowData key, TimeWindow window) throws IOException {
-        reusePythonTimerData.setByte(
-                0, PythonStreamGroupWindowAggregateOperator.DELETE_EVENT_TIMER);
-        reusePythonTimerData.setField(1, key);
-        reusePythonTimerData.setLong(2, window.maxTimestamp());
-        reusePythonTimerData.setLong(3, window.getStart());
-        reusePythonTimerData.setLong(4, window.getEnd());
-        DataOutputSerializer output = new DataOutputSerializer(1);
-        udfOutputTypeSerializer.serialize(reusePythonTimerRowData, output);
-        resultBuffer.add(output.getCopyOfBuffer());
+        emitTimerData(key, window, PythonStreamGroupWindowAggregateOperator.DELETE_EVENT_TIMER);
     }
 
     private void registerProcessingTimeTimer(RowData key, TimeWindow window) throws IOException {
-        reusePythonTimerData.setByte(
-                0, PythonStreamGroupWindowAggregateOperator.REGISTER_PROCESSING_TIMER);
-        reusePythonTimerData.setField(1, key);
-        reusePythonTimerData.setLong(2, window.maxTimestamp());
-        reusePythonTimerData.setLong(3, window.getStart());
-        reusePythonTimerData.setLong(4, window.getEnd());
-        DataOutputSerializer output = new DataOutputSerializer(1);
-        udfOutputTypeSerializer.serialize(reusePythonTimerRowData, output);
-        resultBuffer.add(output.getCopyOfBuffer());
+        emitTimerData(
+                key, window, PythonStreamGroupWindowAggregateOperator.REGISTER_PROCESSING_TIMER);
     }
 
     private void deleteProcessingTimeTimer(RowData key, TimeWindow window) throws IOException {
-        reusePythonTimerData.setByte(
-                0, PythonStreamGroupWindowAggregateOperator.DELETE_PROCESSING_TIMER);
+        emitTimerData(
+                key, window, PythonStreamGroupWindowAggregateOperator.DELETE_PROCESSING_TIMER);
+    }
+
+    private void emitTimerData(RowData key, TimeWindow window, byte timerOperand)
+            throws IOException {
+
+        reusePythonTimerData.setByte(0, timerOperand);
         reusePythonTimerData.setField(1, key);
         reusePythonTimerData.setLong(2, window.maxTimestamp());
-        reusePythonTimerData.setLong(3, window.getStart());
-        reusePythonTimerData.setLong(4, window.getEnd());
+        windowSerializer.serialize(window, windowBaosWrapper);
+        reusePythonTimerData.setField(3, windowBaos.toByteArray());
+        windowBaos.reset();
         DataOutputSerializer output = new DataOutputSerializer(1);
         udfOutputTypeSerializer.serialize(reusePythonTimerRowData, output);
-        resultBuffer.add(output.getCopyOfBuffer());
+        resultBuffer.add(Tuple2.of(OUTPUT_COLLECTION_ID, output.getCopyOfBuffer()));
     }
 
     private void cleanWindowIfNeeded(RowData key, TimeWindow window, long currentTime)
@@ -442,7 +450,7 @@ public class PassThroughPythonStreamGroupWindowAggregateOperator<K>
             reuseJoinedRow.replace(windowAggResult, windowProperty);
             reusePythonRowData.setField(1, reuseJoinedRow);
             udfOutputTypeSerializer.serialize(reusePythonRowData, output);
-            resultBuffer.add(output.getCopyOfBuffer());
+            resultBuffer.add(Tuple2.of(OUTPUT_COLLECTION_ID, output.getCopyOfBuffer()));
             // 2. delete window timer
             if (windowAssigner.isEventTime()) {
                 deleteEventTimeTimer(key, window);

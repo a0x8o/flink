@@ -45,7 +45,6 @@ class ChannelStateWriteRequestExecutorImpl implements ChannelStateWriteRequestEx
 
     private static final Logger LOG =
             LoggerFactory.getLogger(ChannelStateWriteRequestExecutorImpl.class);
-    private static final int DEFAULT_HANDOVER_CAPACITY = 10_000;
 
     private final ChannelStateWriteRequestDispatcher dispatcher;
     private final BlockingDeque<ChannelStateWriteRequest> deque;
@@ -56,7 +55,7 @@ class ChannelStateWriteRequestExecutorImpl implements ChannelStateWriteRequestEx
 
     ChannelStateWriteRequestExecutorImpl(
             String taskName, ChannelStateWriteRequestDispatcher dispatcher) {
-        this(taskName, dispatcher, new LinkedBlockingDeque<>(DEFAULT_HANDOVER_CAPACITY));
+        this(taskName, dispatcher, new LinkedBlockingDeque<>());
     }
 
     ChannelStateWriteRequestExecutorImpl(
@@ -150,8 +149,11 @@ class ChannelStateWriteRequestExecutorImpl implements ChannelStateWriteRequestEx
         // checking before is not enough because (check + enqueue) is not atomic
         if (wasClosed || !thread.isAlive()) {
             cleanupRequests();
-            throw ExceptionUtils.firstOrSuppressed(
-                    new IllegalStateException("not running"), thrown);
+            IllegalStateException exception = new IllegalStateException("not running");
+            if (thrown != null) {
+                exception.addSuppressed(thrown);
+            }
+            throw exception;
         }
     }
 

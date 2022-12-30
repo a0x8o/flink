@@ -32,13 +32,11 @@ import org.apache.flink.table.operations.JoinQueryOperation.JoinType;
 import org.apache.flink.table.operations.QueryOperation;
 import org.apache.flink.table.types.DataType;
 import org.apache.flink.table.types.logical.LogicalType;
-import org.apache.flink.table.types.logical.LogicalTypeRoot;
-import org.apache.flink.table.types.logical.utils.LogicalTypeChecks;
 
 import java.util.HashSet;
 import java.util.Set;
 
-import static java.util.Arrays.asList;
+import static org.apache.flink.table.types.logical.LogicalTypeRoot.BOOLEAN;
 
 /** Utility class for creating a valid {@link JoinQueryOperation} operation. */
 @Internal
@@ -103,7 +101,7 @@ final class JoinOperationFactory {
     private void verifyConditionType(ResolvedExpression condition) {
         DataType conditionType = condition.getOutputDataType();
         LogicalType logicalType = conditionType.getLogicalType();
-        if (!LogicalTypeChecks.hasRoot(logicalType, LogicalTypeRoot.BOOLEAN)) {
+        if (!logicalType.is(BOOLEAN)) {
             throw new ValidationException(
                     String.format(
                             "Filter operator requires a boolean expression as input, "
@@ -113,8 +111,8 @@ final class JoinOperationFactory {
     }
 
     private void validateNamesAmbiguity(QueryOperation left, QueryOperation right) {
-        Set<String> leftNames = new HashSet<>(asList(left.getTableSchema().getFieldNames()));
-        Set<String> rightNames = new HashSet<>(asList(right.getTableSchema().getFieldNames()));
+        Set<String> leftNames = new HashSet<>(left.getResolvedSchema().getColumnNames());
+        Set<String> rightNames = new HashSet<>(right.getResolvedSchema().getColumnNames());
         leftNames.retainAll(rightNames);
         if (!leftNames.isEmpty()) {
             throw new ValidationException(

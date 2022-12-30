@@ -25,6 +25,7 @@ import org.apache.flink.api.common.TaskInfo;
 import org.apache.flink.api.common.functions.RuntimeContext;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.ConfigurationUtils;
+import org.apache.flink.configuration.StateChangelogOptionsInternal;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.runtime.accumulators.AccumulatorRegistry;
 import org.apache.flink.runtime.broadcast.BroadcastVariableManager;
@@ -34,6 +35,7 @@ import org.apache.flink.runtime.checkpoint.PrioritizedOperatorSubtaskState;
 import org.apache.flink.runtime.checkpoint.TaskStateSnapshot;
 import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
+import org.apache.flink.runtime.executiongraph.ExecutionGraphID;
 import org.apache.flink.runtime.externalresource.ExternalResourceInfoProvider;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.disk.iomanager.IOManagerAsync;
@@ -45,11 +47,15 @@ import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.jobgraph.tasks.InputSplitProvider;
 import org.apache.flink.runtime.jobgraph.tasks.TaskOperatorEventGateway;
 import org.apache.flink.runtime.memory.MemoryManager;
+import org.apache.flink.runtime.memory.SharedResources;
 import org.apache.flink.runtime.metrics.groups.TaskMetricGroup;
 import org.apache.flink.runtime.metrics.groups.UnregisteredMetricGroups;
+import org.apache.flink.runtime.operators.coordination.CoordinationRequest;
+import org.apache.flink.runtime.operators.coordination.CoordinationResponse;
 import org.apache.flink.runtime.operators.coordination.OperatorEvent;
 import org.apache.flink.runtime.query.KvStateRegistry;
 import org.apache.flink.runtime.query.TaskKvStateRegistry;
+import org.apache.flink.runtime.scheduler.strategy.ExecutionVertexID;
 import org.apache.flink.runtime.state.TaskStateManager;
 import org.apache.flink.runtime.taskexecutor.GlobalAggregateManager;
 import org.apache.flink.runtime.taskmanager.TaskManagerRuntimeInfo;
@@ -60,6 +66,7 @@ import org.apache.flink.util.UserCodeClassLoader;
 
 import java.util.Collections;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 
 import static org.apache.flink.runtime.memory.MemoryManager.DEFAULT_PAGE_SIZE;
@@ -94,6 +101,8 @@ public class SavepointEnvironment implements Environment {
 
     private final MemoryManager memoryManager;
 
+    private final SharedResources sharedResources;
+
     private final AccumulatorRegistry accumulatorRegistry;
 
     private final UserCodeClassLoader userCodeClassLoader;
@@ -106,7 +115,9 @@ public class SavepointEnvironment implements Environment {
             PrioritizedOperatorSubtaskState prioritizedOperatorSubtaskState) {
         this.jobID = new JobID();
         this.vertexID = new JobVertexID();
-        this.attemptID = new ExecutionAttemptID();
+        this.attemptID =
+                new ExecutionAttemptID(
+                        new ExecutionGraphID(), new ExecutionVertexID(vertexID, indexOfSubtask), 0);
         this.ctx = Preconditions.checkNotNull(ctx);
         this.configuration = Preconditions.checkNotNull(configuration);
 
@@ -118,6 +129,7 @@ public class SavepointEnvironment implements Environment {
         this.taskStateManager = new SavepointTaskStateManager(prioritizedOperatorSubtaskState);
         this.ioManager = new IOManagerAsync(ConfigurationUtils.parseTempDirectories(configuration));
         this.memoryManager = MemoryManager.create(64 * 1024 * 1024, DEFAULT_PAGE_SIZE);
+        this.sharedResources = new SharedResources();
         this.accumulatorRegistry = new AccumulatorRegistry(jobID, attemptID);
 
         this.userCodeClassLoader = UserCodeClassLoaderRuntimeContextAdapter.from(ctx);
@@ -150,7 +162,7 @@ public class SavepointEnvironment implements Environment {
 
     @Override
     public TaskManagerRuntimeInfo getTaskManagerInfo() {
-        return new SavepointTaskManagerRuntimeInfo(getIOManager());
+        return new SavepointTaskManagerRuntimeInfo(getIOManager().getSpillingDirectories()[0]);
     }
 
     @Override
@@ -160,7 +172,11 @@ public class SavepointEnvironment implements Environment {
 
     @Override
     public Configuration getJobConfiguration() {
-        throw new UnsupportedOperationException(ERROR_MSG);
+        Configuration jobConfiguration = new Configuration();
+        // This means leaving this stateBackend unwrapped.
+        jobConfiguration.setBoolean(
+                StateChangelogOptionsInternal.ENABLE_CHANGE_LOG_FOR_APPLICATION, false);
+        return jobConfiguration;
     }
 
     @Override
@@ -186,6 +202,11 @@ public class SavepointEnvironment implements Environment {
     @Override
     public MemoryManager getMemoryManager() {
         return memoryManager;
+    }
+
+    @Override
+    public SharedResources getSharedResources() {
+        return sharedResources;
     }
 
     @Override
@@ -369,5 +390,11 @@ public class SavepointEnvironment implements Environment {
         @Override
         public void sendOperatorEventToCoordinator(
                 OperatorID operator, SerializedValue<OperatorEvent> event) {}
+
+        @Override
+        public CompletableFuture<CoordinationResponse> sendRequestToCoordinator(
+                OperatorID operator, SerializedValue<CoordinationRequest> request) {
+            return CompletableFuture.completedFuture(null);
+        }
     }
 }

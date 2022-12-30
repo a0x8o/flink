@@ -18,6 +18,7 @@
 
 package org.apache.flink.runtime.state;
 
+import org.apache.flink.core.fs.Path;
 import org.apache.flink.runtime.state.hashmap.HashMapStateBackend;
 import org.apache.flink.runtime.state.storage.FileSystemCheckpointStorage;
 import org.apache.flink.runtime.state.storage.JobManagerCheckpointStorage;
@@ -48,31 +49,27 @@ public class HashMapStateBackendTest extends StateBackendTestBase<HashMapStateBa
         return Arrays.asList(
                 new Object[][] {
                     {
-                        true,
                         (SupplierWithException<CheckpointStorage, IOException>)
                                 JobManagerCheckpointStorage::new
                     },
                     {
-                        false,
                         (SupplierWithException<CheckpointStorage, IOException>)
                                 () -> {
                                     String checkpointPath =
                                             TEMP_FOLDER.newFolder().toURI().toString();
-                                    return new FileSystemCheckpointStorage(checkpointPath);
+                                    return new FileSystemCheckpointStorage(
+                                            new Path(checkpointPath), 0, -1);
                                 }
                     }
                 });
     }
 
-    @Parameterized.Parameter(value = 0)
-    public boolean useAsyncMode;
-
-    @Parameterized.Parameter(value = 1)
+    @Parameterized.Parameter
     public SupplierWithException<CheckpointStorage, IOException> storageSupplier;
 
     @Override
-    protected HashMapStateBackend getStateBackend() {
-        return new HashMapStateBackend(useAsyncMode);
+    protected ConfigurableStateBackend getStateBackend() {
+        return new HashMapStateBackend();
     }
 
     @Override
@@ -82,7 +79,7 @@ public class HashMapStateBackendTest extends StateBackendTestBase<HashMapStateBa
 
     @Override
     protected boolean supportsAsynchronousSnapshots() {
-        return useAsyncMode;
+        return true;
     }
 
     @Override

@@ -23,9 +23,10 @@ import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.connector.hbase.util.HBaseConfigurationUtil;
 import org.apache.flink.connector.hbase.util.HBaseSerde;
 import org.apache.flink.connector.hbase.util.HBaseTableSchema;
+import org.apache.flink.table.data.GenericRowData;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.functions.FunctionContext;
-import org.apache.flink.table.functions.TableFunction;
+import org.apache.flink.table.functions.LookupFunction;
 import org.apache.flink.util.StringUtils;
 
 import org.apache.hadoop.conf.Configuration;
@@ -41,6 +42,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.util.Collection;
+import java.util.Collections;
 
 /**
  * The HBaseRowDataLookupFunction is a standard user-defined table function, it can be used in
@@ -48,7 +51,7 @@ import java.io.IOException;
  * RowData}.
  */
 @Internal
-public class HBaseRowDataLookupFunction extends TableFunction<RowData> {
+public class HBaseRowDataLookupFunction extends LookupFunction {
 
     private static final Logger LOG = LoggerFactory.getLogger(HBaseRowDataLookupFunction.class);
     private static final long serialVersionUID = 1L;
@@ -62,32 +65,55 @@ public class HBaseRowDataLookupFunction extends TableFunction<RowData> {
     private transient HTable table;
     private transient HBaseSerde serde;
 
+    private final int maxRetryTimes;
+
     public HBaseRowDataLookupFunction(
             Configuration configuration,
             String hTableName,
             HBaseTableSchema hbaseTableSchema,
-            String nullStringLiteral) {
+            String nullStringLiteral,
+            int maxRetryTimes) {
         this.serializedConfig = HBaseConfigurationUtil.serializeConfiguration(configuration);
         this.hTableName = hTableName;
         this.hbaseTableSchema = hbaseTableSchema;
         this.nullStringLiteral = nullStringLiteral;
+        this.maxRetryTimes = maxRetryTimes;
     }
 
     /**
      * The invoke entry point of lookup function.
      *
-     * @param rowKey the lookup key. Currently only support single rowkey.
+     * @param keyRow - A {@link RowData} that wraps lookup keys. Currently only support single
+     *     rowkey.
      */
-    public void eval(Object rowKey) throws IOException {
-        // fetch result
-        Get get = serde.createGet(rowKey);
-        if (get != null) {
-            Result result = table.get(get);
-            if (!result.isEmpty()) {
-                // parse and collect
-                collect(serde.convertToRow(result));
+    @Override
+    public Collection<RowData> lookup(RowData keyRow) throws IOException {
+        for (int retry = 0; retry <= maxRetryTimes; retry++) {
+            try {
+                // TODO: The implementation of LookupFunction will pass a GenericRowData as key row
+                // and it's safe to cast for now. We need to update the logic once we improve the
+                // LookupFunction in the future.
+                Get get = serde.createGet(((GenericRowData) keyRow).getField(0));
+                if (get != null) {
+                    Result result = table.get(get);
+                    if (!result.isEmpty()) {
+                        return Collections.singletonList(serde.convertToReusedRow(result));
+                    }
+                }
+                break;
+            } catch (IOException e) {
+                LOG.error(String.format("HBase lookup error, retry times = %d", retry), e);
+                if (retry >= maxRetryTimes) {
+                    throw new RuntimeException("Execution of HBase lookup failed.", e);
+                }
+                try {
+                    Thread.sleep(1000 * retry);
+                } catch (InterruptedException e1) {
+                    throw new RuntimeException(e1);
+                }
             }
         }
+        return Collections.emptyList();
     }
 
     private Configuration prepareRuntimeConfiguration() {

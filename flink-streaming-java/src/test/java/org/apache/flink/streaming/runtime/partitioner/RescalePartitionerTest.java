@@ -30,11 +30,15 @@ import org.apache.flink.runtime.executiongraph.TestingDefaultExecutionGraphBuild
 import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.jobgraph.JobVertex;
+import org.apache.flink.runtime.scheduler.SchedulerBase;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.source.ParallelSourceFunction;
+import org.apache.flink.testutils.TestingUtils;
+import org.apache.flink.testutils.executor.TestExecutorResource;
 import org.apache.flink.util.Collector;
 
+import org.junit.ClassRule;
 import org.junit.Test;
 
 import java.util.HashMap;
@@ -42,6 +46,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ScheduledExecutorService;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -50,6 +55,9 @@ import static org.junit.Assert.fail;
 /** Tests for {@link RescalePartitioner}. */
 @SuppressWarnings("serial")
 public class RescalePartitionerTest extends StreamPartitionerTest {
+    @ClassRule
+    public static final TestExecutorResource<ScheduledExecutorService> EXECUTOR_RESOURCE =
+            TestingUtils.defaultExecutorResource();
 
     @Override
     public StreamPartitioner<Tuple> createPartitioner() {
@@ -116,7 +124,11 @@ public class RescalePartitionerTest extends StreamPartitionerTest {
         assertEquals(4, mapVertex.getParallelism());
         assertEquals(2, sinkVertex.getParallelism());
 
-        ExecutionGraph eg = TestingDefaultExecutionGraphBuilder.newBuilder().build();
+        ExecutionGraph eg =
+                TestingDefaultExecutionGraphBuilder.newBuilder()
+                        .setVertexParallelismStore(
+                                SchedulerBase.computeVertexParallelismStore(jobGraph))
+                        .build(EXECUTOR_RESOURCE.getExecutor());
 
         try {
             eg.attachJobGraph(jobVertices);
@@ -140,9 +152,9 @@ public class RescalePartitionerTest extends StreamPartitionerTest {
         Map<Integer, Integer> mapInputPartitionCounts = new HashMap<>();
         for (ExecutionVertex mapTaskVertex : mapTaskVertices) {
             assertEquals(1, mapTaskVertex.getNumberOfInputs());
-            assertEquals(1, mapTaskVertex.getConsumedPartitions(0).size());
+            assertEquals(1, mapTaskVertex.getConsumedPartitionGroup(0).size());
             IntermediateResultPartitionID consumedPartitionId =
-                    mapTaskVertex.getConsumedPartitions(0).getFirst();
+                    mapTaskVertex.getConsumedPartitionGroup(0).getFirst();
             assertEquals(
                     sourceVertex.getID(),
                     mapTaskVertex
@@ -174,9 +186,9 @@ public class RescalePartitionerTest extends StreamPartitionerTest {
         Set<Integer> mapSubpartitions = new HashSet<>();
         for (ExecutionVertex sinkTaskVertex : sinkTaskVertices) {
             assertEquals(1, sinkTaskVertex.getNumberOfInputs());
-            assertEquals(2, sinkTaskVertex.getConsumedPartitions(0).size());
+            assertEquals(2, sinkTaskVertex.getConsumedPartitionGroup(0).size());
             for (IntermediateResultPartitionID consumedPartitionId :
-                    sinkTaskVertex.getConsumedPartitions(0)) {
+                    sinkTaskVertex.getConsumedPartitionGroup(0)) {
                 IntermediateResultPartition consumedPartition =
                         executionGraphAccessor.getResultPartitionOrThrow(consumedPartitionId);
                 assertEquals(mapVertex.getID(), consumedPartition.getProducer().getJobvertexId());
