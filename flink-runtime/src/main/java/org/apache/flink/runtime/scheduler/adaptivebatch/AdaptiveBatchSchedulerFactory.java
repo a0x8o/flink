@@ -24,6 +24,7 @@ import org.apache.flink.api.common.time.Time;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.ExecutionOptions;
 import org.apache.flink.configuration.JobManagerOptions;
+import org.apache.flink.configuration.JobManagerOptions.HybridPartitionDataConsumeConstraint;
 import org.apache.flink.runtime.blob.BlobWriter;
 import org.apache.flink.runtime.blocklist.BlocklistOperations;
 import org.apache.flink.runtime.checkpoint.CheckpointRecoveryFactory;
@@ -36,7 +37,6 @@ import org.apache.flink.runtime.executiongraph.failover.flip1.FailoverStrategyFa
 import org.apache.flink.runtime.executiongraph.failover.flip1.RestartBackoffTimeStrategy;
 import org.apache.flink.runtime.executiongraph.failover.flip1.RestartBackoffTimeStrategyFactoryLoader;
 import org.apache.flink.runtime.io.network.partition.JobMasterPartitionTracker;
-import org.apache.flink.runtime.io.network.partition.ResultPartitionType;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSet;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.jobgraph.JobType;
@@ -60,6 +60,7 @@ import org.apache.flink.runtime.scheduler.SimpleExecutionSlotAllocator;
 import org.apache.flink.runtime.scheduler.strategy.AllFinishedInputConsumableDecider;
 import org.apache.flink.runtime.scheduler.strategy.DefaultInputConsumableDecider;
 import org.apache.flink.runtime.scheduler.strategy.InputConsumableDecider;
+import org.apache.flink.runtime.scheduler.strategy.PartialFinishedInputConsumableDecider;
 import org.apache.flink.runtime.scheduler.strategy.SchedulingStrategyFactory;
 import org.apache.flink.runtime.scheduler.strategy.VertexwiseSchedulingStrategy;
 import org.apache.flink.runtime.shuffle.ShuffleMaster;
@@ -75,6 +76,9 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.function.Consumer;
 
+import static org.apache.flink.configuration.JobManagerOptions.HybridPartitionDataConsumeConstraint.ALL_PRODUCERS_FINISHED;
+import static org.apache.flink.configuration.JobManagerOptions.HybridPartitionDataConsumeConstraint.ONLY_FINISHED_PRODUCERS;
+import static org.apache.flink.configuration.JobManagerOptions.HybridPartitionDataConsumeConstraint.UNFINISHED_PRODUCERS;
 import static org.apache.flink.util.Preconditions.checkState;
 
 /** Factory for {@link AdaptiveBatchScheduler}. */
@@ -119,8 +123,8 @@ public class AdaptiveBatchSchedulerFactory implements SchedulerNGFactory {
         final boolean enableSpeculativeExecution =
                 jobMasterConfiguration.getBoolean(JobManagerOptions.SPECULATIVE_ENABLED);
 
-        final boolean hybridOnlyConsumeFinishedPartition =
-                getHybridOnlyConsumeFinishedPartition(
+        final HybridPartitionDataConsumeConstraint hybridPartitionDataConsumeConstraint =
+                getOrDecideHybridPartitionDataConsumeConstraint(
                         jobMasterConfiguration, enableSpeculativeExecution);
 
         final List<Consumer<ComponentMainThreadExecutor>> startUpActions = new ArrayList<>();
@@ -157,11 +161,12 @@ public class AdaptiveBatchSchedulerFactory implements SchedulerNGFactory {
                         shuffleMaster,
                         partitionTracker,
                         true,
-                        createExecutionJobVertexFactory(enableSpeculativeExecution));
+                        createExecutionJobVertexFactory(enableSpeculativeExecution),
+                        hybridPartitionDataConsumeConstraint == ONLY_FINISHED_PRODUCERS);
 
         final SchedulingStrategyFactory schedulingStrategyFactory =
                 new VertexwiseSchedulingStrategy.Factory(
-                        loadInputConsumableDeciderFactory(hybridOnlyConsumeFinishedPartition));
+                        loadInputConsumableDeciderFactory(hybridPartitionDataConsumeConstraint));
 
         if (enableSpeculativeExecution) {
             return new SpeculativeScheduler(
@@ -192,7 +197,7 @@ public class AdaptiveBatchSchedulerFactory implements SchedulerNGFactory {
                     DefaultVertexParallelismDecider.getNormalizedMaxParallelism(
                             jobMasterConfiguration),
                     blocklistOperations,
-                    hybridOnlyConsumeFinishedPartition);
+                    hybridPartitionDataConsumeConstraint);
         } else {
             return new AdaptiveBatchScheduler(
                     log,
@@ -221,34 +226,41 @@ public class AdaptiveBatchSchedulerFactory implements SchedulerNGFactory {
                     DefaultVertexParallelismDecider.from(jobMasterConfiguration),
                     DefaultVertexParallelismDecider.getNormalizedMaxParallelism(
                             jobMasterConfiguration),
-                    hybridOnlyConsumeFinishedPartition);
+                    hybridPartitionDataConsumeConstraint);
         }
     }
 
     public static InputConsumableDecider.Factory loadInputConsumableDeciderFactory(
-            boolean hybridOnlyConsumeFinishedPartition) {
-        // In the case of hybridOnlyConsumeFinishedPartition is true, the input can actually be
-        // considered as consumable after partial partitions are finished. The reason why the
-        // AllFinishedInputConsumableDecider is currently adopted here is that consume partial
-        // finished upstream task is not supported yet, which will be supported in the subsequent
-        // commits.
-        return hybridOnlyConsumeFinishedPartition
-                ? AllFinishedInputConsumableDecider.Factory.INSTANCE
-                : DefaultInputConsumableDecider.Factory.INSTANCE;
+            HybridPartitionDataConsumeConstraint hybridPartitionDataConsumeConstraint) {
+        switch (hybridPartitionDataConsumeConstraint) {
+            case ALL_PRODUCERS_FINISHED:
+                return AllFinishedInputConsumableDecider.Factory.INSTANCE;
+            case ONLY_FINISHED_PRODUCERS:
+                return PartialFinishedInputConsumableDecider.Factory.INSTANCE;
+            case UNFINISHED_PRODUCERS:
+                return DefaultInputConsumableDecider.Factory.INSTANCE;
+            default:
+                throw new IllegalStateException(
+                        hybridPartitionDataConsumeConstraint + "is not supported.");
+        }
     }
 
-    private boolean getHybridOnlyConsumeFinishedPartition(
-            Configuration configuration, boolean enableSpeculativeExecution) {
-        final boolean hybridOnlyConsumeFinishedPartition =
+    public static HybridPartitionDataConsumeConstraint
+            getOrDecideHybridPartitionDataConsumeConstraint(
+                    Configuration configuration, boolean enableSpeculativeExecution) {
+        final HybridPartitionDataConsumeConstraint hybridPartitionDataConsumeConstraint =
                 configuration
-                        .getOptional(JobManagerOptions.ONLY_CONSUME_FINISHED_PARTITION)
-                        .orElse(enableSpeculativeExecution);
+                        .getOptional(JobManagerOptions.HYBRID_PARTITION_DATA_CONSUME_CONSTRAINT)
+                        .orElse(
+                                enableSpeculativeExecution
+                                        ? ALL_PRODUCERS_FINISHED
+                                        : UNFINISHED_PRODUCERS);
         if (enableSpeculativeExecution) {
             Preconditions.checkState(
-                    hybridOnlyConsumeFinishedPartition,
+                    hybridPartitionDataConsumeConstraint != UNFINISHED_PRODUCERS,
                     "For speculative execution, only supports consume finished partition now.");
         }
-        return hybridOnlyConsumeFinishedPartition;
+        return hybridPartitionDataConsumeConstraint;
     }
 
     private static ExecutionSlotAllocatorFactory createExecutionSlotAllocatorFactory(
@@ -276,8 +288,7 @@ public class AdaptiveBatchSchedulerFactory implements SchedulerNGFactory {
             for (IntermediateDataSet dataSet : jobVertex.getProducedDataSets()) {
                 checkState(
                         dataSet.getResultType().isBlockingOrBlockingPersistentResultPartition()
-                                || dataSet.getResultType() == ResultPartitionType.HYBRID_FULL
-                                || dataSet.getResultType() == ResultPartitionType.HYBRID_SELECTIVE,
+                                || dataSet.getResultType().isHybridResultPartition(),
                         String.format(
                                 "At the moment, adaptive batch scheduler requires batch workloads "
                                         + "to be executed with types of all edges being BLOCKING or HYBRID_FULL/HYBRID_SELECTIVE. "

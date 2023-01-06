@@ -27,6 +27,7 @@ import org.apache.flink.runtime.checkpoint.channel.InputChannelInfo;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.deployment.InputGateDeploymentDescriptor;
 import org.apache.flink.runtime.deployment.TaskDeploymentDescriptor;
+import org.apache.flink.runtime.deployment.TaskDeploymentDescriptorFactory.ShuffleDescriptorAndIndex;
 import org.apache.flink.runtime.event.TaskEvent;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.IndexRange;
@@ -66,8 +67,8 @@ import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
 import org.apache.flink.runtime.metrics.groups.TaskMetricGroup;
 import org.apache.flink.runtime.metrics.groups.UnregisteredMetricGroups;
 import org.apache.flink.runtime.shuffle.NettyShuffleDescriptor;
-import org.apache.flink.runtime.shuffle.ShuffleDescriptor;
 import org.apache.flink.runtime.shuffle.UnknownShuffleDescriptor;
+import org.apache.flink.runtime.util.NettyShuffleDescriptorBuilder;
 import org.apache.flink.util.CompressedSerializedValue;
 
 import org.apache.flink.shaded.guava30.com.google.common.io.Closer;
@@ -519,6 +520,49 @@ public class SingleInputGateTest extends InputGateTestBase {
                 createRemoteWithIdAndLocation(resultPartitionID.getPartitionId(), location));
 
         assertThat(partitionManager.counter).isEqualTo(0);
+    }
+
+    /**
+     * Test unknown input channel can set resultPartitionId correctly when update to local input
+     * channel, this occurs in the case of speculative execution that unknown input channel only
+     * carries original resultPartitionId.
+     */
+    @Test
+    void testUpdateLocalInputChannelWithNewPartitionId() throws Exception {
+        SingleInputGate inputGate = createInputGate(1);
+
+        TestingResultPartitionManager partitionManager =
+                new TestingResultPartitionManager(new NoOpResultSubpartitionView());
+
+        ResultPartitionID oldPartitionId = new ResultPartitionID();
+
+        InputChannel unknown =
+                InputChannelBuilder.newBuilder()
+                        .setPartitionManager(partitionManager)
+                        .setPartitionId(oldPartitionId)
+                        .buildUnknownChannel(inputGate);
+        inputGate.setInputChannels(unknown);
+
+        // Update to a local channel and verify that no request is triggered
+        ResultPartitionID resultPartitionID = unknown.getPartitionId();
+        assertThat(resultPartitionID).isEqualTo(oldPartitionId);
+
+        ResultPartitionID newPartitionId =
+                new ResultPartitionID(
+                        // speculative execution have the same IntermediateResultPartitionID with
+                        // original, only executionAttemptID is different.
+                        oldPartitionId.getPartitionId(), ExecutionAttemptID.randomId());
+        ResourceID location = ResourceID.generate();
+        NettyShuffleDescriptor nettyShuffleDescriptor =
+                NettyShuffleDescriptorBuilder.newBuilder()
+                        .setId(newPartitionId)
+                        .setProducerLocation(location)
+                        .buildLocal();
+        inputGate.updateInputChannel(location, nettyShuffleDescriptor);
+
+        InputChannel newChannel = inputGate.getChannel(0);
+        assertThat(newChannel).isInstanceOf(LocalInputChannel.class);
+        assertThat(newChannel.partitionId).isEqualTo(newPartitionId);
     }
 
     /**
@@ -1191,15 +1235,21 @@ public class SingleInputGateTest extends InputGateTestBase {
             ResultPartitionManager resultPartitionManager)
             throws IOException {
 
-        ShuffleDescriptor[] channelDescs =
-                new ShuffleDescriptor[] {
+        ShuffleDescriptorAndIndex[] channelDescs =
+                new ShuffleDescriptorAndIndex[] {
                     // Local
-                    createRemoteWithIdAndLocation(partitionIds[0], localLocation),
+                    new ShuffleDescriptorAndIndex(
+                            createRemoteWithIdAndLocation(partitionIds[0], localLocation), 0),
                     // Remote
-                    createRemoteWithIdAndLocation(partitionIds[1], ResourceID.generate()),
+                    new ShuffleDescriptorAndIndex(
+                            createRemoteWithIdAndLocation(partitionIds[1], ResourceID.generate()),
+                            1),
                     // Unknown
-                    new UnknownShuffleDescriptor(
-                            new ResultPartitionID(partitionIds[2], createExecutionAttemptId()))
+                    new ShuffleDescriptorAndIndex(
+                            new UnknownShuffleDescriptor(
+                                    new ResultPartitionID(
+                                            partitionIds[2], createExecutionAttemptId())),
+                            2)
                 };
 
         InputGateDeploymentDescriptor gateDesc =
@@ -1207,8 +1257,10 @@ public class SingleInputGateTest extends InputGateTestBase {
                         new IntermediateDataSetID(),
                         resultPartitionType,
                         subpartitionIndexRange,
-                        new TaskDeploymentDescriptor.NonOffloaded<>(
-                                CompressedSerializedValue.fromObject(channelDescs)));
+                        channelDescs.length,
+                        Collections.singletonList(
+                                new TaskDeploymentDescriptor.NonOffloaded<>(
+                                        CompressedSerializedValue.fromObject(channelDescs))));
 
         final TaskMetricGroup taskMetricGroup =
                 UnregisteredMetricGroups.createUnregisteredTaskMetricGroup();
@@ -1237,11 +1289,14 @@ public class SingleInputGateTest extends InputGateTestBase {
             int numberOfGates,
             @SuppressWarnings("SameParameterValue") int numberOfLocalChannels)
             throws IOException {
-        ShuffleDescriptor[] channelDescs = new NettyShuffleDescriptor[numberOfLocalChannels];
+        ShuffleDescriptorAndIndex[] channelDescs =
+                new ShuffleDescriptorAndIndex[numberOfLocalChannels];
         for (int i = 0; i < numberOfLocalChannels; i++) {
             channelDescs[i] =
-                    createRemoteWithIdAndLocation(
-                            new IntermediateResultPartitionID(), ResourceID.generate());
+                    new ShuffleDescriptorAndIndex(
+                            createRemoteWithIdAndLocation(
+                                    new IntermediateResultPartitionID(), ResourceID.generate()),
+                            i);
         }
 
         InputGateDeploymentDescriptor[] gateDescs =

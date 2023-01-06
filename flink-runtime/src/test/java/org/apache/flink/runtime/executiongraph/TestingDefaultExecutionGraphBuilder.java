@@ -76,6 +76,11 @@ public class TestingDefaultExecutionGraphBuilder {
     private VertexParallelismStore vertexParallelismStore;
     private ExecutionJobVertex.Factory executionJobVertexFactory = new ExecutionJobVertex.Factory();
 
+    private MarkPartitionFinishedStrategy markPartitionFinishedStrategy =
+            ResultPartitionType::isBlockingOrBlockingPersistentResultPartition;
+
+    private boolean nonFinishedHybridPartitionShouldBeUnknown = false;
+
     private TestingDefaultExecutionGraphBuilder() {}
 
     public TestingDefaultExecutionGraphBuilder setJobMasterConfig(Configuration jobMasterConfig) {
@@ -150,6 +155,18 @@ public class TestingDefaultExecutionGraphBuilder {
         return this;
     }
 
+    public TestingDefaultExecutionGraphBuilder setMarkPartitionFinishedStrategy(
+            MarkPartitionFinishedStrategy markPartitionFinishedStrategy) {
+        this.markPartitionFinishedStrategy = markPartitionFinishedStrategy;
+        return this;
+    }
+
+    public TestingDefaultExecutionGraphBuilder setNonFinishedHybridPartitionShouldBeUnknown(
+            boolean nonFinishedHybridPartitionShouldBeUnknown) {
+        this.nonFinishedHybridPartitionShouldBeUnknown = nonFinishedHybridPartitionShouldBeUnknown;
+        return this;
+    }
+
     private DefaultExecutionGraph build(
             boolean isDynamicGraph, ScheduledExecutorService executorService)
             throws JobException, JobExecutionException {
@@ -178,7 +195,8 @@ public class TestingDefaultExecutionGraphBuilder {
                 () -> new CheckpointStatsTracker(0, new UnregisteredMetricsGroup()),
                 isDynamicGraph,
                 executionJobVertexFactory,
-                ResultPartitionType::isBlockingOrBlockingPersistentResultPartition);
+                markPartitionFinishedStrategy,
+                nonFinishedHybridPartitionShouldBeUnknown);
     }
 
     public DefaultExecutionGraph build(ScheduledExecutorService executorService)
