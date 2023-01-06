@@ -21,6 +21,7 @@ package org.apache.flink.runtime.scheduler;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.JobManagerOptions;
+import org.apache.flink.configuration.JobManagerOptions.HybridPartitionDataConsumeConstraint;
 import org.apache.flink.runtime.blob.BlobWriter;
 import org.apache.flink.runtime.blob.VoidBlobWriter;
 import org.apache.flink.runtime.blocklist.BlocklistOperations;
@@ -45,7 +46,7 @@ import org.apache.flink.runtime.scheduler.adaptivebatch.AdaptiveBatchScheduler;
 import org.apache.flink.runtime.scheduler.adaptivebatch.SpeculativeScheduler;
 import org.apache.flink.runtime.scheduler.adaptivebatch.VertexParallelismDecider;
 import org.apache.flink.runtime.scheduler.strategy.AllFinishedInputConsumableDecider;
-import org.apache.flink.runtime.scheduler.strategy.DefaultInputConsumableDecider;
+import org.apache.flink.runtime.scheduler.strategy.InputConsumableDecider;
 import org.apache.flink.runtime.scheduler.strategy.PipelinedRegionSchedulingStrategy;
 import org.apache.flink.runtime.scheduler.strategy.SchedulingStrategyFactory;
 import org.apache.flink.runtime.scheduler.strategy.VertexwiseSchedulingStrategy;
@@ -101,6 +102,10 @@ public class DefaultSchedulerBuilder {
     private int defaultMaxParallelism =
             JobManagerOptions.ADAPTIVE_BATCH_SCHEDULER_MAX_PARALLELISM.defaultValue();
     private BlocklistOperations blocklistOperations = ignore -> {};
+    private HybridPartitionDataConsumeConstraint hybridPartitionDataConsumeConstraint =
+            HybridPartitionDataConsumeConstraint.UNFINISHED_PRODUCERS;
+    private InputConsumableDecider.Factory inputConsumableDeciderFactory =
+            AllFinishedInputConsumableDecider.Factory.INSTANCE;
 
     public DefaultSchedulerBuilder(
             JobGraph jobGraph,
@@ -256,6 +261,18 @@ public class DefaultSchedulerBuilder {
         return this;
     }
 
+    public DefaultSchedulerBuilder setHybridPartitionDataConsumeConstraint(
+            HybridPartitionDataConsumeConstraint hybridPartitionDataConsumeConstraint) {
+        this.hybridPartitionDataConsumeConstraint = hybridPartitionDataConsumeConstraint;
+        return this;
+    }
+
+    public DefaultSchedulerBuilder setInputConsumableDeciderFactory(
+            InputConsumableDecider.Factory inputConsumableDeciderFactory) {
+        this.inputConsumableDeciderFactory = inputConsumableDeciderFactory;
+        return this;
+    }
+
     public DefaultScheduler build() throws Exception {
         return new DefaultScheduler(
                 log,
@@ -296,8 +313,7 @@ public class DefaultSchedulerBuilder {
                 checkpointCleaner,
                 checkpointRecoveryFactory,
                 jobManagerJobMetricGroup,
-                new VertexwiseSchedulingStrategy.Factory(
-                        DefaultInputConsumableDecider.Factory.INSTANCE),
+                new VertexwiseSchedulingStrategy.Factory(inputConsumableDeciderFactory),
                 failoverStrategyFactory,
                 restartBackoffTimeStrategy,
                 executionOperations,
@@ -311,7 +327,7 @@ public class DefaultSchedulerBuilder {
                 rpcTimeout,
                 vertexParallelismDecider,
                 defaultMaxParallelism,
-                false);
+                hybridPartitionDataConsumeConstraint);
     }
 
     public SpeculativeScheduler buildSpeculativeScheduler() throws Exception {
@@ -326,8 +342,7 @@ public class DefaultSchedulerBuilder {
                 checkpointCleaner,
                 checkpointRecoveryFactory,
                 jobManagerJobMetricGroup,
-                new VertexwiseSchedulingStrategy.Factory(
-                        AllFinishedInputConsumableDecider.Factory.INSTANCE),
+                new VertexwiseSchedulingStrategy.Factory(inputConsumableDeciderFactory),
                 failoverStrategyFactory,
                 restartBackoffTimeStrategy,
                 executionOperations,
@@ -342,7 +357,7 @@ public class DefaultSchedulerBuilder {
                 vertexParallelismDecider,
                 defaultMaxParallelism,
                 blocklistOperations,
-                true);
+                HybridPartitionDataConsumeConstraint.ALL_PRODUCERS_FINISHED);
     }
 
     private ExecutionGraphFactory createExecutionGraphFactory(boolean isDynamicGraph) {
@@ -363,6 +378,9 @@ public class DefaultSchedulerBuilder {
                 shuffleMaster,
                 partitionTracker,
                 isDynamicGraph,
-                executionJobVertexFactory);
+                executionJobVertexFactory,
+                isDynamicGraph
+                        && hybridPartitionDataConsumeConstraint
+                                == HybridPartitionDataConsumeConstraint.ONLY_FINISHED_PRODUCERS);
     }
 }
