@@ -37,6 +37,7 @@ import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionType;
 import org.apache.flink.runtime.io.network.partition.TestingJobMasterPartitionTracker;
 import org.apache.flink.runtime.jobgraph.DistributionPattern;
+import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.jobgraph.JobVertex;
@@ -64,8 +65,10 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.stream.Collectors;
 import java.util.stream.LongStream;
 
+import static org.apache.flink.runtime.scheduler.DefaultSchedulerBuilder.createCustomParallelismDecider;
 import static org.apache.flink.runtime.scheduler.SchedulerTestingUtils.createFailedTaskExecutionState;
 import static org.apache.flink.runtime.scheduler.SchedulerTestingUtils.createFinishedTaskExecutionState;
+import static org.apache.flink.runtime.scheduler.adaptivebatch.DefaultVertexParallelismAndInputInfosDeciderTest.createDefaultVertexParallelismAndInputInfosDecider;
 import static org.apache.flink.shaded.guava30.com.google.common.collect.Iterables.getOnlyElement;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -172,7 +175,8 @@ class AdaptiveBatchSchedulerTest {
                                 new FixedDelayRestartBackoffTimeStrategy
                                                 .FixedDelayRestartBackoffTimeStrategyFactory(10, 0)
                                         .create())
-                        .setVertexParallelismDecider((ignored) -> maxParallelism)
+                        .setVertexParallelismAndInputInfosDecider(
+                                createCustomParallelismDecider(maxParallelism))
                         .setDefaultMaxParallelism(maxParallelism)
                         .buildAdaptiveBatchJobScheduler();
 
@@ -208,6 +212,66 @@ class AdaptiveBatchSchedulerTest {
                         ((PointwiseBlockingResultInfo) getBlockingResultInfo(scheduler, source1))
                                 .getNumOfRecordedPartitions())
                 .isEqualTo(SOURCE_PARALLELISM_1 - 1);
+    }
+
+    /**
+     * Test a vertex has multiple job edges connecting to the same intermediate result. In this
+     * case, the amount of data consumed by this vertex should be (N * the amount of data of the
+     * result).
+     */
+    @Test
+    void testConsumeOneResultTwice() throws Exception {
+        final JobVertex source = createJobVertex("source1", 1);
+        final JobVertex sink = createJobVertex("sink", -1);
+        final IntermediateDataSetID intermediateDataSetId = new IntermediateDataSetID();
+
+        // sink consume the same result twice
+        sink.connectNewDataSetAsInput(
+                source,
+                DistributionPattern.ALL_TO_ALL,
+                ResultPartitionType.BLOCKING,
+                intermediateDataSetId,
+                false);
+        sink.connectNewDataSetAsInput(
+                source,
+                DistributionPattern.ALL_TO_ALL,
+                ResultPartitionType.BLOCKING,
+                intermediateDataSetId,
+                false);
+
+        SchedulerBase scheduler =
+                createScheduler(
+                        new JobGraph(new JobID(), "test job", source, sink),
+                        createDefaultVertexParallelismAndInputInfosDecider(
+                                1, 16, 4 * SUBPARTITION_BYTES),
+                        16);
+
+        final DefaultExecutionGraph graph = (DefaultExecutionGraph) scheduler.getExecutionGraph();
+        final ExecutionJobVertex sinkExecutionJobVertex = graph.getJobVertex(sink.getID());
+
+        scheduler.startScheduling();
+        transitionExecutionsState(scheduler, ExecutionState.FINISHED, source);
+
+        // check sink's parallelism
+        assertThat(sinkExecutionJobVertex.getParallelism()).isEqualTo(8);
+        assertThat(sink.getParallelism()).isEqualTo(8);
+    }
+
+    @Test
+    void testParallelismDecidedVerticesCanBeInitializedEarlier() throws Exception {
+        final JobVertex source = createJobVertex("source", 8);
+        final JobVertex sink = createJobVertex("sink", 8);
+        sink.connectNewDataSetAsInput(
+                source, DistributionPattern.ALL_TO_ALL, ResultPartitionType.BLOCKING);
+
+        SchedulerBase scheduler =
+                createScheduler(new JobGraph(new JobID(), "test job", source, sink));
+        final DefaultExecutionGraph graph = (DefaultExecutionGraph) scheduler.getExecutionGraph();
+        final ExecutionJobVertex sinkExecutionJobVertex = graph.getJobVertex(sink.getID());
+
+        scheduler.startScheduling();
+        // check sink is not initialized
+        assertThat(sinkExecutionJobVertex.isInitialized()).isTrue();
     }
 
     private BlockingResultInfo getBlockingResultInfo(
@@ -312,7 +376,18 @@ class AdaptiveBatchSchedulerTest {
         return new JobGraph(new JobID(), "test job", source1, source2, sink);
     }
 
-    public SchedulerBase createScheduler(JobGraph jobGraph) throws Exception {
+    private SchedulerBase createScheduler(JobGraph jobGraph) throws Exception {
+        return createScheduler(
+                jobGraph,
+                createCustomParallelismDecider(10),
+                JobManagerOptions.ADAPTIVE_BATCH_SCHEDULER_MAX_PARALLELISM.defaultValue());
+    }
+
+    private SchedulerBase createScheduler(
+            JobGraph jobGraph,
+            VertexParallelismAndInputInfosDecider vertexParallelismAndInputInfosDecider,
+            int defaultMaxParallelism)
+            throws Exception {
         Configuration configuration = new Configuration();
         configuration.set(
                 JobManagerOptions.SCHEDULER, JobManagerOptions.SchedulerType.AdaptiveBatch);
@@ -321,7 +396,8 @@ class AdaptiveBatchSchedulerTest {
                         jobGraph, mainThreadExecutor, EXECUTOR_RESOURCE.getExecutor())
                 .setDelayExecutor(taskRestartExecutor)
                 .setJobMasterConfiguration(configuration)
-                .setVertexParallelismDecider((ignored) -> 10)
+                .setVertexParallelismAndInputInfosDecider(vertexParallelismAndInputInfosDecider)
+                .setDefaultMaxParallelism(defaultMaxParallelism)
                 .buildAdaptiveBatchJobScheduler();
     }
 }
