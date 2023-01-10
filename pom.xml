@@ -107,7 +107,7 @@ under the License.
 	<properties>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 		<project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
-		<flink.hadoop.version>2.8.5</flink.hadoop.version>
+		<flink.hadoop.version>2.10.2</flink.hadoop.version>
 		<flink.XmxMax>3072m</flink.XmxMax>
 		<!-- XmxMax / forkCountITCase -->
 		<flink.XmxITCase>1536m</flink.XmxITCase>
@@ -170,11 +170,6 @@ under the License.
 		<minikdc.version>3.2.4</minikdc.version>
 		<hive.version>2.3.9</hive.version>
 		<orc.version>1.5.6</orc.version>
-		<!--
-			Hive 2.3.4 relies on Hadoop 2.7.2 and later versions.
-			For Hadoop 2.7, the minor Hadoop version supported for flink-shaded-hadoop-2-uber is 2.7.5
-		-->
-		<hivemetastore.hadoop.version>2.7.5</hivemetastore.hadoop.version>
 		<japicmp.referenceVersion>1.16.0</japicmp.referenceVersion>
 		<japicmp.outputDir>tools/japicmp-output</japicmp.outputDir>
 		<spotless.version>2.27.1</spotless.version>
@@ -427,6 +422,14 @@ under the License.
 						<groupId>org.slf4j</groupId>
 						<artifactId>slf4j-log4j12</artifactId>
 					</exclusion>
+					<exclusion>
+						<groupId>ch.qos.reload4j</groupId>
+						<artifactId>reload4j</artifactId>
+					</exclusion>
+					<exclusion>
+						<groupId>org.slf4j</groupId>
+						<artifactId>slf4j-reload4j</artifactId>
+					</exclusion>
 				</exclusions>
 			</dependency>
 
@@ -446,6 +449,14 @@ under the License.
 					<exclusion>
 						<groupId>org.slf4j</groupId>
 						<artifactId>slf4j-log4j12</artifactId>
+					</exclusion>
+					<exclusion>
+						<groupId>ch.qos.reload4j</groupId>
+						<artifactId>reload4j</artifactId>
+					</exclusion>
+					<exclusion>
+						<groupId>org.slf4j</groupId>
+						<artifactId>slf4j-reload4j</artifactId>
 					</exclusion>
 				</exclusions>
 			</dependency>
@@ -1750,8 +1761,10 @@ under the License.
 									<excludes>
 										<exclude>log4j:log4j</exclude>
 										<exclude>org.slf4j:slf4j-log4j12</exclude>
+										<exclude>ch.qos.reload4j:reload4j</exclude>
+										<exclude>org.slf4j:slf4j-reload4j</exclude>
 									</excludes>
-									<message>Log4j 1 dependencies are not allowed because they conflict with Log4j 2. If the dependency absolutely requires the Log4j 1 API, use 'org.apache.logging.log4j:log4j-1.2-api'.</message>
+									<message>Log4j 1 and Reload4J dependencies are not allowed because they conflict with Log4j 2. If the dependency absolutely requires the Log4j 1 API, use 'org.apache.logging.log4j:log4j-1.2-api'.</message>
 								</bannedDependencies>
 							</rules>
 						</configuration>
@@ -1923,6 +1936,20 @@ under the License.
 								<artifactId>flink-parent</artifactId>
 							</project>
 						</configuration>
+					</execution>
+				</executions>
+			</plugin>
+
+			<plugin>
+				<groupId>org.cyclonedx</groupId>
+				<artifactId>cyclonedx-maven-plugin</artifactId>
+				<version>2.7.3</version>
+				<executions>
+					<execution>
+						<phase>package</phase>
+						<goals>
+							<goal>makeBom</goal>
+						</goals>
 					</execution>
 				</executions>
 			</plugin>

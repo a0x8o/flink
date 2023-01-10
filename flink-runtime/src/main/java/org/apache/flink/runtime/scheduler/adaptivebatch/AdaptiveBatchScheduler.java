@@ -20,6 +20,7 @@
 package org.apache.flink.runtime.scheduler.adaptivebatch;
 
 import org.apache.flink.annotation.VisibleForTesting;
+import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.JobManagerOptions.HybridPartitionDataConsumeConstraint;
@@ -35,6 +36,7 @@ import org.apache.flink.runtime.executiongraph.IOMetrics;
 import org.apache.flink.runtime.executiongraph.IntermediateResult;
 import org.apache.flink.runtime.executiongraph.JobStatusListener;
 import org.apache.flink.runtime.executiongraph.MarkPartitionFinishedStrategy;
+import org.apache.flink.runtime.executiongraph.ParallelismAndInputInfos;
 import org.apache.flink.runtime.executiongraph.ResultPartitionBytes;
 import org.apache.flink.runtime.executiongraph.failover.flip1.FailoverStrategy;
 import org.apache.flink.runtime.executiongraph.failover.flip1.RestartBackoffTimeStrategy;
@@ -77,6 +79,7 @@ import java.util.function.Function;
 
 import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
+import static org.apache.flink.util.Preconditions.checkState;
 
 /**
  * This scheduler decides the parallelism of JobVertex according to the data volume it consumes. A
@@ -86,7 +89,7 @@ public class AdaptiveBatchScheduler extends DefaultScheduler {
 
     private final DefaultLogicalTopology logicalTopology;
 
-    private final VertexParallelismDecider vertexParallelismDecider;
+    private final VertexParallelismAndInputInfosDecider vertexParallelismAndInputInfosDecider;
 
     private final Map<JobVertexID, ForwardGroup> forwardGroupsByJobVertexId;
 
@@ -117,7 +120,7 @@ public class AdaptiveBatchScheduler extends DefaultScheduler {
             final ExecutionGraphFactory executionGraphFactory,
             final ShuffleMaster<?> shuffleMaster,
             final Time rpcTimeout,
-            final VertexParallelismDecider vertexParallelismDecider,
+            final VertexParallelismAndInputInfosDecider vertexParallelismAndInputInfosDecider,
             int defaultMaxParallelism,
             HybridPartitionDataConsumeConstraint hybridPartitionDataConsumeConstraint)
             throws Exception {
@@ -151,7 +154,8 @@ public class AdaptiveBatchScheduler extends DefaultScheduler {
 
         this.logicalTopology = DefaultLogicalTopology.fromJobGraph(jobGraph);
 
-        this.vertexParallelismDecider = vertexParallelismDecider;
+        this.vertexParallelismAndInputInfosDecider =
+                checkNotNull(vertexParallelismAndInputInfosDecider);
 
         this.forwardGroupsByJobVertexId =
                 ForwardGroupComputeUtil.computeForwardGroups(
@@ -241,12 +245,40 @@ public class AdaptiveBatchScheduler extends DefaultScheduler {
         try {
             final long createTimestamp = System.currentTimeMillis();
             for (ExecutionJobVertex jobVertex : getExecutionGraph().getVerticesTopologically()) {
-                maybeSetParallelism(jobVertex);
-            }
-            for (ExecutionJobVertex jobVertex : getExecutionGraph().getVerticesTopologically()) {
+                if (jobVertex.isInitialized()) {
+                    continue;
+                }
+
                 if (canInitialize(jobVertex)) {
+                    // This branch is for: If the parallelism is user-specified(decided), the
+                    // downstream job vertices can be initialized earlier, so that it can be
+                    // scheduled together with its upstream in hybrid shuffle mode.
+
+                    // Note that in current implementation, the decider will not load balance
+                    // (evenly distribute data) for job vertices whose parallelism has already been
+                    // decided, so we can call the
+                    // ExecutionGraph#initializeJobVertex(ExecutionJobVertex, long) to initialize.
+                    // TODO: In the future, if we want to load balance for job vertices whose
+                    // parallelism has already been decided, we need to refactor the logic here.
                     getExecutionGraph().initializeJobVertex(jobVertex, createTimestamp);
                     newlyInitializedJobVertices.add(jobVertex);
+                } else {
+                    Optional<List<BlockingResultInfo>> consumedResultsInfo =
+                            tryGetConsumedResultsInfo(jobVertex);
+                    if (consumedResultsInfo.isPresent()) {
+                        ParallelismAndInputInfos parallelismAndInputInfos =
+                                tryDecideParallelismAndInputInfos(
+                                        jobVertex, consumedResultsInfo.get());
+                        changeJobVertexParallelism(
+                                jobVertex, parallelismAndInputInfos.getParallelism());
+                        checkState(canInitialize(jobVertex));
+                        getExecutionGraph()
+                                .initializeJobVertex(
+                                        jobVertex,
+                                        createTimestamp,
+                                        parallelismAndInputInfos.getJobVertexInputInfos());
+                        newlyInitializedJobVertices.add(jobVertex);
+                    }
                 }
             }
         } catch (JobException ex) {
@@ -259,46 +291,46 @@ public class AdaptiveBatchScheduler extends DefaultScheduler {
         }
     }
 
-    private void maybeSetParallelism(final ExecutionJobVertex jobVertex) {
-        if (jobVertex.isParallelismDecided()) {
-            return;
-        }
-
-        Optional<List<BlockingResultInfo>> consumedResultsInfo =
-                tryGetConsumedResultsInfo(jobVertex);
-        if (!consumedResultsInfo.isPresent()) {
-            return;
-        }
-
+    private ParallelismAndInputInfos tryDecideParallelismAndInputInfos(
+            final ExecutionJobVertex jobVertex, List<BlockingResultInfo> inputs) {
+        int parallelism = jobVertex.getParallelism();
         ForwardGroup forwardGroup = forwardGroupsByJobVertexId.get(jobVertex.getJobVertexId());
-        int parallelism;
-
-        if (forwardGroup != null && forwardGroup.isParallelismDecided()) {
+        if (!jobVertex.isParallelismDecided()
+                && forwardGroup != null
+                && forwardGroup.isParallelismDecided()) {
             parallelism = forwardGroup.getParallelism();
             log.info(
                     "Parallelism of JobVertex: {} ({}) is decided to be {} according to forward group's parallelism.",
                     jobVertex.getName(),
                     jobVertex.getJobVertexId(),
                     parallelism);
+        }
 
-        } else {
-            parallelism =
-                    vertexParallelismDecider.decideParallelismForVertex(consumedResultsInfo.get());
-            if (forwardGroup != null) {
-                forwardGroup.setParallelism(parallelism);
-            }
+        final ParallelismAndInputInfos parallelismAndInputInfos =
+                vertexParallelismAndInputInfosDecider.decideParallelismAndInputInfosForVertex(
+                        jobVertex.getJobVertexId(), inputs, parallelism);
 
+        if (parallelism == ExecutionConfig.PARALLELISM_DEFAULT) {
             log.info(
                     "Parallelism of JobVertex: {} ({}) is decided to be {}.",
                     jobVertex.getName(),
                     jobVertex.getJobVertexId(),
-                    parallelism);
+                    parallelismAndInputInfos.getParallelism());
+        } else {
+            checkState(parallelismAndInputInfos.getParallelism() == parallelism);
         }
 
-        changeJobVertexParallelism(jobVertex, parallelism);
+        if (forwardGroup != null && !forwardGroup.isParallelismDecided()) {
+            forwardGroup.setParallelism(parallelismAndInputInfos.getParallelism());
+        }
+
+        return parallelismAndInputInfos;
     }
 
     private void changeJobVertexParallelism(ExecutionJobVertex jobVertex, int parallelism) {
+        if (jobVertex.isParallelismDecided()) {
+            return;
+        }
         // update the JSON Plan, it's needed to enable REST APIs to return the latest parallelism of
         // job vertices
         jobVertex.getJobVertex().setParallelism(parallelism);
