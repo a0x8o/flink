@@ -2244,6 +2244,10 @@ def from_arrow_type(arrow_type, nullable: bool = True) -> DataType:
             return TimestampType(6, nullable)
         else:
             return TimestampType(9, nullable)
+    elif types.is_map(arrow_type):
+        return MapType(from_arrow_type(arrow_type.key_type),
+                       from_arrow_type(arrow_type.item_type),
+                       nullable)
     elif types.is_list(arrow_type):
         return ArrayType(from_arrow_type(arrow_type.value_type), nullable)
     elif types.is_struct(arrow_type):
@@ -2252,6 +2256,8 @@ def from_arrow_type(arrow_type, nullable: bool = True) -> DataType:
                             str(arrow_type))
         return RowType([RowField(field.name, from_arrow_type(field.type, field.nullable))
                         for field in arrow_type])
+    elif types.is_null(arrow_type):
+        return NullType()
     else:
         raise TypeError("Unsupported data type to convert to Arrow type: " + str(dt))
 
@@ -2277,6 +2283,8 @@ def to_arrow_type(data_type: DataType):
         return pa.float64()
     elif isinstance(data_type, (CharType, VarCharType)):
         return pa.utf8()
+    elif isinstance(data_type, BinaryType):
+        return pa.binary(data_type.length)
     elif isinstance(data_type, VarBinaryType):
         return pa.binary()
     elif isinstance(data_type, DecimalType):
@@ -2301,6 +2309,8 @@ def to_arrow_type(data_type: DataType):
             return pa.timestamp('us')
         else:
             return pa.timestamp('ns')
+    elif isinstance(data_type, MapType):
+        return pa.map_(to_arrow_type(data_type.key_type), to_arrow_type(data_type.value_type))
     elif isinstance(data_type, ArrayType):
         if type(data_type.element_type) in [LocalZonedTimestampType, RowType]:
             raise ValueError("%s is not supported to be used as the element type of ArrayType." %
@@ -2314,6 +2324,8 @@ def to_arrow_type(data_type: DataType):
         fields = [pa.field(field.name, to_arrow_type(field.data_type), field.data_type._nullable)
                   for field in data_type]
         return pa.struct(fields)
+    elif isinstance(data_type, NullType):
+        return pa.null()
     else:
         raise ValueError("field_type %s is not supported." % data_type)
 
