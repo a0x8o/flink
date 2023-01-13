@@ -26,7 +26,7 @@ import pytz
 
 from pyflink.table import DataTypes, expressions as expr
 from pyflink.table.expressions import call
-from pyflink.table.udf import ScalarFunction, udf
+from pyflink.table.udf import ScalarFunction, udf, FunctionContext
 from pyflink.testing import source_sink_utils
 from pyflink.testing.test_case_utils import PyFlinkStreamTableTestCase, \
     PyFlinkBatchTableTestCase
@@ -41,11 +41,14 @@ class UserDefinedFunctionTests(object):
     def test_scalar_function(self):
         # test metric disabled.
         self.t_env.get_config().set('python.metric.enabled', 'false')
+        self.t_env.get_config().set('pipeline.global-job-parameters', 'subtract_value:2')
         # test lambda function
         add_one = udf(lambda i: i + 1, result_type=DataTypes.BIGINT())
 
         # test Python ScalarFunction
         subtract_one = udf(SubtractOne(), result_type=DataTypes.BIGINT())
+
+        subtract_two = udf(SubtractWithParameters(), result_type=DataTypes.BIGINT())
 
         # test callable function
         add_one_callable = udf(CallablePlus(), result_type=DataTypes.BIGINT())
@@ -68,7 +71,7 @@ class UserDefinedFunctionTests(object):
         sink_table = generate_random_table_name()
         sink_table_ddl = f"""
             CREATE TABLE {sink_table}(a BIGINT, b BIGINT, c BIGINT, d BIGINT, e BIGINT, f BIGINT,
-             g BIGINT) WITH ('connector'='test-sink')
+             g BIGINT, h BIGINT) WITH ('connector'='test-sink')
         """
         self.t_env.execute_sql(sink_table_ddl)
 
@@ -76,11 +79,16 @@ class UserDefinedFunctionTests(object):
 
         t = self.t_env.from_elements([(1, 2, 3), (2, 5, 6), (3, 1, 9)], ['a', 'b', 'c'])
         t.where(add_one(t.b) <= 3).select(
-            add_one(t.a), subtract_one(t.b), add(t.a, t.c), add_one_callable(t.a),
-            add_one_partial(t.a), check_memory_limit(execution_mode), t.a) \
-            .execute_insert(sink_table).wait()
+            add_one(t.a),
+            subtract_one(t.b),
+            subtract_two(t.b),
+            add(t.a, t.c),
+            add_one_callable(t.a),
+            add_one_partial(t.a),
+            check_memory_limit(execution_mode),
+            t.a).execute_insert(sink_table).wait()
         actual = source_sink_utils.results()
-        self.assert_equals(actual, ["+I[2, 1, 4, 2, 2, 1, 1]", "+I[4, 0, 12, 4, 4, 1, 3]"])
+        self.assert_equals(actual, ["+I[2, 1, 0, 4, 2, 2, 1, 1]", "+I[4, 0, -1, 12, 4, 4, 1, 3]"])
 
     def test_chaining_scalar_function(self):
         add_one = udf(lambda i: i + 1, result_type=DataTypes.BIGINT())
@@ -383,12 +391,45 @@ class UserDefinedFunctionTests(object):
                 'decimal_param is wrong value %s !' % decimal_param
             return decimal_param
 
+        @udf(result_type=DataTypes.BINARY(5))
+        def binary_func(binary_param):
+            assert len(binary_param) == 5
+            return binary_param
+
+        @udf(result_type=DataTypes.CHAR(7))
+        def char_func(char_param):
+            assert len(char_param) == 7
+            return char_param
+
+        @udf(result_type=DataTypes.VARCHAR(10))
+        def varchar_func(varchar_param):
+            assert len(varchar_param) <= 10
+            return varchar_param
+
         sink_table = generate_random_table_name()
         sink_table_ddl = f"""
             CREATE TABLE {sink_table}(
-            a BIGINT, b BIGINT, c TINYINT, d BOOLEAN, e SMALLINT, f INT, g FLOAT, h DOUBLE, i BYTES,
-            j STRING, k DATE, l TIME, m TIMESTAMP(3), n ARRAY<BIGINT>, o MAP<BIGINT, STRING>,
-            p DECIMAL(38, 18), q DECIMAL(38, 18)) WITH ('connector'='test-sink')
+                a BIGINT,
+                b BIGINT,
+                c TINYINT,
+                d BOOLEAN,
+                e SMALLINT,
+                f INT,
+                g FLOAT,
+                h DOUBLE,
+                i BYTES,
+                j STRING,
+                k DATE,
+                l TIME,
+                m TIMESTAMP(3),
+                n ARRAY<BIGINT>,
+                o MAP<BIGINT, STRING>,
+                p DECIMAL(38, 18),
+                q DECIMAL(38, 18),
+                r BINARY(5),
+                s CHAR(7),
+                t VARCHAR(10)
+            ) WITH ('connector'='test-sink')
         """
         self.t_env.execute_sql(sink_table_ddl)
 
@@ -400,7 +441,8 @@ class UserDefinedFunctionTests(object):
               datetime.time(hour=12, minute=0, second=0, microsecond=123000),
               datetime.datetime(2018, 3, 11, 3, 0, 0, 123000), [[1, 2, 3]],
               {1: 'flink', 2: 'pyflink'}, decimal.Decimal('1000000000000000000.05'),
-              decimal.Decimal('1000000000000000000.05999999999999999899999999999'))],
+              decimal.Decimal('1000000000000000000.05999999999999999899999999999'),
+              bytearray(b'flink'), 'pyflink', 'pyflink')],
             DataTypes.ROW(
                 [DataTypes.FIELD("a", DataTypes.BIGINT()),
                  DataTypes.FIELD("b", DataTypes.BIGINT()),
@@ -418,7 +460,10 @@ class UserDefinedFunctionTests(object):
                  DataTypes.FIELD("n", DataTypes.ARRAY(DataTypes.ARRAY(DataTypes.BIGINT()))),
                  DataTypes.FIELD("o", DataTypes.MAP(DataTypes.BIGINT(), DataTypes.STRING())),
                  DataTypes.FIELD("p", DataTypes.DECIMAL(38, 18)),
-                 DataTypes.FIELD("q", DataTypes.DECIMAL(38, 18))]))
+                 DataTypes.FIELD("q", DataTypes.DECIMAL(38, 18)),
+                 DataTypes.FIELD("r", DataTypes.BINARY(5)),
+                 DataTypes.FIELD("s", DataTypes.CHAR(7)),
+                 DataTypes.FIELD("t", DataTypes.VARCHAR(10))]))
 
         t.select(
             bigint_func(t.a),
@@ -437,7 +482,10 @@ class UserDefinedFunctionTests(object):
             array_func(t.n),
             map_func(t.o),
             decimal_func(t.p),
-            decimal_cut_func(t.q)) \
+            decimal_cut_func(t.q),
+            binary_func(t.r),
+            char_func(t.s),
+            varchar_func(t.t)) \
             .execute_insert(sink_table).wait()
         actual = source_sink_utils.results()
         # Currently the sink result precision of DataTypes.TIME(precision) only supports 0.
@@ -446,7 +494,8 @@ class UserDefinedFunctionTests(object):
                             "[102, 108, 105, 110, 107], pyflink, 2014-09-13, 12:00:00.123, "
                             "2018-03-11T03:00:00.123, [1, 2, 3], "
                             "{1=flink, 2=pyflink}, 1000000000000000000.050000000000000000, "
-                            "1000000000000000000.059999999999999999]"])
+                            "1000000000000000000.059999999999999999, [102, 108, 105, 110, 107], "
+                            "pyflink, pyflink]"])
 
     def test_all_data_types(self):
         def boolean_func(bool_param):
@@ -1008,6 +1057,15 @@ class SubtractOne(ScalarFunction):
 
     def eval(self, i):
         return i - 1
+
+
+class SubtractWithParameters(ScalarFunction):
+
+    def open(self, function_context: FunctionContext):
+        self.subtract_value = int(function_context.get_job_parameter("subtract_value", "1"))
+
+    def eval(self, i):
+        return i - self.subtract_value
 
 
 class SubtractWithMetrics(ScalarFunction, unittest.TestCase):
