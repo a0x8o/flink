@@ -30,7 +30,7 @@ import java.util.List;
 /** To represent that the execution result is not ready to fetch. */
 public class NotReadyResult implements ResultSet {
 
-    public static final NotReadyResult NOT_READY_RESULT = new NotReadyResult();
+    public static final NotReadyResult INSTANCE = new NotReadyResult();
 
     private NotReadyResult() {}
 
