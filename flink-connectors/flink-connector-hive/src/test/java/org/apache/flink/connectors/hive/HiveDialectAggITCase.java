@@ -20,6 +20,7 @@ package org.apache.flink.connectors.hive;
 
 import org.apache.flink.table.api.SqlDialect;
 import org.apache.flink.table.api.TableEnvironment;
+import org.apache.flink.table.api.TableException;
 import org.apache.flink.table.catalog.hive.HiveCatalog;
 import org.apache.flink.table.catalog.hive.HiveTestUtils;
 import org.apache.flink.table.module.CoreModule;
@@ -28,7 +29,7 @@ import org.apache.flink.types.Row;
 import org.apache.flink.util.CollectionUtil;
 
 import org.apache.hadoop.hive.conf.HiveConf;
-import org.junit.Before;
+import org.apache.hadoop.hive.ql.exec.UDFArgumentTypeException;
 import org.junit.BeforeClass;
 import org.junit.ClassRule;
 import org.junit.Test;
@@ -38,7 +39,6 @@ import java.util.List;
 
 import static org.apache.flink.connectors.hive.HiveOptions.TABLE_EXEC_HIVE_NATIVE_AGG_FUNCTION_ENABLED;
 import static org.apache.flink.core.testutils.FlinkAssertions.anyCauseMatches;
-import static org.apache.flink.table.planner.utils.TableTestUtil.readFromResource;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -57,6 +57,8 @@ public class HiveDialectAggITCase {
         hiveCatalog.getHiveConf().setVar(HiveConf.ConfVars.HIVE_QUOTEDID_SUPPORT, "none");
         hiveCatalog.open();
         tableEnv = getTableEnvWithHiveCatalog();
+        // enable native hive agg function
+        tableEnv.getConfig().set(TABLE_EXEC_HIVE_NATIVE_AGG_FUNCTION_ENABLED, true);
 
         // create tables
         tableEnv.executeSql("create table foo (x int, y int)");
@@ -68,25 +70,6 @@ public class HiveDialectAggITCase {
                 .addRow(new Object[] {4, 4})
                 .addRow(new Object[] {5, 5})
                 .commit();
-    }
-
-    @Before
-    public void before() {
-        // enable native hive agg function
-        tableEnv.getConfig().set(TABLE_EXEC_HIVE_NATIVE_AGG_FUNCTION_ENABLED, true);
-    }
-
-    @Test
-    public void testSumAggFunctionPlan() {
-        // test explain
-        String actualPlan = explainSql("select x, sum(y) from foo group by x");
-        assertThat(actualPlan).isEqualTo(readFromResource("/explain/testSumAggFunctionPlan.out"));
-
-        // test fallback to hive sum udaf
-        tableEnv.getConfig().set(TABLE_EXEC_HIVE_NATIVE_AGG_FUNCTION_ENABLED, false);
-        String actualSortAggPlan = explainSql("select x, sum(y) from foo group by x");
-        assertThat(actualSortAggPlan)
-                .isEqualTo(readFromResource("/explain/testSumAggFunctionFallbackPlan.out"));
     }
 
     @Test
@@ -148,7 +131,7 @@ public class HiveDialectAggITCase {
         assertThatThrownBy(
                         () ->
                                 CollectionUtil.iteratorToList(
-                                        tableEnv.executeSql("select sum(ts)from test_sum")
+                                        tableEnv.executeSql("select sum(ts) from test_sum")
                                                 .collect()))
                 .rootCause()
                 .satisfiesAnyOf(
@@ -179,11 +162,178 @@ public class HiveDialectAggITCase {
         tableEnv.executeSql("drop table test_sum_group");
     }
 
-    private String explainSql(String sql) {
-        return (String)
-                CollectionUtil.iteratorToList(tableEnv.executeSql("explain " + sql).collect())
-                        .get(0)
-                        .getField(0);
+    @Test
+    public void testSimpleCount() throws Exception {
+        tableEnv.executeSql("create table test_count(a int, x string, y string, z int, d bigint)");
+        tableEnv.executeSql(
+                        "insert into test_count values (1, NULL, '2', 1, 2), "
+                                + "(1, NULL, 'b', 2, NULL), "
+                                + "(2, NULL, '4', 1, 2), "
+                                + "(2, NULL, NULL, 4, 3)")
+                .await();
+
+        // test count(*)
+        List<Row> result =
+                CollectionUtil.iteratorToList(
+                        tableEnv.executeSql("select count(*) from test_count").collect());
+        assertThat(result.toString()).isEqualTo("[+I[4]]");
+
+        // test count(1)
+        List<Row> result2 =
+                CollectionUtil.iteratorToList(
+                        tableEnv.executeSql("select count(1) from test_count").collect());
+        assertThat(result2.toString()).isEqualTo("[+I[4]]");
+
+        // test count(col1)
+        List<Row> result3 =
+                CollectionUtil.iteratorToList(
+                        tableEnv.executeSql("select count(y) from test_count").collect());
+        assertThat(result3.toString()).isEqualTo("[+I[3]]");
+
+        // test count(distinct col1)
+        List<Row> result4 =
+                CollectionUtil.iteratorToList(
+                        tableEnv.executeSql("select count(distinct z) from test_count").collect());
+        assertThat(result4.toString()).isEqualTo("[+I[3]]");
+
+        // test count(distinct col1, col2)
+        List<Row> result5 =
+                CollectionUtil.iteratorToList(
+                        tableEnv.executeSql("select count(distinct z, d) from test_count")
+                                .collect());
+        assertThat(result5.toString()).isEqualTo("[+I[2]]");
+
+        tableEnv.executeSql("drop table test_count");
+    }
+
+    @Test
+    public void testCountAggWithGroupKey() throws Exception {
+        tableEnv.executeSql(
+                "create table test_count_group(a int, x string, y string, z int, d bigint)");
+        tableEnv.executeSql(
+                        "insert into test_count_group values (1, NULL, '2', 1, 2), "
+                                + "(1, NULL, '2', 2, NULL), "
+                                + "(2, NULL, '4', 1, 2), "
+                                + "(2, NULL, 3, 4, 3)")
+                .await();
+
+        List<Row> result =
+                CollectionUtil.iteratorToList(
+                        tableEnv.executeSql(
+                                        "select count(*), count(x), count(distinct y), count(distinct z, d) from test_count_group group by a")
+                                .collect());
+        assertThat(result.toString()).isEqualTo("[+I[2, 0, 1, 1], +I[2, 0, 2, 2]]");
+    }
+
+    @Test
+    public void testMinAggFunction() throws Exception {
+        tableEnv.executeSql(
+                "create table test_min(a int, b boolean, x string, y string, z int, d decimal(10,5), e float, f double, ts timestamp, dt date, bar binary)");
+        tableEnv.executeSql(
+                        "insert into test_min values (1, true, NULL, '2', 1, 1.11, 1.2, 1.3, '2021-08-04 16:26:33.4','2021-08-04', 'data1'), "
+                                + "(1, false, NULL, 'b', 2, 2.22, 2.3, 2.4, '2021-08-06 16:26:33.4','2021-08-07', 'data2'), "
+                                + "(2, false, NULL, '4', 1, 3.33, 3.5, 3.6, '2021-08-08 16:26:33.4','2021-08-08', 'data3'), "
+                                + "(2, true, NULL, NULL, 4, 4.45, 4.7, 4.8, '2021-08-10 16:26:33.4','2021-08-01', 'data4')")
+                .await();
+
+        // test min with all elements are null
+        List<Row> result =
+                CollectionUtil.iteratorToList(
+                        tableEnv.executeSql("select min(x) from test_min").collect());
+        assertThat(result.toString()).isEqualTo("[+I[null]]");
+
+        // test min with some elements are null
+        List<Row> result2 =
+                CollectionUtil.iteratorToList(
+                        tableEnv.executeSql("select min(y) from test_min").collect());
+        assertThat(result2.toString()).isEqualTo("[+I[2]]");
+
+        // test min with some elements repeated
+        List<Row> result3 =
+                CollectionUtil.iteratorToList(
+                        tableEnv.executeSql("select min(z) from test_min").collect());
+        assertThat(result3.toString()).isEqualTo("[+I[1]]");
+
+        // test min with decimal type
+        List<Row> result4 =
+                CollectionUtil.iteratorToList(
+                        tableEnv.executeSql("select min(d) from test_min").collect());
+        assertThat(result4.toString()).isEqualTo("[+I[1.11000]]");
+
+        // test min with float type
+        List<Row> result5 =
+                CollectionUtil.iteratorToList(
+                        tableEnv.executeSql("select min(e) from test_min").collect());
+        assertThat(result5.toString()).isEqualTo("[+I[1.2]]");
+
+        // test min with double type
+        List<Row> result6 =
+                CollectionUtil.iteratorToList(
+                        tableEnv.executeSql("select min(f) from test_min").collect());
+        assertThat(result6.toString()).isEqualTo("[+I[1.3]]");
+
+        // test min with boolean type
+        List<Row> result7 =
+                CollectionUtil.iteratorToList(
+                        tableEnv.executeSql("select min(b) from test_min").collect());
+        assertThat(result7.toString()).isEqualTo("[+I[false]]");
+
+        // test min with timestamp type
+        List<Row> result8 =
+                CollectionUtil.iteratorToList(
+                        tableEnv.executeSql("select min(ts) from test_min").collect());
+        assertThat(result8.toString()).isEqualTo("[+I[2021-08-04T16:26:33.400]]");
+
+        // test min with date type
+        List<Row> result9 =
+                CollectionUtil.iteratorToList(
+                        tableEnv.executeSql("select min(dt) from test_min").collect());
+        assertThat(result9.toString()).isEqualTo("[+I[2021-08-01]]");
+
+        // test min with binary type
+        List<Row> result10 =
+                CollectionUtil.iteratorToList(
+                        tableEnv.executeSql("select min(bar) from test_min").collect());
+        assertThat(result10.toString()).isEqualTo("[+I[[100, 97, 116, 97, 49]]]");
+
+        tableEnv.executeSql("drop table test_min");
+
+        // test min with unsupported data type
+        tableEnv.executeSql(
+                "create table test_min_not_support_type(a array<int>,m map<int, string>,s struct<f1:int,f2:string>)");
+        // test min with row type
+        String expectedRowMessage =
+                "Hive native min aggregate function does not support type: 'ROW' now. Please re-check the data type.";
+        assertSqlException(
+                "select min(s) from test_min_not_support_type",
+                TableException.class,
+                expectedRowMessage);
+
+        // test min with array type
+        String expectedArrayMessage =
+                "Hive native min aggregate function does not support type: 'ARRAY' now. Please re-check the data type.";
+        assertSqlException(
+                "select min(a) from test_min_not_support_type",
+                TableException.class,
+                expectedArrayMessage);
+
+        // test min with map type, hive also does not support map type comparisons.
+        String expectedMapMessage =
+                "Cannot support comparison of map<> type or complex type containing map<>.";
+        assertSqlException(
+                "select min(m) from test_min_not_support_type",
+                UDFArgumentTypeException.class,
+                expectedMapMessage);
+
+        tableEnv.executeSql("drop table test_min_not_support_type");
+    }
+
+    private void assertSqlException(
+            String sql, Class<?> expectedExceptionClz, String expectedMessage) {
+        assertThatThrownBy(() -> tableEnv.executeSql(sql))
+                .rootCause()
+                .isInstanceOf(expectedExceptionClz)
+                .hasMessage(expectedMessage);
     }
 
     private static TableEnvironment getTableEnvWithHiveCatalog() {
