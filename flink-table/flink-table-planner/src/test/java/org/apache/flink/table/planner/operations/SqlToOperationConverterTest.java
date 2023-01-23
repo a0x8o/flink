@@ -52,9 +52,11 @@ import org.apache.flink.table.catalog.exceptions.FunctionAlreadyExistException;
 import org.apache.flink.table.catalog.exceptions.TableAlreadyExistException;
 import org.apache.flink.table.catalog.exceptions.TableNotExistException;
 import org.apache.flink.table.delegation.Parser;
+import org.apache.flink.table.expressions.ResolvedExpression;
 import org.apache.flink.table.expressions.SqlCallExpression;
 import org.apache.flink.table.factories.TestManagedTableFactory;
 import org.apache.flink.table.operations.BeginStatementSetOperation;
+import org.apache.flink.table.operations.DeleteFromFilterOperation;
 import org.apache.flink.table.operations.EndStatementSetOperation;
 import org.apache.flink.table.operations.ExplainOperation;
 import org.apache.flink.table.operations.LoadModuleOperation;
@@ -96,6 +98,7 @@ import org.apache.flink.table.planner.delegation.PlannerContext;
 import org.apache.flink.table.planner.expressions.utils.Func0$;
 import org.apache.flink.table.planner.expressions.utils.Func1$;
 import org.apache.flink.table.planner.expressions.utils.Func8$;
+import org.apache.flink.table.planner.factories.TestUpdateDeleteTableFactory;
 import org.apache.flink.table.planner.parse.CalciteParser;
 import org.apache.flink.table.planner.parse.ExtendedParser;
 import org.apache.flink.table.planner.runtime.utils.JavaUserDefinedScalarFunctions;
@@ -2529,7 +2532,8 @@ public class SqlToOperationConverterTest {
 
     @Test
     public void testExplainDetailsWithSelect() {
-        final String sql = "explain estimated_cost, changelog_mode select a, b, c, d from t2";
+        final String sql =
+                "explain estimated_cost, changelog_mode, plan_advice select a, b, c, d from t2";
         FlinkPlannerImpl planner = getPlannerBySqlDialect(SqlDialect.DEFAULT);
         final CalciteParser parser = getParserBySqlDialect(SqlDialect.DEFAULT);
         assertExplainDetails(parse(sql, planner, parser));
@@ -2538,7 +2542,7 @@ public class SqlToOperationConverterTest {
     @Test
     public void testExplainDetailsWithInsert() {
         final String sql =
-                "explain estimated_cost, changelog_mode insert into t1 select a, b, c, d from t2";
+                "explain estimated_cost, changelog_mode, plan_advice insert into t1 select a, b, c, d from t2";
         FlinkPlannerImpl planner = getPlannerBySqlDialect(SqlDialect.DEFAULT);
         final CalciteParser parser = getParserBySqlDialect(SqlDialect.DEFAULT);
         assertExplainDetails(parse(sql, planner, parser));
@@ -2547,7 +2551,7 @@ public class SqlToOperationConverterTest {
     @Test
     public void testExplainDetailsWithStatementSet() {
         final String sql =
-                "explain estimated_cost, changelog_mode statement set begin "
+                "explain estimated_cost, changelog_mode, plan_advice statement set begin "
                         + "insert into t1 select a, b, c, d from t2 where a > 1;"
                         + "insert into t1 select a, b, c, d from t2 where a > 2;"
                         + "end";
@@ -2560,6 +2564,7 @@ public class SqlToOperationConverterTest {
         Set<String> expectedDetail = new HashSet<>();
         expectedDetail.add(ExplainDetail.ESTIMATED_COST.toString());
         expectedDetail.add(ExplainDetail.CHANGELOG_MODE.toString());
+        expectedDetail.add(ExplainDetail.PLAN_ADVICE.toString());
         assertThat(operation)
                 .asInstanceOf(type(ExplainOperation.class))
                 .satisfies(
@@ -2702,6 +2707,40 @@ public class SqlToOperationConverterTest {
     public void testQuitCommands(String command) {
         ExtendedParser extendedParser = new ExtendedParser();
         assertThat(extendedParser.parse(command)).get().isInstanceOf(QuitOperation.class);
+    }
+
+    @Test
+    public void testDelete() throws Exception {
+        Map<String, String> options = new HashMap<>();
+        options.put("connector", TestUpdateDeleteTableFactory.IDENTIFIER);
+        CatalogTable catalogTable =
+                CatalogTable.of(
+                        Schema.newBuilder()
+                                .column("a", DataTypes.INT().notNull())
+                                .column("c", DataTypes.STRING().notNull())
+                                .build(),
+                        null,
+                        Collections.emptyList(),
+                        options);
+        ObjectIdentifier tableIdentifier = ObjectIdentifier.of("builtin", "default", "test_delete");
+        catalogManager.createTable(catalogTable, tableIdentifier, false);
+
+        // no filter in delete statement
+        Operation operation = parse("DELETE FROM test_delete");
+        checkDeleteFromFilterOperation(operation, "[]");
+
+        // with filters in delete statement
+        operation = parse("DELETE FROM test_delete where a = 1 and c = '123'");
+        checkDeleteFromFilterOperation(operation, "[equals(a, 1), equals(c, '123')]");
+
+        // with filter = false after reduced in delete statement
+        operation = parse("DELETE FROM test_delete where a = 1 + 6 and a = 2");
+        checkDeleteFromFilterOperation(operation, "[false]");
+
+        operation = parse("DELETE FROM test_delete where a = (select count(*) from test_delete)");
+        assertThat(operation).isInstanceOf(SinkModifyOperation.class);
+        SinkModifyOperation modifyOperation = (SinkModifyOperation) operation;
+        assertThat(modifyOperation.isDelete()).isTrue();
     }
 
     // ~ Tool Methods ----------------------------------------------------------
@@ -2898,6 +2937,15 @@ public class SqlToOperationConverterTest {
                 .containsEntry(
                         TestManagedTableFactory.ENRICHED_KEY,
                         TestManagedTableFactory.ENRICHED_VALUE);
+    }
+
+    private static void checkDeleteFromFilterOperation(
+            Operation operation, String expectedFilters) {
+        assertThat(operation).isInstanceOf(DeleteFromFilterOperation.class);
+        DeleteFromFilterOperation deleteFromFiltersOperation =
+                (DeleteFromFilterOperation) operation;
+        List<ResolvedExpression> filters = deleteFromFiltersOperation.getFilters();
+        assertThat(filters.toString()).isEqualTo(expectedFilters);
     }
 
     // ~ Inner Classes ----------------------------------------------------------

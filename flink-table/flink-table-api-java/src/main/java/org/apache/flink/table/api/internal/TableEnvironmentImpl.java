@@ -89,6 +89,7 @@ import org.apache.flink.table.module.ModuleManager;
 import org.apache.flink.table.operations.CollectModifyOperation;
 import org.apache.flink.table.operations.CompileAndExecutePlanOperation;
 import org.apache.flink.table.operations.CreateTableASOperation;
+import org.apache.flink.table.operations.DeleteFromFilterOperation;
 import org.apache.flink.table.operations.DescribeTableOperation;
 import org.apache.flink.table.operations.ExplainOperation;
 import org.apache.flink.table.operations.LoadModuleOperation;
@@ -718,6 +719,11 @@ public class TableEnvironmentImpl implements TableEnvironmentInternal {
         if (operations.isEmpty()) {
             return "";
         } else {
+            if (operations.size() > 1
+                    && operations.stream().anyMatch(this::isRowLevelModification)) {
+                throw new TableException(
+                        "Unsupported SQL query! Only accept a single SQL statement of type DELETE, UPDATE.");
+            }
             return planner.explain(operations, format, extraDetails);
         }
     }
@@ -779,6 +785,7 @@ public class TableEnvironmentImpl implements TableEnvironmentInternal {
 
         if (operations.size() != 1
                 || !(operations.get(0) instanceof ModifyOperation)
+                || isRowLevelModification(operations.get(0))
                 || operations.get(0) instanceof CreateTableASOperation) {
             throw new TableException(UNSUPPORTED_QUERY_IN_COMPILE_PLAN_SQL_MSG);
         }
@@ -847,6 +854,26 @@ public class TableEnvironmentImpl implements TableEnvironmentInternal {
                 executeInternal(ctasOperation.getCreateTableOperation());
                 mapOperations.add(ctasOperation.toSinkModifyOperation(catalogManager));
             } else {
+                boolean isRowLevelModification = isRowLevelModification(modify);
+                if (isRowLevelModification) {
+                    String modifyType =
+                            ((SinkModifyOperation) modify).isDelete() ? "DELETE" : "UPDATE";
+                    if (operations.size() > 1) {
+                        throw new TableException(
+                                String.format(
+                                        "Unsupported SQL query! Only accept a single SQL statement of type %s.",
+                                        modifyType));
+                    }
+                    if (isStreamingMode) {
+                        throw new TableException(
+                                String.format(
+                                        "%s statement is not supported for streaming mode now.",
+                                        modifyType));
+                    }
+                    if (modify instanceof DeleteFromFilterOperation) {
+                        return executeInternal((DeleteFromFilterOperation) modify);
+                    }
+                }
                 mapOperations.add(modify);
             }
         }
@@ -863,6 +890,21 @@ public class TableEnvironmentImpl implements TableEnvironmentInternal {
             }
         }
         return result;
+    }
+
+    private TableResultInternal executeInternal(
+            DeleteFromFilterOperation deleteFromFilterOperation) {
+        Optional<Long> rows =
+                deleteFromFilterOperation.getSupportsDeletePushDownSink().executeDeletion();
+        if (rows.isPresent()) {
+            return TableResultImpl.builder()
+                    .resultKind(ResultKind.SUCCESS)
+                    .schema(ResolvedSchema.of(Column.physical("result", DataTypes.STRING())))
+                    .data(Arrays.asList(Row.of(String.valueOf(rows.get())), Row.of("OK")))
+                    .build();
+        } else {
+            return TableResultImpl.TABLE_RESULT_OK;
+        }
     }
 
     private TableResultInternal executeInternal(
@@ -1972,5 +2014,13 @@ public class TableEnvironmentImpl implements TableEnvironmentInternal {
     @Override
     public String explainPlan(InternalPlan compiledPlan, ExplainDetail... extraDetails) {
         return planner.explainPlan(compiledPlan, extraDetails);
+    }
+
+    private boolean isRowLevelModification(Operation operation) {
+        if (operation instanceof SinkModifyOperation) {
+            SinkModifyOperation sinkModifyOperation = (SinkModifyOperation) operation;
+            return sinkModifyOperation.isDelete() || sinkModifyOperation.isUpdate();
+        }
+        return true;
     }
 }
