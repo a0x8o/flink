@@ -118,15 +118,20 @@ import org.apache.flink.table.catalog.UnresolvedIdentifier;
 import org.apache.flink.table.catalog.exceptions.DatabaseNotExistException;
 import org.apache.flink.table.catalog.exceptions.TableNotExistException;
 import org.apache.flink.table.catalog.exceptions.TableNotPartitionedException;
+import org.apache.flink.table.connector.sink.DynamicTableSink;
+import org.apache.flink.table.connector.sink.abilities.SupportsDeletePushDown;
+import org.apache.flink.table.connector.source.abilities.SupportsRowLevelModificationScan;
 import org.apache.flink.table.expressions.CallExpression;
 import org.apache.flink.table.expressions.Expression;
 import org.apache.flink.table.expressions.FieldReferenceExpression;
+import org.apache.flink.table.expressions.ResolvedExpression;
 import org.apache.flink.table.expressions.ValueLiteralExpression;
 import org.apache.flink.table.factories.FactoryUtil;
 import org.apache.flink.table.functions.BuiltInFunctionDefinitions;
 import org.apache.flink.table.functions.FunctionIdentifier;
 import org.apache.flink.table.operations.BeginStatementSetOperation;
 import org.apache.flink.table.operations.CompileAndExecutePlanOperation;
+import org.apache.flink.table.operations.DeleteFromFilterOperation;
 import org.apache.flink.table.operations.DescribeTableOperation;
 import org.apache.flink.table.operations.EndStatementSetOperation;
 import org.apache.flink.table.operations.ExplainOperation;
@@ -190,6 +195,7 @@ import org.apache.flink.table.planner.calcite.FlinkPlannerImpl;
 import org.apache.flink.table.planner.hint.FlinkHints;
 import org.apache.flink.table.planner.utils.Expander;
 import org.apache.flink.table.planner.utils.OperationConverterUtils;
+import org.apache.flink.table.planner.utils.RowLevelModificationContextUtils;
 import org.apache.flink.table.resource.ResourceType;
 import org.apache.flink.table.resource.ResourceUri;
 import org.apache.flink.table.types.DataType;
@@ -199,6 +205,8 @@ import org.apache.flink.util.StringUtils;
 import org.apache.calcite.rel.RelRoot;
 import org.apache.calcite.rel.hint.HintStrategyTable;
 import org.apache.calcite.rel.hint.RelHint;
+import org.apache.calcite.rel.logical.LogicalTableModify;
+import org.apache.calcite.sql.SqlDelete;
 import org.apache.calcite.sql.SqlDialect;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlKind;
@@ -279,6 +287,7 @@ public class SqlToOperationConverter {
     /** Convert a validated sql node to Operation. */
     private static Optional<Operation> convertValidatedSqlNode(
             FlinkPlannerImpl flinkPlanner, CatalogManager catalogManager, SqlNode validated) {
+        beforeConversion();
         SqlToOperationConverter converter =
                 new SqlToOperationConverter(flinkPlanner, catalogManager);
         if (validated instanceof SqlCreateCatalog) {
@@ -392,6 +401,8 @@ public class SqlToOperationConverter {
             return Optional.of(converter.convertAnalyzeTable((SqlAnalyzeTable) validated));
         } else if (validated instanceof SqlStopJob) {
             return Optional.of(converter.convertStopJob((SqlStopJob) validated));
+        } else if (validated instanceof SqlDelete) {
+            return Optional.of(converter.convertDelete((SqlDelete) validated));
         } else {
             return Optional.empty();
         }
@@ -408,6 +419,11 @@ public class SqlToOperationConverter {
     }
 
     // ~ Tools ------------------------------------------------------------------
+
+    private static void beforeConversion() {
+        // clear row-level modification context
+        RowLevelModificationContextUtils.clearContext();
+    }
 
     /** Convert DROP TABLE statement. */
     private Operation convertDropTable(SqlDropTable sqlDropTable) {
@@ -1490,6 +1506,43 @@ public class SqlToOperationConverter {
     private Operation convertStopJob(SqlStopJob sqlStopJob) {
         return new StopJobOperation(
                 sqlStopJob.getId(), sqlStopJob.isWithSavepoint(), sqlStopJob.isWithDrain());
+    }
+
+    private Operation convertDelete(SqlDelete sqlDelete) {
+        // set it's delete
+        RowLevelModificationContextUtils.setModificationType(
+                SupportsRowLevelModificationScan.RowLevelModificationType.DELETE);
+        RelRoot updateRelational = flinkPlanner.rel(sqlDelete);
+        LogicalTableModify tableModify = (LogicalTableModify) updateRelational.rel;
+        UnresolvedIdentifier unresolvedTableIdentifier =
+                UnresolvedIdentifier.of(tableModify.getTable().getQualifiedName());
+        ContextResolvedTable contextResolvedTable =
+                catalogManager.getTableOrError(
+                        catalogManager.qualifyIdentifier(unresolvedTableIdentifier));
+        // try push down delete
+        Optional<DynamicTableSink> optionalDynamicTableSink =
+                DeletePushDownUtils.getDynamicTableSink(
+                        contextResolvedTable, tableModify, catalogManager);
+        if (optionalDynamicTableSink.isPresent()) {
+            DynamicTableSink dynamicTableSink = optionalDynamicTableSink.get();
+            // if the table sink supports delete push down
+            if (dynamicTableSink instanceof SupportsDeletePushDown) {
+                SupportsDeletePushDown supportsDeletePushDownSink =
+                        (SupportsDeletePushDown) dynamicTableSink;
+                // get resolved filter expression
+                Optional<List<ResolvedExpression>> filters =
+                        DeletePushDownUtils.getResolvedFilterExpressions(tableModify);
+                if (filters.isPresent()
+                        && supportsDeletePushDownSink.applyDeleteFilters(filters.get())) {
+                    return new DeleteFromFilterOperation(
+                            contextResolvedTable, supportsDeletePushDownSink, filters.get());
+                }
+            }
+        }
+        // delete push down is not applicable, use row-level delete
+        PlannerQueryOperation queryOperation = new PlannerQueryOperation(tableModify);
+        return new SinkModifyOperation(
+                contextResolvedTable, queryOperation, SinkModifyOperation.ModifyType.DELETE);
     }
 
     private void validateTableConstraint(SqlTableConstraint constraint) {

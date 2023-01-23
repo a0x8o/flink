@@ -21,6 +21,10 @@ package org.apache.flink.runtime.security.token;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.SecurityOptions;
+import org.apache.flink.core.plugin.PluginManager;
+import org.apache.flink.core.security.token.DelegationTokenProvider;
+import org.apache.flink.core.security.token.DelegationTokenReceiver;
 import org.apache.flink.util.FlinkRuntimeException;
 import org.apache.flink.util.InstantiationUtil;
 import org.apache.flink.util.concurrent.ScheduledExecutor;
@@ -41,10 +45,12 @@ import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import java.util.stream.Stream;
 
 import static org.apache.flink.configuration.SecurityOptions.DELEGATION_TOKENS_RENEWAL_RETRY_BACKOFF;
 import static org.apache.flink.configuration.SecurityOptions.DELEGATION_TOKENS_RENEWAL_TIME_RATIO;
+import static org.apache.flink.configuration.SecurityOptions.DELEGATION_TOKEN_PROVIDER_ENABLED;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.apache.flink.util.Preconditions.checkState;
 
@@ -70,6 +76,8 @@ public class DefaultDelegationTokenManager implements DelegationTokenManager {
 
     private final Configuration configuration;
 
+    @Nullable private final PluginManager pluginManager;
+
     private final double tokensRenewalTimeRatio;
 
     private final long renewalRetryBackoffPeriod;
@@ -92,15 +100,17 @@ public class DefaultDelegationTokenManager implements DelegationTokenManager {
 
     public DefaultDelegationTokenManager(
             Configuration configuration,
+            @Nullable PluginManager pluginManager,
             @Nullable ScheduledExecutor scheduledExecutor,
             @Nullable ExecutorService ioExecutor) {
         this.configuration = checkNotNull(configuration, "Flink configuration must not be null");
+        this.pluginManager = pluginManager;
         this.tokensRenewalTimeRatio = configuration.get(DELEGATION_TOKENS_RENEWAL_TIME_RATIO);
         this.renewalRetryBackoffPeriod =
                 configuration.get(DELEGATION_TOKENS_RENEWAL_RETRY_BACKOFF).toMillis();
         this.delegationTokenProviders = loadProviders();
         this.delegationTokenReceiverRepository =
-                new DelegationTokenReceiverRepository(configuration);
+                new DelegationTokenReceiverRepository(configuration, pluginManager);
         this.scheduledExecutor = scheduledExecutor;
         this.ioExecutor = ioExecutor;
         checkProviderAndReceiverConsistency(
@@ -111,36 +121,39 @@ public class DefaultDelegationTokenManager implements DelegationTokenManager {
     private Map<String, DelegationTokenProvider> loadProviders() {
         LOG.info("Loading delegation token providers");
 
-        ServiceLoader<DelegationTokenProvider> serviceLoader =
-                ServiceLoader.load(DelegationTokenProvider.class);
-
         Map<String, DelegationTokenProvider> providers = new HashMap<>();
-        for (DelegationTokenProvider provider : serviceLoader) {
-            try {
-                if (isProviderEnabled(configuration, provider.serviceName())) {
-                    provider.init(configuration);
-                    LOG.info(
-                            "Delegation token provider {} loaded and initialized",
-                            provider.serviceName());
-                    checkState(
-                            !providers.containsKey(provider.serviceName()),
-                            "Delegation token provider with service name {} has multiple implementations",
-                            provider.serviceName());
-                    providers.put(provider.serviceName(), provider);
-                } else {
-                    LOG.info(
-                            "Delegation token provider {} is disabled so not loaded",
-                            provider.serviceName());
-                }
-            } catch (Exception | NoClassDefFoundError e) {
-                // The intentional general rule is that if a provider's init method throws exception
-                // then stop the workload
-                LOG.error(
-                        "Failed to initialize delegation token provider {}",
-                        provider.serviceName(),
-                        e);
-                throw new FlinkRuntimeException(e);
-            }
+        Consumer<DelegationTokenProvider> loadProvider =
+                (provider) -> {
+                    try {
+                        if (isProviderEnabled(configuration, provider.serviceName())) {
+                            provider.init(configuration);
+                            LOG.info(
+                                    "Delegation token provider {} loaded and initialized",
+                                    provider.serviceName());
+                            checkState(
+                                    !providers.containsKey(provider.serviceName()),
+                                    "Delegation token provider with service name {} has multiple implementations",
+                                    provider.serviceName());
+                            providers.put(provider.serviceName(), provider);
+                        } else {
+                            LOG.info(
+                                    "Delegation token provider {} is disabled so not loaded",
+                                    provider.serviceName());
+                        }
+                    } catch (Exception | NoClassDefFoundError e) {
+                        // The intentional general rule is that if a provider's init method throws
+                        // exception
+                        // then stop the workload
+                        LOG.error(
+                                "Failed to initialize delegation token provider {}",
+                                provider.serviceName(),
+                                e);
+                        throw new FlinkRuntimeException(e);
+                    }
+                };
+        ServiceLoader.load(DelegationTokenProvider.class).iterator().forEachRemaining(loadProvider);
+        if (pluginManager != null) {
+            pluginManager.load(DelegationTokenProvider.class).forEachRemaining(loadProvider);
         }
 
         LOG.info("Delegation token providers loaded successfully");
@@ -149,8 +162,8 @@ public class DefaultDelegationTokenManager implements DelegationTokenManager {
     }
 
     static boolean isProviderEnabled(Configuration configuration, String serviceName) {
-        return configuration.getBoolean(
-                String.format("security.delegation.token.provider.%s.enabled", serviceName), true);
+        return SecurityOptions.forProvider(configuration, serviceName)
+                .getBoolean(DELEGATION_TOKEN_PROVIDER_ENABLED);
     }
 
     @VisibleForTesting
