@@ -137,7 +137,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadFactory;
-import java.util.function.Supplier;
 
 import static org.apache.flink.configuration.TaskManagerOptions.BUFFER_DEBLOAT_PERIOD;
 import static org.apache.flink.util.ExceptionUtils.firstOrSuppressed;
@@ -548,9 +547,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
         DataInputStatus status = inputProcessor.processInput();
         switch (status) {
             case MORE_AVAILABLE:
-                if (recordWriter.isAvailable()
-                        && (changelogWriterAvailabilityProvider == null
-                                || changelogWriterAvailabilityProvider.isAvailable())) {
+                if (taskIsAvailable()) {
                     return;
                 }
                 break;
@@ -995,8 +992,14 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
         return this.mailboxProcessor::getMailboxExecutor;
     }
 
-    public Supplier<Boolean> getMailboxHasMail() {
-        return this.mailboxProcessor::hasMail;
+    private boolean taskIsAvailable() {
+        return recordWriter.isAvailable()
+                && (changelogWriterAvailabilityProvider == null
+                        || changelogWriterAvailabilityProvider.isAvailable());
+    }
+
+    public CanEmitBatchOfRecordsChecker getCanEmitBatchOfRecords() {
+        return () -> !this.mailboxProcessor.hasMail() && taskIsAvailable();
     }
 
     public final boolean isRunning() {
@@ -1768,5 +1771,12 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
     @Override
     public final Environment getEnvironment() {
         return environment;
+    }
+
+    /** Check whether records can be emitted in batch. */
+    @FunctionalInterface
+    public interface CanEmitBatchOfRecordsChecker {
+
+        boolean check();
     }
 }
