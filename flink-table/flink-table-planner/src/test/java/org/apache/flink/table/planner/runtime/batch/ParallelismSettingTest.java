@@ -18,7 +18,6 @@
 package org.apache.flink.table.planner.runtime.batch;
 
 import org.apache.flink.api.dag.Transformation;
-import org.apache.flink.configuration.JobManagerOptions.SchedulerType;
 import org.apache.flink.table.api.TableConfig;
 import org.apache.flink.table.api.config.ExecutionConfigOptions;
 import org.apache.flink.table.operations.ModifyOperation;
@@ -60,7 +59,6 @@ public class ParallelismSettingTest extends TableTestBase {
 
     @Test
     public void testParallelismSettingAfterSingletonShuffleRemove() {
-        util.getStreamEnv().getConfig().setScheduler(SchedulerType.AdaptiveBatch);
         util.getTableEnv()
                 .executeSql(
                         "CREATE TABLE MySink (\n"
