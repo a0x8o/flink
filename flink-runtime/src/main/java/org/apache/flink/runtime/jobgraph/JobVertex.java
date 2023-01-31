@@ -155,6 +155,8 @@ public class JobVertex implements java.io.Serializable {
      */
     private boolean supportsConcurrentExecutionAttempts = true;
 
+    private boolean parallelismConfigured = false;
+
     // --------------------------------------------------------------------------------------------
 
     /**
@@ -260,6 +262,15 @@ public class JobVertex implements java.io.Serializable {
     public void setInvokableClass(Class<? extends TaskInvokable> invokable) {
         Preconditions.checkNotNull(invokable);
         this.invokableClassName = invokable.getName();
+    }
+
+    // This method can only be called once when jobGraph generated
+    public void setParallelismConfigured(boolean parallelismConfigured) {
+        this.parallelismConfigured = parallelismConfigured;
+    }
+
+    public boolean isParallelismConfigured() {
+        return parallelismConfigured;
     }
 
     /**
@@ -564,7 +575,7 @@ public class JobVertex implements java.io.Serializable {
      * @param context Provides contextual information for the initialization
      * @throws Exception The method may throw exceptions which cause the job to fail immediately.
      */
-    public void finalizeOnMaster(InitializeOnMasterContext context) throws Exception {}
+    public void finalizeOnMaster(FinalizeOnMasterContext context) throws Exception {}
 
     public interface InitializeOnMasterContext {
         /** The class loader for user defined code. */
@@ -577,6 +588,29 @@ public class JobVertex implements java.io.Serializable {
          * org.apache.flink.runtime.scheduler.adaptive.AdaptiveScheduler}.
          */
         int getExecutionParallelism();
+    }
+
+    /** The context exposes some runtime infos for finalization. */
+    public interface FinalizeOnMasterContext {
+        /** The class loader for user defined code. */
+        ClassLoader getClassLoader();
+
+        /**
+         * The actual parallelism this vertex will be run with. In contrast, the {@link
+         * #getParallelism()} is the original parallelism set when creating the {@link JobGraph} and
+         * might be updated e.g. by the {@link
+         * org.apache.flink.runtime.scheduler.adaptive.AdaptiveScheduler}.
+         */
+        int getExecutionParallelism();
+
+        /**
+         * Get the finished attempt number of subtask.
+         *
+         * @param subtaskIndex the subtask index.
+         * @return the finished attempt.
+         * @throws IllegalArgumentException Thrown, if subtaskIndex is invalid.
+         */
+        int getFinishedAttempt(int subtaskIndex);
     }
 
     // --------------------------------------------------------------------------------------------

@@ -254,6 +254,81 @@ class StreamingJobGraphGeneratorTest {
     }
 
     @Test
+    public void testTransformationSetParallelism() {
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.fromSequence(1L, 3L).map(i -> i).setParallelism(10).print().setParallelism(20);
+        StreamGraph streamGraph = env.getStreamGraph();
+
+        // check the streamGraph parallleism configured
+        final List<StreamNode> streamNodes =
+                streamGraph.getStreamNodes().stream()
+                        .sorted(Comparator.comparingInt(StreamNode::getId))
+                        .collect(Collectors.toList());
+        assertThat(streamNodes.get(0).isParallelismConfigured()).isFalse();
+        assertThat(streamNodes.get(1).isParallelismConfigured()).isTrue();
+        assertThat(streamNodes.get(2).isParallelismConfigured()).isTrue();
+
+        // check the jobGraph parallelism configured
+        JobGraph jobGraph = StreamingJobGraphGenerator.createJobGraph(streamGraph);
+        List<JobVertex> vertices = jobGraph.getVerticesSortedTopologicallyFromSources();
+        assertThat(jobGraph.getNumberOfVertices()).isEqualTo(3);
+        assertThat(vertices.get(0).isParallelismConfigured()).isFalse();
+        assertThat(vertices.get(1).isParallelismConfigured()).isTrue();
+        assertThat(vertices.get(2).isParallelismConfigured()).isTrue();
+    }
+
+    @Test
+    public void testChainNodeSetParallelism() {
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.fromSequence(1L, 3L).map(value -> value).print().setParallelism(env.getParallelism());
+        StreamGraph streamGraph = env.getStreamGraph();
+
+        // check the streamGraph parallleism configured
+        final List<StreamNode> streamNodes =
+                streamGraph.getStreamNodes().stream()
+                        .sorted(Comparator.comparingInt(StreamNode::getId))
+                        .collect(Collectors.toList());
+        assertThat(streamNodes.get(0).isParallelismConfigured()).isFalse();
+        assertThat(streamNodes.get(1).isParallelismConfigured()).isFalse();
+        assertThat(streamNodes.get(2).isParallelismConfigured()).isTrue();
+
+        // check the jobGraph parallelism configured
+        JobGraph jobGraph = StreamingJobGraphGenerator.createJobGraph(streamGraph);
+        List<JobVertex> vertices = jobGraph.getVerticesSortedTopologicallyFromSources();
+        assertThat(jobGraph.getNumberOfVertices()).isEqualTo(1);
+        assertThat(vertices.get(0).isParallelismConfigured()).isTrue();
+    }
+
+    @Test
+    public void testDynamicGraphVertexParallelism() {
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        int defaultParallelism = 20;
+        env.setParallelism(defaultParallelism);
+        env.fromSequence(1L, 3L).map(value -> value).print();
+        StreamGraph streamGraph = env.getStreamGraph();
+
+        for (StreamNode streamNode : streamGraph.getStreamNodes()) {
+            assertThat(streamNode.getParallelism()).isEqualTo(defaultParallelism);
+        }
+        streamGraph.setDynamic(false);
+        JobGraph jobGraph = StreamingJobGraphGenerator.createJobGraph(streamGraph);
+        List<JobVertex> vertices = jobGraph.getVerticesSortedTopologicallyFromSources();
+        for (JobVertex vertex : vertices) {
+            assertThat(vertex.getParallelism()).isEqualTo(defaultParallelism);
+        }
+
+        for (StreamNode streamNode : streamGraph.getStreamNodes()) {
+            assertThat(streamNode.getParallelism()).isEqualTo(defaultParallelism);
+        }
+        streamGraph.setDynamic(true);
+        jobGraph = StreamingJobGraphGenerator.createJobGraph(streamGraph);
+        vertices = jobGraph.getVerticesSortedTopologicallyFromSources();
+        for (JobVertex vertex : vertices) {
+            assertThat(vertex.getParallelism()).isEqualTo(ExecutionConfig.PARALLELISM_DEFAULT);
+        }
+    }
+
+    @Test
     void testUnalignedCheckAndAtLeastOnce() {
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         env.fromElements(0).print();
@@ -1840,6 +1915,45 @@ class StreamingJobGraphGeneratorTest {
                 new TestingSinkFunctionSupportConcurrentExecutionAttempts<>(), true);
     }
 
+    @Test
+    void testOutputFormatNotSupportConcurrentExecutionAttempts() {
+        testWhetherOutputFormatSupportsConcurrentExecutionAttempts(
+                new TestingOutputFormatNotSupportConcurrentExecutionAttempts<>(), false);
+    }
+
+    @Test
+    void testOutputFormatSupportConcurrentExecutionAttempts() {
+        testWhetherOutputFormatSupportsConcurrentExecutionAttempts(
+                new TestingOutputFormatSupportConcurrentExecutionAttempts<>(), true);
+    }
+
+    private static void testWhetherOutputFormatSupportsConcurrentExecutionAttempts(
+            OutputFormat<Integer> outputFormat, boolean isSupported) {
+        final StreamExecutionEnvironment env =
+                StreamExecutionEnvironment.getExecutionEnvironment(new Configuration());
+        env.setRuntimeMode(RuntimeExecutionMode.BATCH);
+
+        final DataStream<Integer> source = env.fromElements(1, 2, 3).name("source");
+        source.rebalance().writeUsingOutputFormat(outputFormat).name("sink");
+
+        final StreamGraph streamGraph = env.getStreamGraph();
+        final JobGraph jobGraph = StreamingJobGraphGenerator.createJobGraph(streamGraph);
+        assertThat(jobGraph.getNumberOfVertices()).isEqualTo(2);
+        for (JobVertex jobVertex : jobGraph.getVertices()) {
+            if (jobVertex.getName().contains("source")) {
+                assertThat(jobVertex.isSupportsConcurrentExecutionAttempts()).isTrue();
+            } else if (jobVertex.getName().contains("sink")) {
+                if (isSupported) {
+                    assertThat(jobVertex.isSupportsConcurrentExecutionAttempts()).isTrue();
+                } else {
+                    assertThat(jobVertex.isSupportsConcurrentExecutionAttempts()).isFalse();
+                }
+            } else {
+                Assertions.fail("Unexpected job vertex " + jobVertex.getName());
+            }
+        }
+    }
+
     private static void testWhetherSinkFunctionSupportsConcurrentExecutionAttempts(
             SinkFunction<Integer> function, boolean isSupported) {
         final StreamExecutionEnvironment env =
@@ -1865,6 +1979,32 @@ class StreamingJobGraphGeneratorTest {
                 Assertions.fail("Unexpected job vertex " + jobVertex.getName());
             }
         }
+    }
+
+    private static class TestingOutputFormatNotSupportConcurrentExecutionAttempts<T>
+            implements OutputFormat<T> {
+
+        @Override
+        public void configure(Configuration parameters) {}
+
+        @Override
+        public void writeRecord(T record) throws IOException {}
+
+        @Override
+        public void close() throws IOException {}
+    }
+
+    private static class TestingOutputFormatSupportConcurrentExecutionAttempts<T>
+            implements OutputFormat<T>, SupportsConcurrentExecutionAttempts {
+
+        @Override
+        public void configure(Configuration parameters) {}
+
+        @Override
+        public void writeRecord(T record) throws IOException {}
+
+        @Override
+        public void close() throws IOException {}
     }
 
     private static class TestingSinkFunctionNotSupportConcurrentExecutionAttempts<T>
