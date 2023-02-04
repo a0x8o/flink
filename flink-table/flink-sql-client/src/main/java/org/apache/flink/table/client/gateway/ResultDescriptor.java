@@ -22,10 +22,10 @@ import org.apache.flink.api.common.RuntimeExecutionMode;
 import org.apache.flink.configuration.ReadableConfig;
 import org.apache.flink.table.catalog.ResolvedSchema;
 import org.apache.flink.table.client.config.ResultMode;
-import org.apache.flink.table.client.gateway.local.result.ChangelogCollectResult;
-import org.apache.flink.table.client.gateway.local.result.DynamicResult;
-import org.apache.flink.table.client.gateway.local.result.MaterializedCollectBatchResult;
-import org.apache.flink.table.client.gateway.local.result.MaterializedCollectStreamResult;
+import org.apache.flink.table.client.gateway.result.ChangelogCollectResult;
+import org.apache.flink.table.client.gateway.result.DynamicResult;
+import org.apache.flink.table.client.gateway.result.MaterializedCollectBatchResult;
+import org.apache.flink.table.client.gateway.result.MaterializedCollectStreamResult;
 import org.apache.flink.table.utils.print.RowDataToStringConverter;
 
 import static org.apache.flink.configuration.ExecutionOptions.RUNTIME_MODE;
@@ -38,10 +38,10 @@ import static org.apache.flink.table.client.config.SqlClientOptions.EXECUTION_RE
 /** Describes a result to be expected from a table program. */
 public class ResultDescriptor {
 
-    private final ClientResult tableResult;
+    private final StatementResult tableResult;
     private final ReadableConfig config;
 
-    public ResultDescriptor(ClientResult tableResult, ReadableConfig config) {
+    public ResultDescriptor(StatementResult tableResult, ReadableConfig config) {
         this.tableResult = tableResult;
         this.config = config;
     }
