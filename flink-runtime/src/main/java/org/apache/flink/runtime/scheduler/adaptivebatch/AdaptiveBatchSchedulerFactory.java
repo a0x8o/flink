@@ -20,10 +20,10 @@
 package org.apache.flink.runtime.scheduler.adaptivebatch;
 
 import org.apache.flink.api.common.BatchShuffleMode;
+import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.configuration.BatchExecutionOptions;
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.configuration.CoreOptions;
 import org.apache.flink.configuration.ExecutionOptions;
 import org.apache.flink.configuration.JobManagerOptions;
 import org.apache.flink.configuration.JobManagerOptions.HybridPartitionDataConsumeConstraint;
@@ -43,6 +43,7 @@ import org.apache.flink.runtime.jobgraph.IntermediateDataSet;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.jobgraph.JobType;
 import org.apache.flink.runtime.jobgraph.JobVertex;
+import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobmaster.ExecutionDeploymentTracker;
 import org.apache.flink.runtime.jobmaster.slotpool.PhysicalSlotProvider;
 import org.apache.flink.runtime.jobmaster.slotpool.PhysicalSlotProviderImpl;
@@ -59,6 +60,8 @@ import org.apache.flink.runtime.scheduler.ExecutionVertexVersioner;
 import org.apache.flink.runtime.scheduler.SchedulerNG;
 import org.apache.flink.runtime.scheduler.SchedulerNGFactory;
 import org.apache.flink.runtime.scheduler.SimpleExecutionSlotAllocator;
+import org.apache.flink.runtime.scheduler.adaptivebatch.forwardgroup.ForwardGroup;
+import org.apache.flink.runtime.scheduler.adaptivebatch.forwardgroup.ForwardGroupComputeUtil;
 import org.apache.flink.runtime.scheduler.strategy.AllFinishedInputConsumableDecider;
 import org.apache.flink.runtime.scheduler.strategy.DefaultInputConsumableDecider;
 import org.apache.flink.runtime.scheduler.strategy.InputConsumableDecider;
@@ -75,6 +78,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.function.Consumer;
@@ -138,11 +142,12 @@ public class AdaptiveBatchSchedulerFactory implements SchedulerNGFactory {
         final ExecutionSlotAllocatorFactory allocatorFactory =
                 createExecutionSlotAllocatorFactory(jobMasterConfiguration, slotPool);
 
+        ExecutionConfig executionConfig =
+                jobGraph.getSerializedExecutionConfig().deserializeValue(userCodeLoader);
+
         final RestartBackoffTimeStrategy restartBackoffTimeStrategy =
                 RestartBackoffTimeStrategyFactoryLoader.createRestartBackoffTimeStrategyFactory(
-                                jobGraph.getSerializedExecutionConfig()
-                                        .deserializeValue(userCodeLoader)
-                                        .getRestartStrategy(),
+                                executionConfig.getRestartStrategy(),
                                 jobMasterConfiguration,
                                 jobGraph.isCheckpointingEnabled())
                         .create();
@@ -173,16 +178,11 @@ public class AdaptiveBatchSchedulerFactory implements SchedulerNGFactory {
                         loadInputConsumableDeciderFactory(hybridPartitionDataConsumeConstraint));
 
         int defaultMaxParallelism =
-                jobMasterConfiguration
-                        .getOptional(
-                                BatchExecutionOptions.ADAPTIVE_AUTO_PARALLELISM_MAX_PARALLELISM)
-                        .orElse(
-                                jobMasterConfiguration
-                                        .getOptional(CoreOptions.DEFAULT_PARALLELISM)
-                                        .orElse(
-                                                BatchExecutionOptions
-                                                        .ADAPTIVE_AUTO_PARALLELISM_MAX_PARALLELISM
-                                                        .defaultValue()));
+                getDefaultMaxParallelism(jobMasterConfiguration, executionConfig);
+
+        final Map<JobVertexID, ForwardGroup> forwardGroupsByJobVertexId =
+                ForwardGroupComputeUtil.computeForwardGroupsAndSetVertexParallelismsIfNecessary(
+                        jobGraph.getVerticesSortedTopologicallyFromSources());
 
         if (enableSpeculativeExecution) {
             return new SpeculativeScheduler(
@@ -209,10 +209,12 @@ public class AdaptiveBatchSchedulerFactory implements SchedulerNGFactory {
                     executionGraphFactory,
                     shuffleMaster,
                     rpcTimeout,
-                    DefaultVertexParallelismAndInputInfosDecider.from(jobMasterConfiguration),
+                    DefaultVertexParallelismAndInputInfosDecider.from(
+                            defaultMaxParallelism, jobMasterConfiguration),
                     defaultMaxParallelism,
                     blocklistOperations,
-                    hybridPartitionDataConsumeConstraint);
+                    hybridPartitionDataConsumeConstraint,
+                    forwardGroupsByJobVertexId);
         } else {
             return new AdaptiveBatchScheduler(
                     log,
@@ -238,9 +240,11 @@ public class AdaptiveBatchSchedulerFactory implements SchedulerNGFactory {
                     executionGraphFactory,
                     shuffleMaster,
                     rpcTimeout,
-                    DefaultVertexParallelismAndInputInfosDecider.from(jobMasterConfiguration),
+                    DefaultVertexParallelismAndInputInfosDecider.from(
+                            defaultMaxParallelism, jobMasterConfiguration),
                     defaultMaxParallelism,
-                    hybridPartitionDataConsumeConstraint);
+                    hybridPartitionDataConsumeConstraint,
+                    forwardGroupsByJobVertexId);
         }
     }
 
@@ -323,6 +327,17 @@ public class AdaptiveBatchSchedulerFactory implements SchedulerNGFactory {
                                 BatchShuffleMode.ALL_EXCHANGES_HYBRID_SELECTIVE));
             }
         }
+    }
+
+    static int getDefaultMaxParallelism(
+            Configuration configuration, ExecutionConfig executionConfig) {
+        return configuration
+                .getOptional(BatchExecutionOptions.ADAPTIVE_AUTO_PARALLELISM_MAX_PARALLELISM)
+                .orElse(
+                        executionConfig.getParallelism() == ExecutionConfig.PARALLELISM_DEFAULT
+                                ? BatchExecutionOptions.ADAPTIVE_AUTO_PARALLELISM_MAX_PARALLELISM
+                                        .defaultValue()
+                                : executionConfig.getParallelism());
     }
 
     @Override
