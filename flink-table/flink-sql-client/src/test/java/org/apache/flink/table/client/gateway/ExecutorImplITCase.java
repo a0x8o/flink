@@ -19,6 +19,7 @@
 package org.apache.flink.table.client.gateway;
 
 import org.apache.flink.api.common.JobID;
+import org.apache.flink.api.common.JobStatus;
 import org.apache.flink.api.common.RuntimeExecutionMode;
 import org.apache.flink.client.program.rest.RestClusterClient;
 import org.apache.flink.configuration.CheckpointingOptions;
@@ -39,7 +40,6 @@ import org.apache.flink.table.client.config.ResultMode;
 import org.apache.flink.table.client.gateway.result.ChangelogCollectResult;
 import org.apache.flink.table.client.gateway.result.MaterializedResult;
 import org.apache.flink.table.data.RowData;
-import org.apache.flink.table.data.StringData;
 import org.apache.flink.table.functions.AggregateFunction;
 import org.apache.flink.table.functions.ScalarFunction;
 import org.apache.flink.table.gateway.api.operation.OperationHandle;
@@ -58,6 +58,7 @@ import org.apache.flink.table.gateway.rest.util.SqlGatewayRestEndpointExtension;
 import org.apache.flink.table.gateway.rest.util.TestingSqlGatewayRestEndpoint;
 import org.apache.flink.table.gateway.service.context.DefaultContext;
 import org.apache.flink.table.gateway.service.session.SessionManagerImpl;
+import org.apache.flink.table.gateway.service.utils.IgnoreExceptionHandler;
 import org.apache.flink.table.gateway.service.utils.SqlGatewayServiceExtension;
 import org.apache.flink.table.utils.UserDefinedFunctions;
 import org.apache.flink.table.utils.print.RowDataToStringConverter;
@@ -68,12 +69,15 @@ import org.apache.flink.test.util.TestUtils;
 import org.apache.flink.util.CollectionUtil;
 import org.apache.flink.util.StringUtils;
 import org.apache.flink.util.UserClassLoaderJarTestUtils;
+import org.apache.flink.util.concurrent.ExecutorThreadFactory;
 
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import javax.annotation.Nullable;
 
@@ -94,6 +98,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ThreadFactory;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -162,6 +167,9 @@ class ExecutorImplITCase {
     // a generated UDF jar used for testing classloading of dependencies
     private static URL udfDependency;
 
+    private final ThreadFactory threadFactory =
+            new ExecutorThreadFactory("Executor Test Pool", IgnoreExceptionHandler.INSTANCE);
+
     @BeforeAll
     static void setup(@InjectClusterClient RestClusterClient<?> injectedClusterClient)
             throws Exception {
@@ -184,31 +192,29 @@ class ExecutorImplITCase {
         config.set(StateBackendOptions.STATE_BACKEND, "hashmap");
         config.set(CheckpointingOptions.CHECKPOINT_STORAGE, "filesystem");
         config.set(CheckpointingOptions.CHECKPOINTS_DIRECTORY, tempFolder.toURI().toString());
-        config.set(CheckpointingOptions.SAVEPOINT_DIRECTORY, tempFolder.toURI().toString());
         return config;
     }
 
     @Test
     void testCompleteStatement() {
-        final Executor executor = createRestServiceExecutor();
-        executor.openSession("test-session");
-        initSession(executor, Collections.emptyMap());
+        try (Executor executor = createRestServiceExecutor()) {
+            initSession(executor, Collections.emptyMap());
 
-        final List<String> expectedTableHints =
-                Arrays.asList(
-                        "default_catalog.default_database.TableNumber1",
-                        "default_catalog.default_database.TableSourceSink");
-        assertThat(executor.completeStatement("SELECT * FROM Ta", 16))
-                .isEqualTo(expectedTableHints);
+            final List<String> expectedTableHints =
+                    Arrays.asList(
+                            "default_catalog.default_database.TableNumber1",
+                            "default_catalog.default_database.TableSourceSink");
+            assertThat(executor.completeStatement("SELECT * FROM Ta", 16))
+                    .isEqualTo(expectedTableHints);
 
-        final List<String> expectedClause = Collections.singletonList("WHERE");
-        assertThat(executor.completeStatement("SELECT * FROM TableNumber1 WH", 29))
-                .isEqualTo(expectedClause);
+            final List<String> expectedClause = Collections.singletonList("WHERE");
+            assertThat(executor.completeStatement("SELECT * FROM TableNumber1 WH", 29))
+                    .isEqualTo(expectedClause);
 
-        final List<String> expectedField = Collections.singletonList("IntegerField1");
-        assertThat(executor.completeStatement("SELECT * FROM TableNumber1 WHERE Inte", 37))
-                .isEqualTo(expectedField);
-        executor.closeSession();
+            final List<String> expectedField = Collections.singletonList("IntegerField1");
+            assertThat(executor.completeStatement("SELECT * FROM TableNumber1 WHERE Inte", 37))
+                    .isEqualTo(expectedField);
+        }
     }
 
     @Test
@@ -220,12 +226,10 @@ class ExecutorImplITCase {
 
         Configuration configuration = Configuration.fromMap(getDefaultSessionConfigMap());
 
-        final Executor executor =
-                createRestServiceExecutor(Collections.singletonList(udfDependency), configuration);
-        executor.openSession("test-session");
-
-        initSession(executor, replaceVars);
-        try {
+        try (final Executor executor =
+                createRestServiceExecutor(
+                        Collections.singletonList(udfDependency), configuration)) {
+            initSession(executor, replaceVars);
             // start job and retrieval
             final ResultDescriptor desc =
                     executeQuery(
@@ -247,8 +251,6 @@ class ExecutorImplITCase {
 
             TestBaseUtils.compareResultCollections(
                     expectedResults, actualResults, Comparator.naturalOrder());
-        } finally {
-            executor.closeSession();
         }
     }
 
@@ -261,10 +263,6 @@ class ExecutorImplITCase {
 
         Configuration configuration = Configuration.fromMap(getDefaultSessionConfigMap());
 
-        final Executor executor =
-                createRestServiceExecutor(Collections.singletonList(udfDependency), configuration);
-        executor.openSession("test-session");
-
         final List<String> expectedResults = new ArrayList<>();
         expectedResults.add("[47, Hello World]");
         expectedResults.add("[27, Hello World]");
@@ -273,8 +271,11 @@ class ExecutorImplITCase {
         expectedResults.add("[47, Hello World]");
         expectedResults.add("[57, Hello World!!!!]");
 
-        initSession(executor, replaceVars);
-        try {
+        try (final Executor executor =
+                createRestServiceExecutor(
+                        Collections.singletonList(udfDependency), configuration)) {
+            initSession(executor, replaceVars);
+
             for (int i = 0; i < 3; i++) {
                 // start job and retrieval
                 final ResultDescriptor desc =
@@ -291,8 +292,6 @@ class ExecutorImplITCase {
                 TestBaseUtils.compareResultCollections(
                         expectedResults, actualResults, Comparator.naturalOrder());
             }
-        } finally {
-            executor.closeSession();
         }
     }
 
@@ -379,13 +378,11 @@ class ExecutorImplITCase {
         configMap.put(EXECUTION_RESULT_MODE.key(), ResultMode.TABLE.name());
         configMap.put(RUNTIME_MODE.key(), RuntimeExecutionMode.BATCH.name());
 
-        final Executor executor =
+        try (final Executor executor =
                 createRestServiceExecutor(
-                        Collections.singletonList(udfDependency), Configuration.fromMap(configMap));
-        executor.openSession("test-session");
-
-        initSession(executor, replaceVars);
-        try {
+                        Collections.singletonList(udfDependency),
+                        Configuration.fromMap(configMap))) {
+            initSession(executor, replaceVars);
             final ResultDescriptor desc = executeQuery(executor, "SELECT *, 'ABC' FROM TestView1");
 
             assertThat(desc.isMaterialized()).isTrue();
@@ -403,8 +400,6 @@ class ExecutorImplITCase {
 
             TestBaseUtils.compareResultCollections(
                     expectedResults, actualResults, Comparator.naturalOrder());
-        } finally {
-            executor.closeSession();
         }
     }
 
@@ -419,12 +414,6 @@ class ExecutorImplITCase {
         configMap.put(EXECUTION_RESULT_MODE.key(), ResultMode.TABLE.name());
         configMap.put(RUNTIME_MODE.key(), RuntimeExecutionMode.BATCH.name());
 
-        final Executor executor =
-                createRestServiceExecutor(
-                        Collections.singletonList(udfDependency), Configuration.fromMap(configMap));
-        executor.openSession("test-session");
-        initSession(executor, replaceVars);
-
         final List<String> expectedResults = new ArrayList<>();
         expectedResults.add("[47]");
         expectedResults.add("[27]");
@@ -433,7 +422,11 @@ class ExecutorImplITCase {
         expectedResults.add("[47]");
         expectedResults.add("[57]");
 
-        try {
+        try (final Executor executor =
+                createRestServiceExecutor(
+                        Collections.singletonList(udfDependency),
+                        Configuration.fromMap(configMap))) {
+            initSession(executor, replaceVars);
             for (int i = 0; i < 3; i++) {
                 final ResultDescriptor desc = executeQuery(executor, "SELECT * FROM TestView1");
 
@@ -445,28 +438,26 @@ class ExecutorImplITCase {
                 TestBaseUtils.compareResultCollections(
                         expectedResults, actualResults, Comparator.naturalOrder());
             }
-        } finally {
-            executor.closeSession();
         }
     }
 
-    @Test
-    void testStopJob() throws Exception {
+    @ValueSource(booleans = {true, false})
+    @ParameterizedTest
+    void testStopJob(boolean withSavepoint) throws Exception {
         final Map<String, String> configMap = new HashMap<>();
         configMap.put(EXECUTION_RESULT_MODE.key(), ResultMode.TABLE.name());
         configMap.put(RUNTIME_MODE.key(), RuntimeExecutionMode.STREAMING.name());
         configMap.put(TableConfigOptions.TABLE_DML_SYNC.key(), "false");
 
-        final Executor executor =
-                createRestServiceExecutor(
-                        Collections.singletonList(udfDependency), Configuration.fromMap(configMap));
-        executor.openSession("test-session");
-
         final String srcDdl = "CREATE TABLE src (a STRING) WITH ('connector' = 'datagen')";
         final String snkDdl = "CREATE TABLE snk (a STRING) WITH ('connector' = 'blackhole')";
         final String insert = "INSERT INTO snk SELECT a FROM src;";
 
-        try {
+        try (final Executor executor =
+                createRestServiceExecutor(
+                        Collections.singletonList(udfDependency),
+                        Configuration.fromMap(configMap))) {
+
             executor.configureSession(srcDdl);
             executor.configureSession(snkDdl);
             StatementResult result = executor.executeStatement(insert);
@@ -474,19 +465,41 @@ class ExecutorImplITCase {
 
             // wait till the job turns into running status or the test times out
             TestUtils.waitUntilAllTasksAreRunning(clusterClient, jobID);
-            StringData savepointPath =
-                    CollectionUtil.iteratorToList(
-                                    executor.executeStatement(
-                                            String.format("STOP JOB '%s' WITH SAVEPOINT", jobID)))
-                            .get(0)
-                            .getString(0);
-            assertThat(savepointPath)
-                    .isNotNull()
-                    .matches(
-                            stringData ->
-                                    Files.exists(Paths.get(URI.create(stringData.toString()))));
-        } finally {
-            executor.closeSession();
+
+            JobStatus expectedJobStatus;
+            if (withSavepoint) {
+                executor.configureSession(
+                        String.format(
+                                "SET '%s' = '%s'",
+                                CheckpointingOptions.SAVEPOINT_DIRECTORY.key(),
+                                tempFolder.toURI()));
+                StatementResult stopResult =
+                        executor.executeStatement(
+                                String.format("STOP JOB '%s' WITH SAVEPOINT", jobID));
+                String savepointPath =
+                        CollectionUtil.iteratorToList(stopResult).get(0).getString(0).toString();
+                assertThat(savepointPath)
+                        .matches(path -> Files.exists(Paths.get(URI.create(path))));
+                expectedJobStatus = JobStatus.FINISHED;
+            } else {
+                executor.executeStatement(String.format("STOP JOB '%s'", jobID));
+                TestUtils.waitUntilJobCanceled(jobID, clusterClient);
+                expectedJobStatus = JobStatus.CANCELED;
+            }
+            assertThat(jobID).isNotNull();
+            assertThat(
+                            CollectionUtil.iteratorToList(executor.executeStatement("SHOW JOBS"))
+                                    .stream()
+                                    .filter(
+                                            row ->
+                                                    row.getString(0)
+                                                            .toString()
+                                                            .equals(jobID.toHexString()))
+                                    .findAny())
+                    .isPresent()
+                    .map(row -> row.getString(2).toString())
+                    .get()
+                    .isEqualTo(expectedJobStatus.name());
         }
     }
 
@@ -515,7 +528,6 @@ class ExecutorImplITCase {
     @Test
     void testHeartbeat() throws Exception {
         try (ExecutorImpl executor = (ExecutorImpl) createRestServiceExecutor()) {
-            executor.openSession("test-heartbeat");
             Thread.sleep(5_000);
             assertThat(
                             ((SessionManagerImpl) SQL_GATEWAY_SERVICE_EXTENSION.getSessionManager())
@@ -525,31 +537,43 @@ class ExecutorImplITCase {
     }
 
     @Test
-    void testConnectToEndpointWithV1Version() throws Exception {
-        testNegotiateVersion(
-                SqlGatewayRestAPIVersion.V1,
-                executor ->
-                        assertThatThrownBy(() -> executor.openSession("connection-version"))
-                                .satisfies(
-                                        anyCauseMatches(
-                                                SqlExecutionException.class,
-                                                "Currently, SQL Client only supports to connect to the "
-                                                        + "REST endpoint with API version larger than V1.")));
+    void testConnectToEndpointWithV1Version() {
+        assertThatThrownBy(() -> testNegotiateVersion(SqlGatewayRestAPIVersion.V1, executor -> {}))
+                .satisfies(
+                        anyCauseMatches(
+                                SqlExecutionException.class,
+                                "Currently, SQL Client only supports to connect to the "
+                                        + "REST endpoint with API version larger than V1."));
     }
 
     @Test
     void testConnectToEndpointWithHigherVersion() throws Exception {
         testNegotiateVersion(
                 SqlGatewayRestAPIVersion.V2,
-                executor -> {
-                    executor.openSession("connection-version");
-                    assertThat(
-                                    SQL_GATEWAY_SERVICE_EXTENSION
-                                            .getService()
-                                            .getSessionEndpointVersion(
-                                                    ((ExecutorImpl) executor).getSessionHandle()))
-                            .isEqualTo(SqlGatewayRestAPIVersion.V2);
-                });
+                executor ->
+                        assertThat(
+                                        SQL_GATEWAY_SERVICE_EXTENSION
+                                                .getService()
+                                                .getSessionEndpointVersion(
+                                                        ((ExecutorImpl) executor)
+                                                                .getSessionHandle()))
+                                .isEqualTo(SqlGatewayRestAPIVersion.V2));
+    }
+
+    @Test
+    void testExecutorCloseSession() {
+        SessionHandle sessionHandle;
+        try (ExecutorImpl executor = (ExecutorImpl) createRestServiceExecutor()) {
+            // close executor multiple times
+            executor.close();
+            sessionHandle = executor.getSessionHandle();
+        }
+
+        assertThat(sessionHandle).isNotNull();
+        assertThat(
+                        ((SessionManagerImpl) SQL_GATEWAY_SERVICE_EXTENSION.getSessionManager())
+                                .isSessionAlive(sessionHandle))
+                .isFalse();
     }
 
     // --------------------------------------------------------------------------------------------
@@ -586,7 +610,7 @@ class ExecutorImplITCase {
 
     private void testInterrupting(Consumer<Executor> task) throws Exception {
         try (Executor executor = createTestServiceExecutor()) {
-            Thread t = new Thread(() -> task.accept(executor), "worker");
+            Thread t = threadFactory.newThread(() -> task.accept(executor));
             t.start();
 
             TestSqlGatewayService service =
@@ -622,15 +646,12 @@ class ExecutorImplITCase {
     }
 
     private Executor createTestServiceExecutor() {
-        Executor executor =
-                createExecutor(
-                        Collections.emptyList(),
-                        new Configuration(),
-                        InetSocketAddress.createUnresolved(
-                                TEST_SQL_GATEWAY_REST_ENDPOINT_EXTENSION.getTargetAddress(),
-                                TEST_SQL_GATEWAY_REST_ENDPOINT_EXTENSION.getTargetPort()));
-        executor.openSession("mock");
-        return executor;
+        return createExecutor(
+                Collections.emptyList(),
+                new Configuration(),
+                InetSocketAddress.createUnresolved(
+                        TEST_SQL_GATEWAY_REST_ENDPOINT_EXTENSION.getTargetAddress(),
+                        TEST_SQL_GATEWAY_REST_ENDPOINT_EXTENSION.getTargetPort()));
     }
 
     private Executor createExecutor(
@@ -638,7 +659,7 @@ class ExecutorImplITCase {
         configuration.addAll(clusterClient.getFlinkConfiguration());
         DefaultContext defaultContext = new DefaultContext(configuration, dependencies);
         // frequently trigger heartbeat
-        return new ExecutorImpl(defaultContext, address, 1_000);
+        return new ExecutorImpl(defaultContext, address, "test-session", 1_000);
     }
 
     private void initSession(Executor executor, Map<String, String> replaceVars) {
@@ -653,14 +674,11 @@ class ExecutorImplITCase {
             String query,
             List<String> expectedResults)
             throws Exception {
-
-        final Executor executor =
+        try (final Executor executor =
                 createRestServiceExecutor(
-                        Collections.singletonList(udfDependency), Configuration.fromMap(configMap));
-        executor.openSession("test-session");
-        initSession(executor, replaceVars);
-
-        try {
+                        Collections.singletonList(udfDependency),
+                        Configuration.fromMap(configMap))) {
+            initSession(executor, replaceVars);
             // start job and retrieval
             final ResultDescriptor desc = executeQuery(executor, query);
 
@@ -671,8 +689,6 @@ class ExecutorImplITCase {
 
             TestBaseUtils.compareResultCollections(
                     expectedResults, actualResults, Comparator.naturalOrder());
-        } finally {
-            executor.closeSession();
         }
     }
 
