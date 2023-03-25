@@ -1358,7 +1358,7 @@ class TableEnvironmentTest {
       ResolvedSchema.of(Column.physical("database name", DataTypes.STRING())),
       tableResult2.getResolvedSchema)
     checkData(
-      util.Arrays.asList(Row.of("default_database"), Row.of("db1")).iterator(),
+      util.Arrays.asList(Row.of("db1"), Row.of("default_database")).iterator(),
       tableResult2.collect())
   }
 
@@ -2805,12 +2805,12 @@ class TableEnvironmentTest {
         new CatalogTableImpl(table.getSchema, table.getOptions, tableComment)
       } else {
         val view = table.asInstanceOf[CatalogView]
-        new CatalogViewImpl(
+        CatalogView.of(
+          view.getUnresolvedSchema,
+          tableComment,
           view.getOriginalQuery,
           view.getExpandedQuery,
-          view.getSchema,
-          view.getOptions,
-          tableComment)
+          view.getOptions)
       }
     }
 
