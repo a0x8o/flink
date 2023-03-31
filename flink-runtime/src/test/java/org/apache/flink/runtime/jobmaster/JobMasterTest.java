@@ -93,12 +93,12 @@ import org.apache.flink.runtime.registration.RegistrationResponse;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerGateway;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerId;
 import org.apache.flink.runtime.resourcemanager.utils.TestingResourceManagerGateway;
-import org.apache.flink.runtime.rest.handler.RestHandlerException;
 import org.apache.flink.runtime.rpc.RpcUtils;
 import org.apache.flink.runtime.rpc.TestingRpcService;
 import org.apache.flink.runtime.rpc.exceptions.RecipientUnreachableException;
 import org.apache.flink.runtime.scheduler.DefaultSchedulerFactory;
 import org.apache.flink.runtime.scheduler.ExecutionGraphInfo;
+import org.apache.flink.runtime.scheduler.SchedulerBase;
 import org.apache.flink.runtime.scheduler.SchedulerTestingUtils;
 import org.apache.flink.runtime.scheduler.TestingSchedulerNG;
 import org.apache.flink.runtime.scheduler.TestingSchedulerNGFactory;
@@ -2040,6 +2040,42 @@ class JobMasterTest {
     }
 
     @Test
+    public void testGetMaxParallelismPerVertexRespectsUserSpecifiedParallelism() throws Exception {
+        JobVertex vertexWithoutMaxParallelism = new JobVertex("vertex1");
+        vertexWithoutMaxParallelism.setInvokableClass(NoOpInvokable.class);
+        vertexWithoutMaxParallelism.setParallelism(1);
+        JobVertex vertexWithMaxParallelism = new JobVertex("vertex2");
+        vertexWithMaxParallelism.setInvokableClass(NoOpInvokable.class);
+        vertexWithMaxParallelism.setParallelism(1);
+        vertexWithMaxParallelism.setMaxParallelism(4000);
+        final JobGraph jobGraph =
+                JobGraphTestUtils.streamingJobGraph(
+                        vertexWithoutMaxParallelism, vertexWithMaxParallelism);
+
+        try (final JobMaster jobMaster =
+                new JobMasterBuilder(jobGraph, rpcService)
+                        .withConfiguration(configuration)
+                        .createJobMaster()) {
+            jobMaster.start();
+            final JobMasterGateway jobMasterGateway =
+                    jobMaster.getSelfGateway(JobMasterGateway.class);
+
+            assertThatFuture(jobMasterGateway.getMaxParallelismPerVertex())
+                    .eventuallySucceeds()
+                    .satisfies(
+                            maxParallelism ->
+                                    assertThat(maxParallelism)
+                                            .containsEntry(
+                                                    vertexWithMaxParallelism.getID(),
+                                                    vertexWithMaxParallelism.getMaxParallelism())
+                                            .containsEntry(
+                                                    vertexWithoutMaxParallelism.getID(),
+                                                    SchedulerBase.getDefaultMaxParallelism(
+                                                            vertexWithoutMaxParallelism)));
+        }
+    }
+
+    @Test
     public void testSuccessfulResourceRequirementsUpdate() throws Exception {
         final CompletableFuture<JobResourceRequirements> schedulerUpdateFuture =
                 new CompletableFuture<>();
@@ -2072,36 +2108,6 @@ class JobMasterTest {
 
             assertThatFuture(jobMasterUpdateFuture).eventuallySucceeds();
             assertThatFuture(schedulerUpdateFuture).eventuallySucceeds().isEqualTo(newRequirements);
-        }
-    }
-
-    @Test
-    public void testInvalidResourceRequirementsUpdate() throws Exception {
-        final TestingSchedulerNG scheduler =
-                TestingSchedulerNG.newBuilder()
-                        .setUpdateJobResourceRequirementsConsumer(
-                                jobResourceRequirements -> {
-                                    // No-op.
-                                })
-                        .build();
-        try (final JobMaster jobMaster =
-                new JobMasterBuilder(jobGraph, rpcService)
-                        .withConfiguration(configuration)
-                        .withHighAvailabilityServices(haServices)
-                        .withSlotPoolServiceSchedulerFactory(
-                                DefaultSlotPoolServiceSchedulerFactory.create(
-                                        TestingSlotPoolServiceBuilder.newBuilder(),
-                                        new TestingSchedulerNGFactory(scheduler)))
-                        .createJobMaster()) {
-            jobMaster.start();
-            final JobMasterGateway jobMasterGateway =
-                    jobMaster.getSelfGateway(JobMasterGateway.class);
-
-            assertThatFuture(
-                            jobMasterGateway.updateJobResourceRequirements(
-                                    JobResourceRequirements.empty()))
-                    .eventuallyFailsWith(ExecutionException.class)
-                    .withCauseInstanceOf(RestHandlerException.class);
         }
     }
 

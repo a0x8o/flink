@@ -21,10 +21,10 @@ package org.apache.flink.table.runtime.functions.scalar;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.table.api.DataTypes;
 import org.apache.flink.table.data.ArrayData;
-import org.apache.flink.table.data.GenericArrayData;
 import org.apache.flink.table.functions.BuiltInFunctionDefinitions;
 import org.apache.flink.table.functions.FunctionContext;
-import org.apache.flink.table.functions.SpecializedFunction;
+import org.apache.flink.table.functions.SpecializedFunction.ExpressionEvaluator;
+import org.apache.flink.table.functions.SpecializedFunction.SpecializedContext;
 import org.apache.flink.table.types.CollectionDataType;
 import org.apache.flink.table.types.DataType;
 import org.apache.flink.util.FlinkRuntimeException;
@@ -32,20 +32,19 @@ import org.apache.flink.util.FlinkRuntimeException;
 import javax.annotation.Nullable;
 
 import java.lang.invoke.MethodHandle;
-import java.util.ArrayList;
-import java.util.List;
 
 import static org.apache.flink.table.api.Expressions.$;
 
-/** Implementation of {@link BuiltInFunctionDefinitions#ARRAY_REMOVE}. */
+/** Implementation of {@link BuiltInFunctionDefinitions#ARRAY_POSITION}. */
 @Internal
-public class ArrayRemoveFunction extends BuiltInScalarFunction {
+public class ArrayPositionFunction extends BuiltInScalarFunction {
+
     private final ArrayData.ElementGetter elementGetter;
-    private final SpecializedFunction.ExpressionEvaluator equalityEvaluator;
+    private final ExpressionEvaluator equalityEvaluator;
     private transient MethodHandle equalityHandle;
 
-    public ArrayRemoveFunction(SpecializedFunction.SpecializedContext context) {
-        super(BuiltInFunctionDefinitions.ARRAY_REMOVE, context);
+    public ArrayPositionFunction(SpecializedContext context) {
+        super(BuiltInFunctionDefinitions.ARRAY_POSITION, context);
         final DataType elementDataType =
                 ((CollectionDataType) context.getCallContext().getArgumentDataTypes().get(0))
                         .getElementDataType();
@@ -64,25 +63,22 @@ public class ArrayRemoveFunction extends BuiltInScalarFunction {
         equalityHandle = equalityEvaluator.open(context);
     }
 
-    public @Nullable ArrayData eval(ArrayData haystack, Object needle) {
+    public @Nullable Integer eval(ArrayData haystack, Object needle) {
         try {
-            if (haystack == null) {
+            if (haystack == null || needle == null) {
                 return null;
             }
-
-            List<Object> list = new ArrayList();
             final int size = haystack.size();
             for (int pos = 0; pos < size; pos++) {
                 final Object element = elementGetter.getElementOrNull(haystack, pos);
-                if ((element == null && needle == null)
-                        || (element != null
-                                && needle != null
-                                && (boolean) equalityHandle.invoke(element, needle))) {
-                    continue;
+                if (element != null) {
+                    final boolean isEqual = (boolean) equalityHandle.invoke(element, needle);
+                    if (isEqual) {
+                        return Integer.valueOf(pos + 1);
+                    }
                 }
-                list.add(element);
             }
-            return new GenericArrayData(list.toArray());
+            return 0;
         } catch (Throwable t) {
             throw new FlinkRuntimeException(t);
         }
