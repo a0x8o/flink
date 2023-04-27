@@ -20,8 +20,9 @@ package org.apache.flink.table.planner.delegation.hive;
 
 import org.apache.flink.configuration.ConfigOption;
 import org.apache.flink.table.api.SqlDialect;
+import org.apache.flink.table.calcite.bridge.CalciteContext;
 import org.apache.flink.table.delegation.Parser;
-import org.apache.flink.table.planner.delegation.ParserFactory;
+import org.apache.flink.table.delegation.ParserFactory;
 
 import java.util.Collections;
 import java.util.Set;
@@ -46,10 +47,8 @@ public class HiveParserFactory implements ParserFactory {
 
     @Override
     public Parser create(Context context) {
-        return new HiveParser(
-                context.getCatalogManager(),
-                context.getPlannerContext()::createFlinkPlanner,
-                context.getPlannerContext()::createCalciteParser,
-                context.getPlannerContext());
+        // in here, we hard cast the context to CalciteContext for Hive parser will need
+        // CalciteContext to build Calcite's RelNode.
+        return new HiveParser((CalciteContext) context);
     }
 }
