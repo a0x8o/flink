@@ -23,7 +23,9 @@ import org.apache.flink.table.gateway.service.context.DefaultContext;
 
 import java.io.Closeable;
 import java.net.InetSocketAddress;
+import java.net.URL;
 import java.util.List;
+import java.util.Map;
 
 /** A gateway for communicating with Flink and other external systems. */
 public interface Executor extends Closeable {
@@ -31,6 +33,10 @@ public interface Executor extends Closeable {
     /** Create an {@link Executor} to execute commands. */
     static Executor create(
             DefaultContext defaultContext, InetSocketAddress address, String sessionId) {
+        return new ExecutorImpl(defaultContext, address, sessionId);
+    }
+
+    static Executor create(DefaultContext defaultContext, URL address, String sessionId) {
         return new ExecutorImpl(defaultContext, address, sessionId);
     }
 
@@ -47,6 +53,13 @@ public interface Executor extends Closeable {
      * @return the session configuration.
      */
     ReadableConfig getSessionConfig();
+
+    /**
+     * Get the map configuration of the session.
+     *
+     * @return the map session configuration.
+     */
+    Map<String, String> getSessionConfigMap();
 
     /**
      * Execute statement.
