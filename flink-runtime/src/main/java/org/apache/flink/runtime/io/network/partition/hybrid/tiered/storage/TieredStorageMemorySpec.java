@@ -15,20 +15,31 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.flink.table.planner.runtime.batch.sql
 
-import org.apache.flink.table.planner.runtime.utils.BatchTestBase
-import org.apache.flink.table.planner.runtime.utils.BatchTestBase.row
+package org.apache.flink.runtime.io.network.partition.hybrid.tiered.storage;
 
-import org.junit.jupiter.api.Test
+/**
+ * The memory specs for a memory owner, including the owner itself, the number of guaranteed buffers
+ * of the memory owner, etc.
+ */
+public class TieredStorageMemorySpec {
 
-class ValuesITCase extends BatchTestBase {
+    /** The memory use owner. */
+    private final Object owner;
 
-  @Test
-  def testValues(): Unit = {
-    checkResult(
-      "SELECT * FROM (VALUES (1, 2, 3)) T(a, b, c)",
-      Seq(row(1, 2, 3))
-    )
-  }
+    /** The number of guaranteed buffers of this memory owner. */
+    private final int numGuaranteedBuffers;
+
+    public TieredStorageMemorySpec(Object owner, int numGuaranteedBuffers) {
+        this.owner = owner;
+        this.numGuaranteedBuffers = numGuaranteedBuffers;
+    }
+
+    public Object getOwner() {
+        return owner;
+    }
+
+    public int getNumGuaranteedBuffers() {
+        return numGuaranteedBuffers;
+    }
 }

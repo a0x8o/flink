@@ -15,20 +15,23 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.flink.table.planner.runtime.batch.sql
 
-import org.apache.flink.table.planner.runtime.utils.BatchTestBase
-import org.apache.flink.table.planner.runtime.utils.BatchTestBase.row
+package org.apache.flink.connector.file.table.stream;
 
-import org.junit.jupiter.api.Test
+import org.apache.flink.api.common.ExecutionConfig;
+import org.apache.flink.api.common.typeinfo.TypeInformation;
 
-class ValuesITCase extends BatchTestBase {
+import org.junit.jupiter.api.Test;
 
-  @Test
-  def testValues(): Unit = {
-    checkResult(
-      "SELECT * FROM (VALUES (1, 2, 3)) T(a, b, c)",
-      Seq(row(1, 2, 3))
-    )
-  }
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+
+/** Tests for partition commit info. */
+public class PartitionCommitInfoTest {
+    @Test
+    public void testPartitionCommitSerializer() {
+        ExecutionConfig executionConfig = new ExecutionConfig();
+        executionConfig.disableGenericTypes();
+        assertNotNull(
+                TypeInformation.of(PartitionCommitInfo.class).createSerializer(executionConfig));
+    }
 }
