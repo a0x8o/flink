@@ -25,7 +25,7 @@ import org.apache.flink.runtime.blob.VoidBlobStore;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.highavailability.zookeeper.ZooKeeperMultipleComponentLeaderElectionHaServices;
 import org.apache.flink.runtime.jobmaster.JobMaster;
-import org.apache.flink.runtime.leaderelection.LeaderElectionService;
+import org.apache.flink.runtime.leaderelection.LeaderElection;
 import org.apache.flink.runtime.leaderelection.LeaderInformation;
 import org.apache.flink.runtime.leaderelection.TestingContender;
 import org.apache.flink.runtime.leaderelection.TestingLeaderElectionListener;
@@ -119,7 +119,7 @@ class ZooKeeperLeaderRetrievalTest {
 
         long sleepingTime = 1000;
 
-        LeaderElectionService leaderElectionService = null;
+        LeaderElection leaderElection = null;
 
         Thread thread;
 
@@ -180,18 +180,18 @@ class ZooKeeperLeaderRetrievalTest {
 
                 thread.start();
 
-                leaderElectionService =
-                        highAvailabilityServices.getJobManagerLeaderElectionService(
-                                HighAvailabilityServices.DEFAULT_JOB_ID);
                 TestingContender correctLeaderAddressContender =
-                        new TestingContender(correctAddress, leaderElectionService);
+                        new TestingContender(
+                                correctAddress,
+                                highAvailabilityServices.getJobManagerLeaderElectionService(
+                                        HighAvailabilityServices.DEFAULT_JOB_ID));
 
                 Thread.sleep(sleepingTime);
 
                 externalProcessDriver.notLeader();
                 externalProcessDriver.close();
 
-                leaderElectionService.start(correctLeaderAddressContender);
+                leaderElection = correctLeaderAddressContender.startLeaderElection();
 
                 thread.join();
 
@@ -206,8 +206,8 @@ class ZooKeeperLeaderRetrievalTest {
                     socket.connect(correctInetSocketAddress, 1000);
                 }
             } finally {
-                if (leaderElectionService != null) {
-                    leaderElectionService.stop();
+                if (leaderElection != null) {
+                    leaderElection.close();
                 }
             }
         } catch (IOException e) {

@@ -52,7 +52,6 @@ import org.apache.flink.runtime.rpc.TestingRpcService;
 import org.apache.flink.runtime.rpc.TestingRpcServiceExtension;
 import org.apache.flink.runtime.testtasks.NoOpInvokable;
 import org.apache.flink.runtime.testutils.CommonTestUtils;
-import org.apache.flink.runtime.util.LeaderConnectionInfo;
 import org.apache.flink.runtime.util.TestingFatalErrorHandler;
 import org.apache.flink.runtime.util.ZooKeeperUtils;
 import org.apache.flink.runtime.zookeeper.ZooKeeperExtension;
@@ -74,6 +73,7 @@ import org.slf4j.LoggerFactory;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.Collections;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ForkJoinPool;
@@ -179,7 +179,8 @@ class ZooKeeperDefaultDispatcherRunnerTest {
                             VoidHistoryServerArchivist.INSTANCE,
                             null,
                             ForkJoinPool.commonPool(),
-                            new DispatcherOperationCaches());
+                            new DispatcherOperationCaches(),
+                            Collections.emptySet());
 
             final DefaultDispatcherRunnerFactory defaultDispatcherRunnerFactory =
                     DefaultDispatcherRunnerFactory.createSessionRunner(
@@ -272,18 +273,18 @@ class ZooKeeperDefaultDispatcherRunnerTest {
     private DispatcherGateway grantLeadership(
             TestingLeaderElectionService dispatcherLeaderElectionService)
             throws InterruptedException, java.util.concurrent.ExecutionException {
-        final UUID leaderSessionId = UUID.randomUUID();
-        dispatcherLeaderElectionService.isLeader(leaderSessionId);
-        final LeaderConnectionInfo leaderConnectionInfo =
-                dispatcherLeaderElectionService.getConfirmationFuture().get();
-
-        return testingRpcServiceExtensionWrapper
-                .getCustomExtension()
-                .getTestingRpcService()
-                .connect(
-                        leaderConnectionInfo.getAddress(),
-                        DispatcherId.fromUuid(leaderSessionId),
-                        DispatcherGateway.class)
+        return dispatcherLeaderElectionService
+                .isLeader(UUID.randomUUID())
+                .thenCompose(
+                        leaderInformation ->
+                                testingRpcServiceExtensionWrapper
+                                        .getCustomExtension()
+                                        .getTestingRpcService()
+                                        .connect(
+                                                leaderInformation.getLeaderAddress(),
+                                                DispatcherId.fromUuid(
+                                                        leaderInformation.getLeaderSessionID()),
+                                                DispatcherGateway.class))
                 .get();
     }
 
