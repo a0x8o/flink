@@ -78,6 +78,63 @@ class DefaultLeaderElectionServiceTest {
         };
     }
 
+    @Test
+    void testCloseGrantDeadlock() throws Exception {
+        final OneShotLatch closeReachedLatch = new OneShotLatch();
+        final OneShotLatch closeContinueLatch = new OneShotLatch();
+        final OneShotLatch grantReachedLatch = new OneShotLatch();
+        final OneShotLatch grantContinueLatch = new OneShotLatch();
+
+        final TestingLeaderElectionDriver.TestingLeaderElectionDriverFactory driverFactory =
+                new TestingLeaderElectionDriver.TestingLeaderElectionDriverFactory(
+                        eventHandler -> {},
+                        eventHandler -> {
+                            closeReachedLatch.trigger();
+                            closeContinueLatch.await();
+                        },
+                        leaderElectionEventHandler -> {
+                            grantReachedLatch.trigger();
+                            grantContinueLatch.awaitQuietly();
+                        });
+
+        final ManuallyTriggeredScheduledExecutorService executorService =
+                new ManuallyTriggeredScheduledExecutorService();
+        final DefaultLeaderElectionService testInstance =
+                new DefaultLeaderElectionService(driverFactory, executorService);
+        testInstance.startLeaderElectionBackend();
+        final TestingLeaderElectionDriver driver = driverFactory.getCurrentLeaderDriver();
+        assertThat(driver).isNotNull();
+
+        final Thread closeThread =
+                new Thread(
+                        () -> {
+                            try {
+                                testInstance.close();
+                            } catch (Exception e) {
+                                throw new RuntimeException(e);
+                            }
+                        },
+                        "CloseThread");
+
+        // triggers close that acquires the DefaultLeaderElectionService lock
+        closeThread.start();
+        closeReachedLatch.await();
+
+        final Thread grantThread = new Thread(driver::isLeader, "GrantThread");
+
+        // triggers the service acquiring the leadership and, as a consequence, acquiring the
+        // driver's lock
+        grantThread.start();
+        grantReachedLatch.await();
+
+        // continue both processes which shouldn't result in a deadlock
+        grantContinueLatch.trigger();
+        closeContinueLatch.trigger();
+
+        closeThread.join();
+        grantThread.join();
+    }
+
     /**
      * With {@link MultipleComponentLeaderElectionDriverAdapter} and {@link
      * DefaultMultipleComponentLeaderElectionService} it happens that {@link
@@ -99,9 +156,10 @@ class DefaultLeaderElectionServiceTest {
                                 Executors.newDirectExecutorService())) {
             testInstance.startLeaderElectionBackend();
 
+            final LeaderElection leaderElection = testInstance.createLeaderElection();
             final TestingContender testingContender =
-                    new TestingContender("unused-address", testInstance);
-            final LeaderElection leaderElection = testingContender.startLeaderElection();
+                    new TestingContender("unused-address", leaderElection);
+            testingContender.startLeaderElection();
 
             assertThat(testingContender.getLeaderSessionID()).isEqualTo(expectedLeaderSessionID);
 
@@ -123,7 +181,10 @@ class DefaultLeaderElectionServiceTest {
                             testingLeaderElectionDriver.isLeader(expectedSessionID);
 
                             try (LeaderElection anotherLeaderElection =
-                                    testingContender.startLeaderElection()) {
+                                    leaderElectionService.createLeaderElection()) {
+                                final TestingContender testingContender =
+                                        new TestingContender(TEST_URL, anotherLeaderElection);
+                                testingContender.startLeaderElection();
 
                                 assertThat(testingContender.getLeaderSessionID())
                                         .as(
@@ -158,7 +219,10 @@ class DefaultLeaderElectionServiceTest {
                             testingLeaderElectionDriver.isLeader(expectedSessionID);
                             executorService.trigger();
 
-                            leaderElection = testingContender.startLeaderElection();
+                            leaderElection = leaderElectionService.createLeaderElection();
+                            final TestingContender contender =
+                                    new TestingContender("unused-address", leaderElection);
+                            contender.startLeaderElection();
 
                             leaderElection.close();
 
@@ -187,8 +251,10 @@ class DefaultLeaderElectionServiceTest {
 
             driver.isLeader();
 
-            final TestingContender contender = new TestingContender("unused-address", testInstance);
-            final LeaderElection leaderElection = contender.startLeaderElection();
+            final LeaderElection leaderElection = testInstance.createLeaderElection();
+            final TestingContender contender =
+                    new TestingContender("unused-address", leaderElection);
+            contender.startLeaderElection();
 
             contender.waitForLeader();
 
@@ -227,10 +293,12 @@ class DefaultLeaderElectionServiceTest {
             final LeaderElection leaderElection = leaderElectionService.createLeaderElection();
             assertThatThrownBy(
                             () ->
-                                    leaderElection.startLeaderElection(
-                                            new TestingContender(
-                                                    "unused-address", leaderElectionService)))
+                                    new TestingContender("unused-address", leaderElection)
+                                            .startLeaderElection())
                     .isInstanceOf(IllegalStateException.class);
+
+            // starting the backend because the close method expects it to be initialized
+            leaderElectionService.startLeaderElectionBackend();
         }
     }
 
@@ -588,9 +656,9 @@ class DefaultLeaderElectionServiceTest {
                 new DefaultLeaderElectionService(testingLeaderElectionDriverFactory);
         leaderElectionService.startLeaderElectionBackend();
 
-        final TestingContender testingContender =
-                new TestingContender(TEST_URL, leaderElectionService);
-        final LeaderElection leaderElection = testingContender.startLeaderElection();
+        final LeaderElection leaderElection = leaderElectionService.createLeaderElection();
+        final TestingContender testingContender = new TestingContender(TEST_URL, leaderElection);
+        testingContender.startLeaderElection();
 
         final TestingLeaderElectionDriver currentLeaderDriver =
                 Preconditions.checkNotNull(
@@ -738,9 +806,11 @@ class DefaultLeaderElectionServiceTest {
                         new DefaultLeaderElectionService(
                                 driverFactory, leaderEventOperationExecutor);
                 leaderElectionService.startLeaderElectionBackend();
-                testingContender = new TestingContender(TEST_URL, leaderElectionService);
 
-                leaderElection = testingContender.startLeaderElection();
+                leaderElection = leaderElectionService.createLeaderElection();
+                testingContender = new TestingContender(TEST_URL, leaderElection);
+                testingContender.startLeaderElection();
+
                 testingLeaderElectionDriver = driverFactory.getCurrentLeaderDriver();
 
                 assertThat(testingLeaderElectionDriver).isNotNull();
