@@ -121,7 +121,7 @@ under the License.
 		<flink.forkCountITCase>2</flink.forkCountITCase>
 		<flink.forkCountUnitTest>4</flink.forkCountUnitTest>
 		<flink.reuseForks>true</flink.reuseForks>
-		<flink.surefire.baseArgLine>-XX:+UseG1GC -Xms256m</flink.surefire.baseArgLine>
+		<flink.surefire.baseArgLine>-XX:+UseG1GC -Xms256m -XX:+IgnoreUnrecognizedVMOptions ${surefire.module.config}</flink.surefire.baseArgLine>
 		<flink.shaded.version>16.1</flink.shaded.version>
 		<flink.shaded.jackson.version>2.13.4</flink.shaded.jackson.version>
 		<flink.markBundledAsOptional>true</flink.markBundledAsOptional>
@@ -195,6 +195,12 @@ under the License.
  * limitations under the License.
  */
 		</spotless.license.header>
+
+		<!-- This property should contain the add-opens/add-exports commands required for the tests
+		     in the given module to pass.
+		     It MUST be a space-separated list not containing any newlines,
+		     of entries in the form '[-]{2}add-[opens|exports]=<module>/<package>=ALL-UNNAMED'.-->
+		<surefire.module.config/>
 
 		<!-- Can be set to any value to reproduce a specific build. -->
 		<test.randomization.seed/>
@@ -532,7 +538,7 @@ under the License.
 			<dependency>
 				<groupId>org.xerial.snappy</groupId>
 				<artifactId>snappy-java</artifactId>
-				<version>1.1.8.3</version>
+				<version>1.1.10.1</version>
 				<exclusions>
 					<exclusion>
 						<!-- Causes unnecessary dependency convergence errors; see MENFORCER-437 -->
@@ -1073,6 +1079,11 @@ under the License.
 			<activation>
 				<jdk>[17,)</jdk>
 			</activation>
+
+			<properties>
+				<!-- Bump Scala because 2.12.7 doesn't compile on Java 17. -->
+				<scala.version>2.12.15</scala.version>
+			</properties>
 
 			<build>
 				<pluginManagement>
@@ -1668,6 +1679,8 @@ under the License.
 							unset: don't alter the configuration
 						-->
 						<checkpointing.changelog>random</checkpointing.changelog>
+						<!-- Expose as property so that test utils that spawn JVMs can pick it up. -->
+						<surefire.module.config>${surefire.module.config}</surefire.module.config>
 						<project.basedir>${project.basedir}</project.basedir>
 						<!--suppress MavenModelInspection -->
 						<test.randomization.seed>${test.randomization.seed}</test.randomization.seed>

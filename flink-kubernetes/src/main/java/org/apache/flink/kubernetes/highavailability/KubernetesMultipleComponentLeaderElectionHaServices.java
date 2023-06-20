@@ -128,8 +128,7 @@ public class KubernetesMultipleComponentLeaderElectionHaServices extends Abstrac
                                             kubeClient,
                                             leaderElectionConfiguration,
                                             configMapSharedWatcher,
-                                            watchExecutorService,
-                                            fatalErrorHandler));
+                                            watchExecutorService));
                 } catch (Exception e) {
                     throw new FlinkRuntimeException(
                             "Could not initialize the default single leader election service.", e);
@@ -144,7 +143,6 @@ public class KubernetesMultipleComponentLeaderElectionHaServices extends Abstrac
     protected LeaderRetrievalService createLeaderRetrievalService(String componentId) {
         return new DefaultLeaderRetrievalService(
                 new KubernetesMultipleComponentLeaderRetrievalDriverFactory(
-                        kubeClient,
                         configMapSharedWatcher,
                         watchExecutorService,
                         getClusterConfigMap(),
