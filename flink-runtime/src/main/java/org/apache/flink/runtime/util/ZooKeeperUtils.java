@@ -366,7 +366,19 @@ public class ZooKeeperUtils {
      */
     public static ZooKeeperLeaderRetrievalDriverFactory createLeaderRetrievalDriverFactory(
             final CuratorFramework client) {
-        return createLeaderRetrievalDriverFactory(client, "", new Configuration());
+        return createLeaderRetrievalDriverFactory(client, "");
+    }
+
+    /**
+     * Creates a {@link LeaderRetrievalDriverFactory} implemented by ZooKeeper.
+     *
+     * @param client The {@link CuratorFramework} ZooKeeper client to use
+     * @param path The parent path that shall be used by the client.
+     * @return {@link LeaderRetrievalDriverFactory} instance.
+     */
+    public static ZooKeeperLeaderRetrievalDriverFactory createLeaderRetrievalDriverFactory(
+            final CuratorFramework client, String path) {
+        return createLeaderRetrievalDriverFactory(client, path, new Configuration());
     }
 
     /**
@@ -403,6 +415,7 @@ public class ZooKeeperUtils {
      * @param client The {@link CuratorFramework} ZooKeeper client to use
      * @return {@link DefaultLeaderElectionService} instance.
      */
+    @Deprecated
     public static DefaultLeaderElectionService createLeaderElectionService(CuratorFramework client)
             throws Exception {
 
@@ -417,6 +430,7 @@ public class ZooKeeperUtils {
      * @param path The path for the leader election
      * @return {@link DefaultLeaderElectionService} instance.
      */
+    @Deprecated
     public static DefaultLeaderElectionService createLeaderElectionService(
             final CuratorFramework client, final String path) throws Exception {
         final DefaultLeaderElectionService leaderElectionService =
@@ -432,6 +446,7 @@ public class ZooKeeperUtils {
      * @param client The {@link CuratorFramework} ZooKeeper client to use
      * @return {@link LeaderElectionDriverFactory} instance.
      */
+    @Deprecated
     public static ZooKeeperLeaderElectionDriverFactory createLeaderElectionDriverFactory(
             final CuratorFramework client) {
         return createLeaderElectionDriverFactory(client, "");
