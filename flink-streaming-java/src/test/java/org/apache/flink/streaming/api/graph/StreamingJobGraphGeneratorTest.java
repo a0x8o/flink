@@ -116,7 +116,7 @@ import org.apache.flink.util.Collector;
 import org.apache.flink.util.SerializedValue;
 import org.apache.flink.util.TestLoggerExtension;
 
-import org.apache.flink.shaded.guava30.com.google.common.collect.Iterables;
+import org.apache.flink.shaded.guava31.com.google.common.collect.Iterables;
 
 import org.assertj.core.api.Assertions;
 import org.assertj.core.data.Offset;
@@ -1178,6 +1178,39 @@ class StreamingJobGraphGeneratorTest {
         assertThat(vertices).hasSize(2);
         assertThat(vertices.get(0).getOperatorIDs()).hasSize(2);
         assertThat(vertices.get(1).getOperatorIDs()).hasSize(5);
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void testChainingOfOperatorsWithDifferentMaxParallelism(
+            boolean chainingOfOperatorsWithDifferentMaxParallelismEnabled) throws Exception {
+        final Configuration configuration = new Configuration();
+        configuration.set(
+                PipelineOptions.OPERATOR_CHAINING_CHAIN_OPERATORS_WITH_DIFFERENT_MAX_PARALLELISM,
+                chainingOfOperatorsWithDifferentMaxParallelismEnabled);
+        configuration.set(PipelineOptions.MAX_PARALLELISM, 10);
+        try (StreamExecutionEnvironment chainEnv =
+                StreamExecutionEnvironment.createLocalEnvironment(1, configuration)) {
+            chainEnv.fromElements(1)
+                    .map(x -> x)
+                    // should automatically break chain here
+                    .map(x -> x)
+                    .setMaxParallelism(1)
+                    .map(x -> x);
+
+            final JobGraph jobGraph = chainEnv.getStreamGraph().getJobGraph();
+
+            final List<JobVertex> vertices = jobGraph.getVerticesSortedTopologicallyFromSources();
+            if (chainingOfOperatorsWithDifferentMaxParallelismEnabled) {
+                assertThat(vertices).hasSize(1);
+                assertThat(vertices.get(0).getOperatorIDs()).hasSize(4);
+            } else {
+                assertThat(vertices).hasSize(3);
+                assertThat(vertices.get(0).getOperatorIDs()).hasSize(2);
+                assertThat(vertices.get(1).getOperatorIDs()).hasSize(1);
+                assertThat(vertices.get(1).getOperatorIDs()).hasSize(1);
+            }
+        }
     }
 
     /**

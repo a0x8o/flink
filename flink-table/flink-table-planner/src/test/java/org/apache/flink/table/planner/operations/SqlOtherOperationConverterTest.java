@@ -24,6 +24,7 @@ import org.apache.flink.table.operations.Operation;
 import org.apache.flink.table.operations.ShowFunctionsOperation;
 import org.apache.flink.table.operations.ShowModulesOperation;
 import org.apache.flink.table.operations.ShowPartitionsOperation;
+import org.apache.flink.table.operations.ShowProceduresOperation;
 import org.apache.flink.table.operations.ShowTablesOperation;
 import org.apache.flink.table.operations.UnloadModuleOperation;
 import org.apache.flink.table.operations.UseCatalogOperation;
@@ -202,6 +203,49 @@ public class SqlOtherOperationConverterTest extends SqlNodeToOperationConversion
 
         final String sql2 = "SHOW USER FUNCTIONS";
         assertShowFunctions(sql2, sql2, ShowFunctionsOperation.FunctionScope.USER);
+
+        String sql = "show functions from cat1.db1 not like 'f%'";
+        assertShowFunctions(
+                sql,
+                "SHOW FUNCTIONS FROM cat1.db1 NOT LIKE 'f%'",
+                ShowFunctionsOperation.FunctionScope.ALL);
+
+        sql = "show user functions from cat1.db1 ilike 'f%'";
+        assertShowFunctions(
+                sql,
+                "SHOW USER FUNCTIONS FROM cat1.db1 ILIKE 'f%'",
+                ShowFunctionsOperation.FunctionScope.USER);
+
+        sql = "show functions in db1";
+        assertShowFunctions(
+                sql, "SHOW FUNCTIONS IN builtin.db1", ShowFunctionsOperation.FunctionScope.ALL);
+
+        // test fail case
+        assertThatThrownBy(() -> parse("show functions in cat.db.t"))
+                .isInstanceOf(ValidationException.class)
+                .hasMessage(
+                        "Show functions from/in identifier [ cat.db.t ] format error, it should be [catalog_name.]database_name.");
+    }
+
+    @Test
+    void testShowProcedures() {
+        String sql = "SHOW procedures from cat1.db1 not like 't%'";
+        assertShowProcedures(sql, "SHOW PROCEDURES FROM cat1.db1 NOT LIKE t%");
+
+        sql = "SHOW procedures from cat1.db1 ilike 't%'";
+        assertShowProcedures(sql, "SHOW PROCEDURES FROM cat1.db1 ILIKE t%");
+
+        sql = "SHOW procedures in db1";
+        assertShowProcedures(sql, "SHOW PROCEDURES IN builtin.db1");
+
+        sql = "SHOW procedures";
+        assertShowProcedures(sql, "SHOW PROCEDURES");
+
+        // test fail case
+        assertThatThrownBy(() -> parse("SHOW procedures in cat.db.t"))
+                .isInstanceOf(ValidationException.class)
+                .hasMessage(
+                        "Show procedures from/in identifier [ cat.db.t ] format error, it should be [catalog_name.]database_name.");
     }
 
     @Test
@@ -334,5 +378,13 @@ public class SqlOtherOperationConverterTest extends SqlNodeToOperationConversion
 
         assertThat(showFunctionsOperation.getFunctionScope()).isEqualTo(expectedScope);
         assertThat(showFunctionsOperation.asSummaryString()).isEqualTo(expectedSummary);
+    }
+
+    private void assertShowProcedures(String sql, String expectedSummary) {
+        Operation operation = parse(sql);
+        assertThat(operation).isInstanceOf(ShowProceduresOperation.class);
+
+        final ShowProceduresOperation showProceduresOperation = (ShowProceduresOperation) operation;
+        assertThat(showProceduresOperation.asSummaryString()).isEqualTo(expectedSummary);
     }
 }

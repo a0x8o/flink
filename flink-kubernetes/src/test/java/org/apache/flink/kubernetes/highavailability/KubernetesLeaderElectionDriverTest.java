@@ -168,7 +168,7 @@ class KubernetesLeaderElectionDriverTest extends KubernetesHighAvailabilityTestB
                                     electionEventHandler
                                             .await(
                                                     LeaderElectionEvent
-                                                            .AllKnownLeaderInformationEvent.class)
+                                                            .AllLeaderInformationChangeEvent.class)
                                             .getLeaderInformationRegister();
 
                             assertThat(leaderInformationRegister.getRegisteredContenderIDs())

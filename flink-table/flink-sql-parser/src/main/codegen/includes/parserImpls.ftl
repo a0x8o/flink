@@ -437,12 +437,17 @@ SqlAlterFunction SqlAlterFunction() :
 
 /**
 * Parses a show functions statement.
-* SHOW [USER] FUNCTIONS;
+* SHOW [USER] FUNCTIONS [ ( FROM | IN ) [catalog_name.]database_name ] [ [NOT] (LIKE | ILIKE) pattern;
 */
 SqlShowFunctions SqlShowFunctions() :
 {
     SqlParserPos pos;
     boolean requireUser = false;
+    String prep = null;
+    SqlIdentifier databaseName = null;
+    String likeType = null;
+    SqlCharStringLiteral likeLiteral = null;
+    boolean notLike = false;
 }
 {
     <SHOW> { pos = getPos();}
@@ -450,8 +455,77 @@ SqlShowFunctions SqlShowFunctions() :
         <USER> { requireUser = true; }
     ]
     <FUNCTIONS>
+    [
+        ( <FROM> { prep = "FROM"; } | <IN> { prep = "IN"; } )
+        { pos = getPos(); }
+        databaseName = CompoundIdentifier()
+    ]
+    [
+        [
+            <NOT>
+            {
+                notLike = true;
+            }
+        ]
+        (
+            <LIKE>
+            {
+                likeType = "LIKE";
+            }
+        |
+            <ILIKE>
+            {
+                likeType = "ILIKE";
+            }
+        )
+        <QUOTED_STRING>
+        {
+            String likeCondition = SqlParserUtil.parseString(token.image);
+            likeLiteral = SqlLiteral.createCharString(likeCondition, getPos());
+        }
+    ]
     {
-        return new SqlShowFunctions(pos.plus(getPos()), requireUser);
+        return new SqlShowFunctions(pos, requireUser, prep, databaseName, likeType, likeLiteral, notLike);
+    }
+}
+
+/**
+* Parses a show functions statement.
+* SHOW PROCEDURES [ ( FROM | IN ) [catalog_name.]database_name ] [ [NOT] (LIKE | ILIKE) pattern;
+*/
+SqlShowProcedures SqlShowProcedures() :
+{
+    String prep = null;
+    SqlIdentifier databaseName = null;
+    boolean notLike = false;
+    String likeType = null;
+    SqlCharStringLiteral likeLiteral = null;
+    SqlParserPos pos;
+}
+{
+    <SHOW> <PROCEDURES>
+    { pos = getPos(); }
+    [
+        ( <FROM> { prep = "FROM"; } | <IN> { prep = "IN"; } )
+        { pos = getPos(); }
+        databaseName = CompoundIdentifier()
+    ]
+    [
+        [
+            <NOT>
+            {
+                notLike = true;
+            }
+        ]
+        ( <LIKE> { likeType = "LIKE"; }  | <ILIKE> { likeType = "ILIKE"; } )
+        <QUOTED_STRING>
+        {
+            String likeCondition = SqlParserUtil.parseString(token.image);
+            likeLiteral = SqlLiteral.createCharString(likeCondition, getPos());
+        }
+    ]
+    {
+        return new SqlShowProcedures(pos, prep, databaseName, notLike, likeType, likeLiteral);
     }
 }
 
@@ -1302,17 +1376,32 @@ SqlCreate SqlCreateTable(Span s, boolean replace, boolean isTemporary) :
         <AS>
         asQuery = OrderedQueryOrExpr(ExprContext.ACCEPT_QUERY)
         {
-            return new SqlCreateTableAs(startPos.plus(getPos()),
-                tableName,
-                columnList,
-                constraints,
-                propertyList,
-                partitionColumns,
-                watermark,
-                comment,
-                asQuery,
-                isTemporary,
-                ifNotExists);
+            if (replace) {
+                return new SqlReplaceTableAs(startPos.plus(getPos()),
+                    tableName,
+                    columnList,
+                    constraints,
+                    propertyList,
+                    partitionColumns,
+                    watermark,
+                    comment,
+                    asQuery,
+                    isTemporary,
+                    ifNotExists,
+                    true);
+            } else {
+                return new SqlCreateTableAs(startPos.plus(getPos()),
+                    tableName,
+                    columnList,
+                    constraints,
+                    propertyList,
+                    partitionColumns,
+                    watermark,
+                    comment,
+                    asQuery,
+                    isTemporary,
+                    ifNotExists);
+            }
         }
     ]
     {
@@ -1408,6 +1497,77 @@ SqlDrop SqlDropTable(Span s, boolean replace, boolean isTemporary) :
 }
 
 /**
+* Parser a REPLACE TABLE AS statement
+*/
+SqlNode SqlReplaceTable() :
+{
+    SqlIdentifier tableName;
+    SqlCharStringLiteral comment = null;
+    SqlNode asQuery = null;
+    SqlNodeList propertyList = SqlNodeList.EMPTY;
+    SqlParserPos pos;
+    boolean isTemporary = false;
+    List<SqlTableConstraint> constraints = new ArrayList<SqlTableConstraint>();
+    SqlWatermark watermark = null;
+    SqlNodeList columnList = SqlNodeList.EMPTY;
+    SqlNodeList partitionColumns = SqlNodeList.EMPTY;
+    boolean ifNotExists = false;
+}
+{
+    <REPLACE>
+    [
+        <TEMPORARY> { isTemporary = true; }
+    ]
+    <TABLE>
+
+    ifNotExists = IfNotExistsOpt()
+
+    tableName = CompoundIdentifier()
+    [
+        <LPAREN> { pos = getPos(); TableCreationContext ctx = new TableCreationContext();}
+        TableColumn(ctx)
+        (
+            <COMMA> TableColumn(ctx)
+        )*
+        {
+            pos = getPos();
+            columnList = new SqlNodeList(ctx.columnList, pos);
+            constraints = ctx.constraints;
+            watermark = ctx.watermark;
+        }
+        <RPAREN>
+    ]
+    [ <COMMENT> <QUOTED_STRING> {
+        String p = SqlParserUtil.parseString(token.image);
+        comment = SqlLiteral.createCharString(p, getPos());
+    }]
+    [
+        <PARTITIONED> <BY>
+        partitionColumns = ParenthesizedSimpleIdentifierList()
+    ]
+    [
+        <WITH>
+        propertyList = TableProperties()
+    ]
+    <AS>
+    asQuery = OrderedQueryOrExpr(ExprContext.ACCEPT_QUERY)
+    {
+        return new SqlReplaceTableAs(getPos(),
+            tableName,
+            columnList,
+            constraints,
+            propertyList,
+            partitionColumns,
+            watermark,
+            comment,
+            asQuery,
+            isTemporary,
+            ifNotExists,
+            false);
+    }
+}
+
+/**
 * Parses an INSERT statement.
 */
 SqlNode RichSqlInsert() :
@@ -1416,12 +1576,14 @@ SqlNode RichSqlInsert() :
     final SqlNodeList keywordList;
     final List<SqlLiteral> extendedKeywords = new ArrayList<SqlLiteral>();
     final SqlNodeList extendedKeywordList;
-    SqlNode table;
-    SqlNodeList extendList = null;
+    final SqlIdentifier tableName;
+    SqlNode tableRef;
+    final SqlNodeList extendList;
     SqlNode source;
     final SqlNodeList partitionList = new SqlNodeList(getPos());
     SqlNodeList columnList = null;
     final Span s;
+    final Pair<SqlNodeList, SqlNodeList> p;
 }
 {
     (
@@ -1445,31 +1607,28 @@ SqlNode RichSqlInsert() :
         keywordList = new SqlNodeList(keywords, s.addAll(keywords).pos());
         extendedKeywordList = new SqlNodeList(extendedKeywords, s.addAll(extendedKeywords).pos());
     }
-    table = TableRefWithHintsOpt()
-    [
-        LOOKAHEAD(5)
-        [ <EXTEND> ]
-        extendList = ExtendList() {
-            table = extend(table, extendList);
-        }
-    ]
+    tableName = CompoundTableIdentifier()
+    ( tableRef = TableHints(tableName) | { tableRef = tableName; } )
+    [ LOOKAHEAD(5) tableRef = ExtendTable(tableRef) ]
     [
         <PARTITION> PartitionSpecCommaList(partitionList)
     ]
-    [
+    (
         LOOKAHEAD(2)
-        { final Pair<SqlNodeList, SqlNodeList> p; }
         p = ParenthesizedCompoundIdentifierList() {
             if (p.right.size() > 0) {
-                table = extend(table, p.right);
+                tableRef = extend(tableRef, p.right);
             }
             if (p.left.size() > 0) {
                 columnList = p.left;
+            } else {
+                columnList = null;
             }
         }
-    ]
+        |   { columnList = null; }
+    )
     source = OrderedQueryOrExpr(ExprContext.ACCEPT_QUERY) {
-        return new RichSqlInsert(s.end(source), keywordList, extendedKeywordList, table, source,
+        return new RichSqlInsert(s.end(source), keywordList, extendedKeywordList, tableRef, source,
             columnList, partitionList);
     }
 }
@@ -2443,7 +2602,7 @@ SqlNodeList SimpleIdentifierCommaListWithPosition() :
 }
 {
     { s = span(); }
-    SimpleIdentifierCommaList(list) {
+    AddSimpleIdentifiers(list) {
         return new SqlNodeList(list, s.end(this));
     }
 }

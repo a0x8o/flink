@@ -105,7 +105,7 @@ import org.apache.flink.util.TestLogger;
 import org.apache.flink.util.concurrent.ManuallyTriggeredScheduledExecutor;
 import org.apache.flink.util.concurrent.ScheduledExecutor;
 
-import org.apache.flink.shaded.guava30.com.google.common.collect.Iterables;
+import org.apache.flink.shaded.guava31.com.google.common.collect.Iterables;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -891,7 +891,7 @@ public class DefaultSchedulerTest extends TestLogger {
         final long checkpointId =
                 checkpointCoordinator.getPendingCheckpoints().keySet().iterator().next();
         OneShotLatch latch = new OneShotLatch();
-        executor.execute(
+        mainThreadExecutor.execute(
                 () -> {
                     try {
                         final AcknowledgeCheckpoint acknowledgeCheckpoint =

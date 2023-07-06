@@ -213,6 +213,99 @@ class FlinkSqlParserImplTest extends SqlParserTest {
     void testShowFunctions() {
         sql("show functions").ok("SHOW FUNCTIONS");
         sql("show user functions").ok("SHOW USER FUNCTIONS");
+
+        sql("show functions like '%'").ok("SHOW FUNCTIONS LIKE '%'");
+        sql("show functions not like '%'").ok("SHOW FUNCTIONS NOT LIKE '%'");
+        sql("show user functions like '%'").ok("SHOW USER FUNCTIONS LIKE '%'");
+        sql("show user functions not like '%'").ok("SHOW USER FUNCTIONS NOT LIKE '%'");
+
+        sql("show functions from db1").ok("SHOW FUNCTIONS FROM `DB1`");
+        sql("show user functions from db1").ok("SHOW USER FUNCTIONS FROM `DB1`");
+        sql("show functions in db1").ok("SHOW FUNCTIONS IN `DB1`");
+        sql("show user functions in db1").ok("SHOW USER FUNCTIONS IN `DB1`");
+
+        sql("show functions from catalog1.db1").ok("SHOW FUNCTIONS FROM `CATALOG1`.`DB1`");
+        sql("show user functions from catalog1.db1")
+                .ok("SHOW USER FUNCTIONS FROM `CATALOG1`.`DB1`");
+        sql("show functions in catalog1.db1").ok("SHOW FUNCTIONS IN `CATALOG1`.`DB1`");
+        sql("show user functions in catalog1.db1").ok("SHOW USER FUNCTIONS IN `CATALOG1`.`DB1`");
+
+        sql("show functions from db1 like '%'").ok("SHOW FUNCTIONS FROM `DB1` LIKE '%'");
+        sql("show user functions from db1 like '%'").ok("SHOW USER FUNCTIONS FROM `DB1` LIKE '%'");
+        sql("show functions in db1 ilike '%'").ok("SHOW FUNCTIONS IN `DB1` ILIKE '%'");
+        sql("show user functions in db1 ilike '%'").ok("SHOW USER FUNCTIONS IN `DB1` ILIKE '%'");
+
+        sql("show functions from catalog1.db1 ilike '%'")
+                .ok("SHOW FUNCTIONS FROM `CATALOG1`.`DB1` ILIKE '%'");
+        sql("show user functions from catalog1.db1 ilike '%'")
+                .ok("SHOW USER FUNCTIONS FROM `CATALOG1`.`DB1` ILIKE '%'");
+        sql("show functions in catalog1.db1 like '%'")
+                .ok("SHOW FUNCTIONS IN `CATALOG1`.`DB1` LIKE '%'");
+        sql("show user functions in catalog1.db1 like '%'")
+                .ok("SHOW USER FUNCTIONS IN `CATALOG1`.`DB1` LIKE '%'");
+
+        sql("show functions from db1 not like '%'").ok("SHOW FUNCTIONS FROM `DB1` NOT LIKE '%'");
+        sql("show user functions from db1 not like '%'")
+                .ok("SHOW USER FUNCTIONS FROM `DB1` NOT LIKE '%'");
+        sql("show functions in db1 not ilike '%'").ok("SHOW FUNCTIONS IN `DB1` NOT ILIKE '%'");
+        sql("show user functions in db1 not ilike '%'")
+                .ok("SHOW USER FUNCTIONS IN `DB1` NOT ILIKE '%'");
+
+        sql("show functions from catalog1.db1 not like '%'")
+                .ok("SHOW FUNCTIONS FROM `CATALOG1`.`DB1` NOT LIKE '%'");
+        sql("show user functions from catalog1.db1 not like '%'")
+                .ok("SHOW USER FUNCTIONS FROM `CATALOG1`.`DB1` NOT LIKE '%'");
+        sql("show functions in catalog1.db1 not ilike '%'")
+                .ok("SHOW FUNCTIONS IN `CATALOG1`.`DB1` NOT ILIKE '%'");
+        sql("show user functions in catalog1.db1 not ilike '%'")
+                .ok("SHOW USER FUNCTIONS IN `CATALOG1`.`DB1` NOT ILIKE '%'");
+
+        sql("show functions ^likes^")
+                .fails("(?s).*Encountered \"likes\" at line 1, column 16.\n.*");
+        sql("show functions not ^likes^")
+                .fails("(?s).*Encountered \"likes\" at line 1, column 20" + ".\n" + ".*");
+        sql("show functions ^ilikes^")
+                .fails("(?s).*Encountered \"ilikes\" at line 1, column 16.\n.*");
+        sql("show functions not ^ilikes^")
+                .fails("(?s).*Encountered \"ilikes\" at line 1, column 20" + ".\n" + ".*");
+    }
+
+    @Test
+    void testShowProcedures() {
+        sql("show procedures").ok("SHOW PROCEDURES");
+        sql("show procedures not like '%'").ok("SHOW PROCEDURES NOT LIKE '%'");
+
+        sql("show procedures from db1").ok("SHOW PROCEDURES FROM `DB1`");
+        sql("show procedures in db1").ok("SHOW PROCEDURES IN `DB1`");
+
+        sql("show procedures from catalog1.db1").ok("SHOW PROCEDURES FROM `CATALOG1`.`DB1`");
+        sql("show procedures in catalog1.db1").ok("SHOW PROCEDURES IN `CATALOG1`.`DB1`");
+
+        sql("show procedures from db1 like '%'").ok("SHOW PROCEDURES FROM `DB1` LIKE '%'");
+        sql("show procedures in db1 ilike '%'").ok("SHOW PROCEDURES IN `DB1` ILIKE '%'");
+
+        sql("show procedures from catalog1.db1 Ilike '%'")
+                .ok("SHOW PROCEDURES FROM `CATALOG1`.`DB1` ILIKE '%'");
+        sql("show procedures in catalog1.db1 like '%'")
+                .ok("SHOW PROCEDURES IN `CATALOG1`.`DB1` LIKE '%'");
+
+        sql("show procedures from db1 not like '%'").ok("SHOW PROCEDURES FROM `DB1` NOT LIKE '%'");
+        sql("show procedures in db1 not ilike '%'").ok("SHOW PROCEDURES IN `DB1` NOT ILIKE '%'");
+
+        sql("show procedures from catalog1.db1 not like '%'")
+                .ok("SHOW PROCEDURES FROM `CATALOG1`.`DB1` NOT LIKE '%'");
+        sql("show procedures in catalog1.db1 not ilike '%'")
+                .ok("SHOW PROCEDURES IN `CATALOG1`.`DB1` NOT ILIKE '%'");
+
+        sql("show procedures ^db1^").fails("(?s).*Encountered \"db1\" at line 1, column 17.\n.*");
+        sql("show procedures ^catalog1^.db1")
+                .fails("(?s).*Encountered \"catalog1\" at line 1, column 17.\n.*");
+
+        sql("show procedures ^search^ db1")
+                .fails("(?s).*Encountered \"search\" at line 1, column 17.\n.*");
+
+        sql("show procedures from db1 ^likes^ '%t'")
+                .fails("(?s).*Encountered \"likes\" at line 1, column 26.\n.*");
     }
 
     @Test
@@ -2467,6 +2560,117 @@ class FlinkSqlParserImplTest extends SqlParserTest {
                         new ValidationMatcher()
                                 .fails(
                                         "CREATE TABLE AS SELECT syntax does not support to create partitioned table yet."));
+    }
+
+    @Test
+    void testReplaceTableAsSelect() {
+        // test replace table as select without options
+        sql("REPLACE TABLE t AS SELECT * FROM b").ok("REPLACE TABLE `T`\nAS\nSELECT *\nFROM `B`");
+
+        // test replace table as select with options
+        sql("REPLACE TABLE t WITH ('test' = 'zm') AS SELECT * FROM b")
+                .ok("REPLACE TABLE `T` WITH (\n  'test' = 'zm'\n)\nAS\nSELECT *\nFROM `B`");
+
+        // test replace table as select with tmp table
+        sql("REPLACE TEMPORARY TABLE t (col1 string) WITH ('test' = 'zm') AS SELECT col1 FROM b")
+                .node(
+                        new ValidationMatcher()
+                                .fails(
+                                        "REPLACE TABLE AS SELECT syntax does not support temporary table yet."));
+
+        // test replace table as select with explicit columns
+        sql("REPLACE TABLE t (col1 string) WITH ('test' = 'zm') AS SELECT col1 FROM b")
+                .node(
+                        new ValidationMatcher()
+                                .fails(
+                                        "REPLACE TABLE AS SELECT syntax does not support to specify explicit columns yet."));
+
+        // test replace table as select with watermark
+        sql("REPLACE TABLE t (watermark FOR ts AS ts - interval '3' second) WITH ('test' = 'zm') AS SELECT col1 FROM b")
+                .node(
+                        new ValidationMatcher()
+                                .fails(
+                                        "REPLACE TABLE AS SELECT syntax does not support to specify explicit watermark yet."));
+
+        // test replace table as select with constraints
+        sql("REPLACE TABLE t (PRIMARY KEY (col1)) WITH ('test' = 'zm') AS SELECT col1 FROM b")
+                .node(
+                        new ValidationMatcher()
+                                .fails(
+                                        "Flink doesn't support ENFORCED mode for PRIMARY KEY constraint. ENFORCED/NOT ENFORCED controls "
+                                                + "if the constraint checks are performed on the incoming/outgoing data. "
+                                                + "Flink does not own the data therefore the only supported mode is the NOT ENFORCED mode"));
+
+        sql("REPLACE TABLE t (PRIMARY KEY (col1), PRIMARY KEY (col2) NOT ENFORCED) WITH ('test' = 'zm') AS SELECT col1 FROM b")
+                .node(new ValidationMatcher().fails("Duplicate primary key definition"));
+
+        sql("REPLACE TABLE t (UNIQUE (col1)) WITH ('test' = 'zm') AS SELECT col1 FROM b")
+                .node(new ValidationMatcher().fails("UNIQUE constraint is not supported yet"));
+
+        // test replace table as select with partition key
+        sql("REPLACE TABLE t PARTITIONED BY(col1) WITH ('test' = 'zm') AS SELECT col1 FROM b")
+                .node(
+                        new ValidationMatcher()
+                                .fails(
+                                        "REPLACE TABLE AS SELECT syntax does not support to create partitioned table yet."));
+    }
+
+    @Test
+    void testCreateOrReplaceTableAsSelect() {
+        // test create or replace table as select without options
+        sql("CREATE OR REPLACE TABLE t AS SELECT * FROM b")
+                .ok("CREATE OR REPLACE TABLE `T`\nAS\nSELECT *\nFROM `B`");
+
+        // test create or replace table as select with options
+        sql("CREATE OR REPLACE TABLE t WITH ('test' = 'zm') AS SELECT * FROM b")
+                .ok(
+                        "CREATE OR REPLACE TABLE `T` WITH (\n  'test' = 'zm'\n)\nAS\nSELECT *\nFROM `B`");
+
+        // test create or replace table as select with create table like
+        sql("CREATE OR REPLACE TABLE t (col1 string) WITH ('test' = 'zm') like b ^AS^ SELECT col1 FROM b")
+                .fails("(?s).*Encountered \"AS\" at line 1, column 69.*");
+
+        // test create or replace table as select with tmp table
+        sql("CREATE OR REPLACE TEMPORARY TABLE t (col1 string) WITH ('test' = 'zm') AS SELECT col1 FROM b")
+                .node(
+                        new ValidationMatcher()
+                                .fails(
+                                        "CREATE OR REPLACE TABLE AS SELECT syntax does not support temporary table yet."));
+
+        // test create or replace table as select with explicit columns
+        sql("CREATE OR REPLACE TABLE t (col1 string) WITH ('test' = 'zm') AS SELECT col1 FROM b")
+                .node(
+                        new ValidationMatcher()
+                                .fails(
+                                        "CREATE OR REPLACE TABLE AS SELECT syntax does not support to specify explicit columns yet."));
+
+        // test create or replace table as select with watermark
+        sql("CREATE OR REPLACE TABLE t (watermark FOR ts AS ts - interval '3' second) WITH ('test' = 'zm') AS SELECT col1 FROM b")
+                .node(
+                        new ValidationMatcher()
+                                .fails(
+                                        "CREATE OR REPLACE TABLE AS SELECT syntax does not support to specify explicit watermark yet."));
+        // test create or replace table as select with constraints
+        sql("CREATE OR REPLACE TABLE t (PRIMARY KEY (col1)) WITH ('test' = 'zm') AS SELECT col1 FROM b")
+                .node(
+                        new ValidationMatcher()
+                                .fails(
+                                        "Flink doesn't support ENFORCED mode for PRIMARY KEY constraint. ENFORCED/NOT ENFORCED controls "
+                                                + "if the constraint checks are performed on the incoming/outgoing data. "
+                                                + "Flink does not own the data therefore the only supported mode is the NOT ENFORCED mode"));
+
+        sql("CREATE OR REPLACE TABLE t (PRIMARY KEY (col1), PRIMARY KEY (col2) NOT ENFORCED) WITH ('test' = 'zm') AS SELECT col1 FROM b")
+                .node(new ValidationMatcher().fails("Duplicate primary key definition"));
+
+        sql("CREATE OR REPLACE TABLE t (UNIQUE (col1)) WITH ('test' = 'zm') AS SELECT col1 FROM b")
+                .node(new ValidationMatcher().fails("UNIQUE constraint is not supported yet"));
+
+        // test create or replace table as select with partition key
+        sql("CREATE OR REPLACE TABLE t PARTITIONED BY(col1) WITH ('test' = 'zm') AS SELECT col1 FROM b")
+                .node(
+                        new ValidationMatcher()
+                                .fails(
+                                        "CREATE OR REPLACE TABLE AS SELECT syntax does not support to create partitioned table yet."));
     }
 
     @Test

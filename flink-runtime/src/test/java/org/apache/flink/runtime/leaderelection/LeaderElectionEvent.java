@@ -18,6 +18,8 @@
 
 package org.apache.flink.runtime.leaderelection;
 
+import java.util.UUID;
+
 /** Leader election event. */
 public abstract class LeaderElectionEvent {
     public boolean isIsLeaderEvent() {
@@ -49,6 +51,17 @@ public abstract class LeaderElectionEvent {
     }
 
     public static class IsLeaderEvent extends LeaderElectionEvent {
+
+        private final UUID leaderSessionID;
+
+        public IsLeaderEvent(UUID leaderSessionID) {
+            this.leaderSessionID = leaderSessionID;
+        }
+
+        public UUID getLeaderSessionID() {
+            return leaderSessionID;
+        }
+
         @Override
         public boolean isIsLeaderEvent() {
             return true;
@@ -63,11 +76,11 @@ public abstract class LeaderElectionEvent {
     }
 
     public static class LeaderInformationChangeEvent extends LeaderElectionEvent {
-        private final String componentId;
+        private final String contenderID;
         private final LeaderInformation leaderInformation;
 
-        LeaderInformationChangeEvent(String componentId, LeaderInformation leaderInformation) {
-            this.componentId = componentId;
+        LeaderInformationChangeEvent(String contenderID, LeaderInformation leaderInformation) {
+            this.contenderID = contenderID;
             this.leaderInformation = leaderInformation;
         }
 
@@ -75,8 +88,8 @@ public abstract class LeaderElectionEvent {
             return leaderInformation;
         }
 
-        public String getComponentId() {
-            return componentId;
+        public String getContenderID() {
+            return contenderID;
         }
 
         @Override
@@ -85,10 +98,10 @@ public abstract class LeaderElectionEvent {
         }
     }
 
-    public static class AllKnownLeaderInformationEvent extends LeaderElectionEvent {
+    public static class AllLeaderInformationChangeEvent extends LeaderElectionEvent {
         private final LeaderInformationRegister leaderInformationRegister;
 
-        AllKnownLeaderInformationEvent(LeaderInformationRegister leaderInformationRegister) {
+        AllLeaderInformationChangeEvent(LeaderInformationRegister leaderInformationRegister) {
             this.leaderInformationRegister = leaderInformationRegister;
         }
 
