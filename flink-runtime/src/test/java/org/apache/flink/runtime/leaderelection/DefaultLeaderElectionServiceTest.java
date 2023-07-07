@@ -36,6 +36,7 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
@@ -220,10 +221,9 @@ class DefaultLeaderElectionServiceTest {
         final UUID expectedLeaderSessionID = UUID.randomUUID();
         try (final DefaultLeaderElectionService testInstance =
                 new DefaultLeaderElectionService(
-                        (listener, errorHandler) -> {
+                        listener -> {
                             listener.onGrantLeadership(expectedLeaderSessionID);
-                            return TestingLeaderElectionDriver.newNoOpBuilder()
-                                    .build(listener, errorHandler);
+                            return TestingLeaderElectionDriver.newNoOpBuilder().build(listener);
                         },
                         fatalErrorHandlerExtension.getTestingFatalErrorHandler(),
                         Executors.newDirectExecutorService())) {
@@ -317,39 +317,54 @@ class DefaultLeaderElectionServiceTest {
         };
     }
 
-    /**
-     * Test to cover the issue described in FLINK-31814. This test could be removed after
-     * FLINK-31814 is resolved.
-     */
     @Test
-    void testOnRevokeCallWhileClosingService() throws Exception {
-        final AtomicBoolean leadershipGranted = new AtomicBoolean();
-        final TestingLeaderElectionDriver.Builder driverBuilder =
-                TestingLeaderElectionDriver.newBuilder(leadershipGranted);
+    void testDelayedRevokeCallAfterContenderBeingDeregisteredAgain() throws Exception {
+        new Context() {
+            {
+                runTestWithManuallyTriggeredEvents(
+                        executorService -> {
+                            final UUID expectedSessionID = UUID.randomUUID();
+                            grantLeadership(expectedSessionID);
+                            executorService.trigger();
 
-        final TestingLeaderElectionDriver.Factory driverFactory =
-                new TestingLeaderElectionDriver.Factory(driverBuilder);
-        try (final DefaultLeaderElectionService testInstance =
-                new DefaultLeaderElectionService(
-                        driverFactory, fatalErrorHandlerExtension.getTestingFatalErrorHandler())) {
-            driverBuilder.setCloseConsumer(lock -> testInstance.onRevokeLeadership());
-            testInstance.startLeaderElectionBackend();
+                            final LeaderElection leaderElection =
+                                    leaderElectionService.createLeaderElection("contender_id");
 
-            leadershipGranted.set(true);
-            testInstance.onGrantLeadership(UUID.randomUUID());
+                            final AtomicInteger revokeCallCount = new AtomicInteger();
+                            final LeaderContender contender =
+                                    TestingGenericLeaderContender.newBuilder()
+                                            .setRevokeLeadershipRunnable(
+                                                    revokeCallCount::incrementAndGet)
+                                            .build();
+                            leaderElection.startLeaderElection(contender);
+                            executorService.trigger();
 
-            final LeaderElection leaderElection =
-                    testInstance.createLeaderElection(createRandomContenderID());
-            final TestingContender contender =
-                    new TestingContender("unused-address", leaderElection);
-            contender.startLeaderElection();
+                            assertThat(revokeCallCount)
+                                    .as("No revocation should have been triggered, yet.")
+                                    .hasValue(0);
 
-            contender.waitForLeader();
+                            revokeLeadership();
 
-            leaderElection.close();
+                            assertThat(revokeCallCount)
+                                    .as("A revocation was triggered but not processed, yet.")
+                                    .hasValue(0);
 
-            contender.throwErrorIfPresent();
-        }
+                            leaderElection.close();
+
+                            assertThat(revokeCallCount)
+                                    .as(
+                                            "A revocation should have been triggered and immediately processed through the close call.")
+                                    .hasValue(1);
+
+                            executorService.triggerAll();
+
+                            assertThat(revokeCallCount)
+                                    .as(
+                                            "The leadership revocation event that was triggered by the HA backend shouldn't have been forwarded to the contender, anymore.")
+                                    .hasValue(1);
+                        });
+            }
+        };
     }
 
     @Test
@@ -967,7 +982,7 @@ class DefaultLeaderElectionServiceTest {
                         () -> {
                             final Exception testException = new Exception("test leader exception");
 
-                            testingLeaderElectionDriver.triggerFatalError(testException);
+                            leaderElectionService.onError(testException);
 
                             applyToBothContenderContexts(
                                     contenderContext -> {
@@ -992,7 +1007,7 @@ class DefaultLeaderElectionServiceTest {
 
                             final Exception testException = new Exception("test leader exception");
 
-                            testingLeaderElectionDriver.triggerFatalError(testException);
+                            leaderElectionService.onError(testException);
 
                             applyToBothContenderContexts(
                                     ctx ->

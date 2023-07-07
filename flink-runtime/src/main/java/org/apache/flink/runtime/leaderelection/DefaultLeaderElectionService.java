@@ -47,8 +47,8 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  *
  * <p>{@code DefaultLeaderElectionService} handles a single {@link LeaderContender}.
  */
-public class DefaultLeaderElectionService extends AbstractLeaderElectionService
-        implements LeaderElectionDriver.Listener, AutoCloseable {
+public class DefaultLeaderElectionService extends DefaultLeaderElection.ParentService
+        implements LeaderElectionService, LeaderElectionDriver.Listener, AutoCloseable {
 
     private static final Logger LOG = LoggerFactory.getLogger(DefaultLeaderElectionService.class);
 
@@ -181,8 +181,7 @@ public class DefaultLeaderElectionService extends AbstractLeaderElectionService
 
             running = true;
 
-            leaderElectionDriver =
-                    leaderElectionDriverFactory.create(this, new LeaderElectionFatalErrorHandler());
+            leaderElectionDriver = leaderElectionDriverFactory.create(this);
 
             LOG.info(
                     "A connection to the HA backend was established through LeaderElectionDriver {}.",
@@ -287,7 +286,7 @@ public class DefaultLeaderElectionService extends AbstractLeaderElectionService
 
         // interrupt any outstanding events
         final List<Runnable> outstandingEventHandlingCalls =
-                Preconditions.checkNotNull(leadershipOperationExecutor).shutdownNow();
+                leadershipOperationExecutor.shutdownNow();
         if (!outstandingEventHandlingCalls.isEmpty()) {
             LOG.debug(
                     "The DefaultLeaderElectionService was closed with {} event(s) still not being processed. No further action necessary.",
@@ -424,9 +423,9 @@ public class DefaultLeaderElectionService extends AbstractLeaderElectionService
 
     @GuardedBy("lock")
     private void onRevokeLeadershipInternal() {
-        // TODO: FLINK-31814 covers adding this Precondition
-        // Preconditions.checkState(issuedLeaderSessionID != null,"The leadership should have
-        // been revoked while having the leadership acquired.");
+        Preconditions.checkState(
+                issuedLeaderSessionID != null,
+                "The leadership should have been revoked while having the leadership acquired.");
 
         if (!leaderContenderRegistry.isEmpty()) {
             leaderContenderRegistry.forEach(this::notifyLeaderContenderOfLeadershipLoss);
@@ -590,11 +589,8 @@ public class DefaultLeaderElectionService extends AbstractLeaderElectionService
         }
     }
 
-    private class LeaderElectionFatalErrorHandler implements FatalErrorHandler {
-
-        @Override
-        public void onFatalError(Throwable throwable) {
-            forwardErrorToLeaderContender(throwable);
-        }
+    @Override
+    public void onError(Throwable t) {
+        forwardErrorToLeaderContender(t);
     }
 }
