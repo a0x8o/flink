@@ -692,7 +692,6 @@ class JobMasterServiceLeadershipRunnerTest {
         // in connection with the DefaultLeaderElectionService generates the nested locking
         final DefaultLeaderElectionService defaultLeaderElectionService =
                 new DefaultLeaderElectionService(driverFactory, fatalErrorHandler);
-        defaultLeaderElectionService.startLeaderElectionBackend();
 
         final TestingLeaderElectionDriver currentLeaderDriver =
                 driverFactory.assertAndGetOnlyCreatedDriver();
@@ -720,9 +719,9 @@ class JobMasterServiceLeadershipRunnerTest {
                                     return CompletableFuture.completedFuture(null);
                                 })
                         .build();
-        final String contenderID = "random-contender-id";
+        final String componentId = "random-component-id";
         final LeaderElection leaderElection =
-                defaultLeaderElectionService.createLeaderElection(contenderID);
+                defaultLeaderElectionService.createLeaderElection(componentId);
         try (final JobMasterServiceLeadershipRunner jobManagerRunner =
                 newJobMasterServiceLeadershipRunnerBuilder()
                         .setClassLoaderLease(

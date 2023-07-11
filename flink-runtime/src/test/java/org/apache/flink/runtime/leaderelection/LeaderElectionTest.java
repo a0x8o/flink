@@ -179,7 +179,6 @@ public class LeaderElectionTest {
                     new ZooKeeperLeaderElectionDriverFactory(
                             curatorFrameworkWrapper.asCuratorFramework());
             leaderElectionService = new DefaultLeaderElectionService(driverFactory);
-            leaderElectionService.startLeaderElectionBackend();
         }
 
         @Override
@@ -201,7 +200,7 @@ public class LeaderElectionTest {
 
         @Override
         public LeaderElection createLeaderElection() {
-            return leaderElectionService.createLeaderElection("random-contender-id");
+            return leaderElectionService.createLeaderElection("random-component-id");
         }
     }
 
