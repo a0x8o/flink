@@ -28,6 +28,12 @@ import static org.apache.flink.configuration.ConfigOptions.key;
 @PublicEvolving
 public class NettyShuffleEnvironmentOptions {
 
+    private static final String HYBRID_SHUFFLE_NEW_MODE_OPTION_NAME =
+            "taskmanager.network.hybrid-shuffle.enable-new-mode";
+
+    private static final String HYBRID_SHUFFLE_REMOTE_STORAGE_BASE_PATH_OPTION_NAME =
+            "taskmanager.network.hybrid-shuffle.remote.path";
+
     // ------------------------------------------------------------------------
     //  Network General Options
     // ------------------------------------------------------------------------
@@ -315,14 +321,19 @@ public class NettyShuffleEnvironmentOptions {
                                     // this raw value must be changed correspondingly
                                     "taskmanager.memory.framework.off-heap.batch-shuffle.size"));
 
-    /** Segment size of hybrid spilled file data index. */
+    /** Region group size of hybrid spilled file data index. */
     @Documentation.Section(Documentation.Sections.ALL_TASK_MANAGER_NETWORK)
-    public static final ConfigOption<Integer> HYBRID_SHUFFLE_SPILLED_INDEX_SEGMENT_SIZE =
-            key("taskmanager.network.hybrid-shuffle.spill-index-segment-size")
+    public static final ConfigOption<Integer> HYBRID_SHUFFLE_SPILLED_INDEX_REGION_GROUP_SIZE =
+            key("taskmanager.network.hybrid-shuffle.spill-index-region-group-size")
                     .intType()
                     .defaultValue(1024)
+                    .withDeprecatedKeys(
+                            "taskmanager.network.hybrid-shuffle.spill-index-segment-size")
                     .withDescription(
-                            "Controls the segment size(in bytes) of hybrid spilled file data index.");
+                            "Controls the region group size(in bytes) of hybrid spilled file data index. "
+                                    + "Note: This option will be ignored if "
+                                    + HYBRID_SHUFFLE_NEW_MODE_OPTION_NAME
+                                    + " is set true.");
 
     /** Max number of hybrid retained regions in memory. */
     @Documentation.Section(Documentation.Sections.ALL_TASK_MANAGER_NETWORK)
@@ -331,7 +342,10 @@ public class NettyShuffleEnvironmentOptions {
                     .longType()
                     .defaultValue(1024 * 1024L)
                     .withDescription(
-                            "Controls the max number of hybrid retained regions in memory.");
+                            "Controls the max number of hybrid retained regions in memory. "
+                                    + "Note: This option will be ignored if "
+                                    + HYBRID_SHUFFLE_NEW_MODE_OPTION_NAME
+                                    + " is set true. ");
 
     /** Number of max buffers can be used for each output subpartition. */
     @Documentation.Section(Documentation.Sections.ALL_TASK_MANAGER_NETWORK)
@@ -378,6 +392,38 @@ public class NettyShuffleEnvironmentOptions {
                                     + "the number of required buffers is not the same for local buffer pools, there may be deadlock cases that the upstream"
                                     + "tasks have occupied all the buffers and the downstream tasks are waiting for the exclusive buffers. The timeout breaks"
                                     + "the tie by failing the request of exclusive buffers and ask users to increase the number of total buffers.");
+
+    /** The option to enable the new mode of hybrid shuffle. */
+    @Documentation.Section(Documentation.Sections.ALL_TASK_MANAGER_NETWORK)
+    @Experimental
+    public static final ConfigOption<Boolean> NETWORK_HYBRID_SHUFFLE_ENABLE_NEW_MODE =
+            ConfigOptions.key(HYBRID_SHUFFLE_NEW_MODE_OPTION_NAME)
+                    .booleanType()
+                    .defaultValue(true)
+                    .withDescription(
+                            "The option is used to enable the new mode of hybrid shuffle, which has resolved existing issues in the legacy mode. First, the new mode "
+                                    + "uses less required network memory. Second, the new mode can store shuffle data in remote storage when the disk space is not "
+                                    + "enough, which could avoid insufficient disk space errors and is only supported when "
+                                    + HYBRID_SHUFFLE_REMOTE_STORAGE_BASE_PATH_OPTION_NAME
+                                    + " is configured. The new mode is currently in an experimental phase. It can be set to false to fallback to the legacy mode "
+                                    + " if something unexpected. Once the new mode reaches a stable state, the legacy mode as well as the option will be removed.");
+
+    /** The option to configure the base remote storage path for hybrid shuffle. */
+    @Documentation.Section(Documentation.Sections.ALL_TASK_MANAGER_NETWORK)
+    @Experimental
+    public static final ConfigOption<String> NETWORK_HYBRID_SHUFFLE_REMOTE_STORAGE_BASE_PATH =
+            key(HYBRID_SHUFFLE_REMOTE_STORAGE_BASE_PATH_OPTION_NAME)
+                    .stringType()
+                    .noDefaultValue()
+                    .withDescription(
+                            "The option is used to configure the base path of remote storage for hybrid shuffle. The shuffle data will be stored in "
+                                    + "remote storage when the disk space is not enough. "
+                                    + "Note: If the option is configured and "
+                                    + HYBRID_SHUFFLE_NEW_MODE_OPTION_NAME
+                                    + " is false, this option will be ignored. "
+                                    + "If the option is not configured and "
+                                    + HYBRID_SHUFFLE_NEW_MODE_OPTION_NAME
+                                    + " is true, the remote storage will be disabled.");
 
     @Documentation.Section(Documentation.Sections.ALL_TASK_MANAGER_NETWORK)
     public static final ConfigOption<String> NETWORK_BLOCKING_SHUFFLE_TYPE =

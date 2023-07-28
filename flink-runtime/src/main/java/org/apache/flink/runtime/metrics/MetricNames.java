@@ -62,6 +62,7 @@ public class MetricNames {
 
     public static final String CHECKPOINT_ALIGNMENT_TIME = "checkpointAlignmentTime";
     public static final String CHECKPOINT_START_DELAY_TIME = "checkpointStartDelayNanos";
+    public static final String INITIALIZATION_TIME = "initializationTime";
 
     public static final String START_WORKER_FAILURE_RATE = "startWorkFailure" + SUFFIX_RATE;
 
@@ -79,6 +80,7 @@ public class MetricNames {
             "softBackPressuredTimeMs" + SUFFIX_RATE;
     public static final String TASK_HARD_BACK_PRESSURED_TIME =
             "hardBackPressuredTimeMs" + SUFFIX_RATE;
+    public static final String CHANGELOG_BUSY_TIME = "changelogBusyTimeMs" + SUFFIX_RATE;
     public static final String TASK_MAX_SOFT_BACK_PRESSURED_TIME = "maxSoftBackPressureTimeMs";
     public static final String TASK_MAX_HARD_BACK_PRESSURED_TIME = "maxHardBackPressureTimeMs";
 

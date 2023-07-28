@@ -57,27 +57,32 @@ function setup_kubernetes_for_linux {
     # conntrack is required for minikube 1.9 and later
     sudo apt-get install conntrack
     # crictl is required for cri-dockerd
-    VERSION="v1.24.2"
-    wget https://github.com/kubernetes-sigs/cri-tools/releases/download/$VERSION/crictl-$VERSION-linux-amd64.tar.gz
-    sudo tar zxvf crictl-$VERSION-linux-amd64.tar.gz -C /usr/local/bin
-    rm -f crictl-$VERSION-linux-amd64.tar.gz
+    local crictl_version crictl_archive
+    crictl_version="v1.24.2"
+    crictl_archive="crictl-$crictl_version-linux-amd64.tar.gz"
+    wget -nv "https://github.com/kubernetes-sigs/cri-tools/releases/download/${crictl_version}/crictl-${crictl_version}-linux-amd64.tar.gz"
+    sudo tar zxvf ${crictl_archive} -C /usr/local/bin
+    rm -f ${crictl_archive}
+
     # cri-dockerd is required to use Kubernetes 1.24+ and the none driver
-    if [ -e cri-dockerd ];
-     then rm -r cri-dockerd
-    fi
-    git clone https://github.com/Mirantis/cri-dockerd.git
-    cd cri-dockerd
-    # Checkout version 0.2.3
-    git checkout tags/v0.2.3 -b v0.2.3
-    mkdir bin
-    go get && go build -o bin/cri-dockerd
-    mkdir -p /usr/local/bin
-    sudo install -o root -g root -m 0755 bin/cri-dockerd /usr/local/bin/cri-dockerd
-    sudo cp -a packaging/systemd/* /etc/systemd/system
-    sudo sed -i -e 's,/usr/bin/cri-dockerd,/usr/local/bin/cri-dockerd,' /etc/systemd/system/cri-docker.service
+    local cri_dockerd_version cri_dockerd_archive cri_dockerd_binary
+    cri_dockerd_version="0.2.3"
+    cri_dockerd_archive="cri-dockerd-${cri_dockerd_version}.amd64.tgz"
+    cri_dockerd_binary="cri-dockerd"
+    wget -nv "https://github.com/Mirantis/cri-dockerd/releases/download/v${cri_dockerd_version}/${cri_dockerd_archive}"
+    tar xzvf $cri_dockerd_archive "cri-dockerd/${cri_dockerd_binary}" --strip-components=1
+    sudo install -o root -g root -m 0755 "${cri_dockerd_binary}" "/usr/local/bin/${cri_dockerd_binary}"
+    rm ${cri_dockerd_binary}
+
+    wget -nv https://raw.githubusercontent.com/Mirantis/cri-dockerd/v${cri_dockerd_version}/packaging/systemd/cri-docker.service
+    wget -nv https://raw.githubusercontent.com/Mirantis/cri-dockerd/v${cri_dockerd_version}/packaging/systemd/cri-docker.socket
+    sudo mv cri-docker.socket cri-docker.service /etc/systemd/system/
+    sudo sed -i -e "s,/usr/bin/${cri_dockerd_binary},/usr/local/bin/${cri_dockerd_binary}," /etc/systemd/system/cri-docker.service
+
     sudo systemctl daemon-reload
     sudo systemctl enable cri-docker.service
     sudo systemctl enable --now cri-docker.socket
+
     # required to resolve HOST_JUJU_LOCK_PERMISSION error of "minikube start --vm-driver=none"
     sudo sysctl fs.protected_regular=0
 }

@@ -289,6 +289,8 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 
     private final ThreadInfoSampleService threadInfoSampleService;
 
+    private final ShuffleDescriptorsCache shuffleDescriptorsCache;
+
     public TaskExecutor(
             RpcService rpcService,
             TaskManagerConfiguration taskManagerConfiguration,
@@ -363,6 +365,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
                 taskExecutorServices.getSlotAllocationSnapshotPersistenceService();
 
         this.sharedResources = taskExecutorServices.getSharedResources();
+        this.shuffleDescriptorsCache = taskExecutorServices.getShuffleDescriptorCache();
     }
 
     private HeartbeatManager<Void, TaskExecutorHeartbeatPayload>
@@ -491,6 +494,8 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 
         changelogStoragesManager.shutdown();
         channelStateExecutorFactoryManager.shutdown();
+
+        shuffleDescriptorsCache.clear();
 
         Preconditions.checkState(jobTable.isEmpty());
 
@@ -651,9 +656,10 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
                 throw new TaskSubmissionException(message);
             }
 
-            // re-integrate offloaded data:
+            // re-integrate offloaded data and deserialize shuffle descriptors
             try {
-                tdd.loadBigData(taskExecutorBlobService.getPermanentBlobService());
+                tdd.loadBigData(
+                        taskExecutorBlobService.getPermanentBlobService(), shuffleDescriptorsCache);
             } catch (IOException | ClassNotFoundException e) {
                 throw new TaskSubmissionException(
                         "Could not re-integrate offloaded TaskDeploymentDescriptor data.", e);
@@ -1201,14 +1207,12 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
             SlotID slotId, JobID jobId, AllocationID allocationId, ResourceProfile resourceProfile)
             throws SlotAllocationException {
         if (taskSlotTable.isSlotFree(slotId.getSlotNumber())) {
-            if (taskSlotTable.allocateSlot(
+            if (!taskSlotTable.allocateSlot(
                     slotId.getSlotNumber(),
                     jobId,
                     allocationId,
                     resourceProfile,
                     taskManagerConfiguration.getSlotTimeout())) {
-                log.info("Allocated slot for {}.", allocationId);
-            } else {
                 log.info("Could not allocate slot for {}.", allocationId);
                 throw new SlotAllocationException("Could not allocate slot.");
             }
@@ -1886,6 +1890,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
         changelogStoragesManager.releaseResourcesForJob(jobId);
         currentSlotOfferPerJob.remove(jobId);
         channelStateExecutorFactoryManager.releaseResourcesForJob(jobId);
+        shuffleDescriptorsCache.clearCacheForJob(jobId);
     }
 
     private void scheduleResultPartitionCleanup(JobID jobId) {

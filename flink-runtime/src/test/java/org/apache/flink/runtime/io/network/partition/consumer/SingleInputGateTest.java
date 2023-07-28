@@ -28,6 +28,7 @@ import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.deployment.InputGateDeploymentDescriptor;
 import org.apache.flink.runtime.deployment.TaskDeploymentDescriptor;
 import org.apache.flink.runtime.deployment.TaskDeploymentDescriptorFactory.ShuffleDescriptorAndIndex;
+import org.apache.flink.runtime.deployment.TaskDeploymentDescriptorFactory.ShuffleDescriptorGroup;
 import org.apache.flink.runtime.event.TaskEvent;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.IndexRange;
@@ -1323,7 +1324,8 @@ public class SingleInputGateTest extends InputGateTestBase {
                         channelDescs.length,
                         Collections.singletonList(
                                 new TaskDeploymentDescriptor.NonOffloaded<>(
-                                        CompressedSerializedValue.fromObject(channelDescs))));
+                                        CompressedSerializedValue.fromObject(
+                                                new ShuffleDescriptorGroup(channelDescs)))));
 
         final TaskMetricGroup taskMetricGroup =
                 UnregisteredMetricGroups.createUnregisteredTaskMetricGroup();
@@ -1338,6 +1340,7 @@ public class SingleInputGateTest extends InputGateTestBase {
                                 : netEnv.getResultPartitionManager(),
                         new TaskEventDispatcher(),
                         netEnv.getNetworkBufferPool(),
+                        null,
                         null)
                 .create(
                         netEnv.createShuffleIOOwnerContext(
@@ -1345,8 +1348,7 @@ public class SingleInputGateTest extends InputGateTestBase {
                         0,
                         gateDesc,
                         SingleInputGateBuilder.NO_OP_PRODUCER_CHECKER,
-                        newUnregisteredInputChannelMetrics(),
-                        null);
+                        newUnregisteredInputChannelMetrics());
     }
 
     private static Map<InputGateID, SingleInputGate> createInputGateWithLocalChannels(

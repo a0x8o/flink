@@ -42,6 +42,7 @@ import org.apache.flink.runtime.blocklist.DefaultBlocklistHandler;
 import org.apache.flink.runtime.checkpoint.CheckpointProperties;
 import org.apache.flink.runtime.checkpoint.CheckpointRecoveryFactory;
 import org.apache.flink.runtime.checkpoint.CheckpointRetentionPolicy;
+import org.apache.flink.runtime.checkpoint.CheckpointStatsSnapshot;
 import org.apache.flink.runtime.checkpoint.CheckpointsCleaner;
 import org.apache.flink.runtime.checkpoint.CompletedCheckpoint;
 import org.apache.flink.runtime.checkpoint.PerJobCheckpointRecoveryFactory;
@@ -80,8 +81,9 @@ import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
 import org.apache.flink.runtime.jobmanager.PartitionProducerDisposedException;
 import org.apache.flink.runtime.jobmanager.slots.TaskManagerGateway;
 import org.apache.flink.runtime.jobmaster.slotpool.DeclarativeSlotPoolFactory;
+import org.apache.flink.runtime.jobmaster.slotpool.FreeSlotInfoTracker;
+import org.apache.flink.runtime.jobmaster.slotpool.FreeSlotInfoTrackerTestUtils;
 import org.apache.flink.runtime.jobmaster.slotpool.PhysicalSlot;
-import org.apache.flink.runtime.jobmaster.slotpool.SlotInfoWithUtilization;
 import org.apache.flink.runtime.jobmaster.slotpool.SlotPool;
 import org.apache.flink.runtime.jobmaster.slotpool.SlotPoolService;
 import org.apache.flink.runtime.jobmaster.slotpool.SlotPoolServiceFactory;
@@ -570,16 +572,13 @@ class JobMasterTest {
                     "TestingSlotPool does not support this operation.");
         }
 
-        @Nonnull
         @Override
-        public Collection<SlotInfoWithUtilization> getAvailableSlotsInformation() {
-            final Collection<SlotInfoWithUtilization> allSlotInfos =
+        public FreeSlotInfoTracker getFreeSlotInfoTracker() {
+            Map<AllocationID, SlotInfo> freeSlots =
                     registeredSlots.values().stream()
                             .flatMap(Collection::stream)
-                            .map(slot -> SlotInfoWithUtilization.from(slot, ignored -> 0.0d))
-                            .collect(Collectors.toList());
-
-            return Collections.unmodifiableCollection(allSlotInfos);
+                            .collect(Collectors.toMap(SlotInfo::getAllocationId, s -> s));
+            return FreeSlotInfoTrackerTestUtils.createDefaultFreeSlotInfoTracker(freeSlots);
         }
 
         @Override
@@ -2094,6 +2093,42 @@ class JobMasterTest {
             assertThatFuture(jobMasterGateway.requestJobResourceRequirements())
                     .eventuallySucceeds()
                     .isEqualTo(jobResourceRequirements);
+        }
+    }
+
+    @Test
+    void testRetrievingCheckpointStats() throws Exception {
+        // create savepoint data
+        final long savepointId = 42L;
+        final File savepointFile = createSavepoint(savepointId);
+
+        // set savepoint settings
+        final SavepointRestoreSettings savepointRestoreSettings =
+                SavepointRestoreSettings.forPath(savepointFile.getAbsolutePath(), true);
+        final JobGraph jobGraph = createJobGraphWithCheckpointing(savepointRestoreSettings);
+
+        final StandaloneCompletedCheckpointStore completedCheckpointStore =
+                new StandaloneCompletedCheckpointStore(1);
+        final CheckpointRecoveryFactory testingCheckpointRecoveryFactory =
+                PerJobCheckpointRecoveryFactory.withoutCheckpointStoreRecovery(
+                        maxCheckpoints -> completedCheckpointStore);
+        haServices.setCheckpointRecoveryFactory(testingCheckpointRecoveryFactory);
+
+        try (final JobMaster jobMaster =
+                new JobMasterBuilder(jobGraph, rpcService)
+                        .withHighAvailabilityServices(haServices)
+                        .createJobMaster()) {
+
+            // we need to start and register the required slots to let the adaptive scheduler
+            // restore from the savepoint
+            jobMaster.start();
+
+            CheckpointStatsSnapshot checkpointStatsSnapshot =
+                    jobMaster.getGateway().requestCheckpointStats(testingTimeout).get();
+
+            // assert that the checkpoint snapshot reflects the latest completed checkpoint
+            assertThat(checkpointStatsSnapshot.getLatestRestoredCheckpoint().getCheckpointId())
+                    .isEqualTo(savepointId);
         }
     }
 

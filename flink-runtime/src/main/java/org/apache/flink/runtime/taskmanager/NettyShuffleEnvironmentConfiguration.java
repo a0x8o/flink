@@ -44,6 +44,11 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
+import static org.apache.flink.api.common.BatchShuffleMode.ALL_EXCHANGES_HYBRID_FULL;
+import static org.apache.flink.api.common.BatchShuffleMode.ALL_EXCHANGES_HYBRID_SELECTIVE;
+import static org.apache.flink.configuration.ExecutionOptions.BATCH_SHUFFLE_MODE;
+import static org.apache.flink.configuration.NettyShuffleEnvironmentOptions.NETWORK_HYBRID_SHUFFLE_ENABLE_NEW_MODE;
+import static org.apache.flink.configuration.NettyShuffleEnvironmentOptions.NETWORK_HYBRID_SHUFFLE_REMOTE_STORAGE_BASE_PATH;
 import static org.apache.flink.util.Preconditions.checkArgument;
 
 /** Configuration object for the network stack. */
@@ -105,7 +110,7 @@ public class NettyShuffleEnvironmentConfiguration {
 
     private final int maxOverdraftBuffersPerGate;
 
-    private final int hybridShuffleSpilledIndexSegmentSize;
+    private final int hybridShuffleSpilledIndexRegionGroupSize;
 
     private final long hybridShuffleNumRetainedInMemoryRegionsMax;
 
@@ -134,7 +139,7 @@ public class NettyShuffleEnvironmentConfiguration {
             int maxNumberOfConnections,
             boolean connectionReuseEnabled,
             int maxOverdraftBuffersPerGate,
-            int hybridShuffleSpilledIndexSegmentSize,
+            int hybridShuffleSpilledIndexRegionGroupSize,
             long hybridShuffleNumRetainedInMemoryRegionsMax,
             @Nullable TieredStorageConfiguration tieredStorageConfiguration) {
 
@@ -160,7 +165,7 @@ public class NettyShuffleEnvironmentConfiguration {
         this.maxNumberOfConnections = maxNumberOfConnections;
         this.connectionReuseEnabled = connectionReuseEnabled;
         this.maxOverdraftBuffersPerGate = maxOverdraftBuffersPerGate;
-        this.hybridShuffleSpilledIndexSegmentSize = hybridShuffleSpilledIndexSegmentSize;
+        this.hybridShuffleSpilledIndexRegionGroupSize = hybridShuffleSpilledIndexRegionGroupSize;
         this.hybridShuffleNumRetainedInMemoryRegionsMax =
                 hybridShuffleNumRetainedInMemoryRegionsMax;
         this.tieredStorageConfiguration = tieredStorageConfiguration;
@@ -264,8 +269,8 @@ public class NettyShuffleEnvironmentConfiguration {
         return hybridShuffleNumRetainedInMemoryRegionsMax;
     }
 
-    public int getHybridShuffleSpilledIndexSegmentSize() {
-        return hybridShuffleSpilledIndexSegmentSize;
+    public int getHybridShuffleSpilledIndexRegionGroupSize() {
+        return hybridShuffleSpilledIndexRegionGroupSize;
     }
 
     public TieredStorageConfiguration getTieredStorageConfiguration() {
@@ -376,7 +381,8 @@ public class NettyShuffleEnvironmentConfiguration {
 
         int hybridShuffleSpilledIndexSegmentSize =
                 configuration.get(
-                        NettyShuffleEnvironmentOptions.HYBRID_SHUFFLE_SPILLED_INDEX_SEGMENT_SIZE);
+                        NettyShuffleEnvironmentOptions
+                                .HYBRID_SHUFFLE_SPILLED_INDEX_REGION_GROUP_SIZE);
 
         long hybridShuffleNumRetainedInMemoryRegionsMax =
                 configuration.get(
@@ -396,9 +402,17 @@ public class NettyShuffleEnvironmentConfiguration {
                         "The configured floating buffer should be at least 1, please increase the value of %s.",
                         NettyShuffleEnvironmentOptions.NETWORK_EXTRA_BUFFERS_PER_GATE.key()));
 
-        // TODO: use TieredStorageConfiguration.fromConfiguration() when enabling the feature
         TieredStorageConfiguration tieredStorageConfiguration = null;
-
+        if ((configuration.get(BATCH_SHUFFLE_MODE) == ALL_EXCHANGES_HYBRID_FULL
+                        || configuration.get(BATCH_SHUFFLE_MODE) == ALL_EXCHANGES_HYBRID_SELECTIVE)
+                && configuration.getBoolean(NETWORK_HYBRID_SHUFFLE_ENABLE_NEW_MODE)) {
+            tieredStorageConfiguration =
+                    TieredStorageConfiguration.builder(
+                                    pageSize,
+                                    configuration.getString(
+                                            NETWORK_HYBRID_SHUFFLE_REMOTE_STORAGE_BASE_PATH))
+                            .build();
+        }
         return new NettyShuffleEnvironmentConfiguration(
                 numberOfNetworkBuffers,
                 pageSize,

@@ -25,6 +25,7 @@ import org.apache.flink.table.api.TableException;
 import org.apache.flink.table.api.ValidationException;
 import org.apache.flink.table.catalog.exceptions.DatabaseNotExistException;
 import org.apache.flink.table.catalog.exceptions.FunctionNotExistException;
+import org.apache.flink.table.catalog.exceptions.ProcedureNotExistException;
 import org.apache.flink.table.delegation.PlannerTypeInferenceUtil;
 import org.apache.flink.table.functions.AggregateFunction;
 import org.apache.flink.table.functions.AggregateFunctionDefinition;
@@ -40,9 +41,11 @@ import org.apache.flink.table.functions.TableFunctionDefinition;
 import org.apache.flink.table.functions.UserDefinedFunction;
 import org.apache.flink.table.functions.UserDefinedFunctionHelper;
 import org.apache.flink.table.module.ModuleManager;
+import org.apache.flink.table.procedures.Procedure;
 import org.apache.flink.table.resource.ResourceManager;
 import org.apache.flink.table.resource.ResourceUri;
 import org.apache.flink.util.Preconditions;
+import org.apache.flink.util.StringUtils;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -395,6 +398,23 @@ public final class FunctionCatalog {
         };
     }
 
+    public Optional<ContextResolvedProcedure> lookupProcedure(UnresolvedIdentifier identifier) {
+        ObjectIdentifier procedureIdentifier = catalogManager.qualifyIdentifier(identifier);
+        Optional<Catalog> catalog = catalogManager.getCatalog(procedureIdentifier.getCatalogName());
+        if (catalog.isPresent()) {
+            Procedure procedure;
+            try {
+                procedure = catalog.get().getProcedure(procedureIdentifier.toObjectPath());
+            } catch (ProcedureNotExistException e) {
+                return Optional.empty();
+            }
+            return Optional.of(
+                    new ContextResolvedProcedure(
+                            FunctionIdentifier.of(procedureIdentifier), procedure));
+        }
+        return Optional.empty();
+    }
+
     public Optional<ContextResolvedFunction> lookupFunction(UnresolvedIdentifier identifier) {
         // precise function reference
         if (identifier.getDatabaseName().isPresent()) {
@@ -560,6 +580,19 @@ public final class FunctionCatalog {
     }
 
     // --------------------------------------------------------------------------------------------
+    private Optional<ContextResolvedFunction> resolvePreciseFunctionReference(String funcName) {
+        if (StringUtils.isNullOrWhitespaceOnly(catalogManager.getCurrentCatalog())
+                || StringUtils.isNullOrWhitespaceOnly(catalogManager.getCurrentDatabase())) {
+            return Optional.empty();
+        } else {
+            ObjectIdentifier oi =
+                    ObjectIdentifier.of(
+                            catalogManager.getCurrentCatalog(),
+                            catalogManager.getCurrentDatabase(),
+                            funcName);
+            return resolvePreciseFunctionReference(oi);
+        }
+    }
 
     private Optional<ContextResolvedFunction> resolvePreciseFunctionReference(ObjectIdentifier oi) {
         // resolve order:
@@ -628,11 +661,6 @@ public final class FunctionCatalog {
 
         Optional<FunctionDefinition> candidate =
                 moduleManager.getFunctionDefinition(normalizedName);
-        ObjectIdentifier oi =
-                ObjectIdentifier.of(
-                        catalogManager.getCurrentCatalog(),
-                        catalogManager.getCurrentDatabase(),
-                        funcName);
 
         return candidate
                 .map(
@@ -640,7 +668,7 @@ public final class FunctionCatalog {
                                 Optional.of(
                                         ContextResolvedFunction.permanent(
                                                 FunctionIdentifier.of(funcName), fd)))
-                .orElseGet(() -> resolvePreciseFunctionReference(oi));
+                .orElseGet(() -> resolvePreciseFunctionReference(funcName));
     }
 
     @SuppressWarnings("unchecked")

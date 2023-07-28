@@ -1342,7 +1342,7 @@ public class ExecutionEnvironment {
     /**
      * Creates a {@link RemoteEnvironment}. The remote environment sends (parts of) the program to a
      * cluster for execution. Note that all file paths used in the program must be accessible from
-     * the cluster. The custom configuration file is used to configure Akka specific configuration
+     * the cluster. The custom configuration file is used to configure Pekko specific configuration
      * parameters for the Client only; Program parallelism can be set via {@link
      * ExecutionEnvironment#setParallelism(int)}.
      *
@@ -1422,7 +1422,7 @@ public class ExecutionEnvironment {
      */
     protected static void initializeContextEnvironment(ExecutionEnvironmentFactory ctx) {
         contextEnvironmentFactory = Preconditions.checkNotNull(ctx);
-        threadLocalContextEnvironmentFactory.set(contextEnvironmentFactory);
+        threadLocalContextEnvironmentFactory.set(ctx);
     }
 
     /**

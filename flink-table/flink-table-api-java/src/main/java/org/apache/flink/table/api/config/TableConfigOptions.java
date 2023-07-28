@@ -28,6 +28,8 @@ import org.apache.flink.configuration.description.InlineElement;
 import org.apache.flink.table.api.SqlDialect;
 import org.apache.flink.table.catalog.Catalog;
 
+import java.util.List;
+
 import static org.apache.flink.configuration.ConfigOptions.key;
 import static org.apache.flink.configuration.description.TextElement.text;
 
@@ -57,6 +59,17 @@ public class TableConfigOptions {
                     .withDescription(
                             "The name of the default database in the initial catalog to be created "
                                     + "when instantiating TableEnvironment.");
+
+    @Documentation.TableOption(execMode = Documentation.ExecMode.BATCH_STREAMING)
+    public static final ConfigOption<List<String>> TABLE_CATALOG_MODIFICATION_LISTENERS =
+            key("table.catalog-modification.listeners")
+                    .stringType()
+                    .asList()
+                    .noDefaultValue()
+                    .withDescription(
+                            "A (semicolon-separated) list of factories that creates listener for catalog "
+                                    + "modification which will be notified in catalog manager after it "
+                                    + "performs database and table ddl operations successfully.");
 
     @Documentation.TableOption(execMode = Documentation.ExecMode.BATCH_STREAMING)
     public static final ConfigOption<Boolean> TABLE_DML_SYNC =
@@ -198,13 +211,13 @@ public class TableConfigOptions {
                             "Local directory that is used by planner for storing downloaded resources.");
 
     @Documentation.TableOption(execMode = Documentation.ExecMode.BATCH_STREAMING)
-    public static final ConfigOption<Boolean> TABLE_CTAS_ATOMICITY_ENABLED =
-            key("table.ctas.atomicity-enabled")
+    public static final ConfigOption<Boolean> TABLE_RTAS_CTAS_ATOMICITY_ENABLED =
+            key("table.rtas-ctas.atomicity-enabled")
                     .booleanType()
                     .defaultValue(false)
                     .withDescription(
-                            "Specifies if the CREATE TABLE AS SELECT statement is executed atomically. By default, the statement is non-atomic. "
-                                    + "The target table is created on the client side, and it will not be dropped even though the job fails or is canceled. "
+                            "Specifies if the CREATE TABLE/REPLACE TABLE/CREATE OR REPLACE AS SELECT statement is executed atomically. By default, the statement is non-atomic. "
+                                    + "The target table is created/replaced on the client side, and it will not be rolled back even though the job fails or is canceled. "
                                     + "If set this option to true and the underlying DynamicTableSink implements the SupportsStaging interface, "
                                     + "the statement is expected to be executed atomically, the behavior of which depends on the actual DynamicTableSink.");
 

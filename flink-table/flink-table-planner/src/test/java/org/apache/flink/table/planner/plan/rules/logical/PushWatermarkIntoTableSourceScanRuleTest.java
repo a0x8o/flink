@@ -275,4 +275,124 @@ public class PushWatermarkIntoTableSourceScanRuleTest extends TableTestBase {
         util.tableEnv().executeSql(ddl);
         util.verifyRelPlan("SELECT * FROM MyTable");
     }
+
+    @Test
+    public void testWatermarkEmitStrategyWithOptions() {
+        String ddl =
+                "CREATE TABLE MyTable("
+                        + "  a INT,\n"
+                        + "  b BIGINT,\n"
+                        + "  c TIMESTAMP(3),\n"
+                        + "  WATERMARK FOR c AS c - INTERVAL '5' SECOND\n"
+                        + ") WITH (\n"
+                        + "  'connector' = 'values',\n"
+                        + "  'enable-watermark-push-down' = 'true',\n"
+                        + "  'bounded' = 'false',\n"
+                        + "  'scan.watermark.emit.strategy' = 'on-event',\n"
+                        + "  'disable-lookup' = 'true'"
+                        + ")";
+        util.tableEnv().executeSql(ddl);
+        util.verifyRelPlan("select a, c from MyTable");
+    }
+
+    @Test
+    public void testWatermarkEmitStrategyWithHint() {
+        String ddl =
+                "CREATE TABLE MyTable("
+                        + "  a INT,\n"
+                        + "  b BIGINT,\n"
+                        + "  c TIMESTAMP(3),\n"
+                        + "  WATERMARK FOR c AS c - INTERVAL '5' SECOND\n"
+                        + ") WITH (\n"
+                        + "  'connector' = 'values',\n"
+                        + "  'enable-watermark-push-down' = 'true',\n"
+                        + "  'bounded' = 'false',\n"
+                        + "  'disable-lookup' = 'true'"
+                        + ")";
+        util.tableEnv().executeSql(ddl);
+        util.verifyRelPlan(
+                "select a, c from MyTable /*+ OPTIONS("
+                        + "'scan.watermark.emit.strategy'='on-event') */");
+    }
+
+    @Test
+    public void testWatermarkAlignmentWithOptions() {
+        String ddl =
+                "CREATE TABLE MyTable("
+                        + "  a INT,\n"
+                        + "  b BIGINT,\n"
+                        + "  c TIMESTAMP(3),\n"
+                        + "  WATERMARK FOR c AS c - INTERVAL '5' SECOND\n"
+                        + ") WITH (\n"
+                        + "  'connector' = 'values',\n"
+                        + "  'enable-watermark-push-down' = 'true',\n"
+                        + "  'bounded' = 'false',\n"
+                        + "  'scan.watermark.alignment.group' = 'group1',\n"
+                        + "  'scan.watermark.alignment.max-drift' = '1min',\n"
+                        + "  'disable-lookup' = 'true'"
+                        + ")";
+        util.tableEnv().executeSql(ddl);
+        util.verifyRelPlan("select a, c from MyTable");
+    }
+
+    @Test
+    public void testWatermarkAlignmentWithHint() {
+        String ddl =
+                "CREATE TABLE MyTable("
+                        + "  a INT,\n"
+                        + "  b BIGINT,\n"
+                        + "  c TIMESTAMP(3),\n"
+                        + "  WATERMARK FOR c AS c - INTERVAL '5' SECOND\n"
+                        + ") WITH (\n"
+                        + "  'connector' = 'values',\n"
+                        + "  'enable-watermark-push-down' = 'true',\n"
+                        + "  'bounded' = 'false',\n"
+                        + "  'disable-lookup' = 'true'"
+                        + ")";
+        util.tableEnv().executeSql(ddl);
+        util.verifyRelPlan(
+                "select a, c from MyTable /*+ OPTIONS("
+                        + "'scan.watermark.alignment.group'='group1', "
+                        + "'scan.watermark.alignment.max-drift'='1min') */");
+    }
+
+    @Test
+    public void testIdleSourceWithOptions() {
+        util.tableEnv().getConfig().set(TABLE_EXEC_SOURCE_IDLE_TIMEOUT, Duration.ofMillis(1000));
+        String ddl =
+                "CREATE TABLE MyTable("
+                        + "  a INT,\n"
+                        + "  b BIGINT,\n"
+                        + "  c TIMESTAMP(3),\n"
+                        + "  WATERMARK FOR c AS c - INTERVAL '5' SECOND\n"
+                        + ") WITH (\n"
+                        + "  'connector' = 'values',\n"
+                        + "  'enable-watermark-push-down' = 'true',\n"
+                        + "  'bounded' = 'false',\n"
+                        + "  'disable-lookup' = 'true',\n"
+                        + "  'scan.watermark.idle-timeout' = '60s'"
+                        + ")";
+        util.tableEnv().executeSql(ddl);
+        util.verifyRelPlan("select a, c from MyTable");
+    }
+
+    @Test
+    public void testIdleSourceWithHint() {
+        util.tableEnv().getConfig().set(TABLE_EXEC_SOURCE_IDLE_TIMEOUT, Duration.ofMillis(1000));
+        String ddl =
+                "CREATE TABLE MyTable("
+                        + "  a INT,\n"
+                        + "  b BIGINT,\n"
+                        + "  c TIMESTAMP(3),\n"
+                        + "  WATERMARK FOR c AS c - INTERVAL '5' SECOND\n"
+                        + ") WITH (\n"
+                        + "  'connector' = 'values',\n"
+                        + "  'enable-watermark-push-down' = 'true',\n"
+                        + "  'bounded' = 'false',\n"
+                        + "  'disable-lookup' = 'true'"
+                        + ")";
+        util.tableEnv().executeSql(ddl);
+        util.verifyRelPlan(
+                "select a, c from MyTable /*+ OPTIONS('scan.watermark.idle-timeout' = '60s')*/");
+    }
 }
