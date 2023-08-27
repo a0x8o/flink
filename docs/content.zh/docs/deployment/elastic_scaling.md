@@ -134,7 +134,6 @@ Adaptive 调度器可以基于现有的 Slot 调整 Job 的并行度。它会在
 需要设置如下的配置参数：
 
 - `jobmanager.scheduler: adaptive`：将默认的调度器换成 Adaptive。
-- `cluster.declarative-resource-management.enabled`：声明式资源管理必须开启（默认开启）。
 
 Adaptive 调度器可以通过[所有在名字包含 `adaptive-scheduler` 的配置]({{< ref "docs/deployment/config">}}#advanced-scheduling-options)修改其行为。
 
@@ -142,8 +141,7 @@ Adaptive 调度器可以通过[所有在名字包含 `adaptive-scheduler` 的配
 
 ### 局限性
 
-- **只支持流式 Job**：Adaptive 调度器的第一个版本仅支持流式 Job。当提交的是一个批处理 Job 时，我们会自动换回默认调度器。
-- **不支持[本地恢复]({{< ref "docs/ops/state/large_state_tuning">}}#task-local-recovery)**：本地恢复是将 Task 调度到状态尽可能的被重用的机器上的功能。不支持这个功能意味着 Adaptive 调度器需要每次从 Checkpoint 的存储中下载整个 State。
+- **只支持流式 Job**：Adaptive 调度器仅支持流式 Job。当提交的是一个批处理 Job 时，Flink 会自动使用批处理 Job 的默认调度器，即 Adaptive Batch Scheduler。
 - **不支持部分故障恢复**: 部分故障恢复意味着调度器可以只重启失败 Job 其中某一部分（在 Flink 的内部结构中被称之为 Region）而不是重启整个 Job。这个限制只会影响那些独立并行（Embarrassingly Parallel）Job的恢复时长，默认的调度器可以重启失败的部分，然而 Adaptive 将需要重启整个 Job。
 - 扩缩容事件会触发 Job 和 Task 重启，Task 重试的次数也会增加。
 

@@ -39,7 +39,8 @@ import static org.apache.flink.runtime.testutils.CommonTestUtils.getJavaCommandP
 import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.apache.flink.util.Preconditions.checkState;
-import static org.junit.Assert.fail;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.fail;
 
 /** A {@link Process} running a separate JVM. */
 public abstract class TestJvmProcess {
@@ -195,7 +196,7 @@ public abstract class TestJvmProcess {
         System.out.println("-----------------------------------------");
     }
 
-    public void destroy() {
+    public void destroy() throws InterruptedException {
         synchronized (createDestroyLock) {
             checkState(process != null, "process not started");
 
@@ -207,27 +208,8 @@ public abstract class TestJvmProcess {
             LOG.info("Destroying " + getName() + " process.");
 
             try {
-                // try to call "destroyForcibly()" on Java 8
-                boolean destroyed = false;
-                try {
-                    Method m = process.getClass().getMethod("destroyForcibly");
-                    m.setAccessible(true);
-                    m.invoke(process);
-                    destroyed = true;
-                } catch (NoSuchMethodException ignored) {
-                    // happens on Java 7
-                } catch (Throwable t) {
-                    LOG.error("Failed to forcibly destroy process", t);
-                }
-
-                // if it was not destroyed, call the regular destroy method
-                if (!destroyed) {
-                    try {
-                        process.destroy();
-                    } catch (Throwable t) {
-                        LOG.error("Error while trying to destroy process.", t);
-                    }
-                }
+                process.destroyForcibly();
+                process.waitFor();
             } finally {
                 destroyed = true;
                 ShutdownHookUtil.removeShutdownHook(shutdownHook, getClass().getSimpleName(), LOG);
@@ -335,18 +317,18 @@ public abstract class TestJvmProcess {
             Thread.sleep(10);
         }
 
-        if (!exists) {
-            fail("The marker file was not found within " + timeoutMillis + " msecs");
-        }
+        assertThat(exists)
+                .withFailMessage("The marker file was not found within %s msecs", timeoutMillis)
+                .isTrue();
     }
 
     public static void killProcessWithSigTerm(long pid) throws Exception {
         // send it a regular kill command (SIG_TERM)
         final Process kill = Runtime.getRuntime().exec("kill " + pid);
         kill.waitFor();
-        if (kill.exitValue() != 0) {
-            fail("failed to send SIG_TERM to process " + pid);
-        }
+        assertThat(kill.exitValue())
+                .withFailMessage("failed to send SIG_TERM to process %s", pid)
+                .isZero();
     }
 
     public static void waitForMarkerFiles(File basedir, String prefix, int num, long timeout) {

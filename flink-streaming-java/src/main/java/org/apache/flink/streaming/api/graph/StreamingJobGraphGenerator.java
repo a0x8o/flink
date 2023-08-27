@@ -1923,8 +1923,7 @@ public class StreamingJobGraphGenerator {
 
         long interval = cfg.getCheckpointInterval();
         if (interval < MINIMAL_CHECKPOINT_TIME) {
-            // interval of max value means disable periodic checkpoint
-            interval = Long.MAX_VALUE;
+            interval = CheckpointCoordinatorConfiguration.DISABLED_CHECKPOINT_INTERVAL;
         }
 
         //  --- configure options ---
@@ -2012,6 +2011,8 @@ public class StreamingJobGraphGenerator {
                 new JobCheckpointingSettings(
                         CheckpointCoordinatorConfiguration.builder()
                                 .setCheckpointInterval(interval)
+                                .setCheckpointIntervalDuringBacklog(
+                                        cfg.getCheckpointIntervalDuringBacklog())
                                 .setCheckpointTimeout(cfg.getCheckpointTimeout())
                                 .setMinPauseBetweenCheckpoints(cfg.getMinPauseBetweenCheckpoints())
                                 .setMaxConcurrentCheckpoints(cfg.getMaxConcurrentCheckpoints())

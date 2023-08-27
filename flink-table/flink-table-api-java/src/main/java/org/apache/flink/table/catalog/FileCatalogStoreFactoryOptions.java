@@ -18,12 +18,12 @@
 
 package org.apache.flink.table.catalog;
 
+import org.apache.flink.annotation.Internal;
 import org.apache.flink.configuration.ConfigOption;
 import org.apache.flink.configuration.ConfigOptions;
 
-import java.nio.charset.StandardCharsets;
-
 /** {@link ConfigOption}s for {@link FileCatalogStoreFactory}. */
+@Internal
 public class FileCatalogStoreFactoryOptions {
 
     public static final String IDENTIFIER = "file";
@@ -34,13 +34,6 @@ public class FileCatalogStoreFactoryOptions {
                     .noDefaultValue()
                     .withDescription(
                             "The configuration option for specifying the path to the file catalog store.");
-
-    public static final ConfigOption<String> CHARSET =
-            ConfigOptions.key("charset")
-                    .stringType()
-                    .defaultValue(StandardCharsets.UTF_8.displayName())
-                    .withDescription(
-                            "The charset used for storing/reading the catalog configuration.");
 
     private FileCatalogStoreFactoryOptions() {}
 }
