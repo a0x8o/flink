@@ -17,9 +17,11 @@
 ################################################################################
 from __future__ import print_function
 
+import glob
 import io
 import os
 import platform
+import re
 import sys
 from distutils.command.build_ext import build_ext
 from shutil import copytree, copy, rmtree
@@ -206,9 +208,13 @@ try:
             print("Temp path for symlink to parent already exists {0}".format(TEMP_PATH),
                   file=sys.stderr)
             sys.exit(-1)
-        flink_version = VERSION.replace(".dev0", "-SNAPSHOT")
-        FLINK_HOME = os.path.abspath(
-            "../flink-dist/target/flink-%s-bin/flink-%s" % (flink_version, flink_version))
+        flink_version = re.sub("[.]dev.*", "-SNAPSHOT", VERSION)
+        flink_homes = glob.glob('../flink-dist/target/flink-*-bin/flink-*')
+        if len(flink_homes) != 1:
+            print("Exactly one Flink home directory must exist, but found: {0}".format(flink_homes),
+                  file=sys.stderr)
+            sys.exit(-1)
+        FLINK_HOME = os.path.abspath(flink_homes[0])
         FLINK_ROOT = os.path.abspath("..")
         FLINK_DIST = os.path.join(FLINK_ROOT, "flink-dist")
         FLINK_BIN = os.path.join(FLINK_DIST, "src/main/flink-bin")
@@ -252,7 +258,7 @@ try:
                   "is complete, or do this in the flink-python directory of the flink source "
                   "directory.")
             sys.exit(-1)
-    if VERSION.find('dev0') != -1:
+    if re.search('dev.*$', VERSION) is not None:
         apache_flink_libraries_dependency = 'apache-flink-libraries==%s' % VERSION
     else:
         split_versions = VERSION.split('.')

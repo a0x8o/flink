@@ -21,6 +21,7 @@ import glob
 import io
 import os
 import platform
+import re
 import subprocess
 import sys
 from shutil import copytree, copy, rmtree
@@ -97,9 +98,13 @@ try:
             print("Temp path for symlink to parent already exists {0}".format(TEMP_PATH),
                   file=sys.stderr)
             sys.exit(-1)
-        flink_version = VERSION.replace(".dev0", "-SNAPSHOT")
-        FLINK_HOME = os.path.abspath(
-            "../../flink-dist/target/flink-%s-bin/flink-%s" % (flink_version, flink_version))
+        flink_version = re.sub("[.]dev.*", "-SNAPSHOT", VERSION)
+        flink_homes = glob.glob('../../flink-dist/target/flink-*-bin/flink-*')
+        if len(flink_homes) != 1:
+            print("Exactly one Flink home directory must exist, but found: {0}".format(flink_homes),
+                  file=sys.stderr)
+            sys.exit(-1)
+        FLINK_HOME = os.path.abspath(flink_homes[0])
 
         incorrect_invocation_message = """
 If you are installing pyflink from flink source, you must first build Flink and
