@@ -17,7 +17,6 @@
 ################################################################################
 from __future__ import print_function
 
-import glob
 import io
 import os
 import platform
@@ -27,6 +26,7 @@ from distutils.command.build_ext import build_ext
 from shutil import copytree, copy, rmtree
 
 from setuptools import setup, Extension
+from xml.etree import ElementTree as ET
 
 if sys.version_info < (3, 7):
     print("Python versions prior to 3.7 are not supported for PyFlink.",
@@ -208,13 +208,18 @@ try:
             print("Temp path for symlink to parent already exists {0}".format(TEMP_PATH),
                   file=sys.stderr)
             sys.exit(-1)
-        flink_version = re.sub("[.]dev.*", "-SNAPSHOT", VERSION)
-        flink_homes = glob.glob('../flink-dist/target/flink-*-bin/flink-*')
-        if len(flink_homes) != 1:
-            print("Exactly one Flink home directory must exist, but found: {0}".format(flink_homes),
-                  file=sys.stderr)
+        namespace = "http://maven.apache.org/POM/4.0.0"
+        flink_version = ET.parse("../pom.xml").getroot().find(
+            'POM:version',
+            namespaces={
+                'POM': 'http://maven.apache.org/POM/4.0.0'
+            }).text
+        if not flink_version:
+            print("Not able to get flink version", file=sys.stderr)
             sys.exit(-1)
-        FLINK_HOME = os.path.abspath(flink_homes[0])
+        print("Detected flink version: {0}".format(flink_version))
+        FLINK_HOME = os.path.abspath(
+            "../flink-dist/target/flink-%s-bin/flink-%s" % (flink_version, flink_version))
         FLINK_ROOT = os.path.abspath("..")
         FLINK_DIST = os.path.join(FLINK_ROOT, "flink-dist")
         FLINK_BIN = os.path.join(FLINK_DIST, "src/main/flink-bin")
@@ -314,7 +319,7 @@ try:
     install_requires = ['py4j==0.10.9.7', 'python-dateutil>=2.8.0,<3',
                         'apache-beam>=2.43.0,<2.49.0',
                         'cloudpickle>=2.2.0', 'avro-python3>=1.8.1,!=1.9.2',
-                        'pytz>=2018.3', 'fastavro>=1.1.0', 'requests>=2.26.0',
+                        'pytz>=2018.3', 'fastavro>=1.1.0,!=1.8.0', 'requests>=2.26.0',
                         'protobuf>=3.19.0',
                         'numpy>=1.21.4',
                         'pandas>=1.3.0',
