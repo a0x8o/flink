@@ -17,33 +17,58 @@
 
 package org.apache.flink.table.planner.functions.sql;
 
-import org.apache.flink.shaded.guava30.com.google.common.collect.ImmutableList;
+import org.apache.flink.shaded.guava32.com.google.common.collect.ImmutableList;
+import org.apache.flink.shaded.guava32.com.google.common.collect.ImmutableMap;
 
+import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.sql.SqlCallBinding;
 import org.apache.calcite.sql.SqlKind;
+import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlOperator;
+import org.apache.calcite.sql.TableCharacteristic;
+import org.apache.calcite.sql.type.SqlTypeUtil;
+import org.apache.calcite.sql.validate.SqlValidator;
+import org.checkerframework.checker.nullness.qual.Nullable;
+
+import java.util.Map;
 
 /**
- * SqlSessionTableFunction implements an operator for session.
- *
- * <p>It allows three parameters:
+ * SqlSessionTableFunction implements an operator for per-key sessionization. It allows four
+ * parameters:
  *
  * <ol>
- *   <li>a table
- *   <li>a descriptor to provide a time attribute column name from the input table
- *   <li>an interval parameter to specify an inactive activity gap to break sessions
+ *   <li>table as data source
+ *   <li>a descriptor to provide a watermarked column name from the input table
+ *   <li>a descriptor to provide a column as key, on which sessionization will be applied, optional
+ *   <li>an interval parameter to specify a inactive activity gap to break sessions
+ * </ol>
+ *
+ * <p>Mainly copy from {@link org.apache.calcite.sql.SqlSessionTableFunction}. FLINK modifications
+ * are the following:
+ *
+ * <ol>
+ *   <li>Add some attributes required for PTF.
+ *   <li>Invalid the deprecated syntax in calcite about 'partition by' in window tvf like: (TABLE
+ *       table_name, DESCRIPTOR(timecol), DESCRIPTOR(key) optional, datetime interval)
  * </ol>
  */
 public class SqlSessionTableFunction extends SqlWindowTableFunction {
-
     public SqlSessionTableFunction() {
         super(SqlKind.SESSION.name(), new OperandMetadataImpl());
     }
 
+    private final Map<Integer, TableCharacteristic> tableParams =
+            ImmutableMap.of(
+                    0,
+                    TableCharacteristic.builder(TableCharacteristic.Semantics.SET)
+                            .pruneIfEmpty()
+                            .passColumnsThrough()
+                            .build());
+
     /** Operand type checker for SESSION. */
     private static class OperandMetadataImpl extends AbstractOperandMetadata {
         OperandMetadataImpl() {
-            super(ImmutableList.of(PARAM_DATA, PARAM_TIMECOL, PARAM_SESSION_GAP), 3);
+            super(ImmutableList.of(PARAM_DATA, PARAM_TIMECOL, GAP), 3);
         }
 
         @Override
@@ -51,17 +76,28 @@ public class SqlSessionTableFunction extends SqlWindowTableFunction {
             if (!checkTableAndDescriptorOperands(callBinding, 1)) {
                 return throwValidationSignatureErrorOrReturnFalse(callBinding, throwOnFailure);
             }
-            if (!checkIntervalOperands(callBinding, 2)) {
+
+            final SqlValidator validator = callBinding.getValidator();
+            final SqlNode operand2 = callBinding.operand(2);
+            final RelDataType type2 = validator.getValidatedNodeType(operand2);
+            if (!SqlTypeUtil.isInterval(type2)) {
                 return throwValidationSignatureErrorOrReturnFalse(callBinding, throwOnFailure);
             }
-            // check time attribute
+
             return throwExceptionOrReturnFalse(
                     checkTimeColumnDescriptorOperand(callBinding, 1), throwOnFailure);
         }
 
         @Override
         public String getAllowedSignatures(SqlOperator op, String opName) {
-            return opName + "(TABLE table_name, DESCRIPTOR(timecol), datetime interval)";
+            return opName
+                    + "(TABLE table_name [PARTITION BY (keycols, ...)], "
+                    + "DESCRIPTOR(timecol), datetime interval)";
         }
+    }
+
+    @Override
+    public @Nullable TableCharacteristic tableCharacteristic(int ordinal) {
+        return tableParams.get(ordinal);
     }
 }
