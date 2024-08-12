@@ -76,6 +76,7 @@ import static org.apache.flink.table.functions.BuiltInFunctionDefinitions.ATAN;
 import static org.apache.flink.table.functions.BuiltInFunctionDefinitions.AVG;
 import static org.apache.flink.table.functions.BuiltInFunctionDefinitions.BETWEEN;
 import static org.apache.flink.table.functions.BuiltInFunctionDefinitions.BIN;
+import static org.apache.flink.table.functions.BuiltInFunctionDefinitions.BTRIM;
 import static org.apache.flink.table.functions.BuiltInFunctionDefinitions.CARDINALITY;
 import static org.apache.flink.table.functions.BuiltInFunctionDefinitions.CAST;
 import static org.apache.flink.table.functions.BuiltInFunctionDefinitions.CEIL;
@@ -116,6 +117,8 @@ import static org.apache.flink.table.functions.BuiltInFunctionDefinitions.IS_NUL
 import static org.apache.flink.table.functions.BuiltInFunctionDefinitions.IS_TRUE;
 import static org.apache.flink.table.functions.BuiltInFunctionDefinitions.JSON_EXISTS;
 import static org.apache.flink.table.functions.BuiltInFunctionDefinitions.JSON_QUERY;
+import static org.apache.flink.table.functions.BuiltInFunctionDefinitions.JSON_QUOTE;
+import static org.apache.flink.table.functions.BuiltInFunctionDefinitions.JSON_UNQUOTE;
 import static org.apache.flink.table.functions.BuiltInFunctionDefinitions.JSON_VALUE;
 import static org.apache.flink.table.functions.BuiltInFunctionDefinitions.LAST_VALUE;
 import static org.apache.flink.table.functions.BuiltInFunctionDefinitions.LEFT;
@@ -1149,6 +1152,19 @@ public abstract class BaseExpressions<InType, OutType> {
                 unresolvedCall(REGEXP_EXTRACT, toExpr(), objectToExpression(regex)));
     }
 
+    /**
+     * Returns a string by quotes a string as a JSON value and wrapping it with double quote
+     * characters.
+     */
+    public OutType jsonQuote() {
+        return toApiSpecificExpression(unresolvedCall(JSON_QUOTE, objectToExpression(toExpr())));
+    }
+
+    /** Returns a string by unquoting JSON value. */
+    public OutType jsonUnquote() {
+        return toApiSpecificExpression(unresolvedCall(JSON_UNQUOTE, objectToExpression(toExpr())));
+    }
+
     /** Returns the base string decoded with base64. */
     public OutType fromBase64() {
         return toApiSpecificExpression(unresolvedCall(FROM_BASE64, toExpr()));
@@ -1254,6 +1270,17 @@ public abstract class BaseExpressions<InType, OutType> {
     /** Returns a string that removes the right whitespaces from the given string. */
     public OutType rtrim() {
         return toApiSpecificExpression(unresolvedCall(RTRIM, toExpr()));
+    }
+
+    /** Returns a string that removes the left and right whitespaces from the given string. */
+    public OutType btrim() {
+        return toApiSpecificExpression(unresolvedCall(BTRIM, toExpr()));
+    }
+
+    /** Returns a string that removes the left and right chars in trimStr from the given string. */
+    public OutType btrim(InType trimStr) {
+        return toApiSpecificExpression(
+                unresolvedCall(BTRIM, toExpr(), objectToExpression(trimStr)));
     }
 
     /** Returns a string that repeats the base string n times. */

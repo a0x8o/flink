@@ -340,6 +340,12 @@ string:
     description: |
       返回从 STRING 中删除右边空格的字符串。
       例如 `'This is a test String. '.rtrim()` 返回 `'This is a test String.'`。
+  - sql: BTRIM(str[, trimStr])
+    table: str.btrim([trimStr])
+    description: |
+      从 str 的左边和右边删除 trimStr 中的字符。trimStr 默认设置为空格。      
+      str <CHAR | VARCHAR>, trimStr <CHAR | VARCHAR>
+      返回一个 STRING 格式的裁剪后的 str。如果任何参数为 `NULL`，则返回 `NULL`。
   - sql: REPEAT(string, int)
     table: STRING.repeat(INT)
     description: |
@@ -494,6 +500,12 @@ string:
   - sql: SUBSTR(string, integer1[, integer2])
     table: STRING.substr(INTEGER1[, INTEGER2])
     description: 返回字符串的子字符串，从位置 integer1 开始，长度为 integer2（默认到末尾）。
+  - sql: JSON_QUOTE(string)
+    table: STRING.JsonQuote()
+    description: Quotes a string as a JSON value by wrapping it with double quote characters, escaping interior quote and special characters ('"', '\', '/', 'b', 'f', 'n', 'r', 't'), and returning the result as a string. If the argument is NULL, the function returns NULL.
+  - sql: JSON_UNQUOTE(string)
+    table: STRING.JsonUnquote()
+    description: Unquotes JSON value, unescapes escaped special characters ('"', '\', '/', 'b', 'f', 'n', 'r', 't', 'u' hex hex hex hex), and returns the result as a string. If the argument is NULL, returns NULL. If the value does not start and end with double quotes or if it starts and ends with double quotes but is not a valid JSON string literal, the value is passed through unmodified.
 
 temporal:
   - sql: DATE string

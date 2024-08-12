@@ -274,6 +274,12 @@ string:
   - sql: RTRIM(string)
     table: STRING.rtrim()
     description: Returns a string that removes the right whitespaces from STRING. E.g., 'This is a test String. '.rtrim() returns "This is a test String.".
+  - sql: BTRIM(str[, trimStr])
+    table: str.btrim([trimStr])
+    description: |
+      Removes any leading and trailing characters within trimStr from str. trimStr is set to whitespace by default.
+      str <CHAR | VARCHAR>, trimStr <CHAR | VARCHAR>
+      Returns a STRING representation of the trimmed str. `NULL` if any of the arguments are `NULL`.
   - sql: REPEAT(string, int)
     table: STRING.repeat(INT)
     description: Returns a string that repeats the base string integer times. E.g., REPEAT('This is a test String.', 2) returns "This is a test String.This is a test String.".
@@ -394,6 +400,12 @@ string:
   - sql: SUBSTR(string, integer1[, integer2])
     table: STRING.substr(INTEGER1[, INTEGER2])
     description: Returns a substring of string starting from position integer1 with length integer2 (to the end by default).
+  - sql: JSON_QUOTE(string)
+    table: STRING.JsonQuote()
+    description: Quotes a string as a JSON value by wrapping it with double quote characters, escaping interior quote and special characters ('"', '\', '/', 'b', 'f', 'n', 'r', 't'), and returning the result as a string. If the argument is NULL, the function returns NULL.
+  - sql: JSON_UNQUOTE(string)
+    table: STRING.JsonUnquote()
+    description: Unquotes JSON value, unescapes escaped special characters ('"', '\', '/', 'b', 'f', 'n', 'r', 't', 'u' hex hex hex hex), and returns the result as a string. If the argument is NULL, returns NULL. If the value does not start and end with double quotes or if it starts and ends with double quotes but is not a valid JSON string literal, the value is passed through unmodified.
 
 temporal:
   - sql: DATE string

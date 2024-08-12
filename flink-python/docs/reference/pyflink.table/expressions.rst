@@ -194,6 +194,7 @@ string functions
     Expression.parse_url
     Expression.ltrim
     Expression.rtrim
+    Expression.btrim
     Expression.repeat
     Expression.over
     Expression.reverse
@@ -308,3 +309,5 @@ JSON functions
     Expression.json_exists
     Expression.json_value
     Expression.json_query
+    Expression.json_quote
+    Expression.json_unquote
