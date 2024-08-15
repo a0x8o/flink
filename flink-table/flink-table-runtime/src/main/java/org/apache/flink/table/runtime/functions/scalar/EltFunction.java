@@ -16,24 +16,30 @@
  * limitations under the License.
  */
 
-package org.apache.flink.table.planner.plan.nodes.exec.stream;
+package org.apache.flink.table.runtime.functions.scalar;
 
-import org.apache.flink.table.planner.plan.nodes.exec.common.ExpandTestPrograms;
-import org.apache.flink.table.planner.plan.nodes.exec.testutils.RestoreTestBase;
-import org.apache.flink.table.test.program.TableTestProgram;
+import org.apache.flink.annotation.Internal;
+import org.apache.flink.table.functions.BuiltInFunctionDefinitions;
+import org.apache.flink.table.functions.SpecializedFunction.SpecializedContext;
 
-import java.util.Collections;
-import java.util.List;
+import javax.annotation.Nullable;
 
-/** Restore tests for {@link StreamExecExpand}. */
-public class ExpandRestoreTest extends RestoreTestBase {
+/** Implementation of {@link BuiltInFunctionDefinitions#ELT}. */
+@Internal
+public class EltFunction extends BuiltInScalarFunction {
 
-    public ExpandRestoreTest() {
-        super(StreamExecExpand.class);
+    public EltFunction(SpecializedContext context) {
+        super(BuiltInFunctionDefinitions.ELT, context);
     }
 
-    @Override
-    public List<TableTestProgram> programs() {
-        return Collections.singletonList(ExpandTestPrograms.EXPAND);
+    public @Nullable Object eval(@Nullable Number index, Object... exprs) {
+        if (index == null) {
+            return null;
+        }
+        long idx = index.longValue();
+        if (idx < 1 || idx > exprs.length) {
+            return null;
+        }
+        return exprs[(int) index - 1];
     }
 }
