@@ -88,7 +88,7 @@ _string_doc_seealso = """
              :func:`~Expression.overlay`, :func:`~Expression.regexp_replace`,
              :func:`~Expression.regexp_extract`, :func:`~Expression.substring`,
              :py:attr:`~Expression.from_base64`, :py:attr:`~Expression.to_base64`,
-             :py:attr:`~Expression.ltrim`, :py:attr:`~Expression.rtrim`, :func:`~Expression.repeat`,
+             :func:`~Expression.ltrim`, :func:`~Expression.rtrim`, :func:`~Expression.repeat`,
              :func:`~Expression.json_quote`, :func:`~Expression.json_unquote`
 """
 
@@ -1006,6 +1006,17 @@ class Expression(Generic[T]):
         """
         return _unary_op("hex")(self)
 
+    @property
+    def unhex(self) -> 'Expression':
+        """
+        Converts hexadecimal string expr to BINARY.
+        If the length of expr is odd, the first character is discarded
+        and the result is left padded with a null byte.
+
+        :return: a BINARY. null if expr is null or expr contains non-hex characters.
+        """
+        return _unary_op("unhex")(self)
+
     def truncate(self, n: Union[int, 'Expression[int]'] = 0) -> 'Expression[T]':
         """
         Returns a number of truncated to n decimal places.
@@ -1193,6 +1204,17 @@ class Expression(Generic[T]):
         """
         return _binary_op("regexp")(self, regex)
 
+    def regexp_count(self, regex) -> 'Expression':
+        """
+        Returns the number of times str matches the regex pattern.
+        regex must be a Java regular expression.
+        null if any of the arguments are null or regex is invalid.
+
+        :param regex: A STRING expression with a matching pattern.
+        :return: An INTEGER representation of the number of matches.
+        """
+        return _binary_op("regexpCount")(self, regex)
+
     def regexp_replace(self,
                        regex: Union[str, 'Expression[str]'],
                        replacement: Union[str, 'Expression[str]']) -> 'Expression[str]':
@@ -1213,6 +1235,45 @@ class Expression(Generic[T]):
             return _ternary_op("regexpExtract")(self, regex)
         else:
             return _ternary_op("regexpExtract")(self, regex, extract_index)
+
+    def regexp_extract_all(self, regex, extract_index=None) -> 'Expression':
+        """
+        Extracts all the substrings in str that match the regex expression and correspond to the
+        regex group extract_index.
+        regex may contain multiple groups. extract_index indicates which regex group to extract and
+        starts from 1, also the default value if not specified. 0 means matching the entire
+        regular expression.
+        null if any of the arguments are null or invalid.
+
+        :param regex: A STRING expression with a matching pattern.
+        :param extract_index: An optional INTEGER expression with default 1.
+        :return: An ARRAY<STRING> of all the matched substrings.
+        """
+        if extract_index is None:
+            return _binary_op("regexpExtractAll")(self, regex)
+        else:
+            return _ternary_op("regexpExtractAll")(self, regex, extract_index)
+
+    def regexp_instr(self, regex) -> 'Expression':
+        """
+        Returns the position of the first substring in str that matches regex.
+        Result indexes begin at 1, 0 if there is no match.
+        null if any of the arguments are null or regex is invalid.
+
+        :param regex: A STRING expression with a matching pattern.
+        :return: An INTEGER representation of the first matched substring index.
+        """
+        return _binary_op("regexpInstr")(self, regex)
+
+    def regexp_substr(self, regex) -> 'Expression':
+        """
+        Returns the first substring in str that matches regex.
+        null if any of the arguments are null or regex is invalid or pattern is not found.
+
+        :param regex: A STRING expression with a matching pattern.
+        :return: A STRING representation of the first matched substring.
+        """
+        return _binary_op("regexpSubstr")(self, regex)
 
     @property
     def from_base64(self) -> 'Expression[str]':
@@ -1310,19 +1371,39 @@ class Expression(Generic[T]):
         else:
             return _ternary_op("parseUrl")(self, part_to_extract, key)
 
-    @property
-    def ltrim(self) -> 'Expression[str]':
+    def printf(self, *obj) -> 'Expression':
         """
-        Returns a string that removes the left whitespaces from the given string.
-        """
-        return _unary_op("ltrim")(self)
+        Returns a formatted string from printf-style format strings.
+        The function exploits the java.util.Formatter class with Locale.US.
 
-    @property
-    def rtrim(self) -> 'Expression[str]':
+        :param obj: any expression
+        :return: a formatted string. null if format is null or invalid.
         """
-        Returns a string that removes the right whitespaces from the given string.
+        gateway = get_gateway()
+        ApiExpressionUtils = gateway.jvm.org.apache.flink.table.expressions.ApiExpressionUtils
+        exprs = [ApiExpressionUtils.objectToExpression(_get_java_expression(e))
+                 for e in obj]
+        return _binary_op("printf")(self, to_jarray(gateway.jvm.Object, exprs))
+
+    def ltrim(self, trim_str=None) -> 'Expression[str]':
         """
-        return _unary_op("rtrim")(self)
+        Removes any leading characters within trim_str from str.
+        trim_str is set to whitespace by default.
+        """
+        if trim_str is None:
+            return _unary_op("ltrim")(self)
+        else:
+            return _binary_op("ltrim")(self, trim_str)
+
+    def rtrim(self, trim_str=None) -> 'Expression[str]':
+        """
+        Removes any trailing characters within trim_str from str.
+        trim_str is set to whitespace by default.
+        """
+        if trim_str is None:
+            return _unary_op("rtrim")(self)
+        else:
+            return _binary_op("rtrim")(self, trim_str)
 
     def btrim(self, trim_str=None) -> 'Expression':
         """

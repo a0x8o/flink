@@ -149,6 +149,7 @@ arithmetic functions
     Expression.end
     Expression.bin
     Expression.hex
+    Expression.unhex
     Expression.truncate
 
 string functions
@@ -177,8 +178,12 @@ string functions
     Expression.rpad
     Expression.overlay
     Expression.regexp
+    Expression.regexp_count
     Expression.regexp_replace
     Expression.regexp_extract
+    Expression.regexp_extract_all
+    Expression.regexp_instr
+    Expression.regexp_substr
     Expression.from_base64
     Expression.to_base64
     Expression.ascii
@@ -192,6 +197,7 @@ string functions
     Expression.url_decode
     Expression.url_encode
     Expression.parse_url
+    Expression.printf
     Expression.ltrim
     Expression.rtrim
     Expression.btrim

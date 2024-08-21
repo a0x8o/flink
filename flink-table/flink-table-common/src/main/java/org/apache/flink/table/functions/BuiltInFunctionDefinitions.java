@@ -1110,6 +1110,21 @@ public final class BuiltInFunctionDefinitions {
                     .outputTypeStrategy(nullableIfArgs(explicit(DataTypes.STRING())))
                     .build();
 
+    public static final BuiltInFunctionDefinition REGEXP_COUNT =
+            BuiltInFunctionDefinition.newBuilder()
+                    .name("REGEXP_COUNT")
+                    .kind(SCALAR)
+                    .inputTypeStrategy(
+                            sequence(
+                                    Arrays.asList("str", "regex"),
+                                    Arrays.asList(
+                                            logical(LogicalTypeFamily.CHARACTER_STRING),
+                                            logical(LogicalTypeFamily.CHARACTER_STRING))))
+                    .outputTypeStrategy(explicit(DataTypes.INT()))
+                    .runtimeClass(
+                            "org.apache.flink.table.runtime.functions.scalar.RegexpCountFunction")
+                    .build();
+
     public static final BuiltInFunctionDefinition REGEXP_EXTRACT =
             BuiltInFunctionDefinition.newBuilder()
                     .name("regexpExtract")
@@ -1125,6 +1140,58 @@ public final class BuiltInFunctionDefinitions {
                                             logical(LogicalTypeFamily.CHARACTER_STRING),
                                             logical(LogicalTypeRoot.INTEGER))))
                     .outputTypeStrategy(explicit(DataTypes.STRING().nullable()))
+                    .build();
+
+    public static final BuiltInFunctionDefinition REGEXP_EXTRACT_ALL =
+            BuiltInFunctionDefinition.newBuilder()
+                    .name("REGEXP_EXTRACT_ALL")
+                    .kind(SCALAR)
+                    .inputTypeStrategy(
+                            or(
+                                    sequence(
+                                            Arrays.asList("str", "regex"),
+                                            Arrays.asList(
+                                                    logical(LogicalTypeFamily.CHARACTER_STRING),
+                                                    logical(LogicalTypeFamily.CHARACTER_STRING))),
+                                    sequence(
+                                            Arrays.asList("str", "regex", "extractIndex"),
+                                            Arrays.asList(
+                                                    logical(LogicalTypeFamily.CHARACTER_STRING),
+                                                    logical(LogicalTypeFamily.CHARACTER_STRING),
+                                                    logical(LogicalTypeFamily.INTEGER_NUMERIC)))))
+                    .outputTypeStrategy(explicit(DataTypes.ARRAY(DataTypes.STRING())))
+                    .runtimeClass(
+                            "org.apache.flink.table.runtime.functions.scalar.RegexpExtractAllFunction")
+                    .build();
+
+    public static final BuiltInFunctionDefinition REGEXP_INSTR =
+            BuiltInFunctionDefinition.newBuilder()
+                    .name("REGEXP_INSTR")
+                    .kind(SCALAR)
+                    .inputTypeStrategy(
+                            sequence(
+                                    Arrays.asList("str", "regex"),
+                                    Arrays.asList(
+                                            logical(LogicalTypeFamily.CHARACTER_STRING),
+                                            logical(LogicalTypeFamily.CHARACTER_STRING))))
+                    .outputTypeStrategy(explicit(DataTypes.INT()))
+                    .runtimeClass(
+                            "org.apache.flink.table.runtime.functions.scalar.RegexpInstrFunction")
+                    .build();
+
+    public static final BuiltInFunctionDefinition REGEXP_SUBSTR =
+            BuiltInFunctionDefinition.newBuilder()
+                    .name("REGEXP_SUBSTR")
+                    .kind(SCALAR)
+                    .inputTypeStrategy(
+                            sequence(
+                                    Arrays.asList("str", "regex"),
+                                    Arrays.asList(
+                                            logical(LogicalTypeFamily.CHARACTER_STRING),
+                                            logical(LogicalTypeFamily.CHARACTER_STRING))))
+                    .outputTypeStrategy(explicit(DataTypes.STRING()))
+                    .runtimeClass(
+                            "org.apache.flink.table.runtime.functions.scalar.RegexpSubstrFunction")
                     .build();
 
     public static final BuiltInFunctionDefinition JSON_QUOTE =
@@ -1145,6 +1212,7 @@ public final class BuiltInFunctionDefinitions {
                     .runtimeClass(
                             "org.apache.flink.table.runtime.functions.scalar.JsonUnquoteFunction")
                     .build();
+
     public static final BuiltInFunctionDefinition FROM_BASE64 =
             BuiltInFunctionDefinition.newBuilder()
                     .name("fromBase64")
@@ -1262,6 +1330,19 @@ public final class BuiltInFunctionDefinitions {
                                             logical(LogicalTypeFamily.CHARACTER_STRING),
                                             logical(LogicalTypeFamily.CHARACTER_STRING))))
                     .outputTypeStrategy(nullableIfArgs(explicit(DataTypes.STRING())))
+                    .build();
+
+    public static final BuiltInFunctionDefinition PRINTF =
+            BuiltInFunctionDefinition.newBuilder()
+                    .name("PRINTF")
+                    .kind(SCALAR)
+                    .inputTypeStrategy(
+                            varyingSequence(
+                                    Arrays.asList("format", "obj"),
+                                    Arrays.asList(
+                                            logical(LogicalTypeFamily.CHARACTER_STRING), ANY)))
+                    .outputTypeStrategy(explicit(DataTypes.STRING()))
+                    .runtimeClass("org.apache.flink.table.runtime.functions.scalar.PrintfFunction")
                     .build();
 
     public static final BuiltInFunctionDefinition UUID =
@@ -1905,6 +1986,19 @@ public final class BuiltInFunctionDefinitions {
                                     sequence(logical(LogicalTypeFamily.INTEGER_NUMERIC)),
                                     sequence(logical(LogicalTypeFamily.CHARACTER_STRING))))
                     .outputTypeStrategy(nullableIfArgs(explicit(DataTypes.STRING())))
+                    .build();
+
+    public static final BuiltInFunctionDefinition UNHEX =
+            BuiltInFunctionDefinition.newBuilder()
+                    .name("UNHEX")
+                    .kind(SCALAR)
+                    .inputTypeStrategy(
+                            sequence(
+                                    Collections.singletonList("expr"),
+                                    Collections.singletonList(
+                                            logical(LogicalTypeFamily.CHARACTER_STRING))))
+                    .outputTypeStrategy(explicit(DataTypes.BYTES()))
+                    .runtimeClass("org.apache.flink.table.runtime.functions.scalar.UnhexFunction")
                     .build();
 
     public static final BuiltInFunctionDefinition TRUNCATE =
