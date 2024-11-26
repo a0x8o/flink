@@ -36,7 +36,7 @@ under the License.
 		<aws.sdk.version>1.12.7</aws.sdk.version>
 		<aws.sdkv2.version>2.16.86</aws.sdkv2.version>
 		<reactivestreams.version>1.0.2</reactivestreams.version>
-		<netty.version>4.1.63.Final</netty.version>
+		<netty.version>4.1.71.Final</netty.version>
 		<guava.version>29.0-jre</guava.version>
 	</properties>
 
